@@ -1,4 +1,4 @@
-import {appendSerializedAssets, escapeHTMLAttribute} from "../serialization"
+import {appendSerializedAssets, escapeHTMLAttribute, scopedCustomElementRegistryScript} from "../serialization"
 import { EditorFeature } from "."
 import type { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
@@ -34,6 +34,8 @@ export class DependencyFeature extends EditorFeature {
     const nonce = escapeHTMLAttribute(this.editor.trustedScriptNonce)
     const token = crypto.randomUUID()
     const importMap = this.dependencyPlan?.map ? packageImportMapScript(document, this.dependencyPlan.map).outerHTML.replace("<script", `<script nonce="${nonce}"`) : ""
+    const scopedRegistry = scopedCustomElementRegistryScript(document, true)
+    scopedRegistry.setAttribute("nonce", nonce)
     const frame = document.createElement("iframe")
     frame.setAttribute("aria-hidden", "true")
     frame.tabIndex = -1
@@ -48,6 +50,7 @@ document.addEventListener("error", event => {
   if(event.target instanceof HTMLScriptElement) parent.postMessage({token: "${token}", detail: {type: "error", message: "The test module failed to load: " + event.target.src}}, self.origin)
 }, true)
 </script>
+${scopedRegistry.outerHTML}
 ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribute(styleUrl)}">` : ""}
 <script nonce="${nonce}" type="module" src="${escapeHTMLAttribute(url.href)}"></script>
 </head><body><div id="mocha"></div></body></html>`

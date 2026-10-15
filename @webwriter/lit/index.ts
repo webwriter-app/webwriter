@@ -1,6 +1,4 @@
-import {LitElement, PropertyDeclaration} from "lit"
-import { property } from "lit/decorators.js"
-import { ScopedElementsMixin } from '@open-wc/scoped-elements/lit-element.js';
+import {LitElement, adoptStyles, type PropertyDeclaration} from "lit"
 
 interface BaseOptionDeclaration<TypeHint=any> extends PropertyDeclaration<TypeHint> {
   type?: TypeHint
@@ -81,39 +79,6 @@ export interface ActionDeclaration {
   description?: Record<string, string>
 }
 
-export function option<This extends LitElementWw, Return>(decl: OptionDeclaration = {type: "string"}) {
-  return (target: ClassAccessorDecoratorTarget<This, Return>, context: ClassAccessorDecoratorContext<This, Return>) => {
-    function init(this: This) {
-      this.constructor["options"] = {...this.constructor["options"], [context.name]: decl}
-    }
-    context.addInitializer(init)
-  }
-}
-
-export function action<This extends LitElementWw, Args extends any[], Return>(decl?: ActionDeclaration) {
-  return (target: (this: This, ...args: Args) => Return, context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Return> | ClassAccessorDecoratorContext<This, Return>) => {
-    function init(this: This) {
-      this.constructor["actions"] = {...this.constructor["actions"], [context.name]: decl}
-    }
-    context.addInitializer(init)
-    function func(this: This, ...args: any[]) {
-      this._inTransaction = true
-      try {
-        return target.apply(this, args)
-      }
-      finally {
-        this._inTransaction = false
-      }
-    }
-    if(context.kind === "method") {
-      return func
-    }
-    else {
-      context.access.set(this, func as any)
-    }
-  }
-}
-
 /** MIME type essences browsers execute as classic scripts. */
 const javaScriptMimeTypes = new Set([
   "application/ecmascript", "application/javascript", "application/x-ecmascript", "application/x-javascript",
@@ -128,135 +93,261 @@ export function isDataBlockType(type: string) {
   return /^[^\s/]+\/[^\s/]+$/.test(essence) && !javaScriptMimeTypes.has(essence)
 }
 
-/** Connected widgets that follow the language of an ancestor. */
-const languageFollowers = new Set<LitElementWw>()
-let languageObserver: MutationObserver | undefined
+export type WidgetDataMode = "individual" | "all" | "group" | "local"
+export type WidgetDataContext = {block: HTMLScriptElement | null, mode: WidgetDataMode}
 
-function observeLanguage(widget: LitElementWw) {
-  languageFollowers.add(widget)
-  languageObserver ??= new MutationObserver(() => languageFollowers.forEach(follower => follower.languageChanged()))
-  languageObserver.observe(widget.ownerDocument.documentElement, {attributes: true, attributeFilter: ["lang"], subtree: true})
-}
+type ContextFollowers = {widgets: Set<LitElementWw>, observer: MutationObserver}
+const contextFollowers = new WeakMap<Document, ContextFollowers>()
+const registries = new WeakMap<typeof LitElementWw, CustomElementRegistry>()
 
-function unobserveLanguage(widget: LitElementWw) {
-  languageFollowers.delete(widget)
-  if(!languageFollowers.size) {
-    languageObserver?.disconnect()
-    languageObserver = undefined
-  }
-}
-
-/**Minimal base class for a WebWriter widget implemented in Lit. Implements the core properties required by WebWriter, initializes the component when loaded and provides a Scoped Custom Element Registry (@open-wc/scoped-elements) to help with namespace conflicts when using other components in this widget. */
-export class LitElementWw extends ScopedElementsMixin(LitElement) {
-
-  /** Register the classes of custom elements to use in the Shadow DOM here. DO NOT register any additional elements globally.
-   * @example
-   * import SlButton from "@shoelace-style/shoelace/dist/components/button/button.component.js"
-   * ...
-   *   static scopedElements = {"sl-button": SlButton}
-   **/
-  protected static scopedElements = {}
-
+/** Optional WebWriter conveniences for Lit widgets. The authored DOM remains
+ * authoritative; only registry, readiness, and notification state are retained. */
+export class LitElementWw extends LitElement {
+  static scopedElements: Record<string, CustomElementConstructor> = {}
   static readonly options: Record<string, OptionDeclaration> = {}
   static readonly actions: Record<string, ActionDeclaration> = {}
-
   static readonly dataType: string | undefined = undefined
 
-  /** Declare attributes as options. Used by WebWriter to auto-generate input fields to modify these attributes. As the name suggests, this is mostly suited to simple attributes (boolean, string, etc.). Use a getter here (`get options() {...}`) to dynamically change options depending on the state of the widget.*/
-  readonly options: Record<string, OptionDeclaration>
+  /** Optional per-instance editor declarations override nonempty static maps. */
+  declare readonly options?: Record<string, OptionDeclaration>
+  declare readonly actions?: Record<string, ActionDeclaration>
+  protected localize?: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
 
-  /** Declare methods as actions. Used by WebWriter to treat all DOM changes triggered by the method as a single change (as a transaction).*/
-  readonly actions: Record<string, ActionDeclaration> = {}
+  /** One native registry per concrete widget class, shared by its instances. */
+  get registry() {
+    const constructor = this.constructor as typeof LitElementWw
+    let registry = registries.get(constructor)
+    if(!registry) {
+      registry = new CustomElementRegistry()
+      for(const [name, element] of Object.entries(constructor.scopedElements)) registry.define(name, element)
+      registries.set(constructor, registry)
+    }
+    return registry
+  }
 
-  /** Add `@lit/localize` support. This should be the return value of `configureLocalization`. */
-  protected localize: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
+  protected createRenderRoot() {
+    const constructor = this.constructor as typeof LitElementWw
+    const registry = this.registry
+    const root = this.shadowRoot ?? this.attachShadow({...constructor.shadowRootOptions, customElementRegistry: registry})
+    adoptStyles(root, constructor.elementStyles)
+    this.renderOptions.renderBefore ??= root.firstChild
+    const customElementRegistry = (root as ShadowRoot & {customElementRegistry: CustomElementRegistry}).customElementRegistry
+    this.renderOptions.creationScope = {
+      importNode: (node, deep) => this.ownerDocument.importNode(node, {customElementRegistry, selfOnly: !deep}),
+    }
+    return root
+  }
 
-  /** Whether the widget is being edited: the editor marks widgets with `contenteditable`, and the document is editable while authoring. In a preview or an exported document, the widget is not editable. */
-  get editable() {
-    return this.isContentEditable
+  get editable() { return this.isContentEditable }
+
+  /** Includes explicit lang="", which stops inheritance. Inherited values are
+   * never reflected onto the widget. Setting null removes an authored value. */
+  get lang(): string { return this.closest("[lang]")?.getAttribute("lang") ?? "" }
+  set lang(value: string | null) {
+    if(value === null || value === undefined) this.removeAttribute("lang")
+    else this.setAttribute("lang", value)
   }
 
   static get observedAttributes() {
-    return [...new Set([...super.observedAttributes, "contenteditable"])]
+    return [...new Set([...super.observedAttributes, "contenteditable", "lang", "shared", "id"])]
   }
 
   attributeChangedCallback(name: string, oldValue: string | null, value: string | null) {
     super.attributeChangedCallback(name, oldValue, value)
-    if(name === "contenteditable") this.requestUpdate("editable")
+    if(oldValue === value) return
+    if(name === "lang" || name === "contenteditable") this.#contextChanged()
+    if(name === "shared" || name === "id") {
+      this.#readyBlock = null
+      if(this.isConnected) this.#syncData()
+    }
   }
 
-  #lang: string | null = null
+  #observedDocument?: Document
+  #language?: string
+  #editable?: boolean
 
-  get lang() {
-    return (this.#lang ?? (this.parentElement?.closest("[lang]") as HTMLElement)?.lang) ?? ""
+  #contextChanged = () => {
+    const language = this.lang, editable = this.editable
+    if(language !== this.#language) {
+      const before = this.#language
+      this.#language = language
+      this.requestUpdate("lang", before)
+      if(this.isConnected && this.localize) {
+        const failed = (error: unknown) => {
+          this.dispatchEvent(new CustomEvent("localizationerror", {detail: {error}}))
+          this.requestUpdate()
+        }
+        try { void Promise.resolve(this.localize.setLocale(language)).then(() => this.requestUpdate(), failed) }
+        catch(error) { failed(error) }
+      }
+    }
+    if(editable !== this.#editable) {
+      const before = this.#editable
+      this.#editable = editable
+      this.requestUpdate("editable", before)
+    }
   }
 
-  /** [HTML global attribute] Language of the widget, allowing presentation changes for each language. Without its own `lang` attribute, the widget follows the nearest ancestor's, including later changes to it. Only a language set on the widget itself is written to its attribute. */
-  @property({type: String, attribute: true})
-  set lang(value) {
-    this.#lang = value ?? null
-    if(this.#lang !== null && this.getAttribute("lang") !== this.#lang) this.setAttribute("lang", this.#lang)
-    else if(this.#lang === null && this.hasAttribute("lang")) this.removeAttribute("lang")
-    this.#inheritedLang = this.#lang !== null ? "" : this.lang
-    this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
-  }
-
-  #inheritedLang = ""
-
-  /** @internal Called when a `lang` attribute in the document changes. The
-   * update is not reflected, so the inherited language never becomes an
-   * attribute of the widget. */
-  languageChanged() {
-    if(this.#lang !== null || this.lang === this.#inheritedLang) return
-    this.#inheritedLang = this.lang
-    this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
-  }
+  /** Retained for widgets that explicitly request an inherited-language refresh. */
+  languageChanged() { this.#contextChanged() }
 
   #dataContainer(): HTMLScriptElement | null {
-    return Array.from(this.children).find((child): child is HTMLScriptElement => child instanceof HTMLScriptElement
-      && child.hasAttribute("type") && isDataBlockType(child.type) && !child.hasAttribute("src")) ?? null
+    const blocks = Array.from(this.children).filter((child): child is HTMLScriptElement =>
+      child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.localName === "script"
+      && isDataBlockType((child as HTMLScriptElement).type) && !child.hasAttribute("src"))
+    return blocks.find(block => this.#scoped(block)) ?? blocks[0] ?? null
   }
 
-  /** The text of the widget's data container: its first `<script>` child with a data block type (a non-JavaScript MIME type such as `application/json`) and no `src`. The editor keeps data containers under any content model, so state stored here is saved, copied and synchronized with the widget. */
-  get data() {
-    return this.#dataContainer()?.textContent ?? null
+  #scoped(block: HTMLScriptElement | null) {
+    return !!block && block.getAttribute("slot") === "data"
+      && ["application/json", "application/xml"].includes(block.type)
   }
 
-  @property({attribute: false})
-  set data(value) {
-    this.setData(this.dataType ?? "text/plain", value ?? "")
+  #scope() {
+    return JSON.stringify([this.ownerDocument.documentElement.id, this.id, this.getAttribute("shared"),
+      ...Array.from(this.childNodes).filter(node => node.nodeType === 7 && node.nodeName === "ww-grouping").map(node => node.nodeValue)])
   }
 
-  get dataType() {
-    return this.#dataContainer()?.type ?? (this.constructor as typeof LitElementWw).dataType
+  get data() { return this.#dataContainer()?.textContent ?? null }
+  set data(value: string | null) { this.setData(this.dataType ?? "text/plain", value ?? "") }
+  get dataType() { return this.#dataContainer()?.type ?? (this.constructor as typeof LitElementWw).dataType }
+
+  #block: HTMLScriptElement | null | undefined
+  #bindingScope?: string
+  #readyBlock: HTMLScriptElement | null = null
+  #readyScope?: string
+  #managed = false
+  #lastText: string | null | undefined
+  #mode: WidgetDataMode = "local"
+  #syncing = false
+  #contentObserver = new MutationObserver(() => this.#syncData())
+
+  /** False while the current participant scope is loading or unavailable. */
+  get dataReady() {
+    const block = this.#dataContainer()
+    return this.isConnected && (!this.#scoped(block) || block === this.#block && this.#bindingScope === this.#scope()
+      && (!this.#managed || block === this.#readyBlock && this.#readyScope === this.#scope()))
   }
 
-  /** Replace the data container with a new one of the given data block type, value and optional attributes, or create it if there is none. */
-  setData(type: string, value: string, attrs?: Record<string, string>) {
-    if(!isDataBlockType(type)) throw new TypeError(`'${type}' is not a data block type`)
-    const old = this.#dataContainer()
-    const current = old? old.cloneNode(true) as HTMLScriptElement: document.createElement("script")
-    current.textContent = value
-    current.type = type
-    Object.keys(attrs ?? {}).forEach(k => current.setAttribute(k, attrs[k]))
-    old? old.replaceWith(current): this.append(current)
+  /** Implement these hooks to update the widget's presentation. Do not write
+   * snapshots back from a notification; write in response to user interactions. */
+  protected dataPending(context: WidgetDataContext): void {}
+  protected dataChanged(value: string | null, context: WidgetDataContext): void {}
+  protected dataError(error: Error, context: WidgetDataContext): void {}
+
+  #context(block = this.#dataContainer()): WidgetDataContext { return {block, mode: this.#mode} }
+
+  #syncData() {
+    if(!this.isConnected || this.#syncing) return
+    this.#syncing = true
+    try {
+      const block = this.#dataContainer(), scope = this.#scope()
+      if(block !== this.#block || scope !== this.#bindingScope) {
+        this.#block = block
+        this.#bindingScope = scope
+        this.#readyBlock = null
+        this.#managed = false
+        this.#mode = "local"
+        if(this.#scoped(block)) {
+          const Request = this.ownerDocument.defaultView?.CustomEvent ?? CustomEvent
+          // Cancellation acknowledges ownership; an unhandled request means a
+          // standalone document using ordinary local authored data.
+          const request = new Request("datarequest", {bubbles: true, cancelable: true})
+          this.#managed = !block!.dispatchEvent(request)
+        }
+        if(!this.#managed) this.#acceptData("local")
+      }
+      else if(!this.#managed && this.data !== this.#lastText) this.#acceptData("local")
+      this.requestUpdate("data")
+    }
+    finally { this.#syncing = false }
+  }
+
+  #acceptData(mode: WidgetDataMode) {
+    this.#mode = mode
+    this.#readyBlock = this.#dataContainer()
+    this.#readyScope = this.#scope()
+    this.#lastText = this.data
+    this.dataChanged(this.data, this.#context())
     this.requestUpdate("data")
   }
 
-  /** @internal */
-  _inTransaction = false
-
-  connectedCallback(): void {
-    super.connectedCallback()
-    observeLanguage(this)
-    this.#inheritedLang = this.lang
-    this.localize?.setLocale(this.lang).finally(() => this.requestUpdate())
-    this.getAttributeNames().forEach(k => this.setAttribute(k, this.getAttribute(k)))
-    this.addEventListener("slotchange", e => this.requestUpdate(), {passive: true})
+  #dataEvent = (event: Event) => {
+    const block = this.#dataContainer()
+    if(!this.isConnected || !block || event.target !== block || !this.#scoped(block)) return
+    const detail = (event as CustomEvent<{mode?: WidgetDataMode, message?: string}>).detail
+    this.#managed = true
+    this.#block = block
+    this.#bindingScope = this.#scope()
+    if(detail?.mode) this.#mode = detail.mode
+    else if(this.#mode === "local") this.#mode = !this.hasAttribute("shared") ? "individual" : this.getAttribute("shared") === "group" ? "group" : "all"
+    if(event.type === "datachange") this.#acceptData(this.#mode)
+    else {
+      if(event.type === "datapending") {
+        this.#readyBlock = null
+        this.dataPending(this.#context(block))
+      }
+      else this.dataError(new Error(detail?.message ?? "Widget data is unavailable"), this.#context(block))
+      this.requestUpdate("data")
+    }
   }
 
-  disconnectedCallback(): void {
+  /** Updates a data block in place, preserving its identity and attributes.
+   * A managed block cannot be written until its current scope is ready. */
+  setData(type: string, value: string, attrs: Record<string, string> = {}) {
+    if(!isDataBlockType(type)) throw new TypeError(`'${type}' is not a data block type`)
+    if(Object.keys(attrs).some(name => name.toLowerCase() === "src")) throw new TypeError("Data blocks cannot have src")
+    this.#syncData()
+    const old = this.#dataContainer()
+    if(old && this.#managed && !this.dataReady) throw new DOMException("Wait for the current data scope to become ready", "InvalidStateError")
+    const text = type === "application/json" ? value.replace(/</g, "\\u003c") : value
+    if(/<\/script[\s/>]/i.test(text)) throw new TypeError("Data blocks cannot contain a closing script tag")
+    const block = old ?? this.ownerDocument.createElement("script")
+    for(const [name, value] of Object.entries(attrs)) block.setAttribute(name, value)
+    block.type = type
+    block.textContent = text
+    if(!old) this.append(block)
+    this.requestUpdate("data")
+  }
+
+  #slotChanged = () => this.requestUpdate()
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.#observedDocument = this.ownerDocument
+    let followers = contextFollowers.get(this.ownerDocument)
+    if(!followers) {
+      const widgets = new Set<LitElementWw>()
+      const Observer = this.ownerDocument.defaultView?.MutationObserver ?? MutationObserver
+      const observer = new Observer(() => widgets.forEach(widget => widget.#contextChanged()))
+      observer.observe(this.ownerDocument.documentElement, {attributes: true, attributeFilter: ["lang", "contenteditable"], subtree: true})
+      followers = {widgets, observer}
+      contextFollowers.set(this.ownerDocument, followers)
+    }
+    followers.widgets.add(this)
+    this.#language = undefined
+    this.#contextChanged()
+    for(const type of ["datapending", "datachange", "dataerror"]) this.addEventListener(type, this.#dataEvent)
+    this.#contentObserver.observe(this, {childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["type", "src", "slot"]})
+    this.renderRoot.addEventListener("slotchange", this.#slotChanged)
+    this.#block = undefined
+    this.#syncData()
+  }
+
+  disconnectedCallback() {
+    this.#contentObserver.disconnect()
+    for(const type of ["datapending", "datachange", "dataerror"]) this.removeEventListener(type, this.#dataEvent)
+    this.renderRoot?.removeEventListener("slotchange", this.#slotChanged)
+    this.#readyBlock = null
+    if(this.#observedDocument) {
+      const followers = contextFollowers.get(this.#observedDocument)
+      followers?.widgets.delete(this)
+      if(!followers?.widgets.size) {
+        followers?.observer.disconnect()
+        contextFollowers.delete(this.#observedDocument)
+      }
+    }
+    this.#observedDocument = undefined
     super.disconnectedCallback()
-    unobserveLanguage(this)
   }
 }

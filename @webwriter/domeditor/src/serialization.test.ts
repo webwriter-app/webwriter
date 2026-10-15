@@ -1,6 +1,19 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
 import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
+import type {WebWriterPackage} from "./packages"
+
+it("keeps encoding metadata before the adapter and installs it before widget modules", () => {
+  const root = new DOMParser().parseFromString('<html><head><meta charset="utf-8"><title>Grüße</title><script type="module" src="https://example.test/widget.js"></script></head><body><demo-widget></demo-widget></body></html>', "text/html")
+  const pkg = {scripts: ["https://example.test/widget.js"], styles: [], members: [{kind: "widget", tagName: "demo-widget"}]} as unknown as WebWriterPackage
+  appendSerializedAssets(root, [pkg], {imports: {lit: "https://example.test/lit.js"}})
+  expect(root.head.firstElementChild?.getAttribute("charset")).toBe("utf-8")
+  const scripts = Array.from(root.head.querySelectorAll("script"))
+  expect(scripts[0].id).toBe("webwriter-scoped-registry")
+  expect(scripts[1].type).toBe("importmap")
+  expect(scripts[2].src).toBe("https://example.test/widget.js")
+  expect(root.documentElement.outerHTML.indexOf('charset="utf-8"')).toBeLessThan(1024)
+})
 
 it("includes aligned marker styling in standalone exports without changing the body", () => {
   const root = new DOMParser().parseFromString('<ul style="--ww-list-marker-image: url(data:image/png;base64,AQID); list-style-image: var(--ww-list-marker-image)"><li>Item</li></ul>', "text/html")

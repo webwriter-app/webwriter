@@ -8,13 +8,15 @@ import {collectReferences} from "./document-viewer.js"
 import {documentLayoutMode} from "./document-layout"
 import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
-import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, type WebWriterPackage} from "./packages"
+import scopedCustomElementRegistrySource from "./scoped-custom-element-registry.js?raw"
+import type {WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
 
 export const originalURLAttribute = (name: string) => `data-webwriter-original-${name.replace(":", "-")}`
 export const originalPackageEntriesAttribute = "data-webwriter-original-package-entries"
 export const offlinePackageStyleAttribute = "data-webwriter-offline-package-style"
+const legacyScopedRegistryPolyfillURL = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
 
 /** Escape a value inserted into a double-quoted HTML attribute. */
 export const escapeHTMLAttribute = (value: string) => value
@@ -72,6 +74,15 @@ export function serializeDoctype(doctype: DocumentType | null) {
   return `<!DOCTYPE ${doctype.name}${publicId}${systemId}>`
 }
 
+/** Creates the standalone scoped-registry adapter required before widget scripts. */
+export function scopedCustomElementRegistryScript(root: Document, editorOnly = false) {
+  const script = root.createElement("script")
+  script.id = "webwriter-scoped-registry"
+  if(editorOnly) script.classList.add("◆", "◆editor-only")
+  script.textContent = scopedCustomElementRegistrySource.replace(/<\/script/gi, "<\\/script")
+  return script
+}
+
 /** Adds the widget and template resources required by a detached document. */
 export function appendSerializedAssets(root: Document, packages: WebWriterPackage[], importMap?: IImportMap | null) {
   const resourceKey = (url: string) => {
@@ -95,6 +106,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     head.append(script)
   }
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
+  root.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.
   root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
   root.querySelectorAll('script[id="webwriter-document-viewer"]').forEach(script => script.remove())
@@ -143,23 +155,18 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   ].filter(asset => required.has(resourceKey(asset.url)))
   const moduleEntries = new Set(packageModuleEntries(packages).map(resourceKey))
   if(hasImportMapEntries(importMap) && assets.some(asset => asset.isScript && moduleEntries.has(resourceKey(asset.url)))) {
-    head.prepend(packageImportMapScript(root, importMap))
+    head.insertBefore(packageImportMapScript(root, importMap), head.querySelector(":scope > script"))
   }
-  const needsPolyfill = assets.some(asset => asset.isScript)
+  const needsScopedRegistry = assets.some(asset => asset.isScript)
   root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]").forEach(element => {
     const key = resourceKey(element.localName === "script" ? (element as HTMLScriptElement).src : (element as HTMLLinkElement).href)
     if(known.has(key) && !required.has(key)
-      || packages.length && key === SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL && !needsPolyfill) element.remove()
+      || key === legacyScopedRegistryPolyfillURL) element.remove()
   })
   const existing = new Set([...root.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel~='stylesheet'][href]")]
     .map(element => resourceKey(element.localName === "script" ? (element as HTMLScriptElement).src : (element as HTMLLinkElement).href)))
-  if(needsPolyfill
-    && !existing.has(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)) {
-    const polyfill = root.createElement("script")
-    polyfill.src = SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL
-    head.prepend(polyfill)
-    existing.add(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
-  }
+  // Keep early metadata (especially charset) ahead of the inline runtime.
+  if(needsScopedRegistry) head.insertBefore(scopedCustomElementRegistryScript(root), head.querySelector(":scope > script"))
   for(const {url, isScript} of assets) {
     const key = resourceKey(url)
     if(!key || existing.has(key)) continue

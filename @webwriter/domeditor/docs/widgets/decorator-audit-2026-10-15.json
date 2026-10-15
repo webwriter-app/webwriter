@@ -1,0 +1,1228 @@
+{
+  "auditedOn": "2026-10-15",
+  "scope": {
+    "catalogPackages": 18,
+    "currentPackages": 27,
+    "packageVersions": 43,
+    "sourceFiles": 1893,
+    "javascriptFilesLexed": 242
+  },
+  "discovery": {
+    "catalog": "@webwriter/website/resources/packages.json",
+    "npmSearch": "https://registry.npmjs.org/-/v1/search?text=scope%3Awebwriter%20keywords%3Awebwriter-widget&size=250"
+  },
+  "method": [
+    "Read public npm metadata for catalog versions and current latest releases.",
+    "Download published archives and verify their npm SHA-1 checksums without installing or executing package code.",
+    "Parse shipped TypeScript/JavaScript imports and decorator AST nodes, including aliases and namespace imports. Ignore comments and Lit decorators.",
+    "Lex emitted JavaScript module imports, including large bundles excluded from the TypeScript AST scan.",
+    "Manually inspect affected package export paths, decorated members, and bundled output."
+  ],
+  "summary": {
+    "currentPackagesWithAppliedDecorators": [
+      "@webwriter/quiz@2.0.0",
+      "@webwriter/flowchart@2.1.1"
+    ],
+    "otherCurrentPackagesWithAppliedDecorators": 0,
+    "catalogQuiz": "@webwriter/quiz@1.1.3 has 15 option and 2 action decorators.",
+    "importOnlyCatalogPackage": "@webwriter/geogebra@1.0.1 imports option without applying it; current 1.1.0 removes the import.",
+    "dependencyRanges": "All 25 current packages that declare @webwriter/lit depend on 2.x.",
+    "currentMigration": "Quiz: three action methods. Flowchart: six option accessors. Existing bundled runtimes remain embedded; no emitted import of option or action from @webwriter/lit was found."
+  },
+  "limits": [
+    "Audits the discovered packages and selected versions, not every historical npm version.",
+    "Decorator absence is not a complete compatibility audit of other LitElementWw APIs.",
+    "Quiz 2.0.0 also uses dynamicOptions getters; map them to supported options declarations when upgrading its base runtime."
+  ],
+  "versions": [
+    {
+      "name": "@webwriter/quiz",
+      "version": "1.1.3",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.1.2",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/quiz/-/quiz-1.1.3.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 48,
+      "decoratorImports": [
+        {
+          "file": "src/widgets/webwriter-choice.ts",
+          "line": 3,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-choice.ts",
+          "line": 3,
+          "decorator": "action",
+          "alias": "action",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-mark.ts",
+          "line": 2,
+          "decorator": "action",
+          "alias": "action",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-order.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-pairing-item.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-pairing.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-quiz.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-task.ts",
+          "line": 3,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-text.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        }
+      ],
+      "appliedDecorators": [
+        {
+          "file": "src/widgets/webwriter-choice.ts",
+          "line": 41,
+          "decorator": "option",
+          "member": "mode",
+          "class": "WebwriterChoice",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-choice.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-choice.ts",
+          "line": 56,
+          "decorator": "option",
+          "member": "layout",
+          "class": "WebwriterChoice",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-choice.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-choice.ts",
+          "line": 69,
+          "decorator": "option",
+          "member": "randomOrder",
+          "class": "WebwriterChoice",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-choice.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-choice.ts",
+          "line": 76,
+          "decorator": "option",
+          "member": "showSolution",
+          "class": "WebwriterChoice",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-choice.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-choice.ts",
+          "line": 150,
+          "decorator": "action",
+          "member": "addItem",
+          "class": "WebwriterChoice",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-choice.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-mark.ts",
+          "line": 383,
+          "decorator": "action",
+          "member": "handleHighlight",
+          "class": "WebwriterMark",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-mark.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-order.ts",
+          "line": 118,
+          "decorator": "option",
+          "member": "layout",
+          "class": "WebwriterOrder",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-order.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-order.ts",
+          "line": 135,
+          "decorator": "option",
+          "member": "hideOrderButtons",
+          "class": "WebwriterOrder",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-order.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-order.ts",
+          "line": 141,
+          "decorator": "option",
+          "member": "showSolution",
+          "class": "WebwriterOrder",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-order.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-pairing.ts",
+          "line": 81,
+          "decorator": "option",
+          "member": "mode",
+          "class": "WebwriterPairing",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-pairing.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-quiz.ts",
+          "line": 178,
+          "decorator": "option",
+          "member": "randomOrder",
+          "class": "WebwriterQuiz",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-quiz.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-quiz.ts",
+          "line": 186,
+          "decorator": "option",
+          "member": "counter",
+          "class": "WebwriterQuiz",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-quiz.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-text.ts",
+          "line": 23,
+          "decorator": "option",
+          "member": "type",
+          "class": "WebwriterText",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-text.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-text.ts",
+          "line": 38,
+          "decorator": "option",
+          "member": "placeholder",
+          "class": "WebwriterText",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-text.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-text.ts",
+          "line": 42,
+          "decorator": "option",
+          "member": "ignoreCase",
+          "class": "WebwriterText",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-text.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-text.ts",
+          "line": 49,
+          "decorator": "option",
+          "member": "showSolution",
+          "class": "WebwriterText",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-text.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-text.ts",
+          "line": 56,
+          "decorator": "option",
+          "member": "wrongMessage",
+          "class": "WebwriterText",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@1.1.3/src/widgets/webwriter-text.ts"
+        }
+      ],
+      "importsWithoutAppliedDecoratorsInSameFile": [
+        {
+          "file": "src/widgets/webwriter-pairing-item.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-task.ts",
+          "line": 3,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        }
+      ],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "5d71459a91d74f973ed3611b84f2f45dc037fbfd"
+    },
+    {
+      "name": "@webwriter/quiz",
+      "version": "2.0.0",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/quiz/-/quiz-2.0.0.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 39,
+      "decoratorImports": [
+        {
+          "file": "src/widgets/choice/webwriter-choice.ts",
+          "line": 3,
+          "decorator": "action",
+          "alias": "action",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/order/webwriter-order.ts",
+          "line": 3,
+          "decorator": "action",
+          "alias": "action",
+          "typeOnly": false
+        },
+        {
+          "file": "src/widgets/webwriter-mark.ts",
+          "line": 3,
+          "decorator": "action",
+          "alias": "action",
+          "typeOnly": false
+        }
+      ],
+      "appliedDecorators": [
+        {
+          "file": "src/widgets/choice/webwriter-choice.ts",
+          "line": 263,
+          "decorator": "action",
+          "member": "addOption",
+          "class": "WebwriterChoice",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/src/widgets/choice/webwriter-choice.ts"
+        },
+        {
+          "file": "src/widgets/order/webwriter-order.ts",
+          "line": 252,
+          "decorator": "action",
+          "member": "addOption",
+          "class": "WebwriterOrder",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/src/widgets/order/webwriter-order.ts"
+        },
+        {
+          "file": "src/widgets/webwriter-mark.ts",
+          "line": 280,
+          "decorator": "action",
+          "member": "toggleMarkingAtPosition",
+          "class": "WebWriterMark",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/quiz@2.0.0/src/widgets/webwriter-mark.ts"
+        }
+      ],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "75696e6c873c6257812d35a6dff0e1bb81caabc4"
+    },
+    {
+      "name": "@webwriter/neural-network",
+      "version": "1.1.3",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/neural-network/-/neural-network-1.1.3.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 125,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [
+        "dist/webwriter-neural-network.js"
+      ],
+      "archiveShasum": "08d1cb2f261a7dd0d987d38d44bc305491ef5fb6"
+    },
+    {
+      "name": "@webwriter/neural-network",
+      "version": "1.1.6",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/neural-network/-/neural-network-1.1.6.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 158,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [
+        "dist/webwriter-neural-network.js"
+      ],
+      "archiveShasum": "1764c2cf2dccfec0b83fdad313b90856ebf08528"
+    },
+    {
+      "name": "@webwriter/slides",
+      "version": "2.0.7",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/slides/-/slides-2.0.7.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 2,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "b1ad86602e2d10754b71b6bfbc449bbafb538f4d"
+    },
+    {
+      "name": "@webwriter/slides",
+      "version": "2.3.1",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.8",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/slides/-/slides-2.3.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 37,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "5659bcaeb3f4d4ae42ddb9a2ba3c7447209f25f1"
+    },
+    {
+      "name": "@webwriter/geometry-cloze",
+      "version": "2.0.6",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/geometry-cloze/-/geometry-cloze-2.0.6.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 29,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "18a4887b428818fa350ac0fdebe5d61f25e2bf1e"
+    },
+    {
+      "name": "@webwriter/geometry-cloze",
+      "version": "2.4.2",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/geometry-cloze/-/geometry-cloze-2.4.2.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 68,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "3dfd86c6d377172a26d8fd4eb65c93c5ec72c177"
+    },
+    {
+      "name": "@webwriter/chemdraw",
+      "version": "2.1.0",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/chemdraw/-/chemdraw-2.1.0.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 10,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "e6f66254d27debb5e0d0ddfd709c003b3ff03c9c"
+    },
+    {
+      "name": "@webwriter/chemdraw",
+      "version": "2.1.1",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/chemdraw/-/chemdraw-2.1.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 10,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "bf86b0314853c07f69089eb5fde807f5038acc29"
+    },
+    {
+      "name": "@webwriter/flowchart",
+      "version": "2.0.8",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/flowchart/-/flowchart-2.0.8.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 26,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "7d81e59dd1aa6d3e558f7640e0b8bd2292e22423"
+    },
+    {
+      "name": "@webwriter/flowchart",
+      "version": "2.1.1",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/flowchart/-/flowchart-2.1.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 55,
+      "decoratorImports": [
+        {
+          "file": "index.ts",
+          "line": 1,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        }
+      ],
+      "appliedDecorators": [
+        {
+          "file": "index.ts",
+          "line": 166,
+          "decorator": "option",
+          "member": "zoomLevel",
+          "class": "FlowchartWidget",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/index.ts"
+        },
+        {
+          "file": "index.ts",
+          "line": 189,
+          "decorator": "option",
+          "member": "disableStudentEdit",
+          "class": "FlowchartWidget",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/index.ts"
+        },
+        {
+          "file": "index.ts",
+          "line": 199,
+          "decorator": "option",
+          "member": "disableStudentPan",
+          "class": "FlowchartWidget",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/index.ts"
+        },
+        {
+          "file": "index.ts",
+          "line": 209,
+          "decorator": "option",
+          "member": "font",
+          "class": "FlowchartWidget",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/index.ts"
+        },
+        {
+          "file": "index.ts",
+          "line": 223,
+          "decorator": "option",
+          "member": "fontSize",
+          "class": "FlowchartWidget",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/index.ts"
+        },
+        {
+          "file": "index.ts",
+          "line": 234,
+          "decorator": "option",
+          "member": "theme",
+          "class": "FlowchartWidget",
+          "sourceUrl": "https://cdn.jsdelivr.net/npm/@webwriter/flowchart@2.1.1/index.ts"
+        }
+      ],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "9d87fed03010867801c638b3e372599a6135176c"
+    },
+    {
+      "name": "@webwriter/phet-simulation",
+      "version": "1.0.7",
+      "currentRelease": true,
+      "catalogVersion": true,
+      "litDependency": null,
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/phet-simulation/-/phet-simulation-1.0.7.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 2,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "e92095a04c78a6d9d4adc7fc5d995ea9c119e284"
+    },
+    {
+      "name": "@webwriter/branching-scenario",
+      "version": "1.2.0",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/branching-scenario/-/branching-scenario-1.2.0.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 48,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "2f6aa4934729f8a2259f887c42796a2666e80840"
+    },
+    {
+      "name": "@webwriter/branching-scenario",
+      "version": "1.2.1",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.8",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/branching-scenario/-/branching-scenario-1.2.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 49,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "bef7761f4ec522fe0e46f8fdf0880c0e4685d415"
+    },
+    {
+      "name": "@webwriter/interactive-video",
+      "version": "2.1.2",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/interactive-video/-/interactive-video-2.1.2.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 20,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "6fb58fec8958d15636caf270544d8649b406bc5b"
+    },
+    {
+      "name": "@webwriter/interactive-video",
+      "version": "3.0.3",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.8",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/interactive-video/-/interactive-video-3.0.3.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 56,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "72ebb96122b85fc16015ae895b847b0dde5f3031"
+    },
+    {
+      "name": "@webwriter/code",
+      "version": "2.1.2",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/code/-/code-2.1.2.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 25,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [
+        "dist/widgets/ww-code-typescript.js",
+        "dist/widgets/ww-code-webassembly.js",
+        "dist/widgets/ww-code.js"
+      ],
+      "archiveShasum": "385d7676ea564d9e65bc9a78975be64014ba2d85"
+    },
+    {
+      "name": "@webwriter/code",
+      "version": "3.0.5",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/code/-/code-3.0.5.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 56,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [
+        "dist/widgets/ww-code-java.js",
+        "dist/widgets/ww-code-typescript.js"
+      ],
+      "archiveShasum": "ca42428f8c67d46339d09a81aac86ce9fab519b5"
+    },
+    {
+      "name": "@webwriter/map",
+      "version": "2.0.9",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/map/-/map-2.0.9.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 8,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "eed8a0cb7d60b55274ddf8b1e116f94a908e0899"
+    },
+    {
+      "name": "@webwriter/map",
+      "version": "2.2.0",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/map/-/map-2.2.0.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 41,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "567dd7b7336ad24da9ef887620a65ee49168d8f2"
+    },
+    {
+      "name": "@webwriter/network",
+      "version": "2.0.6",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/network/-/network-2.0.6.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 37,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "2c7dd95ace9244303807068ed1a0ad0fc7f61147"
+    },
+    {
+      "name": "@webwriter/network",
+      "version": "2.0.7",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.8",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/network/-/network-2.0.7.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 70,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "31768fb8fa5fed0f31024dfb5539ba60e45259e7"
+    },
+    {
+      "name": "@webwriter/automaton",
+      "version": "2.0.5",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/automaton/-/automaton-2.0.5.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 32,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "f8ceaaa6e98e777fd2ec7d3914a98c3ea0ce70dd"
+    },
+    {
+      "name": "@webwriter/automaton",
+      "version": "3.0.2",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.8",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/automaton/-/automaton-3.0.2.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 71,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "aac2582c2620b7c986229635bc85f4378d8abf27"
+    },
+    {
+      "name": "@webwriter/timeline",
+      "version": "1.0.4",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/timeline/-/timeline-1.0.4.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 14,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "906f6feb069d3c59f12cacd94d95db13cb857d3f"
+    },
+    {
+      "name": "@webwriter/timeline",
+      "version": "2.1.1",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/timeline/-/timeline-2.1.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 42,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "33785bb9d5808a34af6af1d484937af395cb91a5"
+    },
+    {
+      "name": "@webwriter/logic-circuit",
+      "version": "1.1.3",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/logic-circuit/-/logic-circuit-1.1.3.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 17,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "8389625eff5323e5a017135eacd9ee4b6945e0ed"
+    },
+    {
+      "name": "@webwriter/logic-circuit",
+      "version": "1.2.0",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/logic-circuit/-/logic-circuit-1.2.0.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 50,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "7c236501e3ad7cf34d0d7a72b626b265e83e25aa"
+    },
+    {
+      "name": "@webwriter/chemlab",
+      "version": "1.0.7",
+      "currentRelease": true,
+      "catalogVersion": true,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/chemlab/-/chemlab-1.0.7.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 2,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [
+        "dist/widgets/webwriter-chemlab.js"
+      ],
+      "archiveShasum": "018448fe6c7da2a25326f9f8d0ce858b85eea68d"
+    },
+    {
+      "name": "@webwriter/block-based-code",
+      "version": "1.6.3",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/block-based-code/-/block-based-code-1.6.3.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 71,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "32da8a1bf0801cdb2151fe9a3ce4b049f4da60dd"
+    },
+    {
+      "name": "@webwriter/block-based-code",
+      "version": "1.7.3",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/block-based-code/-/block-based-code-1.7.3.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 77,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "d795a60615c814d624e6059297d683aeb8707f54"
+    },
+    {
+      "name": "@webwriter/geogebra",
+      "version": "1.0.1",
+      "currentRelease": false,
+      "catalogVersion": true,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/geogebra/-/geogebra-1.0.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 8,
+      "decoratorImports": [
+        {
+          "file": "components/geogebra-app.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        }
+      ],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [
+        {
+          "file": "components/geogebra-app.ts",
+          "line": 2,
+          "decorator": "option",
+          "alias": "option",
+          "typeOnly": false
+        }
+      ],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "1f5108fe61253989aadee497bc477e5782aee3f6"
+    },
+    {
+      "name": "@webwriter/geogebra",
+      "version": "1.1.0",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.1.6",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/geogebra/-/geogebra-1.1.0.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 45,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "51686e9712def2fd0984f37134d1b5680e853c2e"
+    },
+    {
+      "name": "webwriter-chart",
+      "version": "1.2.17",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/webwriter-chart/-/webwriter-chart-1.2.17.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 80,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [
+        {
+          "file": "types/helper-components/AdvancedInput/AdvancedInput.js",
+          "line": 23,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/BarChart.js",
+          "line": 12,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/ChartOptions.js",
+          "line": 15,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/ChartSettings.js",
+          "line": 14,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/Charts/GenericChart.js",
+          "line": 11,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/Charts/Scatterplot/scatterplot.js",
+          "line": 24,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/Charts/ScatterplotAdvanced/scatterplotAdvanced.js",
+          "line": 11,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/Charts/ScatterplotAdvanced/scatterplotadvance.js",
+          "line": 12,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/DatasetInput/DatasetInput.js",
+          "line": 18,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/FileUploadButton.js",
+          "line": 7,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/LimitedNumberInput.js",
+          "line": 8,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/ScatterDatasetInput/ScatterDatasetInput.js",
+          "line": 27,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/ScatterDatasetInput/SelectDataset.js",
+          "line": 10,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/ScatterplotDatasetInput/ScatterplotDatasetInput.js",
+          "line": 21,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/Select.js",
+          "line": 12,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/Switch.js",
+          "line": 10,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/helper-components/TeacherOptions.js",
+          "line": 11,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        },
+        {
+          "file": "types/widget.js",
+          "line": 22,
+          "module": "@webwriter/lit",
+          "statement": "import { LitElementWw } from \"@webwriter/lit\""
+        }
+      ],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "cb59e278193fdb2ff956cbce804d4e01f382f407"
+    },
+    {
+      "name": "@andreasdymek/branching-scenario",
+      "version": "1.12.2",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@andreasdymek/branching-scenario/-/branching-scenario-1.12.2.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 38,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "8cad789a293a5593ffbf36c6daa8969930a2859c"
+    },
+    {
+      "name": "@webwriter/hash",
+      "version": "1.0.2",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/hash/-/hash-1.0.2.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 51,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "b5656e2204cd0b2d93221bf1f97f4e66e2cf0058"
+    },
+    {
+      "name": "@webwriter/website-builder",
+      "version": "1.0.1",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/website-builder/-/website-builder-1.0.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 81,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "d35ca9e86d6a7916f5fc0584ee1732d331347a5f"
+    },
+    {
+      "name": "@webwriter/deep-learning-model",
+      "version": "1.0.2",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/deep-learning-model/-/deep-learning-model-1.0.2.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 71,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "5c5ede9934e891e1c8886664fc222e042e7dcc16"
+    },
+    {
+      "name": "@nura_zm/timeline",
+      "version": "1.0.4",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@nura_zm/timeline/-/timeline-1.0.4.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 14,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "5b098abedded141ad595fc3bddebcd4622fa9e40"
+    },
+    {
+      "name": "@charlesfrayne/wwtest",
+      "version": "0.0.6",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": null,
+      "archiveUrl": "https://registry.npmjs.org/@charlesfrayne/wwtest/-/wwtest-0.0.6.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 1,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "aa782d56ed407a25cea4cedd8c42cd0d73887ac1"
+    },
+    {
+      "name": "@webwriter/word-puzzle",
+      "version": "1.0.6",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/word-puzzle/-/word-puzzle-1.0.6.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 39,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "8e7b76bdc58119450ad9531741e2f5e34813fbbe"
+    },
+    {
+      "name": "@webwriter/graph",
+      "version": "1.0.1",
+      "currentRelease": true,
+      "catalogVersion": false,
+      "litDependency": "^2.0.0",
+      "archiveUrl": "https://registry.npmjs.org/@webwriter/graph/-/graph-1.0.1.tgz",
+      "archiveShasumVerified": true,
+      "publishedSourceFilesScanned": 70,
+      "decoratorImports": [],
+      "appliedDecorators": [],
+      "importsWithoutAppliedDecoratorsInSameFile": [],
+      "decoratorReexports": [],
+      "emittedLitImports": [],
+      "largeBundlesExcludedFromTypeScriptAstScan": [],
+      "archiveShasum": "c787758129e43222bf37c065dd1042aaab2c7d8b"
+    }
+  ]
+}

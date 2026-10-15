@@ -21,7 +21,7 @@ attributeChangedCallback() {
 ```
 <!-- /library -->
 <!-- library:lit -->
-Declare a reactive property and reflect its changes to an attribute:
+In your `LitElementWw` class, declare a reactive property and reflect its changes to an attribute:
 
 ```js
 static properties = {answer: {type: String, reflect: true}}

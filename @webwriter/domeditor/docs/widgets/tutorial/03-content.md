@@ -149,8 +149,6 @@ After editing your source, run `npm run build` before refreshing the local packa
 
 </details>
 
-[Open preview](../examples/preview.html?step=3)
-
 <iframe title="Step 3: slotted question" src="../examples/preview.html?step=3" width="100%" height="210" loading="lazy"></iframe>
 
 Next: [add interactions and state](04-state.md).

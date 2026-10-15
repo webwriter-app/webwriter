@@ -7,6 +7,9 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "Lit documentation examples render and synchronize with LitElementWw",
+  "LitElementWw uses native registries and shared data handlers without the adapter",
+  "legacy and native scoped registries coexist without replacing browser globals",
   "global directional shorthands preserve authored overrides in native CSSOM",
   "gap carets track their authored boundary",
   "insertion and saved-reader controls align inside symmetric scrollbar gutters",

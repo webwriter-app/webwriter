@@ -1,10 +1,8 @@
-import {LitElement, html, css} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {html, css} from "lit"
 
-class WwQuiz extends LitElement {
-  static properties = {choice: {state: true}}
-  static get observedAttributes() {
-    return [...super.observedAttributes, "answer", "contenteditable"]
-  }
+class WwQuiz extends LitElementWw {
+  static properties = {answer: {type: String, reflect: true}, choice: {state: true}}
   static options = {
     answer: {
       type: "select",
@@ -40,25 +38,19 @@ class WwQuiz extends LitElement {
 
   constructor() {
     super()
+    this.answer = "false"
     this.choice = ""
   }
 
-  get answer() { return this.getAttribute("answer") ?? "false" }
-
-  attributeChangedCallback(name, oldValue, value) {
-    super.attributeChangedCallback(name, oldValue, value)
-    this.requestUpdate()
-  }
-
   choose(value) {
-    if(this.isContentEditable) return
+    if(this.editable) return
     this.choice = value
   }
 
-  resetAnswer() { this.setAttribute("answer", "false") }
+  resetAnswer() { this.answer = "false" }
 
   render() {
-    const editing = this.isContentEditable
+    const editing = this.editable
     return html`
       <slot><p>Add a question.</p></slot>
       <div class="controls" ?hidden=${editing}>

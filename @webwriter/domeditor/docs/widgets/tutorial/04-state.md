@@ -45,33 +45,21 @@ Store the correct answer in an attribute. Keep the user's current choice in a pr
 
 
 ```js
-static properties = {choice: {state: true}}
+static properties = {answer: {type: String, reflect: true}, choice: {state: true}}
 
 constructor() {
   super()
+  this.answer = "false"
   this.choice = ""
 }
 
-get answer() { return this.getAttribute("answer") ?? "false" }
-
 choose(value) {
-  if(this.isContentEditable) return
+  if(this.editable) return
   this.choice = value
 }
 ```
 
-The choice is reactive local state. Observe authored settings and editing mode as well:
-
-```js
-static get observedAttributes() {
-  return [...super.observedAttributes, "answer", "contenteditable"]
-}
-
-attributeChangedCallback(name, oldValue, value) {
-  super.attributeChangedCallback(name, oldValue, value)
-  this.requestUpdate()
-}
-```
+The choice is reactive local state. The reflected `answer` property saves the setting as an attribute, and Lit updates the template when that attribute changes, including after remote edits or undo. `LitElementWw` already tracks editing mode and inherited language changes.
 
 Connect the buttons in `render()` and let Lit update the feedback:
 
@@ -79,7 +67,7 @@ Connect the buttons in `render()` and let Lit update the feedback:
 render() {
   return html`
     <slot><p>Add a question.</p></slot>
-    <div class="controls" ?hidden=${this.isContentEditable}>
+    <div class="controls" ?hidden=${this.editable}>
       <button type="button" @click=${() => this.choose("true")}>True</button>
       <button type="button" @click=${() => this.choose("false")}>False</button>
     </div>
@@ -137,8 +125,6 @@ After editing your source, run `npm run build` before refreshing the local packa
 <!-- /library -->
 
 </details>
-
-[Open preview](../examples/preview.html?step=4)
 
 <iframe title="Step 4: answer checking" src="../examples/preview.html?step=4" width="100%" height="210" loading="lazy"></iframe>
 

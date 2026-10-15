@@ -4,7 +4,6 @@ import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT} from "./npm-
 
 export {JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT}
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
-export const SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL = `${JSDELIVR_NPM_ENDPOINT}/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js`
 export const JSDELIVR_PACKAGE_FILES_ENDPOINT = "https://data.jsdelivr.com/v1/package"
 export const WEBWRITER_PACKAGE_QUERY = "scope:webwriter keywords:webwriter-widget"
 /** Storage key for the standalone editor's serialized installed packages. */

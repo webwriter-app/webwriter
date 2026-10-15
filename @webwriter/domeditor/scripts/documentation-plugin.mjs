@@ -17,7 +17,7 @@ const sourcePattern = /\.(?:js|mjs|jsx|ts|tsx|vue|svelte)$/
 const escapeHTML = value => String(value).replace(/[&<>"']/g, character => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
 })[character])
-function markdown(source, library = "vanilla") {
+function markdown(source, library = "lit") {
   const variants = [...source.matchAll(/<!-- library:([\w-]+) -->/g)].map(match => match[1])
   const selected = variants.includes(library) ? library : "vanilla"
   const result = source
@@ -40,8 +40,7 @@ function libraryURL(href, path, library) {
     url.pathname = `${examples}${library}/${sourceExtensions[library] && /^(?:0[1-6]-|hello\.js)/.test(name) ? name.replace(/\.js$/, `.${sourceExtensions[library]}`) : name}`
   }
   if(url.pathname.startsWith(examples) && sourcePattern.test(url.pathname)) url.searchParams.set("download", "1")
-  if(library !== "vanilla") url.searchParams.set("library", library)
-  if(library === "vanilla" && !url.searchParams.has("download")) return href
+  url.searchParams.set("library", library)
   return url.pathname + url.search + url.hash
 }
 
@@ -82,7 +81,6 @@ function renderMarkdown(source, {path, library, highlighter}) {
       return Renderer.prototype.link.call(this, {...token, href: libraryURL(token.href, path, library)})
     },
     html({text}) {
-      if(library === "vanilla") return text
       return text.replace(/\b(src|href)=(["'])(.*?)\2/g, (_match, attribute, quote, href) =>
         `${attribute}=${quote}${escapeHTML(libraryURL(href.replaceAll("&amp;", "&"), path, library))}${quote}`)
     },
@@ -113,11 +111,13 @@ function pageLinks(source, path) {
 
 async function navigation(root) {
   const read = async path => markdown(await readFile(resolve(root, `.${path}`), "utf8"))
-  const sections = pageLinks(await read(home), home).filter(page => page.path.endsWith("/index.md"))
+  const sections = pageLinks(await read(home), home)
   return Promise.all(sections.map(async section => ({
     ...section,
-    pages: pageLinks(await read(section.path), section.path).filter(page =>
-      page.path !== section.path && page.path.startsWith(section.path.slice(0, -"index.md".length))),
+    pages: section.path.endsWith("/index.md")
+      ? pageLinks(await read(section.path), section.path).filter(page =>
+        page.path !== section.path && page.path.startsWith(section.path.slice(0, -"index.md".length)))
+      : [],
   })))
 }
 
@@ -125,11 +125,14 @@ function renderPage({source, path, sections, library, highlighter, missing = fal
   const title = new Marked().lexer(source).find(token => token.type === "heading" && token.depth === 1)?.text ?? "Documentation"
   const pages = [{path: home, title: "Widgets"}, ...sections.flatMap(section => [section, ...section.pages])]
   const index = pages.findIndex(page => page.path === path)
-  const section = sections.find(section => path.startsWith(section.path.slice(0, -"index.md".length)))
+  const section = sections.find(section => section.path.endsWith("/index.md")
+    && path.startsWith(section.path.slice(0, -"index.md".length)))
   const href = value => escapeHTML(libraryURL(value, path, library))
   const link = page => `<a href="${href(page.path)}"${page.path === path ? ' aria-current="page"' : ""}>${escapeHTML(page.title)}</a>`
   const menu = `<ul><li>${link({path: home, title: "Overview"})}</li>${sections.map(section =>
-    `<li class="nav-section">${link(section)}<ul>${section.pages.map(page => `<li>${link(page)}</li>`).join("")}</ul></li>`,
+    section.path.endsWith("/index.md")
+      ? `<li class="nav-section">${link(section)}<ul>${section.pages.map(page => `<li>${link(page)}</li>`).join("")}</ul></li>`
+      : `<li>${link(section)}</li>`,
   ).join("")}</ul>`
   const adjacent = (page, direction) => page ? `<a class="${direction.toLowerCase()}" href="${href(page.path)}"><span>${direction}</span>${escapeHTML(page.title)}</a>` : "<span></span>"
   const breadcrumb = [{path: home, title: "Widgets"}, ...(section && section.path !== path ? [section] : [])]
@@ -216,7 +219,7 @@ export function documentationPlugin() {
       server.middlewares.use(async (request, response, next) => {
         if(!["GET", "HEAD"].includes(request.method)) return next()
         const url = new URL(request.url, "http://localhost")
-        const library = libraries.find(({value}) => value === url.searchParams.get("library"))?.value ?? "vanilla"
+        const library = libraries.find(({value}) => value === url.searchParams.get("library"))?.value ?? "lit"
         if(["raw", "url", "import"].some(key => url.searchParams.has(key))) return next()
         let path
         try { path = decodeURIComponent(request.url.split("?")[0]) }

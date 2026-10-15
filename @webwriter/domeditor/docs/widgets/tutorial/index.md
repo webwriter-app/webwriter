@@ -6,7 +6,7 @@ This tutorial takes you through implementing a small true-or-false quiz.
 It uses `HTMLElement`, so you need no library or build step.
 <!-- /library -->
 <!-- library:lit -->
-It uses Lit's templates and reactive properties, with browser JavaScript and no build step.
+It uses Lit's templates and reactive properties with `LitElementWw`, which supplies WebWriter behavior such as edit mode, inherited language updates, and scoped-data hooks. It uses browser JavaScript and no build step.
 <!-- /library -->
 
 <!-- library:react -->

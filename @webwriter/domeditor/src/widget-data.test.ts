@@ -115,6 +115,137 @@ afterEach(() => {
 })
 
 describe("scoped widget data", () => {
+  it("dispatches datapending before a synchronous initial datachange", () => {
+    const root = document.createElement("main")
+    root.innerHTML = html()
+    const block = root.querySelector<HTMLScriptElement>("script")!
+    const events: string[] = []
+    block.addEventListener("datapending", () => events.push("datapending"))
+    block.addEventListener("datachange", () => events.push("datachange"))
+    const bindings = new WidgetDataBindings(root, supports)
+    bindings.sync()
+    cleanups.push(() => bindings.destroy())
+    expect(events).toEqual(["datapending", "datachange"])
+  })
+
+  it("dispatches pending for an asynchronous scope switch and ignores the disposed resolver failure", async () => {
+    const pending: Record<string, {resolve: (connection: {doc: Y.Doc}) => void, reject: (error: Error) => void}> = {}
+    const docs: Y.Doc[] = []
+    const root = document.createElement("main")
+    root.innerHTML = html()
+    const widget = root.querySelector("data-widget")!
+    const block = root.querySelector<HTMLScriptElement>("script")!
+    const modes: string[] = [], errors = vi.fn()
+    block.addEventListener("datapending", event => modes.push((event as CustomEvent<{mode: string}>).detail.mode))
+    block.addEventListener("dataerror", errors)
+    const bindings = new WidgetDataBindings(root, supports, {resolve: request => new Promise((resolve, reject) => {
+      pending[request.mode] = {resolve, reject}
+    })})
+    cleanups.push(() => { bindings.destroy(); docs.forEach(doc => doc.destroy()) })
+    bindings.sync()
+    widget.setAttribute("shared", "")
+    bindings.sync()
+    expect(modes).toEqual(["individual", "all"])
+    pending.individual.reject(new Error("stale failure"))
+    await tick()
+    expect(errors).not.toHaveBeenCalled()
+    const doc = new Y.Doc()
+    docs.push(doc)
+    pending.all.resolve({doc})
+    await tick()
+  })
+
+  it("ignores a ready failure from a disposed connection", async () => {
+    let rejectReady!: (error: Error) => void
+    const docs: Y.Doc[] = []
+    const root = document.createElement("main")
+    root.innerHTML = html()
+    const widget = root.querySelector("data-widget")!
+    const block = root.querySelector<HTMLScriptElement>("script")!
+    const errors = vi.fn()
+    block.addEventListener("dataerror", errors)
+    const bindings = new WidgetDataBindings(root, supports, {resolve: request => {
+      const doc = new Y.Doc()
+      docs.push(doc)
+      return request.mode === "individual"
+        ? {doc, ready: new Promise<void>((_resolve, reject) => { rejectReady = reject })}
+        : {doc}
+    }})
+    cleanups.push(() => { bindings.destroy(); docs.forEach(doc => doc.destroy()) })
+    bindings.sync()
+    widget.setAttribute("shared", "")
+    bindings.sync()
+    rejectReady(new Error("stale ready failure"))
+    await tick()
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it("answers a late datarequest with the current ready or pending state", () => {
+    const root = document.createElement("main")
+    root.innerHTML = html()
+    const block = root.querySelector<HTMLScriptElement>("script")!
+    const bindings = new WidgetDataBindings(root, supports)
+    bindings.sync()
+    cleanups.push(() => bindings.destroy())
+    const changes = vi.fn(), pending = vi.fn()
+    block.addEventListener("datachange", changes)
+    block.addEventListener("datapending", pending)
+    const readyRequest = new CustomEvent("datarequest", {bubbles: true, cancelable: true})
+    block.dispatchEvent(readyRequest)
+    expect(readyRequest.defaultPrevented).toBe(true)
+    expect(changes).toHaveBeenCalledTimes(1)
+
+    bindings.destroy()
+    const later = document.createElement("main")
+    later.innerHTML = html()
+    let resolve!: (connection: {doc: Y.Doc}) => void
+    const waiting = new Promise<{doc: Y.Doc}>(done => { resolve = done })
+    const waitingBindings = new WidgetDataBindings(later, supports, {resolve: () => waiting})
+    waitingBindings.sync()
+    const waitingBlock = later.querySelector<HTMLScriptElement>("script")!
+    const waitingPending = vi.fn()
+    waitingBlock.addEventListener("datapending", waitingPending)
+    const pendingRequest = new CustomEvent("datarequest", {bubbles: true, cancelable: true})
+    waitingBlock.dispatchEvent(pendingRequest)
+    expect(pendingRequest.defaultPrevented).toBe(true)
+    expect(waitingPending).toHaveBeenCalledTimes(1)
+    const doc = new Y.Doc()
+    cleanups.push(() => { waitingBindings.destroy(); doc.destroy() })
+    resolve({doc})
+  })
+
+  it("replays a binding error to a late requester and ignores requests from nested non-widgets", async () => {
+    const root = document.createElement("main")
+    root.innerHTML = `${html()}<section><script type="application/json" slot="data">{}</script></section>`
+    const block = root.querySelector<HTMLScriptElement>("data-widget > script")!
+    const nested = root.querySelector<HTMLScriptElement>("section > script")!
+    const bindings = new WidgetDataBindings(root, supports, {resolve: () => Promise.reject(new Error("offline"))})
+    bindings.sync()
+    cleanups.push(() => bindings.destroy())
+    await tick()
+    const errors = vi.fn()
+    block.addEventListener("dataerror", errors)
+    const request = new CustomEvent("datarequest", {bubbles: true, cancelable: true})
+    block.dispatchEvent(request)
+    expect(request.defaultPrevented).toBe(true)
+    expect(errors).toHaveBeenCalledTimes(1)
+    const nestedRequest = new CustomEvent("datarequest", {bubbles: true, cancelable: true})
+    nested.dispatchEvent(nestedRequest)
+    expect(nestedRequest.defaultPrevented).toBe(false)
+  })
+
+  it("removes the datarequest handler when bindings are destroyed", () => {
+    const root = document.createElement("main")
+    root.innerHTML = html()
+    const block = root.querySelector<HTMLScriptElement>("script")!
+    const bindings = new WidgetDataBindings(root, supports)
+    bindings.sync()
+    bindings.destroy()
+    const request = new CustomEvent("datarequest", {bubbles: true, cancelable: true})
+    block.dispatchEvent(request)
+    expect(request.defaultPrevented).toBe(false)
+  })
+
   it("skips parsing unchanged XML after the initial render", () => {
     const source = '<board xmlns="urn:test"><card>Text</card></board>'
     const peer = create(html("shared", source, "application/xml"))

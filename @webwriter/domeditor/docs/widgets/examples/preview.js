@@ -1,7 +1,7 @@
 // This page hosts the examples; widgets themselves use only the public widget interface.
 const query = new URLSearchParams(location.search)
 const libraries = {vanilla: "JS", lit: "Lit", react: "React", vue: "Vue", angular: "Angular", svelte: "Svelte"}
-const library = Object.hasOwn(libraries, query.get("library")) ? query.get("library") : "vanilla"
+const library = Object.hasOwn(libraries, query.get("library")) ? query.get("library") : "lit"
 const steps = {1: "01-setup", 2: "02-rendering", 3: "03-content", 4: "04-state", 5: "05-options", 6: "06-collaboration"}
 const step = Object.hasOwn(steps, query.get("step")) ? query.get("step") : "6"
 const directory = library === "vanilla" ? "" : `${library}/`

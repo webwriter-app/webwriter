@@ -245,9 +245,6 @@
     "@webwriter/lit": {
       "name": "@webwriter/lit",
       "version": "3.0.0",
-      "dependencies": {
-        "@open-wc/scoped-elements": "^3.0.5",
-      },
       "devDependencies": {
         "esbuild": "^0.25.4",
       },

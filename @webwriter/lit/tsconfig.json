@@ -2,7 +2,11 @@
   "compilerOptions": {
     "target": "es2022",
     "esModuleInterop": true,
-    "moduleResolution": "Bundler"
+    "moduleResolution": "Bundler",
+    "module": "ES2022",
+    "types": [],
+    "strict": true,
+    "strictPropertyInitialization": false
   },
   "files": [
     "index.ts"

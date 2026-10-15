@@ -25,6 +25,283 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("LitElementWw uses native registries and shared data handlers without the adapter", async () => {
+  assert(!("createElement" in ShadowRoot.prototype), "test must run before the legacy adapter")
+  const runtimeURL = new URL("../../lit/index.js", import.meta.url).href
+  const runtime: typeof import("../../lit/index") = await import(/* @vite-ignore */ runtimeURL)
+  const {LitElementWw} = runtime
+  const {html, css} = await import("lit")
+  const {WidgetDataBindings} = await import("../src/widget-data")
+  assert(!("option" in runtime) && !("action" in runtime), "decorator exports remain")
+  class InternalChild extends HTMLElement {}
+  class OtherChild extends HTMLElement {}
+  class NativeBaseWidget extends LitElementWw {
+    static scopedElements = {"native-base-child": InternalChild}
+    static styles = css`native-base-child { display: block; width: 9px; }`
+    snapshots: string[] = []
+    pending: string[] = []
+    failures: string[] = []
+    locales: string[] = []
+    localize = {getLocale: () => this.lang, setLocale: async (locale: string) => { this.locales.push(locale) }}
+    dataChanged(value: string | null) { this.snapshots.push(value ?? "") }
+    dataPending(context: import("../../lit/index").WidgetDataContext) { this.pending.push(context.mode) }
+    dataError(error: Error) { this.failures.push(error.message) }
+    render() { return html`<native-base-child></native-base-child><slot></slot>` }
+  }
+  class DerivedWidget extends NativeBaseWidget {
+    static scopedElements = {"native-base-child": OtherChild}
+  }
+  customElements.define("native-base-widget", NativeBaseWidget)
+  customElements.define("native-derived-widget", DerivedWidget)
+  const parent = document.createElement("section")
+  parent.lang = "de"
+  parent.contentEditable = "true"
+  const widget = document.createElement("native-base-widget") as NativeBaseWidget
+  widget.id = "native-base-test"
+  widget.innerHTML = '<p>Authored<!-- preserved --></p><script type="application/json" slot="data" data-author="keep">{"value":1}</script>'
+  const second = document.createElement("native-base-widget") as NativeBaseWidget
+  const derived = document.createElement("native-derived-widget") as DerivedWidget
+  parent.append(widget, second, derived)
+  const docs = new Map<string, Y.Doc>()
+  let finishScope!: () => void
+  const bindings = new WidgetDataBindings(parent, element => element === widget, {resolve: request => {
+    const doc = new Y.Doc()
+    docs.set(request.mode, doc)
+    return request.mode === "all" ? {doc, ready: new Promise<void>(resolve => { finishScope = resolve })} : {doc}
+  }})
+  bindings.sync() // Initial snapshot arrives before the widget connects.
+  fixture.append(parent)
+  try {
+    await Promise.all([widget.updateComplete, second.updateComplete, derived.updateComplete])
+    assert(widget.shadowRoot!.querySelector("native-base-child") instanceof InternalChild, "native scoped child failed")
+    assert(derived.shadowRoot!.querySelector("native-base-child") instanceof OtherChild, "subclass inherited the wrong registry")
+    assert(widget.registry === second.registry && widget.registry !== derived.registry, "registry caching crosses concrete classes")
+    assert(!customElements.get("native-base-child"), "internal child leaked into global registry")
+    assert(getComputedStyle(widget.shadowRoot!.querySelector("native-base-child")!).width === "9px", "native scoped styles failed")
+    assert(widget.editable && widget.lang === "de" && !widget.hasAttribute("lang"), "inherited context failed")
+    parent.contentEditable = "false"
+    parent.lang = "en"
+    await layoutFrame()
+    assert(!widget.editable && widget.lang === "en" && widget.locales.at(-1) === "en", "inherited context did not update")
+    widget.lang = ""
+    parent.lang = "fr"
+    await layoutFrame()
+    assert(widget.lang === "", "explicit empty language did not stop inheritance")
+    widget.removeAttribute("lang")
+    await layoutFrame()
+    assert(widget.lang === "fr", "language inheritance did not resume")
+    assert(widget.dataReady && JSON.parse(widget.snapshots.at(-1)!).value === 1, "late connected widget missed initial shared state")
+    const block = widget.querySelector("script")!
+    widget.data = '{"value":2}'
+    bindings.sync()
+    await layoutFrame()
+    assert(widget.querySelector("script") === block && block.getAttribute("data-author") === "keep", "normal data write replaced its block")
+    assert(JSON.parse(widget.snapshots.at(-1)!).value === 2, "accepted local write did not call dataChanged")
+    const individual = docs.get("individual")!
+    individual.transact(() => (individual.getMap("data").get("value") as Y.Map<unknown>).set("value", 3), "remote")
+    await layoutFrame()
+    assert(JSON.parse(widget.snapshots.at(-1)!).value === 3, "remote snapshot did not call dataChanged")
+    widget.setAttribute("shared", "")
+    assert(!widget.dataReady && widget.pending.at(-1) === "all", "scope change did not invalidate readiness")
+    let refused = false
+    try { widget.data = '{"value":99}' } catch(error) { refused = (error as DOMException).name === "InvalidStateError" }
+    assert(refused, "pending data accepted a write")
+    finishScope()
+    await layoutFrame()
+    assert(widget.dataReady && JSON.parse(widget.data!).value === 1, "new scope copied another participant's state")
+    assert(widget.querySelector("p")!.innerHTML === "Authored<!-- preserved -->", "widget helper changed authored content")
+    parent.remove()
+    const count = widget.snapshots.length
+    block.dispatchEvent(new CustomEvent("datachange", {bubbles: true, detail: {mode: "all"}}))
+    assert(widget.snapshots.length === count && !widget.dataReady, "disconnected widget retained shared data handlers")
+    fixture.append(parent)
+    await layoutFrame()
+    assert(widget.dataReady && widget.snapshots.length > count, "reconnected widget did not request current data")
+  }
+  finally { bindings.destroy(); parent.remove(); docs.forEach(doc => doc.destroy()) }
+})
+
+await check("Lit documentation examples render and synchronize with LitElementWw", async () => {
+  type Quiz = HTMLElement & {updateComplete: Promise<boolean>, dataReady: boolean, editable: boolean, answer: string, resetAnswer(): void}
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width: 620px; height: 440px; border: 0"
+  fixture.append(frame)
+  const load = async (path: string) => {
+    const loaded = new Promise<void>(resolve => frame.onload = () => resolve())
+    frame.src = path
+    await loaded
+    const tag = path.includes("hello.html") ? "ww-hello" : "ww-quiz"
+    await Promise.race([
+      frame.contentWindow!.customElements.whenDefined(tag),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`Example did not define ${tag}: ${path}`)), 5000)),
+    ])
+    if(path.endsWith("step=6")) {
+      for(let attempt = 0; attempt < 120; attempt++) {
+        if(frame.contentDocument!.querySelectorAll("ww-quiz").length === 2) break
+        await nextFrame()
+      }
+    }
+    await layoutFrame()
+    return frame.contentDocument!
+  }
+  try {
+    const hello = await load("/docs/widgets/examples/hello.html")
+    const greeting = hello.querySelector("ww-hello") as Quiz
+    await greeting.updateComplete
+    assert(greeting.shadowRoot?.textContent?.includes("Hello,"), "Lit hello example did not render")
+    assert("registry" in greeting, "Lit hello example does not use LitElementWw")
+    for(let step = 1; step <= 6; step++) {
+      const doc = await load(`/docs/widgets/examples/preview.html?step=${step}`)
+      const widgets = [...doc.querySelectorAll<Quiz>("ww-quiz")]
+      await Promise.all(widgets.map(widget => widget.updateComplete))
+      const widget = widgets[0]!
+      assert(widget.shadowRoot?.textContent?.includes(step === 1 ? "Quiz widget" : "True"), `Lit step ${step} did not render: ${widget.outerHTML}; shadow=${widget.shadowRoot?.innerHTML}`)
+      assert("registry" in widget, `Lit step ${step} does not use LitElementWw`)
+      if(step === 1) continue
+      const view = frame.contentWindow!
+      assert(view.getComputedStyle(widget).backgroundColor === "rgb(255, 255, 255)", `Lit step ${step} lost its styles`)
+      assert(widget.scrollWidth <= widget.clientWidth, `Lit step ${step} overflows its preview`)
+      if(step < 4) continue
+      widget.shadowRoot!.querySelector<HTMLButtonElement>('button[value="false"]')!.click()
+      await layoutFrame()
+      assert(widget.shadowRoot!.querySelector("output")!.textContent === "Correct!", `Lit step ${step} did not accept the answer`)
+      if(step === 6) {
+        assert(widgets.length === 2 && widgets.every(widget => widget.dataReady), "Lit collaboration preview did not initialize both participants")
+        assert(widgets[1]!.shadowRoot!.querySelector("output")!.textContent === "Correct!", "Lit shared answer did not reach the other participant")
+        widgets[1]!.shadowRoot!.querySelector<HTMLButtonElement>('button[value="true"]')!.click()
+        await layoutFrame()
+        assert(widget.shadowRoot!.querySelector("output")!.textContent === "Try again.", "Lit peer answer did not synchronize back")
+      }
+      if(step >= 5) {
+        widget.answer = "true"
+        await widget.updateComplete
+        widget.resetAnswer()
+        await widget.updateComplete
+        assert(widget.getAttribute("answer") === "false", `Lit step ${step} action did not reflect its answer`)
+      }
+      doc.querySelector("main")!.contentEditable = "true"
+      await layoutFrame()
+      assert(widget.editable && widget.shadowRoot!.querySelector(".controls")!.hasAttribute("hidden"), `Lit step ${step} ignored inherited editability`)
+    }
+  }
+  finally { frame.remove() }
+})
+
+await check("legacy and native scoped registries coexist without replacing browser globals", async () => {
+  const globals = {HTMLElement, CustomElementRegistry, customElements}
+  const {default: adapter} = await import("../src/scoped-custom-element-registry.js?raw")
+  const script = document.createElement("script")
+  script.textContent = adapter
+  document.head.append(script)
+  const attachShadow = Element.prototype.attachShadow
+  // Reinstalling must not add another wrapper.
+  const again = document.createElement("script")
+  again.textContent = adapter
+  document.head.append(again)
+  assert(Element.prototype.attachShadow === attachShadow, "adapter was installed twice")
+  assert(HTMLElement === globals.HTMLElement && CustomElementRegistry === globals.CustomElementRegistry
+    && customElements === globals.customElements, "adapter replaced native globals")
+  const legacyURL = new URL("./fixtures/legacy-lit.js", import.meta.url).href
+  const {LitElement, html, css} = await import("lit")
+  const {LitElementWw}: {LitElementWw: typeof LitElement} = await import(/* @vite-ignore */ legacyURL)
+  class LegacyChild extends HTMLElement {
+    static observedAttributes = ["value"]
+    changes: (string | null)[][] = []
+    attributeChangedCallback(name: string, old: string | null, value: string | null) { this.changes.push([name, old, value]) }
+  }
+  class NativeChild extends HTMLElement {}
+  class GlobalChild extends HTMLElement {}
+  customElements.define("registry-test-child", GlobalChild)
+  const registry = new CustomElementRegistry()
+  registry.define("registry-test-child", NativeChild)
+  class LegacyWidget extends LitElementWw {
+    declare registry: CustomElementRegistry
+    static scopedElements = {"registry-test-child": LegacyChild}
+    static styles = css`registry-test-child { display: block; width: 7px; }`
+    render() { return html`<registry-test-child value="one"></registry-test-child><slot></slot>` }
+  }
+  class NativeWidget extends LitElement {
+    static shadowRootOptions = {mode: "open", customElementRegistry: registry} as ShadowRootInit
+    createRenderRoot() {
+      const root = super.createRenderRoot()
+      this.renderOptions.creationScope = {
+        importNode: (node, deep) => document.importNode(node, {customElementRegistry: registry, selfOnly: !deep}),
+      }
+      return root
+    }
+    render() { return html`<registry-test-child></registry-test-child>` }
+  }
+  customElements.define("registry-legacy-widget", LegacyWidget)
+  customElements.define("registry-native-widget", NativeWidget)
+  const legacy = document.createElement("registry-legacy-widget") as InstanceType<typeof LegacyWidget>
+  const native = document.createElement("registry-native-widget") as NativeWidget
+  legacy.innerHTML = '<p lang="de">Authored content<!-- preserved --></p>'
+  const authored = legacy.innerHTML
+  fixture.append(legacy, native)
+  try {
+    await Promise.all([legacy.updateComplete, native.updateComplete])
+    assert(legacy.shadowRoot!.querySelector("registry-test-child") instanceof LegacyChild, "old Lit bundle did not use its scoped definition")
+    assert(native.shadowRoot!.querySelector("registry-test-child") instanceof NativeChild, "native Lit used the wrong definition")
+    assert(document.createElement("registry-test-child") instanceof GlobalChild, "global definition was changed")
+    const legacyChild = legacy.shadowRoot!.querySelector("registry-test-child") as LegacyChild
+    legacyChild.setAttribute("value", "two")
+    assert(JSON.stringify(legacyChild.changes) === JSON.stringify([["value", null, "one"], ["value", "one", "two"]]), "native attribute callbacks were duplicated or lost")
+    assert(getComputedStyle(legacyChild).width === "7px", "old Lit styles were not adopted")
+    const root = legacy.shadowRoot as ShadowRoot & {
+      registry: CustomElementRegistry, customElements: CustomElementRegistry,
+      createElement(name: string): Element,
+      createElementNS(namespace: string, name: string): Element,
+      importNode(node: Node, deep?: boolean): Node,
+    }
+    assert(root.registry === root.customElements && root.registry === legacy.registry, "legacy registry aliases differ")
+    assert(root.createElement("registry-test-child") instanceof LegacyChild, "scoped createElement failed")
+    assert(root.createElementNS("http://www.w3.org/2000/svg", "svg").namespaceURI === "http://www.w3.org/2000/svg", "scoped creation changed namespaces")
+    const template = document.createElement("template")
+    template.innerHTML = '<section><!-- retained --><registry-test-child></registry-test-child><svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg><registry-late-child></registry-late-child></section>'
+    const deep = root.importNode(template.content, true) as DocumentFragment
+    assert(deep.querySelector("registry-test-child") instanceof LegacyChild, "deep template import used the global definition")
+    assert(deep.querySelector("section")!.firstChild!.nodeType === Node.COMMENT_NODE, "template comment was lost")
+    assert(deep.querySelector("path")!.namespaceURI === "http://www.w3.org/2000/svg", "template import lost SVG namespace")
+    const shallow = root.importNode(template.content) as DocumentFragment
+    assert(!shallow.childNodes.length, "default import depth changed")
+    root.append(deep)
+    class LateChild extends HTMLElement {}
+    root.registry.define("registry-late-child", LateChild)
+    assert(root.querySelector("registry-late-child") instanceof LateChild, "late definitions did not upgrade connected scoped elements")
+    const child = root.querySelector("registry-test-child")
+    legacy.remove()
+    fixture.append(legacy)
+    await legacy.updateComplete
+    assert(root.querySelector("registry-test-child") === child, "reconnection rebuilt widget content")
+    assert(legacy.innerHTML === authored, "adapter changed authored light DOM")
+    assert(customElements.get("registry-test-child") === GlobalChild, "legacy scope leaked into the global registry")
+    // A saved document must bootstrap compatibility before evaluating an old bundle.
+    const {appendSerializedAssets} = await import("../src/serialization")
+    const saved = document.implementation.createHTMLDocument()
+    saved.body.innerHTML = "<registry-export-widget><p>Saved content</p></registry-export-widget>"
+    const moduleURL = URL.createObjectURL(new Blob([`
+      import {LitElementWw} from ${JSON.stringify(legacyURL)};
+      class SavedWidget extends LitElementWw { render() { return "Legacy saved widget" } }
+      customElements.define("registry-export-widget", SavedWidget);
+    `], {type: "text/javascript"}))
+    const savedFrame = document.createElement("iframe")
+    try {
+      appendSerializedAssets(saved, [{scripts: [moduleURL], styles: [], members: [{kind: "widget", tagName: "registry-export-widget"}]} as unknown as import("../src/packages").WebWriterPackage])
+      const loaded = new Promise<void>(resolve => savedFrame.addEventListener("load", () => resolve(), {once: true}))
+      savedFrame.srcdoc = "<!doctype html>" + saved.documentElement.outerHTML
+      fixture.append(savedFrame)
+      await loaded
+      const widget = savedFrame.contentDocument!.querySelector("registry-export-widget")!
+      assert(widget.shadowRoot?.textContent?.includes("Legacy saved widget"), "saved export did not initialize an old Lit widget")
+      assert(widget.innerHTML === "<p>Saved content</p>", "saved export changed authored widget children")
+      assert(!savedFrame.contentDocument!.querySelector('script[src*="scoped-custom-element-registry"]'), "saved export loaded the full legacy polyfill")
+    }
+    finally { savedFrame.remove(); URL.revokeObjectURL(moduleURL) }
+
+  }
+  finally { legacy.remove(); native.remove(); script.remove(); again.remove() }
+})
+
 await check("Settings tabs share the heading and embed AI provider cards in Cloud", async () => {
   const {AppRibbon} = await import("../src/components/ribbon")
   const ribbon = new AppRibbon()

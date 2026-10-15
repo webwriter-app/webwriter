@@ -45,7 +45,7 @@ Create a folder containing these two files:
   "name": "@webwriter/hello",
   "version": "1.0.0",
   "keywords": ["webwriter-widget"],
-  "dependencies": {"lit": "^3.3.2"},
+  "dependencies": {"@webwriter/lit": "^3.0.0", "lit": "^3.3.2"},
   "exports": {"./widgets/ww-hello.js": "./ww-hello.js"}
 }
 ```
@@ -55,9 +55,10 @@ Create a folder containing these two files:
 
 
 ```js
-import {LitElement, html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {html} from "lit"
 
-class WwHello extends LitElement {
+class WwHello extends LitElementWw {
   render() {
     return html`<p>Hello, <slot>world</slot>!</p>`
   }

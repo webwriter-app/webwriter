@@ -4,8 +4,8 @@ import {WEBWRITER_GENERATOR} from "./document-head"
 import {defaultDocumentTheme, documentTheme} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
 import {packageImportMapId} from "./package-dependencies"
-import {SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, type WebWriterPackage} from "./packages"
-import {appendSerializedAssets, escapeHTMLAttribute, restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
+import type {WebWriterPackage} from "./packages"
+import {appendSerializedAssets, escapeHTMLAttribute, restoreOriginalResourceURLs, scopedCustomElementRegistryScript, serializeDoctype} from "./serialization"
 import {clearEditorArtifacts} from "./editor-artifacts"
 import proofreadingWorkerURL from "./proofreading-worker.ts?worker&url"
 import {editorFrameOrigin} from "./frame-origins"
@@ -70,9 +70,14 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   // Happy DOM deliberately disables external script execution but reports
   // each attempted iframe load as an uncaught exception. Keep virtual test
   // frames inert; browser builds retain the executable script types.
-  const testScriptType = !options.executeScripts ? ' type="application/json"' : ""
   const editorScriptType = !options.executeScripts ? "application/json" : "module"
-  const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script><script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeHTMLAttribute(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeHTMLAttribute(options.entryURL)}"></script>`
+  const registryScript = hasWidgetScripts ? scopedCustomElementRegistryScript(document, true) : null
+  if(registryScript) {
+    registryScript.setAttribute("nonce", nonce)
+    if(!options.executeScripts) registryScript.type = "application/json"
+  }
+  const scopedRegistry = registryScript?.outerHTML ?? ""
+  const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script>${scopedRegistry}<script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeHTMLAttribute(options.entryURL)}"></script>`
   const bootstrap = `${csp}${bridge}${bootstrapScripts}`
   if(documentHTML === null) {
     return `<!-- frame ${options.revision} --><!DOCTYPE html><html lang="${escapeHTMLAttribute(options.language)}"><head>${bootstrap}<meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}</head><body></body></html>`
@@ -82,6 +87,9 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   restoreOriginalResourceURLs(parsed)
   // The iframe receives its trusted resolution through load-widgets.
   parsed.getElementById(packageImportMapId)?.remove()
+  // Saved exports carry the standalone adapter. Replace it with the nonce-bearing
+  // editor bootstrap copy below so the frame has exactly one runtime instance.
+  parsed.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
   ensureDefaultDocumentTheme(parsed)
   parsed.head.insertAdjacentHTML("beforeend", `${bridge}${bootstrapScripts}`)
   const cspElement = parsed.createElement("meta")

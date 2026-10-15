@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {loadWidgetsMessage} from "../editor-bridge"
-import {packageCdnUrl, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {packageCdnUrl, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {DependencyFeature} from "./dependencies"
 
 const demoPackage: WebWriterPackage = {
@@ -268,9 +268,11 @@ describe("DependencyFeature", () => {
     expect(serializedScript.getAttribute("nonce")).toBeNull()
     expect(serializedScript.classList.contains("◆editor-only")).toBe(false)
     expect(parsed.head.querySelector(`link[href="${demoPackage.styles[0]}"]`)).not.toBeNull()
-    expect(parsed.head.querySelectorAll(`script[src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"]`)).toHaveLength(1)
-    expect(parsed.head.querySelector("script")?.getAttribute("src")).toBe(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
-    expect(parsed.head.querySelector("script")?.hasAttribute("type")).toBe(false)
+    const adapter = parsed.head.querySelector<HTMLScriptElement>('#webwriter-scoped-registry')
+    expect(adapter?.textContent).toBeTruthy()
+    expect(adapter?.hasAttribute("src")).toBe(false)
+    expect(parsed.head.querySelectorAll("#webwriter-scoped-registry")).toHaveLength(1)
+    expect(parsed.head.querySelector('script[src*="scoped-custom-element-registry"]')).toBeNull()
     editor.destroy()
   })
 
@@ -317,7 +319,7 @@ describe("DependencyFeature", () => {
     editor.destroy()
   })
 
-  it("omits all widget assets and the polyfill from an empty offline export", async () => {
+  it("omits all widget assets and the adapter from an empty offline export", async () => {
     vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
       queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
     })
@@ -328,7 +330,7 @@ describe("DependencyFeature", () => {
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
     })
-    document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script><link rel="stylesheet" href="${demoPackage.styles[0]}"><script src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"></script>`)
+    document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script><link rel="stylesheet" href="${demoPackage.styles[0]}"><script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>`)
     const fetch = vi.spyOn(globalThis, "fetch")
     const parsed = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
     expect(parsed.querySelector("script:not(#webwriter-document-viewer), link[rel='stylesheet']")).toBeNull()
@@ -451,6 +453,8 @@ describe("DependencyFeature", () => {
     it("collects test-update events until the run ends", async () => {
       const editor = new DOMEditor()
       const {result, frame, post} = start(editor)
+      expect(frame.srcdoc).toMatch(/<script id="webwriter-scoped-registry" class="◆ ◆editor-only" nonce="[^"]+">/)
+      expect(frame.srcdoc.indexOf("webwriter-scoped-registry")).toBeLessThan(frame.srcdoc.indexOf('src="https://cdn.test/tests/basics.js"'))
       expect(frame.srcdoc).toContain('src="https://cdn.test/tests/basics.js"')
       post({type: "beforeAll"})
       post({type: "afterOne", id: "a", path: ["Suite", "passes"], passed: true, duration: 3})

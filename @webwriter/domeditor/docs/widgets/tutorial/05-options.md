@@ -26,7 +26,7 @@ Change the correct answer, then try undo and redo. The action is also one undo s
 <!-- /library -->
 
 <!-- library:lit -->
-Add these declarations to the widget class:
+Add these declarations to the `LitElementWw` class. The base exposes static `options` and `actions` to WebWriter's Widget drawer:
 
 ```js
 static options = {
@@ -42,10 +42,10 @@ static options = {
 
 static actions = {resetAnswer: {label: {_: "Reset correct answer"}}}
 
-resetAnswer() { this.setAttribute("answer", "false") }
+resetAnswer() { this.answer = "false" }
 ```
 
-Select the widget in WebWriter. The **Widget** drawer now offers a **Correct answer** field and a **Reset correct answer** action. The field writes the `answer` attribute; the getter from the previous step supplies its displayed value.
+Select the widget in WebWriter. The **Widget** drawer now offers a **Correct answer** field and a **Reset correct answer** action. The field writes the `answer` attribute; the reflected property from the previous step supplies its displayed value.
 
 Change the correct answer, then try undo and redo. The action is also one undo step. The standalone preview shows the widget; the drawer is provided by WebWriter.
 <!-- /library -->
@@ -94,8 +94,6 @@ After editing your source, run `npm run build` before refreshing the local packa
 <!-- /library -->
 
 </details>
-
-[Open preview](../examples/preview.html?step=5)
 
 <iframe title="Step 5: configurable quiz" src="../examples/preview.html?step=5" width="100%" height="210" loading="lazy"></iframe>
 

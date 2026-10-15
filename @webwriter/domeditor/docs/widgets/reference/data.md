@@ -25,6 +25,8 @@ These events originate on the data block and bubble through the widget. Filter b
 
 | Event | `detail` | Meaning |
 |---|---|---|
+| `datarequest` | — | Dispatch as a bubbling, cancelable event on the current direct data block to receive its current state. The runtime prevents the default when it owns the block. |
+| `datapending` | `{mode: "individual" \| "all" \| "group"}` | A new binding is resolving. Fires before its initial `datachange`, including after a sharing or grouping scope change. |
 | `datachange` | `{mode: "individual" \| "all" \| "group"}` | Initial state or an accepted local/remote snapshot has been installed. Render without writing back. |
 | `dataerror` | `{message: string}` | Invalid data, mode, or a connection failure. Invalid writes do not replace the accepted persisted state. |
 

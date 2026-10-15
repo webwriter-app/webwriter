@@ -65,6 +65,7 @@ type Binding = {
   flush?: () => void
   ready: boolean
   disposed: boolean
+  error?: string
   queued?: boolean
 }
 
@@ -159,6 +160,25 @@ export class WidgetDataBindings {
   readonly #historyStateObservers = new Set<() => void>()
   readonly #captureTimeouts = new WeakMap<Y.UndoManager, number>()
   readonly #fallbackDocumentId: string
+  readonly #onDataRequest = (event: Event) => {
+    const target = event.target
+    if(!target || (target as Node).nodeType !== 1) return
+    const block = target as HTMLScriptElement
+    if(block.localName !== "script" || block.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || !this.root.contains(block) || !this.isBlock(block)
+      || block.parentElement?.querySelector(':scope > script[slot="data"]') !== block) return
+    event.preventDefault()
+    if(this.#busy) return
+    const previous = this.#bindings.get(block)
+    this.sync()
+    const binding = this.#bindings.get(block)
+    // A new binding already announced its pending state during sync. Replay only
+    // a state that was installed before this request.
+    if(!binding || binding !== previous || binding.disposed) return
+    if(binding.ready) this.#render(binding)
+    else if(binding.error) this.#dispatchError(block, binding.error)
+    else this.#pending(block, binding.mode)
+  }
 
   constructor(
     readonly root: HTMLElement,
@@ -169,6 +189,7 @@ export class WidgetDataBindings {
   ) {
     this.options = {...options}
     this.#fallbackDocumentId = sessionId ?? crypto.randomUUID()
+    this.root.addEventListener("datarequest", this.#onDataRequest)
   }
 
   get documentId() {
@@ -247,6 +268,7 @@ export class WidgetDataBindings {
             this.#defaults.set(block, {format: block.type, text: binding.defaults})
             this.#bindings.set(block, binding)
             const request: WidgetDataRequest = {document: this.documentId, widget: widget.id, mode, format: block.type === "application/json" ? "json" : "xml", ...(this.sessionId ? {documentRoom: this.sessionId} : {}), ...(groupingRevision ? {groupingRevision} : {})}
+            this.#pending(block, mode)
             const connection = this.options.resolve?.(request) ?? (this.serverUrl && this.sessionId ? this.#network(request, binding) : this.#offline(request))
             if(connection instanceof Promise) void connection.then(value => this.#connect(binding!, value)).catch(error => { if(!binding!.disposed) this.#error(block, error) })
             else this.#connect(binding, connection)
@@ -281,7 +303,7 @@ export class WidgetDataBindings {
       binding.ready = true
       this.#render(binding, false)
     }
-    if(connection.ready) void connection.ready.then(ready).catch(error => this.#error(binding.block, error))
+    if(connection.ready) void connection.ready.then(ready).catch(error => { if(!binding.disposed && !this.#destroyed) this.#error(binding.block, error) })
     else ready()
   }
 
@@ -319,15 +341,28 @@ export class WidgetDataBindings {
       binding.before = value
       if(binding.block.textContent !== text) binding.block.textContent = text
       binding.sourceText = text
+      binding.error = undefined
       const Event = binding.block.ownerDocument.defaultView?.CustomEvent ?? CustomEvent
       binding.block.dispatchEvent(new Event("datachange", {bubbles: true, detail: {mode: binding.mode}}))
     }
     catch(error) { this.#error(binding.block, error) }
   }
 
-  #error(block: HTMLScriptElement, error: unknown) {
+  #pending(block: HTMLScriptElement, mode: WidgetDataMode) {
     const Event = block.ownerDocument.defaultView?.CustomEvent ?? CustomEvent
-    block.dispatchEvent(new Event("dataerror", {bubbles: true, detail: {message: error instanceof Error ? error.message : String(error)}}))
+    block.dispatchEvent(new Event("datapending", {bubbles: true, detail: {mode}}))
+  }
+
+  #error(block: HTMLScriptElement, error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    const binding = this.#bindings.get(block)
+    if(binding && !binding.disposed) binding.error = message
+    this.#dispatchError(block, message)
+  }
+
+  #dispatchError(block: HTMLScriptElement, message: string) {
+    const Event = block.ownerDocument.defaultView?.CustomEvent ?? CustomEvent
+    block.dispatchEvent(new Event("dataerror", {bubbles: true, detail: {message}}))
   }
 
   async #network(request: WidgetDataRequest, binding: Binding): Promise<WidgetDataConnection> {
@@ -478,6 +513,7 @@ export class WidgetDataBindings {
 
   destroy() {
     this.#destroyed = true
+    this.root.removeEventListener("datarequest", this.#onDataRequest)
     this.#historyObservers.clear()
     this.#historyStateObservers.clear()
     for(const binding of this.#bindings.values()) {

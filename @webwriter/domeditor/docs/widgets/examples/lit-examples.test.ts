@@ -1,10 +1,19 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterAll, afterEach, describe, expect, it, vi} from "vitest"
+import {LitElement} from "lit"
+import {LitElementWw} from "@webwriter/lit"
 import "./lit/06-collaboration.js"
+
+// Happy DOM does not implement native scoped registries; browser tests cover rendering there.
+const renderRoot = vi.spyOn(LitElementWw.prototype as any, "createRenderRoot")
+  .mockImplementation(function(this: LitElementWw) {
+    return (LitElement.prototype as any).createRenderRoot.call(this)
+  })
+afterAll(() => renderRoot.mockRestore())
 
 const widgets: HTMLElement[] = []
 
-function createWidget() {
+function createWidget(managed = true) {
   const widget = document.createElement("ww-quiz")
   const question = document.createElement("p")
   question.textContent = "The Moon is a star."
@@ -13,6 +22,7 @@ function createWidget() {
   block.slot = "data"
   block.textContent = '{"choice":""}'
   widget.append(question, block)
+  if(managed) widget.addEventListener("datarequest", event => event.preventDefault())
   document.body.append(widget)
   widgets.push(widget)
   return {widget, block}
@@ -80,7 +90,7 @@ describe("Lit quiz example", () => {
     staleWrapper.append(block)
     widget.prepend(replacement)
     widget.append(staleWrapper)
-    expect((widget as HTMLElement & {block: HTMLScriptElement}).block).toBe(replacement)
+    await new Promise(resolve => setTimeout(resolve, 0))
 
     datachange(block)
     ;(widget as HTMLElement & {requestUpdate: () => void}).requestUpdate()
@@ -100,6 +110,34 @@ describe("Lit quiz example", () => {
 
     expect(block.textContent).toBe('{"choice":""}')
     expect(widget.shadowRoot!.querySelector(".controls")!.hasAttribute("hidden")).toBe(true)
+  })
+
+  it("uses local data without a runtime and preserves unrelated fields on writes", async () => {
+    const {widget, block} = createWidget(false)
+    block.textContent = '{"choice":"false","keep":42}'
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await render(widget)
+    expect(output(widget)).toBe("Correct!")
+    widget.shadowRoot!.querySelector<HTMLButtonElement>('button[value="true"]')!.click()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await render(widget)
+    expect(widget.querySelector('script[slot="data"]')).toBe(block)
+    expect(JSON.parse(block.textContent!)).toEqual({choice: "true", keep: 42})
+    expect(output(widget)).toBe("Try again.")
+  })
+
+  it("shows data errors and recovers after the next accepted snapshot", async () => {
+    const {widget, block} = createWidget()
+    block.dispatchEvent(new CustomEvent("dataerror", {bubbles: true, detail: {message: "Connection unavailable"}}))
+    await render(widget)
+    expect(output(widget)).toBe("Connection unavailable")
+    block.dispatchEvent(new CustomEvent("datapending", {bubbles: true}))
+    await render(widget)
+    expect(output(widget)).toBe("Loading answers…")
+    block.textContent = '{"choice":"false"}'
+    datachange(block)
+    await render(widget)
+    expect(output(widget)).toBe("Correct!")
   })
 
   it("keeps readiness for an unchanged shared value and resets it when the value changes", async () => {

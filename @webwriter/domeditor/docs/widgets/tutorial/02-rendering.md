@@ -38,7 +38,7 @@ render() {
 }
 ```
 
-Define shadow styles through `static styles = css` and a CSS template, importing `css` from `lit`. The complete script includes a starting stylesheet.
+Define shadow styles through `static styles = css` and a CSS template. Import `LitElementWw` from `@webwriter/lit`, and import `html` and `css` from `lit`; the complete script includes a starting stylesheet.
 
 
 Keep controls in shadow DOM so they do not become authored content. Use native buttons for keyboard support. The buttons do nothing yet.
@@ -88,8 +88,6 @@ After editing your source, run `npm run build` before refreshing the local packa
 <!-- /library -->
 
 </details>
-
-[Open preview](../examples/preview.html?step=2)
 
 <iframe title="Step 2: question and controls" src="../examples/preview.html?step=2" width="100%" height="210" loading="lazy"></iframe>
 

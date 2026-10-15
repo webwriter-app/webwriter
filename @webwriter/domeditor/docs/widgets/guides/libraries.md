@@ -6,7 +6,7 @@ A widget can use native web APIs or a library that produces custom elements.
 The [tutorial](../tutorial/index.md) uses `HTMLElement`; Lit is another option in the header's library selector.
 <!-- /library -->
 <!-- library:lit -->
-The [tutorial](../tutorial/index.md) uses Lit. Select **JS** in the header for the implementation using `HTMLElement` directly.
+The [tutorial](../tutorial/index.md) uses `LitElementWw`, a Lit base class that supplies WebWriter behavior such as edit mode, inherited language updates, and scoped-data hooks. Select **JS** in the header for the implementation using `HTMLElement` directly.
 <!-- /library -->
 
 <!-- library:react -->
@@ -31,7 +31,8 @@ import {LitElement, html} from "lit"
 <!-- /library -->
 <!-- library:lit -->
 ```js
-import {LitElement, html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {html} from "lit"
 ```
 <!-- /library -->
 <!-- library:react -->
@@ -58,7 +59,11 @@ import {onMount} from "svelte"
 
 `@webwriter/build` keeps shared dependencies as imports. WebWriter resolves compatible versions through the document's import map. Use `prebuiltDependencies` for dependencies that must be bundled, such as CommonJS code.
 
-Render widget UI in shadow DOM. When using `LitElementWw`, register third-party shadow components through `static scopedElements` to avoid global name collisions.
+<!-- library:lit -->
+Declare both `@webwriter/lit` and `lit` in `dependencies`. Register third-party shadow components through `static scopedElements` to avoid global name collisions.
+<!-- /library -->
+
+Render widget UI in shadow DOM.
 
 Export document-level widget CSS separately. An export such as `./widgets/ww-quiz.*` loads the matching script and stylesheet. Include any theme required by your component library.
 

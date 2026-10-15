@@ -2027,7 +2027,7 @@ describe("DomEditor iframe setup", () => {
     }
   })
 
-  it("loads the scoped custom element registry polyfill before widgets", async () => {
+  it("loads the inline scoped registry adapter before widgets", async () => {
     const editor = new DomEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
     Object.assign(editor, {frameStarted: true})
@@ -2045,9 +2045,11 @@ describe("DomEditor iframe setup", () => {
       packages: [demoPackage],
       requestId: expect.any(String),
     }), window.location.origin))
-    const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
-    expect(srcdoc).toMatch(new RegExp(`<script class="◆ ◆editor-only" nonce="[^"]+" type="application/json" src="${polyfillUrl.replaceAll(".", "\\.")}"></script>`))
-    expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
+    const registryAdapter = new DOMParser().parseFromString(srcdoc, "text/html").querySelector<HTMLScriptElement>("#webwriter-scoped-registry")
+    expect(registryAdapter?.textContent).toBeTruthy()
+    expect(registryAdapter?.classList.contains("◆editor-only")).toBe(true)
+    expect(registryAdapter?.getAttribute("nonce")).toBeTruthy()
+    expect(srcdoc.indexOf("webwriter-scoped-registry")).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")
   })
 
@@ -6318,7 +6320,7 @@ describe("DomEditor.execute()", () => {
     expect(source.querySelector("script")).not.toBeNull()
   })
 
-  it("includes the scoped registry before widget modules in preview", async () => {
+  it("includes the scoped registry adapter before widget modules in preview", async () => {
     const {editor, iframe} = await mountEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
     iframe.contentDocument!.body.innerHTML = '<webwriter-demo contenteditable="true"></webwriter-demo>'
@@ -6328,7 +6330,9 @@ describe("DomEditor.execute()", () => {
     const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     const nonce = /'nonce-([^']+)'/.exec(policy)![1]
     expect(scripts.every(script => script.getAttribute("nonce") === nonce)).toBe(true)
-    expect(scripts[0].src).toContain("@webcomponents/scoped-custom-element-registry@0.0.10/")
+    expect(scripts[0].id).toBe("webwriter-scoped-registry")
+    expect(scripts[0].textContent).toBeTruthy()
+    expect(scripts[0].hasAttribute("src")).toBe(false)
     expect(scripts.slice(1).filter(script => script.hasAttribute("src")).map(script => script.src)).toEqual(demoPackage.scripts)
     expect(parsed.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
     expect(parsed.body.innerHTML).not.toContain("◆")
@@ -6352,9 +6356,8 @@ describe("DomEditor.execute()", () => {
     source.body.innerHTML = '<section><template><used-widget></used-widget></template><used-widget></used-widget></section>'
     const preview = () => new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
     const parsed = preview()
-    expect(Array.from(parsed.querySelectorAll("script[src]")).map(script => script.getAttribute("src"))).toEqual([
-      expect.stringContaining("scoped-custom-element-registry"), usedScript,
-    ])
+    expect(parsed.querySelector("#webwriter-scoped-registry")?.textContent).toBeTruthy()
+    expect(Array.from(parsed.querySelectorAll("script[src]")).map(script => script.getAttribute("src"))).toEqual([usedScript])
     expect(Array.from(parsed.querySelectorAll('link[rel="stylesheet"]')).map(link => link.getAttribute("href"))).toEqual([usedStyle])
     source.body.replaceChildren()
     const empty = preview()

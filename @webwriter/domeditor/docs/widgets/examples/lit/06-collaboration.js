@@ -1,10 +1,8 @@
-import {LitElement, html, css} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {html, css} from "lit"
 
-class WwQuiz extends LitElement {
-  static properties = {readyBlock: {state: true}, error: {state: true}}
-  static get observedAttributes() {
-    return [...super.observedAttributes, "answer", "contenteditable", "shared"]
-  }
+class WwQuiz extends LitElementWw {
+  static properties = {answer: {type: String, reflect: true}, error: {state: true}}
   static options = {
     answer: {
       type: "select",
@@ -39,58 +37,38 @@ class WwQuiz extends LitElement {
   `
   constructor() {
     super()
-    this.readyBlock = null
+    this.answer = "false"
     this.error = ""
-    this.addEventListener("datachange", event => {
-      if(event.target !== this.block) return
-      this.readyBlock = event.target
-      this.error = ""
-      this.requestUpdate()
-    })
-    this.addEventListener("dataerror", event => {
-      if(event.target !== this.block) return
-      this.readyBlock = null
-      this.error = event.detail.message
-    })
   }
 
-  get answer() { return this.getAttribute("answer") ?? "false" }
-
-  attributeChangedCallback(name, oldValue, value) {
-    super.attributeChangedCallback(name, oldValue, value)
-    if(name === "shared" && oldValue !== value) this.readyBlock = null
-    this.requestUpdate()
-  }
-
-  get block() {
-    return this.querySelector(':scope > script[type="application/json"][slot="data"]:not([src])')
-  }
+  dataPending() { this.error = "" }
+  dataChanged() { this.error = "" }
+  dataError(error) { this.error = error.message }
 
   get choice() {
     try {
-      const value = JSON.parse(this.block?.textContent || "{}").choice
+      const value = JSON.parse(this.data || "{}").choice
       return value === "true" || value === "false" ? value : ""
     }
     catch { return "" }
   }
 
   choose(value) {
-    const block = this.block
-    if(this.isContentEditable || !block || block !== this.readyBlock) return
+    if(this.editable || !this.dataReady) return
     try {
-      const state = JSON.parse(block.textContent || "{}")
-      block.textContent = JSON.stringify({...state, choice: value})
+      const state = JSON.parse(this.data || "{}")
+      this.data = JSON.stringify({...state, choice: value})
     }
     catch(error) {
       this.error = error.message
     }
   }
 
-  resetAnswer() { this.setAttribute("answer", "false") }
+  resetAnswer() { this.answer = "false" }
 
   render() {
-    const editing = this.isContentEditable
-    const ready = this.block && this.block === this.readyBlock
+    const editing = this.editable
+    const ready = this.dataReady
     const result = this.error || (!ready ? "Loading answers…" : (this.choice ? (this.choice === this.answer ? "Correct!" : "Try again.") : ""))
     return html`
       <slot><p>Add a question.</p></slot>

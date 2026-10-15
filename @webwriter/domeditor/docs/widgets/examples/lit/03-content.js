@@ -1,6 +1,7 @@
-import {LitElement, html, css} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {html, css} from "lit"
 
-class WwQuiz extends LitElement {
+class WwQuiz extends LitElementWw {
   static styles = css`
     :host {
       display: block;

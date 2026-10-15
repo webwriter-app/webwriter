@@ -45,7 +45,7 @@ Create a folder containing `package.json` and `ww-quiz.js`.
   "name": "@webwriter/quiz",
   "version": "1.0.0",
   "keywords": ["webwriter-widget"],
-  "dependencies": {"lit": "^3.3.2"},
+  "dependencies": {"@webwriter/lit": "^3.0.0", "lit": "^3.3.2"},
   "exports": {"./widgets/ww-quiz.js": "./ww-quiz.js"}
 }
 ```
@@ -55,9 +55,10 @@ Create a folder containing `package.json` and `ww-quiz.js`.
 
 
 ```js
-import {LitElement, html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {html} from "lit"
 
-class WwQuiz extends LitElement {
+class WwQuiz extends LitElementWw {
   render() {
     return html`<p>Quiz widget</p>`
   }
@@ -67,7 +68,7 @@ if(!customElements.get("ww-quiz")) customElements.define("ww-quiz", WwQuiz)
 ```
 
 
-Add the folder through **Developer console → Add package → Add from local folder**, then insert **Quiz**. You should see “Quiz widget”.
+Add the folder through **Developer console → Add package → Add from local folder**, then insert **Quiz**. You should see “Quiz widget”. `LitElementWw` extends Lit and supplies WebWriter widget behavior, including `editable`, inherited language updates, and scoped-data hooks.
 <!-- /library -->
 
 <!-- library:react -->
@@ -270,8 +271,6 @@ Add the folder through **Developer console → Add package → Add from local fo
 <!-- /library -->
 
 </details>
-
-[Open preview](../examples/preview.html?step=1)
 
 <iframe title="Step 1: quiz scaffold" src="../examples/preview.html?step=1" width="100%" height="130" loading="lazy"></iframe>
 

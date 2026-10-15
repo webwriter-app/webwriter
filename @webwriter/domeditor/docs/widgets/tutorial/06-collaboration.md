@@ -57,54 +57,42 @@ Move the temporary choice into scoped data. Add `sharedData: true` beside `conte
 
 `shared` makes everyone use the same answers. Remove it for individual answers. Group sharing is covered in the [sharing guide](../guides/sharing.md).
 
-Replace the `choice` property with a getter and a current-block query:
-
-Remove `choice` from `static properties` and its constructor assignment. Declare `readyBlock` and `error` as local state instead, then request an update on every accepted data event:
+With `LitElementWw`, handle the data lifecycle through methods instead of adding event listeners or querying the data block. The base calls `dataPending`, `dataChanged(rawText, context)`, and `dataError` with a `{block, mode}` context. It tracks readiness through `dataReady` and keeps `data` connected to the current data block:
 
 ```js
-static properties = {readyBlock: {state: true}, error: {state: true}}
+static properties = {answer: {type: String, reflect: true}, error: {state: true}}
 
 constructor() {
   super()
-  this.readyBlock = null
+  this.answer = "false"
   this.error = ""
-  this.addEventListener("datachange", event => {
-    if(event.target !== this.block) return
-    this.readyBlock = event.target
-    this.error = ""
-    this.requestUpdate()
-  })
 }
-```
 
-The data block's text is outside Lit's reactive properties, so later snapshots also need `requestUpdate()`. The complete script handles errors and sharing-mode changes too.
+dataPending(context) { this.error = "" }
 
-
-```js
-get block() {
-  return this.querySelector(':scope > script[type="application/json"][slot="data"]:not([src])')
+dataChanged(rawText, context) {
+  this.error = ""
 }
+
+dataError(error, context) { this.error = error.message }
 
 get choice() {
-  try { return JSON.parse(this.block?.textContent || "{}").choice ?? "" }
+  try { return JSON.parse(this.data || "{}").choice ?? "" }
   catch { return "" }
 }
 ```
 
-Listen for `datachange` to render accepted snapshots, including the initial state and remote changes. Disable answering until the initial event. Then write the current block in `choose()`:
+The base calls `dataChanged` for the initial value and accepted local or remote updates; its update request refreshes the template after each snapshot. `dataPending` runs while the current scope loads, and `dataError` reports a failure. The `choice` getter reads the current data text. Write through `this.data` in `choose()` after `dataReady` becomes true:
 
 ```js
 choose(value) {
-  const block = this.block
-  if(this.isContentEditable || !block || block !== this.readyBlock) return
-  const state = JSON.parse(block.textContent || "{}")
-  block.textContent = JSON.stringify({...state, choice: value})
+  if(this.editable || !this.dataReady) return
+  const state = JSON.parse(this.data || "{}")
+  this.data = JSON.stringify({...state, choice: value})
 }
 ```
 
-Use the [complete script](#complete-script) for event filtering, initialization, and error handling. It rechecks the current block before each write and leaves the question and other children intact. Network connections and persistence belong to the document runtime.
-
-In `render()`, disable the answer buttons while `this.block !== this.readyBlock`. The `datachange` listener triggers rendering after each accepted snapshot; rendering itself never writes data.
+In `render()`, disable the answer buttons while `!this.dataReady || this.editable`. Reactive state updates the feedback after each accepted snapshot; rendering itself never writes data. The complete script also displays `error`. Network connections and persistence belong to the document runtime.
 
 
 These two embedded widgets use the real scoped-data runtime with a shared in-memory connection. Choose an answer in either one; both should update. To test across browsers, load the package into a connected WebWriter document. Normal exports retain the empty default choice.
@@ -199,7 +187,7 @@ After editing your source, run `npm run build` before refreshing the local packa
 
 </details>
 
-[Final package manifest](../examples/package.json) · [Open preview](../examples/preview.html?step=6)
+[Final package manifest](../examples/package.json)
 
 <iframe title="Step 6: two participants sharing answers" src="../examples/preview.html?step=6" width="100%" height="410" loading="lazy"></iframe>
 

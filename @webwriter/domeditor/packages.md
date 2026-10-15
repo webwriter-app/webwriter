@@ -2,7 +2,8 @@
 
 Widget documentation has moved to [docs/widgets](docs/widgets/index.md).
 
-- [Introduction and quick start](docs/widgets/introduction/index.md)
+- [Widget overview](docs/widgets/index.md)
+- [Quick start](docs/widgets/introduction/quick-start.md)
 - [Build a quiz widget](docs/widgets/tutorial/index.md)
 - [Guides](docs/widgets/guides/index.md)
 - [Interface reference](docs/widgets/reference/index.md)

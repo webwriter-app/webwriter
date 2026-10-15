@@ -1,6 +1,7 @@
-import {LitElement, html} from "lit"
+import {LitElementWw} from "@webwriter/lit"
+import {html} from "lit"
 
-class WwQuiz extends LitElement {
+class WwQuiz extends LitElementWw {
   render() {
     return html`<p>Quiz widget</p>`
   }

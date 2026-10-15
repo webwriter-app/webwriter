@@ -39,7 +39,7 @@ True booleans become empty attributes; false removes them. Objects, arrays, and 
 
 The editor reads the current property value to display an option. Make the property reflect the attribute, or supply a getter. Option attributes cannot be `style`, `class`, `is`, editor-only attributes, event handlers, or unsafe URLs.
 
-`LitElementWw` declarations also accept Lit property metadata such as `reflect`, `state`, and `converter`; declare reactive properties separately or with `@property`. The declared input hints `autocapitalize`, `spellcheck`, `autocomplete`, and `inputmode` are currently not forwarded to drawer controls.
+Declare Lit reactivity separately in `static properties`, including metadata such as `reflect`, `state`, and `converter`. WebWriter reads `static options` and `static actions`; `@webwriter/lit` no longer exports option or action decorators. The declared input hints `autocapitalize`, `spellcheck`, `autocomplete`, and `inputmode` are currently not forwarded to drawer controls.
 
 ## Action declaration
 

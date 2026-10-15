@@ -136,18 +136,18 @@ it("renders linked sections, adjacent page navigation, frontmatter, headings, an
   const response = await get(base, "/docs/widgets/basics/first.md")
   expect(response.status).toBe(200)
   expect(response.headers.get("content-type")).toContain("text/html")
-  expect(response.body).toContain('href="/docs/widgets/basics/index.md"')
-  expect(response.body).toContain('href="/docs/widgets/advanced/index.md"')
+  expect(response.body).toContain('href="/docs/widgets/basics/index.md?library=lit"')
+  expect(response.body).toContain('href="/docs/widgets/advanced/index.md?library=lit"')
   const pageNavigation = response.body.match(/<nav class="page-navigation" aria-label="Page navigation">([\s\S]*?)<\/nav>/)?.[1]
   expect(pageNavigation).toBeDefined()
-  expect(pageNavigation).toContain('<a class="previous" href="/docs/widgets/basics/index.md">')
-  expect(pageNavigation).toContain('<a class="next" href="/docs/widgets/basics/second.md">')
+  expect(pageNavigation).toContain('<a class="previous" href="/docs/widgets/basics/index.md?library=lit">')
+  expect(pageNavigation).toContain('<a class="next" href="/docs/widgets/basics/second.md?library=lit">')
   expect(response.body).toContain('<h2 id="a-heading">A heading!</h2>')
   expect(response.body).not.toContain("draft: true")
-  expect(response.body).toContain('<iframe src="./example.html" title="Example" loading="lazy"></iframe>')
-  expect(response.body).toContain('<a href="./example.js">Example source</a>')
-  expect(response.body).toContain("Vanilla-only instructions.")
-  expect(response.body).not.toContain("Lit-only instructions.")
+  expect(response.body).toContain('<iframe src="/docs/widgets/basics/lit-example.html?library=lit" title="Lit example" loading="lazy"></iframe>')
+  expect(response.body).toContain('<a href="/docs/widgets/basics/example.js?library=lit">Example source</a>')
+  expect(response.body).toContain("Lit-only instructions.")
+  expect(response.body).not.toContain("Vanilla-only instructions.")
   expect(transformIndexHtml).toHaveBeenCalledOnce()
 })
 
@@ -177,21 +177,62 @@ it("selects the requested library, renders only its conditional content, and rew
   expect(response.body).toContain('href="https://example.com/guide?q=1#part"')
 })
 
-it("defaults unsupported library values to Vanilla and keeps its local links unchanged", async () => {
+it("places standalone pages before sections in menus and adjacent navigation", async () => {
+  const {base} = await fixture()
+  const docs = join(directory, "docs/widgets")
+  mkdirSync(join(docs, "introduction"))
+  writeFileSync(join(docs, "introduction/widgets.md"), "# What is a widget?\n")
+  writeFileSync(join(docs, "introduction/quick-start.md"), "# Quick start\n")
+  writeFileSync(join(docs, "index.md"), "# Widgets\n\n- [What is a widget?](introduction/widgets.md)\n- [Quick start](introduction/quick-start.md)\n- [Basics](basics/index.md)\n")
+
+  const paths = ["/docs/widgets/index.md", "/docs/widgets/introduction/widgets.md",
+    "/docs/widgets/introduction/quick-start.md", "/docs/widgets/basics/index.md"]
+  for(const [index, path] of paths.entries()) {
+    const response = await get(base, path + "?library=lit")
+    expect(response.status).toBe(200)
+    for(const label of ["Documentation", "Mobile documentation"]) {
+      const menu = response.body.match(new RegExp(`<nav aria-label="${label}">([\\s\\S]*?)<\\/nav>`))?.[1]
+      expect(menu).toMatch(/>Overview<\/a><\/li><li><a[^>]*>What is a widget\?<\/a><\/li><li><a[^>]*>Quick start<\/a><\/li><li class="nav-section">/)
+    }
+    const adjacent = response.body.match(/<nav class="page-navigation"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
+    if(index > 0) expect(adjacent).toContain(`<a class="previous" href="${paths[index - 1]}?library=lit">`)
+    if(index < paths.length - 1) expect(adjacent).toContain(`<a class="next" href="${paths[index + 1]}?library=lit">`)
+    if(index === 1 || index === 2) {
+      const breadcrumb = response.body.match(/<nav class="breadcrumb"[^>]*>([\s\S]*?)<\/nav>/)?.[1]
+      expect(breadcrumb).toBe('<a href="/docs/widgets/index.md?library=lit">Widgets</a>')
+    }
+  }
+})
+
+it("defaults missing and unsupported library choices to Lit", async () => {
   const {base} = await fixture()
   for(const query of ["", "?library=unknown"]) {
     const response = await get(base, `/docs/widgets/basics/first.md${query}`)
     expect(response.status).toBe(200)
-    expect(response.body).toContain("Vanilla-only instructions.")
-    expect(response.body).not.toContain("Lit-only instructions.")
+    expect(response.body).toContain("Lit-only instructions.")
+    expect(response.body).not.toContain("Vanilla-only instructions.")
     const select = response.body.match(/<select\b[^>]*>[\s\S]*?<\/select>/)?.[0]
-    expect(select).toContain('<option value="vanilla" selected')
-    expect(select).toContain('<option value="lit">')
-    expect(response.body).toContain('href="./second.md?step=2#setup"')
-    expect(response.body).toContain('href="/docs/widgets/examples/04-state.js?download=1#state"')
-    expect(response.body).toContain('href="/docs/widgets/examples/preview.html?step=3#demo"')
-    expect(response.body).toContain('href="/docs/widgets/examples/package.json"')
+    expect(select).toContain('<option value="lit" selected')
+    expect(select).toContain('<option value="vanilla">')
+    expect(response.body).toContain('href="/docs/widgets/basics/second.md?step=2&library=lit#setup"')
+    expect(response.body).toContain('href="/docs/widgets/examples/lit/04-state.js?download=1&library=lit#state"')
+    expect(response.body).toContain('src="/docs/widgets/basics/lit-example.html?library=lit"')
+    expect(response.body).toContain('href="/docs/widgets/examples/lit/package.json?library=lit"')
   }
+})
+
+it("retains an explicit JS choice across links, downloads, and inline previews", async () => {
+  const {base} = await fixture()
+  const response = await get(base, "/docs/widgets/basics/first.md?library=vanilla")
+  expect(response.status).toBe(200)
+  expect(response.body).toContain("Vanilla-only instructions.")
+  expect(response.body).not.toContain("Lit-only instructions.")
+  expect(response.body).toContain('<option value="vanilla" selected')
+  expect(response.body).toContain('href="/docs/widgets/basics/second.md?step=2&library=vanilla#setup"')
+  expect(response.body).toContain('href="/docs/widgets/examples/04-state.js?download=1&library=vanilla#state"')
+  expect(response.body).toContain('href="/docs/widgets/examples/preview.html?step=3&library=vanilla#demo"')
+  expect(response.body).toContain('src="/docs/widgets/basics/example.html?library=vanilla"')
+  expect(response.body).toContain('href="/docs/widgets/examples/package.json?library=vanilla"')
 })
 
 it("offers all six libraries and retains framework choices across documentation links and embeds", async () => {
@@ -349,7 +390,7 @@ it("serves section directories and redirects the slashless route", async () => {
   const page = await get(base, "/docs/widgets/basics/")
   expect(page.status).toBe(200)
   expect(page.body).toContain("<title>Basics · WebWriter documentation</title>")
-  expect(page.body).toContain('href="/docs/widgets/basics/first.md"')
+  expect(page.body).toContain('href="/docs/widgets/basics/first.md?library=lit"')
 })
 
 it("returns headers for HEAD requests without a response body", async () => {
@@ -394,7 +435,7 @@ it("reads changed Markdown and navigation on later requests", async () => {
   writeFileSync(join(directory, "docs/widgets/basics/index.md"), "# Basics\n\n- [Renamed page](./first.md)\n")
   const second = await get(base, "/docs/widgets/basics/first.md")
   expect(second.body).toContain("<title>Renamed page · WebWriter documentation</title>")
-  expect(second.body).toContain('href="/docs/widgets/basics/first.md" aria-current="page">Renamed page</a>')
+  expect(second.body).toContain('href="/docs/widgets/basics/first.md?library=lit" aria-current="page">Renamed page</a>')
   expect(second.body).toContain("Renamed page")
   expect(second.body).not.toContain("First page")
 })

@@ -40,6 +40,20 @@ describe("isolated frame documents", () => {
     expect(root.body.childNodes).toHaveLength(0)
   })
 
+  it("replaces the adapter from a saved export with one nonce-bearing bootstrap", () => {
+    const script = "https://cdn.example/widget.js"
+    const source = '<html><head><script id="webwriter-scoped-registry">oldAdapter()</script></head><body><demo-widget></demo-widget></body></html>'
+    const root = parse(editorFrameHTML(source, editorOptions({packages: [{
+      name: "fixture", version: "1", label: "Fixture", authors: [], keywords: [], links: {}, scripts: [script], styles: [], members: [],
+    }]})))
+    const adapters = root.querySelectorAll<HTMLScriptElement>("#webwriter-scoped-registry")
+    expect(adapters).toHaveLength(1)
+    expect(adapters[0].textContent).not.toBe("oldAdapter()")
+    expect(adapters[0].getAttribute("nonce")).toBe("host-bridge-nonce")
+    expect(root.head.querySelector('script[type="module"]')?.getAttribute("src")).toBe(editorOptions().entryURL)
+    expect(adapters[0].compareDocumentPosition(root.head.querySelector('script[type="module"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  })
+
   it("preserves authored content, refresh metadata and themes while restoring offline URLs", () => {
     const theme = documentTheme("water")!
     const authored = parse(`<!DOCTYPE HTML PUBLIC "authored" "authored.dtd"><html data-authored="keep"><head><meta http-equiv="refresh" content="1;url=https://example.com"><style data-ww-theme="water">${theme.source}</style><script id="webwriter-package-importmap" type="importmap">{}</script></head><body><unfamiliar-node><!--keep--><template><img src="data:offline" ${originalURLAttribute("src")}="./original.png"></template><svg xmlns="http://www.w3.org/2000/svg"><g data-authored="yes"></g></svg></unfamiliar-node></body></html>`)
