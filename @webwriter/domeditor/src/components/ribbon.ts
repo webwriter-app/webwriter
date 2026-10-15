@@ -2622,6 +2622,10 @@ export class AppRibbon extends EditingControls {
       event.stopPropagation()
       void this.showRibbonDialog("settings")
     }
+    if(event.detail.label === "about-webwriter") {
+      event.stopPropagation()
+      window.open(new URL(import.meta.env.BASE_URL, location.href).href, "_blank", "noopener,noreferrer")
+    }
   }
 
   private handleSettingsTabKeydown = (event: KeyboardEvent) => {
@@ -3308,6 +3312,7 @@ export class AppRibbon extends EditingControls {
         ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
         {label: "Settings", warning: this.cloudSessionWarning},
       ]},
+      {label: "About", buttons: [{label: "About WebWriter...", icon: "About", action: "about-webwriter"}]},
     ]
   }
 
