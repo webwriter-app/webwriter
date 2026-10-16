@@ -56,12 +56,13 @@ export class LayoutShowcase extends LitElement {
   static styles = [documentLayoutPreviewStyles, css`
     :host {display: block; color: #263142; font-family: system-ui, sans-serif}
     * {box-sizing: border-box}
-    .cards {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem}
+    .cards {display: grid; grid-template-columns: repeat(2, minmax(0, 31rem)); justify-content: center; gap: 2.5rem 3rem}
     article {min-inline-size: 0; overflow: hidden; border: 1px solid #dfe5ed; border-radius: .6rem; background: white}
     .layout-preset-name {display: none}
     article:focus-visible {outline: 2px solid #1b639c; outline-offset: 3px}
-    .visual {position: relative; display: grid; place-items: center; height: 11rem; padding: .75rem; border-bottom: 1px solid #dfe5ed; background: #f7f9fc}
-    video {position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: white; opacity: 0; pointer-events: none}
+    .visual {position: relative; display: grid; place-items: center; height: clamp(12rem, 26vw, 13rem); container-type: inline-size; overflow: hidden; padding: .75rem; border-bottom: 1px solid #dfe5ed; background: #f7f9fc}
+    video {position: absolute; left: 50%; top: 50%; width: 40rem; height: 22.5rem; max-width: none; transform: translate(-50%, -50%); object-fit: cover; background: white; opacity: 0; pointer-events: none}
+    /* Keep the double-density video at a fixed size and crop its edges. */
     video.playing {opacity: 1}
     .play-icon {position: absolute; right: .65rem; bottom: .65rem; display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border: 1px solid #d1dce8; border-radius: 50%; background: #ffffffed; color: #1b639c; pointer-events: none}
     .play-icon svg {width: .85rem; height: .85rem; margin-left: .1rem; fill: currentColor}
@@ -91,7 +92,7 @@ export class LayoutShowcase extends LitElement {
     .related {display: flex; flex-wrap: wrap; gap: .4rem; align-items: baseline; margin-top: 1rem; font-size: .8rem; color: #617084}
     ul {display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; list-style: none}
     li:not(:last-child)::after {content: ","}
-    @media (max-width: 42rem) {.cards {grid-template-columns: 1fr} .details {padding: 1.25rem}}
+    @media (max-width: 50rem) {.cards {grid-template-columns: minmax(0, 31rem)} .details {padding: 1.25rem}}
   `]
   render() {
     return html`<div class="cards">${documentLayoutModes.map(mode => html`<article tabindex="0" aria-labelledby=${`${mode}-title`}

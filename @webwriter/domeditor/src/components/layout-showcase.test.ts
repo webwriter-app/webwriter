@@ -75,3 +75,50 @@ it("stops playback when the component is removed", async () => {
   expect(pause).toHaveBeenCalledTimes(1)
   expect(videos()[2].currentTime).toBe(0)
 })
+
+const recordingSources = import.meta.glob("../../examples/layouts/**/*.html", {eager: true, query: "?raw", import: "default"}) as Record<string, string>
+
+it("provides a rich-text edit and embedded, accessible media for every localized recording", () => {
+  for(const locale of Object.keys(siteLanguages)) {
+    for(const mode of ["document", "canvas", "slides", "board"]) {
+      const path = `../../examples/layouts/${locale === "en" ? "" : `${locale}/`}${mode}.html`
+      expect(recordingSources[path], path).toBeTruthy()
+      const source = new DOMParser().parseFromString(recordingSources[path], "text/html")
+      const sentence = source.querySelector("#edit-sentence")!
+      expect(sentence?.textContent?.trim().endsWith("."), path).toBe(true)
+      expect(sentence.querySelector("strong, em"), path).not.toBeNull()
+      if(mode === "document") {
+        expect(sentence.parentElement, path).toBe(source.body)
+        expect(source.body.querySelector("article, section"), path).toBeNull()
+      }
+      if(mode === "slides") {
+        const slide = source.querySelector(".ww-slides-viewport > .ww-slide")!
+        expect(slide, path).not.toBeNull()
+        expect(sentence.parentElement, path).toBe(slide)
+        expect(source.querySelector(".layout-media")?.parentElement, path).toBe(slide)
+        expect(slide.querySelector("article, section"), path).toBeNull()
+      }
+      const media = source.querySelector<HTMLElement>(".layout-media")!
+      if(mode === "canvas" || mode === "slides") {
+        const tag = mode === "canvas" ? "webwriter-flowchart" : "webwriter-timeline"
+        expect(media?.localName, path).toBe(tag)
+        expect(media.getAttribute("lang"), path).toBe(locale === "pt" ? "pt-PT" : locale)
+        expect(media.getAttribute("contenteditable"), path).toBe("false")
+        if(mode === "slides") {
+          const events = [...media.querySelectorAll("webwriter-timeline-event")]
+          expect(events.length, path).toBeGreaterThan(1)
+          expect(events.every(event => event.getAttribute("lang") === (locale === "pt" ? "pt-PT" : locale) && /^\d{4}-\d{2}-\d{2}$/.test(event.getAttribute("date") ?? "")), path).toBe(true)
+        }
+        expect([...source.querySelectorAll<HTMLScriptElement>("script[src]")].some(script =>
+          script.src.includes(`@webwriter/${mode === "canvas" ? "flowchart" : "timeline"}@`)), path).toBe(true)
+        expect(media.getAttribute("aria-label"), path).toBeTruthy()
+      }
+      else {
+        expect(media?.localName, path).toBe("img")
+        expect(media.getAttribute("src"), path).toMatch(/^data:image\/svg\+xml;base64,/)
+        expect(media.getAttribute("alt")?.trim(), path).toBeTruthy()
+        expect(media.closest("figure")?.querySelector("figcaption")?.textContent?.trim(), path).toBeTruthy()
+      }
+    }
+  }
+})
