@@ -28,7 +28,7 @@ describe("Developer console", () => {
     await console.updateComplete
     const root = console.shadowRoot!
     expect(root.querySelector(".version-sidebar h2")).toBeNull()
-    expect(root.querySelector("[role=tablist], .package-sidebar, .auto-reload, .console-pin")).toBeNull()
+    expect(root.querySelector("[role=tablist], .package-sidebar, .documentation-link, .auto-reload, .console-pin")).toBeNull()
     expect(root.querySelectorAll(".history-version-card")).toHaveLength(1)
     expect(root.querySelector(".history-version-changes")).toBeNull()
     expect(root.querySelector(".version-sidebar")).not.toBeNull()
@@ -116,6 +116,17 @@ describe("Developer console", () => {
     expect(console.tab).toBe("Packages")
     expect(console.shadowRoot!.querySelector('#console-tab-Packages[aria-selected="true"]')).not.toBeNull()
     expect(console.shadowRoot!.querySelector(".developer-console-controls")).toBeNull()
+  })
+
+  it("links to documentation in a new tab beside auto-reload", async () => {
+    const console = await mount()
+    const link = console.shadowRoot!.querySelector<HTMLAnchorElement>("a.documentation-link")!
+    expect(link.textContent).toBe("Documentation ↗")
+    expect(link.getAttribute("href")).toBe("/docs/")
+    expect(link.target).toBe("_blank")
+    expect(link.relList.contains("noopener")).toBe(true)
+    expect(link.relList.contains("noreferrer")).toBe(true)
+    expect(link.nextElementSibling?.classList.contains("auto-reload")).toBe(true)
   })
 
   it("toggles global auto-reload with a crossed-out icon when disabled", async () => {

@@ -65,12 +65,14 @@ export class DeveloperConsole extends EditingControls {
     [role="tablist"] {display: flex; gap: .25rem; padding: .25rem .65rem}
     button {font: inherit; font-size: .8rem; color: inherit; background: transparent; border: 1px solid transparent; border-radius: .25rem; padding: .3rem .6rem; cursor: pointer}
     button:hover:not(:disabled) {background: #e3e3e3}
-    button:focus-visible {outline: 2px solid #5267df; outline-offset: 1px}
+    button:focus-visible, .documentation-link:focus-visible {outline: 2px solid #5267df; outline-offset: 1px}
     button:disabled {opacity: .5; cursor: default}
     [role="tab"][aria-selected="true"] {color: #155e9b; background: #e0ebf8}
     [role="tab"] {position: relative}
     .issue-count {position: absolute; top: -.2rem; right: -.25rem; min-width: .85rem; padding: .05rem .2rem; border-radius: 1rem; color: white; background: #a34521; font-size: .6rem; line-height: .85rem; text-align: center}
-    .auto-reload {display: inline-flex; align-items: center; justify-content: center; margin-left: auto; margin-right: .4rem}
+    .documentation-link {margin-left: auto; padding: .3rem .6rem; border-radius: .25rem; color: #155e9b; font-size: .8rem; text-underline-offset: .2em; white-space: nowrap}
+    .documentation-link:hover {background: #e3e3e3}
+    .auto-reload {display: inline-flex; align-items: center; justify-content: center; margin-right: .4rem}
     .auto-reload > svg {width: 18px; height: 18px}
     .console-pin {display: inline-flex; align-items: center; justify-content: center; margin-right: .4rem}
     .console-pin > svg {width: 15px; height: 15px}
@@ -417,6 +419,7 @@ export class DeveloperConsole extends EditingControls {
             tabindex=${this.tab === tab ? 0 : -1} ?disabled=${this.htmlPending && this.tab !== tab}
             @click=${() => this.selectTab(tab)}>${tab === "Packages" ? "Metadata" : tab === "Tests" ? "Tests & Checks" : tab}${tab === "Tests" && this.packageIssueCount ? html`<span class="issue-count" aria-label=${`${this.packageIssueCount} issues`}>${this.packageIssueCount}</span>` : ""}</button>`)}
         </div>
+        <a class="documentation-link" href="/docs/" target="_blank" rel="noopener noreferrer">Documentation ↗</a>
         <button class="auto-reload" type="button" aria-label="Auto-reload" aria-pressed=${this.autoReload}
           title=${this.autoReload ? "Disable auto-reload" : "Enable auto-reload"}
           @click=${() => this.dispatchEvent(new CustomEvent("developer-console-auto-reload-change", {detail: {enabled: !this.autoReload}, bubbles: true, composed: true}))}
