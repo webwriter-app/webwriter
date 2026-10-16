@@ -461,6 +461,16 @@ export class AppRibbon extends EditingControls {
       cursor: pointer;
     }
     .document-dialog header button:hover { background: #eef4fb; }
+    #link-sharing-dialog { width: min(30rem, calc(100vw - 2rem)); }
+    #link-sharing-dialog p { margin: 0 0 1.25rem; font-size: .875rem; line-height: 1.5; }
+    #link-sharing-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+    #link-sharing-dialog footer button { padding: .45rem .75rem; border: 1px solid #cbd5e1; border-radius: .35rem; color: inherit; background: white; font: inherit; font-size: .8rem; cursor: pointer; }
+    #link-sharing-dialog footer button:hover { background: #eef4fb; }
+    #link-sharing-dialog footer .primary { border-color: #155e9b; color: white; background: #155e9b; }
+    #link-sharing-dialog footer .primary:hover { background: #124f83; }
+    #link-sharing-dialog button:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
+    #link-sharing-dialog .dialog-close { display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; }
+    #link-sharing-dialog .dialog-close svg { width: 1.1rem; height: 1.1rem; }
     #settings-dialog {
       height: min(45rem, calc(100dvh - 2rem));
       padding: 0;
@@ -1074,6 +1084,7 @@ export class AppRibbon extends EditingControls {
   menuOpen = false
 
   private documentDialog: "settings" | null = null
+  private resolveLinkSharingConfirmation?: (confirmed: boolean) => void
   private settingsTab: SettingsTab = "Editor"
 
   logoUrl = ""
@@ -1253,7 +1264,7 @@ export class AppRibbon extends EditingControls {
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
     if(event.key !== "Escape") return
-    if(this.renderRoot.querySelector<HTMLDialogElement>("#settings-dialog")?.open) return
+    if(this.renderRoot.querySelector(".document-dialog[open]")) return
     if(this.aiChatOpen) {
       event.stopImmediatePropagation()
       this.closeAIChat(true)
@@ -1286,6 +1297,7 @@ export class AppRibbon extends EditingControls {
   }
 
   disconnectedCallback() {
+    this.finishLinkSharingConfirmation(false)
     this.readerSharingCopyPending = false
     if(this.aiToolboxTarget) render(nothing, this.aiToolboxTarget)
     this.aiProviderStore.removeEventListener("change", this.handleAIProviderChange)
@@ -2540,6 +2552,26 @@ export class AppRibbon extends EditingControls {
     }
   }
 
+  async confirmLinkSharing(): Promise<boolean> {
+    if(!this.isConnected || this.resolveLinkSharingConfirmation) return false
+    const result = new Promise<boolean>(resolve => { this.resolveLinkSharingConfirmation = resolve })
+    this.dismissMenus()
+    this.closeAIChat()
+    await this.updateComplete
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#link-sharing-dialog")
+    if(!this.isConnected || !dialog) this.finishLinkSharingConfirmation(false)
+    else if(this.resolveLinkSharingConfirmation && !dialog.open) dialog.showModal()
+    return result
+  }
+
+  private finishLinkSharingConfirmation(confirmed: boolean) {
+    const resolve = this.resolveLinkSharingConfirmation
+    this.resolveLinkSharingConfirmation = undefined
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#link-sharing-dialog")
+    if(dialog?.open) dialog.close()
+    resolve?.(confirmed)
+  }
+
   private collapsedEditingMenuGroups(): RibbonMenuGroup[] {
     const mark = (name: Parameters<typeof this.markOption>[0]): RibbonMenuButton => {
       const option = this.markOption(name)
@@ -2642,6 +2674,18 @@ export class AppRibbon extends EditingControls {
 
   private renderDocumentDialogs() {
     return html`
+      <dialog id="link-sharing-dialog" class="document-dialog" aria-labelledby="link-sharing-dialog-title" aria-describedby="link-sharing-dialog-description"
+        @cancel=${(event: Event) => { event.preventDefault(); this.finishLinkSharingConfirmation(false) }}
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishLinkSharingConfirmation(false) }}>
+        <header><h2 id="link-sharing-dialog-title">Enable link sharing?</h2>
+          <button class="dialog-close" type="button" aria-label="Close link sharing confirmation" @click=${() => this.finishLinkSharingConfirmation(false)}>${ribbonIcon("Reject")}</button>
+        </header>
+        <p id="link-sharing-dialog-description">Link sharing requires a document saved on the server. Move this document to the server and enable sharing?</p>
+        <footer>
+          <button type="button" autofocus @click=${() => this.finishLinkSharingConfirmation(false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishLinkSharingConfirmation(true)}>Move and enable sharing</button>
+        </footer>
+      </dialog>
       <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"
         @cancel=${(event: Event) => { event.preventDefault(); (event.currentTarget as HTMLDialogElement).close() }}
         @close=${() => { this.documentDialog = null }}>

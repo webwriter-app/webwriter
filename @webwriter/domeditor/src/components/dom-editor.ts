@@ -3655,12 +3655,13 @@ export class DomEditor extends LitElement {
   private handleLinkSharingChange = async (event: Event) => {
     if(this.linkSharingBusy || this.sharedDocumentToken || this.fileOperationActive) return
     const enabled = (event as CustomEvent<{enabled: boolean}>).detail.enabled
-    this.sharingRequestRevision++
+    const revision = ++this.sharingRequestRevision
     this.linkSharingBusy = true
     this.collaborationError = ""
     try {
       if(enabled && (!this.backendDocumentId || this.storageLocation !== "development-server")) {
-        if(!window.confirm("Link sharing requires a document saved on the server. Move this document to the server and enable sharing?")) return
+        const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+        if(!await ribbon?.confirmLinkSharing() || !this.isConnected || revision !== this.sharingRequestRevision) return
         if(!this.backendClient) throw new Error("Connect to a server in Settings before enabling link sharing.")
         await this.runFileOperation(async () => { await this.saveBackendDocument(true, this.fileFormat) })
         if(!this.backendDocumentId || this.storageLocation !== "development-server") throw new Error("Save the document on the server before enabling link sharing.")

@@ -8756,8 +8756,15 @@ describe("document collaboration menu", () => {
     const save = vi.spyOn(host, "saveBackendDocument").mockResolvedValue(true)
     const confirm = vi.fn().mockReturnValue(false)
     vi.stubGlobal("confirm", confirm)
-    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Move this document to the server"))
+    const request = host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    expect(dialog.textContent).toContain("Move this document to the server")
+    expect(confirm).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+    await request
     expect(save).not.toHaveBeenCalled()
     expect(host.linkSharingBusy).toBe(false)
     expect(host.linkSharingEnabled).toBe(false)
@@ -8769,7 +8776,7 @@ describe("document collaboration menu", () => {
     const setDocumentSharing = vi.fn().mockResolvedValue({enabled: true, token: "editing-token"})
     host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
     host.fileHandle = {name: "Local.html"}
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     vi.spyOn(host, "saveBackendDocument").mockImplementation(async () => {
       expect(setDocumentSharing).not.toHaveBeenCalled()
       host.backendDocumentId = "moved"
@@ -8777,7 +8784,12 @@ describe("document collaboration menu", () => {
       return true
     })
     const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
-    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    const request = host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    expect(setDocumentSharing).not.toHaveBeenCalled()
+    dialog.querySelector<HTMLButtonElement>(".primary")!.click()
+    await request
     expect(reload).toHaveBeenCalledOnce()
     expect(host.fileHandle).toBeNull()
     expect(host.collaborationRoom).toBe("document-moved")
@@ -8790,7 +8802,7 @@ describe("document collaboration menu", () => {
     const host = editor as any
     const setDocumentSharing = vi.fn()
     host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
-    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    vi.spyOn(editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!, "confirmLinkSharing").mockResolvedValue(true)
     vi.spyOn(host, "saveBackendDocument").mockResolvedValue(undefined)
     await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
     expect(setDocumentSharing).not.toHaveBeenCalled()
@@ -8804,6 +8816,20 @@ describe("document collaboration menu", () => {
     })
     await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
     expect(host.linkSharingEnabled).toBe(false)
+  })
+
+  it("does not move a replacement document after link sharing was confirmed", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const save = vi.spyOn(host, "saveBackendDocument").mockResolvedValue(true)
+    const request = host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    const dialog = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    host.clearDocumentCollaboration()
+    dialog.querySelector<HTMLButtonElement>(".primary")!.click()
+    await request
+    expect(save).not.toHaveBeenCalled()
+    expect(host.linkSharingBusy).toBe(false)
   })
 })
 

@@ -10,6 +10,32 @@ afterEach(() => {
 })
 
 describe("dialog ribbon controls", () => {
+  it.each(["confirm", "cancel", "escape", "close", "disconnect"])("settles the link sharing confirmation on %s", async action => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const result = ribbon.confirmLinkSharing()
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    expect(dialog.classList.contains("document-dialog")).toBe(true)
+    expect(dialog.querySelector(`#${dialog.getAttribute("aria-labelledby")}`)?.textContent).toBe("Enable link sharing?")
+    expect(dialog.querySelector(`#${dialog.getAttribute("aria-describedby")}`)?.textContent).toContain("saved on the server")
+    await expect(ribbon.confirmLinkSharing()).resolves.toBe(false)
+    if(action === "confirm") dialog.querySelector<HTMLButtonElement>(".primary")!.click()
+    else if(action === "cancel") dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+    else if(action === "escape") dialog.dispatchEvent(new Event("cancel", {cancelable: true}))
+    else if(action === "close") dialog.querySelector<HTMLButtonElement>(".dialog-close")!.click()
+    else ribbon.remove()
+    await expect(result).resolves.toBe(action === "confirm")
+    expect(dialog.open).toBe(false)
+    if(action !== "disconnect") {
+      const reopened = ribbon.confirmLinkSharing()
+      await vi.waitFor(() => expect(dialog.open).toBe(true))
+      dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+      await expect(reopened).resolves.toBe(false)
+    }
+  })
+
   it("opens About WebWriter from the last File menu item without forwarding an editor action", async () => {
     const originalURL = location.href
     history.replaceState(history.state, "", "/editor/?open=local%3Aexisting#selection")
