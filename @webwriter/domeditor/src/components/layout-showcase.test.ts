@@ -57,6 +57,38 @@ it("keeps the miniature for reduced motion or a failed playback attempt", async 
   expect(videos()[1].classList.contains("playing")).toBe(false)
 })
 
+it("plays from a hero tap without touch hover events starting or cancelling playback", async () => {
+  const buttons = [...view.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.visual")]
+  expect(buttons[0].getAttribute("aria-label")).toBe("Play Document preview")
+  cards()[0].dispatchEvent(new PointerEvent("pointerenter", {pointerType: "touch"}))
+  expect(play).not.toHaveBeenCalled()
+
+  buttons[0].dispatchEvent(new PointerEvent("click", {pointerType: "touch", bubbles: true}))
+  await Promise.resolve()
+  cards()[0].dispatchEvent(new PointerEvent("pointerleave", {pointerType: "touch"}))
+  expect(videos()[0].classList.contains("playing")).toBe(true)
+  expect(pause).not.toHaveBeenCalled()
+
+  videos()[0].currentTime = 5
+  buttons[0].click()
+  await Promise.resolve()
+  expect(videos()[0].currentTime).toBe(0)
+  expect(play).toHaveBeenCalledTimes(2)
+
+  buttons[1].click()
+  await Promise.resolve()
+  expect(videos()[0].classList.contains("playing")).toBe(false)
+  expect(videos()[1].classList.contains("playing")).toBe(true)
+})
+
+it("allows an explicit play request with reduced motion enabled", async () => {
+  vi.mocked(window.matchMedia).mockReturnValue({matches: true} as MediaQueryList)
+  view.shadowRoot!.querySelector<HTMLButtonElement>("button.visual")!.click()
+  await Promise.resolve()
+  expect(play).toHaveBeenCalledTimes(1)
+  expect(videos()[0].classList.contains("playing")).toBe(true)
+})
+
 it("does not reveal or keep playing a clip whose hover ended while loading", async () => {
   let resolve!: () => void
   play.mockReturnValueOnce(new Promise<void>(done => {resolve = done}))

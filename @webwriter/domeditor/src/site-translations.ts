@@ -1067,9 +1067,9 @@ Object.assign(siteTranslations.it, {
   "Try interactive WebWriter documents across the arts, languages, sciences, and mathematics. Open a copy and make it your own.": "Prova documenti WebWriter interattivi su arte, lingue, scienze e matematica. Apri una copia e personalizzala."
 })
 
-Object.assign(siteTranslations.de, {"Previous example": "Vorheriges Beispiel", "Next example": "Nächstes Beispiel"})
-Object.assign(siteTranslations.fr, {"Previous example": "Exemple précédent", "Next example": "Exemple suivant"})
-Object.assign(siteTranslations.nl, {"Previous example": "Vorig voorbeeld", "Next example": "Volgend voorbeeld"})
-Object.assign(siteTranslations.es, {"Previous example": "Ejemplo anterior", "Next example": "Ejemplo siguiente"})
-Object.assign(siteTranslations.pt, {"Previous example": "Exemplo anterior", "Next example": "Exemplo seguinte"})
-Object.assign(siteTranslations.it, {"Previous example": "Esempio precedente", "Next example": "Esempio successivo"})
+Object.assign(siteTranslations.de, {"Previous example": "Vorheriges Beispiel", "Next example": "Nächstes Beispiel", "Play {layout} preview": "{layout}-Vorschau abspielen"})
+Object.assign(siteTranslations.fr, {"Previous example": "Exemple précédent", "Next example": "Exemple suivant", "Play {layout} preview": "Lire l’aperçu {layout}"})
+Object.assign(siteTranslations.nl, {"Previous example": "Vorig voorbeeld", "Next example": "Volgend voorbeeld", "Play {layout} preview": "Voorbeeld van {layout} afspelen"})
+Object.assign(siteTranslations.es, {"Previous example": "Ejemplo anterior", "Next example": "Ejemplo siguiente", "Play {layout} preview": "Reproducir vista previa de {layout}"})
+Object.assign(siteTranslations.pt, {"Previous example": "Exemplo anterior", "Next example": "Exemplo seguinte", "Play {layout} preview": "Reproduzir pré-visualização de {layout}"})
+Object.assign(siteTranslations.it, {"Previous example": "Esempio precedente", "Next example": "Esempio successivo", "Play {layout} preview": "Riproduci l’anteprima di {layout}"})

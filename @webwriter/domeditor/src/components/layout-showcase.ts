@@ -15,13 +15,14 @@ const layouts = {
 
 const localizedVideos = import.meta.glob("../assets/layouts/*/*.mp4", {eager: true, query: "?url", import: "default"}) as Record<string, string>
 
-/** Editor miniatures with short recordings of real document edits on hover/focus. */
+/** Editor miniatures with short recordings on hover, focus, or an explicit tap. */
 export class LayoutShowcase extends LitElement {
   private languageController = new SiteLanguageController(this, () => this.stopPreview())
   private activeVideo: HTMLVideoElement | null = null
   private playbackRequest = 0
 
-  private stopPreview = () => {
+  private stopPreview = (event?: Event) => {
+    if((event as PointerEvent | undefined)?.pointerType === "touch") return
     this.playbackRequest++
     if(!this.activeVideo) return
     this.activeVideo.pause()
@@ -31,8 +32,9 @@ export class LayoutShowcase extends LitElement {
   }
 
   private async playPreview(event: Event) {
+    if(event.type === "pointerenter" && (event as PointerEvent).pointerType === "touch") return
     this.stopPreview()
-    if(window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    if(event.type !== "click" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
     const video = (event.currentTarget as HTMLElement).querySelector("video")!
     const request = this.playbackRequest
     this.activeVideo = video
@@ -59,8 +61,8 @@ export class LayoutShowcase extends LitElement {
     .cards {display: grid; grid-template-columns: repeat(2, minmax(0, 31rem)); justify-content: center; gap: 2.5rem 3rem}
     article {min-inline-size: 0; overflow: hidden; border: 1px solid #dfe5ed; border-radius: .6rem; background: white}
     .layout-preset-name {display: none}
-    article:focus-visible {outline: 2px solid #1b639c; outline-offset: 3px}
-    .visual {position: relative; display: grid; place-items: center; height: clamp(12rem, 26vw, 13rem); container-type: inline-size; overflow: hidden; padding: .75rem; border-bottom: 1px solid #dfe5ed; background: #f7f9fc}
+    .visual:focus-visible {outline: 2px solid #1b639c; outline-offset: -3px}
+    .visual {position: relative; display: grid; place-items: center; width: 100%; height: clamp(12rem, 26vw, 13rem); container-type: inline-size; overflow: hidden; padding: .75rem; border: 0; border-bottom: 1px solid #dfe5ed; background: #f7f9fc; font: inherit; color: inherit; text-align: start; cursor: pointer}
     video {position: absolute; left: 50%; top: 50%; width: 40rem; height: 22.5rem; max-width: none; transform: translate(-50%, -50%); object-fit: cover; background: white; opacity: 0; pointer-events: none}
     /* Keep the double-density video at a fixed size and crop its edges. */
     video.playing {opacity: 1}
@@ -95,11 +97,11 @@ export class LayoutShowcase extends LitElement {
     @media (max-width: 50rem) {.cards {grid-template-columns: minmax(0, 31rem)} .details {padding: 1.25rem}}
   `]
   render() {
-    return html`<div class="cards">${documentLayoutModes.map(mode => html`<article tabindex="0" aria-labelledby=${`${mode}-title`}
+    return html`<div class="cards">${documentLayoutModes.map(mode => html`<article aria-labelledby=${`${mode}-title`}
       @pointerenter=${this.playPreview} @pointerleave=${this.stopPreview} @focusin=${this.playPreview} @focusout=${this.stopPreview}>
-      <div class="visual">${renderDocumentLayoutPreview(mode)}<video src=${language() === "en" ? layouts[mode].video : localizedVideos[`../assets/layouts/${language()}/${mode}.mp4`]} muted playsinline preload="none" aria-hidden="true"></video>
+      <button class="visual" type="button" aria-label=${t("Play {layout} preview", {layout: t(documentLayoutLabel(mode))})} @click=${this.playPreview}>${renderDocumentLayoutPreview(mode)}<video src=${language() === "en" ? layouts[mode].video : localizedVideos[`../assets/layouts/${language()}/${mode}.mp4`]} muted playsinline preload="none" aria-hidden="true"></video>
         <span class="play-icon" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M4 2.5a.5.5 0 0 1 .76-.43l9 5.5a.5.5 0 0 1 0 .86l-9 5.5A.5.5 0 0 1 4 13.5Z"/></svg></span>
-      </div>
+      </button>
       <div class="details"><h3 id=${`${mode}-title`}>${t(documentLayoutLabel(mode))}</h3><p>${t(layouts[mode].description)}</p>
       <div class="related"><span>${t("Like")}</span><ul aria-label=${t("Related tools")}>${layouts[mode].tools.map(tool => html`<li>${tool}</li>`)}</ul></div></div>
     </article>`)}</div>`
