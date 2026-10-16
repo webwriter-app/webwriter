@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Publish a widget package to a registry</title>
+  <desc id="desc">A package containing a custom element is uploaded to a registry holding published packages.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <path d="m38 96 48-24 48 24v64l-48 24-48-24zM38 96l48 24 48-24M86 120v64"/>
+    <rect x="222" y="48" width="104" height="128" rx="4"/>
+    <path d="M222 88h104M222 132h104"/>
+    <rect x="238" y="62" width="24" height="12" rx="2"/>
+    <rect x="238" y="146" width="24" height="14" rx="2"/>
+  </g>
+  <path d="m86 72 48 24-48 24-48-24z" fill="#82d0f5" fill-opacity=".35"/>
+  <path d="m62 122-10 6 10 12M108 128l10 6-10 12" fill="none" stroke="#065986" stroke-width="3"/>
+  <rect x="238" y="102" width="24" height="16" rx="2" fill="#29a3dd"/>
+  <path d="M154 128h30V66h20m-10-10 10 10-10 10" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

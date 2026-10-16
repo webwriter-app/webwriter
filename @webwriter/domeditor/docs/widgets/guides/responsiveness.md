@@ -2,6 +2,8 @@
 
 A widget can receive less space than the browser window. Fit the width its parent allocates, and let its content determine its height.
 
+![Widget columns reflow into a stack at narrow widths](../../images/widgets/responsiveness.svg)
+
 For a block widget, start with these host styles:
 
 ```css

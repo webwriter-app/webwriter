@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Authored text and widgets can be nested</title>
+  <desc id="desc">An outer widget contains editable text with a caret and a nested interactive widget.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="70" y="34" width="220" height="156" rx="4"/>
+    <path d="M94 62h108M94 82h66"/>
+    <rect x="94" y="106" width="172" height="62" rx="4"/>
+    <path d="M128 126h70M128 150h46"/>
+    <circle cx="110" cy="150" r="5"/>
+  </g>
+  <path d="M210 52v20" stroke="#29a3dd" stroke-width="3"/>
+  <path d="M102 114h156v24H102z" fill="#82d0f5" fill-opacity=".35"/>
+  <circle cx="110" cy="126" r="5" fill="#29a3dd"/>
+</svg>

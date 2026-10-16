@@ -2,6 +2,8 @@
 
 WebWriter offers several ways to organize your widget's state.
 
+![A widget linked to properties, attributes, content, and data](../../images/widgets/state.svg)
+
 Use properties for temporary state. Use attributes for settings that authors should save, share, and undo.
 
 <!-- library:vanilla -->

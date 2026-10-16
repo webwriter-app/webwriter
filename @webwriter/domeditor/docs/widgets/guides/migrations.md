@@ -2,6 +2,8 @@
 
 Export `./migrate.js` to update older widget HTML when it is pasted, dropped, or inserted from a snippet. The migration runs in a sandbox, outside the live document.
 
+![The old solution attribute becomes answer while child content is preserved](../../images/widgets/migrations.svg)
+
 ```js
 document.addEventListener("migrate", event => {
   const widget = event.target

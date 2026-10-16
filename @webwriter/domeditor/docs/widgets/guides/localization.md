@@ -2,6 +2,8 @@
 
 Widgets should follow the document's language.
 
+![Document language maps to translated widget text](../../images/widgets/localization.svg)
+
 <!-- library:vanilla -->
 Read the closest `lang` attribute, including one set on the widget itself:
 

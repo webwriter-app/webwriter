@@ -1,5 +1,9 @@
 # Share participant data
 
+Widgets can save answers per participant, for everyone, or for a group.
+
+![Two participants linked to shared answers](../../images/widgets/sharing.svg)
+
 Set `sharedData: true` in the widget's [editing configuration](../reference/editing-configuration.md). Add one direct data block to the widget's authored HTML, for example in a snippet:
 
 ```html

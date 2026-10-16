@@ -2,6 +2,8 @@
 
 A widget can use native web APIs or a library that produces custom elements.
 
+![Code and image assets connect to a widget](../../images/widgets/libraries.svg)
+
 <!-- library:vanilla -->
 The [tutorial](../tutorial/index.md) uses `HTMLElement`; Lit is another option in the library selector.
 <!-- /library -->

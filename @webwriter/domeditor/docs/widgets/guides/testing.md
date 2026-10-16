@@ -2,6 +2,8 @@
 
 Open the **Developer console** to inspect package warnings, the selected element, and document HTML. Refresh a package manually or enable **Auto-reload** while changing its built files.
 
+![A widget under a magnifying glass with a passing check](../../images/widgets/testing.svg)
+
 For each widget, check:
 
 - Settings and authored content survive saving and reopening.

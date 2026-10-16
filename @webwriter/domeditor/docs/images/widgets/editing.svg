@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">One widget supports authoring and use</title>
+  <desc id="desc">A pencil identifies the author view with editable text and a setting. A play symbol identifies the user view with answer controls.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="34" y="66" width="124" height="112" rx="4"/>
+    <rect x="202" y="66" width="124" height="112" rx="4"/>
+    <path d="M50 90h58M50 110h40M218 90h58M244 118h56M244 148h40"/>
+    <path d="M50 146h92"/>
+    <circle cx="228" cy="148" r="5"/>
+  </g>
+  <path d="m82 44 20-20 8 8-20 20-10 2z" fill="#82d0f5" fill-opacity=".35" stroke="#065986" stroke-width="3" stroke-linejoin="round"/>
+  <path d="m257 24 19 14-19 14z" fill="#29a3dd"/>
+  <path d="M116 80v20" stroke="#29a3dd" stroke-width="3"/>
+  <circle cx="116" cy="146" r="7" fill="#29a3dd"/>
+  <path d="M214 106h100v24H214z" fill="#82d0f5" fill-opacity=".35"/>
+  <circle cx="228" cy="118" r="5" fill="#29a3dd"/>
+</svg>

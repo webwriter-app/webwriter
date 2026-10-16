@@ -72,7 +72,7 @@ table { display: block; inline-size: 100%; max-inline-size: 100%; overflow-x: au
 th, td { padding: .75rem; border: 1px solid var(--border); text-align: start; vertical-align: top; overflow-wrap: normal; }
 th { background: #f7f9fc; color: #334155; font-weight: 650; white-space: nowrap; }
 th:nth-child(n+3), td:nth-child(n+3) { min-inline-size: 12rem; }
-article img { max-inline-size: 100%; block-size: auto; }
+article img { display: block; max-inline-size: 100%; block-size: auto; margin-inline: auto; }
 article iframe { display: block; inline-size: 100%; border: 1px solid var(--border); border-radius: .5rem; background: #f8fafc; }
 .page-navigation { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-block-start: 3rem; padding-block-start: 1.5rem; border-top: 1px solid var(--border); }
 .page-navigation a { text-decoration: none; overflow-wrap: anywhere; }

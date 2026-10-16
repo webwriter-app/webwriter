@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">HTML becomes an interactive widget</title>
+  <desc id="desc">An HTML custom element, represented by code brackets, becomes a widget with two answer controls.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="4" stroke-linecap="square" stroke-linejoin="miter">
+    <path d="m73 92-20 20 20 20M119 92l20 20-20 20M104 86l-16 52"/>
+  </g>
+  <path d="M159 112h34m-10-10 10 10-10 10" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="216" y="62" width="104" height="100" rx="4" fill="none" stroke="#0f2f48" stroke-width="3"/>
+  <path d="M232 82h42" stroke="#0f2f48" stroke-width="4"/>
+  <path d="M228 96h80v24h-80z" fill="#82d0f5" fill-opacity=".35"/>
+  <circle cx="240" cy="108" r="5" fill="#29a3dd"/>
+  <path d="M254 108h34" stroke="#0f2f48" stroke-width="3"/>
+  <circle cx="240" cy="138" r="5" fill="none" stroke="#0f2f48" stroke-width="2"/>
+  <path d="M254 138h24" stroke="#0f2f48" stroke-width="3"/>
+</svg>

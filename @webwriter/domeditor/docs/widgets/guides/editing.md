@@ -2,6 +2,8 @@
 
 Authors configure widgets; users interact with the finished document.
 
+![Pencil editing interface beside learner answer interface](../../images/widgets/editing.svg)
+
 <!-- library:vanilla -->
 Use `this.isContentEditable` to distinguish the two views.
 

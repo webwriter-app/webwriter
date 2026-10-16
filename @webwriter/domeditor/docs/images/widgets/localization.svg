@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">A widget inherits the document language</title>
+  <desc id="desc">Inside a document marked lang equals de, a widget displays the German button label Prüfen.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="68" y="34" width="224" height="156" rx="4"/>
+    <path d="M90 82h100"/>
+    <rect x="90" y="102" width="180" height="66" rx="4"/>
+  </g>
+  <text x="90" y="64" fill="#065986" font-family="ui-monospace, monospace" font-size="16">lang="de"</text>
+  <rect x="112" y="118" width="136" height="34" rx="4" fill="#82d0f5" fill-opacity=".35"/>
+  <text x="180" y="141" fill="#0f2f48" font-family="system-ui, sans-serif" font-size="17" text-anchor="middle">Prüfen</text>
+</svg>

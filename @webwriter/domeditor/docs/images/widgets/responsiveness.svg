@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">The same widget reflows to fit its container</title>
+  <desc id="desc">Controls and content sit side by side in a wide widget and stack vertically in a narrow widget.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="24" y="64" width="176" height="96" rx="4"/>
+    <rect x="248" y="36" width="88" height="152" rx="4"/>
+    <path d="M40 84h50M264 56h40"/>
+    <rect x="96" y="100" width="88" height="44" rx="2"/>
+    <rect x="264" y="108" width="56" height="64" rx="2"/>
+    <path d="M108 114h44M108 128h30M274 124h34M274 138h24"/>
+  </g>
+  <g fill="#82d0f5" fill-opacity=".35">
+    <rect x="40" y="100" width="44" height="44" rx="2"/>
+    <rect x="264" y="72" width="56" height="24" rx="2"/>
+  </g>
+  <path d="M50 114h24M50 128h16M274 84h32" stroke="#065986" stroke-width="3"/>
+</svg>

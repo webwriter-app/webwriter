@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Interactive controls have a paper alternative</title>
+  <desc id="desc">A widget with two answer controls becomes a printed question with a blank line for a written answer.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="34" y="68" width="108" height="88" rx="4"/>
+    <path d="M50 88h44M72 112h48M72 138h32"/>
+    <circle cx="52" cy="138" r="5"/>
+    <rect x="230" y="38" width="96" height="148" rx="4"/>
+    <path d="M246 62h44M246 82h64M246 98h48M246 152h64"/>
+  </g>
+  <path d="M44 100h88v24H44z" fill="#82d0f5" fill-opacity=".35"/>
+  <circle cx="52" cy="112" r="5" fill="#29a3dd"/>
+  <path d="M164 112h42m-10-10 10 10-10 10" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

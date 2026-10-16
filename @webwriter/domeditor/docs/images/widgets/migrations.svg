@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Update an attribute while preserving content</title>
+  <desc id="desc">An older widget's solution attribute becomes answer. The same authored child text stays inside both widgets.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="28" y="52" width="128" height="120" rx="4"/>
+    <rect x="204" y="52" width="128" height="120" rx="4"/>
+    <path d="M44 124h80M44 146h56M220 124h80M220 146h56"/>
+  </g>
+  <path d="M36 68h112v28H36z" fill="#eae5e2" fill-opacity=".65"/>
+  <path d="M212 68h112v28H212z" fill="#82d0f5" fill-opacity=".35"/>
+  <g fill="#0f2f48" font-family="ui-monospace, monospace" font-size="16" text-anchor="middle">
+    <text x="92" y="87">solution</text>
+    <text x="268" y="87">answer</text>
+  </g>
+  <path d="M170 112h20m-8-8 8 8-8 8" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

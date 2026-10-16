@@ -2,6 +2,8 @@
 
 Use native buttons, inputs, and labels in the shadow DOM. They already support keyboard interaction.
 
+![Tab advances focus between widget controls](../../images/widgets/focus.svg)
+
 If focusing the widget should focus a control, implement `focus()`:
 
 ```js

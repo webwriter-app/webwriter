@@ -2,6 +2,8 @@
 
 Before publishing, load the widget from a local folder and complete the [widget checks](testing.md).
 
+![A widget package uploaded to a registry shelf](../../images/widgets/publishing.svg)
+
 1. Set a scoped package name, a SemVer version, and the `webwriter-widget` keyword.
 2. Export `./widgets/<tag-name>.js` or `./widgets/<tag-name>.*`. The script must define the same tag.
 3. Build if your source needs compilation: `npx @webwriter/build`.

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Participants share one set of answers</title>
+  <desc id="desc">Two participants connect to the same widget data, represented by a single selected answer.</desc>
+  <path d="M76 100v50h52M284 100v50h-52" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linejoin="round"/>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <circle cx="76" cy="58" r="12"/>
+    <path d="M54 96v-6a22 22 0 0 1 44 0v6"/>
+    <circle cx="284" cy="58" r="12"/>
+    <path d="M262 96v-6a22 22 0 0 1 44 0v6"/>
+    <rect x="128" y="106" width="104" height="88" rx="4"/>
+    <path d="M144 126h42M166 150h46M166 176h30"/>
+    <circle cx="146" cy="176" r="5"/>
+  </g>
+  <path d="M140 138h80v24h-80z" fill="#82d0f5" fill-opacity=".35"/>
+  <circle cx="146" cy="150" r="5" fill="#29a3dd"/>
+</svg>

@@ -2,6 +2,8 @@
 
 Sometimes, authors want a printed version of a web document. Keep the question visible and provide a paper alternative to interactive controls.
 
+![Interactive controls become a question and a written-answer line on paper](../../images/widgets/printing.svg)
+
 ```css
 /* In the widget's shadow styles */
 .paper-answer { display: none; }

@@ -1,5 +1,9 @@
 # Nest widgets and editable content
 
+Widgets can contain authored text and other widgets.
+
+![A nested widget and editable text inside an outer widget](../../images/widgets/content.svg)
+
 Keep authored content in the widget's light DOM and display it with a slot:
 
 ```html

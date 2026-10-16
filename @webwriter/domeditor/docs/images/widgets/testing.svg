@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Inspect the widget and verify its behavior</title>
+  <desc id="desc">A magnifying glass examines a selected widget control. A check mark indicates a passing test.</desc>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="64" y="42" width="144" height="138" rx="4"/>
+    <path d="M84 66h64M84 90h96M118 120h62M118 152h40"/>
+    <circle cx="96" cy="152" r="5"/>
+  </g>
+  <path d="M80 108h116v24H80z" fill="#82d0f5" fill-opacity=".35"/>
+  <circle cx="96" cy="120" r="5" fill="#29a3dd"/>
+  <circle cx="226" cy="118" r="42" fill="#fff" stroke="#0f2f48" stroke-width="3"/>
+  <path d="m256 148 40 40" stroke="#0f2f48" stroke-width="4" stroke-linecap="round"/>
+  <path d="m208 118 12 12 25-26" fill="none" stroke="#29a3dd" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
