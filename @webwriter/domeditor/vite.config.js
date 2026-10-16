@@ -92,6 +92,7 @@ export default defineConfig({
             index: fileURLToPath(new URL("./index.html", import.meta.url)),
             gallery: fileURLToPath(new URL("./gallery/index.html", import.meta.url)),
             examples: fileURLToPath(new URL("./examples/index.html", import.meta.url)),
+            "legal-notice": fileURLToPath(new URL("./legal_notice/index.html", import.meta.url)),
             "site-entry": fileURLToPath(new URL("./src/site-entry.ts", import.meta.url)),
             "gallery-preview-entry": fileURLToPath(new URL("./src/gallery-preview-entry.ts", import.meta.url)),
             editor: fileURLToPath(new URL("./editor/index.html", import.meta.url)),

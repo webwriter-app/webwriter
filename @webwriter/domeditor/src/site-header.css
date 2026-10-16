@@ -14,4 +14,17 @@
 @media (max-width: 42rem) { .site-header { position: relative; flex-wrap: wrap; } .site-header nav { inline-size: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 1.5rem; font-size: .8125rem; } .site-header .button {position: absolute; top: 1.25rem; right: 1.5rem} }
 @media (max-width: 24rem) { .site-header { padding-inline: 1rem; } .site-header nav { gap: .75rem; font-size: .75rem; } .site-header .button { right: 1rem; padding: .5rem; gap: .5rem; } .brand { font-size: .95rem; } .brand img { inline-size: 1.5rem; block-size: 1.5rem; } }
 
-.site-footer {padding-block: 1.5rem; border-top: 1px solid #dfe5ed; font: .8rem/1.5 system-ui, sans-serif}
+.site-footer {box-sizing: border-box; display: flex; align-items: center; flex-wrap: wrap; gap: 1.25rem; max-inline-size: 76rem; margin-inline: auto; padding: 1.5rem; border-top: 1px solid #dfe5ed; font: .8rem/1.5 system-ui, sans-serif; color: #536174; container-type: inline-size}
+.site-footer .brand {font-size: .9rem}
+.site-footer .footer-controls {display: contents}
+.site-footer .footer-legal {flex: 1 1 12rem; display: grid; justify-items: start; gap: .15rem; font-size: .7rem}
+.site-footer .copyright {font: inherit; white-space: nowrap}
+.site-footer nav {display: flex; flex-wrap: wrap; gap: .75rem clamp(.5rem, 1.75cqw, 1.25rem); font-size: clamp(.7rem, 1.1cqw, .8rem); order: 1}
+.site-footer site-language-switcher {order: 2}
+.site-footer :is(nav, .footer-legal) a {color: #155e9b; text-underline-offset: .2em}
+.site-footer a:focus-visible {outline: 2px solid #155e9b; outline-offset: 3px}
+@container (max-width: 50rem) {
+  .site-footer .footer-controls {display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; flex: 1 1 max-content}
+  .site-footer nav {flex-basis: 100%}
+}
+@media (max-width: 24rem) {.site-footer {padding-inline: 1rem}}

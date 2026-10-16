@@ -2,6 +2,8 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import type {ReactiveControllerHost} from "lit"
 import {language, preferredLanguage, setLanguage, siteLanguageKey, SiteLanguageController, t, translateSiteTree} from "./site-language"
+import {siteTranslations} from "./site-translations"
+import legalNotice from "../legal_notice/index.html?raw"
 
 beforeEach(() => {
   localStorage.clear()
@@ -35,6 +37,25 @@ describe("preferredLanguage", () => {
 })
 
 describe("site translation", () => {
+  it("translates all legal notice copy while preserving contact details", () => {
+    const original = new DOMParser().parseFromString(legalNotice, "text/html")
+    const walker = document.createTreeWalker(original, NodeFilter.SHOW_TEXT)
+    const copy = ["Footer navigation", "All rights reserved."]
+    while(walker.nextNode()) {
+      const node = walker.currentNode as Text
+      if(node.data.trim() && !node.parentElement?.closest("script, style, [translate=no]")) copy.push(node.data.trim())
+    }
+    for(const locale of ["de", "fr", "nl", "es", "pt", "it"]) {
+      setLanguage(locale, false)
+      for(const source of copy) expect(siteTranslations[locale]?.[source], `${locale}: ${source}`).toBeTruthy()
+      const translated = original.cloneNode(true) as Document
+      translateSiteTree(translated)
+      expect(translated.querySelector("h1")?.textContent).toBe(t("Legal notice"))
+      expect(translated.querySelector("address")?.textContent).toContain("Ahornstr. 55, 52074 Aachen")
+      expect(translated.querySelector('[href="mailto:contact@webwriter.app"]')?.textContent).toBe("contact@webwriter.app")
+    }
+  })
+
   it("remembers an explicit choice, even when it is already the current language", () => {
     setLanguage("en")
     expect(localStorage.getItem(siteLanguageKey)).toBe("en")

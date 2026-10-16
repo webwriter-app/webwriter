@@ -2,7 +2,7 @@ import {readFile, readdir} from "node:fs/promises"
 import {isAbsolute, relative, resolve} from "node:path"
 import {Marked, Renderer} from "marked"
 import {createHighlighter} from "shiki"
-import {renderSiteHeader} from "./site-header.mjs"
+import {renderSiteHeader, renderSiteFooter} from "./site-header.mjs"
 
 const home = "/docs/widgets/index.md"
 const libraries = [
@@ -176,7 +176,7 @@ function renderPage({source, path, sections, library, highlighter, missing = fal
         ${breadcrumb.length ? `<nav class="breadcrumb" aria-label="Breadcrumb">${breadcrumb.map(link).join('<span aria-hidden="true">/</span>')}</nav>` : ""}
         <main id="content" tabindex="-1"><article>${renderMarkdown(source, {path, library, highlighter, staticBuild})}</article></main>
         ${!missing && index !== -1 ? `<nav class="page-navigation" aria-label="Page navigation">${adjacent(pages[index - 1], "Previous")}${adjacent(pages[index + 1], "Next")}</nav>` : ""}
-        <footer class="site-footer"><site-language-switcher></site-language-switcher></footer>
+        ${renderSiteFooter()}
       </div>
     </div>
   </body>

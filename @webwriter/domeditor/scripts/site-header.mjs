@@ -26,6 +26,17 @@ export function renderSiteHeader(path = "/") {
     </header>`
 }
 
+export function renderSiteFooter() {
+  return `<footer class="site-footer">
+      <a class="brand" href="/"><span class="brand-name">WebWriter<span class="brand-subtitle">by Edumix</span></span></a>
+      <div class="footer-controls">
+      <div class="footer-legal"><small class="copyright">© Frederic Salmen. <span>All rights reserved.</span></small><a href="/legal_notice/">Legal notice</a></div>
+      <site-language-switcher></site-language-switcher>
+      </div>
+      <nav aria-label="Footer navigation"><a href="/examples/">Examples</a><a href="/gallery/">Widgets</a><a href="/docs/">Documentation</a><a href="/editor/">Open WebWriter</a></nav>
+    </footer>`
+}
+
 export function siteHeaderPlugin() {
   return {
     name: "site-header",
@@ -34,6 +45,7 @@ export function siteHeaderPlugin() {
       handler(html, context) {
         const showcase = html.includes("<!-- example-showcase -->")
         let result = html.replace("<!-- site-header -->", () => renderSiteHeader(context.path))
+          .replace("<!-- site-footer -->", renderSiteFooter)
           .replace("<!-- example-showcase -->", renderExampleShowcase)
         // Vite combines the entry scripts and drops their original attributes.
         // Keep localization ahead of the first paint in the production page too.

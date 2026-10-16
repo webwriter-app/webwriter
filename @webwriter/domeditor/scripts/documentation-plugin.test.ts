@@ -5,6 +5,7 @@ import {join} from "node:path"
 import {createServer, request as httpRequest} from "node:http"
 import {afterEach, expect, it, vi} from "vitest"
 import {documentationPlugin} from "./documentation-plugin.mjs"
+import {renderSiteFooter} from "./site-header.mjs"
 
 let directory
 let server
@@ -162,6 +163,7 @@ it("renders linked sections, adjacent page navigation, frontmatter, headings, an
   expect(response.body).toContain('<div class="docs-layout site-content">')
   expect(response.body).toContain('<div class="page" tabindex="0" role="region" aria-label="Documentation content">')
   expect(response.body).toContain('href="/src/site-header.css"')
+  expect(response.body).toContain(renderSiteFooter())
   expect(transformIndexHtml).toHaveBeenCalledOnce()
 })
 
@@ -484,6 +486,7 @@ it("emits static documentation variants, navigation, assets, and original exampl
     expect(page).toContain('href="/assets/docs/documentation.css"')
     expect(page).toContain('href="/assets/site-header.css"')
     expect(page).toContain('src="/assets/docs/documentation.js"')
+    expect(page).toContain(renderSiteFooter())
     expect(page).not.toContain('/dev-server/')
     expect(page).not.toContain('<!-- script:')
     expect(page).toContain('<a download href="/docs/widgets/examples/')

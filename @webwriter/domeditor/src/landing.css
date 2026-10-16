@@ -44,11 +44,14 @@ h3 { margin: .8rem 0; font-size: 1rem; line-height: 1.4; }
 .developer-invitation p:last-child { max-inline-size: 40rem; margin-block-end: 0; font-size: .9rem; color: #536174; }
 .button.secondary { flex-shrink: 0; color: var(--accent); background: white; border-color: var(--border); font-size: .875rem; }
 .button.secondary:hover { background: #eaf2fb; }
-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 1.5rem; padding-block: 1.5rem; border-top: 1px solid var(--border); font-size: .8rem; }
-footer .brand { font-size: .9rem; }
-footer > span { flex: 1; color: #617084; }
 .skip-link { position: absolute; top: .5rem; left: 1rem; padding: .5rem 1rem; background: white; transform: translateY(-200%); z-index: 1; }
 .skip-link:focus { transform: none; }
 @media (max-width: 60rem) { .hero { column-gap: 2rem; padding-block: 2.5rem; } .possibilities { grid-template-columns: 1fr; gap: 2rem; } .developer-invitation { align-items: start; flex-direction: column; } }
-@media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .developer-invitation { padding: 1.5rem; } footer > span { flex-basis: 60%; } }
+@media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .developer-invitation { padding: 1.5rem; } }
 @media (max-width: 24rem) { main, footer { padding-inline: 1rem; } }
+
+.legal-notice {max-inline-size: 54rem; padding-block: 3rem 4rem; overflow-wrap: anywhere}
+.legal-notice h1 {font-size: clamp(2.3rem, 5vw, 3.5rem)}
+.legal-notice h2 {margin-block: 2rem .75rem; font-size: 1.35rem}
+.legal-notice address {font-style: normal}
+.legal-notice .updated {margin-block-start: 2rem; color: #617084; font-size: .875rem}
