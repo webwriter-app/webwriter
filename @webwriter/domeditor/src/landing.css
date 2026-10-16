@@ -42,12 +42,16 @@ h3 { margin: .8rem 0; font-size: 1rem; line-height: 1.4; }
 .developer-invitation .eyebrow { margin-block-end: .75rem; }
 .developer-invitation h2 { margin: 0; font-size: 1.65rem; letter-spacing: -.025em; }
 .developer-invitation p:last-child { max-inline-size: 40rem; margin-block-end: 0; font-size: .9rem; color: #536174; }
+.research-background { display: flex; align-items: center; gap: 3rem; padding-block-end: 4rem; color: #536174; font-size: .875rem; }
+.research-logo { flex: 0 0 17rem; }
+.research-logo img { display: block; inline-size: 100%; block-size: auto; }
+.research-background p { max-inline-size: 48rem; margin: 0; }
 .button.secondary { flex-shrink: 0; color: var(--accent); background: white; border-color: var(--border); font-size: .875rem; }
 .button.secondary:hover { background: #eaf2fb; }
 .skip-link { position: absolute; top: .5rem; left: 1rem; padding: .5rem 1rem; background: white; transform: translateY(-200%); z-index: 1; }
 .skip-link:focus { transform: none; }
 @media (max-width: 60rem) { .hero { column-gap: 2rem; padding-block: 2.5rem; } .possibilities { grid-template-columns: 1fr; gap: 2rem; } .developer-invitation { align-items: start; flex-direction: column; } }
-@media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .developer-invitation { padding: 1.5rem; } }
+@media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .developer-invitation { padding: 1.5rem; } .research-background { flex-direction: column; align-items: start; gap: 1.5rem; } .research-logo { flex: none; inline-size: min(17rem, 100%); } }
 @media (max-width: 24rem) { main, footer { padding-inline: 1rem; } }
 
 .legal-notice {max-inline-size: 54rem; padding-block: 3rem 4rem; overflow-wrap: anywhere}

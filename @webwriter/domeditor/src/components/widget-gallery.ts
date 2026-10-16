@@ -285,7 +285,7 @@ export class WidgetGallery extends LitElement {
         <button ?disabled=${this.loading} @click=${() => this.refresh()}>${this.loading ? t("Loading…") : t("Refresh")}</button>
       </div>` : nothing}
       ${this.error ? html`<p class="error" role="alert">${this.error.startsWith("The published widget catalog could not be loaded. ") ? html`${t("The published widget catalog could not be loaded.")} ${this.error.slice("The published widget catalog could not be loaded. ".length)}` : t(this.error)}${this.wall ? html` <a href="/gallery/">${t("Explore the widgets →")}</a>` : nothing}</p>` : nothing}
-      ${!this.wall || this.loading ? html`<p class="count" role="status">${this.loading ? t("Loading published widgets…") : html`${packages.length}${this.query ? html` ${t("of")} ${this.packages.length}` : nothing} ${!this.query && packages.length === 1 ? t("package") : t("packages")}`}</p>` : nothing}
+      ${!this.wall || this.loading ? html`<p class="count" role="status">${this.loading ? t("Loading published widgets…") : html`${packages.length}${this.query ? html` ${t("of {total}", {total: this.packages.length})}` : nothing} ${!this.query && packages.length === 1 ? t("package") : t("packages")}`}</p>` : nothing}
       ${cards}
       ${!this.loading && !packages.length && !this.error ? html`<p class="empty">${this.query ? t("No widgets match your search.") : t("No published widgets were found.")}</p>` : nothing}
       <dialog aria-labelledby="preview-title" @close=${this.closePreview}>

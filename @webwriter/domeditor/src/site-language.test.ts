@@ -4,6 +4,7 @@ import type {ReactiveControllerHost} from "lit"
 import {language, preferredLanguage, setLanguage, siteLanguageKey, SiteLanguageController, t, translateSiteTree} from "./site-language"
 import {siteTranslations} from "./site-translations"
 import legalNotice from "../legal_notice/index.html?raw"
+import landingPage from "../index.html?raw"
 
 beforeEach(() => {
   localStorage.clear()
@@ -37,6 +38,44 @@ describe("preferredLanguage", () => {
 })
 
 describe("site translation", () => {
+  it("translates the research background while preserving the official links and names", () => {
+    const source = new DOMParser().parseFromString(landingPage, "text/html")
+    const background = source.querySelector(".research-background")!
+    expect(background.previousElementSibling?.classList.contains("developer-invitation")).toBe(true)
+    expect(background.querySelector("p")?.textContent).toBe("WebWriter was first developed as a research project for the dissertation of Dr.-Ing. Frederic Salmen. The project was conducted at the research group for Learning Technologies at RWTH Aachen University, led by Prof. Ulrik Schroeder.")
+    expect(background.querySelector("img")?.getAttribute("src")).toBe("/src/assets/rwth-learntech.svg")
+    expect(background.querySelector('[href="https://publications.rwth-aachen.de/record/1033892"]')?.textContent).toBe("dissertation")
+    const links = [...background.querySelectorAll("a")].map(link => link.getAttribute("href"))
+    expect(links).toEqual([
+      "https://learntech.rwth-aachen.de/",
+      "https://publications.rwth-aachen.de/record/1033892",
+      "https://learntech.rwth-aachen.de/cms/learntech/Das-Lehr-und-Forschungsgebiet/Mitarbeiter/Wissenschaftliche-Mitarbeiterinnen-und-M/~sezpi/Frederic-Salmen/lidx/1/",
+      "https://learntech.rwth-aachen.de/",
+      "https://learntech.rwth-aachen.de/cms/learntech/Das-Lehr-und-Forschungsgebiet/Mitarbeiter/Institutsleitung/~jxqe/Ulrik-Schroeder/lidx/1/",
+    ])
+    for(const locale of ["de", "fr", "nl", "es", "pt", "it"]) {
+      setLanguage(locale, false)
+      const translated = background.cloneNode(true) as HTMLElement
+      const walker = document.createTreeWalker(translated, NodeFilter.SHOW_TEXT)
+      while(walker.nextNode()) {
+        const node = walker.currentNode as Text
+        const copy = node.data.trim()
+        if(copy && copy !== "." && !node.parentElement?.closest("[translate=no]")) expect(siteTranslations[locale]?.[copy], `${locale}: ${copy}`).toBeTruthy()
+      }
+      translateSiteTree(translated)
+      expect(translated.querySelector("p")?.textContent).not.toContain("WebWriter was first developed")
+      expect(translated.querySelector("p")?.textContent).toContain("Dr.-Ing. Frederic Salmen")
+      expect(translated.querySelector("p")?.textContent).toContain("Prof. Ulrik Schroeder")
+      expect([...translated.querySelectorAll("a")].map(link => link.getAttribute("href"))).toEqual(links)
+    }
+  })
+
+  it("distinguishes the French attribution preposition from a filtered package count", () => {
+    setLanguage("fr", false)
+    expect(t("of")).toBe("du")
+    expect(t("of {total}", {total: 12})).toBe("sur 12")
+  })
+
   it("translates all legal notice copy while preserving contact details", () => {
     const original = new DOMParser().parseFromString(legalNotice, "text/html")
     const walker = document.createTreeWalker(original, NodeFilter.SHOW_TEXT)
