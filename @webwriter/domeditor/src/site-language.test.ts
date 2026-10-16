@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import type {ReactiveControllerHost} from "lit"
-import {language, preferredLanguage, setLanguage, SiteLanguageController, t, translateSiteTree} from "./site-language"
+import {language, preferredLanguage, setLanguage, siteLanguageKey, SiteLanguageController, t, translateSiteTree} from "./site-language"
 
 beforeEach(() => {
   localStorage.clear()
@@ -35,6 +35,43 @@ describe("preferredLanguage", () => {
 })
 
 describe("site translation", () => {
+  it("remembers an explicit choice, even when it is already the current language", () => {
+    setLanguage("en")
+    expect(localStorage.getItem(siteLanguageKey)).toBe("en")
+
+    setLanguage("de")
+    expect(localStorage.getItem(siteLanguageKey)).toBe("de")
+  })
+
+  it("does not overwrite the saved choice when switching without persistence", () => {
+    setLanguage("de", false)
+    expect(localStorage.getItem(siteLanguageKey)).toBeNull()
+
+    setLanguage("nl")
+    setLanguage("fr", false)
+    expect(language()).toBe("fr")
+    expect(localStorage.getItem(siteLanguageKey)).toBe("nl")
+  })
+
+  it("restores the explicit choice on a fresh page without saving browser detection", async () => {
+    const originalURL = location.href
+    history.replaceState(null, "", "/")
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["fr-CA"])
+    try {
+      vi.resetModules()
+      const detected = await import("./site-language")
+      expect(detected.language()).toBe("fr")
+      expect(localStorage.getItem(siteLanguageKey)).toBeNull()
+
+      detected.setLanguage("it")
+      vi.resetModules()
+      const restored = await import("./site-language")
+      expect(restored.language()).toBe("it")
+      expect(localStorage.getItem(siteLanguageKey)).toBe("it")
+    }
+    finally { history.replaceState(null, "", originalURL) }
+  })
+
   it("keeps the home page title tagline identical to the hero heading", () => {
     for(const locale of ["de", "fr", "nl", "es", "pt", "it"]) {
       setLanguage(locale, false)
@@ -48,7 +85,7 @@ describe("site translation", () => {
   })
 
   it("switches language even when browser storage is blocked", () => {
-    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    const setItem = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
       throw new Error("Storage is unavailable")
     })
 
