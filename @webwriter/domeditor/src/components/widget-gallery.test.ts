@@ -221,24 +221,16 @@ it("shows one card per package and switches between widgets and snippets in deta
   expect((post.mock.calls[0][0] as {html: string}).html).toContain("<gallery-second-widget>")
 })
 
-it("loads wall cards near the viewport and reuses the isolated learner preview", async () => {
-  let intersect!: IntersectionObserverCallback
-  const disconnect = vi.fn()
-  const observe = vi.fn()
-  vi.stubGlobal("IntersectionObserver", class {
-    constructor(callback: IntersectionObserverCallback) {intersect = callback}
-    observe = observe
-    disconnect = disconnect
-  })
+it("loads wall cards immediately without waiting for visibility and reuses the isolated learner preview", async () => {
+  const observer = vi.fn()
+  vi.stubGlobal("IntersectionObserver", observer)
   try {
     search.mockResolvedValue([fixture(), {...fixture(), name: "@other/widget", label: "Unrelated"}])
     gallery = new WidgetGallery()
     gallery.wall = true
     document.body.append(gallery)
-    await gallery.updateComplete
-    expect(search).not.toHaveBeenCalled()
-    expect(observe).toHaveBeenCalledWith(gallery)
-    intersect([{isIntersecting: true}] as IntersectionObserverEntry[], {} as IntersectionObserver)
+    expect(search).toHaveBeenCalledOnce()
+    expect(observer).not.toHaveBeenCalled()
     await vi.waitFor(() => expect(gallery.shadowRoot!.querySelectorAll(".widget-tile")).toHaveLength(1))
     const root = gallery.shadowRoot!
     expect(root.querySelector("input")).toBeNull()
@@ -251,8 +243,7 @@ it("loads wall cards near the viewport and reuses the isolated learner preview",
     tile.click()
     await vi.waitFor(() => expect(root.querySelector("iframe")).not.toBeNull())
     expect(new URL(root.querySelector("iframe")!.src).origin).not.toBe(location.origin)
-    gallery.remove()
-    expect(disconnect).toHaveBeenCalled()
+    expect(search).toHaveBeenCalledOnce()
   }
   finally {vi.unstubAllGlobals()}
 })

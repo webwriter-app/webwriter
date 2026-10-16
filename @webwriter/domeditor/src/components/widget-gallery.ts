@@ -93,27 +93,16 @@ export class WidgetGallery extends LitElement {
   private currentHTML = ""
   private previewTimeout?: ReturnType<typeof setTimeout>
   private dependencyPlans = new Map<string, ReturnType<typeof resolvePackageDependencies>>()
-  private catalogObserver?: IntersectionObserver
 
   connectedCallback() {
     super.connectedCallback()
     window.addEventListener("message", this.onMessage)
-    if(this.wall && typeof IntersectionObserver !== "undefined") {
-      this.loading = true
-      this.catalogObserver = new IntersectionObserver(entries => {
-        if(!entries.some(entry => entry.isIntersecting)) return
-        this.catalogObserver?.disconnect()
-        void this.refresh()
-      }, {rootMargin: "300px"})
-      this.catalogObserver.observe(this)
-    }
-    else void this.refresh()
+    void this.refresh()
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     this.catalogAbort.abort()
-    this.catalogObserver?.disconnect()
     this.closePreview()
     window.removeEventListener("message", this.onMessage)
   }
