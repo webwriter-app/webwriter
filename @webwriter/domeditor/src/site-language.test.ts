@@ -38,6 +38,18 @@ describe("preferredLanguage", () => {
 })
 
 describe("site translation", () => {
+  it("keeps the open-source link and the translated hero note intact", () => {
+    const original = new DOMParser().parseFromString(landingPage, "text/html").querySelector(".note")!
+    for(const locale of ["en", "de", "fr", "nl", "es", "pt", "it"]) {
+      setLanguage(locale, false)
+      const note = original.cloneNode(true) as HTMLElement
+      translateSiteTree(note)
+      expect(note.textContent).toBe(t("Free and open source, no registration."))
+      expect(note.querySelector("a")?.textContent).toBe(t("open source"))
+      expect(note.querySelector("a")?.getAttribute("href")).toBe("https://github.com/webwriter-app/webwriter")
+    }
+  })
+
   it("translates the research background while preserving the official links and names", () => {
     const source = new DOMParser().parseFromString(landingPage, "text/html")
     const background = source.querySelector(".research-background")!

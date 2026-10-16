@@ -19,6 +19,7 @@ h1 { margin: 0 0 1.5rem; font-size: clamp(2.5rem, 4.7vw, 4rem); letter-spacing: 
 .lead { max-inline-size: 31rem; margin: 0; font-size: 1.1rem; color: #536174; }
 .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1.25rem; margin-block: 2rem 1rem; font-size: .875rem; }
 .note { font-size: .8rem; color: #617084; }
+.note a { color: inherit; text-decoration-line: underline; }
 .possibilities { display: grid; grid-template-columns: 1fr 2fr; gap: 3rem; padding-block: 3rem 4rem; border-top: 1px solid var(--border); }
 .section-intro h2 { margin: 0; font-size: 1.8rem; letter-spacing: -.04em; }
 .capabilities { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.75rem; }
@@ -50,7 +51,7 @@ h3 { margin: .8rem 0; font-size: 1rem; line-height: 1.4; }
 .button.secondary:hover { background: #eaf2fb; }
 .skip-link { position: absolute; top: .5rem; left: 1rem; padding: .5rem 1rem; background: white; transform: translateY(-200%); z-index: 1; }
 .skip-link:focus { transform: none; }
-@media (max-width: 60rem) { .hero { column-gap: 2rem; padding-block: 2.5rem; } .possibilities { grid-template-columns: 1fr; gap: 2rem; } .developer-invitation { align-items: start; flex-direction: column; } }
+@media (max-width: 60rem) { .hero { column-gap: 2rem; padding-block: 2.5rem; } .possibilities { grid-template-columns: 1fr; gap: 2rem; } .possibilities h2 br { display: none; } .developer-invitation { align-items: start; flex-direction: column; } }
 @media (max-width: 42rem) { .hero { grid-template-columns: 1fr; grid-template-rows: auto; } h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); } .capabilities { grid-template-columns: 1fr; } .capabilities article { border-top: 1px solid var(--border); padding-block-start: 1rem; } .developer-invitation { padding: 1.5rem; } .research-background { flex-direction: column; align-items: start; gap: 1.5rem; } .research-logo { flex: none; inline-size: min(17rem, 100%); } }
 @media (max-width: 24rem) { main, footer { padding-inline: 1rem; } }
 
