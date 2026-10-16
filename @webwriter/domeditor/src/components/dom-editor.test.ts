@@ -2002,7 +2002,7 @@ describe("DomEditor iframe setup", () => {
     const {editor, iframe} = await mountEditor()
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
-    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox")
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox")
     expect(srcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic'/)
     expect(srcdoc).toMatch(/style-src 'none'/)
     expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
@@ -3065,7 +3065,7 @@ describe("Develop local packages", () => {
   })
 
   it("restores persisted directory handles and reloads their packages", async() => {
-    const queryPermission = vi.fn().mockResolvedValue("prompt")
+    const queryPermission = vi.fn().mockResolvedValue("granted")
     const requestPermission = vi.fn().mockResolvedValue("granted")
     const directory = Object.assign(localPackageDirectory(), {queryPermission, requestPermission})
     vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "persisted", handle: directory as any}])
@@ -3082,7 +3082,7 @@ describe("Develop local packages", () => {
     expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
     expect(reload).toHaveBeenCalledWith([expect.objectContaining({name: "@local/demo"})])
     expect(queryPermission).toHaveBeenCalledWith({mode: "readwrite"})
-    expect(requestPermission).toHaveBeenCalledWith({mode: "readwrite"})
+    expect(requestPermission).not.toHaveBeenCalled()
   })
 
   it("keeps inaccessible restored folders visible with a recovery error", async() => {
@@ -3102,10 +3102,10 @@ describe("Develop local packages", () => {
 
     expect((editor as any).localPackages[0].label).toBe("private-package")
     expect((editor as any).selectedLocalPackageName).toBe("@local/private-package")
-    expect((editor as any).localPackageError).toContain("Select the folder again")
+    expect((editor as any).localPackageError).toContain("Click Refresh")
   })
 
-  it("keeps a restored folder visible when renewed permission is denied", async() => {
+  it("keeps a restored folder visible without prompting when permission needs renewal", async() => {
     const directory = Object.assign(localPackageDirectory(), {
       queryPermission: vi.fn().mockResolvedValue("prompt"),
       requestPermission: vi.fn().mockResolvedValue("denied"),
@@ -3120,8 +3120,9 @@ describe("Develop local packages", () => {
     await (editor as any).restoreLocalPackages()
 
     expect(getFileHandle).not.toHaveBeenCalled()
+    expect(directory.requestPermission).not.toHaveBeenCalled()
     expect((editor as any).localPackages[0].label).toBe("demo-package")
-    expect((editor as any).localPackageError).toContain("Grant access")
+    expect((editor as any).localPackageError).toContain("Click Refresh")
   })
 
   it("keeps a package without a bundle visible and ready for its first build", async () => {
@@ -4191,13 +4192,30 @@ describe("DomEditor file actions", () => {
   })
 
   it("prints only the iframe document", async () => {
-    const {editor, editorWindow} = await mountEditor()
+    const {editor, editorWindow, iframe} = await mountEditor()
     const print = vi.fn()
     Object.defineProperty(editorWindow, "print", {configurable: true, value: print})
 
     ;(editor as any).printDocument()
 
     expect(print).toHaveBeenCalledTimes(1)
+    expect(iframe.sandbox.contains("allow-modals")).toBe(true)
+  })
+
+  it("prints the active preview document", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const editorPrint = vi.fn()
+    const previewPrint = vi.fn()
+    Object.defineProperty(editorWindow, "print", {configurable: true, value: editorPrint})
+    vi.spyOn(editor as any, "postToPreview").mockImplementation((message: any) => {
+      if(message.type === "preview-frame-print") previewPrint()
+    })
+    ;(editor as any).previewActive = true
+
+    ;(editor as any).printDocument()
+
+    expect(previewPrint).toHaveBeenCalledTimes(1)
+    expect(editorPrint).not.toHaveBeenCalled()
   })
 
   it("downloads the serialized document with the current file name", async () => {
@@ -4757,7 +4775,7 @@ describe("DomEditor.execute()", () => {
     await expect(execution).resolves.toBe("done")
   })
 
-  it("propagates package loading failures to actions waiting for the frame", async () => {
+  it("reports a failed package load but allows subsequent snapshots for saving and refresh", async () => {
     const editor = new DomEditor()
     Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
@@ -4787,6 +4805,16 @@ describe("DomEditor.execute()", () => {
       name: "NetworkError",
       message: "widget script failed to load",
     })
+    expect((editor as any).packageError).toBe("widget script failed to load")
+    const snapshot = editor.execute({type: "snapshotState"})
+    await vi.waitFor(() => expect(postMessage.mock.calls.some(([message]) => message.type === "snapshotState")).toBe(true))
+    const snapshotCall = postMessage.mock.calls.find(([message]) => message.type === "snapshotState")![0]
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: executeCompleteEvent, detail: {requestId: snapshotCall.requestId, result: {update: []}}, bridgeNonce: snapshotCall.bridgeNonce},
+      source: editorWindow,
+      origin: window.location.origin,
+    }))
+    await expect(snapshot).resolves.toEqual({update: []})
   })
 
   it("does not post an action aborted while the editor frame is initializing", async () => {

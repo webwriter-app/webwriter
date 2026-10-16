@@ -2012,6 +2012,10 @@ export class DomEditor extends LitElement {
       }
       else this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
       void packageLoad.catch(error => {
+        // The bridge remains usable when a widget module fails. Let later
+        // saves and package refreshes take a snapshot and start a fresh realm;
+        // callers already waiting on this load still receive its failure.
+        if(this.editorWindow === editorWindow && this.packageLoadPromise === packageLoad) this.packageLoadPromise = null
         const message = error instanceof Error ? error.message : String(error)
         if(!this.isConnected || message === "The editor iframe was reloaded for a package change") return
         if(this.installedPackages.some(isLocalResourcePackage)) this.localPackageError = message
@@ -3686,7 +3690,8 @@ export class DomEditor extends LitElement {
   }
 
   private printDocument() {
-    if(this.editorOpaque) this.postFrameControl("print")
+    if(this.previewActive) this.postToPreview({type: "preview-frame-print"})
+    else if(this.editorOpaque) this.postFrameControl("print")
     else this.editorWindow?.print()
   }
 
@@ -7546,7 +7551,7 @@ export class DomEditor extends LitElement {
         ${this.frameStarted ? html`<iframe
           class="editor-frame"
           title="DOM editor"
-          sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("editor", this.frameRevision)}
           srcdoc=${import.meta.env.MODE === "test" ? this.editorSrcdoc : nothing}

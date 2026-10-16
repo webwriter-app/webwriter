@@ -2,7 +2,7 @@ import {loadLocalPackage, localPackageWatchPaths, readLocalPackageReadme, type L
 import {fetchGitPackageSource, gitPackageDirectory, gitPackageUrl, readGitPackageSources, saveGitPackageSources, type GitPackageSnapshot, type GitPackageSource} from "./git-package"
 import {LocalPackageMonitor} from "./local-package-monitor"
 import {localPackageUrl, type LocalPackageDirectoryHandle} from "./local-package-worker"
-import {LocalPackageWorkerClient, requestLocalPackageDirectoryPermission} from "./local-package-worker-client"
+import {LocalPackageWorkerClient} from "./local-package-worker-client"
 import type {PackageDocumentationReadOptions, PackageDocumentationResult, WebWriterPackage} from "./packages"
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -36,6 +36,12 @@ const localPackagePlaceholder = (directory: Pick<FileSystemDirectoryHandle, "nam
   scripts: [],
   styles: [],
 })
+
+const folderPermissionMessage = "Folder access is unavailable. Click Refresh to grant access to this folder."
+
+const isPermissionError = (error: unknown) => Boolean(error && typeof error === "object"
+  && (["NotAllowedError", "SecurityError"].includes((error as {name?: string}).name ?? "")
+    || (error instanceof Error && /permission to read this package folder was denied/i.test(error.message))))
 
 type LocalPackageManagerOptions = {
   gitApiUrl?: () => string | Promise<string>
@@ -155,6 +161,23 @@ export class LocalPackageManager {
   }
 
   async refresh(id: string, forceInstall = false) {
+    const record = this.records.get(id)
+    const directory = record?.directory as LocalPackageDirectoryHandle | undefined
+    if(forceInstall && directory && typeof directory.requestPermission === "function") {
+      // Invoke permission renewal before the first await so the browser can
+      // associate it with the user's Refresh click.
+      try {
+        if(await directory.requestPermission({mode: "readwrite"}) !== "granted") throw new Error(folderPermissionMessage)
+      }
+      catch(error) {
+        if(this.records.get(id) === record && record) {
+          record.error = folderPermissionMessage
+          this.options.error(`${record.package.label}: ${folderPermissionMessage}`)
+          this.publishList()
+        }
+        return
+      }
+    }
     if(forceInstall) this.forcedReloads.add(id)
     if(this.reloads.has(id)) {
       this.reloadPending.add(id)
@@ -220,7 +243,7 @@ export class LocalPackageManager {
       }
       catch(error) {
         if(this.records.get(id) !== previous) return
-        previous.error = error instanceof Error ? error.message : String(error)
+        previous.error = isPermissionError(error) ? folderPermissionMessage : error instanceof Error ? error.message : String(error)
         this.options.error(`${previous.package.label}: ${previous.error}`)
         await this.watch(previous)
         this.publishList()
@@ -378,8 +401,9 @@ export class LocalPackageManager {
       for(const entry of stored) {
         if(this.records.has(entry.id)) continue
         try {
-          if(!await requestLocalPackageDirectoryPermission(entry.handle)) {
-            throw new Error("Permission to read this package folder was denied. Grant access to the saved folder to continue.")
+          if(typeof entry.handle.queryPermission === "function"
+            && await entry.handle.queryPermission({mode: "readwrite"}) !== "granted") {
+            throw new Error(folderPermissionMessage)
           }
           const result = await loadLocalPackage(entry.handle as unknown as LocalPackageDirectory, {
             urlFor: path => localPackageUrl(entry.id, path, 0),
@@ -408,7 +432,7 @@ export class LocalPackageManager {
             warnings: [],
             revision: 0,
             enabled: true,
-            error: error instanceof Error ? error.message : String(error),
+            error: isPermissionError(error) ? folderPermissionMessage : error instanceof Error ? error.message : String(error),
           }
           this.records.set(entry.id, record)
           this.options.error(`${placeholder.label}: ${record.error}`)

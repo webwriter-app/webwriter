@@ -483,6 +483,42 @@ describe("DependencyFeature", () => {
       editor.destroy()
     })
 
+    it("relays local test requests only from the active test frame with its token", async () => {
+      const editor = new DOMEditor()
+      const {result, frame, post} = start(editor)
+      const token = frame.srcdoc.match(/token: "([^"]+)"/)![1]
+      const relay = vi.spyOn(window.parent, "postMessage").mockImplementation(() => {})
+      const bootstrap = vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {})
+      const port = {postMessage: vi.fn()} as unknown as MessagePort
+      const url = `${location.origin}/__webwriter/local-packages/quiz/test.js?revision=1`
+      const send = (source: Window | null, data: object) => window.dispatchEvent(new MessageEvent("message", {
+        source, data: {type: "frame-local-package-request", bridgeNonce: token, method: "GET", url, ...data}, ports: [port],
+      }))
+      expect(new URL(frame.src).pathname).toBe("/frame-shell.html")
+      const ready = () => window.dispatchEvent(new MessageEvent("message", {
+        source: frame.contentWindow,
+        data: {type: "webwriter-frame-shell-ready", kind: "package-test", bridgeNonce: token},
+      }))
+      ready()
+      ready()
+      expect(bootstrap).toHaveBeenCalledExactlyOnceWith({type: "webwriter-frame-document", html: frame.srcdoc}, location.origin)
+      send(window, {})
+      send(frame.contentWindow, {bridgeNonce: "forged"})
+      send(frame.contentWindow, {url: "https://other.example/__webwriter/local-packages/quiz/test.js"})
+      send(frame.contentWindow, {url: `${location.origin}/unrelated.js`})
+      send(frame.contentWindow, {method: "POST"})
+      expect(relay).not.toHaveBeenCalled()
+      send(frame.contentWindow, {})
+      expect(relay.mock.calls[0]?.[0]).toEqual({type: "frame-local-package-request", url, method: "GET", bridgeNonce: editor.trustedScriptNonce})
+      expect((relay.mock.calls[0] as unknown as [unknown, string, MessagePort[]])[2][0]).toBe(port)
+      expect(editor.toHTML()).not.toContain("<iframe")
+      post({type: "afterAll"})
+      await result
+      send(frame.contentWindow, {})
+      expect(relay.mock.calls.filter(([message]) => message.type === "frame-local-package-request")).toHaveLength(1)
+      editor.destroy()
+    })
+
     it("cancels pending package tests on disable and editor destruction", async () => {
       const editor = new DOMEditor()
       const pending = start(editor, 60_000)

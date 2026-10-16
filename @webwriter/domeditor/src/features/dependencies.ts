@@ -6,6 +6,8 @@ import {packageCdnUrl, packageInsertionItems, packageTestTimeout, packageWidgetS
 import {Schema} from "../schema"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
+import {relayFrameLocalPackageRequest} from "../frame-local-packages"
+import {editorHostOrigin} from "../frame-origins"
 
 
 export class DependencyFeature extends EditorFeature {
@@ -40,7 +42,8 @@ export class DependencyFeature extends EditorFeature {
     frame.setAttribute("aria-hidden", "true")
     frame.tabIndex = -1
     frame.style.cssText = "position: fixed; width: 800px; height: 600px; left: -10000px; top: 0; border: 0"
-    frame.srcdoc = `<!doctype html><html><head>${importMap}
+    const policy = document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.outerHTML ?? ""
+    const html = `<!doctype html><html><head>${policy}${importMap}
 <script nonce="${nonce}">
 for(const type of ["test-update", "error", "unhandledrejection"]) window.addEventListener(type, event => {
   const detail = type === "test-update" ? event.detail : {type: "error", message: String(event.reason ?? event.message ?? event.error)}
@@ -54,11 +57,19 @@ ${scopedRegistry.outerHTML}
 ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribute(styleUrl)}">` : ""}
 <script nonce="${nonce}" type="module" src="${escapeHTMLAttribute(url.href)}"></script>
 </head><body><div id="mocha"></div></body></html>`
+    // An HTTP document has its own service-worker client. A srcdoc frame does
+    // not reliably receive local resource requests from the worker in Chrome.
+    const shell = new URL(`${import.meta.env.BASE_URL}frame-shell.html`, runtimeDocumentBaseURL())
+    shell.searchParams.set("kind", "package-test")
+    shell.hash = new URLSearchParams({nonce: token}).toString()
+    frame.src = shell.href
+    if(import.meta.env.MODE === "test") frame.srcdoc = html
     return new Promise(resolve => {
       const tests = new Map<string, PackageTestCase>()
       let timer: ReturnType<typeof setTimeout> | undefined
       let settled = false
       let cancel = () => {}
+      let documentSent = false
       const finish = (status: PackageTestResult["status"], error?: string) => {
         if(settled) return
         settled = true
@@ -70,7 +81,18 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
         resolve({status: status === "passed" && cases.some(test => !test.passed) ? "failed" : status, tests: cases, ...(error ? {error} : {})})
       }
       const onMessage = (event: MessageEvent) => {
-        if(event.source !== frame.contentWindow || event.data?.token !== token) return
+        if(event.source !== frame.contentWindow) return
+        if(event.data?.bridgeNonce === token && event.data.type === "webwriter-frame-shell-ready"
+          && event.data.kind === "package-test" && !documentSent) {
+          documentSent = true
+          frame.contentWindow?.postMessage({type: "webwriter-frame-document", html}, shell.origin)
+          return
+        }
+        if(event.data?.bridgeNonce === token && event.data.type === "frame-local-package-request") {
+          relayFrameLocalPackageRequest(event, editorHostOrigin(), this.editor.trustedScriptNonce)
+          return
+        }
+        if(event.data?.token !== token) return
         const detail = event.data.detail as Record<string, unknown> | null
         if(detail?.type === "afterOne" && typeof detail.id === "string") {
           tests.set(detail.id, {

@@ -48,6 +48,7 @@ if(nonce && hostOrigin && window.parent !== window) {
         post({type: "preview-frame-base-widgets", widgets: [...preview.baseWidgetStates.values()]})
       }
     }
+    else if(event.data.type === "preview-frame-print") window.print()
     else if(event.data.type === "preview-frame-apply" && event.data.snapshot) applyState(event.data.snapshot)
   })
   post({type: "preview-frame-ready"})

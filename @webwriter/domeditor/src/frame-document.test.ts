@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {describe, expect, it} from "vitest"
+import {describe, expect, it, vi} from "vitest"
 import {editorFrameHTML, previewFrameHTML, type EditorFrameOptions, type PreviewFrameOptions} from "./frame-document"
 import {defaultDocumentTheme, documentTheme} from "./document-themes"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
@@ -20,6 +20,17 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
 
 describe("isolated frame documents", () => {
+  it("allows the package test shell under the configured application base path", () => {
+    vi.stubEnv("BASE_URL", "/nested/")
+    try {
+      const root = parse(editorFrameHTML(null, editorOptions({entryURL: "http://localhost:5173/nested/assets/editor-entry.js"})))
+      const policy = root.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content
+      expect(policy).toContain("frame-src https: http://localhost:5173/nested/frame-shell.html;")
+      expect(policy).not.toContain("frame-src https: http:;")
+    }
+    finally { vi.unstubAllEnvs() }
+  })
+
   it("permits the trusted module worker origin without allowing arbitrary HTTP workers", () => {
     const root = parse(editorFrameHTML(null, editorOptions({entryURL: "http://localhost:5173/src/editor-entry.ts"})))
     const policy = root.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content

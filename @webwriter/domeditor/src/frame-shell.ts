@@ -2,9 +2,9 @@ import {editorHostOrigin} from "./frame-origins"
 import {connectFrameLocalPackages} from "./frame-local-packages"
 import {openFrameLinksInNewTabs} from "./frame-links"
 
-const hostOrigin = editorHostOrigin()
 const parameters = new URL(location.href).searchParams
 const kind = parameters.get("kind")
+const hostOrigin = kind === "package-test" ? location.origin : editorHostOrigin()
 const revision = parameters.get("revision")
 const nonce = new URLSearchParams(location.hash.slice(1)).get("nonce")
 const instanceId = crypto.randomUUID()
@@ -46,7 +46,7 @@ const receiveDocument = (event: MessageEvent) => {
 }
 
 window.addEventListener("message", receiveDocument)
-if(window.parent !== window && (kind === "editor" || kind === "preview") && nonce) {
+if(window.parent !== window && (kind === "editor" || kind === "preview" || kind === "package-test") && nonce) {
   connectFrameLocalPackages(hostOrigin, nonce)
   // The frame's worker proxies local package files before widget modules run.
   // Wait until it controls this document, including on the first visit.

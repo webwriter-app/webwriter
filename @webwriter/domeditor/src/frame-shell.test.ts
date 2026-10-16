@@ -26,6 +26,7 @@ describe("frame shell refresh handling without Navigation API", () => {
       {kind: "editor", html: '<!doctype html><body><template><meta http-equiv="refresh" content="0;url=/inert"></template>Template</body>', refused: false},
       {kind: "editor", html: "<!doctype html><body>Ordinary document</body>", refused: false},
       {kind: "preview", html: '<!doctype html><head><meta http-equiv="refresh" content="0;url=/preview"></head><body>Preview</body>', refused: true},
+      {kind: "package-test", html: "<!doctype html><body>Isolated package test</body>", refused: false},
     ] as const
 
     try {
@@ -40,7 +41,8 @@ describe("frame shell refresh handling without Navigation API", () => {
         await import("./frame-shell")
         const handler = calls.at(-1)?.args[0] as EventListener
         expect(handler).toBeTypeOf("function")
-        const hostOrigin = `${location.protocol}//${location.hostname === "localhost" ? "127.0.0.1" : "localhost"}${location.port ? `:${location.port}` : ""}`
+        const hostOrigin = testCase.kind === "package-test" ? location.origin
+          : `${location.protocol}//${location.hostname === "localhost" ? "127.0.0.1" : "localhost"}${location.port ? `:${location.port}` : ""}`
         const before = writes.length
         const postBefore = postMessage.mock.calls.length
         handler(new MessageEvent("message", {
