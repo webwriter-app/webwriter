@@ -94,13 +94,8 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
 /** Prepare a detached document for the isolated preview frame. */
 export function previewFrameHTML(source: Document, options: PreviewFrameOptions) {
   const nonce = crypto.randomUUID()
-  // srcdoc inherits the host URL for relative links; explicitly retain
-  // native carousel navigation inside the preview frame.
-  if(source.body.classList.contains("ww-slides")) {
-    source.querySelectorAll<HTMLAnchorElement>('body > nav.ww-slides-navigation a[href^="#"], body.ww-slides .ww-slide-directions a[href^="#"]').forEach(link => {
-      link.setAttribute("href", `about:srcdoc${link.getAttribute("href")}`)
-    })
-  }
+  // Keep fragment links authored as fragments. The frame link handler resolves
+  // them against its current URL, including previews hosted by frame-shell.
   clearEditorArtifacts(source)
 
   // Remove authored executable content before installing the trusted widget

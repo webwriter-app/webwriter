@@ -1,11 +1,83 @@
 // @vitest-environment happy-dom
 import {afterEach, expect, it, vi} from "vitest"
 import {setLanguage, siteLanguages, t} from "./site-language"
-import {exampleDocuments, findExampleDocument, loadExampleDocument, loadExamplePackages} from "./example-documents"
+import {exampleDocumentLayout, exampleDocuments, findExampleDocument, loadExampleDocument, loadExamplePackages} from "./example-documents"
 import {defaultDocumentTheme} from "./document-themes"
+import {documentLayoutMode, isBoardCard, isBoardColumn, type DocumentLayoutMode} from "./document-layout"
 import type {WebWriterPackageRegistry} from "./packages"
 
 afterEach(() => setLanguage("en", false))
+
+it.each(Object.keys(siteLanguages))("arranges every %s lesson in each native layout without changing its authored content", async locale => {
+  const modes: DocumentLayoutMode[] = ["document", "canvas", "slides", "board"]
+  const resources = (source: Document) => [...source.querySelectorAll("script[src], link[href], img[src], audio[src], video[src], source[src]")]
+    .map(element => element.getAttribute("src") ?? element.getAttribute("href"))
+  const lessonText = (source: Document) => {
+    const body = source.body.cloneNode(true) as HTMLElement
+    body.querySelector(".ww-slides-navigation")?.remove()
+    return body.textContent
+  }
+  const authoredWidgets = (source: Document) => [...source.body.querySelectorAll("*")]
+    .filter(element => element.localName.includes("-") && !element.matches(".ww-board-column, .ww-board-card"))
+    .map(element => element.outerHTML)
+  const authoredIds = (source: Document) => [...source.querySelectorAll<HTMLElement>("[id]")]
+    .filter(element => !element.id.startsWith("example-"))
+    .map(element => element.id)
+  const reflectionLabels = (source: Document) => [...source.querySelectorAll<HTMLLabelElement>("label[for]")]
+    .map(label => [label.getAttribute("for"), label.textContent])
+
+  setLanguage(locale, false)
+  for(const example of exampleDocuments) {
+    const original = await loadExampleDocument(example.id)
+    expect(original.title, `${locale}/${example.id} title`).toBe(t(example.title))
+    for(const mode of modes) {
+      const arranged = await loadExampleDocument(example.id, mode)
+      expect(arranged.title, `${locale}/${example.id}/${mode} title`).toBe(original.title)
+      expect(documentLayoutMode(arranged.body), `${locale}/${example.id}/${mode} body layout`).toBe(mode)
+      expect(lessonText(arranged), `${locale}/${example.id}/${mode} lesson text`).toBe(lessonText(original))
+      expect(authoredWidgets(arranged), `${locale}/${example.id}/${mode} widgets`).toEqual(authoredWidgets(original))
+      expect(resources(arranged), `${locale}/${example.id}/${mode} resources`).toEqual(resources(original))
+      expect(authoredIds(arranged), `${locale}/${example.id}/${mode} ids`).toEqual(authoredIds(original))
+      expect(reflectionLabels(arranged), `${locale}/${example.id}/${mode} labels`).toEqual(reflectionLabels(original))
+      expect(arranged.querySelector("[contenteditable], [class*='◆']"), `${locale}/${example.id}/${mode} editing artifacts`).toBeNull()
+      const ids = [...arranged.querySelectorAll<HTMLElement>("[id]")].map(element => element.id)
+      expect(new Set(ids).size, `${locale}/${example.id}/${mode} unique ids`).toBe(ids.length)
+
+      if(mode === "canvas") {
+        const sections = [...arranged.body.querySelectorAll<HTMLElement>(":scope > section.ww-example-section")]
+        expect(sections.length, `${locale}/${example.id} canvas sections`).toBeGreaterThan(0)
+        expect(sections.every(section => section.style.left && section.style.top && section.style.width), `${locale}/${example.id} canvas positions`).toBe(true)
+      }
+      if(mode === "board") {
+        const columns = [...arranged.body.children].filter(isBoardColumn)
+        expect(columns.length, `${locale}/${example.id} board columns`).toBeGreaterThan(0)
+        expect(columns.every(column => [...column.children].some(isBoardCard)), `${locale}/${example.id} board cards`).toBe(true)
+      }
+      if(mode === "slides") {
+        const slides = [...arranged.querySelectorAll(".ww-slides-viewport > section.ww-slide")]
+        const links = [...arranged.querySelectorAll<HTMLAnchorElement>(".ww-slides-navigation a[href^='#']")]
+        expect(slides.length, `${locale}/${example.id} slides`).toBeGreaterThan(0)
+        expect(links.map(link => link.hash.slice(1))).toEqual(slides.map(slide => slide.id))
+        expect(links.every(link => arranged.getElementById(link.hash.slice(1)) === slides[links.indexOf(link)]), `${locale}/${example.id} slide targets`).toBe(true)
+      }
+    }
+  }
+})
+
+it("falls back to document layout for an unknown layout value", async () => {
+  expect(exampleDocumentLayout("unexpected-layout")).toBe("document")
+  const source = await loadExampleDocument(exampleDocuments[0].id, "unexpected-layout" as DocumentLayoutMode)
+  expect(documentLayoutMode(source.body)).toBe("document")
+  expect(source.body.querySelector(".ww-example-section, .ww-slides-viewport, .ww-board-column")).toBeNull()
+})
+
+it.each(["binary", "printing", "shared-space"])("gives the %s activity its own slide while retaining all lesson content", async id => {
+  const source = await loadExampleDocument(id, "slides")
+  const activity = source.querySelector("webwriter-code-javascript, webwriter-timeline, webwriter-branching-scenario")!
+  const section = activity.closest(".ww-example-section")!
+  expect([...section.children]).toEqual([activity])
+  expect(source.querySelectorAll(".ww-slide").length).toBeGreaterThan(source.querySelectorAll("h2").length + 1)
+})
 
 it.each(Object.keys(siteLanguages).filter(locale => locale !== "en"))("loads complete %s documents with their original widget and media contracts", async locale => {
   for(const example of exampleDocuments) {

@@ -10,9 +10,7 @@
     <script type="module" src="/src/site-entry.ts"></script>
     <script type="module" src="/src/components/example-gallery.ts"></script>
     <style>
-      .examples-intro {padding-block: 2.5rem 2rem}
-      .examples-intro h1 {font-size: clamp(2.3rem, 5vw, 3.5rem); margin-block-end: 1rem}
-      .examples-intro p {max-inline-size: 40rem; margin: 0; color: #536174}
+      example-gallery > h1 {font-size: clamp(2.3rem, 5vw, 3.5rem); margin: 0}
     </style>
   </head>
   <body class="site-layout">
@@ -20,8 +18,7 @@
     <!-- site-header -->
     <div class="site-content" tabindex="0" role="region" aria-label="Page content">
       <main id="content" tabindex="-1">
-        <section class="examples-intro" aria-labelledby="headline"><h1 id="headline">Examples</h1><p>A few ways to make learning interactive. Try a document as a learner, then open a copy in WebWriter and make it your own.</p></section>
-        <example-gallery></example-gallery>
+        <example-gallery><h1 slot="heading" id="headline">Examples</h1></example-gallery>
         <noscript><p>Enable JavaScript to explore and download the interactive example documents.</p></noscript>
       </main>
       <!-- site-footer -->

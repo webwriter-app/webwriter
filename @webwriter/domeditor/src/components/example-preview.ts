@@ -7,11 +7,12 @@ import "./example-dialog"
 import {cardOverlayStyles} from "./card-overlay"
 import showcaseStyles from "./example-showcase.css?raw"
 import {t, SiteLanguageController} from "../site-language"
+import {documentLayoutMode, type DocumentLayoutMode} from "../document-layout"
 
 /** A compact, non-interactive excerpt of an actual example, never invented UI. */
 export class ExamplePreview extends LitElement {
   private languageController = new SiteLanguageController(this, () => { if(this.exampleId) void this.reload() })
-  static properties = {exampleId: {attribute: "example-id"}, source: {state: true}, outgoing: {state: true}, error: {state: true}}
+  static properties = {exampleId: {attribute: "example-id"}, layout: {}, source: {state: true}, outgoing: {state: true}, error: {state: true}}
   static styles = css`
     :host {display: block; block-size: 35rem; min-inline-size: 0; container-type: inline-size; color: #373c44; font-family: system-ui, sans-serif; line-height: 1.5}
     * {box-sizing: border-box}
@@ -38,8 +39,8 @@ export class ExamplePreview extends LitElement {
     pre {margin: 0; padding: .8rem; overflow: hidden; background: #f7f9fc; font: .7rem/1.7 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere}
     .code-label, .audio {display: flex; align-items: center; justify-content: space-between; padding: .55rem .8rem; font-size: .7rem; color: #536174}
     .code-label span:last-child {color: #155e9b; font-weight: 600}
-    .steps {display: flex; gap: .35rem; list-style: none; padding: 0 0 .5rem; margin: 0; border-bottom: 1px solid #dfe5ed; font-size: .7rem; color: #617084}
-    .steps li {flex: 1; padding: .4rem .25rem; border: 1px solid transparent; border-radius: .3rem; text-align: center}
+    .steps {display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; padding: 0 0 .5rem; margin: 0; border-bottom: 1px solid #dfe5ed; font-size: .7rem; color: #617084}
+    .steps li {flex: 1 1 5rem; min-inline-size: 0; padding: .4rem .25rem; border: 1px solid transparent; border-radius: .3rem; text-align: center; overflow-wrap: anywhere}
     .steps li[aria-current="step"] {color: #155e9b; background: #eaf2fb; border-color: #c8dced; font-weight: 600}
     .timeline {display: grid; gap: .65rem; border-inline-start: 2px solid #c8dced; margin: 1rem 0 0 .3rem; padding-inline-start: 1rem; font-size: .75rem}
     .event {position: relative} .event::before {content: ""; position: absolute; inset-inline-start: -1.35rem; inset-block-start: .4rem; inline-size: .5rem; block-size: .5rem; border-radius: 50%; background: #155e9b}
@@ -49,26 +50,58 @@ export class ExamplePreview extends LitElement {
     .lesson {margin-block-start: 1rem; font-size: .75rem; color: #536174}
     .lesson h3 {margin: 0 0 .4rem; font-size: .85rem; color: #172033}
     .lesson p {margin: 0}
-    :host([compact]) {block-size: 28rem}
-    :host([compact]) .page {padding: 1.25rem}
+    :host([compact]) {block-size: auto; min-block-size: 28rem}
+    :host([compact]) .preview {block-size: auto; min-block-size: 28rem}
+    :host([compact]) .page {padding: 1.25rem; block-size: auto; min-block-size: 28rem; overflow: visible}
     :host([compact]) h2 {font-size: 1.4rem}
     :host([compact]) .intro {display: none}
-    :host([compact]) img {block-size: 8rem}
+    :host([compact]) img {block-size: auto; max-block-size: 8rem; object-fit: contain}
     :host([compact]) .menu svg {max-block-size: 14rem}
     :host([compact]) pre {font-size: .65rem; line-height: 1.6}
     :host([compact]) .page:has(.lesson) .closing {display: none}
     @container (max-width: 22rem) {.page:has(.lesson) .closing {display: none}}
     .placeholder {display: grid; place-items: center; color: #617084; font-size: .875rem}
+    .page.canvas {background: radial-gradient(#cad7e5 1px, transparent 1px) 0 0 / 14px 14px #f5f8fc}
+    .page.board {background: #edf2f8}
+    .layout-topics {display: grid; gap: .65rem; margin-block-start: 1rem; align-items: start}
+    .layout-topic {min-inline-size: 0; padding: .8rem; background: white; border: 1px solid #d4deea; border-radius: .35rem; overflow-wrap: anywhere; hyphens: auto}
+    .layout-topic h3 {margin: 0 0 .55rem; color: #285b78; font-size: .8rem; line-height: 1.3}
+    .layout-topic p {margin: 0; font-size: .7rem; line-height: 1.5}
+    .layout-topic .visual {margin: .75rem 0 0}
+    .layout-topic :is(svg, img) {max-block-size: 6rem; object-fit: contain}
+    .layout-topic figcaption {display: none}
+    .table-summary {margin-block-start: .75rem; padding: .55rem; border: 1px solid #dfe5ed; border-radius: .25rem; background: #f7f9fc; font-size: .65rem}
+    .table-summary strong {display: block; margin-block-end: .35rem; font-size: .65rem}
+    .canvas .layout-topics {grid-template-columns: minmax(0, 1fr)}
+    .canvas .layout-topic {box-shadow: 0 2px 5px #26374a12}
+    .canvas .layout-topic:first-child {margin-inline-end: 1rem}
+    .canvas .layout-topic:nth-child(2) {margin-inline-start: 1rem}
+    .board .layout-topics {grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem}
+    .board .layout-topic {padding: .5rem; background: #f6f8fb}
+    .board .layout-topic :is(p, .visual) {padding: .5rem; border: 1px solid #dfe5ed; border-radius: .25rem; background: white}
+    .board .layout-topic .visual {margin-block-start: .5rem}
+    .page.slides {display: flex; flex-direction: column; background: #edf2f8}
+    .slides .layout-topics {margin-block: auto; padding-block: 1.25rem; padding-inline-end: .5rem}
+    .slides .layout-topic {min-block-size: 10rem; padding: 1rem; border-radius: .15rem; box-shadow: 4px 4px 0 #d4e0ed, 8px 8px 0 #e0e8f2}
+    .slides .layout-topic .visual {margin-block-start: .5rem}
+    .slides .layout-topic svg, .slides .layout-topic img {max-block-size: 4rem}
+    .slide-pages {display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; margin-block-start: auto; padding-block: 1rem 0}
+    .slide-pages span {display: grid; place-items: center; inline-size: 1.35rem; block-size: 1.35rem; border: 1px solid #c8dced; border-radius: .25rem; color: #617084; font-size: .6rem; background: white}
+    .slide-pages span[aria-current] {background: #155e9b; color: white; border-color: #155e9b}
+    :host([compact]) .page.slides .layout-topics {margin-block: 1rem}
+    @container (max-width: 18rem) {.board .layout-topics {grid-template-columns: minmax(0, 1fr)}}
+    :host([compact]) table {table-layout: fixed; overflow-wrap: anywhere}
     @media (max-width: 25rem) {.page {padding: 1.1rem} h2 {font-size: 1.4rem}}
   `
   exampleId = "binary"
+  layout: DocumentLayoutMode = "document"
   private source: Document | null = null
   private outgoing: Document | null = null
   private error = false
   private revision = 0
 
   protected async updated(changed: Map<string, unknown>) {
-    if(!changed.has("exampleId")) return
+    if(!changed.has("exampleId") && !changed.has("layout")) return
     await this.reload()
   }
 
@@ -76,7 +109,7 @@ export class ExamplePreview extends LitElement {
     const revision = ++this.revision
     this.error = false
     try {
-      const source = await loadExampleDocument(this.exampleId)
+      const source = await loadExampleDocument(this.exampleId, this.layout)
       if(revision === this.revision) {
         this.outgoing = this.source
         this.source = source
@@ -97,7 +130,15 @@ export class ExamplePreview extends LitElement {
       .slice(0, 2).map(({segment}) => segment).join("").trim()
   }
 
+  private briefText(element: Element, words = 24) {
+    const text = this.excerptText(element)
+    const segments = text.split(/\s+/)
+    return segments.length > words ? `${segments.slice(0, words).join(" ").replace(/[,;:]$/, "")}…` : text
+  }
+
   private renderPage(source: Document, outgoing = false) {
+    const mode = documentLayoutMode(source.body)
+    if(mode !== "document") return this.renderLayoutPage(source, mode, outgoing)
     const intro = [...source.body.querySelectorAll("p")].find(p => !p.querySelector("small") && !p.closest("figure, webwriter-task"))
     const visualSource = source.body.querySelector("figure") ?? source.body.querySelector("table, blockquote")
     const visual = visualSource?.cloneNode(true) as Element | undefined
@@ -114,7 +155,7 @@ export class ExamplePreview extends LitElement {
     const slides = [...source.querySelectorAll("webwriter-slide")]
     const menu = visual?.querySelector("#cafe-menu-title")
     const reflection = source.querySelector("webwriter-geogebra") || lessonHeading ? source.querySelector("label[for]")?.textContent : null
-    return html`<div class=${outgoing ? "page outgoing" : "page"} aria-hidden=${outgoing ? "true" : nothing} ?inert=${outgoing} @animationend=${(event: AnimationEvent) => {
+    return html`<div class=${outgoing ? "page outgoing" : "page"} lang=${source.documentElement.lang} aria-hidden=${outgoing ? "true" : nothing} ?inert=${outgoing} @animationend=${(event: AnimationEvent) => {
       if(outgoing && event.target === event.currentTarget && this.outgoing === source) this.outgoing = null
     }}>
       <h2>${source.querySelector("h1")?.textContent}</h2>
@@ -126,6 +167,30 @@ export class ExamplePreview extends LitElement {
       ${audio ? html`<div class="audio"><span aria-hidden="true">▶</span><span>${audio.getAttribute("aria-label") ?? t("Listen to the field recording")}</span></div>` : nothing}
       ${lessonHeading && lessonText?.matches("p") ? html`<section class="lesson"><h3>${lessonHeading.textContent}</h3><p>${this.excerptText(lessonText)}</p></section>` : nothing}
       ${reflection ? html`<p class="closing">${reflection}</p>` : nothing}
+    </div>`
+  }
+
+  private renderLayoutPage(source: Document, mode: DocumentLayoutMode, outgoing: boolean) {
+    const sections = [...source.querySelectorAll<HTMLElement>(".ww-example-section")]
+    const topics = sections.filter(section => mode === "slides" ? section.querySelector("h2") : !section.querySelector("h1"))
+    const shown = topics.slice(0, mode === "slides" ? 1 : 2)
+    return html`<div class=${`page ${mode}${outgoing ? " outgoing" : ""}`} lang=${source.documentElement.lang} aria-hidden=${outgoing ? "true" : nothing} ?inert=${outgoing} @animationend=${(event: AnimationEvent) => {
+      if(outgoing && event.target === event.currentTarget && this.outgoing === source) this.outgoing = null
+    }}>
+      <h2>${source.querySelector("h1")?.textContent}</h2>
+      <div class="layout-topics">${shown.map(section => {
+        const heading = mode === "board" ? section.parentElement?.querySelector(":scope > h2") : section.querySelector("h2")
+        const paragraph = section.querySelector("p, li")
+        const visual = section.querySelector("figure:has(svg), figure:has(img), table, blockquote")
+        const table = visual?.matches("table") ? visual : null
+        const sample = table?.querySelector("tbody tr:last-child")
+        return html`<section class="layout-topic"><h3>${heading?.textContent}</h3>
+          ${paragraph ? html`<p>${this.briefText(paragraph, mode === "board" ? 18 : 24)}</p>` : nothing}
+          ${table ? html`<div class="table-summary"><strong>${table.querySelector("caption")?.textContent}</strong>${sample ? [...sample.children].map(cell => cell.textContent).join(" · ") : nothing}</div>`
+            : visual ? html`<div class="visual">${unsafeHTML(visual.outerHTML)}</div>` : nothing}
+        </section>`
+      })}</div>
+      ${mode === "slides" ? html`<div class="slide-pages" aria-label=${t("Document steps")}>${sections.map((section, index) => html`<span aria-current=${section === shown[0] ? "step" : nothing}>${index + 1}</span>`)}</div>` : nothing}
     </div>`
   }
 }

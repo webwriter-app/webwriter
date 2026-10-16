@@ -440,6 +440,7 @@ afterEach(async() => {
   const url = new URL(location.href)
   url.searchParams.delete("open")
   url.searchParams.delete("example")
+  url.searchParams.delete("layout")
   history.replaceState(history.state, "", url.href)
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
@@ -510,6 +511,23 @@ describe("DomEditor document loading", () => {
     await opening
     expect(reload).not.toHaveBeenCalled()
     expect(host.linkedDocumentLoading).toBe(false)
+  })
+
+  it.each(["canvas", "slides", "board"])("opens a curated example in its linked %s layout", async layout => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState(null, "", `/editor/?example=binary&layout=${layout}`)
+    vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    await host.restoreExampleDocument("binary", Promise.resolve())
+    expect(reload).toHaveBeenCalledOnce()
+    const source = new DOMParser().parseFromString(reload.mock.calls[0][0] as string, "text/html")
+    expect(source.body.className).toBe(`ww-${layout}`)
+    expect(source.querySelector("webwriter-code-javascript")).not.toBeNull()
+    expect(host.downloadedFileName).toBe(`binary-${layout}.html`)
+    host.updateDocumentURL(null)
+    expect(new URL(location.href).searchParams.has("layout")).toBe(false)
   })
 
   it("does not show a spinner while the initial empty preset is loading", async () => {

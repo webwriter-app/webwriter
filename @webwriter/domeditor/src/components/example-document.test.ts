@@ -119,3 +119,27 @@ it("requests dismissal with an accessible icon button", async () => {
   button.dispatchEvent(new MouseEvent("click"))
   expect(close).toHaveBeenCalledOnce()
 })
+
+it.each(["canvas", "slides", "board"] as const)("uses the %s layout for the learner, download, and editor copy", async layout => {
+  const first = await mount()
+  view.layout = layout
+  await vi.waitFor(() => {
+    const frame = view.shadowRoot?.querySelector("iframe")
+    expect(frame).not.toBeNull()
+    expect(frame?.src).not.toBe(first.src)
+  })
+  const frame = view.shadowRoot!.querySelector("iframe")!
+  const url = new URL(frame.src)
+  const post = vi.spyOn(frame.contentWindow!, "postMessage")
+  message(frame, url.origin, new URLSearchParams(url.hash.slice(1)).get("nonce")!)
+  expect(post.mock.calls[0][0].html).toContain(`class="ww-${layout}"`)
+  const root = view.shadowRoot!
+  expect(root.querySelector('a[target="_blank"]')?.getAttribute("href")).toBe(`/editor/?example=binary&lang=en&layout=${layout}`)
+  expect(root.querySelector("a[download]")?.getAttribute("download")).toBe(`binary-${layout}.html`)
+  const blob = vi.mocked(URL.createObjectURL).mock.calls.at(-1)![0] as Blob
+  const saved = new DOMParser().parseFromString(await blob.text(), "text/html")
+  expect(saved.body.className).toBe(`ww-${layout}`)
+  expect(saved.querySelector("webwriter-code-javascript")).not.toBeNull()
+  expect(saved.querySelector(".◆editor-only, [contenteditable]")).toBeNull()
+  for(const link of saved.querySelectorAll("nav a")) expect(link.getAttribute("href")).toMatch(/^#/)
+})

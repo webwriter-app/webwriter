@@ -5,11 +5,12 @@ import {previewFrameHTML} from "../frame-document"
 import {appendSerializedAssets, serializeDoctype} from "../serialization"
 import {editorFrameOrigin} from "../frame-origins"
 import {t, language, SiteLanguageController} from "../site-language"
+import type {DocumentLayoutMode} from "../document-layout"
 
 /** Full documents use the same isolated learner runtime and exporter as the editor. */
 export class ExampleDocumentView extends LitElement {
   private languageController = new SiteLanguageController(this, () => { if(this.exampleId) void this.load() })
-  static properties = {exampleId: {attribute: "example-id"}, status: {state: true}, error: {state: true}, frameURL: {state: true}, downloadURL: {state: true}}
+  static properties = {exampleId: {attribute: "example-id"}, layout: {}, status: {state: true}, error: {state: true}, frameURL: {state: true}, downloadURL: {state: true}}
   static styles = css`
     :host {display: block; color: #263142; font: 1rem/1.5 system-ui, sans-serif}
     .heading {display: flex; align-items: center; gap: 1rem; padding: 1.2rem 1.5rem; border-bottom: 1px solid #dfe5ed}
@@ -27,6 +28,7 @@ export class ExampleDocumentView extends LitElement {
     iframe {display: block; inline-size: 100%; block-size: 65dvh; min-block-size: 20rem; border: 0; background: #fff}
   `
   exampleId = ""
+  layout: DocumentLayoutMode = "document"
   private status = ""
   private error = ""
   private frameURL = ""
@@ -45,7 +47,7 @@ export class ExampleDocumentView extends LitElement {
     window.removeEventListener("message", this.onMessage)
   }
   protected updated(changed: Map<string, unknown>) {
-    if(changed.has("exampleId") && this.exampleId) void this.load()
+    if((changed.has("exampleId") || changed.has("layout")) && this.exampleId) void this.load()
   }
 
   private async load() {
@@ -67,7 +69,7 @@ export class ExampleDocumentView extends LitElement {
       this.error = "The example took too long to load. Close and reopen it to try again."
     }, 45_000)
     try {
-      const source = await loadExampleDocument(this.exampleId)
+      const source = await loadExampleDocument(this.exampleId, this.layout)
       const packages = await loadExamplePackages(source)
       const {map} = await resolvePackageDependencies(packages, location.href)
       if(!current()) return
@@ -125,8 +127,8 @@ export class ExampleDocumentView extends LitElement {
       return t(message)
     }
     return html`<div class="heading">
-      <div class="title"><h2>${example ? t(example.title) : t("Example")}</h2><a href=${`/editor/?example=${this.exampleId}&lang=${language()}`} target="_blank" rel="noopener noreferrer">${t("Edit in WebWriter ↗")}</a>
-      ${this.downloadURL ? html`<a class="download" href=${this.downloadURL} download=${`${this.exampleId}.html`}>${t("Download document")}</a>` : nothing}</div>
+      <div class="title"><h2>${example ? t(example.title) : t("Example")}</h2><a href=${`/editor/?example=${this.exampleId}&lang=${language()}${this.layout === "document" ? "" : `&layout=${this.layout}`}`} target="_blank" rel="noopener noreferrer">${t("Edit in WebWriter ↗")}</a>
+      ${this.downloadURL ? html`<a class="download" href=${this.downloadURL} download=${`${this.exampleId}${this.layout === "document" ? "" : `-${this.layout}`}.html`}>${t("Download document")}</a>` : nothing}</div>
       <button autofocus aria-label=${t("Close example")} @click=${() => this.dispatchEvent(new CustomEvent("close-example", {bubbles: true, composed: true}))}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
       </div>
       ${this.status ? html`<p class="status" role="status">${t(this.status)}</p>` : nothing}

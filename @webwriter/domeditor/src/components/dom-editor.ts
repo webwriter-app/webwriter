@@ -3164,6 +3164,7 @@ export class DomEditor extends LitElement {
     if(this.liveSessionActive) return
     const url = new URL(location.href)
     url.searchParams.delete("example")
+    url.searchParams.delete("layout")
     if(reference === null) url.searchParams.delete("open")
     else url.searchParams.set("open", reference)
     history.replaceState(history.state, "", url.href)
@@ -3184,13 +3185,15 @@ export class DomEditor extends LitElement {
     this.linkedDocumentLoading = true
     const revision = this.documentChangeSequence
     try {
-      const {findExampleDocument, loadExampleDocument, loadExamplePackages} = await import("../example-documents")
+      const {exampleDocumentLayout, findExampleDocument, loadExampleDocument, loadExamplePackages} = await import("../example-documents")
       const example = findExampleDocument(id)
       if(!example) throw new Error("This example could not be found.")
-      const source = await loadExampleDocument(id)
+      const layout = exampleDocumentLayout(new URL(location.href).searchParams.get("layout"))
+      const source = await loadExampleDocument(id, layout)
       const packages = await loadExamplePackages(source, this.packageRegistry)
       await startupReady
       if(!this.isConnected || this.liveSessionActive || new URL(location.href).searchParams.get("example") !== id
+        || exampleDocumentLayout(new URL(location.href).searchParams.get("layout")) !== layout
         || revision !== this.documentChangeSequence) return
       await this.runFileOperation(async () => {
         this.documentLoading = true
@@ -3207,7 +3210,7 @@ export class DomEditor extends LitElement {
         this.fileHandle = null
         this.storageLocation = "local"
         this.fileName = source.title || example.title
-        this.downloadedFileName = `${example.id}.html`
+        this.downloadedFileName = `${example.id}${layout === "document" ? "" : `-${layout}`}.html`
         this.fileFormat = "html"
         this.fileDirty = false
         this.focusEditor()

@@ -38,3 +38,25 @@ it("handles Escape, direct links, and browser history on the current page", asyn
   expect(current()).toBeUndefined()
   expect(location.pathname + location.search).toBe("/")
 })
+
+it("restores a layout from a direct link and follows layout changes in browser history", async () => {
+  history.replaceState(null, "", "/examples/?keep=yes&example=binary&layout=canvas#section")
+  const view = new ExampleDialog()
+  document.body.append(view)
+  const current = () => view.shadowRoot!.querySelector("example-document")?.getAttribute("layout")
+  await vi.waitFor(() => expect(current()).toBe("canvas"))
+  history.replaceState(null, "", "/examples/?keep=yes&example=binary&layout=slides#section")
+  window.dispatchEvent(new PopStateEvent("popstate"))
+  await view.updateComplete
+  expect(current()).toBe("slides")
+  await view.open("binary", true, "board")
+  expect(current()).toBe("board")
+  expect(new URL(location.href).searchParams.get("layout")).toBe("board")
+  await view.open("binary")
+  expect(current()).toBe("document")
+  expect(new URL(location.href).searchParams.has("layout")).toBe(false)
+  await view.open("binary", true, "canvas")
+  view.close()
+  await view.updateComplete
+  expect(location.search + location.hash).toBe("?keep=yes#section")
+})

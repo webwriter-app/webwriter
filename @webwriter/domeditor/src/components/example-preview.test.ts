@@ -33,6 +33,42 @@ it("gives the authored café menu more room in the languages preview", async () 
   expect(preview.shadowRoot!.querySelector(".menu title")?.textContent).toBe("A small café menu")
 })
 
+it.each(["canvas", "slides", "board"] as const)("switches the same lesson to its %s miniature", async layout => {
+  const preview = new ExamplePreview()
+  preview.exampleId = "binary"
+  document.body.append(preview)
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector(".page:not(.outgoing) h2")?.textContent).toBe("Count like a computer"))
+  preview.layout = layout
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector(`.page.${layout}:not(.outgoing)`)).not.toBeNull())
+  const page = preview.shadowRoot!.querySelector(`.page.${layout}:not(.outgoing)`)!
+  expect(page.querySelector("h2")?.textContent).toBe("Count like a computer")
+  expect(page.querySelector(".layout-topic h3")?.textContent).toBe("Two symbols are enough")
+  if(layout !== "slides") expect(page.querySelector(".table-summary")?.textContent).toContain("Four binary places")
+  if(layout === "slides") {
+    const source = await exampleDocumentSource.loadExampleDocument("binary", "slides")
+    expect(page.querySelectorAll(".slide-pages span")).toHaveLength(source.querySelectorAll(".ww-slide").length)
+  }
+  else expect(page.querySelectorAll(".layout-topic")).toHaveLength(2)
+})
+
+it("discards a layout preview that finishes loading after a newer choice", async () => {
+  const preview = new ExamplePreview()
+  document.body.append(preview)
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector("h2")).not.toBeNull())
+  const canvas = await exampleDocumentSource.loadExampleDocument("binary", "canvas")
+  let resolve!: (source: Document) => void
+  vi.spyOn(exampleDocumentSource, "loadExampleDocument").mockReturnValueOnce(new Promise(done => {resolve = done}))
+  preview.layout = "canvas"
+  await preview.updateComplete
+  preview.layout = "board"
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector(".page.board")).not.toBeNull())
+  resolve(canvas)
+  await Promise.resolve()
+  await preview.updateComplete
+  expect(preview.shadowRoot?.querySelector(".page.canvas")).toBeNull()
+  expect(preview.shadowRoot?.querySelector(".page.board")).not.toBeNull()
+})
+
 it("ends the mathematics preview with the document's complete reflection prompt", async () => {
   const source = await exampleDocumentSource.loadExampleDocument("garden-design")
   const preview = new ExamplePreview()

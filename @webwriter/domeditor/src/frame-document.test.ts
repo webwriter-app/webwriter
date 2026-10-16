@@ -129,9 +129,11 @@ describe("isolated frame documents", () => {
   })
 
   it("retains slide fragment navigation and supports inert test frames", () => {
-    const source = parse('<html><head></head><body class="ww-slides"><nav class="ww-slides-navigation"><a href="#next">next</a></nav></body></html>')
+    const source = parse('<html><head></head><body class="ww-slides"><div class="ww-slides-viewport"><section class="ww-slide" id="next"><nav class="ww-slide-directions"><a href="#previous">previous</a></nav></section></div><nav class="ww-slides-navigation"><a href="#next">next</a></nav></body></html>')
     const root = parse(previewFrameHTML(source, previewOptions({executeScripts: false})))
-    expect(root.querySelector("a")?.getAttribute("href")).toBe("about:srcdoc#next")
+    expect([...root.querySelectorAll("a")].map(link => link.getAttribute("href"))).toEqual(["#previous", "#next"])
+    const active = parse(previewFrameHTML(source, previewOptions()))
+    expect([...active.querySelectorAll("a")].map(link => link.getAttribute("href"))).toEqual(["#previous", "#next"])
     expect(root.querySelector('meta[name="webwriter-preview-bridge"]')).toBeNull()
     expect(root.querySelector('script[src*="preview-entry"]')).toBeNull()
     const editor = parse(editorFrameHTML(null, editorOptions({executeScripts: false})))
