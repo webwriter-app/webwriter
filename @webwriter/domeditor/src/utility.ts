@@ -1804,12 +1804,13 @@ export function isWidgetShadowInteraction(event: Event, schema?: Schema) {
 }
 
 /** Text fields and explicitly editable UI content keep native editing menus. */
-export function isTextFieldInteraction(event: Event) {
+export function isTextFieldInteraction(event: Event, editingRoot?: Element) {
   const path = event.composedPath()
-  if(path.some(target => target instanceof Element && target.matches("input, textarea"))) return true
+  if(path.some(target => isElement(target) && target.matches("input, textarea"))) return true
   const origin = path[0]
-  let element = origin instanceof Element ? origin : origin instanceof Node ? origin.parentElement : null
-  while(element) {
+  const originNode = origin && typeof origin === "object" && "nodeType" in origin ? origin as Node : null
+  let element = isElement(originNode) ? originNode : originNode?.parentElement ?? null
+  while(element && element !== editingRoot) {
     const value = element.getAttribute("contenteditable")?.toLowerCase()
     if(value === "false") return false
     if(value === "" || value === "true" || value === "plaintext-only") return true

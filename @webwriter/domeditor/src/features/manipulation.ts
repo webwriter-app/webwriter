@@ -27,6 +27,7 @@ import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInse
 import {createTable} from "../table"
 import {
   elementAttributeState,
+  elementAttributeTargetId,
   elementAttributeEditability,
   isUnsafeElementAttributeValue,
   sanitizeAuthoredClass,
@@ -3143,6 +3144,7 @@ export class ManipulationFeature extends EditorFeature {
     }) => this.setSelectedElementStyles(selectionType, styles),
     setElementAttribute: ({
       path,
+      targetId,
       localName,
       namespaceURI,
       name,
@@ -3151,12 +3153,13 @@ export class ManipulationFeature extends EditorFeature {
     }: {
       type: "setElementAttribute"
       path: number[] | null
+      targetId?: string
       localName: string
       namespaceURI: string | null
       name: string
       previousName?: string
       value: string | null
-    }) => this.setElementAttribute(path, localName, namespaceURI, name, value, previousName),
+    }) => this.setElementAttribute(path, targetId, localName, namespaceURI, name, value, previousName),
     getStyleState: ({properties, topLevel}: {type: "getStyleState", properties?: string[], topLevel?: boolean}) => {
       if(properties !== undefined && (!Array.isArray(properties) || properties.some(name => typeof name !== "string"))) {
         throw new TypeError("Style-state property names must be strings")
@@ -3872,6 +3875,7 @@ export class ManipulationFeature extends EditorFeature {
    * that concurrently replaced the selected element. */
   private setElementAttribute(
     path: number[] | null,
+    targetId: string | undefined,
     localName: string,
     namespaceURI: string | null,
     name: string,
@@ -3884,7 +3888,8 @@ export class ManipulationFeature extends EditorFeature {
       if(!child) throw new RangeError(`Cannot edit a missing element at path [${path?.join(", ")}]`)
       node = child
     }
-    if(!(node instanceof Element) || node.localName !== localName || node.namespaceURI !== namespaceURI) {
+    if(!(node instanceof Element) || node.localName !== localName || node.namespaceURI !== namespaceURI
+      || !targetId || elementAttributeTargetId(node) !== targetId) {
       throw new Error("The selected element changed before its attribute could be edited")
     }
     this.setAuthoredElementAttribute(node, name, value, previousName)
@@ -3914,11 +3919,18 @@ export class ManipulationFeature extends EditorFeature {
       if(attributeName.toLowerCase() === "class") setClass(nextValue)
       else setElementAttributeValue(node, attributeName, nextValue, previousName)
     }
+    const attribute = (name: string) => Array.from(node.attributes).find(attribute => attribute.name === name)
+      ?? (name.includes(":") ? null : node.getAttributeNode(name))
+    const previousAttribute = previousName ? attribute(previousName) : null
 
     // Set the new name before removing the old one so an invalid XML name
     // cannot turn a failed rename into data loss.
     set(name, value)
-    if(previousName && previousName !== name) set(previousName, null)
+    if(previousAttribute && node.getAttributeNodeNS(previousAttribute.namespaceURI, previousAttribute.localName) === previousAttribute
+      && previousAttribute !== attribute(name)) {
+      if(previousAttribute.name === "class" && !previousAttribute.namespaceURI) setClass(null)
+      else node.removeAttributeNode(previousAttribute)
+    }
   }
 
   private validatedStyleEntries(styles: Record<string, ElementStyleMutation>) {

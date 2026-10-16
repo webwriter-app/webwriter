@@ -328,6 +328,32 @@ describe("SharedDOMDoc initialization", () => {
     }
   })
 
+  it.each([false, true])("keeps DOM edits and history after disconnecting collaboration (initial sync: %s)", synced => {
+    const owner = document.implementation.createHTMLDocument("")
+    owner.body.innerHTML = '<p title="keep">Before</p><!--keep-->'
+    const shared = new SharedDOMDoc("ws://localhost:1234", "disconnect-room", [], ["◆"], {root: owner.body, connect: false})
+    sharedDocs.push(shared)
+    if(synced) shared.provider!.emit("sync", [true])
+    const paragraph = owner.querySelector("p")!
+    const disconnect = vi.spyOn(shared.provider!, "disconnect")
+    shared.provider!.shouldConnect = true
+    shared.disconnectCollaboration()
+    expect(disconnect).toHaveBeenCalledOnce()
+    expect(shared.provider!.shouldConnect).toBe(false)
+    expect(shared.connectionStatus).toBe("disconnected")
+    expect(owner.querySelector("p")).toBe(paragraph)
+    expect(paragraph.getAttribute("title")).toBe("keep")
+    shared.stopCapturing()
+    paragraph.textContent = "After"
+    shared.syncFromDOM()
+    expect(shared.body.toString()).toContain("After")
+    shared.undo()
+    expect(paragraph.textContent).toBe("Before")
+    shared.redo()
+    expect(paragraph.textContent).toBe("After")
+    expect(owner.body.innerHTML).toContain("<!--keep-->")
+  })
+
   it("waits for a successful provider sync before seeding a legacy room", () => {
     const owner = document.implementation.createHTMLDocument("")
     const joining = new SharedDOMDoc("ws://localhost:1234", "legacy-room", [], ["◆"], {root: owner.body, connect: false})
@@ -1700,6 +1726,30 @@ describe("relative selections and history", () => {
     shared.redo()
     expect(root.innerHTML).toBe('<p data-state="changed">after</p><aside>new</aside>')
     expect(shared.body.toString()).toContain('<p data-state="changed">after</p><aside>new</aside>')
+  })
+
+  it.each([
+    ["emoji at the changed prefix", "😀x", "😁x"],
+    ["emoji with a shared low surrogate", "x\u{1F600}", "y\u{1FA00}"],
+  ])("keeps surrogate pairs intact across replicas and undo/redo (%s)", async (_case, before, after) => {
+    const left = createShared(`<p>${before}</p>`)
+    const right = cloneShared(left.shared)
+    left.root.querySelector("p")!.textContent = after
+    await mutationsDelivered()
+
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-client")
+    expect(left.root.querySelector("p")!.textContent).toBe(after)
+    expect(right.root.querySelector("p")!.textContent).toBe(after)
+
+    left.shared.undo()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-undo")
+    expect(left.root.querySelector("p")!.textContent).toBe(before)
+    expect(right.root.querySelector("p")!.textContent).toBe(before)
+
+    left.shared.redo()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-redo")
+    expect(left.root.querySelector("p")!.textContent).toBe(after)
+    expect(right.root.querySelector("p")!.textContent).toBe(after)
   })
 
   it("does not put remote transactions on the local undo stack", async () => {

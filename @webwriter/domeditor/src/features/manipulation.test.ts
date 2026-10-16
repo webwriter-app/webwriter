@@ -11,6 +11,7 @@ import { $, cloneWithoutEditorMarkers, getInertDocument } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {mathElement} from "../math"
+import {elementAttributeState} from "../element-attributes"
 import {floatSideFromStyles} from "../element-styles"
 import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
 import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type SelectionChangeDetail} from "../editor-bridge"
@@ -3294,7 +3295,7 @@ describe("explicit multi-element selection editing", () => {
     svg.setAttributeNS(xlinkNamespace, "xlink:href", "original")
     document.body.replaceChildren(svg)
     const setAttribute = (name: string, previousName?: string) => editor.features.manipulation.actions.setElementAttribute({
-      type: "setElementAttribute", path: [0], localName: "svg", namespaceURI: svgNamespace,
+      ...elementAttributeState(svg, [0]), type: "setElementAttribute",
       name, previousName, value: "updated",
     })
 

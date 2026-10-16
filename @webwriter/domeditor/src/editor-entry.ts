@@ -2,11 +2,67 @@ import { DOMEditor } from "./domeditor"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
-import {isAppendixInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
+import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
 import {isAuthoredMutation} from "./editor-artifacts"
 
 /** Shortest time between two document snapshots posted to the host. */
 const snapshotInterval = 250
+
+const mutationOptions: MutationObserverInit = {attributes: true, attributeOldValue: true, characterData: true,
+  characterDataOldValue: true, childList: true, subtree: true}
+
+/** Observes the document and all nested inert template contents. */
+export function observeFrameDocument(document: Document, callback: MutationCallback) {
+  const Observer = document.defaultView?.MutationObserver ?? MutationObserver
+  let templateContents: Set<DocumentFragment> | null = null
+  const observer = new Observer((mutations, currentObserver) => {
+    callback(mutations, currentObserver)
+    if(mutations.some(mutation => mutation.type === "childList")) observe()
+  })
+  const findTemplateContents = () => {
+    const contents: DocumentFragment[] = []
+    const roots: ParentNode[] = [document.documentElement]
+    for(let index = 0; index < roots.length; index++) {
+      roots[index].querySelectorAll("template").forEach(element => {
+        const content = (element as HTMLTemplateElement).content
+        if(!content || content.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return
+        contents.push(content)
+        roots.push(content)
+      })
+    }
+    return contents
+  }
+  const flushPending = () => {
+    let records = observer.takeRecords()
+    while(records.length) {
+      callback(records, observer)
+      records = observer.takeRecords()
+    }
+  }
+  const observe = () => {
+    flushPending()
+    const contents = findTemplateContents()
+    const observed = templateContents
+    if(observed && contents.length === observed.size && contents.every(content => observed.has(content))) return
+    observer.disconnect()
+    observer.observe(document.documentElement, mutationOptions)
+    contents.forEach(content => observer.observe(content, mutationOptions))
+    templateContents = new Set(contents)
+  }
+  observe()
+  return () => {
+    flushPending()
+    observer.disconnect()
+    templateContents = null
+  }
+}
+
+/** Whether a frame-level shortcut belongs to the editor document. */
+export function shouldCaptureFrameShortcut(event: KeyboardEvent) {
+  return !event.defaultPrevented && !event.isComposing
+    && !isWidgetShadowInteraction(event) && !isAppendixInteraction(event)
+    && !isTextFieldInteraction(event, document.body)
+}
 
 type SelectionBookmark = {
   anchorNode: Node
@@ -71,9 +127,8 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     pending = true
     if(timer === null) queueMicrotask(flushSnapshot)
   }
-  const observer = new MutationObserver(publishSnapshot)
-  observer.observe(document.documentElement, {attributes: true, attributeOldValue: true, characterData: true,
-    characterDataOldValue: true, childList: true, subtree: true})
+  const stopObserving = observeFrameDocument(document, publishSnapshot)
+  window.addEventListener("unload", stopObserving, {once: true})
   publishSnapshot()
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {
@@ -91,7 +146,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true})
   document.addEventListener("keydown", event => {
     post({type: "editor-frame-interaction"})
-    if(event.defaultPrevented || event.isComposing) return
+    if(!shouldCaptureFrameShortcut(event)) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => shortcuts[candidate.id] === shortcut)
@@ -108,6 +163,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     if(data.command === "snapshot") {
       post({type: "editor-frame-response", requestId: data.requestId, html: snapshot()})
     }
+    else if(data.command === "disconnect-collaboration") editor.doc?.disconnectCollaboration()
     else if(data.command === "registered-tags") {
       post({type: "editor-frame-response", requestId: data.requestId,
         tags: (data.tags ?? []).filter(tag => typeof tag === "string" && !!customElements.get(tag))})

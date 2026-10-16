@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
+import * as Y from "yjs"
 
 import { DOMEditor } from "../domeditor"
 import { SelectionFeature } from "./selection"
 import { $ } from "../utility"
 import { replayHostPointer, selectionChangeEvent } from "../editor-bridge"
+import {elementAttributeState} from "../element-attributes"
+import {sharedDOMBody} from "../domdoc"
 
 let editor: DOMEditor
 let feature: SelectionFeature
@@ -2075,6 +2078,7 @@ describe("processSelection()", () => {
         attributes: expect.objectContaining({lang: "de"}),
       }))
       editor.features.manipulation.actions.setElementAttribute({
+        ...elementAttributeState(document.documentElement, null),
         type: "setElementAttribute",
         path: null,
         localName: "html",
@@ -2802,6 +2806,7 @@ describe("document listeners", () => {
         nodeSelected: true,
         element: {
           path: [0],
+          targetId: expect.any(String),
           localName: "demo-widget",
           namespaceURI: "http://www.w3.org/1999/xhtml",
           name: "demo-widget",
@@ -2824,6 +2829,7 @@ describe("document listeners", () => {
     const message = postMessage.mock.lastCall?.[0] as {detail: {element?: unknown}}
     expect(message.detail.element).toEqual({
       path: [0],
+      targetId: expect.any(String),
       localName: "blockquote",
       namespaceURI: "http://www.w3.org/1999/xhtml",
       name: "Quote",
@@ -2842,11 +2848,7 @@ describe("document listeners", () => {
     document.body.innerHTML = '<blockquote cite="source.html" class="authored"></blockquote>'
     const quote = document.querySelector("blockquote")!
     quote.classList.add("◆", "◆element-selected")
-    const target = {
-      path: [0],
-      localName: "blockquote",
-      namespaceURI: "http://www.w3.org/1999/xhtml",
-    }
+    const target = elementAttributeState(quote, [0])
 
     editor.features.manipulation.actions.setElementAttribute({...target, type: "setElementAttribute", name: "open", value: ""})
     editor.features.manipulation.actions.setElementAttribute({
@@ -2869,12 +2871,119 @@ describe("document listeners", () => {
     expect(quote).toHaveClass("◆", "◆element-selected")
   })
 
+  it.each(["replacement", "insertion"])("rejects stale same-tag attribute targets after %s", change => {
+    document.body.innerHTML = '<blockquote cite="original"></blockquote>'
+    const original = document.body.firstElementChild!
+    const target = elementAttributeState(original, [0])
+    const other = document.createElement("blockquote")
+    if(change === "replacement") original.replaceWith(other)
+    else document.body.prepend(other)
+
+    expect(() => editor.features.manipulation.actions.setElementAttribute({
+      ...target, type: "setElementAttribute", name: "title", value: "stale",
+    })).toThrow("selected element changed")
+    expect(other.hasAttribute("title")).toBe(false)
+    expect(original.hasAttribute("title")).toBe(false)
+
+    const current = elementAttributeState(other, [0])
+    editor.features.manipulation.actions.setElementAttribute({
+      ...current, type: "setElementAttribute", name: "title", value: "current",
+    })
+    expect(other.getAttribute("title")).toBe("current")
+    expect(editor.toHTML(true)).not.toContain("targetId")
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("targetId")
+  })
+
+  it("rejects path-only attribute edits without a captured identity", () => {
+    document.body.innerHTML = '<p></p>'
+    expect(() => editor.features.manipulation.actions.setElementAttribute({
+      type: "setElementAttribute", path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "title", value: "unverified",
+    })).toThrow("selected element changed")
+    expect(document.querySelector("p")!.hasAttribute("title")).toBe(false)
+  })
+
+  it("rejects an attribute edit after a remote same-tag replacement", () => {
+    document.body.innerHTML = '<blockquote title="original"></blockquote>'
+    const original = document.body.firstElementChild!
+    $.selectElement(original)
+    editor.doc.syncFromDOM()
+    const target = elementAttributeState(original, [0])
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      remote.transact(() => {
+        const body = sharedDOMBody(remote)
+        body.delete(0, 1)
+        const replacement = new Y.XmlElement("blockquote")
+        replacement.setAttribute("title", "remote")
+        body.insert(0, [replacement])
+      })
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-replacement")
+      const replacement = document.body.firstElementChild!
+      expect(replacement).not.toBe(original)
+      expect(() => editor.features.manipulation.actions.setElementAttribute({
+        ...target, type: "setElementAttribute", name: "title", value: "stale",
+      })).toThrow("selected element changed")
+      expect(replacement.getAttribute("title")).toBe("remote")
+    }
+    finally { remote.destroy() }
+  })
+
+  it("keeps case-only HTML attribute renames through collaboration history", () => {
+    document.body.innerHTML = '<p data-note="original" class="authored"></p>'
+    const paragraph = document.querySelector("p")!
+    paragraph.classList.add("◆element-selected")
+    const target = elementAttributeState(paragraph, [0])
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.manipulation.actions.setElementAttribute({
+      ...target, type: "setElementAttribute", name: "DATA-NOTE", previousName: "data-note", value: "updated",
+    })
+    editor.features.manipulation.actions.setElementAttribute({
+      ...target, type: "setElementAttribute", name: "CLASS", previousName: "class", value: "changed",
+    })
+    expect(paragraph.getAttribute("data-note")).toBe("updated")
+    expect(paragraph.classList.contains("◆element-selected")).toBe(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("p")!.getAttribute("data-note")).toBe("original")
+    editor.doc.redo()
+    expect(document.querySelector("p")!.getAttribute("data-note")).toBe("updated")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("keeps SVG attribute renames case-sensitive", () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    svg.setAttribute("data-note", "original")
+    document.body.replaceChildren(svg)
+    editor.features.manipulation.actions.setElementAttribute({
+      ...elementAttributeState(svg, [0]), type: "setElementAttribute", name: "DATA-NOTE", previousName: "data-note", value: "updated",
+    })
+    expect(svg.hasAttribute("data-note")).toBe(false)
+    expect(svg.getAttribute("DATA-NOTE")).toBe("updated")
+  })
+
+  it("renames case-only namespace prefixes without retaining the old attribute", () => {
+    const paragraph = document.createElement("p")
+    const xmlns = "http://www.w3.org/2000/xmlns/"
+    paragraph.setAttributeNS(xmlns, "xmlns:p", "urn:lower")
+    paragraph.setAttributeNS(xmlns, "xmlns:P", "urn:upper")
+    paragraph.setAttributeNS("urn:lower", "p:note", "original")
+    // Happy DOM lacks the browser's case-sensitive namespace lookup.
+    Object.defineProperty(paragraph, "lookupNamespaceURI", {value: (prefix: string) => prefix === "P" ? "urn:upper" : "urn:lower"})
+    document.body.replaceChildren(paragraph)
+    editor.features.manipulation.actions.setElementAttribute({
+      ...elementAttributeState(paragraph, [0]), type: "setElementAttribute", name: "P:note", previousName: "p:note", value: "updated",
+    })
+    expect(paragraph.getAttributeNS("urn:lower", "note")).toBeNull()
+    expect(paragraph.getAttributeNS("urn:upper", "note")).toBe("updated")
+  })
+
   it("rejects active attributes, unsafe URLs, and stale element paths", () => {
     document.body.innerHTML = "<blockquote></blockquote>"
     const target = {
-      path: [0],
-      localName: "blockquote",
-      namespaceURI: "http://www.w3.org/1999/xhtml",
+      ...elementAttributeState(document.body.firstElementChild!, [0]),
       type: "setElementAttribute" as const,
     }
 
@@ -2891,9 +3000,7 @@ describe("document listeners", () => {
   it.each(["script", "style"])("keeps <%s> and all of its attributes read-only", localName => {
     document.body.replaceChildren(document.createElement(localName))
     const target = {
-      path: [0],
-      localName,
-      namespaceURI: "http://www.w3.org/1999/xhtml",
+      ...elementAttributeState(document.body.firstElementChild!, [0]),
       type: "setElementAttribute" as const,
     }
 

@@ -547,6 +547,16 @@ export class SharedDOMDoc {
     return this.provider?.shouldConnect ? "connecting" : "disconnected"
   }
 
+  /** Keep the current DOM and history editable after leaving a server room. */
+  disconnectCollaboration() {
+    this.provider?.disconnect()
+    if(this.#awaitingInitialSync) {
+      this.#awaitingInitialSync = false
+      this.#initializeSharedDOM(true)
+      this.syncFromDOM(this.#initialOrigin)
+    }
+  }
+
   readonly #publishLastChange = (transaction: Y.Transaction) => {
     if(!transaction.local || transaction.origin === this.#initialOrigin || transaction.origin === this.#remoteReactionOrigin) return
     const changedTypes = transaction.changedParentTypes
@@ -1642,11 +1652,23 @@ export class SharedDOMDoc {
 
     let prefix = 0
     while(prefix < current.length && prefix < desired.length && current[prefix] === desired[prefix]) prefix++
+    // Y.Text indexes use UTF-16 offsets, but deleting only one half of a
+    // surrogate pair can leave peers with different invalid intermediate text.
+    if(prefix > 0 && prefix < current.length &&
+      current.charCodeAt(prefix - 1) >= 0xD800 && current.charCodeAt(prefix - 1) <= 0xDBFF &&
+      current.charCodeAt(prefix) >= 0xDC00 && current.charCodeAt(prefix) <= 0xDFFF) prefix--
     let suffix = 0
     while(
       suffix < current.length - prefix && suffix < desired.length - prefix &&
       current[current.length - suffix - 1] === desired[desired.length - suffix - 1]
     ) suffix++
+    const splitsSurrogatePair = (value: string, length: number) => {
+      const boundary = value.length - length
+      return boundary > 0 && boundary < value.length &&
+        value.charCodeAt(boundary - 1) >= 0xD800 && value.charCodeAt(boundary - 1) <= 0xDBFF &&
+        value.charCodeAt(boundary) >= 0xDC00 && value.charCodeAt(boundary) <= 0xDFFF
+    }
+    if(splitsSurrogatePair(current, suffix) || splitsSurrogatePair(desired, suffix)) suffix--
     const deleteLength = current.length - prefix - suffix
     const insert = desired.slice(prefix, desired.length - suffix)
     if(deleteLength) yText.delete(prefix, deleteLength)

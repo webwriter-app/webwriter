@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import {Window} from "happy-dom"
 import '@testing-library/jest-dom/vitest'
 
 import {
@@ -33,6 +34,27 @@ describe("native text field interactions", () => {
     target.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true}))
     expect(result).toBe(expected)
     host.remove()
+  })
+
+  it("recognizes text controls from another document realm", () => {
+    const foreignWindow = new Window()
+    const owner = foreignWindow.document
+    const input = owner.createElement("input")
+    owner.body.append(input)
+    // happy-dom shares Element constructors across windows, so make the
+    // foreign path node structurally element-like without the host prototype.
+    const foreignInput = new Proxy(input, {
+      getPrototypeOf: () => null,
+      get(target, property) {
+        const value = Reflect.get(target, property, target)
+        return typeof value === "function" ? value.bind(target) : value
+      },
+    })
+
+    const event = new foreignWindow.Event("keydown")
+    Object.defineProperty(event, "composedPath", {value: () => [foreignInput]})
+    expect(isTextFieldInteraction(event as unknown as Event, owner.body as unknown as Element)).toBe(true)
+    foreignWindow.happyDOM.abort()
   })
 })
 

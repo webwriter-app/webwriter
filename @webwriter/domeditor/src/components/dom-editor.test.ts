@@ -8,6 +8,7 @@ import {AppRibbon} from "./ribbon"
 import {elementDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
 import type {ShapeKeyboard} from "./shape-keyboard"
+import type {LinkKeyboard} from "./link-keyboard"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonMenu} from "./ribbon-menu"
@@ -1728,6 +1729,53 @@ describe("DomEditor iframe setup", () => {
     iframe.contentDocument!.dispatchEvent(replaced)
     expect(replaced.defaultPrevented).toBe(true)
     expect(execute).not.toHaveBeenCalled()
+  })
+
+  it.each(["Ctrl", "Meta"])("preserves native undo in UI fields and widget controls (%s)", async modifier => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, shortcuts: {...host.settings.shortcuts, "editor.undo": `${modifier}+Z`}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    dispatchMarkState(editor, iframe.contentWindow!, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}, link: {
+      active: true, identity: "shortcut-link", href: "#intro", attributes: {href: "#intro"}, text: "Intro", targets: [],
+    }})
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<LinkKeyboard>("dom-editor-link-keyboard")!
+    await keyboard.updateComplete
+    const fields = [ribbon.shadowRoot!.querySelector(".ai-prompt-input")!, keyboard.shadowRoot!.querySelector("#link-search")!]
+    const frameDocument = iframe.contentDocument!
+    frameDocument.body.setAttribute("contenteditable", "")
+    const widget = frameDocument.createElement("test-widget")
+    frameDocument.body.append(widget)
+    const root = widget.attachShadow({mode: "open"})
+    const input = frameDocument.createElement("input")
+    root.append(input)
+    fields.push(input)
+    const nativeHandler = vi.fn()
+    for(const field of fields) {
+      expect(field).not.toBeNull()
+      field.addEventListener("keydown", nativeHandler)
+      const event = new KeyboardEvent("keydown", {key: "z", code: "KeyZ", ctrlKey: modifier === "Ctrl", metaKey: modifier === "Meta",
+        bubbles: true, composed: true, cancelable: true})
+      field.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    expect(nativeHandler).toHaveBeenCalledTimes(fields.length)
+    expect(execute).not.toHaveBeenCalled()
+
+    const event = new KeyboardEvent("keydown", {key: "z", code: "KeyZ", ctrlKey: modifier === "Ctrl", metaKey: modifier === "Meta",
+      bubbles: true, cancelable: true})
+    frameDocument.querySelector("p")!.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "undo"})
+    execute.mockClear()
+    const shellEvent = new KeyboardEvent("keydown", {key: "z", code: "KeyZ", ctrlKey: modifier === "Ctrl", metaKey: modifier === "Meta",
+      bubbles: true, composed: true, cancelable: true})
+    ribbon.dispatchEvent(shellEvent)
+    expect(shellEvent.defaultPrevented).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "undo"})
   })
 
   it("dispatches insertion shortcuts after loading legacy saved settings", async () => {
@@ -5881,6 +5929,7 @@ describe("DomEditor.execute()", () => {
     toolbox.dispatchEvent(new CustomEvent("element-attribute-change", {
       detail: {
         path: [0, 1],
+        targetId: "element-captured",
         localName: "blockquote",
         namespaceURI: "http://www.w3.org/1999/xhtml",
         name: "data-source",
@@ -5894,6 +5943,7 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({
       type: "setElementAttribute",
       path: [0, 1],
+      targetId: "element-captured",
       localName: "blockquote",
       namespaceURI: "http://www.w3.org/1999/xhtml",
       name: "data-source",
@@ -8525,6 +8575,34 @@ describe("cloud service settings integration", () => {
     adminUrl: "https://cloud.example/admin", capabilities: ["documents"], user: {id: "ada", name: "Ada"},
   }
   const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status, headers: {"Content-Type": "application/json"}})
+
+  it.each([false, true])("disconnects the document provider when changing services or selecting Local (opaque: %s)", async opaque => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const disconnect = vi.fn()
+    const frameWindow = iframe.contentWindow as any
+    frameWindow.editor = {doc: {disconnectCollaboration: disconnect, doc: {clientID: 1}, setUser: vi.fn()}}
+    host.editorOpaque = opaque
+    const control = vi.spyOn(host, "postFrameControl")
+    vi.spyOn(host, "loginToBackend").mockResolvedValue(undefined)
+    const services = [service, {...service, id: "cloud-b", url: "https://other.example"}]
+    for(const next of ["cloud-b", null]) {
+      host.settings = {...defaultAppSettings(), cloudServices: services, activeCloudServiceId: service.id}
+      host.collaborationRoom = "old-room"
+      host.sharedDocumentToken = "old-token"
+      const body = iframe.contentDocument!.body
+      const content = body.innerHTML
+      host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {...host.settings, activeCloudServiceId: next}}))
+      if(opaque) expect(control).toHaveBeenCalledWith("disconnect-collaboration")
+      else expect(disconnect).toHaveBeenCalledTimes(next === null ? 2 : 1)
+      expect(host.collaborationRoom).toBeNull()
+      expect(host.sharedDocumentToken).toBeNull()
+      expect(host.collaborationStatus).toBe("disconnected")
+      expect(iframe.contentDocument!.body).toBe(body)
+      expect(body.innerHTML).toBe(content)
+      control.mockClear()
+    }
+  })
 
   it("uses the configured provider and saved token, and preserves the document ID after re-sign-in", async () => {
     vi.stubGlobal("fetch", vi.fn(async(url: string) => response(String(url).endsWith("/session") ? session : {documents: []})))

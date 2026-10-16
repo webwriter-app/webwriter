@@ -2,7 +2,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {ElementAttributeEditor} from "./element-attribute-editor"
-import {deliberatelyUnsupportedElementNames, elementEditingLimitation} from "../element-attributes"
+import {deliberatelyUnsupportedElementNames, elementEditingLimitation, elementAttributeState} from "../element-attributes"
 
 beforeEach(() => document.body.replaceChildren())
 
@@ -22,6 +22,22 @@ async function mount(localName = "details", attributes: Record<string, string> =
 }
 
 describe("element attribute editor", () => {
+  it("carries the captured element identity through attribute changes", async () => {
+    const editor = await mount()
+    const target = document.createElement("details")
+    editor.state = elementAttributeState(target, [0])
+    await editor.updateComplete
+    const listener = vi.fn()
+    editor.addEventListener("element-attribute-change", listener)
+    const field = editor.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Details: ID"]')!
+    field.value = "changed"
+    field.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
+      targetId: editor.state.targetId, name: "id", value: "changed",
+    })}))
+    expect(target.attributes).toHaveLength(0)
+  })
+
   it("keeps only Language visible and opens other attributes with the vertical ellipsis", async () => {
     const editor = await mount("details", {id: "faq", open: ""})
     const root = editor.shadowRoot!

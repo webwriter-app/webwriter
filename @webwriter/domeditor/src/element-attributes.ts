@@ -4,6 +4,8 @@ import {authoredClassValue} from "./editor-artifacts"
 export type ElementAttributeState = {
   /** BODY-relative child-node path. Null addresses the document element. */
   path: number[] | null
+  /** Frame-local identity; never stored in the authored DOM. */
+  targetId?: string
   localName: string
   namespaceURI: string | null
   name: string
@@ -250,6 +252,18 @@ export function isUnsafeElementAttributeValue(name: string, value: string) {
     || normalizedValue.startsWith("data:image/svg+xml")
 }
 
+const attributeTargetIds = new WeakMap<Element, string>()
+let attributeTargetSequence = 0
+
+export function elementAttributeTargetId(element: Element) {
+  let id = attributeTargetIds.get(element)
+  if(!id) {
+    id = `element-${++attributeTargetSequence}`
+    attributeTargetIds.set(element, id)
+  }
+  return id
+}
+
 export function elementAttributeState(element: Element, path: number[] | null): ElementAttributeState {
   const attributes = Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
     if(isEditorOnlyElementAttribute(attribute.name)) return []
@@ -262,6 +276,7 @@ export function elementAttributeState(element: Element, path: number[] | null): 
   const presentation = getElementPresentation(element)
   return {
     path: path ? [...path] : null,
+    targetId: elementAttributeTargetId(element),
     localName: element.localName,
     namespaceURI: element.namespaceURI,
     name: presentation.name,

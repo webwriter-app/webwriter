@@ -15,6 +15,7 @@ import {
 
 type AttributeChangeDetail = {
   path: number[] | null
+  targetId?: string
   localName: string
   namespaceURI: string | null
   name: string
@@ -259,6 +260,7 @@ export class ElementAttributeEditor extends LitElement {
     this.dispatchEvent(new CustomEvent<AttributeChangeDetail>("element-attribute-change", {
       detail: {
         path: state.path ? [...state.path] : null,
+        ...(state.targetId ? {targetId: state.targetId} : {}),
         localName: state.localName,
         namespaceURI: state.namespaceURI,
         name,

@@ -2903,6 +2903,10 @@ export class DomEditor extends LitElement {
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
+    if(isTextFieldInteraction(event, this.editorDocument?.body)
+      || event.currentTarget === this.editorDocument && isWidgetShadowInteraction(event)) return
+    const appendix = this.editorDocument?.body.shadowRoot
+    if(appendix && event.composedPath().includes(appendix)) return
     if(event.composedPath().some(target => target instanceof HTMLElement
       && target.classList.contains("html-source-input"))) return
     if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
@@ -3617,6 +3621,8 @@ export class DomEditor extends LitElement {
   }
 
   private clearDocumentCollaboration() {
+    if(this.editorOpaque) this.postFrameControl("disconnect-collaboration")
+    else (this.editorWindow as Window & {editor?: DOMEditor} | null)?.editor?.doc?.disconnectCollaboration()
     this.sharingRequestRevision++
     this.collaborationRoom = null
     this.sharedDocumentToken = null
@@ -5494,6 +5500,7 @@ export class DomEditor extends LitElement {
     const detail = (event as CustomEvent<{
       selectionType?: unknown
       path?: unknown
+      targetId?: unknown
       localName?: unknown
       namespaceURI?: unknown
       name?: unknown
@@ -5517,9 +5524,11 @@ export class DomEditor extends LitElement {
         name: detail.name, value: detail.value, ...(detail.previousName ? {previousName: detail.previousName} : {})})
       return
     }
+    if(typeof detail.targetId !== "string") return
     void this.execute({
       type: "setElementAttribute",
       path: detail.path as number[] | null,
+      targetId: detail.targetId,
       localName: detail.localName,
       namespaceURI: detail.namespaceURI,
       name: detail.name,
