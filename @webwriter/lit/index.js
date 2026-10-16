@@ -1,4 +1,4 @@
-// ../lit/index.ts
+// index.ts
 import { LitElement, adoptStyles } from "lit";
 var javaScriptMimeTypes = /* @__PURE__ */ new Set([
   "application/ecmascript",
