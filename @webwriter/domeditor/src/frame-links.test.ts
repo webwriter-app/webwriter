@@ -10,6 +10,63 @@ beforeEach(() => Object.assign(navigation, {disableMainFrameNavigation: true, di
 afterEach(() => { disconnect?.(); document.body.replaceChildren(); Object.assign(navigation, originalNavigation); vi.restoreAllMocks() })
 
 describe("frame links", () => {
+  it("uses native new tabs for external site pages while preserving internal navigation and contact links", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null)
+    disconnect = openFrameLinksInNewTabs(window, {externalPagesOnly: true})
+    for(const href of ["https://example.test/page", "http://example.test/page", "//example.test/page"]) {
+      document.body.innerHTML = `<a href="${href}" target="_self" rel="external nofollow"><b>Link</b></a>`
+      const event = new MouseEvent("click", {bubbles: true, cancelable: true, ctrlKey: true})
+      document.querySelector("b")!.dispatchEvent(event)
+      const link = document.querySelector("a")!
+      expect(event.defaultPrevented).toBe(false)
+      expect(link.target).toBe("_blank")
+      expect([...link.relList]).toEqual(["external", "nofollow", "noopener", "noreferrer"])
+    }
+    for(const href of ["/docs/", `${location.origin}/examples/`, "#chapter", "?library=lit", "mailto:contact@webwriter.app", "tel:+492418021967"]) {
+      document.body.innerHTML = `<a href="${href}">Link</a>`
+      const before = document.body.innerHTML
+      const event = new MouseEvent("click", {bubbles: true, cancelable: true})
+      document.querySelector("a")!.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(document.body.innerHTML).toBe(before)
+    }
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it("handles dynamically added shadow links on site pages without changing downloads or consumed clicks", () => {
+    disconnect = openFrameLinksInNewTabs(window, {externalPagesOnly: true})
+    document.body.innerHTML = '<demo-widget></demo-widget><a href="https://example.test/file" download>Download</a><a href="https://example.test/handled">Handled</a>'
+    const shadow = document.querySelector("demo-widget")!.attachShadow({mode: "open"})
+    shadow.innerHTML = '<a href="https://example.test/dynamic">Dynamic</a>'
+    const link = shadow.querySelector("a")!
+    link.dispatchEvent(new MouseEvent("auxclick", {button: 1, bubbles: true, composed: true, cancelable: true}))
+    expect(link.target).toBe("_blank")
+    expect(link.relList.contains("noopener")).toBe(true)
+    const [download, handled] = [...document.querySelectorAll("a")]
+    handled.addEventListener("click", event => event.preventDefault())
+    download.click()
+    handled.click()
+    expect(download.hasAttribute("target")).toBe(false)
+    expect(handled.hasAttribute("target")).toBe(false)
+    disconnect()
+    link.removeAttribute("target")
+    link.click()
+    expect(link.hasAttribute("target")).toBe(false)
+  })
+
+  it("resolves site links against their native base URL", () => {
+    disconnect = openFrameLinksInNewTabs(window, {externalPagesOnly: true})
+    const base = document.createElement("base")
+    base.href = "https://external.test/guide/"
+    document.head.append(base)
+    try {
+      document.body.innerHTML = '<a href="#chapter">Chapter</a>'
+      document.querySelector("a")!.click()
+      expect(document.querySelector("a")!.target).toBe("_blank")
+    }
+    finally {base.remove()}
+  })
+
   it("opens external links in new tabs without changing the document", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null)
     disconnect = openFrameLinksInNewTabs(window)

@@ -1,7 +1,7 @@
 const frameLinkListeners = new WeakMap<Window, () => void>()
 
-/** Keep external links out of the frame while navigating local fragments in it. */
-export function openFrameLinksInNewTabs(win: Window & typeof globalThis) {
+/** Keep links out of document frames, or only external pages out of the site. */
+export function openFrameLinksInNewTabs(win: Window & typeof globalThis, {externalPagesOnly = false} = {}) {
   const existing = frameLinkListeners.get(win)
   if(existing) return existing
   const activate = (event: MouseEvent) => {
@@ -11,12 +11,23 @@ export function openFrameLinksInNewTabs(win: Window & typeof globalThis) {
     if(!link) return
     const href = link.getAttribute("href") ?? link.getAttributeNS("http://www.w3.org/1999/xlink", "href")
     if(href === null) return
-    event.preventDefault()
     let url: URL
     // srcdoc inherits the parent's base URL, but fragment-only links belong
     // to this frame. Assigning its URL also ignores authored link targets.
     const fragmentOnly = href.trim().startsWith("#")
-    try { url = new URL(href, fragmentOnly ? win.location.href : link.baseURI) } catch { return }
+    try { url = new URL(href, fragmentOnly && !externalPagesOnly ? win.location.href : link.baseURI) }
+    catch { if(!externalPagesOnly) event.preventDefault(); return }
+    if(externalPagesOnly) {
+      if(!["http:", "https:"].includes(url.protocol) || url.origin === win.location.origin || link.hasAttribute("download")) return
+      // Let the browser handle activation, including modifier keys and middle clicks.
+      link.setAttribute("target", "_blank")
+      const rel = new Set((link.getAttribute("rel") ?? "").split(/\s+/).filter(Boolean))
+      rel.add("noopener")
+      rel.add("noreferrer")
+      link.setAttribute("rel", [...rel].join(" "))
+      return
+    }
+    event.preventDefault()
     if(fragmentOnly || href.includes("#") && url.href.split("#")[0] === win.location.href.split("#")[0]) {
       win.location.assign(url.href)
       return

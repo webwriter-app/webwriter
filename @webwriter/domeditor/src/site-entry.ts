@@ -1,5 +1,8 @@
 import {LitElement, css, html} from "lit"
 import {language, setLanguage, siteLanguages, siteLanguageKey, preferredLanguage, t, translateSiteTree, SiteLanguageController} from "./site-language"
+import {openFrameLinksInNewTabs} from "./frame-links"
+
+openFrameLinksInNewTabs(window, {externalPagesOnly: true})
 
 class SiteLanguageSwitcher extends LitElement {
   private locale = new SiteLanguageController(this)
