@@ -3,6 +3,7 @@ import {afterEach, expect, it, vi} from "vitest"
 vi.mock("./example-document", () => ({}))
 import {ExamplePreview, ExampleShowcase} from "./example-preview"
 import {exampleDocuments} from "../example-documents"
+import * as exampleDocumentSource from "../example-documents"
 
 const initialURL = location.href
 afterEach(() => {
@@ -22,6 +23,52 @@ it("uses the physics diagram instead of squeezing its six-column table into the 
   expect(preview.shadowRoot?.querySelector("table")).toBeNull()
 })
 
+it("gives the authored café menu more room in the languages preview", async () => {
+  const preview = new ExamplePreview()
+  preview.exampleId = "cafe"
+  document.body.append(preview)
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector(".visual.menu svg")).toBeTruthy())
+  expect(preview.shadowRoot!.querySelector(".menu title")?.textContent).toBe("A small café menu")
+})
+
+it("ends the mathematics preview with the document's complete reflection prompt", async () => {
+  const source = await exampleDocumentSource.loadExampleDocument("garden-design")
+  const preview = new ExamplePreview()
+  preview.exampleId = "garden-design"
+  document.body.append(preview)
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector(".closing")).toBeTruthy())
+  const closing = preview.shadowRoot!.querySelector(".closing")!
+  expect(closing.textContent).toBe(source.querySelector("label[for]")?.textContent)
+  expect(preview.shadowRoot!.querySelector(".page")!.lastElementChild).toBe(closing)
+})
+
+it("keeps the previous example while loading and fades it out when its replacement is ready", async () => {
+  const preview = new ExamplePreview()
+  preview.exampleId = "food-web"
+  document.body.append(preview)
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector("h2")?.textContent).toBe("Who eats what in the garden?"))
+  const original = preview.shadowRoot!.querySelector(".page")!
+  const next = await exampleDocumentSource.loadExampleDocument("binary")
+  let resolve!: (source: Document) => void
+  vi.spyOn(exampleDocumentSource, "loadExampleDocument").mockReturnValueOnce(new Promise(done => { resolve = done }))
+
+  preview.exampleId = "binary"
+  await preview.updateComplete
+  expect(preview.shadowRoot!.querySelector(".page")).toBe(original)
+  expect(preview.shadowRoot!.querySelector(".placeholder")).toBeNull()
+
+  resolve(next)
+  await vi.waitFor(() => expect(preview.shadowRoot?.querySelector("h2")?.textContent).toBe("Count like a computer"))
+  const outgoing = preview.shadowRoot!.querySelector(".outgoing")!
+  expect(outgoing.getAttribute("aria-hidden")).toBe("true")
+  expect(outgoing.hasAttribute("inert")).toBe(true)
+  expect(outgoing.querySelector("h2")?.textContent).toBe("Who eats what in the garden?")
+  outgoing.dispatchEvent(new Event("animationend"))
+  await preview.updateComplete
+  expect(preview.shadowRoot!.querySelector(".outgoing")).toBeNull()
+  expect(preview.shadowRoot!.querySelectorAll(".page")).toHaveLength(1)
+})
+
 it("switches subjects and derives its miniature from the full document", async () => {
   const showcase = new ExampleShowcase()
   document.body.append(showcase)
@@ -31,14 +78,14 @@ it("switches subjects and derives its miniature from the full document", async (
   await vi.waitFor(() => expect(preview().shadowRoot?.querySelector("h2")?.textContent).toBe("Who eats what in the garden?"))
   expect([...preview().shadowRoot!.querySelectorAll(".steps li")].map(step => step.textContent)).toEqual(["1. Observe", "2. Listen", "3. Explain"])
   expect(preview().shadowRoot!.querySelector('.steps [aria-current="step"]')?.textContent).toBe("1. Observe")
-  const computerScience = [...showcase.shadowRoot!.querySelectorAll("button")].find(button => button.textContent === "Computer science")!
+  const computerScience = [...showcase.shadowRoot!.querySelectorAll<HTMLButtonElement>(".subjects button")].find(button => button.textContent === "Computer science")!
   computerScience.click()
   await vi.waitFor(() => expect(preview().shadowRoot?.querySelector("h2")?.textContent).toBe("Count like a computer"))
   expect(preview().shadowRoot?.querySelector("pre")?.textContent).toContain("const bits = [1, 0, 1, 0]")
   expect(showcase.shadowRoot!.querySelector("a.document")?.getAttribute("href")).toBe("?example=binary")
   expect(computerScience.getAttribute("aria-pressed")).toBe("true")
   expect(showcase.shadowRoot!.textContent).not.toContain("A look inside a WebWriter document.")
-  expect([...showcase.shadowRoot!.querySelectorAll("button")].map(button => button.textContent)).toEqual(exampleDocuments.map(example => example.subject))
+  expect([...showcase.shadowRoot!.querySelectorAll<HTMLButtonElement>(".subjects button")].map(button => button.textContent)).toEqual(exampleDocuments.map(example => example.subject))
   expect(exampleDocuments.slice(0, 3).map(example => example.subject)).toEqual(["Biology", "History", "Computer science"])
 })
 
@@ -55,6 +102,35 @@ it("cycles through every example and wraps back to the first", async () => {
   }
   showcase.remove()
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it("steps in either direction, wraps, and restarts cycling without opening a dialog", async () => {
+  vi.useFakeTimers()
+  const showcase = new ExampleShowcase()
+  document.body.append(showcase)
+  await showcase.updateComplete
+  const root = showcase.shadowRoot!
+  const current = () => root.querySelector("a.document")!.getAttribute("href")
+  const previous = root.querySelector<HTMLButtonElement>('[aria-label="Previous example"]')!
+  const next = root.querySelector<HTMLButtonElement>('[aria-label="Next example"]')!
+  expect(previous.closest("a")).toBeNull()
+  expect(next.closest("a")).toBeNull()
+
+  previous.click()
+  await showcase.updateComplete
+  expect(current()).toBe("?example=garden-design")
+  next.click()
+  await showcase.updateComplete
+  expect(current()).toBe("?example=food-web")
+  await vi.advanceTimersByTimeAsync(5000)
+  next.click()
+  await showcase.updateComplete
+  expect(current()).toBe("?example=printing")
+  await vi.advanceTimersByTimeAsync(5999)
+  expect(current()).toBe("?example=printing")
+  await vi.advanceTimersByTimeAsync(1)
+  expect(current()).toBe("?example=binary")
+  expect(root.querySelector("example-dialog")?.shadowRoot?.querySelector("dialog")?.open).toBe(false)
 })
 
 it("gives manual selections a full interval before cycling again", async () => {

@@ -1066,3 +1066,10 @@ Object.assign(siteTranslations.it, {
   "Compare garden plans and drag a geometry slider to explore area with a fixed perimeter.": "Confronta progetti di giardini e usa un cursore geometrico per esplorare l’area con un perimetro fisso.",
   "Try interactive WebWriter documents across the arts, languages, sciences, and mathematics. Open a copy and make it your own.": "Prova documenti WebWriter interattivi su arte, lingue, scienze e matematica. Apri una copia e personalizzala."
 })
+
+Object.assign(siteTranslations.de, {"Previous example": "Vorheriges Beispiel", "Next example": "Nächstes Beispiel"})
+Object.assign(siteTranslations.fr, {"Previous example": "Exemple précédent", "Next example": "Exemple suivant"})
+Object.assign(siteTranslations.nl, {"Previous example": "Vorig voorbeeld", "Next example": "Volgend voorbeeld"})
+Object.assign(siteTranslations.es, {"Previous example": "Ejemplo anterior", "Next example": "Ejemplo siguiente"})
+Object.assign(siteTranslations.pt, {"Previous example": "Exemplo anterior", "Next example": "Exemplo seguinte"})
+Object.assign(siteTranslations.it, {"Previous example": "Esempio precedente", "Next example": "Esempio successivo"})

@@ -7,7 +7,7 @@
     <title>WebWriter · Make it interactive.</title>
     <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/src/landing.css">
-    <script type="module" src="/src/site-entry.ts"></script>
+    <script type="module" blocking="render" src="/src/site-entry.ts"></script>
     <script type="module" src="/src/landing.js"></script>
   </head>
   <body class="site-layout">
@@ -22,7 +22,7 @@
           <div class="actions"><a class="button" href="/editor/">Open WebWriter <span aria-hidden="true">↗</span></a><a href="/gallery/">Explore the widgets <span aria-hidden="true">→</span></a></div>
           <p class="note">Free and open source, no registration.</p>
         </div>
-        <example-showcase></example-showcase>
+        <example-showcase><!-- example-showcase --></example-showcase>
       </section>
       <section class="possibilities" aria-labelledby="possibilities-title">
         <div class="section-intro"><h2 id="possibilities-title">From an idea<br>to an experience</h2></div>

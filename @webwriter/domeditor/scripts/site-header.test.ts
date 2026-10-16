@@ -2,6 +2,26 @@
 import {readFile} from "node:fs/promises"
 import {expect, it} from "vitest"
 import {renderSiteHeader, siteHeaderPlugin} from "./site-header.mjs"
+import exampleDocuments from "../src/example-documents.json"
+
+it("renders an inert showcase before JavaScript with the live subjects and shared layout styles", async () => {
+  const source = await readFile(new URL("../index.html", import.meta.url), "utf8")
+  expect(source).toContain('<script type="module" blocking="render" src="/src/site-entry.ts"></script>')
+  const result = siteHeaderPlugin().transformIndexHtml.handler(source, {path: "/"})
+  const fallback = result.match(/<example-showcase>([\s\S]*?)<\/example-showcase>/)?.[1] ?? ""
+  expect(fallback).toContain('class="example-showcase" inert aria-hidden="true"')
+  expect([...fallback.matchAll(/<button[^>]*>([^<]+)<\/button>/g)].map(match => match[1])).toEqual(exampleDocuments.map(example => example.subject))
+  expect(fallback).toContain('<div class="document"></div>')
+  expect(fallback).toContain('href="/examples/">Explore the examples →</a>')
+  expect(result).not.toContain("<!-- example-showcase -->")
+  expect(await readFile(new URL("../src/landing.css", import.meta.url), "utf8")).toContain('@import "./components/example-showcase.css"')
+  expect(await readFile(new URL("../src/components/example-preview.ts", import.meta.url), "utf8")).toContain('import showcaseStyles from "./example-showcase.css?raw"')
+})
+
+it("keeps localization render-blocking after Vite combines the landing scripts", () => {
+  const result = siteHeaderPlugin().transformIndexHtml.handler('<script type="module" crossorigin src="/assets/index.js"></script><example-showcase><!-- example-showcase --></example-showcase>', {path: "/", bundle: {}})
+  expect(result).toContain('<script blocking="render" type="module" crossorigin src="/assets/index.js">')
+})
 
 it("renders the landing and Widgets headers from the same navigation template", async () => {
   const plugin = siteHeaderPlugin()
@@ -10,7 +30,7 @@ it("renders the landing and Widgets headers from the same navigation template", 
     expect(source).toContain("<!-- site-header -->")
     expect(source).toContain('<body class="site-layout">')
     expect(source).toMatch(/<div class="site-content" tabindex="0" role="region" aria-label="Page content">\s*<main[\s\S]*?<\/main>\s*<footer>[\s\S]*?<\/footer>\s*<\/div>/)
-    const result = plugin.transformIndexHtml(source, {path})
+    const result = plugin.transformIndexHtml.handler(source, {path})
     const header = result.match(/<header\b[^>]*>[\s\S]*?<\/header>/)?.[0]
     expect(result).not.toContain("<!-- site-header -->")
     expect(header).toContain('aria-label="Main navigation"')
@@ -22,7 +42,7 @@ it("renders the landing and Widgets headers from the same navigation template", 
   }
   const docs = renderSiteHeader("/docs/widgets/tutorial/01-setup.md")
   expect(docs).toContain('href="/docs/" aria-current="page">Documentation</a>')
-  expect(plugin.transformIndexHtml("<p>No site header here</p>", {path: "/frame-shell.html"})).toBe("<p>No site header here</p>")
+  expect(plugin.transformIndexHtml.handler("<p>No site header here</p>", {path: "/frame-shell.html"})).toBe("<p>No site header here</p>")
 })
 
 it("emits the shared stylesheet for static documentation", async () => {
