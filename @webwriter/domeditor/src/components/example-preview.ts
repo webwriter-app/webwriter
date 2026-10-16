@@ -13,7 +13,7 @@ export class ExamplePreview extends LitElement {
   private languageController = new SiteLanguageController(this, () => { if(this.exampleId) void this.reload() })
   static properties = {exampleId: {attribute: "example-id"}, source: {state: true}, outgoing: {state: true}, error: {state: true}}
   static styles = css`
-    :host {display: block; block-size: 35rem; min-inline-size: 0; color: #373c44; font-family: system-ui, sans-serif; line-height: 1.5}
+    :host {display: block; block-size: 35rem; min-inline-size: 0; container-type: inline-size; color: #373c44; font-family: system-ui, sans-serif; line-height: 1.5}
     * {box-sizing: border-box}
     .preview {display: grid; block-size: 100%; min-block-size: 0; isolation: isolate}
     .page, .placeholder {grid-area: 1 / 1; min-inline-size: 0; min-block-size: 0; block-size: 100%; border: 1px solid #dfe5ed; border-radius: .25rem; background: #fff; overflow: hidden}
@@ -46,6 +46,9 @@ export class ExamplePreview extends LitElement {
     .event strong {display: block; font-size: .7rem; color: #155e9b}
     .audio {border: 1px solid #dfe5ed; border-radius: 1.5rem; margin-block-start: .8rem; justify-content: start; gap: .65rem; background: #f7f9fc}
     .closing {font-size: .8rem; color: #536174; margin: 1.2rem 0 0}
+    .lesson {margin-block-start: 1rem; font-size: .75rem; color: #536174}
+    .lesson h3 {margin: 0 0 .4rem; font-size: .85rem; color: #172033}
+    .lesson p {margin: 0}
     :host([compact]) {block-size: 28rem}
     :host([compact]) .page {padding: 1.25rem}
     :host([compact]) h2 {font-size: 1.4rem}
@@ -53,6 +56,8 @@ export class ExamplePreview extends LitElement {
     :host([compact]) img {block-size: 8rem}
     :host([compact]) .menu svg {max-block-size: 14rem}
     :host([compact]) pre {font-size: .65rem; line-height: 1.6}
+    :host([compact]) .page:has(.lesson) .closing {display: none}
+    @container (max-width: 22rem) {.page:has(.lesson) .closing {display: none}}
     .placeholder {display: grid; place-items: center; color: #617084; font-size: .875rem}
     @media (max-width: 25rem) {.page {padding: 1.1rem} h2 {font-size: 1.4rem}}
   `
@@ -87,9 +92,20 @@ export class ExamplePreview extends LitElement {
     </div>`
   }
 
+  private excerptText(element: Element) {
+    return [...new Intl.Segmenter(element.ownerDocument.documentElement.lang || "en", {granularity: "sentence"}).segment(element.textContent ?? "")]
+      .slice(0, 2).map(({segment}) => segment).join("").trim()
+  }
+
   private renderPage(source: Document, outgoing = false) {
     const intro = [...source.body.querySelectorAll("p")].find(p => !p.querySelector("small") && !p.closest("figure, webwriter-task"))
-    const visual = source.body.querySelector("figure") ?? source.body.querySelector("table, blockquote")
+    const visualSource = source.body.querySelector("figure") ?? source.body.querySelector("table, blockquote")
+    const visual = visualSource?.cloneNode(true) as Element | undefined
+    const lessonHeading = source.querySelector("webwriter-periodic-table, webwriter-map") && visualSource
+      ? [...source.body.querySelectorAll("h2")].find(heading => visualSource.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING) : undefined
+    const lessonText = lessonHeading?.nextElementSibling
+    const caption = visual?.querySelector("figcaption")
+    if(lessonHeading && caption) caption.textContent = this.excerptText(caption)
     const code = source.querySelector("webwriter-code-javascript")?.getAttribute("code")
     const events = [...source.querySelectorAll("webwriter-timeline-event")].slice(0, 3)
     const photo = source.querySelector("figure:has(img)")?.cloneNode(true) as HTMLElement | undefined
@@ -97,7 +113,7 @@ export class ExamplePreview extends LitElement {
     const audio = source.querySelector("audio, video")
     const slides = [...source.querySelectorAll("webwriter-slide")]
     const menu = visual?.querySelector("#cafe-menu-title")
-    const reflection = source.querySelector("webwriter-geogebra") ? source.querySelector("label[for]")?.textContent : null
+    const reflection = source.querySelector("webwriter-geogebra") || lessonHeading ? source.querySelector("label[for]")?.textContent : null
     return html`<div class=${outgoing ? "page outgoing" : "page"} aria-hidden=${outgoing ? "true" : nothing} ?inert=${outgoing} @animationend=${(event: AnimationEvent) => {
       if(outgoing && event.target === event.currentTarget && this.outgoing === source) this.outgoing = null
     }}>
@@ -108,6 +124,7 @@ export class ExamplePreview extends LitElement {
       ${code ? html`<div class="code"><pre>${code}</pre><div class="code-label"><span>JavaScript</span><span>▶ ${t("Run")}</span></div></div>` : nothing}
       ${events.length ? html`<div class="timeline">${events.map(event => html`<div class="event"><strong>${Number(event.getAttribute("date"))}</strong>${event.querySelector("webwriter-timeline-event-title")?.textContent}</div>`)}</div>` : nothing}
       ${audio ? html`<div class="audio"><span aria-hidden="true">▶</span><span>${audio.getAttribute("aria-label") ?? t("Listen to the field recording")}</span></div>` : nothing}
+      ${lessonHeading && lessonText?.matches("p") ? html`<section class="lesson"><h3>${lessonHeading.textContent}</h3><p>${this.excerptText(lessonText)}</p></section>` : nothing}
       ${reflection ? html`<p class="closing">${reflection}</p>` : nothing}
     </div>`
   }

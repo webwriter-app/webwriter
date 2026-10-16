@@ -55,7 +55,7 @@ it("uses rich, subject-specific widgets and media rather than only quiz question
 })
 
 it("adds seven approachable subjects with initialized, varied widgets and media", async () => {
-  expect(exampleDocuments.map(example => example.subject)).toEqual(["Biology", "History", "Computer science", "Arts", "Languages", "Social science", "Chemistry", "Earth science", "Physics", "Mathematics"])
+  expect(exampleDocuments.map(example => example.subject)).toEqual(["Biology", "History", "Computer Science", "Arts", "Languages", "Social Science", "Chemistry", "Geography", "Physics", "Mathematics"])
   const load = async (id: string) => loadExampleDocument(id)
   const rhythm = await load("rhythm")
   expect(rhythm.querySelector("audio[controls] source")?.getAttribute("src") ?? rhythm.querySelector("audio[controls]")?.getAttribute("src")).toMatch(/^data:audio\//)

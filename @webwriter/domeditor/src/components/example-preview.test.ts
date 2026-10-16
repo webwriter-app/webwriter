@@ -4,6 +4,7 @@ vi.mock("./example-document", () => ({}))
 import {ExamplePreview, ExampleShowcase} from "./example-preview"
 import {exampleDocuments} from "../example-documents"
 import * as exampleDocumentSource from "../example-documents"
+import {setLanguage, siteLanguages} from "../site-language"
 
 const initialURL = location.href
 afterEach(() => {
@@ -11,6 +12,7 @@ afterEach(() => {
   document.body.replaceChildren()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  setLanguage("en", false)
 })
 
 it("uses the physics diagram instead of squeezing its six-column table into the miniature", async () => {
@@ -40,6 +42,26 @@ it("ends the mathematics preview with the document's complete reflection prompt"
   const closing = preview.shadowRoot!.querySelector(".closing")!
   expect(closing.textContent).toBe(source.querySelector("label[for]")?.textContent)
   expect(preview.shadowRoot!.querySelector(".page")!.lastElementChild).toBe(closing)
+})
+
+it.each(Object.keys(siteLanguages))("adds authored chemistry and geography lesson excerpts in %s", async locale => {
+  setLanguage(locale, false)
+  for(const id of ["kitchen-elements", "river-bends"]) {
+    const source = await exampleDocumentSource.loadExampleDocument(id)
+    const figure = source.querySelector("figure")!
+    const heading = [...source.querySelectorAll("h2")].find(element => figure.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING)!
+    const segments = [...new Intl.Segmenter(locale, {granularity: "sentence"}).segment(heading.nextElementSibling!.textContent!)].slice(0, 2).map(({segment}) => segment).join("").trim()
+    const preview = new ExamplePreview()
+    preview.exampleId = id
+    document.body.append(preview)
+    await vi.waitFor(() => expect(preview.shadowRoot?.querySelector(".lesson h3")).toBeTruthy())
+    expect(preview.shadowRoot!.querySelector(".lesson h3")!.textContent).toBe(heading.textContent)
+    expect(preview.shadowRoot!.querySelector(".lesson p")!.textContent).toBe(segments)
+    expect(preview.shadowRoot!.querySelector(".closing")!.textContent).toBe(source.querySelector("label[for]")?.textContent)
+    expect(preview.shadowRoot!.querySelector("figure svg")).not.toBeNull()
+    expect(preview.shadowRoot!.querySelector("figcaption")!.textContent!.length).toBeLessThanOrEqual(figure.querySelector("figcaption")!.textContent!.length)
+    preview.remove()
+  }
 })
 
 it("keeps the previous example while loading and fades it out when its replacement is ready", async () => {
@@ -78,7 +100,7 @@ it("switches subjects and derives its miniature from the full document", async (
   await vi.waitFor(() => expect(preview().shadowRoot?.querySelector("h2")?.textContent).toBe("Who eats what in the garden?"))
   expect([...preview().shadowRoot!.querySelectorAll(".steps li")].map(step => step.textContent)).toEqual(["1. Observe", "2. Listen", "3. Explain"])
   expect(preview().shadowRoot!.querySelector('.steps [aria-current="step"]')?.textContent).toBe("1. Observe")
-  const computerScience = [...showcase.shadowRoot!.querySelectorAll<HTMLButtonElement>(".subjects button")].find(button => button.textContent === "Computer science")!
+  const computerScience = [...showcase.shadowRoot!.querySelectorAll<HTMLButtonElement>(".subjects button")].find(button => button.textContent === "Computer Science")!
   computerScience.click()
   await vi.waitFor(() => expect(preview().shadowRoot?.querySelector("h2")?.textContent).toBe("Count like a computer"))
   expect(preview().shadowRoot?.querySelector("pre")?.textContent).toContain("const bits = [1, 0, 1, 0]")
@@ -86,7 +108,7 @@ it("switches subjects and derives its miniature from the full document", async (
   expect(computerScience.getAttribute("aria-pressed")).toBe("true")
   expect(showcase.shadowRoot!.textContent).not.toContain("A look inside a WebWriter document.")
   expect([...showcase.shadowRoot!.querySelectorAll<HTMLButtonElement>(".subjects button")].map(button => button.textContent)).toEqual(exampleDocuments.map(example => example.subject))
-  expect(exampleDocuments.slice(0, 3).map(example => example.subject)).toEqual(["Biology", "History", "Computer science"])
+  expect(exampleDocuments.slice(0, 3).map(example => example.subject)).toEqual(["Biology", "History", "Computer Science"])
 })
 
 it("cycles through every example and wraps back to the first", async () => {

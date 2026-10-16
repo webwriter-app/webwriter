@@ -15,7 +15,7 @@
   },
   {
     "id": "binary",
-    "subject": "Computer science",
+    "subject": "Computer Science",
     "title": "Count like a computer",
     "description": "Edit and run a JavaScript experiment to discover how four bits become a number.",
     "duration": "15 min"
@@ -36,7 +36,7 @@
   },
   {
     "id": "shared-space",
-    "subject": "Social science",
+    "subject": "Social Science",
     "title": "Who gets space on our street?",
     "description": "Explore fictional street redesign choices and weigh how walking, buses, cycling, and deliveries share limited public space.",
     "duration": "20 min"
@@ -50,7 +50,7 @@
   },
   {
     "id": "river-bends",
-    "subject": "Earth science",
+    "subject": "Geography",
     "title": "Why does a river bend?",
     "description": "Explore the Moselle near Bremm and use a model to connect river bends with erosion and deposition.",
     "duration": "20 min"
