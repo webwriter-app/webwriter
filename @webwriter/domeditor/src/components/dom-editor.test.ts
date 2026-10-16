@@ -3643,7 +3643,10 @@ describe("DomEditor file actions", () => {
     const host = editor as any
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
     expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.label)).not.toContain("Upload")
     configureCloudStorage(host)
     await editor.updateComplete
@@ -7765,6 +7768,9 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await menu.updateComplete
     menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Settings"]')!.click()
@@ -8555,6 +8561,8 @@ describe("cloud service settings integration", () => {
     const tab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
     await tab.updateComplete
     expect(tab.shadowRoot!.querySelector(".warning-bubble")?.getAttribute("aria-label")).toContain("sign in")
+    tab.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await menu.updateComplete
     expect(menu.shadowRoot!.querySelector('[data-action="Settings"] .warning-bubble')?.getAttribute("aria-label")).toContain("expired")
