@@ -18,6 +18,7 @@
 .example-showcase .example-frame:hover .document::after {opacity: 1}
 .example-showcase .caption {display: flex; justify-content: flex-end; margin-block-start: .85rem; font: .75rem/1.5 system-ui, sans-serif}
 .example-showcase .caption a {color: #155e9b; text-underline-offset: .2em}
+.example-showcase .caption a:hover {text-decoration-thickness: 2px}
 @media (max-width: 42rem) {
   .example-showcase .example-stage {grid-column: 1; grid-row: 3}
   .example-showcase .subjects {grid-row: 1}
