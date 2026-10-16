@@ -84,6 +84,7 @@ export class WidgetGallery extends LitElement {
   private previewError = ""
   private frameURL = ""
   private frameHeight = 440
+  private fitVideo = false
   private registry = new WebWriterPackageRegistry(undefined, "en")
   private catalogAbort = new AbortController()
   private previewRevision = 0
@@ -177,7 +178,8 @@ export class WidgetGallery extends LitElement {
           if(first) {
             try {
               const snippet = await this.registry.fetchSnippet(first)
-              if(galleryExample(snippet, widget)) published = snippet
+              // Branch models/connectors have no standalone learner interface.
+              if(galleryExample(snippet, widget) || widget.pkg.name === "@webwriter/branching-scenario" && !widget.member.insertable) published = snippet
             }
             catch { /* An existing lesson or the widget's defaults remain available. */ }
           }
@@ -195,6 +197,7 @@ export class WidgetGallery extends LitElement {
       if(!current()) return
       this.currentHTML = content
       const source = galleryDocument(content, widget.member.label)
+      this.fitVideo = !!source.querySelector("webwriter-interactive-video")
       const packages = galleryPreviewPackages(source, this.packages, widget.pkg)
       const key = packages.map(pkg => [pkg.name, pkg.version, ...pkg.scripts].join("\n")).sort().join("\n")
       let plan = this.dependencyPlans.get(key)
@@ -209,6 +212,21 @@ export class WidgetGallery extends LitElement {
       const base = new URL(import.meta.env.BASE_URL, `${frameOrigin}/`)
       const entry = new URL(import.meta.env.DEV ? "src/gallery-preview-entry.ts" : "assets/gallery-preview-entry.js", base)
       if(widget.member.tagName) entry.searchParams.set("tag", widget.member.tagName)
+      const network = packages.find(pkg => pkg.name === "@webwriter/network")
+      if(network) entry.searchParams.set("network-version", network.version)
+      const slides = packages.find(pkg => pkg.name === "@webwriter/slides")
+      if(slides) entry.searchParams.set("slides-version", slides.version)
+      const hash = packages.find(pkg => pkg.name === "@webwriter/hash")
+      if(hash) entry.searchParams.set("hash-version", hash.version)
+      const model = packages.find(pkg => pkg.name === "@webwriter/deep-learning-model")
+      if(model) entry.searchParams.set("model-version", model.version)
+      const tags = packages.flatMap(pkg => pkg.members.flatMap(member => member.kind === "widget" && member.tagName ? [member.tagName] : []))
+      if(tags.length) entry.searchParams.set("tags", [...new Set(tags)].join(","))
+      // Keep parent widgets disconnected until their child widget definitions exist.
+      const staged = source.createElement("template")
+      staged.id = "webwriter-gallery-content"
+      staged.content.append(...source.body.childNodes)
+      source.body.append(staged)
       this.previewHTML = previewFrameHTML(source, {
         bridgeNonce: this.bridgeNonce, packages, importMap: map,
         hostOrigin: location.origin, frameOrigin, entryURL: entry.href, executeScripts: true,
@@ -295,7 +313,7 @@ export class WidgetGallery extends LitElement {
           </div>
           ${this.previewStatus ? html`<p class="status preview-status" role="status">${t(this.previewStatus)}</p>` : nothing}
           ${this.previewError ? html`<p class="error preview-error" role="alert">${this.previewError.startsWith("The learner preview could not be loaded. ") ? t("The learner preview could not be loaded. {message}", {message: this.translateKnownPreviewError(this.previewError.slice("The learner preview could not be loaded. ".length))}) : this.previewError.startsWith("This published widget could not start. ") ? t("This published widget could not start. {message}", {message: this.translateKnownPreviewError(this.previewError.slice("This published widget could not start. ".length))}) : t(this.previewError)}</p>` : nothing}
-          ${this.frameURL ? html`<iframe title=${t("{name}: learner preview", {name: selection.member.label})} src=${this.frameURL} style=${`height: ${this.frameHeight}px`} sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" allow="fullscreen"></iframe>` : nothing}
+          ${this.frameURL ? html`<iframe title=${t("{name}: learner preview", {name: selection.member.label})} src=${this.frameURL} style=${this.fitVideo ? "height: 70dvh" : `height: ${this.frameHeight}px`} sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" allow="fullscreen"></iframe>` : nothing}
         ` : nothing}
       </dialog>
     `

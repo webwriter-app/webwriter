@@ -2,6 +2,7 @@
 import {describe, expect, it} from "vitest"
 import type {PackageMember, WebWriterPackage} from "./packages"
 import {galleryDocument, galleryExample, galleryPreviewPackages, galleryPackages} from "./widget-gallery"
+import {galleryLessonExample} from "./gallery-examples"
 
 const member = (tagName: string, label = tagName, insertable = true): PackageMember => ({
   id: `pkg@1.0.0:./widgets/${tagName}`,
@@ -105,4 +106,17 @@ it("leaves unused widget scripts out of the learner preview dependency graph", (
   const [preview] = galleryPreviewPackages(galleryDocument("<first-widget></first-widget>", "Demo"), [owner])
   expect(preview.scripts).toEqual([first.scriptUrl])
   expect(owner.scripts).toEqual([first.scriptUrl, unused.scriptUrl])
+})
+
+it.each(["order", "order-item", "pairing", "pairing-item", "mark", "text", "speech", "quiz-hint"])("provides a usable task context for quiz %s", name => {
+  const tags = ["quiz", "task", "task-prompt", "quiz-hint", "order", "order-item", "pairing", "pairing-item", "mark", "text", "speech"]
+  const members = tags.map(tag => member(`webwriter-${tag}`, tag, false))
+  const quiz = pkg("@webwriter/quiz", "Quiz", members)
+  const selected = members.find(item => item.tagName === `webwriter-${name}`)!
+  const html = galleryLessonExample({pkg: quiz, member: selected})!
+  const source = galleryDocument(html, name)
+  expect(source.querySelector(`webwriter-task webwriter-${name}`)).not.toBeNull()
+  expect(source.querySelector('webwriter-task-prompt[slot="prompt"]')?.textContent?.trim()).not.toBe("")
+  if(name.startsWith("order")) expect(source.querySelectorAll("webwriter-order > webwriter-order-item").length).toBeGreaterThan(1)
+  if(name.startsWith("pairing")) expect(source.querySelectorAll("webwriter-pairing > webwriter-pairing-item").length).toBeGreaterThan(1)
 })
