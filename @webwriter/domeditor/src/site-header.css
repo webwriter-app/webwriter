@@ -1,7 +1,7 @@
 .site-layout { block-size: 100vh; block-size: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 .site-content { min-block-size: 0; overflow: auto; scrollbar-gutter: stable; }
-.site-header { position: relative; box-sizing: border-box; inline-size: 100%; max-inline-size: 76rem; margin-inline: auto; padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: #fff; }
-.site-header::after { content: ""; position: absolute; inset-block-end: 0; inset-inline-start: 50%; inline-size: 100vw; transform: translateX(-50%); border-block-end: 1px solid #dfe5ed; pointer-events: none; }
+.site-header { box-sizing: border-box; inline-size: 100%; overflow: hidden; scrollbar-gutter: stable; border-block-end: 1px solid #dfe5ed; background: #fff; }
+.site-header-content { position: relative; box-sizing: border-box; inline-size: 100%; max-inline-size: 76rem; margin-inline: auto; padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .brand { display: inline-flex; align-items: center; gap: .65rem; color: #263142; font-size: 1.1rem; font-weight: 750; text-decoration: none; }
 .brand-name { display: block; line-height: 1.2; }
 .brand-subtitle { display: block; margin-block-start: .2rem; font-size: .7em; font-weight: 400; color: #617084; }
@@ -11,8 +11,8 @@
 .site-header a:focus-visible { outline: 2px solid #155e9b; outline-offset: 5px; }
 .site-header .button { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: .8rem; padding: .5rem .85rem; background: #155e9b; border: 1px solid #155e9b; border-radius: .4rem; color: white; font-weight: 600; text-decoration: none; white-space: nowrap; }
 .site-header .button:hover { background: #104a7b; }
-@media (max-width: 42rem) { .site-header { position: relative; flex-wrap: wrap; } .site-header nav { inline-size: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 1.5rem; font-size: .8125rem; } .site-header .button {position: absolute; top: 1.25rem; right: 1.5rem} }
-@media (max-width: 24rem) { .site-header { padding-inline: 1rem; } .site-header nav { gap: .75rem; font-size: .75rem; } .site-header .button { right: 1rem; padding: .5rem; gap: .5rem; } .brand { font-size: .95rem; } .brand img { inline-size: 1.5rem; block-size: 1.5rem; } }
+@media (max-width: 42rem) { .site-header-content { flex-wrap: wrap; } .site-header nav { inline-size: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 1.5rem; font-size: .8125rem; } .site-header .button {position: absolute; top: 1.25rem; right: 1.5rem} }
+@media (max-width: 24rem) { .site-header-content { padding-inline: 1rem; } .site-header nav { gap: .75rem; font-size: .75rem; } .site-header .button { right: 1rem; padding: .5rem; gap: .5rem; } .brand { font-size: .95rem; } .brand img { inline-size: 1.5rem; block-size: 1.5rem; } }
 
 .site-footer {box-sizing: border-box; display: flex; align-items: center; flex-wrap: wrap; gap: 1.25rem; max-inline-size: 76rem; margin-inline: auto; padding: 1.5rem; border-top: 1px solid #dfe5ed; font: .8rem/1.5 system-ui, sans-serif; color: #536174; container-type: inline-size}
 .site-footer .brand {font-size: .9rem}

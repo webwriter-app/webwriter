@@ -21,8 +21,10 @@ export function renderSiteHeader(path = "/") {
     {href: "/editor/", label: "Open WebWriter", editor: true},
   ]
   return `<header class="site-header">
+    <div class="site-header-content">
       <a class="brand" href="/" aria-label="WebWriter by Edumix home"><img src="/assets/app-icon.svg" alt="" width="32" height="32"><span class="brand-name">WebWriter<span class="brand-subtitle">by Edumix</span></span></a>
       <nav aria-label="Main navigation">${links.map(({href, label, editor}) => `<a${editor ? ' class="button small"' : ""} href="${href}"${path === href.slice(0, -1) || path.startsWith(href) ? ' aria-current="page"' : ""}>${label}${editor ? ' <span aria-hidden="true">↗</span>' : ""}</a>`).join("")}</nav>
+    </div>
     </header>`
 }
 
