@@ -1,12 +1,14 @@
 import {widgetGroupingRevision} from "./widget-grouping-dom"
 import * as Y from "yjs"
 import {messageSync, WebsocketProvider} from "y-websocket"
+import {WidgetDataStorage, type WidgetDataPersistenceState} from "./widget-data-storage"
 
 export type WidgetDataMode = "individual" | "all" | "group"
 export type WidgetDataRequest = {document: string, widget: string, mode: WidgetDataMode, format: "json" | "xml", documentRoom?: string, groupingRevision?: string}
 export type WidgetDataConnection = {
   doc: Y.Doc
   ready?: Promise<void>
+  observePersistence?: (listener: (state: WidgetDataPersistenceState) => void) => () => void
   /** Release the connection, not necessarily its persisted document. */
   destroy?: () => void
 }
@@ -62,6 +64,7 @@ type Binding = {
   connection?: WidgetDataConnection
   undo?: Y.UndoManager
   observe?: () => void
+  unobservePersistence?: () => void
   flush?: () => void
   ready: boolean
   disposed: boolean
@@ -151,7 +154,7 @@ export function stampUndo(manager: Y.UndoManager, group?: () => object | undefin
 export class WidgetDataBindings {
   readonly #bindings = new Map<HTMLScriptElement, Binding>()
   readonly #defaults = new WeakMap<HTMLScriptElement, {format: string, text: string}>()
-  readonly #local = new Map<string, WidgetDataConnection>()
+  #storage?: WidgetDataStorage
   readonly #origin = {}
   #busy = false
   #destroyed = false
@@ -175,6 +178,8 @@ export class WidgetDataBindings {
     // A new binding already announced its pending state during sync. Replay only
     // a state that was installed before this request.
     if(!binding || binding !== previous || binding.disposed) return
+    const stop = binding.connection?.observePersistence?.(state => this.#persistence(binding, state))
+    stop?.()
     if(binding.ready) this.#render(binding)
     else if(binding.error) this.#dispatchError(block, binding.error)
     else this.#pending(block, binding.mode)
@@ -210,10 +215,18 @@ export class WidgetDataBindings {
     return defaults?.format === block.type ? defaults.text : block.textContent ?? ""
   }
 
-  sync() {
+  /** Undefined records request full discovery (also used after configuration changes). */
+  sync(mutations?: readonly MutationRecord[]) {
     if(this.#busy || this.#destroyed) return
     this.#busy = true
     try {
+      if(mutations) {
+        const changed = this.#changedBindings(mutations)
+        if(changed) {
+          for(const binding of changed) if(binding.ready) this.#commit(binding)
+          return
+        }
+      }
       const blocks = new Set([...this.root.querySelectorAll<HTMLScriptElement>('script[slot="data"]')].filter(block => this.isBlock(block)))
       const previousBindings = new Map([...this.#bindings.values()].map(binding => [binding.widget.id, binding]))
       for(const [block, binding] of this.#bindings) {
@@ -269,7 +282,7 @@ export class WidgetDataBindings {
             this.#bindings.set(block, binding)
             const request: WidgetDataRequest = {document: this.documentId, widget: widget.id, mode, format: block.type === "application/json" ? "json" : "xml", ...(this.sessionId ? {documentRoom: this.sessionId} : {}), ...(groupingRevision ? {groupingRevision} : {})}
             this.#pending(block, mode)
-            const connection = this.options.resolve?.(request) ?? (this.serverUrl && this.sessionId ? this.#network(request, binding) : this.#offline(request))
+            const connection = this.options.resolve?.(request) ?? (this.serverUrl && this.sessionId ? this.#network(request, binding) : this.#offline(request, binding))
             if(connection instanceof Promise) void connection.then(value => this.#connect(binding!, value)).catch(error => { if(!binding!.disposed) this.#error(block, error) })
             else this.#connect(binding, connection)
           }
@@ -281,9 +294,42 @@ export class WidgetDataBindings {
     finally { this.#busy = false }
   }
 
+  /** Inspect the entire batch before committing: a scope change must win over data writes. */
+  #changedBindings(mutations: readonly MutationRecord[]): Set<Binding> | undefined {
+    const changed = new Set<Binding>()
+    for(const mutation of mutations) {
+      const target = mutation.target
+      if(mutation.type === "attributes") {
+        // A support predicate can depend on any widget attribute. Script opt-in,
+        // widget identity/sharing and document identity also require discovery.
+        if(target === this.root.ownerDocument.documentElement && mutation.attributeName === "id"
+          || this.#bindings.has(target as HTMLScriptElement)
+          || target.nodeType === 1 && ((target as Element).matches('script[slot="data"]')
+            || (target as Element).querySelector(':scope > script[slot="data"]'))) return
+      }
+      else if(mutation.type === "childList") {
+        // Text replacement inside a block is a data edit, not a widget insertion.
+        // Element/PI changes may move, replace or reconfigure bindings anywhere.
+        if([...mutation.addedNodes, ...mutation.removedNodes].some(node => node.nodeType === 1 || node.nodeType === 7)) return
+        const binding = this.#bindings.get(target as HTMLScriptElement)
+        if(binding) changed.add(binding)
+        else if(this.isBlock(target)) return
+      }
+      else if(mutation.type === "characterData") {
+        if(target.nodeType === 7) return // Grouping instructions can change scope.
+        const parent = target.parentNode
+        const binding = this.#bindings.get(parent as HTMLScriptElement)
+        if(binding) changed.add(binding)
+        else if(parent && this.isBlock(parent)) return
+      }
+    }
+    return changed
+  }
+
   #connect(binding: Binding, connection: WidgetDataConnection) {
     if(binding.disposed || this.#destroyed) { connection.destroy?.(); return }
     binding.connection = connection
+    binding.unobservePersistence = connection.observePersistence?.(state => this.#persistence(binding, state))
     const ready = () => {
       if(binding.disposed || this.#destroyed) return
       const data = connection.doc.getMap("data")
@@ -353,6 +399,12 @@ export class WidgetDataBindings {
     block.dispatchEvent(new Event("datapending", {bubbles: true, detail: {mode}}))
   }
 
+  #persistence(binding: Binding, state: WidgetDataPersistenceState) {
+    if(binding.disposed || this.#destroyed) return
+    const Event = binding.block.ownerDocument.defaultView?.CustomEvent ?? CustomEvent
+    binding.block.dispatchEvent(new Event("datapersistence", {bubbles: true, detail: {...state}}))
+  }
+
   #error(block: HTMLScriptElement, error: unknown) {
     const message = error instanceof Error ? error.message : String(error)
     const binding = this.#bindings.get(block)
@@ -420,29 +472,33 @@ export class WidgetDataBindings {
     return {doc, ready, destroy: () => { stopped = true; clearTimeout(retry); provider.destroy(); doc.destroy() }}
   }
 
-  #offline(request: WidgetDataRequest): WidgetDataConnection {
+  #offline(request: WidgetDataRequest, binding: Binding): WidgetDataConnection {
     // Group membership requires an authoritative resolver, even when offline.
     if(request.mode === "group") throw new Error("Group widget data requires a server scope resolver")
     const key = JSON.stringify([request.document, request.widget, request.format, request.mode, request.mode === "individual" ? this.options.userId ?? "local-development" : "all"])
-    const existing = this.#local.get(key)
-    if(existing) return existing
-    const doc = new Y.Doc()
-    let storage: Storage | undefined
-    try { storage = this.root.ownerDocument.defaultView?.localStorage }
-    catch { /* Storage access itself may be forbidden in a sandboxed frame. */ }
-    const storageKey = `webwriter-widget-data:${key}`
-    try {
-      const stored = storage?.getItem(storageKey)
-      if(stored) Y.applyUpdate(doc, Uint8Array.from(JSON.parse(stored)))
+    if(!this.#storage) {
+      let storage: Storage | undefined, indexedDatabase: IDBFactory | undefined
+      try { storage = this.root.ownerDocument.defaultView?.localStorage }
+      catch { /* Opaque origins can still edit in memory. */ }
+      try { indexedDatabase = this.root.ownerDocument.defaultView?.indexedDB }
+      catch { /* Report unavailable persistence through its own status event. */ }
+      this.#storage = new WidgetDataStorage(indexedDatabase, storage)
     }
-    catch { /* Opaque origins and unavailable storage still support in-memory editing. */ }
-    doc.on("update", () => {
-      try { storage?.setItem(storageKey, JSON.stringify([...Y.encodeStateAsUpdate(doc)])) }
-      catch { /* Storage quota does not prevent live editing. */ }
+    const defaults = binding.before
+    return this.#storage.connect(`webwriter-widget-data:${key}`, doc => {
+      const data = doc.getMap("data")
+      if(!data.has("value")) data.set("value", mirrorValue(defaults))
     })
-    const connection = {doc}
-    this.#local.set(key, connection)
-    return connection
+  }
+
+  /** Wait for offline restoration before reading or writing participant data. */
+  async whenReady() {
+    await Promise.all([...this.#bindings.values()].map(binding => binding.connection?.ready))
+  }
+
+  /** Call after DOM synchronization; resolves only when offline writes commit. */
+  async flushPersistence() {
+    await this.#storage?.flush()
   }
 
   history(kind: "undo" | "redo") {
@@ -506,6 +562,7 @@ export class WidgetDataBindings {
     binding.disposed = true
     if(binding.observe) binding.connection?.doc.getMap("data").unobserveDeep(binding.observe)
     if(binding.flush) binding.connection?.doc.off("beforeTransaction", binding.flush)
+    binding.unobservePersistence?.()
     binding.undo?.destroy()
     this.#notifyHistoryState()
     binding.connection?.destroy?.()
@@ -521,7 +578,6 @@ export class WidgetDataBindings {
       this.#dispose(binding)
     }
     this.#bindings.clear()
-    for(const connection of this.#local.values()) connection.doc.destroy()
-    this.#local.clear()
+    this.#storage?.destroy()
   }
 }

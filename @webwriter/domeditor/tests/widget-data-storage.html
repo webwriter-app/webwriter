@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Offline widget persistence checks and benchmarks</title>
+<script>
+const reportFailure = error => fetch('/__native-result', {method: 'POST', body: JSON.stringify({error: String(error), stack: error?.stack})})
+addEventListener('error', event => reportFailure(event.error ?? event.message))
+addEventListener('unhandledrejection', event => reportFailure(event.reason))
+</script>
+<script type="module">import('./widget-data-storage.ts').catch(reportFailure)</script>
+<body></body>
+</html>

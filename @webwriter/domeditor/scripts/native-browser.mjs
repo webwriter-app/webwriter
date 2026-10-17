@@ -103,11 +103,14 @@ const expectedChecks = [
 ]
 const mathVisual = process.argv.includes("--math-visual")
 const performanceMode = process.argv.includes("--performance")
+const widgetStateDiagnostics = process.argv.includes("--widget-state-diagnostics")
+const widgetStateMode = process.argv.includes("--widget-state-benchmark") || widgetStateDiagnostics
+const widgetStorageMode = process.argv.includes("--widget-data-storage")
 const importMapMode = process.argv.includes("--import-map")
 const smoke = process.argv.includes("--smoke")
 const checkFilter = process.argv.find(argument => argument.startsWith("--filter="))?.slice("--filter=".length)
 const filteredChecks = checkFilter ? expectedChecks.filter(name => name.includes(checkFilter)) : expectedChecks
-if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode || performanceMode)) throw new Error("The filter must match a native check")
+if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode || performanceMode || widgetStateMode || widgetStorageMode)) throw new Error("The filter must match a native check")
 const browserArgument = process.argv.find(argument => argument.startsWith("--browser="))?.slice("--browser=".length)
 const browserName = browserArgument ?? "chromium"
 if(!["chromium", "firefox", "webkit"].includes(browserName)) throw new Error(`Unsupported native browser: ${browserName}`)
@@ -181,6 +184,7 @@ const port = await new Promise((resolve, reject) => {
   })
 })
 const vite = await createServer({
+  ...(widgetStateMode || widgetStorageMode ? {logLevel: "silent"} : {}),
   plugins: [resultPlugin],
   server: {host: "127.0.0.1", port, strictPort: true},
 })
@@ -205,7 +209,7 @@ let timeout
 try {
   await vite.listen()
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
+  const url = `http://127.0.0.1:${port}/tests/${widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
@@ -223,20 +227,23 @@ try {
   }))
   const failedToStart = new Promise(resolve => browser.once("error", error => resolve({error: String(error)})))
   const timedOut = new Promise(resolve => {
-    const timeoutMs = mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
+    const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
     timeout = setTimeout(() => resolve({error: "Native browser timed out"}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && (performanceMode ? checks.length === 5 && ["hover float candidates", "local and remote reconciliation", "frame snapshot processing", "unchanged widget data", "catalog rendering and Lit settling"].every(name => checks.some(check => check?.name === name))
+  const valid = !result?.error && (widgetStorageMode ? checks.length === 15 && result.samples?.length === 72 && result.paced?.length === 1
+    : widgetStateMode ? checks.length === 1 && checks[0].name === "widget state benchmark"
+    && checks[0].samples?.length === (widgetStateDiagnostics ? 30 : 180) && result.paced?.length === (widgetStateDiagnostics ? 0 : 27)
+    : performanceMode ? checks.length === 5 && ["hover float candidates", "local and remote reconciliation", "frame snapshot processing", "unchanged widget data", "catalog rendering and Lit settling"].every(name => checks.some(check => check?.name === name))
     : importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
     : mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
     : smoke ? checks.length === expectedSmokeChecks.length && expectedSmokeChecks.every(name => checks.some(check => check?.name === name))
     : checks.length === filteredChecks.length
     && filteredChecks.every(name => checks.some(check => check?.name === name)))
     && checks.every(check => check && typeof check.name === "string" && check.error === undefined)
-  process.stdout.write(JSON.stringify(checks, null, 2) + "\n")
+  process.stdout.write(JSON.stringify(widgetStateMode || widgetStorageMode ? result : checks, null, 2) + "\n")
   if(!valid) {
     process.stderr.write(`${result?.error ?? "Native checks failed"}\n${mathVisual && checks.length ? "" : Buffer.concat(errors).toString()}`)
     process.exitCode = 1

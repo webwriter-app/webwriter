@@ -114,6 +114,198 @@ afterEach(() => {
   localStorage.clear()
 })
 
+describe("mutation-driven widget data", () => {
+  it.each(["textContent", "characterData", "split text"])("only reads the edited block after %s writes", async change => {
+    const connection = resolver()
+    const peer = create(html() + html().replace('id="widget"', 'id="second"'), connection)
+    const [first, second] = [...peer.root.querySelectorAll<HTMLScriptElement>("script")]
+    await tick()
+    const unrelated = vi.spyOn(second, "textContent", "get")
+    const discovery = vi.spyOn(peer.root, "querySelectorAll")
+    cleanups.push(() => { unrelated.mockRestore(); discovery.mockRestore() })
+    const value = '{"a":2,"b":1}'
+    if(change === "textContent") first.textContent = value
+    else if(change === "characterData") (first.firstChild as Text).data = value
+    else first.replaceChildren(document.createTextNode('{"a":'), document.createTextNode('2,"b":1}'))
+    await tick()
+    expect(connection.docs.get("widget:individual:json")!.getMap("data").toJSON()).toEqual({value: {a: 2, b: 1}})
+    expect(unrelated).not.toHaveBeenCalled()
+    expect(discovery).not.toHaveBeenCalledWith('script[slot="data"]')
+    expect(sharedDOMBody(peer.shared.doc).toString()).toContain('{"a":1,"b":1}')
+    peer.shared.undo()
+    await tick()
+    expect(JSON.parse(first.textContent!)).toEqual({a: 1, b: 1})
+    peer.shared.redo()
+    await tick()
+    expect(JSON.parse(first.textContent!)).toEqual({a: 2, b: 1})
+    expect(unrelated).not.toHaveBeenCalled()
+  })
+
+  it("routes XML edits without reading unrelated blocks", async () => {
+    const connection = resolver()
+    const peer = create(html("", '<board a="1"/>', "application/xml") + html().replace('id="widget"', 'id="second"'), connection)
+    const [first, second] = [...peer.root.querySelectorAll<HTMLScriptElement>("script")]
+    await tick()
+    const unrelated = vi.spyOn(second, "textContent", "get")
+    cleanups.push(() => unrelated.mockRestore())
+    ;(first.firstChild as Text).data = '<board a="2"/>'
+    await tick()
+    expect(connection.docs.get("widget:individual:xml")!.getMap("data").toJSON()).toMatchObject({
+      value: {root: {attributes: {a: {value: "2"}}}},
+    })
+    expect(unrelated).not.toHaveBeenCalled()
+  })
+
+  it("routes pending edits during explicit synchronization without reading unrelated blocks", async () => {
+    const connection = resolver()
+    const peer = create(html() + html().replace('id="widget"', 'id="second"'), connection)
+    const [first, second] = [...peer.root.querySelectorAll<HTMLScriptElement>("script")]
+    await tick()
+    const unrelated = vi.spyOn(second, "textContent", "get")
+    cleanups.push(() => unrelated.mockRestore())
+    first.textContent = '{"a":2,"b":1}'
+    peer.shared.syncFromDOM()
+    expect(connection.docs.get("widget:individual:json")!.getMap("data").toJSON()).toEqual({value: {a: 2, b: 1}})
+    expect(unrelated).not.toHaveBeenCalled()
+  })
+
+  it("only reads the receiving binding when remote widget data changes", async () => {
+    const connection = resolver()
+    const peer = create(html() + html().replace('id="widget"', 'id="second"'), connection)
+    const [first, second] = [...peer.root.querySelectorAll<HTMLScriptElement>("script")]
+    await tick()
+    const unrelated = vi.spyOn(second, "textContent", "get")
+    cleanups.push(() => unrelated.mockRestore())
+    const doc = connection.docs.get("widget:individual:json")!
+    doc.transact(() => (doc.getMap("data").get("value") as Y.Map<unknown>).set("b", 4), "remote")
+    await tick()
+    expect(JSON.parse(first.textContent!)).toEqual({a: 1, b: 4})
+    expect(unrelated).not.toHaveBeenCalled()
+  })
+
+  it("does not read widget state for ordinary local or remote document edits", async () => {
+    const peer = create('<p>Before</p>' + html())
+    await tick()
+    const unrelated = vi.spyOn(peer.block(), "textContent", "get")
+    cleanups.push(() => unrelated.mockRestore())
+    const paragraph = peer.root.querySelector("p")!
+    ;(paragraph.firstChild as Text).data = "Typed"
+    paragraph.setAttribute("title", "Authored")
+    await tick()
+    paragraph.textContent = "Replaced text"
+    await tick()
+    const text = (sharedDOMBody(peer.shared.doc).get(0) as Y.XmlElement).get(0) as Y.XmlText
+    peer.shared.doc.transact(() => text.insert(text.length, " remote"), "remote")
+    await tick()
+    expect(paragraph.textContent).toBe("Replaced text remote")
+    expect(unrelated).not.toHaveBeenCalled()
+  })
+
+  it("captures deliberate writes to another widget made by a datachange callback", async () => {
+    const connection = resolver()
+    const peer = create(html() + html().replace('id="widget"', 'id="second"'), connection)
+    const [first, second] = [...peer.root.querySelectorAll<HTMLScriptElement>("script")]
+    await tick()
+    first.addEventListener("datachange", () => { second.textContent = '{"a":3,"b":1}' }, {once: true})
+    first.textContent = '{"a":2,"b":1}'
+    await tick()
+    expect(connection.docs.get("second:individual:json")!.getMap("data").toJSON()).toEqual({value: {a: 3, b: 1}})
+  })
+
+  it("discovers replaced and copied widgets through the observer without exporting their participant state", async () => {
+    const peer = create()
+    peer.block().textContent = '{"secret":"individual-answer"}'
+    await tick()
+    peer.widget().replaceWith(peer.widget().cloneNode(true))
+    await tick()
+    const copy = peer.widget().cloneNode(true) as Element
+    peer.root.prepend(copy)
+    await tick()
+    expect(copy.id).not.toBe("widget")
+    expect(JSON.parse(copy.querySelector("script")!.textContent!)).toEqual({a: 1, b: 1})
+    const clone = peer.root.cloneNode(true) as HTMLElement
+    peer.shared.widgetData.writeDefaults(clone)
+    expect(clone.innerHTML).not.toContain("individual-answer")
+    expect(sharedDOMBody(peer.shared.doc).toString()).not.toContain("individual-answer")
+  })
+
+  it("checks scope changes across the whole batch before committing any edited block", async () => {
+    const connection = resolver()
+    const peer = create(html() + html().replace('id="widget"', 'id="second"'), connection)
+    const [first, second] = [...peer.root.querySelectorAll<HTMLScriptElement>("script")]
+    await tick()
+    // The data edit arrives first, but must not publish into the previous scope.
+    first.textContent = '{"secret":"new-scope-only"}'
+    second.textContent = '{"a":4,"b":1}'
+    peer.widget().setAttribute("shared", "")
+    await tick()
+    expect(JSON.parse(first.textContent!)).toEqual({a: 1, b: 1})
+    expect(connection.docs.get("widget:individual:json")!.getMap("data").toJSON()).toEqual({value: {a: 1, b: 1}})
+    expect(connection.docs.get("widget:all:json")!.getMap("data").toJSON()).toEqual({value: {a: 1, b: 1}})
+    expect(connection.docs.get("second:individual:json")!.getMap("data").toJSON()).toEqual({value: {a: 4, b: 1}})
+  })
+
+  it("rebinds when a grouping instruction's character data changes", async () => {
+    const requests: WidgetDataRequest[] = [], docs: Y.Doc[] = []
+    const peer = create(html('shared="group"'), {resolve: request => {
+      requests.push(request)
+      const doc = new Y.Doc(); docs.push(doc)
+      return {doc}
+    }})
+    cleanups.push(() => docs.forEach(doc => doc.destroy()))
+    const instruction = document.createProcessingInstruction("ww-grouping", "first-grouping")
+    peer.widget().append(instruction)
+    await tick()
+    peer.block().textContent = '{"secret":"previous-group"}'
+    await tick()
+    instruction.data = "second-grouping"
+    await tick()
+    expect(requests.map(request => request.groupingRevision)).toEqual([undefined, "first-grouping", "second-grouping"])
+    expect(read(peer)).toEqual({a: 1, b: 1})
+    expect(docs[2].getMap("data").toJSON()).toEqual({value: {a: 1, b: 1}})
+  })
+
+  it("rechecks support predicates when widget attributes change", async () => {
+    const root = document.createElement("main")
+    root.innerHTML = html()
+    const shared = new SharedDOMDoc(undefined, undefined, [], ["◆"], {
+      root, supportsWidgetData: widget => supports(widget) && widget.hasAttribute("enabled"),
+    })
+    cleanups.push(() => shared.destroy())
+    const widget = root.firstElementChild!, block = widget.querySelector("script")!
+    widget.setAttribute("enabled", "")
+    await tick()
+    block.textContent = '{"secret":"participant"}'
+    await tick()
+    widget.removeAttribute("enabled")
+    await tick()
+    expect(JSON.parse(block.textContent!)).toEqual({a: 1, b: 1})
+    expect(sharedDOMBody(shared.doc).toString()).not.toContain("participant")
+  })
+
+  it("discovers a valid repair of an initially invalid block", async () => {
+    const connection = resolver(), peer = create(html("", "{broken"), connection)
+    peer.block().textContent = '{"a":2,"b":1}'
+    await tick()
+    expect(connection.docs.get("widget:individual:json")!.getMap("data").toJSON()).toEqual({value: {a: 2, b: 1}})
+  })
+
+  it("synchronously mirrors identities assigned during explicit discovery after a configuration change", async () => {
+    const root = document.createElement("main")
+    root.innerHTML = html().replace(' id="widget"', '')
+    let configured = false
+    const shared = new SharedDOMDoc(undefined, undefined, [], ["◆"], {
+      root, supportsWidgetData: widget => configured && supports(widget),
+    })
+    cleanups.push(() => shared.destroy())
+    await tick()
+    configured = true
+    shared.syncFromDOM()
+    expect(root.firstElementChild!.id).not.toBe("")
+    expect(sharedDOMBody(shared.doc).toString()).toContain(`id="${root.firstElementChild!.id}"`)
+  })
+})
+
 describe("scoped widget data", () => {
   it("dispatches datapending before a synchronous initial datachange", () => {
     const root = document.createElement("main")
@@ -599,12 +791,12 @@ describe("scoped widget data", () => {
     expect(values()).toEqual([{a: 2, b: 1}, {a: 3, b: 1}])
   })
 
-  it("persists offline individual data and isolates users", async () => {
-    const first = create(html(), {documentId: "lesson", userId: "alice"})
-    write(first, {answer: 42})
-    await tick()
-    first.shared.destroy()
-    cleanups.pop()
+  it("reads legacy offline individual data and isolates users without IndexedDB", () => {
+    const legacy = new Y.Doc()
+    legacy.getMap("data").set("value", new Y.Map(Object.entries({answer: 42})))
+    localStorage.setItem(`webwriter-widget-data:${JSON.stringify(["lesson", "widget", "json", "individual", "alice"])}`,
+      JSON.stringify([...Y.encodeStateAsUpdate(legacy)]))
+    legacy.destroy()
     const second = create(html(), {documentId: "lesson", userId: "alice"})
     expect(read(second)).toEqual({answer: 42})
     const other = create(html(), {documentId: "lesson", userId: "bob"})
@@ -612,10 +804,15 @@ describe("scoped widget data", () => {
   })
 
   it("isolates unrelated offline documents and preserves the scope identity in snapshots", async () => {
-    const first = create()
+    const connection = resolver()
+    const first = create(html(), connection)
     write(first, {answer: "one-document"})
     await tick()
     const snapshot = first.shared.snapshot()
+    // IndexedDB persistence/reload is covered in native Chrome. Happy DOM has
+    // no IndexedDB; seed a legacy snapshot to check scope identity here.
+    localStorage.setItem(`webwriter-widget-data:${JSON.stringify([snapshot.widgetDataDocumentId, "widget", "json", "individual", "local-development"])}`,
+      JSON.stringify([...Y.encodeStateAsUpdate([...connection.docs.values()][0])]))
     const unrelated = create()
     expect(read(unrelated)).toEqual({a: 1, b: 1})
     expect(unrelated.shared.snapshot().widgetDataDocumentId).not.toBe(snapshot.widgetDataDocumentId)

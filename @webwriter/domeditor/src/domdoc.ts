@@ -700,8 +700,12 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
-    this.widgetData.sync()
     let records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
+    // Explicit synchronization without pending records still discovers upgrades
+    // and retries invalid data. Ordinary edits inspect only affected bindings.
+    const discover = !mutations && !records?.length
+    this.widgetData.sync(discover ? undefined : records)
+    if(discover && records) records = this.#observer.takeRecords()
     if(this.#documentPermalinks && derivePermalinks && (!records || records.some(record =>
       record.type !== "characterData" || record.target.parentElement?.closest("h1, h2, h3, h4, h5, h6, caption, figcaption")))) {
       updateDocumentPermalinks(this.root)
@@ -1232,13 +1236,14 @@ export class SharedDOMDoc {
       // Drop MutationRecords caused by applying the shared tree. A custom
       // element may have synchronously changed its own light DOM while being
       // connected; reconcile once in the other direction to capture that.
-      reactions = this.#observer?.takeRecords()
+      // Without observation (e.g. restoring a preview), there is no mutation
+      // batch to route: the restored tree needs full widget discovery.
+      reactions = this.#isObserving ? this.#observer.takeRecords() : undefined
     }
     finally {
       this.#isWritingToDOM = false
     }
     this.syncFromDOM(this.#remoteReactionOrigin, reactions, derivePermalinks)
-    this.widgetData.sync()
   }
 
   #renderYChange(event: Y.YEvent<YXmlNode>) {
