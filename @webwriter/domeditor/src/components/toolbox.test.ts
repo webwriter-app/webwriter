@@ -315,6 +315,27 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).not.toContain("disabled")
   })
 
+  it("disables Issues controls and explains the global Settings gate", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {...emptyProofreadingState(), allowed: false, enabled: false}
+    await toolbox.updateComplete
+    const check = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".proofreading-check")!
+    const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
+    const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-content")!
+    expect(check.disabled).toBe(true)
+    expect(toggle.disabled).toBe(true)
+    expect(content.textContent).toContain("Issue checking is disabled in Settings.")
+    expect(content.textContent).not.toContain("disabled for this document")
+
+    toolbox.proofreadingState = {...emptyProofreadingState(), documentEnabled: false}
+    await toolbox.updateComplete
+    expect(check.disabled).toBe(false)
+    expect(toggle.disabled).toBe(false)
+    expect(content.textContent).toContain("Automatic checking is disabled for this document.")
+    expect(content.textContent).not.toContain("Issue checking is disabled in Settings.")
+  })
+
 
   it("shows a generic proofreading loading failure and dispatches a retry", async () => {
     const toolbox = await mountToolbox()
@@ -347,6 +368,56 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolButton(toolbox, "Review").querySelector(".proofreading-error-badge")).toBeNull()
     expect(toolbox.shadowRoot!.querySelector(".proofreading-error")).toBeNull()
+  })
+
+  it("counts accessibility issues in the Review bubble while Issues is enabled, open or closed", async () => {
+    const toolbox = await mountToolbox()
+    const review = () => toolButton(toolbox, "Review")
+    const issues = [{id: "a11y", start: 0, end: 1, kind: "accessibility" as const, message: "Needs alt text", text: "x", suggestions: []}]
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")).toBeNull()
+
+    toolbox.proofreadingState = {...emptyProofreadingState(), enabled: true, issues}
+    await toolbox.updateComplete
+    const badge = review().querySelector<HTMLElement>(".toolbox-tab-accessibility-badge")!
+    expect(badge).not.toBeNull()
+    expect(badge.getAttribute("aria-hidden")).toBe("true")
+    expect(badge.textContent).toBe("1")
+    expect(getComputedStyle(badge).height).toBe("16px")
+    expect(review().getAttribute("aria-description")).toContain("1 accessibility issue")
+
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")).not.toBeNull()
+    toolbox.selectTool(null)
+    await toolbox.updateComplete
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")).not.toBeNull()
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, issues: [
+      ...issues, {...issues[0], id: "a11y-2"}, {...issues[0], id: "spelling", kind: "spelling"},
+    ]}
+    await toolbox.updateComplete
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")?.textContent).toBe("2")
+    expect(review().getAttribute("aria-description")).toContain("2 accessibility issues")
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, enabled: false}
+    await toolbox.updateComplete
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")).toBeNull()
+    toolbox.proofreadingState = {...emptyProofreadingState(), enabled: true, issues: [{...issues[0], kind: "spelling"}]}
+    await toolbox.updateComplete
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")).toBeNull()
+    toolbox.proofreadingState = {...emptyProofreadingState(), enabled: true, issues, error: "failed"}
+    await toolbox.updateComplete
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")).not.toBeNull()
+    expect(review().getAttribute("aria-label")).toContain("Issue checker unavailable")
+    expect(review().getAttribute("aria-description")).toContain("1 accessibility issue")
+    expect(review().getAttribute("aria-description")).toContain("Issue checker unavailable")
+    expect(review().querySelector(".proofreading-error-badge")).not.toBeNull()
+
+    toolbox.commentState = {...toolbox.commentState, count: 3}
+    await toolbox.updateComplete
+    expect(review().getAttribute("aria-description")).toContain("3 comments")
+    expect(review().querySelector(".toolbox-tab-comment-count")?.textContent).toBe("3")
+    expect(review().querySelector(".toolbox-tab-accessibility-badge")).not.toBeNull()
   })
 
   it("lists issues as cards with selection, suggestions, and ignore actions", async () => {

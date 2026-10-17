@@ -482,7 +482,7 @@ describe("DomEditor document loading", () => {
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
     vi.spyOn(host, "focusEditor").mockImplementation(() => {})
     await host.restoreExampleDocument("binary", Promise.resolve())
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"))
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"), false, null, false)
     expect(reload.mock.calls[0][0]).toContain('data-ww-theme="base"')
     expect(reload.mock.calls[0][0]).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"')
     expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/code"])
@@ -565,6 +565,7 @@ describe("DomEditor document loading", () => {
     })
     vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "stored", kind: "local"})
     const initializeFrame = host.initializeEditorFrame.bind(host)
+    const postToEditor = vi.spyOn(host, "postToEditor")
     const initialize = vi.spyOn(host as {initializeEditorFrame(iframe: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(iframe => {
       vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => {})
       initializeFrame(iframe)
@@ -595,6 +596,7 @@ describe("DomEditor document loading", () => {
     expect(host.installedPackages).toEqual([pkg])
     expect(host.frameRevision).toBe(0)
     await vi.waitFor(() => expect(initialize).toHaveBeenCalledOnce())
+    expect(postToEditor).toHaveBeenCalledWith(expect.objectContaining({type: initializeEditorMessage, accessibilityReviewEnabled: true}))
     expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
     completePendingPackageLoad(editor)
     await host.packageLoadPromise
@@ -1514,6 +1516,23 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.head.querySelector('meta[name="generator"]')?.getAttribute("content"))
       .toBe(WEBWRITER_GENERATOR)
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
+  })
+
+  it("passes the saved-once accessibility gate into initial and restarted editor frames", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const checkInitialization = async (enabled: boolean) => {
+      host.accessibilityReviewEnabled = enabled
+      const post = vi.spyOn(host, "postToEditor")
+      host.initializeEditorFrame(iframe)
+      await vi.waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({
+        type: initializeEditorMessage, accessibilityReviewEnabled: enabled,
+      })))
+      await host.packageLoadPromise
+      post.mockRestore()
+    }
+    await checkInitialization(false)
+    await checkInitialization(true)
   })
 
   it("includes the preferred language in fresh document HTML before initialization", async () => {
@@ -3542,7 +3561,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Imported</p>"], "import.html")]})
     input.dispatchEvent(new Event("change"))
     await opening
-    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null)
+    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null, true)
     expect(host.backendClient.listDocuments).not.toHaveBeenCalled()
     expect(host.fileHandle).toBeNull()
     expect(host.fileName).toBe("import")
@@ -3635,6 +3654,55 @@ describe("DomEditor file actions", () => {
     expect(host.documentSettingsId).toBe(id)
   })
 
+  it("enables automatic accessibility review only after a successful save", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileName = "Lesson"
+    const actions: string[] = []
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      actions.push(action.type)
+      if(action.type === "prepareVersionSave") return {checkpointId: "saved-checkpoint", source: "<p>Saved</p>"}
+      if(action.type === "recordVersionSave") return emptyVersionHistoryState()
+      return true
+    })
+    vi.spyOn(host, "triggerFileDownload").mockImplementation(() => {})
+    const picker = vi.fn().mockRejectedValue(new DOMException("canceled", "AbortError"))
+    vi.spyOn(host, "filePickerWindow").mockReturnValue({showSaveFilePicker: picker})
+    await host.performSaveDocument()
+    expect(host.accessibilityReviewEnabled).toBe(false)
+    expect(actions).toEqual([])
+
+    picker.mockResolvedValue({name: "Lesson.html", createWritable: async () => ({write: vi.fn(), close: vi.fn()})})
+    await host.performSaveDocument()
+    expect(host.accessibilityReviewEnabled).toBe(true)
+    expect(actions).toContain("setAccessibilityReviewEnabled")
+    expect(execute).toHaveBeenCalledWith({type: "setAccessibilityReviewEnabled", enabled: true})
+  })
+
+  it("does not enable automatic accessibility review when saving the file fails", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileHandle = {name: "Lesson.html", createWritable: async () => {throw new Error("write failed")}}
+    const execute = mockSaveSnapshot(editor, "<p>Saved</p>")
+    vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    await host.performSaveDocument()
+    expect(host.accessibilityReviewEnabled).toBe(false)
+    expect(execute).not.toHaveBeenCalledWith({type: "setAccessibilityReviewEnabled", enabled: true})
+  })
+
+  it("resets the saved-once accessibility gate for new documents and restores it for opened documents", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(iframe.contentWindow)
+    host.accessibilityReviewEnabled = true
+    await host.reloadDocument("<!doctype html><html><body></body></html>", true)
+    expect(host.accessibilityReviewEnabled).toBe(false)
+    await host.reloadDocument("<!doctype html><html><body><p>Opened</p></body></html>", false, null, true)
+    expect(host.accessibilityReviewEnabled).toBe(true)
+    await host.reloadDocument("<!doctype html><html><body></body></html>", true)
+    expect(host.accessibilityReviewEnabled).toBe(false)
+  })
+
   it("keeps the cloud endpoint and dirty state when downloading a local copy", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
@@ -3655,6 +3723,7 @@ describe("DomEditor file actions", () => {
     expect(host.backendDocumentId).toBe("cloud-file")
     expect(host.fileName).toBe("Cloud lesson")
     expect(host.fileDirty).toBe(true)
+    expect(host.accessibilityReviewEnabled).toBe(true)
     await host.saveDocument()
     expect(host.backendClient.updateDocument).toHaveBeenCalledWith("cloud-file", expect.objectContaining({title: "Cloud lesson"}))
     expect(host.fileHandle).toBe(handle)
@@ -3666,6 +3735,7 @@ describe("DomEditor file actions", () => {
     configureCloudStorage(host)
     const existing = {id: "existing", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
     host.backendClient = {listDocuments: vi.fn().mockResolvedValue([{...existing, id: "earlier"}, existing]), updateDocument: vi.fn().mockRejectedValue(new Error("Save failed")), createDocument: vi.fn()}
+    host.accessibilityReviewEnabled = false
     const report = vi.spyOn(host, "reportFileError").mockImplementation((error: unknown) => {host.fileError = (error as Error).message})
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
     mockSaveSnapshot(editor, "<p>Saved</p>")
@@ -3673,6 +3743,7 @@ describe("DomEditor file actions", () => {
     const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
     menu.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Lesson.html", id: "existing"}}))
     await vi.waitFor(() => expect(report).toHaveBeenCalledOnce())
+    expect(host.accessibilityReviewEnabled).toBe(false)
     expect(host.backendClient.updateDocument).toHaveBeenCalledWith("existing", expect.objectContaining({title: "Lesson"}))
     expect(host.backendClient.createDocument).not.toHaveBeenCalled()
     expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(true)
@@ -3681,6 +3752,7 @@ describe("DomEditor file actions", () => {
     menu.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Lesson", id: "existing"}}))
     await vi.waitFor(() => expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false))
     expect(host.backendDocumentId).toBe("existing")
+    expect(host.accessibilityReviewEnabled).toBe(true)
     await host.saveDocument(true)
     menu.fileName = "Discarded draft"
     menu.close()
@@ -3730,7 +3802,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Upload</p>"], "Uploaded.html")]})
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null)
+    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null, true)
     expect(host.settings.activeCloudServiceId).toBe("test-cloud")
     expect(host.backendDocumentId).toBeNull()
   })
@@ -3744,7 +3816,7 @@ describe("DomEditor file actions", () => {
 
     await (editor as any).openDocument()
 
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/))
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/), true)
     expect((editor as any).fileHandle).toBe(handle)
     expect((editor as any).fileName).toBe("opened")
     expect((editor as any).fileDirty).toBe(false)
@@ -3797,7 +3869,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileName).toBe("Server lesson"))
     expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false)
     expect(backend.getDocument).toHaveBeenCalledWith("doc-1")
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null)
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null, true)
     expect((editor as any).backendDocumentId).toBe("doc-1")
     expect((editor as any).fileName).toBe("Server lesson")
   })
@@ -3846,7 +3918,7 @@ describe("DomEditor file actions", () => {
     })
     await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored")
+    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored", true)
     expect(picker).not.toHaveBeenCalled()
     expect(new URL(location.href).searchParams.get("open")).toBe("local:stored")
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
@@ -3904,7 +3976,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
     expect(login).toHaveBeenCalledWith(base)
     expect(getDocument).toHaveBeenCalledWith("folder/lesson")
-    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference)
+    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference, true)
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
   })
 
@@ -8977,7 +9049,7 @@ it("opens a server editing link without an account and passes its token to colla
   vi.stubGlobal("fetch", fetch)
   const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
   await host.restoreLinkedDocument(`http://localhost:1234/api/shared-documents/${token}`)
-  expect(reload).toHaveBeenCalledWith("<p>Editable</p>", false, "http://localhost:1234/api/documents/shared")
+  expect(reload).toHaveBeenCalledWith("<p>Editable</p>", false, "http://localhost:1234/api/documents/shared", true)
   expect(host.backendDocumentId).toBe("shared")
   expect(new URL(host.syncUrl).searchParams.get("session")).toBe("document-shared")
   expect(new URL(host.syncUrl).searchParams.get("share")).toBe(token)

@@ -113,6 +113,29 @@ describe("accessibility reviewer", () => {
     expect(context.exclude).not.toContain(image)
   })
 
+  it("labels page findings without exposing head scripts or styles", async () => {
+    document.head.innerHTML = '<script class="◆editor-only">globalThis.litIssuedWarnings ??= new Set()</script><style>body { color: red }</style>'
+    document.body.innerHTML = '<main><p>Lesson text</p></main>'
+    mockRun.mockResolvedValue({violations: [{id: "document-title", help: "Documents must have a title", helpUrl: "https://example.test/title",
+      nodes: [{element: document.documentElement}, {element: document.body}, {element: document.head}]}]})
+    const reviewer = await createAccessibilityReviewer()
+    const before = document.documentElement.outerHTML
+    const findings = await reviewer.check(document.body, schemaWith())
+    expect(findings.map(finding => finding.text)).toEqual(["Document", "Document", "Document metadata"])
+    expect(findings.every(finding => finding.message === "Documents must have a title")).toBe(true)
+    expect(document.documentElement.outerHTML).toBe(before)
+  })
+
+  it("previews authored text without script, style, hidden or editor-only descendants", async () => {
+    document.body.innerHTML = '<section><p>Read <strong>this</strong> lesson.</p><script type="application/json">{"warning":"private widget data"}</script><style>p { color: red }</style><span hidden>Hidden warning</span><span inert>Inactive warning</span><span class="◆editor-only">Editor warning</span><span data-webwriter-editor-only>Legacy editor warning</span></section>'
+    const section = document.querySelector("section")!
+    mockRun.mockResolvedValue({violations: [{id: "region", help: "Add a landmark", helpUrl: "https://example.test/region", nodes: [{element: section}]}]})
+    const reviewer = await createAccessibilityReviewer()
+    const before = section.outerHTML
+    expect(await reviewer.check(document.body, schemaWith())).toMatchObject([{text: "Read this lesson."}])
+    expect(section.outerHTML).toBe(before)
+  })
+
   it("scopes non-body requests and returns no results after disposal, including while axe is pending", async () => {
     const section = document.createElement("section")
     const paragraph = document.createElement("p")

@@ -493,8 +493,9 @@ export class DomEditor extends LitElement {
   private settings: AppSettings = loadAppSettings()
   private guidedTourReady = false
   private documentSettingsId: string | null = null
+  private accessibilityReviewEnabled = false
   private documentSettings: DocumentSettings = {}
-  private proofreadingState: ProofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled, documentEnabled: this.documentProofreadingEnabled}
+  private proofreadingState: ProofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled, documentEnabled: this.documentProofreadingEnabled}
   private proofreadingReloading = false
   private listType: ListType | null = null
   private listStyle = ""
@@ -1958,6 +1959,8 @@ export class DomEditor extends LitElement {
         shortcuts: {...this.settings.shortcuts},
         proofreadingDictionary: [...this.settings.proofreadingDictionary],
         proofreadingEnabled: this.documentProofreadingEnabled,
+        proofreadingAllowed: this.settings.proofreadingEnabledByDefault,
+        accessibilityReviewEnabled: this.accessibilityReviewEnabled,
         commentHighlighting: this.documentSettings.commentHighlighting ?? true,
         ...(this.frameState ? {initialState: this.frameState} : {}),
       }
@@ -2833,12 +2836,11 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
-    if(previous.proofreadingEnabledByDefault !== settings.proofreadingEnabledByDefault
-      && this.documentSettings.proofreadingEnabled === undefined) {
+    if(previous.proofreadingEnabledByDefault !== settings.proofreadingEnabledByDefault) {
       this.proofreadingReloading = false
-      this.proofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled,
+      this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
         documentEnabled: this.documentProofreadingEnabled}
-      void this.execute({type: "setDocumentProofreadingEnabled", enabled: this.documentProofreadingEnabled}).catch(() => {})
+      void this.execute({type: "setProofreadingEnabled", enabled: settings.proofreadingEnabledByDefault}).catch(() => {})
     }
     if(JSON.stringify(previous.proofreadingDictionary) !== JSON.stringify(settings.proofreadingDictionary)) {
       void this.execute({type: "setProofreadingDictionary", words: [...settings.proofreadingDictionary]}).catch(() => {})
@@ -2990,7 +2992,7 @@ export class DomEditor extends LitElement {
   }
 
   private get documentProofreadingEnabled() {
-    return this.documentSettings.proofreadingEnabled ?? this.settings.proofreadingEnabledByDefault
+    return this.documentSettings.proofreadingEnabled ?? true
   }
 
   private updateDocumentSettings(settings: DocumentSettings) {
@@ -3003,7 +3005,7 @@ export class DomEditor extends LitElement {
     persistDocumentSettings(id, this.documentSettings)
   }
 
-  private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null) {
+  private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null, accessibilityReviewEnabled?: boolean) {
     this.dismissGuidedTour()
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
@@ -3031,8 +3033,11 @@ export class DomEditor extends LitElement {
     this.frameState = undefined
     this.documentHead = emptyDocumentHeadState()
     this.documentSettingsId = settingsId
+    if(isNewDocument) this.accessibilityReviewEnabled = false
+    else if(accessibilityReviewEnabled !== undefined) this.accessibilityReviewEnabled = accessibilityReviewEnabled
+    else if(settingsId) this.accessibilityReviewEnabled = true
     this.documentSettings = loadDocumentSettings(settingsId)
-    this.proofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled,
+    this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
       documentEnabled: this.documentProofreadingEnabled}
     this.commentState = {...this.commentState, highlighting: this.documentSettings.commentHighlighting ?? true}
     this.proofreadingReloading = false
@@ -3056,6 +3061,12 @@ export class DomEditor extends LitElement {
     else this.frameStarted = true
     await this.updateComplete
     await this.waitForEditorWindow()
+  }
+
+  private markAccessibilityReviewEnabled() {
+    if(this.accessibilityReviewEnabled) return
+    this.accessibilityReviewEnabled = true
+    void this.execute({type: "setAccessibilityReviewEnabled", enabled: true}).catch(() => {})
   }
 
   private async runFileOperation(operation: () => Promise<void>) {
@@ -3205,7 +3216,7 @@ export class DomEditor extends LitElement {
         source.querySelectorAll<HTMLScriptElement>('script[type="module"][src]').forEach(script => {
           if(modules.has(script.getAttribute("src")!)) script.remove()
         })
-        await this.reloadDocument(serializeDoctype(source.doctype) + source.documentElement.outerHTML)
+        await this.reloadDocument(serializeDoctype(source.doctype) + source.documentElement.outerHTML, false, null, false)
         this.backendDocumentId = null
         this.fileHandle = null
         this.storageLocation = "local"
@@ -3239,7 +3250,7 @@ export class DomEditor extends LitElement {
         this.backendState = "connected"
         this.collaborationRoom = `document-${document.id}`
         this.sharedDocumentToken = token
-        await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client))
+        await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true)
         this.backendDocumentId = document.id
         this.fileHandle = null
         this.storageLocation = "development-server"
@@ -3413,7 +3424,7 @@ export class DomEditor extends LitElement {
       }
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
       this.clearDocumentCollaboration()
-      await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null)
+      await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null, true)
       this.backendDocumentId = null
       this.fileHandle = handle
       this.storageLocation = "local"
@@ -3501,6 +3512,7 @@ export class DomEditor extends LitElement {
         await writable.close()
       }
       else this.triggerFileDownload(source, name)
+      this.markAccessibilityReviewEnabled()
       if(frameRevision === this.frameRevision) {
         this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
       }
@@ -3539,7 +3551,7 @@ export class DomEditor extends LitElement {
       this.linkSharingEnabled = false
       this.collaborationRoom = `document-${document.id}`
       this.sharedDocumentToken = null
-      await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client))
+      await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true)
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.downloadedFileName = null
@@ -3591,6 +3603,7 @@ export class DomEditor extends LitElement {
         : await client.createDocument({title, content: source, format: requestedFormat})
       if(this.backendClient !== client) throw new Error("The cloud service changed while saving the document.")
       if(expectedDocument && (this.backendClient !== expectedDocument.client || this.backendDocumentId !== expectedDocument.id)) return
+      this.markAccessibilityReviewEnabled()
       if(frameRevision === this.frameRevision) {
         this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
       }
@@ -5263,7 +5276,7 @@ export class DomEditor extends LitElement {
 
   private handleProofreadingAction = (event: Event) => {
     const detail = (event as CustomEvent<{type?: unknown, id?: unknown, index?: unknown, enabled?: unknown}>).detail
-    if(!detail || this.htmlPending || this.historyState.preview !== null) return
+    if(!detail || !this.settings.proofreadingEnabledByDefault || this.htmlPending || this.historyState.preview !== null) return
     if(this.proofreadingReloading && detail.type !== "retryProofreading" && detail.type !== "checkProofreading" && detail.type !== "setDocumentProofreadingEnabled") return
     let action: ProofreadingAction
     if(detail.type === "retryProofreading" || detail.type === "checkProofreading") action = {type: detail.type}
@@ -7282,7 +7295,7 @@ export class DomEditor extends LitElement {
       count: 0,
       highlighting: this.documentSettings.commentHighlighting ?? true,
     }
-    this.proofreadingState = {...emptyProofreadingState(), enabled: this.documentProofreadingEnabled,
+    this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
       documentEnabled: this.documentProofreadingEnabled}
     this.proofreadingReloading = false
     this.mediaSelection = null

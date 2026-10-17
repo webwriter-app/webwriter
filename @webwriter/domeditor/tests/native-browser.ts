@@ -6153,10 +6153,30 @@ await check("Accessibility review shares Issues controls without loading while d
     assert(!doc.defaultView!.performance.getEntriesByType("resource").some(entry => /axe-core/i.test(entry.name)),
       "disabled Issues loaded axe-core")
 
+    const bootstrap = doc.createElement("script")
+    bootstrap.type = "application/json"
+    bootstrap.className = "◆ ◆editor-only"
+    bootstrap.textContent = 'globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode")'
+    doc.head.prepend(bootstrap)
+
     const before = child.toHTML(true), shared = child.doc.body.toString()
-    assert(feature.setDocumentChecking(true), "could not enable Issues")
+    feature.setChecking(false)
+    assert(feature.setDocumentChecking(true), "could not enable document preference")
+    feature.actions.checkProofreading({type: "checkProofreading"})
+    await feature.checkNow()
+    assert(!feature.state().allowed && !feature.state().enabled && !feature.state().ready,
+      "document preference or manual check bypassed globally disabled Issues")
+    feature.setChecking(true)
+    await feature.checkNow()
+    assert(!feature.state().issues.some(issue => issue.kind === "accessibility"), "unsaved document ran automatic accessibility review")
+    assert(!doc.defaultView!.performance.getEntriesByType("resource").some(entry => /axe-core/i.test(entry.name)),
+      "unsaved document loaded axe-core automatically")
+    feature.setAccessibilityReviewEnabled(true)
     await feature.checkNow()
     let issues = feature.state().issues
+    const titleIssue = issues.find(issue => issue.kind === "accessibility" && issue.helpUrl?.includes("/document-title"))
+    assert(titleIssue?.text === "Document", `page issue preview included unrelated document content: ${JSON.stringify(titleIssue)}`)
+    assert(issues.every(issue => !issue.text.includes("litIssuedWarnings")), "accessibility preview exposed editor bootstrap code")
     const imageIssue = issues.find(issue => issue.kind === "accessibility" && issue.text === "<img>")!
     const linkIssue = issues.find(issue => issue.kind === "accessibility" && issue.text === "<a>")!
     assert(imageIssue && linkIssue, `axe did not report missing image alt and empty link names: ${JSON.stringify(issues)}`)
@@ -6165,74 +6185,68 @@ await check("Accessibility review shares Issues controls without loading while d
     assert(!issues.some(issue => issue.text === "Learn more" || issue.text === "Ignore"), "axe reported appendix interface controls")
     await new Promise(resolve => childWindow.requestAnimationFrame(() => resolve(undefined)))
     const image = doc.querySelector<HTMLImageElement>("#missing-alt")!
-    const reviewTab = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-tool="Review"]')!
-    toolbox.selectTool("Review")
     toolbox.proofreadingState = feature.state()
     await toolbox.updateComplete
-    let card = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
+
+    const appendix = doc.body.shadowRoot!
+    const reviewButton = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Review"]')!
+    const accessibilityBadge = reviewButton.querySelector<HTMLElement>(".toolbox-tab-accessibility-badge")!
+    const accessibilityIssueCount = issues.filter(issue => issue.kind === "accessibility").length
+    assert(accessibilityBadge && reviewButton.getAttribute("aria-description")?.includes(`${accessibilityIssueCount} accessibility ${accessibilityIssueCount === 1 ? "issue" : "issues"}`),
+      "closed Review tab did not announce accessibility issues")
+    assert(!appendix.querySelector('[part~="accessibility-issue-pill"]'), "accessibility findings rendered per-element pills")
+    assert(!appendix.querySelector('[part="accessibility-issue-outline"]'), "accessibility issue was outlined before opening its context menu")
+    const tabRect = reviewButton.getBoundingClientRect(), iconRect = accessibilityBadge.getBoundingClientRect()
+    assert(iconRect.width > 0 && iconRect.height > 0 && iconRect.right <= tabRect.right && iconRect.top >= tabRect.top,
+      `accessibility badge was not fully inside the Review tab: ${JSON.stringify({badge: iconRect.toJSON(), tab: tabRect.toJSON()})}`)
+    assert(getComputedStyle(accessibilityBadge).backgroundColor === "rgb(8, 127, 91)", "Review badge did not use the accessibility green")
+    assert(accessibilityBadge.textContent?.trim() === String(accessibilityIssueCount),
+      `Review badge did not show the accessibility issue count (${accessibilityIssueCount})`)
+    assert(iconRect.width >= 14 && iconRect.height >= 14, "Review accessibility count bubble was not large enough to read")
+
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    assert(reviewButton.querySelector(".toolbox-tab-accessibility-badge"), "opening Review hid the accessibility badge")
+    const card = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
       .find(candidate => candidate.querySelector(".proofreading-text")?.textContent === "<img>")!
     assert(card, "Review did not render the accessibility issue card")
 
-    const appendix = doc.body.shadowRoot!
-    const pills = Array.from(appendix.querySelectorAll<HTMLButtonElement>('[part~="accessibility-issue-pill"]'))
-    const imagePill = pills.find(pill => pill.value === imageIssue.id)!
-    const linkPill = pills.find(pill => pill.value === linkIssue.id)!
-    assert(imagePill && linkPill, "accessibility issues did not get appendix pills")
-    for(const pill of pills) {
-      const pillRect = pill.getBoundingClientRect()
-      assert(pill.getAttribute("aria-haspopup") === "menu" && pill.getAttribute("aria-expanded") === "false", "issue pill did not expose its closed menu state")
-      assert(pill.querySelector("svg")?.getAttribute("width") === "16" && pill.querySelector("svg")?.getAttribute("height") === "16", "issue pill icon was not 16px")
-      assert(pill.style.display === "none" || pillRect.left >= 0 && pillRect.right <= childWindow.innerWidth && pillRect.top >= 0 && pillRect.bottom <= childWindow.innerHeight,
-        `issue pill was outside the viewport: ${JSON.stringify({value: pill.value, rect: pillRect.toJSON(), viewport: [childWindow.innerWidth, childWindow.innerHeight]})}`)
-    }
-    const imagePillRect = imagePill.getBoundingClientRect(), linkPillRect = linkPill.getBoundingClientRect()
-    assert(Math.abs(imagePillRect.top - linkPillRect.top) >= 28, "same-row accessibility pills overlapped instead of stacking vertically")
-    assert(!appendix.querySelector('[part="accessibility-issue-outline"]'), "accessibility issue was outlined before opening its pill")
-
-    imagePill.dispatchEvent(new childWindow.PointerEvent("pointermove", {clientX: imagePillRect.left + imagePillRect.width / 2,
-      clientY: imagePillRect.top + imagePillRect.height / 2, bubbles: true, composed: true}))
-    toolbox.proofreadingState = feature.state()
-    await toolbox.updateComplete
-    card = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
-      .find(candidate => candidate.querySelector(".proofreading-text")?.textContent === "<img>")!
-    assert(card?.getAttribute("data-hover-kind") === "accessibility" && getComputedStyle(card).borderTopColor === "rgb(8, 127, 91)",
-      "hovering the issue pill did not highlight its matching Review card")
-    assert(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
-      .find(candidate => candidate.querySelector(".proofreading-text")?.textContent === "<a>")?.hasAttribute("data-hover-kind") === false,
-    "hovering one issue pill highlighted a different Review card")
-    imagePill.click()
-    let popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
-    let outline = appendix.querySelector<HTMLElement>('[part="accessibility-issue-outline"]')!
-    assert(popup && imagePill.getAttribute("aria-expanded") === "true", "activating the issue pill did not open its menu")
-    assert(outline, "opening the issue pill did not outline the target")
+    const imageRect = image.getBoundingClientRect()
+    const context = new childWindow.MouseEvent("contextmenu", {clientX: imageRect.left + imageRect.width / 2,
+      clientY: imageRect.top + imageRect.height / 2, button: 2, bubbles: true, composed: true, cancelable: true})
+    image.dispatchEvent(context)
+    assert(context.defaultPrevented, "image context menu did not open the accessibility popup")
+    const popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
+    const outline = appendix.querySelector<HTMLElement>('[part="accessibility-issue-outline"]')!
+    assert(popup && outline, "context menu did not show its popup and target outline")
+    const popupCard = popup.querySelector<HTMLElement>(".proofreading-card")!
+    assert(popupCard && popupCard.querySelector(".proofreading-text")?.textContent === card.querySelector(".proofreading-text")?.textContent,
+      "context popup did not share the Review card content")
     const outlineRect = outline.getBoundingClientRect(), targetRect = image.getBoundingClientRect(), popupRect = popup.getBoundingClientRect()
     assert(Math.abs(outlineRect.left - targetRect.left) <= 1 && Math.abs(outlineRect.top - targetRect.top) <= 1
       && Math.abs(outlineRect.width - targetRect.width) <= 1 && Math.abs(outlineRect.height - targetRect.height) <= 1,
     `accessibility outline did not match its target: ${JSON.stringify({outline: outlineRect.toJSON(), target: targetRect.toJSON()})}`)
-    assert(Math.abs(popupRect.right - imagePillRect.right) <= 1 && (popupRect.top >= imagePillRect.bottom || popupRect.bottom <= imagePillRect.top),
-      `popup was not anchored to its pill: ${JSON.stringify({popup: popupRect.toJSON(), pill: imagePillRect.toJSON()})}`)
-    assert(appendix.activeElement !== imagePill, "opening the pill did not move focus into its menu")
-    appendix.activeElement?.dispatchEvent(new childWindow.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
-    assert(!appendix.querySelector('[part="accessibility-issue-outline"]') && !appendix.querySelector('[part="proofreading-popup"]'), "Escape did not close the pill menu and outline")
-    assert(appendix.activeElement === imagePill && imagePill.getAttribute("aria-expanded") === "false", "Escape did not restore focus to the pill")
-
-    imagePill.focus()
-    imagePill.click()
-    popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
-    assert(popup && appendix.querySelector('[part="accessibility-issue-outline"]'), "keyboard-focused pill activation did not open its menu and outline")
-    childWindow.scrollTo(0, 30)
-    await new Promise(resolve => childWindow.requestAnimationFrame(() => resolve(undefined)))
-    assert(!appendix.querySelector('[part="proofreading-popup"]') && !appendix.querySelector('[part="accessibility-issue-outline"]'), "scrolling did not dismiss the anchored menu and outline")
-    assert(imagePill.isConnected && linkPill.isConnected, "scrolling removed the accessibility pills")
-
-    linkPill.focus()
-    linkPill.click()
-    popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
-    assert(popup && linkPill.getAttribute("aria-expanded") === "true", "activating another issue pill did not open its menu")
-    const popupCard = popup.querySelector<HTMLElement>(".proofreading-card")!
+    assert(popupRect.width > 0 && popupRect.height > 0 && popupRect.left >= 0 && popupRect.right <= childWindow.innerWidth
+      && popupRect.top >= 0 && popupRect.bottom <= childWindow.innerHeight,
+    `accessibility popup was outside the viewport: ${JSON.stringify(popupRect.toJSON())}`)
     assert(popupCard.querySelector(".proofreading-kind")?.textContent === "Accessibility", "popup lost its accessibility category")
     assert(popupCard.querySelector<HTMLAnchorElement>(".proofreading-help")?.href.includes("dequeuniversity.com/rules/axe"), "popup did not show the axe rule help link")
     assert(getComputedStyle(popupCard).borderTopColor === "rgb(8, 127, 91)", "accessibility popup card did not use the green issue color")
+    popup.dispatchEvent(new childWindow.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    assert(!appendix.querySelector('[part="accessibility-issue-outline"]') && !appendix.querySelector('[part="proofreading-popup"]'),
+      "Escape did not close the accessibility popup and outline")
+    assert(doc.activeElement === doc.body, "Escape did not return focus to the document body")
+
+    const reopen = new childWindow.MouseEvent("contextmenu", {clientX: imageRect.left + imageRect.width / 2,
+      clientY: imageRect.top + imageRect.height / 2, button: 2, bubbles: true, composed: true, cancelable: true})
+    image.dispatchEvent(reopen)
+    assert(appendix.querySelector('[part="proofreading-popup"]') && appendix.querySelector('[part="accessibility-issue-outline"]'),
+      "could not reopen accessibility popup before scroll check")
+    childWindow.scrollTo(0, 30)
+    await new Promise(resolve => childWindow.requestAnimationFrame(() => resolve(undefined)))
+    assert(!appendix.querySelector('[part="proofreading-popup"]') && !appendix.querySelector('[part="accessibility-issue-outline"]'),
+      "scrolling did not dismiss the accessibility popup and outline")
+
     await feature.checkNow()
     issues = feature.state().issues
     assert(issues.some(issue => issue.id === imageIssue.id) && issues.some(issue => issue.id === linkIssue.id), "appendix popup controls entered accessibility results")
@@ -6270,15 +6284,24 @@ await check("Accessibility review shares Issues controls without loading while d
     assert(child.toHTML(true).includes('alt="Chart of results"'), "alt text did not remain authored document content")
 
     feature.setDocumentChecking(false)
-    assert(appendix.querySelectorAll('[part~="accessibility-issue-pill"]').length === 0, "disabling Issues left accessibility pills in the appendix")
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    assert(!toolbox.shadowRoot!.querySelector('[data-tool="Review"] .toolbox-tab-accessibility-badge'), "disabling Issues left the Review accessibility badge")
+    assert(!appendix.querySelector('[part~="accessibility-issue-pill"]'), "disabling Issues left accessibility pills in the appendix")
     assert(!appendix.querySelector('[part="proofreading-popup"]'), "disabling Issues left the accessibility menu in the appendix")
     assert(!doc.body.shadowRoot!.querySelector('[part="accessibility-issue-outline"]'), "disabling Issues left accessibility outlines in the appendix")
     assert(child.toHTML(true).includes('alt="Chart of results"'), "disabling Issues changed the document")
     assert(feature.setDocumentChecking(true), "could not re-enable Issues for destroy cleanup")
     await feature.checkNow()
-    assert(appendix.querySelector('[part~="accessibility-issue-pill"]'), "re-enabling Issues did not restore accessibility pills")
-    const destroyPill = appendix.querySelector<HTMLButtonElement>('[part~="accessibility-issue-pill"]')!
-    destroyPill.click()
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    assert(toolbox.shadowRoot!.querySelector('[data-tool="Review"] .toolbox-tab-accessibility-badge'), "re-enabling Issues did not restore the Review accessibility badge")
+    assert(!appendix.querySelector('[part~="accessibility-issue-pill"]'), "re-enabling Issues restored per-element accessibility pills")
+    const emptyLink = doc.querySelector<HTMLAnchorElement>("#empty-link")!
+    const linkRect = emptyLink.getBoundingClientRect()
+    const destroyContext = new childWindow.MouseEvent("contextmenu", {clientX: linkRect.left + linkRect.width / 2,
+      clientY: linkRect.top + linkRect.height / 2, button: 2, bubbles: true, composed: true, cancelable: true})
+    emptyLink.dispatchEvent(destroyContext)
     assert(appendix.querySelector('[part="proofreading-popup"]') && appendix.querySelector('[part="accessibility-issue-outline"]'),
       "could not open accessibility UI before editor destruction")
     child.destroy()

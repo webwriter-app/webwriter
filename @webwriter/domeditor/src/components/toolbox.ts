@@ -361,6 +361,7 @@ export class DomEditorToolbox extends EditingControls {
     .toolbox-tab[data-comments] .toolbox-tab-icon,
     .toolbox-tab[data-comments] .toolbox-tab-label {color: #9a6700;}
     .toolbox-tab-comment-count {position: absolute; top: -.3rem; right: -.38rem; z-index: 1; min-width: .8rem; height: .8rem; padding: 0 .12rem; border: 1px solid #fff; border-radius: 999px; color: #fff; background: #b7791f; font: 700 .48rem/ .75rem system-ui, sans-serif; text-align: center;}
+    .toolbox-tab-accessibility-badge {position: absolute; top: -4px; right: -5px; z-index: 2; display: grid; place-items: center; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 3px; border: 1px solid #fff; border-radius: 999px; color: #fff; background: #087f5b; font: 700 10px/1 system-ui, sans-serif;}
 
     :host([active-tool]) .toolbox-tabs {
       padding-left: 0;
@@ -464,6 +465,9 @@ export class DomEditorToolbox extends EditingControls {
       background: #b42318;
       font: 700 9px/1 system-ui, sans-serif;
     }
+    .toolbox-tab[data-accessibility] .toolbox-tab-comment-count {top: auto; right: -5px; bottom: -4px;}
+    .toolbox-tab[data-accessibility] .proofreading-error-badge {right: auto; left: -5px;}
+    .toolbox-tab[data-comments]:not([data-accessibility]) .proofreading-error-badge {right: auto; left: -5px;}
 
     .proofreading-section {
       box-sizing: border-box;
@@ -772,16 +776,17 @@ export class DomEditorToolbox extends EditingControls {
         ${checkingEnabled && !state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading issue checker"></span>` : ""}
         ${checkingEnabled && state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking for issues"></span>` : ""}
         <button class="proofreading-check" type="button" title="Check for issues" aria-label="Check for issues"
-          ?disabled=${editingLocked || state.loading || state.checking}
+          ?disabled=${!state.allowed || editingLocked || state.loading || state.checking}
           @click=${() => this.dispatchProofreadingAction({type: "checkProofreading"})}>${ribbonIcon("Refresh")}</button>
         <label class="proofreading-toggle"><input type="checkbox" .checked=${state.documentEnabled}
           aria-label="Check for issues automatically" title="Check for issues automatically"
-          ?disabled=${editingLocked}
+          ?disabled=${!state.allowed || editingLocked}
           @change=${(event: Event) => this.dispatchProofreadingAction({type: "setDocumentProofreadingEnabled", enabled: (event.currentTarget as HTMLInputElement).checked})}></label>
       </h2>
 
       <div class="proofreading-content">
-        ${!state.documentEnabled ? html`<p class="proofreading-status">Automatic checking is disabled for this document.</p>` : ""}
+        ${!state.allowed ? html`<p class="proofreading-status">Issue checking is disabled in Settings.</p>` : ""}
+        ${state.allowed && !state.documentEnabled ? html`<p class="proofreading-status">Automatic checking is disabled for this document.</p>` : ""}
         ${checkingEnabled && state.error ? html`<div class="proofreading-error" role="alert">
           <span>Could not load the issue checker.</span>
           <button class="proofreading-retry" type="button" ?disabled=${editingLocked}
@@ -1676,10 +1681,16 @@ export class DomEditorToolbox extends EditingControls {
               const toolLabel = tool.label === "AI" ? "Ask AI" : tool.label
               const label = contextualLabel ?? toolLabel
               const commentCount = tool.label === "Review" ? this.commentState.count : 0
+              const accessibilityCount = tool.label === "Review" && this.proofreadingState.enabled
+                ? this.proofreadingState.issues.filter(issue => issue.kind === "accessibility").length : 0
+              const reviewDescription = tool.label === "Review"
+                ? [accessibilityCount > 0 ? `${accessibilityCount} accessibility ${accessibilityCount === 1 ? "issue" : "issues"}` : "", commentCount > 0 ? `${commentCount} comments` : "", this.proofreadingState.error ? "Issue checker unavailable" : ""].filter(Boolean).join(". ")
+                : ""
               return html`
                 <div
                   class="toolbox-tab"
                   ?data-comments=${commentCount > 0 && tool.label === "Review"}
+                  ?data-accessibility=${accessibilityCount > 0}
                   ?data-active=${active}
                   ?data-contextual=${contextualLabel !== null}
                   ?data-available=${(contextualLabel !== null || tool.label === "Feedback") && this.activeTool === null}
@@ -1697,7 +1708,7 @@ export class DomEditorToolbox extends EditingControls {
                     title=${tool.label === "Review" && this.proofreadingState.error
                       ? "Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
-                    aria-description=${commentCount > 0 ? `${commentCount} comments` : nothing}
+                    aria-description=${reviewDescription || nothing}
                     aria-controls="toolbox-pane"
                     aria-selected=${active}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
@@ -1705,6 +1716,7 @@ export class DomEditorToolbox extends EditingControls {
                   >
                     <span class="toolbox-tab-icon" aria-hidden="true">
                       ${ribbonIcon(tool.icon)}
+                      ${accessibilityCount > 0 ? html`<span class="toolbox-tab-accessibility-badge" aria-hidden="true">${accessibilityCount}</span>` : ""}
                       ${tool.label === "Review" && commentCount > 0 ? html`<sup class="toolbox-tab-comment-count">${commentCount}</sup>` : ""}
                       ${tool.label === "Review" && this.proofreadingState.error ? html`<span class="proofreading-error-badge">!</span>` : ""}
                     </span>

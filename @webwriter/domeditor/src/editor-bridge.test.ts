@@ -58,7 +58,7 @@ describe("editor bridge message guards", () => {
   it("validates the optional document preferences in initialization messages", () => {
     const message = {type: initializeEditorMessage, syncUrl: "ws://localhost/session"}
     expect(isInitializeEditorMessage(message)).toBe(true)
-    for(const property of ["proofreadingEnabled", "commentHighlighting"]) {
+    for(const property of ["proofreadingEnabled", "proofreadingAllowed", "accessibilityReviewEnabled", "commentHighlighting"]) {
       for(const value of [true, false]) expect(isInitializeEditorMessage({...message, [property]: value})).toBe(true)
       for(const value of [null, "false", 0]) expect(isInitializeEditorMessage({...message, [property]: value})).toBe(false)
     }
@@ -68,6 +68,7 @@ describe("editor bridge message guards", () => {
     const message = {
       type: proofreadingStateChangeEvent,
       detail: {
+        allowed: true,
         enabled: true,
         documentEnabled: true,
         loading: false,
@@ -85,6 +86,7 @@ describe("editor bridge message guards", () => {
     const accessibility = {...message.detail.issues[0], kind: "accessibility", suggestions: [],
       helpUrl: "https://dequeuniversity.com/rules/axe/4.14/image-alt"}
     expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, issues: [accessibility]}})).toBe(true)
+    expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, allowed: undefined}})).toBe(false)
     for(const helpUrl of ["javascript:alert(1)", "http://example.com", 1, null]) {
       expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, issues: [{...accessibility, helpUrl}]}})).toBe(false)
     }

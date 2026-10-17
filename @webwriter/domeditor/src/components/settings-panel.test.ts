@@ -111,16 +111,24 @@ describe("settings panel", () => {
     panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
     const root = panel.shadowRoot!
     const checkbox = root.querySelector<HTMLInputElement>('section[aria-label="Issues"] input')!
-    expect(checkbox.checked).toBe(true)
+    expect(checkbox.checked).toBe(false)
     expect(root.querySelector("section[aria-label=\"Local dictionary\"] input")).not.toBeNull()
-    expect(root.textContent).toContain("Check for issues by default")
-    expect(root.textContent).toContain("accessibility issues")
-    checkbox.checked = false
+    expect(root.textContent).toContain("Disable checking for issues")
+    expect(root.textContent).not.toContain("Check for issues by default")
+    expect(root.textContent).toContain("Disable spelling, grammar, style, and accessibility checks.")
+    expect(root.textContent).toContain("accessibility checks")
+    checkbox.checked = true
     checkbox.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(changes.at(-1)).toMatchObject({proofreadingEnabledByDefault: false, language: "de", proofreadingDictionary: ["WebWriter"]})
     expect(changes.at(-1)?.shortcuts).toEqual(settings.shortcuts)
     persistAppSettings(changes.at(-1)!)
     expect(loadAppSettings()).toMatchObject({proofreadingEnabledByDefault: false, language: "de", proofreadingDictionary: ["WebWriter"]})
+    panel.settings = changes.at(-1)!
+    await panel.updateComplete
+    expect(checkbox.checked).toBe(true)
+    checkbox.checked = false
+    checkbox.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(changes.at(-1)?.proofreadingEnabledByDefault).toBe(true)
   })
 
   it("migrates the legacy disable spell checking preference when the new setting is absent", () => {

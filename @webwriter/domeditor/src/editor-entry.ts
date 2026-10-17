@@ -207,7 +207,9 @@ const initialize = (event: MessageEvent) => {
     bridgeNonce: event.data.bridgeNonce,
     bridgeOrigin: event.origin && event.origin !== "null" ? event.origin : window.location.origin,
     initialState: event.data.initialState,
+    accessibilityReviewEnabled: event.data.accessibilityReviewEnabled === true,
   })
+  editor.features.proofreading.setChecking(event.data.proofreadingAllowed !== false)
   editor.features.proofreading.setDocumentChecking(event.data.proofreadingEnabled !== false)
   editor.features.comment.setCommentHighlighting(event.data.commentHighlighting !== false)
   editor.features.proofreading.setDictionary(event.data.proofreadingDictionary ?? [])

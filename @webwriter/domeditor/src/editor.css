@@ -1619,33 +1619,6 @@ body::part(presence-gap-caret-label) {
   text-decoration: underline wavy #7b3fbb;
   text-underline-offset: 0.15em;
 }
-body::part(accessibility-issue-pill) {
-  position: fixed;
-  box-sizing: border-box;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 24px;
-  padding: 3px 5px;
-  border: 1px solid #087f5b;
-  border-radius: 999px;
-  background: #f0faf6;
-  color: #087f5b;
-  box-shadow: 0 1px 3px #0002;
-  cursor: pointer;
-  pointer-events: auto;
-  z-index: 2147483646;
-}
-body::part(accessibility-issue-pill):hover,
-body::part(accessibility-issue-pill):focus-visible,
-body::part(accessibility-issue-pill-active) {
-  background: #087f5b;
-  color: white;
-}
-body::part(accessibility-issue-pill):focus-visible {
-  outline: 2px solid #087f5b;
-  outline-offset: 2px;
-}
 body::part(accessibility-issue-outline) {
   position: fixed;
   box-sizing: border-box;

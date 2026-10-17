@@ -177,6 +177,7 @@ export type DOMEditorOptions = {
   initialState?: EditorStateSnapshot
   bridgeNonce?: string
   bridgeOrigin?: string
+  accessibilityReviewEnabled?: boolean
 }
 
 type HostDocumentState = {
@@ -493,6 +494,7 @@ export class DOMEditor {
       throw error
     }
     try {
+      this.features.proofreading.setAccessibilityReviewEnabled(options.accessibilityReviewEnabled === true)
       adoptStylesheet(document, editorStylesheet)
       document.designMode = "on"
       const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver

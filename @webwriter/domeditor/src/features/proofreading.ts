@@ -9,7 +9,6 @@ import {getDocumentRoot} from "../document-template"
 import type {Schema} from "../schema"
 import {proofreadingDictionaryAddEvent, type ProofreadingState} from "../editor-bridge"
 import type {RelativePosition} from "yjs"
-import accessibleIcon from "@tabler/icons/outline/accessible.svg?raw"
 
 type TextPart = {node: Text, start: number, value: string}
 type TextRun = {text: string, language: string, parts: TextPart[]}
@@ -147,6 +146,7 @@ export class ProofreadingFeature extends EditorFeature {
   private manualChecking = false
   private checkingAllowed = true
   private documentCheckingEnabled = true
+  private accessibilityReviewEnabled = false
   private loading = false
   private ready = false
   private lastStatus = ""
@@ -159,7 +159,6 @@ export class ProofreadingFeature extends EditorFeature {
   private readerAbort: AbortController | null = null
   private reviewer: Promise<AccessibilityReviewer> | null = null
   private ignoredAccessibility: {element: Element, rule: string, context: string}[] = []
-  private accessibilityPills = new Map<string, HTMLButtonElement>()
   private accessibilityOutline: HTMLElement | null = null
   private accessibilityFrame: number | null = null
   private operation: Promise<void> | null = null
@@ -175,6 +174,7 @@ export class ProofreadingFeature extends EditorFeature {
     retryProofreading: ({}: {type: "retryProofreading"}) => this.retry(),
     selectProofreadingIssue: ({id}: {type: "selectProofreadingIssue", id: string}) => this.selectIssue(id),
     getProofreadingState: ({}: {type: "getProofreadingState"}) => this.state(),
+    setAccessibilityReviewEnabled: ({enabled}: {type: "setAccessibilityReviewEnabled", enabled: boolean}) => this.setAccessibilityReviewEnabled(enabled),
     setProofreadingEnabled: ({enabled}: {type: "setProofreadingEnabled", enabled: boolean}) => this.setChecking(enabled),
     setDocumentProofreadingEnabled: ({enabled}: {type: "setDocumentProofreadingEnabled", enabled: boolean}) => this.setDocumentChecking(enabled),
     applyProofreadingSuggestion: ({id, index}: {type: "applyProofreadingSuggestion", id: string, index: number}) => this.applySuggestion(id, index),
@@ -192,33 +192,9 @@ export class ProofreadingFeature extends EditorFeature {
     contextmenu: event => this.contextMenu(event),
     pointermove: event => this.setHoveredIssue(event.buttons ? null : this.isPopupEvent(event)
       ? this.popupIssueId : this.issueAtPoint(event)?.id ?? null),
-    pointerout: event => {
-      const pill = this.accessibilityPill(event)
-      if(!event.relatedTarget || pill && !(event.relatedTarget instanceof Node
-        && pill.contains(event.relatedTarget))) this.setHoveredIssue(this.popupIssueId)
-    },
+    pointerout: event => { if(!event.relatedTarget) this.setHoveredIssue(this.popupIssueId) },
     pointerdown: event => {
-      if(event.button === 0 && !this.isPopupEvent(event) && !this.accessibilityPill(event)) this.closePopup()
-    },
-    click: event => {
-      const pill = this.accessibilityPill(event)
-      if(!pill) return
-      event.preventDefault()
-      event.stopPropagation()
-      if(!this.enabled || this.composing || this.editor.isEditingLocked) return
-      const issue = this.resolve(pill.value)
-      if(!issue) return
-      this.closePopup()
-      this.setHoveredIssue(issue.id)
-      const anchor = pill.getBoundingClientRect()
-      this.openPopup(issue, anchor.left, anchor.top, anchor)
-    },
-    focusin: event => {
-      const pill = this.accessibilityPill(event)
-      if(pill) this.setHoveredIssue(this.resolve(pill.value)?.id ?? null)
-    },
-    focusout: event => {
-      if(this.accessibilityPill(event)) this.setHoveredIssue(this.popupIssueId)
+      if(event.button === 0 && !this.isPopupEvent(event)) this.closePopup()
     },
     keydown: event => {
       if(!this.popup) return
@@ -291,7 +267,7 @@ export class ProofreadingFeature extends EditorFeature {
 
   private snapshot(): ProofreadingState {
     return {
-      enabled: this.enabled, documentEnabled: this.documentCheckingEnabled,
+      allowed: this.checkingAllowed, enabled: this.enabled, documentEnabled: this.documentCheckingEnabled,
       loading: this.loading, ready: this.ready, checking: this.checking, error: this.error,
       hoveredIssueId: this.hoveredIssueId,
       issues: this.diagnostics.map(issue => ({
@@ -322,11 +298,25 @@ export class ProofreadingFeature extends EditorFeature {
     return this.state()
   }
 
+  /** Automatic accessibility review starts after the host confirms a saved document. */
+  setAccessibilityReviewEnabled(enabled: boolean) {
+    if(typeof enabled !== "boolean" || enabled === this.accessibilityReviewEnabled) return this.state()
+    this.accessibilityReviewEnabled = enabled
+    if(!enabled) {
+      this.diagnostics = this.diagnostics.filter(issue => issue.kind !== "accessibility")
+      this.ignoredAccessibility = []
+      this.disposeReviewer()
+    }
+    this.invalidate()
+    return this.state()
+  }
+
   setChecking(enabled: boolean) {
     if(typeof enabled !== "boolean" || !this.isEnabled) return
     this.checkingAllowed = enabled
     this.manualChecking = false
     this.updateChecking(enabled && this.documentCheckingEnabled)
+    this.postStatus()
     return this.state()
   }
 
@@ -412,7 +402,6 @@ export class ProofreadingFeature extends EditorFeature {
     this.hoveredIssueId = null
     this.closePopup()
     for(const name of Object.values(highlightNames)) globalThis.CSS?.highlights?.delete(name)
-    this.clearAccessibilityUI()
   }
 
   private disposeReviewer() {
@@ -431,16 +420,9 @@ export class ProofreadingFeature extends EditorFeature {
     return Boolean(this.popup && event.composedPath().includes(this.popup))
   }
 
-  private accessibilityPill(event: Event) {
-    return event.composedPath().find((node): node is HTMLButtonElement => node instanceof HTMLButtonElement
-      && this.accessibilityPills.get(node.value) === node) ?? null
-  }
-
   private issueAtPoint(event: MouseEvent) {
     if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked
       || isWidgetShadowInteraction(event, this.editor.schema)) return null
-    const pill = this.accessibilityPill(event)
-    if(pill) return this.resolve(pill.value)
     if(isAppendixInteraction(event)) return null
     this.flushMutations()
     const target = event.composedPath()[0]
@@ -475,9 +457,8 @@ export class ProofreadingFeature extends EditorFeature {
 
   private closePopup(restoreFocus = false) {
     const focused = this.popup && this.popup.contains(this.editor.appendix.activeElement)
-    const pill = this.accessibilityPills.get(this.popupIssueId ?? "")
-    pill?.setAttribute("aria-expanded", "false")
-    pill?.setAttribute("part", "accessibility-issue-pill")
+    if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
+    this.accessibilityFrame = null
     this.accessibilityOutline?.remove()
     this.accessibilityOutline = null
     this.popup?.remove()
@@ -488,12 +469,12 @@ export class ProofreadingFeature extends EditorFeature {
     }
     this.popupIssueId = null
     this.popupSuggestions = ""
-    if(restoreFocus && focused) (pill ?? document.body).focus()
+    if(restoreFocus && focused) document.body.focus()
   }
 
-  private openPopup(issue: Diagnostic, x: number, y: number, pillAnchor?: DOMRect) {
+  private openPopup(issue: Diagnostic, x: number, y: number) {
     const rects = issue.kind === "accessibility" ? issue.element.getClientRects() : issue.range.getClientRects()
-    const anchor = pillAnchor ?? Array.from(rects).find(rect => rect.width > 0 && rect.height > 0
+    const anchor = Array.from(rects).find(rect => rect.width > 0 && rect.height > 0
       && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom + 3)
       ?? (issue.kind === "accessibility" ? issue.element.getBoundingClientRect() : issue.range.getBoundingClientRect())
     const popup = document.createElement("aside")
@@ -513,14 +494,12 @@ export class ProofreadingFeature extends EditorFeature {
     this.popupIssueId = issue.id
     this.popupSuggestions = JSON.stringify(issue.suggestions)
     if(issue.kind === "accessibility") {
-      this.accessibilityPills.get(issue.id)?.setAttribute("aria-expanded", "true")
-      this.accessibilityPills.get(issue.id)?.setAttribute("part", "accessibility-issue-pill accessibility-issue-pill-active")
       this.accessibilityOutline = document.createElement("div")
       this.accessibilityOutline.className = "◆ ◆editor-only"
       this.accessibilityOutline.setAttribute("part", "accessibility-issue-outline")
       this.accessibilityOutline.setAttribute("aria-hidden", "true")
       this.editor.addAppendix(this.accessibilityOutline)
-      this.positionAccessibilityIssues()
+      this.positionAccessibilityOutline()
     }
     this.editor.addAppendix(popup)
     this.popupStylesheet = createStylesheet(proofreadingCardStyles.cssText)
@@ -567,9 +546,8 @@ export class ProofreadingFeature extends EditorFeature {
         this.reader = createProofreader(this.readerAbort.signal)
         this.postStatus()
       }
-      this.reviewer ??= createAccessibilityReviewer()
       pending = this.reader
-      const [reader, reviewer] = await Promise.all([pending, this.reviewer])
+      const reader = await pending
       if(pending !== this.reader || !this.enabled || !this.isEnabled) return
       this.loading = false
       this.ready = true
@@ -619,7 +597,13 @@ export class ProofreadingFeature extends EditorFeature {
         }
         this.flushMutations()
         if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
-        const findings = await reviewer.check(getDocumentRoot(), this.editor.schema)
+        let findings: AccessibilityFinding[] = []
+        if(this.accessibilityReviewEnabled || this.manualChecking) {
+          const reviewer = await (this.reviewer ??= createAccessibilityReviewer())
+          this.flushMutations()
+          if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
+          findings = await reviewer.check(getDocumentRoot(), this.editor.schema)
+        }
         this.flushMutations()
         if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
         this.ignoredAccessibility = this.ignoredAccessibility.filter(ignored => ignored.element.isConnected
@@ -672,7 +656,6 @@ export class ProofreadingFeature extends EditorFeature {
     if(this.hoveredIssueId && !current.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
     if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId
       && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
-    this.paintAccessibilityIssues(current.filter((issue): issue is AccessibilityDiagnostic => issue.kind === "accessibility"))
     if(!globalThis.CSS?.highlights || typeof globalThis.Highlight !== "function") return
     for(const kind of ["spelling", "grammar", "style"] as const) {
       const ranges = new Set(current.filter(diagnostic => diagnostic.kind === kind).map(diagnostic => diagnostic.range))
@@ -692,71 +675,17 @@ export class ProofreadingFeature extends EditorFeature {
     }
   }
 
-  private clearAccessibilityUI() {
+  private readonly positionAccessibilityOutline = () => {
     if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
     this.accessibilityFrame = null
-    this.accessibilityPills.forEach(pill => pill.remove())
-    this.accessibilityPills.clear()
-    this.accessibilityOutline?.remove()
-    this.accessibilityOutline = null
-  }
-
-  private readonly positionAccessibilityIssues = () => {
-    if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
-    this.accessibilityFrame = null
-    const left = Math.max(4, Math.min(innerWidth, document.documentElement.getBoundingClientRect().right || innerWidth) - 34)
-    const issues = this.diagnostics.filter((issue): issue is AccessibilityDiagnostic => issue.kind === "accessibility"
-      && this.isCurrentDiagnostic(issue)).map(issue => ({issue, rect: issue.element.getBoundingClientRect()}))
-      .sort((first, second) => first.rect.top - second.rect.top)
-    let nextTop = 6
-    for(const {issue, rect} of issues) {
-      const pill = this.accessibilityPills.get(issue.id)
-      if(!pill) continue
-      const pageIssue = issue.element === document.documentElement || issue.element === document.body || document.head.contains(issue.element)
-      const top = Math.max(nextTop, pageIssue ? 6 : rect.top)
-      const visible = (pageIssue || rect.bottom >= 0 && rect.top < innerHeight) && top + 24 <= innerHeight - 6
-      Object.assign(pill.style, {left: `${fixedClientX(left)}px`, top: `${top}px`, display: visible ? "grid" : "none"})
-      pill.disabled = this.editor.isEditingLocked
-      if(visible) nextTop = top + 28
-      if(issue.id === this.popupIssueId && this.accessibilityOutline) {
-        Object.assign(this.accessibilityOutline.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
-          width: `${rect.width}px`, height: `${rect.height}px`})
-        this.positionPopup(pill.getBoundingClientRect())
-      }
-    }
-    if(this.accessibilityPills.size) this.accessibilityFrame = requestAnimationFrame(this.positionAccessibilityIssues)
-  }
-
-  private paintAccessibilityIssues(issues: AccessibilityDiagnostic[]) {
-    const ids = new Set(issues.map(issue => issue.id))
-    for(const [id, pill] of this.accessibilityPills) {
-      if(ids.has(id)) continue
-      pill.remove()
-      this.accessibilityPills.delete(id)
-    }
-    for(const issue of issues) {
-      let pill = this.accessibilityPills.get(issue.id)
-      if(!pill) {
-        pill = document.createElement("button")
-        pill.type = "button"
-        pill.value = issue.id
-        pill.className = "◆ ◆editor-only"
-        pill.setAttribute("part", "accessibility-issue-pill")
-        pill.setAttribute("aria-haspopup", "menu")
-        // Trusted dependency icon; issue content is assigned as text attributes.
-        pill.innerHTML = accessibleIcon
-        const icon = pill.querySelector("svg")!
-        icon.setAttribute("aria-hidden", "true")
-        icon.setAttribute("width", "16")
-        icon.setAttribute("height", "16")
-        this.editor.addAppendix(pill)
-        this.accessibilityPills.set(issue.id, pill)
-      }
-      pill.setAttribute("aria-label", `Accessibility issue: ${issue.message} (${issue.text})`)
-      pill.setAttribute("aria-expanded", String(issue.id === this.popupIssueId))
-      pill.title = issue.message
-    }
-    this.positionAccessibilityIssues()
+    const issue = this.diagnostics.find((issue): issue is AccessibilityDiagnostic => issue.kind === "accessibility"
+      && issue.id === this.popupIssueId && this.isCurrentDiagnostic(issue))
+    if(!issue || !this.accessibilityOutline) { this.closePopup(); return }
+    const rect = issue.element.getBoundingClientRect()
+    Object.assign(this.accessibilityOutline.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
+      width: `${rect.width}px`, height: `${rect.height}px`})
+    this.positionPopup(rect)
+    this.accessibilityFrame = requestAnimationFrame(this.positionAccessibilityOutline)
   }
 
   private isCurrentDiagnostic(issue: Diagnostic) {

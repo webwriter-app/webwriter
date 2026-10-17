@@ -218,57 +218,51 @@ it("provides saved dictionary words when initializing the editor frame", async (
   expect(post).toHaveBeenCalledWith(expect.objectContaining({type: "initialize-editor", proofreadingDictionary: ["WebWriter"]}))
 })
 
-it("initializes new frames with the default, and allows document overrides during reload", async () => {
+it("initializes globally disabled checking without allowing a document override", async () => {
   persistAppSettings({...defaultAppSettings(), proofreadingEnabledByDefault: false})
   const editor = new DomEditor()
   Object.assign(editor, {frameStarted: true})
   const host = editor as unknown as {postToEditor(message: unknown): void, initializeEditorFrame(frame: HTMLIFrameElement): void,
-    retainProofreadingDuringReload(): void, proofreadingState: ProofreadingState, documentSettings: DocumentSettings}
+    documentSettings: DocumentSettings}
   const post = vi.spyOn(host, "postToEditor").mockImplementation(() => {})
   const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
   document.body.append(editor)
   await editor.updateComplete
   const frame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!
+  host.documentSettings = {proofreadingEnabled: true}
   host.initializeEditorFrame(frame)
-  expect(post).toHaveBeenCalledWith(expect.objectContaining({type: "initialize-editor", proofreadingEnabled: false}))
+  expect(post).toHaveBeenCalledWith(expect.objectContaining({type: "initialize-editor", proofreadingAllowed: false, proofreadingEnabled: true}))
   const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
   toolbox.selectTool("Review")
   await toolbox.updateComplete
-  const checkbox = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
-  expect(checkbox.checked).toBe(false)
-  expect(checkbox.disabled).toBe(false)
-  checkbox.click()
-  await Promise.resolve()
-  expect(execute).toHaveBeenCalledWith({type: "setDocumentProofreadingEnabled", enabled: true})
-  expect(host.documentSettings).toEqual({proofreadingEnabled: true})
-  host.initializeEditorFrame(frame)
-  expect(post).toHaveBeenLastCalledWith(expect.objectContaining({type: "load-widgets"}))
-  expect(post).toHaveBeenCalledWith(expect.objectContaining({type: "initialize-editor", proofreadingEnabled: true}))
-  host.proofreadingState = {...emptyProofreadingState(), ready: true}
-  host.retainProofreadingDuringReload()
-  expect(host.proofreadingState).toMatchObject({loading: true, checking: true})
+  expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!.disabled).toBe(true)
+  expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".proofreading-check")!.disabled).toBe(true)
+  execute.mockClear()
+  for(const detail of [{type: "checkProofreading"}, {type: "setDocumentProofreadingEnabled", enabled: true}]) {
+    toolbox.dispatchEvent(new CustomEvent("proofreading-action", {detail, bubbles: true, composed: true}))
+  }
+  expect(execute).not.toHaveBeenCalled()
 })
 
-it("uses global changes as defaults while preserving an explicit document override", async () => {
+it("disables checking globally even with a document override and restores the document preference", async () => {
   const editor = new DomEditor()
   const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
   document.body.append(editor)
   await editor.updateComplete
+  const host = editor as unknown as {documentSettings: DocumentSettings}
+  host.documentSettings = {proofreadingEnabled: true}
   const change = (proofreadingEnabledByDefault: boolean) => editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
     detail: {...defaultAppSettings(), proofreadingEnabledByDefault}, bubbles: true, composed: true,
   }))
   change(false)
-  expect(execute).toHaveBeenCalledWith({type: "setDocumentProofreadingEnabled", enabled: false})
-  editor.shadowRoot!.querySelector("dom-editor-toolbox")!.dispatchEvent(new CustomEvent("proofreading-action", {
-    detail: {type: "setDocumentProofreadingEnabled", enabled: true}, bubbles: true, composed: true,
-  }))
-  await Promise.resolve()
-  execute.mockClear()
-  change(true)
-  change(false)
-  expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "setDocumentProofreadingEnabled"}))
-  const host = editor as unknown as {documentSettings: DocumentSettings}
+  expect(execute).toHaveBeenLastCalledWith({type: "setProofreadingEnabled", enabled: false})
   expect(host.documentSettings.proofreadingEnabled).toBe(true)
+  change(true)
+  expect(execute).toHaveBeenLastCalledWith({type: "setProofreadingEnabled", enabled: true})
+  host.documentSettings = {proofreadingEnabled: false}
+  change(false)
+  change(true)
+  expect(host.documentSettings.proofreadingEnabled).toBe(false)
 })
 
 it("persists proofreading and highlighting by saved document ID, including the first save", async () => {
