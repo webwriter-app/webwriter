@@ -21,7 +21,7 @@ it("lists every subject, keeps a shareable example URL, and closes its learner v
   expect(root.querySelectorAll("li")).toHaveLength(exampleDocuments.length)
   expect(root.querySelectorAll('[role="tablist"]')).toHaveLength(exampleDocuments.length + 1)
   expect(root.querySelectorAll('[role="tab"]')).toHaveLength((exampleDocuments.length + 1) * 4)
-  expect(root.querySelector(".gallery-heading slot[name=heading]")?.assignedElements()).toContain(heading)
+  expect(root.querySelector<HTMLSlotElement>(".gallery-heading slot[name=heading]")?.assignedElements()).toContain(heading)
   expect(root.querySelector(".gallery-heading [role=tablist]")).not.toBeNull()
   expect(root.querySelector('[role="tabpanel"]')?.id).toBe("gallery-layout-panel")
   expect(root.querySelector("#gallery-layout-panel ul.cards")).not.toBeNull()
