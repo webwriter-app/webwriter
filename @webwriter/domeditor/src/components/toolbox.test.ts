@@ -248,7 +248,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(renderIssues).toHaveBeenCalledTimes(2)
     expect(toolbox.shadowRoot!.querySelector(".proofreading-status")?.textContent)
-      .toContain("Automatic proofreading is disabled for this document")
+      .toContain("Automatic checking is disabled for this document")
 
     toolbox.selectTool(null)
     await toolbox.updateComplete
@@ -258,7 +258,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(renderIssues).toHaveBeenCalledTimes(3)
     expect(toolbox.shadowRoot!.querySelector(".proofreading-status")?.textContent)
-      .toContain("No spelling, grammar or style issues found")
+      .toContain("No issues found")
   })
 
   it("offers a manual check beside Issues even when automatic checking is off, with busy and editing locks", async () => {
@@ -302,7 +302,7 @@ describe("toolbox", () => {
     const toggle = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".proofreading-toggle input")!
     expect(toggle.disabled).toBe(false)
     expect(toggle.checked).toBe(false)
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).toContain("Automatic proofreading is disabled for this document")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")!.textContent).toContain("Automatic checking is disabled for this document")
     expect(toolbox.shadowRoot!.querySelector(".proofreading-spinner")).toBeNull()
     const actions = vi.fn()
     toolbox.addEventListener("proofreading-action", actions)
@@ -322,15 +322,15 @@ describe("toolbox", () => {
     await toolbox.updateComplete
 
     const review = toolButton(toolbox, "Review")
-    expect(review.getAttribute("aria-label")).toBe("Review. Proofreading unavailable")
-    expect(review.title).toBe("Proofreading unavailable")
+    expect(review.getAttribute("aria-label")).toBe("Review. Issue checker unavailable")
+    expect(review.title).toBe("Issue checker unavailable")
     expect(review.querySelector(".proofreading-error-badge")?.textContent).toBe("!")
 
     review.click()
     await toolbox.updateComplete
     const failure = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-error")!
     expect(failure.getAttribute("role")).toBe("alert")
-    expect(failure.textContent).toContain("Could not load proofreading.")
+    expect(failure.textContent).toContain("Could not load the issue checker.")
     expect(failure.textContent).not.toContain("worker stack trace")
 
     const retryRequest = vi.fn()
@@ -404,6 +404,37 @@ describe("toolbox", () => {
     ])
   })
 
+  it("renders accessibility issues with selection and ignore, suppresses fixes, and links safely to rule help", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {
+      ...emptyProofreadingState(), ready: true, hoveredIssueId: "a11y-1",
+      issues: [{id: "a11y-1", start: 0, end: 3, kind: "accessibility", message: "Image needs alternative text", text: "Image",
+        suggestions: [{kind: "replace", text: "Decorative image"}], helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}],
+    }
+    await toolbox.updateComplete
+    const card = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-card")!
+    expect(card.getAttribute("data-hover-kind")).toBe("accessibility")
+    expect(card.querySelector(".proofreading-kind")?.textContent).toBe("Accessibility")
+    expect(card.querySelector(".proofreading-suggestions")).toBeNull()
+    const help = card.querySelector<HTMLAnchorElement>(".proofreading-help")!
+    expect(help.href).toBe("https://dequeuniversity.com/rules/axe/4.10/image-alt")
+    expect(help.target).toBe("_blank")
+    expect(help.rel).toContain("noopener")
+    const action = vi.fn()
+    toolbox.addEventListener("proofreading-action", action)
+    card.querySelector<HTMLButtonElement>(".proofreading-issue")!.click()
+    card.querySelector<HTMLButtonElement>(".proofreading-ignore")!.click()
+    expect(action.mock.calls.map(([event]) => event.detail)).toEqual([
+      {type: "selectProofreadingIssue", id: "a11y-1"},
+      {type: "ignoreProofreadingIssue", id: "a11y-1"},
+    ])
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, issues: [{...toolbox.proofreadingState.issues[0], helpUrl: "javascript:alert(1)"}]}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-help")).toBeNull()
+  })
+
   it("indicates the hovered issue on the Review icon or matching card", async () => {
     const toolbox = await mountToolbox()
     const issues = [
@@ -439,6 +470,50 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".proofreading-card[data-hover-kind]")).toBeNull()
   })
 
+  it("reveals a newly hovered issue inside the Issues scroll area only while Review is open", async () => {
+    const toolbox = await mountToolbox()
+    const issues = [
+      {id: "first", start: 0, end: 3, kind: "spelling" as const, message: "First", text: "one", suggestions: []},
+      {id: "second", start: 4, end: 7, kind: "grammar" as const, message: "Second", text: "two", suggestions: []},
+    ]
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = {...emptyProofreadingState(), issues, hoveredIssueId: null}
+    await toolbox.updateComplete
+    const scrollArea = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-content")!
+    const cards = toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card")
+    const card = cards[1]
+    scrollArea.scrollTop = 0
+    vi.spyOn(scrollArea, "getBoundingClientRect").mockReturnValue({top: 10, bottom: 110} as DOMRect)
+    vi.spyOn(cards[0], "getBoundingClientRect").mockReturnValue({top: 0, bottom: 5} as DOMRect)
+    vi.spyOn(card, "getBoundingClientRect").mockImplementation(() => ({top: 120 - scrollArea.scrollTop, bottom: 150 - scrollArea.scrollTop} as DOMRect))
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, hoveredIssueId: "second"}
+    await toolbox.updateComplete
+    expect(scrollArea.scrollTop).toBe(40)
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, checking: true}
+    await toolbox.updateComplete
+    expect(scrollArea.scrollTop).toBe(40)
+
+    toolbox.proofreadingState = {...toolbox.proofreadingState, hoveredIssueId: null}
+    await toolbox.updateComplete
+    scrollArea.scrollTop = 0
+    toolbox.proofreadingState = {...toolbox.proofreadingState, hoveredIssueId: "second"}
+    await toolbox.updateComplete
+    expect(scrollArea.scrollTop).toBe(40)
+
+    toolbox.selectTool(null)
+    await toolbox.updateComplete
+    toolbox.proofreadingState = {...toolbox.proofreadingState, hoveredIssueId: "first"}
+    await toolbox.updateComplete
+    expect(scrollArea.scrollTop).toBe(40)
+
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    expect(scrollArea.scrollTop).toBe(40)
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-content")?.scrollTop).toBe(0)
+  })
+
   it("shows an accessible heading spinner while loading or checking and preserves cards", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")
@@ -446,14 +521,14 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     let spinner = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2 .proofreading-spinner")!
     expect(spinner.getAttribute("role")).toBe("status")
-    expect(spinner.getAttribute("aria-label")).toBe("Loading spelling, grammar and style")
+    expect(spinner.getAttribute("aria-label")).toBe("Loading issue checker")
 
     const issue = {id: "stable-issue", start: 0, end: 3, kind: "spelling" as const, message: "Possible spelling mistake", text: "teh", suggestions: []}
     toolbox.proofreadingState = {...emptyProofreadingState(), ready: true, checking: true, issues: [issue]}
     await toolbox.updateComplete
     const card = toolbox.shadowRoot!.querySelector(".proofreading-card")
     spinner = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2 .proofreading-spinner")!
-    expect(spinner.getAttribute("aria-label")).toBe("Checking spelling, grammar and style")
+    expect(spinner.getAttribute("aria-label")).toBe("Checking for issues")
     expect(toolbox.shadowRoot!.querySelector(".proofreading-status[role=status]")).toBeNull()
 
     toolbox.proofreadingState = {...emptyProofreadingState(), ready: true, issues: [issue]}
@@ -463,7 +538,7 @@ describe("toolbox", () => {
 
     toolbox.proofreadingState = {...emptyProofreadingState(), ready: true}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")?.textContent).toContain("No spelling, grammar or style issues found.")
+    expect(toolbox.shadowRoot!.querySelector(".proofreading-section")?.textContent).toContain("No issues found.")
 
     toolbox.proofreadingState = {...emptyProofreadingState(), error: "unavailable"}
     await toolbox.updateComplete

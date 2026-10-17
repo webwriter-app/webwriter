@@ -2,7 +2,17 @@ import {css, html, nothing} from "lit"
 import type {ProofreadingAction, ProofreadingState} from "../editor-bridge"
 
 type Issue = ProofreadingState["issues"][number]
-export const proofreadingKindLabels = {spelling: "Spelling", grammar: "Grammar", style: "Style"} as const
+export const proofreadingKindLabels = {spelling: "Spelling", grammar: "Grammar", style: "Style", accessibility: "Accessibility"} as const
+
+function safeHelpUrl(value: string | undefined) {
+  if(!value) return null
+  try {
+    const url = new URL(value)
+    return url.protocol === "https:" ? url.href : null
+  } catch {
+    return null
+  }
+}
 
 /** Shared by Review and the in-document popup, both outside authored content. */
 export const proofreadingCardStyles = css`
@@ -20,6 +30,8 @@ export const proofreadingCardStyles = css`
   .proofreading-card[data-hover-kind="spelling"] {border-color: #c62828; background: #fff6f6}
   .proofreading-card[data-hover-kind="grammar"] {border-color: #1769aa; background: #f3f8fd}
   .proofreading-card[data-hover-kind="style"] {border-color: #7b3fbb; background: #faf5ff}
+  .proofreading-card[data-hover-kind="accessibility"] {border-color: #087f5b; background: #f0faf6}
+  .proofreading-card[data-hover-kind="accessibility"] .proofreading-kind {color: #087f5b}
   .proofreading-issue {
     display: grid;
     gap: .22rem;
@@ -38,6 +50,8 @@ export const proofreadingCardStyles = css`
   .proofreading-message {font-size: .72rem; line-height: 1.35}
   .proofreading-text {font-size: .78rem; font-weight: 650}
   .proofreading-suggestions {display: flex; flex-wrap: wrap; gap: .35rem; min-width: 0}
+  .proofreading-help {justify-self: start; color: #175a9e; font: 600 .7rem/1.3 system-ui, sans-serif; text-underline-offset: .15em}
+  .proofreading-help:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
   .proofreading-suggestion {
     min-width: 0;
     max-width: 100%;
@@ -74,18 +88,22 @@ export const proofreadingCardStyles = css`
 
 export function renderProofreadingCard(issue: Issue, onAction: (action: ProofreadingAction) => void,
   {disabled = false, hovered = false, popup = false}: {disabled?: boolean, hovered?: boolean, popup?: boolean} = {}) {
+  const helpUrl = issue.kind === "accessibility" ? safeHelpUrl(issue.helpUrl) : null
   const heading = html`<span class="proofreading-kind">${proofreadingKindLabels[issue.kind]}</span>
     <span class="proofreading-message">${issue.message}</span><span class="proofreading-text">${issue.text}</span>`
   return html`<article class="proofreading-card" data-hover-kind=${hovered ? issue.kind : nothing}>
     ${popup ? html`<div class="proofreading-issue">${heading}</div>` : html`<button class="proofreading-issue" type="button"
       ?disabled=${disabled} aria-label=${`Go to ${issue.kind} issue: ${issue.text}`}
       @click=${() => onAction({type: "selectProofreadingIssue", id: issue.id})}>${heading}</button>`}
-    ${issue.suggestions.length ? html`<div class="proofreading-suggestions">${issue.suggestions.map((suggestion, index) => {
+    ${issue.kind !== "accessibility" && issue.suggestions.length ? html`<div class="proofreading-suggestions">${issue.suggestions.map((suggestion, index) => {
       const label = suggestion.kind === "remove" ? "Remove" : suggestion.kind === "insertAfter" ? `Add ${suggestion.text}` : suggestion.text
       return html`<button class="proofreading-suggestion" type="button" role=${popup ? "menuitem" : nothing}
         ?disabled=${disabled} aria-label=${`Apply suggestion: ${label}`}
         @click=${() => onAction({type: "applyProofreadingSuggestion", id: issue.id, index})}>${label}</button>`
     })}</div>` : nothing}
+    ${helpUrl ? html`<a class="proofreading-help" href=${helpUrl} target="_blank" rel="noopener noreferrer"
+      aria-label=${`Learn more about ${issue.kind} issue: ${issue.message}`}
+      role=${popup ? "menuitem" : nothing}>Learn more</a>` : nothing}
     <div class="proofreading-actions">
       ${issue.kind === "spelling" ? html`<button class="proofreading-action proofreading-add-word" type="button" role=${popup ? "menuitem" : nothing}
         ?disabled=${disabled} aria-label=${`Add ${issue.text} to local dictionary`}

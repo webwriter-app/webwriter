@@ -5839,7 +5839,7 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
   const nonce = source.querySelector("script[nonce]")!.getAttribute("nonce")!
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:500px"
-  frame.srcdoc = `<!doctype html><html lang="en-US"><head>${policy}<script class="◆editor-only" nonce="${nonce}" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>😀 This is te<!--keep--><em class="meaning">h</em> example.</p></body></html>`
+  frame.srcdoc = `<!doctype html><html lang="en-US"><head><title>Proofreading</title>${policy}<script class="◆editor-only" nonce="${nonce}" type="module" src="/tests/native-browser-frame.ts"></script></head><body><main><h1>Proofreading</h1><p>😀 This is te<!--keep--><em class="meaning">h</em> example.</p></main></body></html>`
   document.body.append(frame, toolbox)
   const update = (event: MessageEvent) => {
     if(event.source === frame.contentWindow && isProofreadingStateChangeMessage(event.data)) toolbox.proofreadingState = event.data.detail
@@ -5928,7 +5928,7 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(toolbox.shadowRoot!.querySelector(".proofreading-card") === card, "checking replaced an unchanged issue card")
     const heading = toolbox.shadowRoot!.querySelector<HTMLElement>(".proofreading-section h2")!
     const spinner = heading.querySelector<HTMLElement>(".proofreading-spinner")!
-    assert(spinner?.getAttribute("aria-label") === "Checking spelling, grammar and style", "heading has no accessible checking spinner")
+    assert(spinner?.getAttribute("aria-label") === "Checking for issues", "heading has no accessible checking spinner")
     const headingToggle = heading.querySelector<HTMLInputElement>(".proofreading-toggle input")!
     const headingCheck = heading.querySelector<HTMLButtonElement>(".proofreading-check")!
     assert(Math.abs(headingToggle.getBoundingClientRect().right - heading.getBoundingClientRect().right) < 1, "document proofreading checkbox is not aligned right")
@@ -6025,7 +6025,7 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     const pasted = child.toHTML(true), pastedShared = child.doc.body.toString()
     feature.setChecking(true)
     await feature.checkNow()
-    const pastedIssues = feature.state().issues
+    const pastedIssues = feature.state().issues.filter(issue => issue.kind !== "accessibility")
     assert(pastedIssues.length === 13, `NBSP demo lost findings: ${JSON.stringify(pastedIssues)}`)
     assert(pastedIssues.filter(issue => issue.kind === "grammar").length === 1, "NBSP demo lost grammar findings")
     assert(pastedIssues.filter(issue => issue.kind === "style").length === 7, "NBSP demo lost style findings")
@@ -6100,6 +6100,193 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(!registry.has("webwriter-spelling") && !doc.body.shadowRoot!.querySelector(".◆proofreading-panel"), "proofreading leaked on teardown")
   }
   finally { window.removeEventListener("message", update); frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }
+})
+
+await check("Accessibility review shares Issues controls without loading while disabled", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const source = new DOMParser().parseFromString(editorFrameHTML(null, {
+    bridgeNonce: crypto.randomUUID(), revision: 0, language: "en-US", packages: [],
+    hostOrigin: location.origin, entryURL: `${location.origin}/tests/native-browser-frame.ts?proofreading-disabled`, executeScripts: true,
+  }), "text/html")
+  const policy = source.querySelector('meta[http-equiv="Content-Security-Policy"]')!.outerHTML
+  const nonce = source.querySelector("script[nonce]")!.getAttribute("nonce")!
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:620px;border:0"
+  frame.srcdoc = `<!doctype html><html lang="en-US" style="scrollbar-gutter:stable both-edges"><head>${policy}<script class="◆editor-only" nonce="${nonce}" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></head><body><main><img id="missing-alt" style="width:100px;height:60px"><a id="empty-link" href="#" style="display:inline-block;width:100px;height:24px"></a><native-accessibility-private-widget></native-accessibility-private-widget><div style="height:800px"></div></main></body></html>`
+  const toolbox = new DomEditorToolbox()
+  toolbox.style.cssText = "width:320px;height:620px"
+  document.body.append(frame, toolbox)
+  let child: import("../src/domeditor").DOMEditor | undefined
+  let childDestroyed = false
+  try {
+    for(let attempt = 0; !frame.contentWindow?.editor && !frame.contentWindow?.editorError && attempt < 100; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+    assert(!frame.contentWindow?.editorError, frame.contentWindow?.editorError ?? "editor failed")
+    child = frame.contentWindow!.editor!
+    const doc = frame.contentDocument!, feature = child.features.proofreading
+    const childWindow = doc.defaultView as Window & typeof globalThis
+    class PrivateWidget extends childWindow.HTMLElement {
+      constructor() {
+        super()
+        this.attachShadow({mode: "open"}).innerHTML = '<button></button><img>'
+      }
+    }
+    childWindow.customElements.define("native-accessibility-private-widget", PrivateWidget)
+    assert(doc.querySelector("native-accessibility-private-widget")!.shadowRoot?.querySelector("button"), "private widget was not initialized")
+    class ContentfulWidget extends childWindow.HTMLElement {
+      constructor() {
+        super()
+        this.attachShadow({mode: "open"}).innerHTML = '<section><slot></slot><button></button></section>'
+      }
+    }
+    childWindow.customElements.define("native-accessibility-content-widget", ContentfulWidget)
+    child.schema.extendWidgets([{tagName: "native-accessibility-content-widget", editingConfig: {content: "p*"}}])
+    const contentfulWidget = doc.createElement("native-accessibility-content-widget")
+    contentfulWidget.innerHTML = '<p><input id="slotted-input"></p>'
+    doc.querySelector("main")!.append(contentfulWidget)
+    await new Promise(resolve => setTimeout(resolve, 100))
+    const initiallyDisabled = feature.state()
+    assert(!initiallyDisabled.enabled && !initiallyDisabled.ready && !initiallyDisabled.checking && initiallyDisabled.issues.length === 0,
+      `disabled Issues unexpectedly checked: ${JSON.stringify(initiallyDisabled)}`)
+    assert(!doc.defaultView!.performance.getEntriesByType("resource").some(entry => /axe-core/i.test(entry.name)),
+      "disabled Issues loaded axe-core")
+
+    const before = child.toHTML(true), shared = child.doc.body.toString()
+    assert(feature.setDocumentChecking(true), "could not enable Issues")
+    await feature.checkNow()
+    let issues = feature.state().issues
+    const imageIssue = issues.find(issue => issue.kind === "accessibility" && issue.text === "<img>")!
+    const linkIssue = issues.find(issue => issue.kind === "accessibility" && issue.text === "<a>")!
+    assert(imageIssue && linkIssue, `axe did not report missing image alt and empty link names: ${JSON.stringify(issues)}`)
+    assert(issues.some(issue => issue.kind === "accessibility" && issue.text === "<input>"), "axe missed authored content through a widget's nested slot")
+    assert(!issues.some(issue => issue.kind === "accessibility" && issue.text === "<button>"), "axe reported a shadow widget's private button")
+    assert(!issues.some(issue => issue.text === "Learn more" || issue.text === "Ignore"), "axe reported appendix interface controls")
+    await new Promise(resolve => childWindow.requestAnimationFrame(() => resolve(undefined)))
+    const image = doc.querySelector<HTMLImageElement>("#missing-alt")!
+    const reviewTab = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-tool="Review"]')!
+    toolbox.selectTool("Review")
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    let card = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
+      .find(candidate => candidate.querySelector(".proofreading-text")?.textContent === "<img>")!
+    assert(card, "Review did not render the accessibility issue card")
+
+    const appendix = doc.body.shadowRoot!
+    const pills = Array.from(appendix.querySelectorAll<HTMLButtonElement>('[part~="accessibility-issue-pill"]'))
+    const imagePill = pills.find(pill => pill.value === imageIssue.id)!
+    const linkPill = pills.find(pill => pill.value === linkIssue.id)!
+    assert(imagePill && linkPill, "accessibility issues did not get appendix pills")
+    for(const pill of pills) {
+      const pillRect = pill.getBoundingClientRect()
+      assert(pill.getAttribute("aria-haspopup") === "menu" && pill.getAttribute("aria-expanded") === "false", "issue pill did not expose its closed menu state")
+      assert(pill.querySelector("svg")?.getAttribute("width") === "16" && pill.querySelector("svg")?.getAttribute("height") === "16", "issue pill icon was not 16px")
+      assert(pill.style.display === "none" || pillRect.left >= 0 && pillRect.right <= childWindow.innerWidth && pillRect.top >= 0 && pillRect.bottom <= childWindow.innerHeight,
+        `issue pill was outside the viewport: ${JSON.stringify({value: pill.value, rect: pillRect.toJSON(), viewport: [childWindow.innerWidth, childWindow.innerHeight]})}`)
+    }
+    const imagePillRect = imagePill.getBoundingClientRect(), linkPillRect = linkPill.getBoundingClientRect()
+    assert(Math.abs(imagePillRect.top - linkPillRect.top) >= 28, "same-row accessibility pills overlapped instead of stacking vertically")
+    assert(!appendix.querySelector('[part="accessibility-issue-outline"]'), "accessibility issue was outlined before opening its pill")
+
+    imagePill.dispatchEvent(new childWindow.PointerEvent("pointermove", {clientX: imagePillRect.left + imagePillRect.width / 2,
+      clientY: imagePillRect.top + imagePillRect.height / 2, bubbles: true, composed: true}))
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    card = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
+      .find(candidate => candidate.querySelector(".proofreading-text")?.textContent === "<img>")!
+    assert(card?.getAttribute("data-hover-kind") === "accessibility" && getComputedStyle(card).borderTopColor === "rgb(8, 127, 91)",
+      "hovering the issue pill did not highlight its matching Review card")
+    assert(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".proofreading-card"))
+      .find(candidate => candidate.querySelector(".proofreading-text")?.textContent === "<a>")?.hasAttribute("data-hover-kind") === false,
+    "hovering one issue pill highlighted a different Review card")
+    imagePill.click()
+    let popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
+    let outline = appendix.querySelector<HTMLElement>('[part="accessibility-issue-outline"]')!
+    assert(popup && imagePill.getAttribute("aria-expanded") === "true", "activating the issue pill did not open its menu")
+    assert(outline, "opening the issue pill did not outline the target")
+    const outlineRect = outline.getBoundingClientRect(), targetRect = image.getBoundingClientRect(), popupRect = popup.getBoundingClientRect()
+    assert(Math.abs(outlineRect.left - targetRect.left) <= 1 && Math.abs(outlineRect.top - targetRect.top) <= 1
+      && Math.abs(outlineRect.width - targetRect.width) <= 1 && Math.abs(outlineRect.height - targetRect.height) <= 1,
+    `accessibility outline did not match its target: ${JSON.stringify({outline: outlineRect.toJSON(), target: targetRect.toJSON()})}`)
+    assert(Math.abs(popupRect.right - imagePillRect.right) <= 1 && (popupRect.top >= imagePillRect.bottom || popupRect.bottom <= imagePillRect.top),
+      `popup was not anchored to its pill: ${JSON.stringify({popup: popupRect.toJSON(), pill: imagePillRect.toJSON()})}`)
+    assert(appendix.activeElement !== imagePill, "opening the pill did not move focus into its menu")
+    appendix.activeElement?.dispatchEvent(new childWindow.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    assert(!appendix.querySelector('[part="accessibility-issue-outline"]') && !appendix.querySelector('[part="proofreading-popup"]'), "Escape did not close the pill menu and outline")
+    assert(appendix.activeElement === imagePill && imagePill.getAttribute("aria-expanded") === "false", "Escape did not restore focus to the pill")
+
+    imagePill.focus()
+    imagePill.click()
+    popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
+    assert(popup && appendix.querySelector('[part="accessibility-issue-outline"]'), "keyboard-focused pill activation did not open its menu and outline")
+    childWindow.scrollTo(0, 30)
+    await new Promise(resolve => childWindow.requestAnimationFrame(() => resolve(undefined)))
+    assert(!appendix.querySelector('[part="proofreading-popup"]') && !appendix.querySelector('[part="accessibility-issue-outline"]'), "scrolling did not dismiss the anchored menu and outline")
+    assert(imagePill.isConnected && linkPill.isConnected, "scrolling removed the accessibility pills")
+
+    linkPill.focus()
+    linkPill.click()
+    popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
+    assert(popup && linkPill.getAttribute("aria-expanded") === "true", "activating another issue pill did not open its menu")
+    const popupCard = popup.querySelector<HTMLElement>(".proofreading-card")!
+    assert(popupCard.querySelector(".proofreading-kind")?.textContent === "Accessibility", "popup lost its accessibility category")
+    assert(popupCard.querySelector<HTMLAnchorElement>(".proofreading-help")?.href.includes("dequeuniversity.com/rules/axe"), "popup did not show the axe rule help link")
+    assert(getComputedStyle(popupCard).borderTopColor === "rgb(8, 127, 91)", "accessibility popup card did not use the green issue color")
+    await feature.checkNow()
+    issues = feature.state().issues
+    assert(issues.some(issue => issue.id === imageIssue.id) && issues.some(issue => issue.id === linkIssue.id), "appendix popup controls entered accessibility results")
+    assert(child.toHTML(true) === before && child.doc.body.toString() === shared, "review UI changed authored or shared document content")
+
+    const route = (event: Event) => {
+      const action = (event as CustomEvent<ProofreadingAction>).detail
+      if(action.type === "selectProofreadingIssue") feature.selectIssue(action.id)
+      else if(action.type === "ignoreProofreadingIssue") feature.ignore(action.id)
+    }
+    toolbox.addEventListener("proofreading-action", route)
+    try {
+      card.querySelector<HTMLButtonElement>(".proofreading-issue")!.click()
+      assert(doc.getSelection()?.getRangeAt(0).intersectsNode(image), "accessibility card did not select its image")
+      card.querySelector<HTMLButtonElement>(".proofreading-ignore")!.click()
+      await feature.checkNow()
+      toolbox.proofreadingState = feature.state()
+      await toolbox.updateComplete
+      assert(!feature.state().issues.some(issue => issue.id === imageIssue.id), "ignored image issue returned on recheck")
+      assert(feature.state().issues.some(issue => issue.id === linkIssue.id), "ignoring the image also removed the empty-link issue")
+    }
+    finally { toolbox.removeEventListener("proofreading-action", route) }
+
+    image.setAttribute("alt", "Chart of results")
+    child.doc.syncFromDOM()
+    child.doc.stopCapturing()
+    await feature.checkNow()
+    assert(!feature.state().issues.some(issue => issue.kind === "accessibility" && issue.text === "<img>"), "adding alt text did not clear the image issue")
+    child.doc.undo()
+    await feature.checkNow()
+    assert(feature.state().issues.some(issue => issue.kind === "accessibility" && issue.text === "<img>"), "undo did not restore the missing-alt issue")
+    child.doc.redo()
+    await feature.checkNow()
+    assert(!feature.state().issues.some(issue => issue.kind === "accessibility" && issue.text === "<img>"), "redo did not restore the alt text")
+    assert(child.toHTML(true).includes('alt="Chart of results"'), "alt text did not remain authored document content")
+
+    feature.setDocumentChecking(false)
+    assert(appendix.querySelectorAll('[part~="accessibility-issue-pill"]').length === 0, "disabling Issues left accessibility pills in the appendix")
+    assert(!appendix.querySelector('[part="proofreading-popup"]'), "disabling Issues left the accessibility menu in the appendix")
+    assert(!doc.body.shadowRoot!.querySelector('[part="accessibility-issue-outline"]'), "disabling Issues left accessibility outlines in the appendix")
+    assert(child.toHTML(true).includes('alt="Chart of results"'), "disabling Issues changed the document")
+    assert(feature.setDocumentChecking(true), "could not re-enable Issues for destroy cleanup")
+    await feature.checkNow()
+    assert(appendix.querySelector('[part~="accessibility-issue-pill"]'), "re-enabling Issues did not restore accessibility pills")
+    const destroyPill = appendix.querySelector<HTMLButtonElement>('[part~="accessibility-issue-pill"]')!
+    destroyPill.click()
+    assert(appendix.querySelector('[part="proofreading-popup"]') && appendix.querySelector('[part="accessibility-issue-outline"]'),
+      "could not open accessibility UI before editor destruction")
+    child.destroy()
+    childDestroyed = true
+    assert(!appendix.querySelector('[part~="accessibility-issue-pill"]') && !appendix.querySelector('[part="proofreading-popup"]')
+      && !appendix.querySelector('[part="accessibility-issue-outline"]'), "editor destruction left accessibility UI in the appendix")
+  }
+  finally {if(!childDestroyed) child?.destroy(); toolbox.remove(); frame.remove()}
 })
 
 await check("Review shares bounded scroll areas and lays out versions beside responsive changes", async () => {

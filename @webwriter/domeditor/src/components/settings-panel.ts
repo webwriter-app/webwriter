@@ -822,13 +822,13 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
-        <section class="setting-card" aria-label="Proofreading">
+        <section class="setting-card" aria-label="Issues">
           <label class="checkbox-setting">
             <input type="checkbox" .checked=${this.settings.proofreadingEnabledByDefault}
               @change=${(event: Event) => this.emitSettings({...this.settings, proofreadingEnabledByDefault: (event.currentTarget as HTMLInputElement).checked})}
             />
-            <span class="checkbox-label">Enable proofreading by default</span>
-            <span class="checkbox-description">Enable spelling, grammar, and style suggestions in new documents.</span>
+            <span class="checkbox-label">Check for issues by default</span>
+            <span class="checkbox-description">Check new documents for spelling, grammar, style, and accessibility issues.</span>
           </label>
         </section>
         ${this.renderProofreadingDictionary()}

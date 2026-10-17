@@ -110,10 +110,11 @@ describe("settings panel", () => {
     const changes: AppSettings[] = []
     panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
     const root = panel.shadowRoot!
-    const checkbox = root.querySelector<HTMLInputElement>('section[aria-label="Proofreading"] input')!
+    const checkbox = root.querySelector<HTMLInputElement>('section[aria-label="Issues"] input')!
     expect(checkbox.checked).toBe(true)
     expect(root.querySelector("section[aria-label=\"Local dictionary\"] input")).not.toBeNull()
-    expect(root.textContent).toContain("Enable proofreading by default")
+    expect(root.textContent).toContain("Check for issues by default")
+    expect(root.textContent).toContain("accessibility issues")
     checkbox.checked = false
     checkbox.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(changes.at(-1)).toMatchObject({proofreadingEnabledByDefault: false, language: "de", proofreadingDictionary: ["WebWriter"]})

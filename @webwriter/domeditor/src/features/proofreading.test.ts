@@ -3,15 +3,19 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {createProofreader, type ProofreadingIssue} from "../proofreading"
+import {createAccessibilityReviewer, type AccessibilityFinding} from "../accessibility"
 import {proofreadingRuns} from "./proofreading"
 import {proofreadingStateChangeEvent} from "../editor-bridge"
 
 vi.mock("../proofreading", async importOriginal => ({...await importOriginal<typeof import("../proofreading")>(), createProofreader: vi.fn()}))
+vi.mock("../accessibility", () => ({createAccessibilityReviewer: vi.fn()}))
 
 let editor: DOMEditor
 let highlights: Map<string, unknown>
 let check: ReturnType<typeof vi.fn<(text: string, language: string) => Promise<ProofreadingIssue[]>>>
 let dispose: ReturnType<typeof vi.fn<() => Promise<void>>>
+let review: ReturnType<typeof vi.fn<() => Promise<AccessibilityFinding[]>>>
+let disposeReview: ReturnType<typeof vi.fn<() => void>>
 
 const spelling = (start = 0, end = 3, text = "the"): ProofreadingIssue => ({
   start, end, kind: "spelling", message: "Check this spelling.", suggestions: [{kind: "replace", text}],
@@ -27,6 +31,9 @@ beforeEach(() => {
   check = vi.fn(async () => [spelling()])
   dispose = vi.fn(async () => {})
   vi.mocked(createProofreader).mockResolvedValue({check, dispose})
+  review = vi.fn(async () => [])
+  disposeReview = vi.fn()
+  vi.mocked(createAccessibilityReviewer).mockResolvedValue({check: review, dispose: disposeReview})
   editor = new DOMEditor()
   highlights = new Map()
   vi.stubGlobal("CSS", {highlights, supports: CSS.supports, escape: CSS.escape})
@@ -206,13 +213,177 @@ describe("proofreading feature", () => {
     editor.features.proofreading.setDictionary(["Teh"])
     await editor.features.proofreading.checkNow()
     expect(createProofreader).not.toHaveBeenCalled()
+    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
     expect(document.documentElement.hasAttribute("spellcheck")).toBe(false)
     expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false, issues: []})
     editor.features.proofreading.setDocumentChecking(true)
     await editor.features.proofreading.checkNow()
     expect(createProofreader).toHaveBeenCalledOnce()
+    expect(createAccessibilityReviewer).toHaveBeenCalledOnce()
     expect(check).toHaveBeenCalledWith("teh example.", "en-US", ["Teh"])
     expect(editor.features.proofreading.state().issues).toEqual([])
+  })
+
+  it("combines prose and accessibility findings and keeps sidebar pills in the appendix", async () => {
+    content('<p>teh example.</p><img alt="">')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}])
+
+    const issues = await start()
+    expect(issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
+    expect(issues[1]).toMatchObject({kind: "accessibility", text: "<img>", helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt", suggestions: []})
+    expect(editor.appendix.querySelectorAll('[part~="accessibility-issue-pill"]')).toHaveLength(1)
+    expect(document.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(document.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.toHTML(true)).toContain('<img alt="">')
+  })
+
+  it("highlights an issue on pill hover and opens its shared popup and outline on click", async () => {
+    content('<img alt="">')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}])
+    const [issue] = await start()
+
+    const pill = editor.appendix.querySelector<HTMLButtonElement>('[part~="accessibility-issue-pill"]')!
+    expect(pill.getAttribute("aria-haspopup")).toBe("menu")
+    expect(pill.querySelector("svg")?.getAttribute("width")).toBe("16")
+    hover(pill)
+    expect(editor.features.proofreading.state().hoveredIssueId).toBe(issue.id)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    pill.click()
+    expect(pill.getAttribute("aria-expanded")).toBe("true")
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).not.toBeNull()
+    const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    const learnMore = popup.querySelector<HTMLAnchorElement>('a[href="https://dequeuniversity.com/rules/axe/4.10/image-alt"]')!
+    expect(learnMore).not.toBeNull()
+    expect(learnMore.getAttribute("role")).toBe("menuitem")
+    expect(learnMore.rel).toContain("noopener")
+    popup.querySelector<HTMLButtonElement>(".proofreading-ignore")!.focus()
+    popup.querySelector<HTMLButtonElement>(".proofreading-ignore")!.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "ArrowDown", bubbles: true, composed: true, cancelable: true,
+    }))
+    expect(editor.appendix.activeElement).toBe(learnMore)
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(true)
+    expect(document.getSelection()?.getRangeAt(0).intersectsNode(image)).toBe(true)
+    popup.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(pill.getAttribute("aria-expanded")).toBe("false")
+    expect(editor.appendix.activeElement).toBe(pill)
+  })
+
+  it("reviews form controls and prefers their finding over a containing page finding", async () => {
+    content('<input>')
+    const input = document.querySelector("input")!
+    const rect = new DOMRect(20, 30, 40, 20)
+    vi.spyOn(input, "getClientRects").mockReturnValue([rect] as unknown as DOMRectList)
+    vi.spyOn(document.body, "getClientRects").mockReturnValue([new DOMRect(0, 0, 400, 300)] as unknown as DOMRectList)
+    review.mockResolvedValue([
+      {element: document.body, rule: "landmark-one-main", message: "Add a main landmark", text: "<body>", helpUrl: "https://example.com/main"},
+      {element: input, rule: "label", message: "Form elements must have labels", text: "<input>", helpUrl: "https://example.com/label"},
+    ])
+    const issues = await start()
+    hover(input)
+    expect(editor.features.proofreading.state().hoveredIssueId).toBe(issues[1].id)
+    expect(contextMenu(input).defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector(".proofreading-message")?.textContent).toBe("Form elements must have labels")
+  })
+
+  it("keeps an ignored accessibility finding suppressed until its target context changes", async () => {
+    content('<img alt="">')
+    const image = document.querySelector("img")!
+    const finding = (element: Element) => ({element, rule: "image-alt", message: "Image needs alternative text", text: element.getAttribute("alt") || "<img>",
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"})
+    review.mockImplementation(async () => [finding(image)])
+    let [issue] = await start()
+    const ignoredId = issue.id
+    expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toEqual([])
+
+    // A related element can resolve a rule without changing the target itself.
+    review.mockResolvedValueOnce([])
+    await editor.features.proofreading.checkNow()
+    await editor.features.proofreading.checkNow()
+    const restored = editor.features.proofreading.state().issues[0]
+    expect(restored.kind).toBe("accessibility")
+    expect(editor.features.proofreading.ignore(restored.id)).toBe(true)
+
+    image.setAttribute("alt", "A chart")
+    await editor.features.proofreading.checkNow()
+    ;[issue] = editor.features.proofreading.state().issues
+    expect(issue).toMatchObject({kind: "accessibility", text: "A chart"})
+    expect(issue.id).not.toBe(ignoredId)
+
+    const replacement = document.createElement("img")
+    replacement.alt = ""
+    image.replaceWith(replacement)
+    review.mockImplementation(async () => [finding(replacement)])
+    await editor.features.proofreading.checkNow()
+    const [replacementIssue] = editor.features.proofreading.state().issues
+    expect(replacementIssue).toMatchObject({kind: "accessibility", text: "<img>"})
+    expect(replacementIssue.id).not.toBe(issue.id)
+  })
+
+  it("invalidates accessibility actions and outlines after label mutations and cancels pending reviews when disabled", async () => {
+    content('<img alt="">')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    const finding = {element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>", helpUrl: "https://example.com/rule"}
+    review.mockResolvedValue([finding])
+    const [issue] = await start()
+    const pill = editor.appendix.querySelector<HTMLButtonElement>('[part~="accessibility-issue-pill"]')!
+    pill.click()
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).not.toBeNull()
+
+    image.setAttribute("aria-label", "Chart of results")
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+
+    let finish!: (findings: AccessibilityFinding[]) => void
+    review.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const pending = editor.features.proofreading.checkNow()
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    expect(editor.features.proofreading.setDocumentChecking(false)).not.toBe(false)
+    finish([finding])
+    await pending
+    expect(editor.features.proofreading.state()).toMatchObject({documentEnabled: false, issues: [], checking: false})
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(disposeReview).toHaveBeenCalled()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+  })
+
+  it("separates pills for nearby findings and rejects disconnected targets and detached pills", async () => {
+    content('<img>')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    review.mockResolvedValue(["first", "second"].map(rule => ({element: image, rule, message: rule,
+      text: "<img>", helpUrl: "https://example.com/rule"})))
+    const issues = await start()
+    const pills = Array.from(editor.appendix.querySelectorAll<HTMLButtonElement>('[part~="accessibility-issue-pill"]'))
+    expect(pills).toHaveLength(2)
+    expect(parseFloat(pills[1].style.top) - parseFloat(pills[0].style.top)).toBe(28)
+    pills[1].focus()
+    expect(editor.features.proofreading.state().hoveredIssueId).toBe(issues[1].id)
+    pills[1].click()
+    expect(editor.appendix.querySelector(".proofreading-message")?.textContent).toBe("second")
+    expect(editor.appendix.querySelectorAll('[part="accessibility-issue-outline"]')).toHaveLength(1)
+    image.remove()
+    expect(editor.features.proofreading.selectIssue(issues[1].id)).toBe(false)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    pills[0].click()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
   })
 
   it("keeps the proofreading preference in session state without changing content or history", async () => {

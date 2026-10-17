@@ -82,6 +82,12 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isProofreadingStateChangeMessage(message)).toBe(true)
+    const accessibility = {...message.detail.issues[0], kind: "accessibility", suggestions: [],
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.14/image-alt"}
+    expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, issues: [accessibility]}})).toBe(true)
+    for(const helpUrl of ["javascript:alert(1)", "http://example.com", 1, null]) {
+      expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, issues: [{...accessibility, helpUrl}]}})).toBe(false)
+    }
     expectAllRejected(isProofreadingStateChangeMessage, [
       {...message, detail: {...message.detail, issues: [{...message.detail.issues[0], kind: "tone"}]}},
       {...message, detail: {...message.detail, issues: [{...message.detail.issues[0], kind: null}]}},

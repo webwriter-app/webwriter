@@ -434,6 +434,7 @@ export class DomEditorToolbox extends EditingControls {
     .toolbox-tab[data-hover-kind="spelling"] .toolbox-tab-icon {color: #c62828}
     .toolbox-tab[data-hover-kind="grammar"] .toolbox-tab-icon {color: #1769aa}
     .toolbox-tab[data-hover-kind="style"] .toolbox-tab-icon {color: #7b3fbb}
+    .toolbox-tab[data-hover-kind="accessibility"] .toolbox-tab-icon {color: #087f5b}
 
     .toolbox-tab-button:focus-visible,
     .toolbox-tab-close:focus-visible {
@@ -752,6 +753,7 @@ export class DomEditorToolbox extends EditingControls {
   documentLayout: DocumentLayoutState = {mode: "document", canConvert: true, zoom: 100}
   documentLayoutError = ""
   proofreadingState: ProofreadingState = emptyProofreadingState()
+  private revealedHoveredIssueId: string | null = null
 
   private dispatchProofreadingAction(action: ProofreadingAction) {
     this.dispatchEvent(new CustomEvent<ProofreadingAction>("proofreading-action", {
@@ -767,8 +769,8 @@ export class DomEditorToolbox extends EditingControls {
     const checkingEnabled = state.enabled
     return html`<section class="proofreading-section" aria-labelledby="proofreading-title">
       <h2 id="proofreading-title"><span class="proofreading-heading"><span class="proofreading-heading-icon" aria-hidden="true">${ribbonIcon("Spelling")}</span>Issues</span>
-        ${checkingEnabled && !state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading spelling, grammar and style"></span>` : ""}
-        ${checkingEnabled && state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking spelling, grammar and style"></span>` : ""}
+        ${checkingEnabled && !state.error && (!state.ready || state.loading) ? html`<span class="proofreading-spinner" role="status" aria-label="Loading issue checker"></span>` : ""}
+        ${checkingEnabled && state.checking && state.ready && !state.loading && !state.error ? html`<span class="proofreading-spinner" role="status" aria-label="Checking for issues"></span>` : ""}
         <button class="proofreading-check" type="button" title="Check for issues" aria-label="Check for issues"
           ?disabled=${editingLocked || state.loading || state.checking}
           @click=${() => this.dispatchProofreadingAction({type: "checkProofreading"})}>${ribbonIcon("Refresh")}</button>
@@ -779,13 +781,13 @@ export class DomEditorToolbox extends EditingControls {
       </h2>
 
       <div class="proofreading-content">
-        ${!state.documentEnabled ? html`<p class="proofreading-status">Automatic proofreading is disabled for this document.</p>` : ""}
+        ${!state.documentEnabled ? html`<p class="proofreading-status">Automatic checking is disabled for this document.</p>` : ""}
         ${checkingEnabled && state.error ? html`<div class="proofreading-error" role="alert">
-          <span>Could not load proofreading.</span>
+          <span>Could not load the issue checker.</span>
           <button class="proofreading-retry" type="button" ?disabled=${editingLocked}
             @click=${() => this.dispatchProofreadingAction({type: "retryProofreading"})}>Retry</button>
         </div>` : ""}
-        ${checkingEnabled && state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No spelling, grammar or style issues found.</p>` : ""}
+        ${checkingEnabled && state.ready && !state.error && !state.checking && state.issues.length === 0 ? html`<p class="proofreading-status">No issues found.</p>` : ""}
         <div class="proofreading-issues">
           ${checkingEnabled ? repeat(state.issues, issue => issue.id, issue => renderProofreadingCard(issue,
             action => this.dispatchProofreadingAction(action), {disabled: cardsLocked, hovered: issue.id === hoveredIssue?.id})) : nothing}
@@ -1572,6 +1574,25 @@ export class DomEditorToolbox extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    if(this.activeTool !== "Review") {
+      this.revealedHoveredIssueId = null
+    }
+    else if(changed.has("activeTool") || changed.has("proofreadingState")) {
+      const issueId = this.proofreadingState.hoveredIssueId
+      if(!issueId) this.revealedHoveredIssueId = null
+      if(issueId && issueId !== this.revealedHoveredIssueId) {
+        const scrollArea = this.renderRoot.querySelector<HTMLElement>(".proofreading-content")
+        const issueIndex = this.proofreadingState.issues.findIndex(issue => issue.id === issueId)
+        const card = issueIndex < 0 ? null : scrollArea?.querySelectorAll<HTMLElement>(".proofreading-card")[issueIndex] ?? null
+        if(scrollArea && card) {
+          const areaBounds = scrollArea.getBoundingClientRect()
+          const cardBounds = card.getBoundingClientRect()
+          if(cardBounds.top < areaBounds.top) scrollArea.scrollTop += cardBounds.top - areaBounds.top
+          else if(cardBounds.bottom > areaBounds.bottom) scrollArea.scrollTop += cardBounds.bottom - areaBounds.bottom
+          this.revealedHoveredIssueId = issueId
+        }
+      }
+    }
     if(this.activeTool !== "Edit" || !this.documentSelected) {
       this.documentHeadAttributeEditorId = ""
     }
@@ -1671,10 +1692,10 @@ export class DomEditorToolbox extends EditingControls {
                     type="button"
                     role="tab"
                     aria-label=${tool.label === "Review" && this.proofreadingState.error
-                      ? "Review. Proofreading unavailable"
+                      ? "Review. Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
                     title=${tool.label === "Review" && this.proofreadingState.error
-                      ? "Proofreading unavailable"
+                      ? "Issue checker unavailable"
                       : contextualLabel ? `Edit ${contextualLabel}` : toolLabel}
                     aria-description=${commentCount > 0 ? `${commentCount} comments` : nothing}
                     aria-controls="toolbox-pane"
