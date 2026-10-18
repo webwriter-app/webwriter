@@ -1,6 +1,23 @@
 /** Formula tools describe commands, never a second document representation. */
 export const MATH_NAMESPACE = "http://www.w3.org/1998/Math/MathML"
 
+/** Accept a standalone presentation fragment, never executable or foreign content. */
+export function parseMathFragment(source: string): Element | null {
+  const parsed = new DOMParser().parseFromString(source, "application/xml")
+  const math = parsed.documentElement
+  const allowed = new Set([...mathRowNames, ...mathTokenNames, ...Object.keys(mathArity),
+    "mspace", "mtable", "mtr", "mmultiscripts", "mprescripts", "none"])
+  if(math?.localName !== "math" || !math.children.length || parsed.querySelector("parsererror")) return null
+  for(const element of [math, ...math.querySelectorAll("*")]) {
+    if(element.namespaceURI !== MATH_NAMESPACE || !allowed.has(element.localName)) return null
+    for(const attribute of element.attributes) {
+      if(/^on/i.test(attribute.name) || /href|src/i.test(attribute.localName)
+        || attribute.name === "style" && /url\s*\(|@import|expression\s*\(/i.test(attribute.value)) return null
+    }
+  }
+  return math
+}
+
 export function inlineMathRoot(node: Node | null) {
   const root = mathRoot(node)
   return root && root.getAttribute("display") !== "block" ? root : null

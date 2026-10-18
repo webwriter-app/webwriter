@@ -45,6 +45,11 @@ export default defineConfig({
     resolve: {
       dedupe: ["yjs"],
     },
+    optimizeDeps: {
+      // The lazy worker is outside the initial dependency crawl. Discovering
+      // these on first use would re-optimize dependencies and reload the page.
+      include: ["onnxruntime-web/wasm"],
+    },
     test: {
       coverage: {
         provider: "v8",

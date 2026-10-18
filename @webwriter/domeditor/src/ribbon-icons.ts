@@ -29,6 +29,7 @@ import signRight from "@tabler/icons/outline/sign-right.svg?raw"
 import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
 import handClick from "@tabler/icons/outline/hand-click.svg?raw"
+import scribble from "@tabler/icons/outline/scribble.svg?raw"
 import userShare from "./assets/user-share.svg?raw"
 import userEdit from "@tabler/icons/outline/user-edit.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
@@ -406,6 +407,7 @@ const icons: Record<string, string> = {
   Heading: heading,
   Theme: palette,
   Pencil: pencil,
+  Freehand: scribble,
   Develop: terminal2,
   Clear: clearFormatting,
   Family: typography,

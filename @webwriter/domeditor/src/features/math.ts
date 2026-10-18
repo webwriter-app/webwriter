@@ -1,6 +1,6 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, fixedClientX, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
-import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, type MathSelectionState} from "../math"
+import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, parseMathFragment, type MathSelectionState} from "../math"
 
 import {styleMarkNames, type MarkName} from "../marks"
 import {MathCompletionInput} from "./math-completion"
@@ -523,6 +523,8 @@ export class MathFeature extends EditorFeature {
       if(!editingWord) this.input?.suppress()
       return result
     }
+    const fragment = command.startsWith("mathml:") ? parseMathFragment(command.slice(7)) : null
+    if(command.startsWith("mathml:") && !fragment) return false
     this.marked.add(math)
     if(command === "exit") {
       this.dismissCommand()
@@ -546,7 +548,10 @@ export class MathFeature extends EditorFeature {
     const range = this.editRange()
     if(!range) return false
     let result = false
-    if(command.startsWith("text:")) result = this.typeText(range, command.slice(5))
+    if(command.startsWith("mathml:")) {
+      if(fragment) result = this.insertNodes(range, Array.from(fragment.childNodes).map(node => document.importNode(node, true)))
+    }
+    else if(command.startsWith("text:")) result = this.typeText(range, command.slice(5))
     else if(command.startsWith("identifier:")) {
       const text = command.slice(11)
       if(/^[\p{L}\p{Nl}]+$/u.test(text)) {

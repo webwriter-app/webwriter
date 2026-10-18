@@ -1445,6 +1445,67 @@ describe("DOM MathML editing", () => {
     expect(clean()).toBe(edited)
   })
 
+  it("inserts a confirmed handwriting fragment at the current caret and round-trips history", () => {
+    const math = load('<mrow><!--keep--><mi>abc</mi><mfrac><mi>p</mi><mi>q</mi></mfrac></mrow>')
+    const originalFraction = math.querySelector("mfrac")!
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = clean()
+    expect(command('keyboard:mathml:<math xmlns="http://www.w3.org/1998/Math/MathML"><msup><mi>x</mi><mn>2</mn></msup></math>')).toBe(true)
+    expect(math.querySelector("mrow")!.textContent).toBe("ax2bcpq")
+    expect(math.querySelector("mfrac")).toBe(originalFraction)
+    expect(math.querySelector("mrow")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    editor.doc.syncFromDOM()
+    const edited = clean()
+    expect(edited).not.toContain("◆")
+    expect(edited).not.toContain("drawing-surface")
+    editor.doc.undo()
+    expect(clean()).toBe(before)
+    editor.doc.redo()
+    expect(clean()).toBe(edited)
+  })
+
+  it("replaces only the selected formula fragment, including inside an existing argument", () => {
+    const math = load('<mfrac><mrow><mi>abc</mi></mrow><mi>denominator</mi></mfrac>')
+    const denominator = math.querySelector("mfrac")!.lastElementChild
+    const text = math.querySelector("mi")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 1, text, 2)
+    expect(command('keyboard:mathml:<math xmlns="http://www.w3.org/1998/Math/MathML"><msqrt><mi>y</mi></msqrt></math>')).toBe(true)
+    expect(math.querySelector("mfrac")!.firstElementChild!.textContent).toBe("ayc")
+    expect(math.querySelector("mfrac")!.lastElementChild).toBe(denominator)
+  })
+
+  it.each([
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi onclick="bad()">x</mi></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mtext><script xmlns="http://www.w3.org/1999/xhtml">bad()</script></mtext></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi href="javascript:bad()">x</mi></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi style="background:url(https://example.com)">x</mi></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"/>',
+  ])("rejects invalid recognized content without changing the selection: %s", fragment => {
+    const math = load('<mi>abc</mi>')
+    const text = math.querySelector("mi")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 1, text, 2)
+    const before = clean()
+    expect(command(`mathml:${fragment}`)).toBe(false)
+    expect(clean()).toBe(before)
+    expect(document.getSelection()!.toString()).toBe("b")
+  })
+
+  it("does not insert a delayed handwriting fragment into a removed formula or widget", () => {
+    const math = load('<mi>x</mi>')
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    math.remove()
+    const fragment = 'keyboard:mathml:<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>y</mi></math>'
+    expect(command(fragment)).toBe(false)
+    const widget = document.createElement("test-formula-widget")
+    widget.append(math)
+    document.body.append(widget)
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    expect(command(fragment)).toBe(false)
+    expect(math.textContent).toBe("x")
+  })
+
   it("validates formula presentation state at the bridge", () => {
     const message = {type: selectionChangeEvent, detail: {path: [], math: {active: true, display: "inline"}}}
     expect(isSelectionChangeMessage(message)).toBe(true)
