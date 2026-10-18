@@ -1913,7 +1913,7 @@ export abstract class EditingControls extends LitElement {
     const value = parameters[kind]
     const color = /^#[0-9a-f]{6}$/i.test(value ?? "") ? value! : kind === "fill" ? "#ffffff" : "#334155"
     const disabled = selectionCount < 1 || kind === "fill" && selectionCount === 1
-      && (this.graphic?.shape === "line" || this.graphic?.shape === "connector")
+      && (this.graphic?.shape === "line" || this.graphic?.shape === "connector" || this.graphic?.shape === "freehand" || ["polyline", "bezier"].includes(this.graphic?.shape ?? "") && parameters.closed !== "true")
     return html`
       <label class="mark-attribute graphic-parameter">
         <span>${kind === "fill" ? "Fill color" : "Stroke color"}</span>
@@ -2189,7 +2189,7 @@ export abstract class EditingControls extends LitElement {
     const selectionCount = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
     const shapeSelected = selectionCount === 1 && Boolean(this.graphic.shape)
     const connectorSelected = shapeSelected && this.graphic.shape === "connector"
-    const labelableShapeSelected = shapeSelected && this.graphic.shape !== "line" && this.graphic.shape !== "connector"
+    const labelableShapeSelected = shapeSelected && this.graphic.shape !== "line" && this.graphic.shape !== "connector" && this.graphic.shape !== "freehand" && this.graphic.shape !== "polyline" && this.graphic.shape !== "bezier"
     const shapesSelected = selectionCount > 0
     const options = this.graphic.options
     const fileControls = html`

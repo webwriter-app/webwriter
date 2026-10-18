@@ -1,3 +1,16 @@
+// Fixed theme columns: base color followed by five shades, like a desktop color palette.
+export const themeColorColumns = [
+  ["ffffff", "f2f2f2", "d9d9d9", "bfbfbf", "a6a6a6", "808080"],
+  ["000000", "808080", "595959", "404040", "262626", "0d0d0d"],
+  ["e7e6e6", "d0cece", "aeaaaa", "757171", "3b3838", "171616"],
+  ["44546a", "d6dce4", "adb9ca", "8497b0", "333f50", "222a35"],
+  ["5b9bd5", "deebf7", "bdd7ee", "9dc3e6", "2e75b6", "1f4e78"],
+  ["ed7d31", "fbe5d6", "f8cbad", "f4b183", "c55a11", "833c0c"],
+  ["f04b22", "faddd5", "f7b7a5", "f38e72", "bd3210", "7e210b"],
+  ["ffc000", "fff2cc", "ffe699", "ffd966", "bf9000", "806000"],
+  ["8064a2", "e4dfec", "ccc1d9", "b2a1c7", "60497a", "403152"],
+  ["70ad47", "e2efda", "c6e0b4", "a9d18e", "548235", "375623"],
+] as const
 /** True when the value parses as a CSS color in the current browser. */
 export function isCssColor(value: unknown): value is string {
   if(typeof value !== "string" || value.length > 64) return false

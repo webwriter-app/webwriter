@@ -11,6 +11,7 @@ const movementDirection = (command: string): string | undefined => {
 }
 
 type Point = Pick<StrokePoint, "x" | "y">
+const layoutIcons: Record<string, string> = {numbers: "123", operators: "∑", letters: "A", greek: "α"}
 const pointSegmentDistance = (point: Point, start: Point, end: Point) => {
   const dx = end.x - start.x, dy = end.y - start.y
   const length = dx * dx + dy * dy
@@ -94,6 +95,7 @@ export class MathKeyboard extends LitElement {
     .tabs button:focus-visible { position: relative; z-index: 1; }
     .freehand { display: inline-flex; align-items: center; gap: .35rem; margin-inline-start: .35rem; }
     .freehand svg { display: block; width: 1.2rem; height: 1.2rem; }
+    .compact-icon, .control-icon { display: none; }
 
     button {
       min-width: 0;
@@ -172,6 +174,18 @@ export class MathKeyboard extends LitElement {
       .tabs button { padding-inline: .3rem; font-size: .7rem; }
       .freehand { margin-inline-start: 0; padding-inline: .3rem; font-size: .75rem; }
     }
+    @container (max-width: 420px) {
+      .header { flex-wrap: nowrap; gap: .2rem; }
+      .controls { gap: .15rem; }
+      .tab-label, .handwriting-label, .control-label { display: none; }
+      .compact-icon, .control-icon { display: inline; }
+      .tabs button, .freehand, .controls button:not(.close) {
+        width: 1.8rem; min-width: 1.8rem; flex: 0 0 1.8rem; justify-content: center; padding-inline: 0;
+      }
+      .tabs button { font-size: .8rem; }
+      .freehand { gap: 0; }
+      .controls { margin-inline-start: auto; }
+    }
   `
 
   activeLayout = mathKeyboardLayouts[0]?.id ?? ""
@@ -202,19 +216,22 @@ export class MathKeyboard extends LitElement {
               <button type="button" aria-label=${item.label} title=${item.label}
                 aria-pressed=${String(item.id === this.activeLayout)}
                 @pointerdown=${this.#keepSelection}
-                @click=${() => this.#selectLayout(item.id)}>${item.label}</button>
+                @click=${() => this.#selectLayout(item.id)}><span class="tab-label">${item.label}</span>
+                <span class="compact-icon" aria-hidden="true">${layoutIcons[item.id] ?? item.label}</span></button>
             `)}
           </div>
           <button class="freehand" type="button" aria-label="Handwriting" title="Handwriting"
             aria-pressed=${String(this.activeLayout === "handwriting")}
             @pointerdown=${this.#keepSelection} @click=${() => this.#selectLayout("handwriting")}>
-            <span aria-hidden="true">${ribbonIcon("Freehand")}</span><strong>Handwriting</strong>
+            <span aria-hidden="true">${ribbonIcon("Freehand")}</span><strong class="handwriting-label">Handwriting</strong>
           </button>
           <div class="controls" aria-label="Keyboard controls">
             ${(["inline", "block"] as const).map(display => html`<button type="button"
-              aria-label=${`${display === "inline" ? "Inline" : "Block"} formula`} aria-pressed=${String(this.display === display)}
+              aria-label=${`${display === "inline" ? "Inline" : "Block"} formula`} title=${`${display === "inline" ? "Inline" : "Block"} formula`}
+              aria-pressed=${String(this.display === display)}
               @pointerdown=${this.#keepSelection} @click=${() => this.#dispatch(`display:${display}`)}
-            >${display === "inline" ? "Inline" : "Block"}</button>`)}
+            ><span class="control-label">${display === "inline" ? "Inline" : "Block"}</span>
+              <span class="control-icon" aria-hidden="true">${display === "inline" ? "x" : "∑"}</span></button>`)}
             <button type="button" class="close" aria-label="Hide formula keyboard" title="Hide formula keyboard"
               @pointerdown=${this.#keepSelection} @click=${this.#hide}>${ribbonIcon("Reject")}</button>
           </div>

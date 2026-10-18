@@ -4159,6 +4159,12 @@ export class DomEditor extends LitElement {
       void this.saveGraphic()
       return
     }
+    if(label === "graphic-mode:select" || label === "graphic-mode:draw" || label === "graphic-mode:lines" || label === "graphic-mode:curves") {
+      const mode = label.slice("graphic-mode:".length) as "select" | "draw" | "lines" | "curves"
+      void this.execute({type: "setGraphicMode", mode, ...(mode === "select" ? {} : {paint: this.shapePaint})})
+        .finally(() => this.focusEditor())
+      return
+    }
     if(label?.startsWith("insert-graphic-shape:")) {
       const shape = label.slice("insert-graphic-shape:".length)
       if(isGraphicShapeType(shape)) {
@@ -6111,6 +6117,12 @@ export class DomEditor extends LitElement {
       .finally(() => this.focusEditor())
   }
 
+  private handleShapePaintChange = (event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
+    if(!this.graphicSelection?.capture || this.previewActive || this.liveSessionActive) return
+    this.shapePaint = {...event.detail.paint}
+    if(this.graphicSelection.mode && this.graphicSelection.mode !== "select") void this.execute({type: "setGraphicDrawPaint", paint: this.shapePaint})
+  }
+
   private get isMathEditing() {
     return this.mathSelection?.active && (this.mathSelection.display === "inline" || this.captureSelection)
   }
@@ -7604,8 +7616,10 @@ export class DomEditor extends LitElement {
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
             @click=${() => { this.shapeKeyboardHidden = false; this.focusEditor() }}>${ribbonIcon("Graphic")}</button>` : nothing}
           <section class="shape-keyboard-area" aria-label="Shape input" ?hidden=${this.shapeKeyboardHidden}>
-            <dom-editor-shape-keyboard .paint=${this.shapePaint}
+            <dom-editor-shape-keyboard .paint=${this.shapePaint} .mode=${this.graphicSelection.mode ?? "select"}
               @shape-keyboard-command=${this.handleShapeKeyboardCommand}
+              @ribbon-button-click=${this.handleRibbonButtonClick}
+              @shape-paint-change=${this.handleShapePaintChange}
               @shape-keyboard-close=${() => { this.shapeKeyboardHidden = true; this.focusEditor() }}
             ></dom-editor-shape-keyboard>
           </section>
@@ -7648,9 +7662,7 @@ export class DomEditor extends LitElement {
           if(!this.previewActive || !this.liveSession?.sendFeedback(event.detail.participant, event.detail.text)) event.preventDefault()
         }}
         .shapePaint=${this.shapePaint}
-        @shape-paint-change=${(event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
-          if(this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive) this.shapePaint = {...event.detail.paint}
-        }}
+        @shape-paint-change=${this.handleShapePaintChange}
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
         .showStyleToolbox=${this.settings.showStyleToolbox}

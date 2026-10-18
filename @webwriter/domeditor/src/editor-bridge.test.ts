@@ -421,6 +421,7 @@ describe("editor bridge message guards", () => {
         graphic: {
           active: true,
           capture: true,
+          mode: "draw",
           selectionCount: 1,
           shape: "rectangle",
           parameters: {width: "800", fill: "#60a5fa"},
@@ -439,6 +440,9 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isSelectionChangeMessage(message)).toBe(true)
+    for(const mode of ["select", "draw", "lines", "curves"] as const) {
+      expect(isSelectionChangeMessage({...message, detail: {...message.detail, graphic: {...message.detail.graphic, mode}}})).toBe(true)
+    }
     expect(isSelectionChangeMessage({...message, detail: {...message.detail, media: {
       type: "img",
       attributes: {src: "plan.png", usemap: "#plan"},
@@ -488,6 +492,7 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, table: {...message.detail.table, hasFooter: null}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, shape: "path"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: "true"}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, mode: "erase"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, parameters: {width: 800}}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: -1}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: 1.5}}},

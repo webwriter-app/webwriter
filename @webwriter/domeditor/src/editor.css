@@ -967,6 +967,16 @@ body.◆graphic-panning * {
   visibility: hidden !important;
 }
 
+svg.◆graphic-drawing {
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+
+body.◆graphic-drawing::part(transform-overlay) {
+  display: none;
+}
+
 /* SVG direct-manipulation chrome is entirely inside BODY's shadow appendix.
  * The selected authored shape carries only removable ◆ marker classes. */
 body::part(graphic-overlay) {
@@ -1119,6 +1129,23 @@ body::part(graphic-affordance-connector-end) {
   background: #d1fae5;
   cursor: crosshair;
 }
+
+body::part(graphic-tangent) {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+body::part(graphic-tangent-point) {
+  fill: #dbeafe;
+  stroke: #2563eb;
+  stroke-width: 1;
+}
+
+body::part(graphic-anchor) { border-radius: 1px; cursor: move; }
+body::part(graphic-control-point) { background: #dbeafe; cursor: crosshair; }
+body::part(graphic-handle)[aria-pressed="true"] { background: #2563eb; }
 
 body::part(graphic-affordance-vertex) { cursor: move; }
 

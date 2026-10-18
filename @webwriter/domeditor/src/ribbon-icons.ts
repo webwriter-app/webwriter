@@ -30,6 +30,8 @@ import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
 import handClick from "@tabler/icons/outline/hand-click.svg?raw"
 import scribble from "@tabler/icons/outline/scribble.svg?raw"
+import arrowBigRight from "@tabler/icons/outline/arrow-big-right.svg?raw"
+import arrowRotaryRight from "@tabler/icons/outline/arrow-rotary-right.svg?raw"
 import userShare from "./assets/user-share.svg?raw"
 import userEdit from "@tabler/icons/outline/user-edit.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
@@ -157,6 +159,7 @@ import triangle from "@tabler/icons/outline/triangle.svg?raw"
 import diamond from "@tabler/icons/outline/diamond.svg?raw"
 import hexagon from "@tabler/icons/outline/hexagon.svg?raw"
 import line from "@tabler/icons/outline/line.svg?raw"
+import vectorBezier from "@tabler/icons/outline/vector-bezier.svg?raw"
 import polygon from "@tabler/icons/outline/polygon.svg?raw"
 import rectangle from "@tabler/icons/outline/rectangle.svg?raw"
 import route from "@tabler/icons/outline/route.svg?raw"
@@ -278,6 +281,8 @@ const icons: Record<string, string> = {
   ArrowDown: arrowDown,
   ArrowLeft: arrowLeft,
   ArrowRight: arrowRight,
+  ArrowBigRight: arrowBigRight,
+  ArrowRotaryRight: arrowRotaryRight,
   Section: section,
   Article: article,
   Layout: layout,
@@ -394,6 +399,8 @@ const icons: Record<string, string> = {
   Hexagon: hexagon,
   Arrow: arrowRight,
   Line: line,
+  Lines: polygon,
+  Curves: vectorBezier,
   Connector: route,
   Polygon: polygon,
   Fill: colorSwatch,

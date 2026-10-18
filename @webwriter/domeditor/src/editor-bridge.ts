@@ -826,6 +826,7 @@ const isTableSelection = (table: UnknownRecord) => isBoolean(table.active)
 
 const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
   && isBoolean(graphic.capture)
+  && isOptional(graphic.mode, value => value === "select" || value === "draw" || value === "lines" || value === "curves")
   && isOptional(graphic.selectionCount, isNonnegativeInteger)
   && isOptional(graphic.shape, isGraphicShapeType)
   && isOptional(graphic.parameters, isStringRecord)

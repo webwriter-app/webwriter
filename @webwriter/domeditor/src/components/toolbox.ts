@@ -1281,7 +1281,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private setShapePaint(name: keyof GraphicShapePaint, value: string) {
-    if(!this.graphic?.active) return
+    if(!this.graphic?.active || this.graphic.mode && this.graphic.mode !== "select") return
     const count = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
     if(count > 0) {
       if(name === "fill") {
@@ -1301,9 +1301,10 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private renderShapeDrawer() {
-    if(!this.graphic?.active) return nothing
+    if(!this.graphic?.active || this.graphic.mode && this.graphic.mode !== "select") return nothing
     const count = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
     const selected = count > 0
+    const fillUnavailable = selected && (this.graphic.shape === "freehand" || ["polyline", "bezier"].includes(this.graphic.shape ?? "") && this.graphic.parameters?.closed !== "true")
     const disabled = !selected && !this.graphic.capture
     const option = selected && this.graphic.shape ? graphicShapeOptions.find(option => option.type === this.graphic!.shape) : undefined
     const shapeName = this.graphic.shape
@@ -1319,6 +1320,7 @@ export class DomEditorToolbox extends EditingControls {
     return html`<ribbon-drawer label=${label} icon=${option?.icon ?? "Graphic"} icon-path=${option?.path ?? nothing}
       layout="shape-paint" show-pane-icon .elementCount=${count > 1 ? count : 1}>
       <div class="shape-paint-controls" role="group" aria-label=${selected ? "Selected shape style" : "New shape style"}>
+        ${fillUnavailable ? nothing : html`
         <div class="shape-fill-field"><span>Fill</span><span class="shape-color-control" role="group" aria-label="Fill color">
           <input type="color" aria-label="Shape key fill color" data-ribbon-input-persistent
             .value=${/^#[0-9a-f]{6}$/i.test(fillColor) ? fillColor : "#ffffff"} ?disabled=${disabled}
@@ -1327,6 +1329,7 @@ export class DomEditorToolbox extends EditingControls {
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
             @click=${() => this.setShapePaint("fill", paint.fill === "none" ? fillColor : "none")}>∅</button>
         </span></div>
+        `}
         <label><span>Stroke</span><span class="shape-color-control"><input type="color" aria-label="Shape key stroke color" data-ribbon-input-persistent
           .value=${/^#[0-9a-f]{6}$/i.test(paint.stroke) ? paint.stroke : "#334155"} ?disabled=${disabled}
           @input=${(event: Event) => this.setShapePaint("stroke", (event.target as HTMLInputElement).value)}></span></label>

@@ -274,6 +274,24 @@ describe("formula keyboard", () => {
       .toBe(mathKeyboardLayouts[1].label)
   })
 
+  it("provides accessible icon alternatives for layout tabs and formula controls", async () => {
+    const keyboard = await mountKeyboard()
+    const root = keyboard.shadowRoot!
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>(".header .tabs button")]
+    const controls = [...root.querySelectorAll<HTMLButtonElement>(".controls button:not(.close)")]
+    const handwriting = root.querySelector<HTMLButtonElement>(".freehand")!
+
+    expect(tabs.map(tab => tab.querySelector(".tab-label")!.textContent)).toEqual(mathKeyboardLayouts.map(layout => layout.label))
+    expect(tabs.map(tab => tab.querySelector(".compact-icon")!.textContent)).toEqual(["123", "∑", "A", "α"])
+    expect(tabs.every(tab => tab.getAttribute("aria-label") === tab.title && tab.title.length > 0)).toBe(true)
+    expect(handwriting.querySelector("svg")).not.toBeNull()
+    expect(handwriting.title).toBe("Handwriting")
+    expect(handwriting.getAttribute("aria-label")).toBe("Handwriting")
+    expect(controls.map(button => [button.title, button.getAttribute("aria-label"), button.querySelector(".control-icon")?.textContent]))
+      .toEqual([["Inline formula", "Inline formula", "x"], ["Block formula", "Block formula", "∑"]])
+
+  })
+
   it("emits key commands and closes from the accessible × button", async () => {
     const keyboard = await mountKeyboard()
     const focusedInput = document.createElement("input")

@@ -12,6 +12,27 @@ import type {RibbonButton} from "./ribbon-button"
 beforeEach(() => document.body.replaceChildren())
 
 describe("graphic ribbon", () => {
+  it("leaves drawing controls to the keyboard and keeps selected stroke styling available", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "heart", mode: "draw"}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[action^="graphic-mode:"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="shape-paint"]')).toBeNull()
+    toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "freehand", mode: "select"}
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="shape-paint"]')!
+    expect(drawer.querySelector('[aria-label="Shape key fill color"]')).toBeNull()
+    expect(drawer.querySelector('[aria-label="Shape key stroke color"]')).not.toBeNull()
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Edit"
+    ribbon.graphic = toolbox.graphic
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector('[action^="graphic-mode:"]')).toBeNull()
+  })
+
   it("offers the requested text and line presets and omits removed shapes", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Lines").map(option => option.type)).toEqual([
       "text-box", "image", "line", "connector",

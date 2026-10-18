@@ -8139,6 +8139,80 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
   })
 
+  it.each(["select", "draw", "lines", "curves"] as const)("routes graphic %s mode through the editor action", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+        graphic: {active: true, capture: true, mode: mode === "select" ? "draw" : "select"},
+      }}, source: editorWindow,
+    }))
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    const modeButton = mode === "select"
+      ? keyboard.shadowRoot!.querySelector<HTMLButtonElement>(".tabs button")!
+      : [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>(".drawing-mode")]
+        .find(button => button.textContent?.trim() === (mode === "draw" ? "Freehand" : mode === "lines" ? "Lines" : "Curves"))!
+    modeButton.click()
+    expect(execute).toHaveBeenCalledWith(mode !== "select"
+      ? {type: "setGraphicMode", mode, paint: {fill: "#ffffff", stroke: "#334155", "stroke-width": "4", opacity: "1"}}
+      : {type: "setGraphicMode", mode})
+  })
+
+  it.each(["draw", "lines", "curves"] as const)("updates %s paint from the keyboard presets and opacity control", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+        graphic: {active: true, capture: true, mode},
+      }}, source: editorWindow,
+    }))
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    const paint = {fill: "#ffffff", stroke: "#5b9bd5", "stroke-width": "8", opacity: "1"}
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#5b9bd5, 8 px brush"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "setGraphicDrawPaint", paint})
+    const opacity = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Drawing opacity"]')!
+    opacity.value = "0.5"
+    opacity.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {...paint, opacity: "0.5"}})
+  })
+
+  it("keeps the completed drawing tab idle and rearms it with the newly selected brush", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const updateMode = async (mode: "select" | "curves") => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {
+          path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+          graphic: {active: true, capture: true, mode, selectionCount: mode === "select" ? 1 : 0,
+            ...(mode === "select" ? {shape: "bezier"} : {})},
+        }}, source: editorWindow,
+      }))
+      await editor.updateComplete
+    }
+    await updateMode("curves")
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    await updateMode("select")
+    await keyboard.updateComplete
+    expect(keyboard.shadowRoot!.querySelector(".drawing-panel")!.getAttribute("aria-label")).toBe("Curves drawing")
+    expect(keyboard.shadowRoot!.querySelectorAll('.brush[aria-pressed="true"]')).toHaveLength(0)
+    const opacity = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Drawing opacity"]')!
+    opacity.value = "0.5"
+    opacity.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    expect(execute).not.toHaveBeenCalled()
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#70ad47, 8 px brush"]')!.click()
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "setGraphicMode", mode: "curves",
+      paint: {fill: "#ffffff", stroke: "#70ad47", "stroke-width": "8", opacity: "0.5"}})
+  })
+
   it("shows shape input for captured graphics and routes styled keys", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
