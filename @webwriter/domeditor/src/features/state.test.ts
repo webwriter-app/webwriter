@@ -1337,7 +1337,7 @@ describe("StateFeature", () => {
     editor.destroy()
   })
 
-  it("holds a sanitized HTML selection change pending until it is applied", () => {
+  it("rejects unsafe HTML before changing the pending selection and allows a corrected retry", () => {
     document.body.innerHTML = "<p>Before</p>"
     const editor = new DOMEditor()
     const paragraph = document.querySelector("p")!
@@ -1370,17 +1370,65 @@ describe("StateFeature", () => {
     }))
     expect(failure?.detail.error.message).toContain("Apply or discard")
 
-    const result = editor.getActionHandler("applyHTMLSelectionEdit")({
+    expect(() => editor.getActionHandler("applyHTMLSelectionEdit")({
       type: "applyHTMLSelectionEdit",
       html: '<section style="color: red" onclick="evil()"><p>After</p><style>body{display:none}</style><script>while(true){}</script></section>',
+    })).toThrow("The document has not been changed")
+    expect(editor.toHTML(true)).toBe("<p>Before</p>")
+    expect(editor.features.state.isHTMLSelectionEditPending).toBe(true)
+    expect(editor.isEditingLocked).toBe(true)
+    const result = editor.getActionHandler("applyHTMLSelectionEdit")({
+      type: "applyHTMLSelectionEdit",
+      html: '<section style="color: red"><p>After</p></section>',
     }) as {status: string, removedUnsafeItems: number}
 
     expect(result.status).toBe("applied")
-    expect(result.removedUnsafeItems).toBeGreaterThan(0)
+    expect(result.removedUnsafeItems).toBe(0)
     expect(editor.toHTML(true)).toBe('<section style="color: red"><p>After</p></section>')
     expect(document.querySelector(".◆html-source-pending")).toBeNull()
     expect(editor.isEditingLocked).toBe(false)
     editor.destroy()
+  })
+
+  it("preserves a cropped captioned figure, HTTPS embed and unfamiliar authored content during a source edit", async () => {
+    const html = '<figure id="photo" style="float:left"><picture><img src="https://example.test/photo.png" style="object-view-box:inset(0% 0% 0% 15%)"></picture><figcaption>Before</figcaption><!--keep--></figure><iframe src="https://example.test/lesson" sandbox="allow-scripts"></iframe><custom-lesson arbitrary="keep"><section><p>Widget content</p></section></custom-lesson>'
+    await withAIEditor(html + '<aside>Unrelated</aside>', editor => {
+      editor.features.selection.disable()
+      const aside = document.querySelector("aside")!
+      const range = document.createRange()
+      range.setStart(document.body, 0)
+      range.setEndBefore(aside)
+      document.getSelection()!.removeAllRanges()
+      document.getSelection()!.addRange(range)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const state = editor.features.state.actions
+      state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
+      state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
+      expect(state.applyHTMLSelectionEdit({type: "applyHTMLSelectionEdit", html: html.replace("Before", "After")})).toMatchObject({status: "applied", removedUnsafeItems: 0})
+      expect(editor.toHTML(true)).toBe(html.replace("Before", "After") + '<aside>Unrelated</aside>')
+      expect(document.querySelector("aside")).toBe(aside)
+      expect(editor.doc.body.toString()).not.toContain("◆")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(html + '<aside>Unrelated</aside>')
+      editor.doc.redo()
+      expect(document.querySelector("figcaption")!.textContent).toBe("After")
+      expect(document.querySelectorAll("img, iframe")).toHaveLength(2)
+    })
+  })
+
+  it.each(['<iframe srcdoc="<p>Embedded</p>"></iframe>', '<iframe src="http://example.test/lesson"></iframe>'])("keeps the original document when a source replacement contains an unsupported website: %s", async html => {
+    await withAIEditor('<p>Keep</p>', editor => {
+      const state = editor.features.state.actions
+      document.getSelection()!.setPosition(document.querySelector("p")!.firstChild!, 1)
+      state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
+      state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
+      expect(() => state.applyHTMLSelectionEdit({type: "applyHTMLSelectionEdit", html})).toThrow("unsupported website sources")
+      expect(editor.toHTML(true)).toBe('<p>Keep</p>')
+      state.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
+      expect(editor.isEditingLocked).toBe(false)
+      expect(editor.toHTML(true)).not.toContain("◆")
+    })
   })
 
   it("discards a pending HTML selection change without touching the document", () => {

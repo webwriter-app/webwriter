@@ -463,7 +463,11 @@ export class StateFeature extends EditorFeature {
     if(!this.isCurrentHTMLSelection(range)) {
       throw new Error("The selected content changed before the HTML could be applied")
     }
-    const {fragment, removedUnsafeItems} = this.editor.parseHTMLFragment(checkedAIHTML(html))
+    // Source edits must not normalize valid authored content into the import
+    // schema. Reject unsafe replacements before touching the current range.
+    const {fragment, removedUnsafeItems} = this.editor.parseHTMLFragment(checkedAIHTML(html), false, false)
+    if(removedUnsafeItems) throw new Error("Remove unsafe HTML or unsupported website sources before applying. The document has not been changed.")
+    if(!fragment.hasChildNodes()) fragment.append(this.editor.schema.create())
     const nodes = Array.from(fragment.childNodes)
     this.clearHTMLSelectionPending()
     this.clearHTMLSelectionHover()

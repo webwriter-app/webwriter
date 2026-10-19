@@ -1555,11 +1555,11 @@ export class DOMEditor {
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false, repair=true) {
     hydrateWidgetGroupings(fragment)
     // Convert PRE after transfer sanitization so its whitespace styles survive.
-    this.schema.enforceMedia(fragment, false)
+    if(repair) this.schema.enforceMedia(fragment, false)
     this.clearEditingArtifacts(fragment)
     const removedUnsafeItems = stripActiveContent(fragment, {
       allowIframes: true,
-      unwrapUnsupportedElements: true,
+      unwrapUnsupportedElements: repair,
       ...(transfer ? {removeAttribute: (attribute: Attr) => ["style", "class"].includes(attribute.name.toLowerCase())} : {}),
     })
     if(transfer) {
