@@ -842,6 +842,28 @@ describe("media editing", () => {
     expect(document.querySelector("audio")).toHaveAttribute("src", "http://example.com/audio.mp3")
   })
 
+  it("rejects empty and HTTP website URLs before changing a website source", () => {
+    document.body.innerHTML = "<iframe></iframe>"
+    const frame = document.querySelector("iframe")!
+    $.selectElement(frame)
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    placeholder.showFor(frame)
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(input).toHaveAttribute("aria-invalid", "true")
+    expect(input.validationMessage).toContain("https://")
+    expect(frame.hasAttribute("src")).toBe(false)
+    input.value = "http://example.com/blocked"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(input).toHaveAttribute("aria-invalid", "true")
+    expect(input.validationMessage).toContain("https://")
+    expect(frame.hasAttribute("src")).toBe(false)
+
+    expect(() => editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "http://example.com/blocked"}))
+      .toThrow("Enter a valid https:// website URL.")
+    expect(frame.hasAttribute("src")).toBe(false)
+  })
+
   it("clears URL errors when switching to another empty media element", async () => {
     document.body.innerHTML = "<audio controls></audio><video controls></video>"
     document.querySelector("audio")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))

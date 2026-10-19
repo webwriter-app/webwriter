@@ -1236,6 +1236,7 @@ export class DomEditorToolbox extends EditingControls {
           <input id=${id} type=${sourceKind || source.startsWith("data:") || source.startsWith("blob:") || media.attributes.srcdoc ? "text" : "url"}
             inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${this.mediaLabel(type)}: ${label}`}
             placeholder="https://…" .value=${current} title=${current}
+            @input=${this.clearMediaSourceError}
             @change=${(event: Event) => {
               if((event.currentTarget as HTMLInputElement).value !== current) this.dispatchMediaAttribute(type, {name: attribute, label}, event)
             }}>

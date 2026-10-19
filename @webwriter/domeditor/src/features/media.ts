@@ -33,6 +33,7 @@ import {
   mediaSourceAttribute,
   mediaSourceTarget,
   timedMediaResourceAttributeOptions,
+  websiteSourceError,
   websiteTypes,
   type MediaSelectionState,
   type MediaType,
@@ -447,8 +448,10 @@ class MediaPlaceholder {
     let url: URL | undefined
     try { url = new URL(source) } catch {}
     this.clearUrlError()
-    if(!url || !["http:", "https:"].includes(url.protocol)) {
-      const message = "Enter a valid http:// or https:// URL."
+    const website = isWebsiteType(placeholderMediaType(this.target))
+    const message = website ? websiteSourceError(source) || (!url ? "Enter a valid https:// website URL." : "")
+      : !url || !["http:", "https:"].includes(url.protocol) ? "Enter a valid http:// or https:// URL." : ""
+    if(!url || message) {
       input.setCustomValidity(message)
       input.setAttribute("aria-invalid", "true")
       input.title = message
@@ -1717,6 +1720,10 @@ export class MediaFeature extends EditorFeature {
       const element = this.selectedMedia()
       if(!element || !mediaAttributeOptions[element.localName as MediaType].some(option => option.name === name)) {
         throw new TypeError(`Attribute '${name}' is not editable for the selected media`)
+      }
+      if(value && isWebsiteType(element.localName) && name === mediaSourceAttribute(element.localName as WebsiteType)) {
+        const error = websiteSourceError(value)
+        if(error) throw new TypeError(error)
       }
       const target = mediaSourceTarget(element)
       value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
