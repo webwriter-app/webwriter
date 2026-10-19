@@ -578,6 +578,41 @@ describe("selection-owned transformation", () => {
   })
 
   describe.each(["canvas", "slides"] as const)("selections inside %s items", mode => {
+    it.each(["p", "demo-widget", "svg"])("exposes Delete for a %s item and supports undo/redo", async tag => {
+      const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
+      target.innerHTML = tag === "svg" ? '<g><circle r="5"/></g><!--keep-->' : 'before<!--keep--><unfamiliar-node>keep</unfamiliar-node>'
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const sibling = document.createElement("p")
+      sibling.textContent = "Keep sibling"
+      target.after(sibling)
+      captureNode(target)
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const initial = editor.toHTML(true)
+      const deleter = feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!
+      expect(deleter.hidden).toBe(false)
+      expect(deleter).toHaveAccessibleName("Delete")
+      expect(deleter).toHaveAttribute("part", expect.stringContaining("transform-overlay-delete-freeform"))
+      expect(deleter.getRootNode()).toBe(editor.appendix)
+      deleter.click()
+      expect(target.isConnected).toBe(false)
+      expect(sibling.isConnected).toBe(true)
+      expect(feature.target).toBeNull()
+      expect(target.getAttribute("class") ?? "").not.toContain("◆")
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const deleted = editor.toHTML(true)
+      expect(deleted).not.toMatch(/◆|transform-overlay/)
+      expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+      editor.doc.undo()
+      await mutationsDelivered()
+      expect(editor.toHTML(true)).toBe(initial)
+      editor.doc.redo()
+      await mutationsDelivered()
+      expect(editor.toHTML(true)).toBe(deleted)
+    })
+
     it("restores dimensions on cancellation and supports undo/redo after resizing", async () => {
       const target = targetElement()
       target.id = "resized-item"
@@ -895,6 +930,20 @@ describe("selection-owned transformation", () => {
     top = 100
     feature.updateInfo()
     expect(hasTopPart()).toBe(false)
+  })
+
+  it("keeps the rotated top-right delete control in the viewport even when rotation still fits above", () => {
+    const target = targetElement()
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    Object.assign(target.style, {width: "240px", height: "100px"})
+    target.style.setProperty("rotate", "-30deg")
+    let top = 35
+    vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => new DOMRect(50, top, 257.85, 206.6))
+    feature.startTransform(target)
+    expect(feature.overlay.getAttribute("part")).toContain("transform-overlay-at-top")
+    top = 100
+    feature.updateInfo()
+    expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-at-top")
   })
 
   it("clears the target and appendix state when selection is deselected", () => {

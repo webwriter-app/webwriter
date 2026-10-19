@@ -3283,6 +3283,70 @@ await check("uploaded videos survive installing and removing packages", async ()
   finally {video.removeAttribute("src"); video.load(); frame.remove()}
 })
 
+await check("canvas and slide delete affordances follow rotation placement", async () => {
+  for(const mode of ["canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "position:fixed;left:0;top:0;width:900px;height:700px"
+    frame.srcdoc = '<!doctype html><body><p id="delete-item">Selected text</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, `${mode}: editor did not initialize: ${view.editorError}`)
+      const editor = view.editor!, doc = frame.contentDocument!, target = doc.querySelector<HTMLElement>("#delete-item")!
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+      else editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      target.style.cssText = "position:absolute;left:200px;top:200px;width:240px;height:100px;margin:0"
+      doc.getSelection()!.setPosition(target.firstChild!, 2)
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+      const overlay = editor.features.transformation.overlay
+      const deleter = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!
+      const rotator = overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!
+      const corner = overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-up-right")!
+      for(const zoom of [false, true]) {
+        if(zoom && mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+        else if(zoom) editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-in"})
+        for(const width of [80, 240]) for(const top of [120, 2]) {
+          target.style.width = `${width}px`
+          await layoutFrame()
+          const box = target.getBoundingClientRect(), scale = box.height / 100
+          target.style.left = `${parseFloat(target.style.left) + (120 - box.left) / scale}px`
+          target.style.top = `${parseFloat(target.style.top) + (top - box.top) / scale}px`
+          await layoutFrame()
+          editor.features.transformation.updateInfo()
+          const button = deleter.getBoundingClientRect(), resize = corner.getBoundingClientRect()
+          const style = view.getComputedStyle(deleter), rotateStyle = view.getComputedStyle(rotator)
+          assert(!deleter.hidden && style.display !== "none", `${mode}: Delete is hidden`)
+          assert(style.top === rotateStyle.top && style.width === rotateStyle.width && style.height === rotateStyle.height,
+            `${mode}: Delete does not share rotation sizing and responsive placement`)
+          assert(style.borderTopWidth === "0px" && style.backgroundColor === "rgba(0, 0, 0, 0)", `${mode}: Delete retains the document control's circular background`)
+          const stem = view.getComputedStyle(deleter, "::after"), pixelScale = button.height / parseFloat(style.height)
+          const ends = [parseFloat(stem.top), parseFloat(stem.top) + parseFloat(stem.height)].map(y => button.top + y * pixelScale)
+          assert(Math.abs(button.left + button.width / 2 - resize.left - resize.width / 2) < 1
+            && ends.some(y => y >= resize.top - 1 && y <= resize.bottom + 1), `${mode}: Delete stem misses the top-right resize handle`)
+          assert(button.top >= 0 && (top === 2 ? button.top > resize.bottom : button.bottom < resize.top), `${mode}: Delete did not flip inside the viewport with rotation`)
+          for(const pseudo of ["::before", "::after"]) assert(view.getComputedStyle(deleter, pseudo).backgroundColor === view.getComputedStyle(rotator, pseudo).backgroundColor,
+            `${mode}: Delete icon or stem does not match rotation color`)
+          const hit = editor.appendix.elementFromPoint(button.left + button.width / 2, button.top + button.height / 2)
+          assert(hit === deleter, `${mode}: Delete cannot receive pointer input (width=${width}, top=${top}, zoom=${zoom}, hit=${hit?.localName}, rect=${JSON.stringify(button)})`)
+        }
+      }
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const initial = editor.toHTML(true)
+      deleter.click()
+      assert(!target.isConnected && editor.features.transformation.target === null, `${mode}: Delete did not remove the current item`)
+      editor.doc.syncFromDOM()
+      assert(!editor.toHTML(true).includes("transform-overlay") && !editor.doc.body.toString().includes("◆"), `${mode}: affordances leaked into authored content`)
+      editor.doc.undo()
+      await layoutFrame()
+      assert(editor.toHTML(true) === initial, `${mode}: Delete could not be undone`)
+    }
+    finally {frame.contentWindow?.editor?.destroy(); frame.remove()}
+  }
+})
+
 await check("iframe lifecycle reaches load and cleans up", async () => {
   const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")!
   await new Promise<void>((resolve, reject) => {

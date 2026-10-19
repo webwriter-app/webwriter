@@ -1913,7 +1913,8 @@ body::part(transform-overlay-rotator)::before {
     background-color: var(--ww-transform-color);
     --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-rotate"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.95 11a8 8 0 1 0 -.5 4m.5 5v-5h-5" /></svg>');
 }
-body::part(transform-overlay-rotator)::after {
+body::part(transform-overlay-rotator)::after,
+body::part(transform-overlay-delete-freeform)::after {
     content: "";
     display: block;
     width: 2px;
@@ -2197,6 +2198,20 @@ body::part(transform-overlay-delete)::before {
 body::part(transform-overlay-delete) {
   right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-delete-right, -10px));
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1 -14M10 10v6M14 10v6"/></svg>');
+}
+body::part(transform-overlay-delete-freeform) {
+  top: var(--transform-rotate-top, -42px);
+  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, -7px) - 4px);
+  display: block;
+  width: 16px;
+  height: 16px;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+body::part(transform-overlay-delete-freeform)::before {
+  width: 16px;
+  height: 16px;
 }
 body::part(transform-overlay-at-top) {
   --transform-rotate-top: calc(100% + 22px);

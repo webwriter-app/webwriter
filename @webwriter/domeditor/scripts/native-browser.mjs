@@ -94,6 +94,7 @@ const expectedChecks = [
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
   "uploaded videos survive installing and removing packages",
+  "canvas and slide delete affordances follow rotation placement",
   "bundled layouts render under the strict editor CSP without widgets",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",

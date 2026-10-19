@@ -450,7 +450,8 @@ export class TransformationFeature extends EditorFeature {
     caption.setAttribute("aria-label", caption.title)
     overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
       !this.editor.features.canvas.active && !this.editor.features.slides.active
-    hidden("delete", freeform)
+    hidden("delete", false)
+    setPart(overlay.querySelector("#◆transform-overlay-delete")!, "transform-overlay-delete-freeform", freeform)
     hidden("arranger", true)
     hidden("anchor", true)
     hidden("anchor-sticky", true)
@@ -611,7 +612,10 @@ export class TransformationFeature extends EditorFeature {
     const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
     const rotateTop = centerY + matrix.d * (-height / 2 - 34) - controlRadius
     const ordererTop = centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 22) - controlRadius
-    setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop) < 0)
+    const deleteTop = this.#isFreeformItem(target)
+      ? centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 34) - controlRadius
+      : Infinity
+    setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop, deleteTop) < 0)
     overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
     const style = getComputedStyle(target)
     const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
