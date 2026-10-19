@@ -714,6 +714,7 @@ export class DomEditor extends LitElement {
       height: 100%;
       overflow: clip;
       border: 0.5px solid #a8a8a8;
+      container-type: inline-size;
     }
 
     :host([disable-animations]) {
@@ -861,10 +862,6 @@ export class DomEditor extends LitElement {
       grid-row: 2 / 4;
       grid-column: 2;
       justify-self: end;
-    }
-
-    @media (width < 400px) {
-      dom-editor-toolbox:is([active-tool="AI"], [active-tool="Feedback"]) {grid-column: 1 / -1; justify-self: stretch; width: 100%}
     }
 
     dom-editor-toolbox:not([active-tool]) {
@@ -1085,6 +1082,30 @@ export class DomEditor extends LitElement {
       iframe.window-inactive {
         pointer-events: auto;
       }
+    }
+
+    @container (width < 600px) {
+      .document-stage,
+      .html-source-panel,
+      .document-layouts-panel {grid-column: 1 / -1}
+      dom-editor-toolbox[active-tool]:not([hidden]) {
+        grid-column: 1 / -1;
+        grid-row: 4;
+        justify-self: stretch;
+        width: 100%;
+        min-width: 0;
+        height: clamp(9rem, 36vh, 18rem);
+        max-height: 100%;
+      }
+      dom-editor-toolbox:not([active-tool]) {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: end;
+        width: auto;
+      }
+      .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {grid-column: 1 / -1}
+      .html-source-panel {grid-row: 5}
+      .document-layouts-panel {grid-row: 6}
     }
   `
 
