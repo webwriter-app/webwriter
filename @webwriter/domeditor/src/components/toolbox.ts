@@ -611,7 +611,7 @@ export class DomEditorToolbox extends EditingControls {
     .review-comments {border-bottom: 1px solid #d8dee6; --ribbon-drawer-pane-border-bottom: 0;}
 
     :host([active-tool="Edit"]) .toolbox-pane-content {
-      padding: 0 2px;
+      padding: 0 8px;
       scrollbar-gutter: stable both-edges;
       --ribbon-drawer-pane-padding-inline: 0;
     }
