@@ -118,12 +118,21 @@ export async function createAccessibilityReviewer(): Promise<AccessibilityReview
       if(disposed) return []
 
       const findings: AccessibilityFinding[] = []
+      let pageRegionCount = 0
+      let pageRegionMessage = ""
+      let pageRegionHelpUrl = ""
       for(const violation of results.violations ?? []) {
         for(const node of violation.nodes ?? []) {
           const element = node.element
           if(!element || !element.isConnected || element.getRootNode() !== root.ownerDocument) continue
           if((!includesPage && !context.contains(element)) || isWithinAtomicWidget(element, atomicWidgets)) continue
           if(element.closest(".◆editor-only, [data-webwriter-editor-only]")) continue
+          if(includesPage && violation.id === "region") {
+            pageRegionCount++
+            pageRegionMessage ||= violation.help
+            pageRegionHelpUrl ||= violation.helpUrl
+            continue
+          }
           findings.push({
             element,
             rule: violation.id,
@@ -133,6 +142,13 @@ export async function createAccessibilityReviewer(): Promise<AccessibilityReview
           })
         }
       }
+      if(pageRegionCount) findings.push({
+        element: context,
+        rule: "region",
+        message: pageRegionMessage,
+        text: `${pageRegionCount} ${pageRegionCount === 1 ? "block" : "blocks"} outside landmarks. Group related content in a main landmark.`,
+        helpUrl: pageRegionHelpUrl,
+      })
       return findings
     },
     dispose() {
