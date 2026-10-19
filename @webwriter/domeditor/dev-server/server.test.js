@@ -1,5 +1,5 @@
 // @vitest-environment node
-import {mkdtemp, readFile} from "node:fs/promises"
+import {mkdtemp, readFile, readdir, writeFile} from "node:fs/promises"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
 import {request as httpRequest} from "node:http"
@@ -10,6 +10,8 @@ import {docs, getYDoc} from "@y/websocket-server/utils"
 import WebSocketPackage from "ws"
 import {createDevServer} from "./server.mjs"
 import {defaultGroupingRules, groupingTarget} from "../src/widget-grouping.js"
+
+const exampleDocuments = JSON.parse(await readFile(new URL("../src/example-documents.json", import.meta.url), "utf8"))
 
 let developmentServer
 let baseUrl
@@ -267,53 +269,24 @@ describe("development server", () => {
     expect(saved).toEqual(expect.objectContaining({title: "Concurrent title", content: "<p>Concurrent content</p>"}))
   })
 
-  it("seeds the MathML preset and preserves edits across restarts", async () => {
-    const id = "preset-mozilla-mathml-test"
+  it("seeds exactly the landing-page lessons with their authored HTML", async () => {
     const documents = (await request("/api/documents")).value.documents
-    expect(documents).toEqual(expect.arrayContaining([expect.objectContaining({id, title: "Mozilla MathML Test", format: "html"})]))
-    expect(documents[0]).not.toHaveProperty("content")
-    const {document} = (await request(`/api/documents/${id}`)).value
-    expect(document.content.match(/<math\b/g)).toHaveLength(60)
-    expect(document.content.match(/<img\b/g)).toHaveLength(30)
-    const rows = [...document.content.matchAll(/<tr>([\s\S]*?)<\/tr>/g)]
-    expect(rows).toHaveLength(31)
-    for(const [, row] of rows.slice(1)) {
-      expect(row.match(/<td\b/g)).toHaveLength(4)
-      expect(row).toContain('<td class="compact-math">')
-      const math = row.match(/<math\b[\s\S]*?<\/math>/g)
-      expect(math).toHaveLength(2)
-      expect(math[1]).toBe(math[0])
+    expect(documents.map(({id}) => id).sort()).toEqual(exampleDocuments.map(({id}) => `example-${id}`).sort())
+    for(const example of exampleDocuments) {
+      const id = `example-${example.id}`
+      expect(documents).toContainEqual(expect.objectContaining({id, title: example.title, format: "html"}))
+      expect(documents.find(document => document.id === id)).not.toHaveProperty("content")
+      const {document} = (await request(`/api/documents/${id}`)).value
+      expect(document.content).toBe(await readFile(new URL(`../examples/subjects/${example.id}.html`, import.meta.url), "utf8"))
     }
-    expect(document.content).toContain("math-style: compact;")
-    expect(document.content).toContain("min-width: max(100%, 90rem);")
-    expect(document.content).toContain('src="https://fred-wang.github.io/MathFonts/mozilla_mathml_test/resources/ex1.png"')
-    expect(document.content).not.toContain("<script")
-
-    await request(`/api/documents/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({title: "Edited MathML", content: "<p>Saved edits</p>"}),
-    })
-    const {dataDirectory} = developmentServer
-    await developmentServer.close()
-    developmentServer = await createDevServer({port: 0, vite: false, dataDirectory})
-    baseUrl = (await developmentServer.listen()).url
-    expect((await request(`/api/documents/${id}`)).value.document).toEqual(expect.objectContaining({
-      id, title: "Edited MathML", content: "<p>Saved edits</p>", createdAt: document.createdAt,
-    }))
-    expect((await request("/api/documents")).value.documents).toHaveLength(2)
   })
 
-  it("seeds the Kitchen Sink preset, preserves edits, and restores it after deletion", async () => {
-    const id = "preset-kitchen-sink"
-    expect((await request("/api/documents")).value.documents).toEqual(expect.arrayContaining([
-      expect.objectContaining({id, title: "Kitchen Sink", format: "html"}),
-    ]))
+  it("preserves edited lessons across restarts and restores deleted examples", async () => {
+    const id = `example-${exampleDocuments[0].id}`
     const {document} = (await request(`/api/documents/${id}`)).value
-    expect(document.content).toContain('<title>Kitchen Sink</title>')
-    expect(document.content).toContain('class="sample-empty" style="float: left;"')
     await request(`/api/documents/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({content: "<p>My kitchen sink</p>"}),
+      body: JSON.stringify({title: "My lesson", content: "<p>Saved edits</p>"}),
     })
     const {dataDirectory} = developmentServer
     const restart = async () => {
@@ -322,10 +295,39 @@ describe("development server", () => {
       baseUrl = (await developmentServer.listen()).url
     }
     await restart()
-    expect((await request(`/api/documents/${id}`)).value.document.content).toBe("<p>My kitchen sink</p>")
+    expect((await request(`/api/documents/${id}`)).value.document).toEqual(expect.objectContaining({
+      id, title: "My lesson", content: "<p>Saved edits</p>", createdAt: document.createdAt,
+    }))
+    expect((await request("/api/documents")).value.documents).toHaveLength(exampleDocuments.length)
     await request(`/api/documents/${id}`, {method: "DELETE"})
     await restart()
-    expect((await request(`/api/documents/${id}`)).value.document.content).toBe(document.content)
+    expect((await request(`/api/documents/${id}`)).value.document).toEqual(expect.objectContaining({
+      id, title: document.title, content: document.content,
+    }))
+  })
+
+  it("removes legacy server examples while preserving other saved documents", async () => {
+    const created = (await request("/api/documents", {
+      method: "POST",
+      body: JSON.stringify({title: "My document", content: "<p>Keep this</p>"}),
+    })).value.document
+    const {dataDirectory} = developmentServer
+    await developmentServer.close()
+    const legacyIds = (await readdir(new URL("../examples/", import.meta.url)))
+      .filter(filename => /^\d{2}-.+\.html$/.test(filename))
+      .map(filename => `example-${filename.slice(0, -5)}`)
+    legacyIds.push("preset-mozilla-mathml-test", "preset-kitchen-sink")
+    const otherId = "example-my-own-lesson"
+    for(const id of [...legacyIds, otherId]) {
+      await writeFile(join(dataDirectory, "documents", `${id}.json`), JSON.stringify({...created, id}))
+    }
+    developmentServer = await createDevServer({port: 0, vite: false, dataDirectory})
+    baseUrl = (await developmentServer.listen()).url
+    const documents = (await request("/api/documents")).value.documents
+    expect(documents).toHaveLength(exampleDocuments.length + 2)
+    for(const id of legacyIds) expect((await request(`/api/documents/${id}`)).response.status).toBe(404)
+    expect((await request(`/api/documents/${created.id}`)).value.document).toEqual(created)
+    expect((await request(`/api/documents/${otherId}`)).value.document).toEqual({...created, id: otherId})
   })
 
   it("manages providers without returning stored API keys", async () => {

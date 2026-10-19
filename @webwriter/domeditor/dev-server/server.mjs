@@ -305,14 +305,20 @@ export async function createDevServer(options = {}) {
   await mkdir(widgetDataDirectory, {recursive: true})
   await mkdir(widgetGroupingDirectory, {recursive: true})
 
-  // Seed editable copies once; restarting must preserve saved changes.
-  for(const [id, title, filename] of [
-    ["preset-mozilla-mathml-test", "Mozilla MathML Test", "mozilla-mathml-test.html"],
-    ["preset-kitchen-sink", "Kitchen Sink", "kitchen-sink.html"],
-  ]) {
+  // Retire only the bundled legacy examples, leaving other saved documents alone.
+  const legacyExamples = (await readdir(join(projectRoot, "examples")))
+    .filter(filename => /^\d{2}-.+\.html$/.test(filename))
+    .map(filename => `example-${filename.slice(0, -5)}`)
+  for(const id of [...legacyExamples, "preset-mozilla-mathml-test", "preset-kitchen-sink"]) {
+    await rm(join(documentsDirectory, `${id}.json`), {force: true})
+  }
+
+  // Use the landing page's catalog and seed editable copies once; preserve saved changes.
+  const examples = await readJSONFile(join(projectRoot, "src", "example-documents.json"))
+  for(const {id: exampleId, title} of examples) {
     const preset = {
-      id, title, format: "html",
-      content: await readFile(join(projectRoot, "examples", filename), "utf8"),
+      id: `example-${exampleId}`, title, format: "html",
+      content: await readFile(join(projectRoot, "examples", "subjects", `${exampleId}.html`), "utf8"),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }

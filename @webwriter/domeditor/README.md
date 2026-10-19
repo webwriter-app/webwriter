@@ -66,9 +66,9 @@ Git packages require the development backend and Git installed on its host. Thei
 
 [`examples/`](examples/) contains editable HTML lessons. The public `/examples/` gallery offers biology, history, computer science, arts, languages, social science, chemistry, earth science, physics, and mathematics activities with learner previews, standalone HTML downloads, and `/editor/?example=…` links that open editable copies. The landing-page miniatures are extracted from those same documents. Widget assets and external media load online.
 
-The [Mozilla MathML Test](examples/mozilla-mathml-test.html) is also bundled as a preset. Start or restart the dev server, then load **Mozilla MathML Test** from the server document list. It contains all 30 comparisons from [Frédéric Wang's test](https://fred-wang.github.io/MathFonts/mozilla_mathml_test/), with native MathML, a forced `math-style: compact` column, and online TeX reference images. The table extends beyond the normal content width to fit the comparisons. The font selector is omitted so rendering uses the browser's default math font. Saved edits survive restarts; deleting the preset restores the bundled version on the next server start.
+Start or restart the dev server to load editable copies of the ten landing-page lessons into the server document list. The server uses the same catalog and authored HTML as the main page. Saved edits survive restarts; deleting an example restores the bundled version on the next start. Startup removes the old numbered lessons and the former MathML and Kitchen Sink presets from server storage, leaving other saved documents alone.
 
-The [Kitchen Sink](examples/kitchen-sink.html) preset pairs empty and populated versions of every built-in insertable element using the two-column layout. Start or restart the dev server and select **Kitchen Sink** in the document list. Saved edits survive restarts; deleting the preset restores the bundled example on the next start. Only the sample video requires an internet connection.
+The [Mozilla MathML Test](examples/mozilla-mathml-test.html) and [Kitchen Sink](examples/kitchen-sink.html) remain available as standalone HTML fixtures.
 
 ## APIs
 
