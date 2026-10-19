@@ -1,5 +1,5 @@
 import {serializeDoctype} from "./serialization"
-import {clearEditorOwnedAttributes, clearEditorMarkerClasses, nodeAtPath, pathFromNode} from "./utility"
+import {nodeAtPath, pathFromNode} from "./utility"
 import {stripActiveContent} from "./active-content"
 import type {LiveSession, LiveSessionRegion as SessionRegion, LiveSessionWidgetState} from "./live-session"
 
@@ -22,24 +22,7 @@ export function previewWidgetElements(previewDocument: Document) {
 
 /** Remove editor-only content and markers from a preview copy, including
  * elements held in inert template contents. */
-export function cleanPreviewEditorArtifacts(root: Node) {
-  const removeEditorOnly = (parent: Node) => {
-    for(const child of Array.from(parent.childNodes)) {
-      if(child.nodeType === 1) {
-        const element = child as Element
-        if(element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only")) {
-          element.remove()
-          continue
-        }
-        if(element.localName === "template") removeEditorOnly((element as HTMLTemplateElement).content)
-      }
-      removeEditorOnly(child)
-    }
-  }
-  removeEditorOnly(root)
-  clearEditorOwnedAttributes(root)
-  clearEditorMarkerClasses(root)
-}
+export {clearEditorArtifacts as cleanPreviewEditorArtifacts} from "./editor-artifacts"
 
 /** Apply one learner/base widget snapshot in either preview realm. */
 export function applyPreviewWidgetSnapshot(previewDocument: Document, snapshot: LiveSessionWidgetState) {

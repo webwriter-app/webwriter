@@ -1,0 +1,39 @@
+.site-layout { block-size: 100vh; block-size: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.site-content { min-block-size: 0; overflow: auto; scrollbar-gutter: stable; }
+.site-header { box-sizing: border-box; inline-size: 100%; overflow: hidden; scrollbar-gutter: stable; border-block-end: 1px solid #dfe5ed; background: #fff; }
+.site-header-content { position: relative; box-sizing: border-box; inline-size: 100%; max-inline-size: 76rem; margin-inline: auto; padding: 1.25rem 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.brand { display: inline-flex; align-items: center; gap: .65rem; color: #263142; font-size: 1.1rem; font-weight: 750; text-decoration: none; }
+.brand-name { display: block; line-height: 1.2; }
+.brand-subtitle { display: block; margin-block-start: .2rem; font-size: .7em; font-weight: 400; color: #617084; }
+.brand img { flex: none; inline-size: 2rem; block-size: 2rem; object-fit: contain; }
+.site-header .brand img { transition: transform 180ms ease; }
+.site-header .brand:hover img { transform: scale(1.1); }
+.site-header nav { display: flex; align-items: center; gap: 1.75rem; font-size: .875rem; }
+.site-header nav a { color: #155e9b; text-decoration: none; white-space: nowrap; }
+.site-header nav a:not(.button) { padding: .4rem .65rem; margin: -.4rem -.65rem; border-radius: .3rem; transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease; }
+.site-header nav a:not(.button):hover { color: #104a7b; background: #f2f5f9; }
+.site-header nav a:not(.button)[aria-current="page"] { background: #eaf2fb; box-shadow: inset 0 0 0 1px #c8dced; }
+.site-header nav a:not(.button)[aria-current="page"]:hover { background: #dceaf9; }
+.site-header nav a:not(.button):active, .site-header nav a:not(.button)[aria-current="page"]:active { color: #172033; background: #c8d7e8; box-shadow: inset 0 0 0 1px #99afc7; }
+.site-header a:focus-visible { outline: 2px solid #155e9b; outline-offset: 5px; }
+.site-header .button { box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: .8rem; padding: .5rem .85rem; background: #155e9b; border: 1px solid #155e9b; border-radius: .4rem; color: white; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.site-header .button:hover { background: #104a7b; }
+.site-header .button:active, .button:not(.secondary):active { background: #0b365b; border-color: #0b365b; box-shadow: inset 0 2px 4px #0003; transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) { .site-header nav a:not(.button), .site-header .brand img { transition: none; } }
+@media (max-width: 42rem) { .site-header-content { flex-wrap: wrap; } .site-header nav { inline-size: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 1.5rem; font-size: .8125rem; } .site-header .button {position: absolute; top: 1.25rem; right: 1.5rem} }
+@media (max-width: 24rem) { .site-header-content { padding-inline: 1rem; } .site-header nav { gap: .75rem; font-size: .75rem; } .site-header .button { right: 1rem; padding: .5rem; gap: .5rem; } .brand { font-size: .95rem; } .brand img { inline-size: 1.5rem; block-size: 1.5rem; } }
+
+.site-footer {box-sizing: border-box; display: flex; align-items: center; flex-wrap: wrap; gap: 1.25rem; max-inline-size: 76rem; margin-inline: auto; padding: 1.5rem; border-top: 1px solid #dfe5ed; font: .8rem/1.5 system-ui, sans-serif; color: #536174; container-type: inline-size}
+.site-footer .brand {font-size: .9rem}
+.site-footer .footer-controls {display: contents}
+.site-footer .footer-legal {flex: 1 1 12rem; display: grid; justify-items: start; gap: .15rem; font-size: .7rem}
+.site-footer .copyright {font: inherit; white-space: nowrap}
+.site-footer nav {display: flex; flex-wrap: wrap; gap: .75rem clamp(.5rem, 1.75cqw, 1.25rem); font-size: clamp(.7rem, 1.1cqw, .8rem); order: 1}
+.site-footer site-language-switcher {order: 2}
+.site-footer :is(nav, .footer-legal) a {color: #155e9b; text-underline-offset: .2em}
+.site-footer a:focus-visible {outline: 2px solid #155e9b; outline-offset: 3px}
+@container (max-width: 50rem) {
+  .site-footer .footer-controls {display: flex; align-items: center; flex-wrap: wrap; gap: .75rem; flex: 1 1 max-content}
+  .site-footer nav {flex-basis: 100%}
+}
+@media (max-width: 24rem) {.site-footer {padding-inline: 1rem}}

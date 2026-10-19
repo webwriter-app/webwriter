@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Conta come un computer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+</head>
+<body>
+<p><small>Informatica · circa 15 minuti</small></p>
+<h1>Conta come un computer</h1>
+<p>Un computer può usare due simboli, <code>0</code> e <code>1</code>, per rappresentare un numero. Leggiamo quattro simboli usando i valori posizionali.</p>
+<h2>Bastano due simboli</h2>
+<p>Di solito contiamo con dieci cifre, da 0 a 9. Un computer può rappresentare informazioni con due stati, per esempio un segnale spento o acceso. Un singolo 0 o 1 si chiama <em>bit</em>. Gruppi di bit possono rappresentare numeri e altre informazioni.</p>
+<p>Nel sistema decimale, le posizioni valgono 1, 10, 100 e così via. In binario ogni valore raddoppia andando verso sinistra: 1, 2, 4, 8. In questa attività leggi il numero di 4 bit da sinistra a destra usando i valori indicati. 1 significa «includi questo valore», 0 «lascialo fuori».</p>
+<p>Questi simboli descrivono i due stati in modo comprensibile. In un vero computer, i circuiti memorizzano ed elaborano sequenze di stati.</p>
+
+<table>
+<caption>Quattro posizioni binarie</caption>
+<thead><tr><th scope="col">Valore posizionale</th><th scope="col">8</th><th scope="col">4</th><th scope="col">2</th><th scope="col">1</th></tr></thead>
+<tbody>
+<tr><th scope="row">Sequenza di bit</th><td>0 o 1</td><td>0 o 1</td><td>0 o 1</td><td>0 o 1</td></tr>
+<tr><th scope="row">Esempio: 1010</th><td>1 → 8</td><td>0 → 0</td><td>1 → 2</td><td>0 → 0</td></tr>
+</tbody>
+</table>
+
+<h2>Somma le posizioni attive</h2>
+<p>Per <code>1010</code>, sono attive le posizioni 8 e 2. Sommale: 8 + 2 = 10. Il numero binario di quattro bit <code>1010</code> corrisponde quindi a dieci nel sistema decimale. La sequenza di bit non è una fila di quattro cifre decimali separate: è un numero con posizioni di valore diverso.</p>
+<p>Prova lo stesso metodo con <code>0111</code>: somma 4, 2 e 1. Lo zero iniziale mantiene ogni esempio lungo quattro bit. Quattro bit formano sedici sequenze, da <code>0000</code> (zero) a <code>1111</code> (quindici).</p>
+
+<h2>Costruisci e verifica un numero</h2>
+<p>Esegui questo piccolo programma. Poi cambia un bit da <code>0</code> a <code>1</code> e rieseguilo. Prevedi il nuovo totale prima di premere Run. Il programma qui sotto si può modificare: è il tuo esperimento, non un’immagine di codice.</p>
+<webwriter-code-javascript code="const bits = [1, 0, 1, 0];
+const places = [8, 4, 2, 1];
+const total = bits.reduce((sum, bit, i) =&gt; sum + bit * places[i], 0);
+console.log(bits.join('') + ' = ' + total);"></webwriter-code-javascript>
+<p>Riesci a far stampare 7 al programma? E il numero più grande possibile con quattro bit? Aggiungi una quinta posizione di valore 16 e spiega quale altra riga deve cambiare.</p>
+<details><summary>Un suggerimento se ti blocchi</summary><p>Per ottenere sette, attiva le posizioni 4, 2 e 1: <code>[0, 1, 1, 1]</code>. Per una quinta posizione, aggiungi un bit all’inizio di <code>bits</code> e inserisci <code>16</code> all’inizio di <code>places</code>.</p></details>
+<p>Prima di sommare, scrivi i valori posizionali sopra la sequenza. Così eviti un errore comune: leggere dal lato sbagliato. La posizione più a destra vale sempre 1; procedendo a sinistra vengono 2, 4 e 8.</p>
+<ol>
+<li>Decodifica <code>0101</code> sommando le posizioni attive.</li>
+<li>Scrivi la sequenza di quattro bit per sei. Verifica che siano attive le posizioni 4 e 2.</li>
+<li>Confronta il tuo metodo con quello di un compagno: da quale posizione sei partito?</li>
+</ol>
+
+
+
+<h2>Rifletti</h2>
+<p><label for="binary-reflection">Come spiegheresti il metodo 8/4/2/1 a chi non ha mai visto il sistema binario?</label></p>
+<textarea id="binary-reflection" name="binary-reflection" rows="4" placeholder="Scrivi qui la tua spiegazione."></textarea>
+
+<h2>Fonti</h2>
+<ul>
+<li><a href="https://www.computerhistory.org/blog/generative-music-with-the-muse/">Computer History Museum, “Generative Music with the Muse”</a> (esempio di contatore a quattro bit).</li>
+</ul>
+</body>
+</html>

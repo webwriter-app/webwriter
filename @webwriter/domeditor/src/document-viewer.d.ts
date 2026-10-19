@@ -7,4 +7,4 @@ export type DocumentReference = {href: string, data: ReferenceData, anchors: HTM
 export function parseReference(value: string | null): ReferenceData | null
 export function collectReferences(body: HTMLElement): DocumentReference[]
 export type ReferenceFormatter = (references: DocumentReference[], format: "bibliography" | "bibtex", style?: string) => string
-export function mountDocumentReader(licenses?: ReadonlyArray<{code: string, name: string, url: string}>, appIcon?: string, formatter?: ReferenceFormatter | null): DocumentReader | null
+export function mountDocumentReader(licenses?: ReadonlyArray<{code: string, name: string, url: string}>, appIcon?: string, formatter?: ReferenceFormatter | null, translations?: Record<string, string>): DocumentReader | null

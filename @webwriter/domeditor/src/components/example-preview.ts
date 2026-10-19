@@ -1,0 +1,248 @@
+import {LitElement, css, html, nothing, unsafeCSS} from "lit"
+import {unsafeHTML} from "lit/directives/unsafe-html.js"
+import {keyed} from "lit/directives/keyed.js"
+import {exampleDocuments, loadExampleDocument, type ExampleDocument} from "../example-documents"
+import type {ExampleDialog} from "./example-dialog"
+import "./example-dialog"
+import {cardOverlayStyles} from "./card-overlay"
+import showcaseStyles from "./example-showcase.css?raw"
+import {t, SiteLanguageController} from "../site-language"
+import {documentLayoutMode, type DocumentLayoutMode} from "../document-layout"
+
+/** A compact, non-interactive excerpt of an actual example, never invented UI. */
+export class ExamplePreview extends LitElement {
+  private languageController = new SiteLanguageController(this, () => { if(this.exampleId) void this.reload() })
+  static properties = {exampleId: {attribute: "example-id"}, layout: {}, source: {state: true}, outgoing: {state: true}, error: {state: true}}
+  static styles = css`
+    :host {display: block; block-size: 35rem; min-inline-size: 0; container-type: inline-size; color: #373c44; font-family: system-ui, sans-serif; line-height: 1.5}
+    * {box-sizing: border-box}
+    .preview {display: grid; block-size: 100%; min-block-size: 0; isolation: isolate}
+    .page, .placeholder {grid-area: 1 / 1; min-inline-size: 0; min-block-size: 0; block-size: 100%; border: 1px solid #dfe5ed; border-radius: .25rem; background: #fff; overflow: hidden}
+    .page {padding: 1.6rem; animation: appear 280ms ease both}
+    .outgoing {pointer-events: none; animation: disappear 280ms ease both}
+    @keyframes appear {from {opacity: 0} to {opacity: 1}}
+    @keyframes disappear {from {opacity: 1} to {opacity: 0}}
+    @media (prefers-reduced-motion: reduce) {.page {animation-duration: 1ms}}
+    h2 {font-size: 1.65rem; line-height: 1.2; margin: 0 0 .85rem; letter-spacing: -.025em; color: #172033}
+    .intro {font-size: .8rem; margin: 0 0 1.2rem; color: #536174; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden}
+    .visual {font-size: .75rem; margin-block: 1.25rem}
+    figure {margin: 0} svg {display: block; inline-size: 100%; block-size: auto; max-block-size: 8rem}
+    .menu svg {max-block-size: 16rem}
+    img {display: block; inline-size: 100%; block-size: 9rem; object-fit: cover; border-radius: .2rem}
+    figcaption {font-size: .7rem; color: #617084; margin-block-start: .5rem}
+    table {inline-size: 100%; border-collapse: collapse; font-size: .75rem}
+    caption {text-align: start; padding-block-end: .5rem; color: #617084}
+    th, td {padding: .45rem .35rem; text-align: start; border-bottom: 1px solid #dfe5ed}
+    th {font-weight: 600; background: #f7f9fc}
+    blockquote {margin: 0; padding-inline-start: .8rem; border-inline-start: 2px solid #c3d3e4}
+    .code {border: 1px solid #dfe5ed; border-radius: .3rem; overflow: hidden; margin-block-start: 1.2rem}
+    pre {margin: 0; padding: .8rem; overflow: hidden; background: #f7f9fc; font: .7rem/1.7 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere}
+    .code-label, .audio {display: flex; align-items: center; justify-content: space-between; padding: .55rem .8rem; font-size: .7rem; color: #536174}
+    .code-label span:last-child {color: #155e9b; font-weight: 600}
+    .steps {display: flex; flex-wrap: wrap; gap: .35rem; list-style: none; padding: 0 0 .5rem; margin: 0; border-bottom: 1px solid #dfe5ed; font-size: .7rem; color: #617084}
+    .steps li {flex: 1 1 5rem; min-inline-size: 0; padding: .4rem .25rem; border: 1px solid transparent; border-radius: .3rem; text-align: center; overflow-wrap: anywhere}
+    .steps li[aria-current="step"] {color: #155e9b; background: #eaf2fb; border-color: #c8dced; font-weight: 600}
+    .timeline {display: grid; gap: .65rem; border-inline-start: 2px solid #c8dced; margin: 1rem 0 0 .3rem; padding-inline-start: 1rem; font-size: .75rem}
+    .event {position: relative} .event::before {content: ""; position: absolute; inset-inline-start: -1.35rem; inset-block-start: .4rem; inline-size: .5rem; block-size: .5rem; border-radius: 50%; background: #155e9b}
+    .event strong {display: block; font-size: .7rem; color: #155e9b}
+    .audio {border: 1px solid #dfe5ed; border-radius: 1.5rem; margin-block-start: .8rem; justify-content: start; gap: .65rem; background: #f7f9fc}
+    .closing {font-size: .8rem; color: #536174; margin: 1.2rem 0 0}
+    .lesson {margin-block-start: 1rem; font-size: .75rem; color: #536174}
+    .lesson h3 {margin: 0 0 .4rem; font-size: .85rem; color: #172033}
+    .lesson p {margin: 0}
+    :host([compact]) {block-size: auto; min-block-size: 28rem}
+    :host([compact]) .preview {block-size: auto; min-block-size: 28rem}
+    :host([compact]) .page {padding: 1.25rem; block-size: auto; min-block-size: 28rem; overflow: visible}
+    :host([compact]) h2 {font-size: 1.4rem}
+    :host([compact]) .intro {display: none}
+    :host([compact]) img {block-size: auto; max-block-size: 8rem; object-fit: contain}
+    :host([compact]) .menu svg {max-block-size: 14rem}
+    :host([compact]) pre {font-size: .65rem; line-height: 1.6}
+    :host([compact]) .page:has(.lesson) .closing {display: none}
+    @container (max-width: 22rem) {.page:has(.lesson) .closing {display: none}}
+    .placeholder {display: grid; place-items: center; color: #617084; font-size: .875rem}
+    .page.canvas {background: radial-gradient(#cad7e5 1px, transparent 1px) 0 0 / 14px 14px #f5f8fc}
+    .page.board {background: #edf2f8}
+    .layout-topics {display: grid; gap: .65rem; margin-block-start: 1rem; align-items: start}
+    .layout-topic {min-inline-size: 0; padding: .8rem; background: white; border: 1px solid #d4deea; border-radius: .35rem; overflow-wrap: anywhere; hyphens: auto}
+    .layout-topic h3 {margin: 0 0 .55rem; color: #285b78; font-size: .8rem; line-height: 1.3}
+    .layout-topic p {margin: 0; font-size: .7rem; line-height: 1.5}
+    .layout-topic .visual {margin: .75rem 0 0}
+    .layout-topic :is(svg, img) {max-block-size: 6rem; object-fit: contain}
+    .layout-topic figcaption {display: none}
+    .table-summary {margin-block-start: .75rem; padding: .55rem; border: 1px solid #dfe5ed; border-radius: .25rem; background: #f7f9fc; font-size: .65rem}
+    .table-summary strong {display: block; margin-block-end: .35rem; font-size: .65rem}
+    .canvas .layout-topics {grid-template-columns: minmax(0, 1fr)}
+    .canvas .layout-topic {box-shadow: 0 2px 5px #26374a12}
+    .canvas .layout-topic:first-child {margin-inline-end: 1rem}
+    .canvas .layout-topic:nth-child(2) {margin-inline-start: 1rem}
+    .board .layout-topics {grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem}
+    .board .layout-topic {padding: .5rem; background: #f6f8fb}
+    .board .layout-topic :is(p, .visual) {padding: .5rem; border: 1px solid #dfe5ed; border-radius: .25rem; background: white}
+    .board .layout-topic .visual {margin-block-start: .5rem}
+    .page.slides {display: flex; flex-direction: column; background: #edf2f8}
+    .slides .layout-topics {margin-block: auto; padding-block: 1.25rem; padding-inline-end: .5rem}
+    .slides .layout-topic {min-block-size: 10rem; padding: 1rem; border-radius: .15rem; box-shadow: 4px 4px 0 #d4e0ed, 8px 8px 0 #e0e8f2}
+    .slides .layout-topic .visual {margin-block-start: .5rem}
+    .slides .layout-topic svg, .slides .layout-topic img {max-block-size: 4rem}
+    .slide-pages {display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; margin-block-start: auto; padding-block: 1rem 0}
+    .slide-pages span {display: grid; place-items: center; inline-size: 1.35rem; block-size: 1.35rem; border: 1px solid #c8dced; border-radius: .25rem; color: #617084; font-size: .6rem; background: white}
+    .slide-pages span[aria-current] {background: #155e9b; color: white; border-color: #155e9b}
+    :host([compact]) .page.slides .layout-topics {margin-block: 1rem}
+    @container (max-width: 18rem) {.board .layout-topics {grid-template-columns: minmax(0, 1fr)}}
+    :host([compact]) table {table-layout: fixed; overflow-wrap: anywhere}
+    @media (max-width: 25rem) {.page {padding: 1.1rem} h2 {font-size: 1.4rem}}
+  `
+  exampleId = "binary"
+  layout: DocumentLayoutMode = "document"
+  private source: Document | null = null
+  private outgoing: Document | null = null
+  private error = false
+  private revision = 0
+
+  protected async updated(changed: Map<string, unknown>) {
+    if(!changed.has("exampleId") && !changed.has("layout")) return
+    await this.reload()
+  }
+
+  private async reload() {
+    const revision = ++this.revision
+    this.error = false
+    try {
+      const source = await loadExampleDocument(this.exampleId, this.layout)
+      if(revision === this.revision) {
+        this.outgoing = this.source
+        this.source = source
+      }
+    }
+    catch { if(revision === this.revision) this.error = true }
+  }
+
+  render() {
+    return html`<div class="preview">
+      ${this.source ? keyed(this.source, this.renderPage(this.source)) : html`<div class="placeholder">${this.error ? t("Preview unavailable") : t("Loading example…")}</div>`}
+      ${this.outgoing ? keyed(this.outgoing, this.renderPage(this.outgoing, true)) : nothing}
+    </div>`
+  }
+
+  private excerptText(element: Element) {
+    return [...new Intl.Segmenter(element.ownerDocument.documentElement.lang || "en", {granularity: "sentence"}).segment(element.textContent ?? "")]
+      .slice(0, 2).map(({segment}) => segment).join("").trim()
+  }
+
+  private briefText(element: Element, words = 24) {
+    const text = this.excerptText(element)
+    const segments = text.split(/\s+/)
+    return segments.length > words ? `${segments.slice(0, words).join(" ").replace(/[,;:]$/, "")}…` : text
+  }
+
+  private renderPage(source: Document, outgoing = false) {
+    const mode = documentLayoutMode(source.body)
+    if(mode !== "document") return this.renderLayoutPage(source, mode, outgoing)
+    const intro = [...source.body.querySelectorAll("p")].find(p => !p.querySelector("small") && !p.closest("figure, webwriter-task"))
+    const visualSource = source.body.querySelector("figure") ?? source.body.querySelector("table, blockquote")
+    const visual = visualSource?.cloneNode(true) as Element | undefined
+    const lessonHeading = source.querySelector("webwriter-periodic-table, webwriter-map") && visualSource
+      ? [...source.body.querySelectorAll("h2")].find(heading => visualSource.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING) : undefined
+    const lessonText = lessonHeading?.nextElementSibling
+    const caption = visual?.querySelector("figcaption")
+    if(lessonHeading && caption) caption.textContent = this.excerptText(caption)
+    const code = source.querySelector("webwriter-code-javascript")?.getAttribute("code")
+    const events = [...source.querySelectorAll("webwriter-timeline-event")].slice(0, 3)
+    const photo = source.querySelector("figure:has(img)")?.cloneNode(true) as HTMLElement | undefined
+    photo?.querySelector("figcaption")?.remove()
+    const audio = source.querySelector("audio, video")
+    const slides = [...source.querySelectorAll("webwriter-slide")]
+    const menu = visual?.querySelector("#cafe-menu-title")
+    const reflection = source.querySelector("webwriter-geogebra") || lessonHeading ? source.querySelector("label[for]")?.textContent : null
+    return html`<div class=${outgoing ? "page outgoing" : "page"} lang=${source.documentElement.lang} aria-hidden=${outgoing ? "true" : nothing} ?inert=${outgoing} @animationend=${(event: AnimationEvent) => {
+      if(outgoing && event.target === event.currentTarget && this.outgoing === source) this.outgoing = null
+    }}>
+      <h2>${source.querySelector("h1")?.textContent}</h2>
+      <p class="intro">${intro?.textContent}</p>
+      ${slides.length ? html`<ol class="steps" aria-label=${t("Document steps")}>${slides.map((slide, index) => html`<li aria-current=${index === 0 ? "step" : nothing}>${index + 1}. ${slide.querySelector("h2, h3")?.textContent}</li>`)}</ol>` : nothing}
+      ${photo ? html`<div class="visual">${unsafeHTML(photo.outerHTML)}</div>` : visual ? html`<div class=${menu ? "visual menu" : "visual"}>${unsafeHTML(visual.outerHTML)}</div>` : nothing}
+      ${code ? html`<div class="code"><pre>${code}</pre><div class="code-label"><span>JavaScript</span><span>▶ ${t("Run")}</span></div></div>` : nothing}
+      ${events.length ? html`<div class="timeline">${events.map(event => html`<div class="event"><strong>${Number(event.getAttribute("date"))}</strong>${event.querySelector("webwriter-timeline-event-title")?.textContent}</div>`)}</div>` : nothing}
+      ${audio ? html`<div class="audio"><span aria-hidden="true">▶</span><span>${audio.getAttribute("aria-label") ?? t("Listen to the field recording")}</span></div>` : nothing}
+      ${lessonHeading && lessonText?.matches("p") ? html`<section class="lesson"><h3>${lessonHeading.textContent}</h3><p>${this.excerptText(lessonText)}</p></section>` : nothing}
+      ${reflection ? html`<p class="closing">${reflection}</p>` : nothing}
+    </div>`
+  }
+
+  private renderLayoutPage(source: Document, mode: DocumentLayoutMode, outgoing: boolean) {
+    const sections = [...source.querySelectorAll<HTMLElement>(".ww-example-section")]
+    const topics = sections.filter(section => mode === "slides" ? section.querySelector("h2") : !section.querySelector("h1"))
+    const shown = topics.slice(0, mode === "slides" ? 1 : 2)
+    return html`<div class=${`page ${mode}${outgoing ? " outgoing" : ""}`} lang=${source.documentElement.lang} aria-hidden=${outgoing ? "true" : nothing} ?inert=${outgoing} @animationend=${(event: AnimationEvent) => {
+      if(outgoing && event.target === event.currentTarget && this.outgoing === source) this.outgoing = null
+    }}>
+      <h2>${source.querySelector("h1")?.textContent}</h2>
+      <div class="layout-topics">${shown.map(section => {
+        const heading = mode === "board" ? section.parentElement?.querySelector(":scope > h2") : section.querySelector("h2")
+        const paragraph = section.querySelector("p, li")
+        const visual = section.querySelector("figure:has(svg), figure:has(img), table, blockquote")
+        const table = visual?.matches("table") ? visual : null
+        const sample = table?.querySelector("tbody tr:last-child")
+        return html`<section class="layout-topic"><h3>${heading?.textContent}</h3>
+          ${paragraph ? html`<p>${this.briefText(paragraph, mode === "board" ? 18 : 24)}</p>` : nothing}
+          ${table ? html`<div class="table-summary"><strong>${table.querySelector("caption")?.textContent}</strong>${sample ? [...sample.children].map(cell => cell.textContent).join(" · ") : nothing}</div>`
+            : visual ? html`<div class="visual">${unsafeHTML(visual.outerHTML)}</div>` : nothing}
+        </section>`
+      })}</div>
+      ${mode === "slides" ? html`<div class="slide-pages" aria-label=${t("Document steps")}>${sections.map((section, index) => html`<span aria-current=${section === shown[0] ? "step" : nothing}>${index + 1}</span>`)}</div>` : nothing}
+    </div>`
+  }
+}
+
+export class ExampleShowcase extends LitElement {
+  static properties = {selected: {state: true}}
+  static styles = [cardOverlayStyles, unsafeCSS(showcaseStyles), css`
+    :host {display: contents; min-inline-size: 0}
+  `]
+  private selected: ExampleDocument = exampleDocuments[0]
+  private languageController = new SiteLanguageController(this)
+  private cycleTimer?: ReturnType<typeof setInterval>
+
+  connectedCallback() { super.connectedCallback(); this.startCycling() }
+  disconnectedCallback() { super.disconnectedCallback(); clearInterval(this.cycleTimer) }
+
+  private startCycling() {
+    clearInterval(this.cycleTimer)
+    this.cycleTimer = setInterval(() => {
+      if(this.renderRoot.querySelector<ExampleDialog>("example-dialog")?.shadowRoot?.querySelector("dialog[open]") || document.hidden || this.matches(":hover, :focus-within")
+        || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+      this.step(1, false)
+    }, 6000)
+  }
+
+  private step(direction: 1 | -1, restart = true) {
+    const index = exampleDocuments.indexOf(this.selected)
+    this.selected = exampleDocuments[(index + direction + exampleDocuments.length) % exampleDocuments.length]
+    if(restart) this.startCycling()
+  }
+
+  private openExample(event: MouseEvent) {
+    if(event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    void this.renderRoot.querySelector<ExampleDialog>("example-dialog")!.open(this.selected.id)
+  }
+
+  render() {
+    return html`<div class="example-showcase">
+      <div class="example-stage">
+        <div class="example-frame">
+          <a class="document example-card" data-card-overlay=${t("Show example")} href=${`?example=${this.selected.id}`} @click=${this.openExample} aria-label=${t("Try {title}", {title: t(this.selected.title)})}><example-preview example-id=${this.selected.id}></example-preview></a>
+          <button class="step previous" aria-label=${t("Previous example")} @click=${() => this.step(-1)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button class="step next" aria-label=${t("Next example")} @click=${() => this.step(1)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+        </div>
+        <div class="caption"><a href="/examples/">${t("Explore the examples →")}</a></div>
+        <example-dialog></example-dialog>
+      </div>
+      <div class="subjects" role="group" aria-label=${t("Example subject")}>${exampleDocuments.map(example => html`<button aria-pressed=${String(example.id === this.selected.id)} @click=${() => {this.selected = example; this.startCycling()}}>${t(example.subject)}</button>`)}</div>
+    </div>`
+  }
+}
+
+if(!customElements.get("example-preview")) customElements.define("example-preview", ExamplePreview)
+if(!customElements.get("example-showcase")) customElements.define("example-showcase", ExampleShowcase)

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
+import type {XmlElement, XmlText} from "yjs"
 import {excludedMarkNames, markNames, normalizeEditingContent, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
 import {$} from "../utility"
 
@@ -894,6 +895,27 @@ describe("link keyboard edits", () => {
     expect(document.getSelection()?.anchorNode).toBe(child.firstChild)
   })
 
+  it("defaults new keyboard links to new tabs while preserving an explicit opt-out", () => {
+    const paragraph = setContent("<p>New link</p>")
+    $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 8)
+    feature.addMark("a")
+    feature.editLink({identity: currentIdentity(), href: "https://example.test", attributes: {}})
+    const link = paragraph.querySelector("a")!
+    expect(link.getAttribute("target")).toBe("_blank")
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer")
+    feature.editLink({identity: currentIdentity(), href: "https://example.test/next", attributes: {target: null}})
+    expect(link.hasAttribute("target")).toBe(false)
+  })
+
+  it("normalizes link commands without using the document's base URL", () => {
+    const paragraph = setContent('<p><a href="">Link</a></p>')
+    $.move(paragraph.querySelector("a")!.firstChild!, 2)
+    feature.editLink({identity: currentIdentity(), href: "example.test:8443/path", attributes: {}})
+    expect(paragraph.querySelector("a")!.getAttribute("href")).toBe("https://example.test:8443/path")
+    feature.editLink({identity: currentIdentity(), href: "http://example.test/path", attributes: {}})
+    expect(paragraph.querySelector("a")!.getAttribute("href")).toBe("http://example.test/path")
+  })
+
   it("rejects a stale link after direct replacement or metadata changes", () => {
     const paragraph = setContent('<p><a href="#intro">Text</a></p><h2 id="intro">Introduction</h2>')
     const anchor = paragraph.querySelector("a")!
@@ -968,5 +990,294 @@ describe("link keyboard edits", () => {
     feature.editLink({identity, href: "https://example.test", attributes: {target: "_blank"}})
     expect(feature.getAttributeState().a?.href).toBe("https://example.test")
     expect(cleanHTML()).toBe("<p>Text</p>")
+  })
+})
+
+
+describe("automatic links in the edited text block", () => {
+  it("preserves explicitly written HTTP links and their visible text", async () => {
+    const block = setContent("<p>http://example.test/path</p>")
+    $.move(block.firstChild!, block.textContent!.length)
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await settle()
+    expect(block.querySelector("a")!.getAttribute("href")).toBe("http://example.test/path")
+    expect(block.textContent).toBe("http://example.test/path")
+  })
+
+  const settle = async () => { await new Promise(resolve => setTimeout(resolve, 0)) }
+
+  it("links bare domains with paths, queries, ports and surrounding punctuation", async () => {
+    const block = setContent('<p>Visit example.com, (docs.example.co.uk/a_(b)?q=yes#part); example.org:8443/path! EXAMPLE.NET.</p><p>untouched.com</p>')
+    const text = block.firstChild as Text
+    $.move(text, text.length)
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await settle()
+    expect(Array.from(block.querySelectorAll("a"), link => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["example.com", "https://example.com"],
+      ["docs.example.co.uk/a_(b)?q=yes#part", "https://docs.example.co.uk/a_(b)?q=yes#part"],
+      ["example.org:8443/path", "https://example.org:8443/path"],
+      ["EXAMPLE.NET", "https://EXAMPLE.NET"],
+    ])
+    expect(document.body.lastElementChild!.querySelector("a")).toBeNull()
+    expect($.anchor!.textContent).toBe(".")
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it("does not reset a live caret that remains correct when wrapping a link", async () => {
+    const block = setContent("<p>example.com/path</p>")
+    const text = block.firstChild as Text
+    $.move(text, text.length)
+    const selection = document.getSelection()!
+    const restore = vi.spyOn(selection, "setBaseAndExtent")
+
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await settle()
+
+    expect(block.querySelector("a")?.textContent).toBe("example.com/path")
+    expect($.anchor).toBe(block.querySelector("a")!.firstChild)
+    expect($.anchorOffset).toBe(text.length)
+    expect(restore).not.toHaveBeenCalled()
+  })
+
+  it("restores backward selection endpoints when unwrapping changes their text points", async () => {
+    const block = setContent("<p>example.com</p>")
+    $.move(block.firstChild!, block.firstChild!.textContent!.length)
+    await settle()
+    const link = block.querySelector("a")!
+    const text = link.firstChild as Text
+    const selection = document.getSelection()!
+    selection.setBaseAndExtent(block, 1, text, 3)
+    const restore = vi.spyOn(selection, "setBaseAndExtent")
+
+    text.data = "plain prose"
+    await settle()
+
+    expect(block.querySelector("a")).toBeNull()
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(text.length)
+    expect(selection.focusNode).toBe(text)
+    expect(selection.focusOffset).toBe(3)
+    expect($.isBackwards).toBe(true)
+    expect(restore).toHaveBeenCalledOnce()
+  })
+
+  it("links complete email addresses with mailto while leaving surrounding punctuation intact", async () => {
+    const block = setContent('<p>Email reader@example.com, (First.Last+tag@sub.example.co.uk); support@example.org.</p><p>untouched@example.com</p>')
+    const text = block.firstChild as Text
+    $.move(text, text.length)
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await settle()
+    expect(Array.from(block.querySelectorAll("a"), link => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["reader@example.com", "mailto:reader@example.com"],
+      ["First.Last+tag@sub.example.co.uk", "mailto:First.Last+tag@sub.example.co.uk"],
+      ["support@example.org", "mailto:support@example.org"],
+    ])
+    expect(document.body.lastElementChild!.querySelector("a")).toBeNull()
+    expect($.anchor!.textContent).toBe(".")
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it("recognizes and updates emails across formatting without changing authored links or excluded content", async () => {
+    const block = setContent('<p><b>first.last+tag</b><em>@example.com</em><!--keep--> <a href="mailto:manual@example.com">authored@example.com</a> <code>code@example.com</code> <test-widget>widget@example.com</test-widget> <span contenteditable="false">readonly@example.com</span></p>')
+    const bold = block.querySelector("b")!, emphasis = block.querySelector("em")!, comment = emphasis.nextSibling!, manual = block.querySelector("a")!
+    $.move(emphasis.firstChild!, 12)
+    await settle()
+    expect(Array.from(bold.parentElement!.querySelectorAll("b a, em a"), link => link.getAttribute("href"))).toEqual(["mailto:first.last+tag@example.com", "mailto:first.last+tag@example.com"])
+    expect(block.querySelectorAll("a")).toHaveLength(3)
+    expect(block.querySelector("b")).toBe(bold)
+    expect(emphasis.nextSibling).toBe(comment)
+    expect(manual.getAttribute("href")).toBe("mailto:manual@example.com")
+    const text = bold.querySelector("a")!.firstChild as Text
+    text.data = "updated"
+    $.move(text, text.length)
+    await settle()
+    expect(Array.from(block.querySelectorAll("b a, em a"), link => link.getAttribute("href"))).toEqual(["mailto:updated@example.com", "mailto:updated@example.com"])
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(7)
+  })
+
+  it("encodes email URI delimiters and keeps emails inside web URLs as web links", async () => {
+    const block = setContent('<p>ask?me@example.com tag#name@example.com https://example.com/users/reader@example.com</p>')
+    $.move(block.firstChild!, block.textContent!.length)
+    await settle()
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual([
+      "mailto:ask%3Fme@example.com", "mailto:tag%23name@example.com", "https://example.com/users/reader@example.com",
+    ])
+    expect(block.textContent).toBe("ask?me@example.com tag#name@example.com https://example.com/users/reader@example.com")
+  })
+
+  it("does not link malformed emails, numeric versions, invalid labels or URL/path suffixes", async () => {
+    const block = setContent('<p>bad..email@example.com @example.com reader@@example.com reader@bad-.example.com reader@example.com123 1.2.3 example.com123 bad-.example.com _example.com ftp://example.com /folder/example.com example.com:99999 example.com:123456</p>')
+    block.append(document.createTextNode(` ${"+".repeat(65)}@example.com`))
+    $.move(block.lastChild!, block.lastChild!.textContent!.length)
+    await settle()
+    expect(block.querySelector("a")).toBeNull()
+  })
+
+  it("recognizes bare domains across inline formatting and updates their generated links", async () => {
+    const block = setContent('<p><b>example</b><em>.com</em><!--keep--></p>')
+    const bold = block.querySelector("b")!, emphasis = block.querySelector("em")!, comment = block.lastChild!
+    $.move(emphasis.firstChild!, 4)
+    await settle()
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.com", "https://example.com"])
+    expect(block.querySelector("b")).toBe(bold)
+    expect(block.querySelector("em")).toBe(emphasis)
+    expect(block.lastChild).toBe(comment)
+    const text = emphasis.querySelector("a")!.firstChild as Text
+    text.data += "/path"
+    $.move(text, text.length)
+    await settle()
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.com/path", "https://example.com/path"])
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(text.length)
+  })
+
+  it("links URLs after native input, trims punctuation and scans only the edited block", async () => {
+    const block = setContent('<p>Visit https://example.com/a_(b), www.example.org.</p><p>https://untouched.test</p>')
+    const text = block.firstChild as Text
+    $.move(text, text.length)
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await settle()
+    expect(Array.from(block.querySelectorAll("a"), link => [link.textContent, link.getAttribute("href")])).toEqual([
+      ["https://example.com/a_(b)", "https://example.com/a_(b)"], ["www.example.org", "https://www.example.org"],
+    ])
+    expect(Array.from(block.querySelectorAll("a"), link => [link.getAttribute("target"), link.getAttribute("rel")])).toEqual([["_blank", "noopener noreferrer"], ["_blank", "noopener noreferrer"]])
+    expect(document.body.lastElementChild!.querySelector("a")).toBeNull()
+    expect(block.textContent).toBe("Visit https://example.com/a_(b), www.example.org.")
+    expect($.anchorOffset).toBe(1)
+    expect($.anchor!.textContent).toBe(".")
+    expect(cleanHTML()).not.toContain("◆")
+  })
+
+  it("handles direct DOM changes and URLs across formatting without rebuilding wrappers", async () => {
+    const block = setContent('<p><b class="keep">https://exa</b><span title="keep">mple.test</span><!--keep--></p>')
+    const bold = block.querySelector("b")!, span = block.querySelector("span")!, comment = block.lastChild!
+    $.selectRange(span.firstChild!, 5, bold.firstChild!, 3)
+    await settle()
+    expect(block.querySelectorAll("a")).toHaveLength(2)
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.test", "https://example.test"])
+    expect(block.querySelector("b")).toBe(bold)
+    expect(block.querySelector("span")).toBe(span)
+    expect(block.lastChild).toBe(comment)
+    expect($.anchorOffset).toBe(5)
+    expect($.focusOffset).toBe(3)
+    const linkText = span.querySelector("a")!.firstChild as Text
+    linkText.data += "/new"
+    $.move(linkText, linkText.length)
+    await settle()
+    expect(Array.from(block.querySelectorAll("a"), link => link.getAttribute("href"))).toEqual(["https://example.test/new", "https://example.test/new"])
+    const next = document.createTextNode(" https://second.test")
+    span.after(next)
+    await settle()
+    expect(block.querySelectorAll("a")).toHaveLength(3)
+  })
+
+  it("updates generated links while leaving authored links and excluded content intact", async () => {
+    const block = setContent('<p>https://example.test <a href="https://manual.test">https://label.test</a><code>https://code.test</code><test-widget>https://widget.test</test-widget><span contenteditable="false">https://readonly.test</span></p>')
+    $.move(block.firstChild!, 10)
+    await settle()
+    const generated = block.querySelector("a")!, manual = block.querySelectorAll("a")[1]
+    const text = generated.firstChild as Text
+    text.data += "/new"
+    $.move(text, text.length)
+    await settle()
+    expect(block.querySelector("a")!.getAttribute("href")).toBe("https://example.test/new")
+    expect(block.querySelectorAll("a")).toHaveLength(2)
+    expect(manual.getAttribute("href")).toBe("https://manual.test")
+    expect(block.querySelector("code a, test-widget a, [contenteditable=false] a")).toBeNull()
+    const edited = block.querySelector("a")!.firstChild as Text
+    edited.data = "ordinary text"
+    $.move(edited, edited.length)
+    await settle()
+    expect(block.querySelectorAll("a")).toHaveLength(1)
+    expect(block.querySelector("a")).toBe(manual)
+  })
+
+  it("waits for composition and skips disconnected or concurrently changed selection blocks", async () => {
+    const block = setContent('<p>https://example.test</p><p>Keep</p>')
+    $.move(block.firstChild!, 5)
+    block.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}))
+    await settle()
+    expect(block.querySelector("a")).toBeNull()
+    block.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true}))
+    await settle()
+    expect(block.querySelector("a")).not.toBeNull()
+    block.firstChild!.textContent = "https://changed.test"
+    $.move(document.body.lastElementChild!.firstChild!, 0)
+    await settle()
+    expect(block.querySelector("a")!.getAttribute("href")).toBe("https://example.test")
+    block.remove()
+    await settle()
+    expect(block.querySelectorAll("a")).toHaveLength(1)
+  })
+
+  it("recognizes remote text changes only in the currently edited block", async () => {
+    const block = setContent("<p>Edited</p><p>Other</p>")
+    $.move(block.firstChild!, 0)
+    await settle()
+    editor.doc.syncFromDOM()
+    const current = (editor.doc.body.get(0) as XmlElement).get(0) as XmlText
+    const other = (editor.doc.body.get(1) as XmlElement).get(0) as XmlText
+    editor.doc.doc.transact(() => {
+      current.insert(0, "https://remote.test ")
+      other.insert(0, "https://unrelated.test ")
+    }, "remote-test")
+    await settle()
+    expect(document.body.firstElementChild!.querySelector("a")!.getAttribute("href")).toBe("https://remote.test")
+    expect(document.body.lastElementChild!.querySelector("a")).toBeNull()
+  })
+
+  it("does not reapply a link when undo restores the same plain URL text", async () => {
+    const block = setContent("<p>https://example.test</p>")
+    $.move(block.firstChild!, 10)
+    block.dispatchEvent(new CompositionEvent("compositionstart", {bubbles: true}))
+    await settle()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    block.dispatchEvent(new CompositionEvent("compositionend", {bubbles: true}))
+    await settle()
+    editor.doc.syncFromDOM()
+    expect(block.querySelector("a")).not.toBeNull()
+    editor.doc.undo()
+    await settle()
+    expect(document.querySelector("p")!.textContent).toBe("https://example.test")
+    expect(document.querySelector("a")).toBeNull()
+    editor.doc.redo()
+    await settle()
+    expect(document.querySelector("a")).not.toBeNull()
+  })
+
+  it("leaves unrelated changes alone and performs one scan for a batch of text mutations", async () => {
+    const block = setContent("<p>Edited</p><p>Other</p>")
+    $.move(block.firstChild!, 0)
+    await settle()
+    const scan = vi.spyOn(feature as any, "applyAutomaticLinks")
+    document.body.lastElementChild!.firstChild!.textContent = "https://unrelated.test"
+    await settle()
+    expect(scan).not.toHaveBeenCalled()
+    block.firstChild!.textContent = "https://first.test"
+    block.firstChild!.textContent = "https://last.test"
+    await settle()
+    expect(scan).toHaveBeenCalledTimes(1)
+    expect(block.querySelectorAll("a")).toHaveLength(1)
+  })
+
+  it("supports collaboration undo and redo without immediately relinking undone text", async () => {
+    const block = setContent("<p>Before</p>")
+    $.move(block.firstChild!, 0)
+    await settle()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    block.firstChild!.textContent = "https://example.test"
+    $.move(block.firstChild!, 20)
+    await settle()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).toContain('<a href="https://example.test" rel="noopener noreferrer" target="_blank">https://example.test</a>')
+    editor.doc.undo()
+    await settle()
+    expect(document.querySelector("a")).toBeNull()
+    editor.doc.redo()
+    await settle()
+    expect(document.querySelector("a")!.getAttribute("href")).toBe("https://example.test")
   })
 })

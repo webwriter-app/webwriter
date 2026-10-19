@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DeveloperConsole} from "./developer-console"
+import {emptyVersionHistoryState} from "../editor-bridge"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -13,6 +14,72 @@ async function mount() {
 }
 
 describe("Developer console", () => {
+  it("shows versions beside responsive changes and retains the active version", async () => {
+    const console = new DeveloperConsole()
+    console.review = true
+    const user = {clientId: 7, name: "Ada", initials: "AD", color: "#64748b"}
+    const checkpoint = (id: string, timestamp: number, modified = 1) => ({
+      id, timestamp, label: "Edited by Ada", user, changes: {added: 0, removed: 0, modified}, commentCount: 0,
+    })
+    const initial = {...checkpoint("initial", 0, 0), label: "Document created"}
+    const version = {...initial, id: "unsaved", label: "Unsaved changes", checkpointIds: [initial.id], isUnsaved: true, isCurrent: true}
+    console.historyState = {...emptyVersionHistoryState(), checkpoints: [initial], versions: [version], currentCheckpointId: initial.id}
+    document.body.append(console)
+    await console.updateComplete
+    const root = console.shadowRoot!
+    expect(root.querySelector(".version-sidebar h2")).toBeNull()
+    expect(root.querySelector("[role=tablist], .package-sidebar, .documentation-link, .auto-reload, .console-pin")).toBeNull()
+    expect(root.querySelectorAll(".history-version-card")).toHaveLength(1)
+    expect(root.querySelector(".history-version-changes")).toBeNull()
+    expect(root.querySelector(".version-sidebar")).not.toBeNull()
+    expect(root.querySelector(".version-change-list")).toBeNull()
+
+    const first = {...checkpoint("first", 1), changes: {added: 2, removed: 1, modified: 3}}
+    const undo = checkpoint("undo", 2, 0)
+    const latest = checkpoint("latest", 3)
+    console.historyState = {...console.historyState, checkpoints: [latest, undo, first, initial],
+      versions: [{...version, checkpointIds: [latest.id, "missing", undo.id, first.id, initial.id]}], currentCheckpointId: latest.id}
+    await console.updateComplete
+    expect(Array.from(root.querySelectorAll<HTMLElement>(".history-change-card")).map(card => card.dataset.checkpointId)).toEqual(["undo", "first"])
+    expect(root.querySelector("details")).toBeNull()
+    const count = root.querySelector(".history-change-card .history-checkpoint-counts")!
+    expect(count.getAttribute("aria-label")).toBe("0 added, 0 removed, 0 changed")
+    expect(root.querySelector(".history-change-card .history-change-count")).toBeNull()
+    expect(root.querySelector(".history-version-card .history-change-count")).not.toBeNull()
+    expect(root.querySelector(".history-change-card .history-card-restore-button")!.textContent!.trim()).toBe("")
+    console.historyState = {...console.historyState, versions: [
+      {...version, id: "older", timestamp: 0, checkpointIds: [undo.id, first.id]},
+      {...version, timestamp: 3, checkpointIds: [latest.id, undo.id, first.id]},
+    ]}
+    await console.updateComplete
+    expect(Array.from(root.querySelectorAll<HTMLElement>(".history-version-card")).map(card => card.dataset.checkpointId)).toEqual(["unsaved", "older"])
+    root.querySelector<HTMLButtonElement>('.version-sidebar .history-checkpoint[data-checkpoint-id="older"]')!.click()
+    await console.updateComplete
+    expect(root.querySelector(".version-list li[data-active] .history-version-card")?.getAttribute("data-checkpoint-id")).toBe("older")
+    expect(Array.from(root.querySelectorAll<HTMLElement>(".history-change-card")).map(card => card.dataset.checkpointId)).toEqual(["first"])
+    expect(root.querySelector(".history-change-count")?.getAttribute("aria-label")).toBeDefined()
+    const counts = root.querySelector(".history-change-card .history-checkpoint-counts")!
+    expect(counts.querySelector('[data-kind="added"]')!.textContent).toBe("+2")
+    expect(counts.querySelector('[data-kind="removed"]')!.textContent).toBe("−1")
+    expect(counts.querySelector('[data-kind="modified"]')!.textContent).toBe("~3")
+    const selected = vi.fn(), reverted = vi.fn(), cleared = vi.fn()
+    console.addEventListener("history-checkpoint-select", selected)
+    console.addEventListener("history-revert", reverted)
+    console.addEventListener("history-preview-clear", cleared)
+    root.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="first"]')!.click()
+    root.querySelector<HTMLButtonElement>('.history-card-restore-button[data-checkpoint-id="first"]')!.click()
+    console.historyState = {...console.historyState, preview: {checkpointId: "first", html: "<p>preview</p>"} as never}
+    await console.updateComplete
+    root.querySelector<HTMLButtonElement>(".history-preview-clear")!.click()
+    expect(selected).toHaveBeenCalledWith(expect.objectContaining({detail: {checkpointId: "first"}}))
+    expect(reverted).toHaveBeenCalledWith(expect.objectContaining({detail: {checkpointId: "first"}}))
+    expect(cleared).toHaveBeenCalledTimes(1)
+    expect(root.querySelector(".version-list li[data-active] .history-version-card")?.getAttribute("data-checkpoint-id")).toBe("older")
+    console.historyState = {...console.historyState, versions: console.historyState.versions.filter(version => version.id !== "older")}
+    await console.updateComplete
+    expect(root.querySelector(".version-list li[data-active] .history-version-card")?.getAttribute("data-checkpoint-id")).toBe("unsaved")
+  })
+
   it("keeps one full-height package list beside the tab bar and greys it out on HTML", async () => {
     const console = new DeveloperConsole()
     document.body.append(console)
@@ -49,6 +116,17 @@ describe("Developer console", () => {
     expect(console.tab).toBe("Packages")
     expect(console.shadowRoot!.querySelector('#console-tab-Packages[aria-selected="true"]')).not.toBeNull()
     expect(console.shadowRoot!.querySelector(".developer-console-controls")).toBeNull()
+  })
+
+  it("links to documentation in a new tab beside auto-reload", async () => {
+    const console = await mount()
+    const link = console.shadowRoot!.querySelector<HTMLAnchorElement>("a.documentation-link")!
+    expect(link.textContent).toBe("Documentation ↗")
+    expect(link.getAttribute("href")).toBe("/docs/")
+    expect(link.target).toBe("_blank")
+    expect(link.relList.contains("noopener")).toBe(true)
+    expect(link.relList.contains("noreferrer")).toBe(true)
+    expect(link.nextElementSibling?.classList.contains("auto-reload")).toBe(true)
   })
 
   it("toggles global auto-reload with a crossed-out icon when disabled", async () => {
@@ -114,6 +192,81 @@ describe("Developer console", () => {
     await console.updateComplete
     expect(console.tab).toBe("HTML")
     expect(tabs.map(tab => tab.tabIndex)).toEqual([-1, -1, -1, 0])
+  })
+
+  it("keeps inactive panels lazy, preserves metadata drafts, and refreshes cached test content", async () => {
+    const console = await mount()
+    const pkg = {
+      name: "@local/demo", version: "1.0.0", label: "Demo", description: "", authors: [], keywords: [], links: {},
+      members: [], scripts: [], styles: [], manifest: {name: "@local/demo", version: "1.0.0", exports: {}},
+      tests: [{name: "basics", scriptUrl: "https://example.test/test.js"}],
+    }
+    console.localPackages = [pkg]
+    await console.updateComplete
+    const root = console.shadowRoot!
+    const renderTests = vi.spyOn(console as any, "renderLocalPackageTests")
+    expect(root.querySelector(".package-content, .test-content, .element-content")).toBeNull()
+    expect(renderTests).not.toHaveBeenCalled()
+
+    root.querySelector<HTMLButtonElement>("#console-tab-Packages")!.click()
+    await console.updateComplete
+    const nameInput = root.querySelector<HTMLInputElement>('#console-panel-Packages input[name="name"]')!
+    nameInput.value = "Draft package name"
+    nameInput.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+
+    root.querySelector<HTMLButtonElement>("#console-tab-Tests")!.click()
+    await console.updateComplete
+    expect(root.querySelector("#console-panel-Packages .package-content")).toBeNull()
+    expect(renderTests).toHaveBeenCalledTimes(1)
+    expect(root.querySelector('.develop-test[data-status="idle"]')).not.toBeNull()
+
+    root.querySelector<HTMLButtonElement>("#console-tab-Packages")!.click()
+    await console.updateComplete
+    expect(root.querySelector('#console-panel-Packages input[name="name"]')).toBe(nameInput)
+    expect(nameInput.value).toBe("Draft package name")
+
+    console.localPackageTestResults = {"@local/demo/basics": {status: "passed", tests: [{id: "works", path: ["works"], passed: true}]}}
+    await console.updateComplete
+    expect(renderTests).toHaveBeenCalledTimes(1)
+    root.querySelector<HTMLButtonElement>("#console-tab-Tests")!.click()
+    await console.updateComplete
+    expect(renderTests).toHaveBeenCalledTimes(2)
+    expect(root.querySelector('.develop-test[data-status="passed"]')).not.toBeNull()
+    expect(root.querySelector('.develop-test [role="status"]')?.textContent).toBe("1/1 passed")
+  })
+
+  it("keeps property values current while inactive and renders their latest state when reactivated", async () => {
+    const console = await mount()
+    const root = console.shadowRoot!
+    const pkg = {
+      name: "@local/demo", version: "1.0.0", label: "Demo", description: "", authors: [], keywords: [], links: {},
+      members: [], scripts: [], styles: [], tests: [{name: "basics", scriptUrl: "https://example.test/test.js"}],
+    }
+    const renderTests = vi.spyOn(console as any, "renderLocalPackageTests")
+    const observeColumns = vi.spyOn(console as any, "observePackageColumns")
+    const disconnect = vi.fn()
+    ;(console as any).columnObserver = {disconnect}
+    console.active = false
+    await console.updateComplete
+    expect(disconnect).toHaveBeenCalledTimes(1)
+
+    console.localPackages = [pkg]
+    console.tab = "Tests"
+    console.localPackageTestResults = {"@local/demo/basics": {status: "failed", tests: [{id: "fails", path: ["fails"], passed: false}]}}
+    await console.updateComplete
+    expect(console.tab).toBe("Tests")
+    expect(root.querySelector('#console-tab-HTML[aria-selected="true"]')).not.toBeNull()
+    expect(root.querySelector(".test-content")).toBeNull()
+    expect(renderTests).not.toHaveBeenCalled()
+    expect(observeColumns).not.toHaveBeenCalled()
+
+    console.active = true
+    await console.updateComplete
+    expect(observeColumns).toHaveBeenCalledTimes(1)
+    expect(root.querySelector('#console-tab-Tests[aria-selected="true"]')).not.toBeNull()
+    expect(renderTests).toHaveBeenCalledTimes(1)
+    expect(root.querySelector('.develop-test[data-status="failed"]')).not.toBeNull()
+    expect(root.querySelector('.develop-test .develop-check')?.textContent).toBe("fails")
   })
 
   it("keeps a fixed 300px height without a resize handle", async () => {

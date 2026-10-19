@@ -1,5 +1,9 @@
 import {LitElement, css, html, nothing} from "lit"
 import type {StyleMarkOption} from "../marks"
+import {anchorColorSubmenu, fixedPopupPosition} from "./popup-position"
+import {colorHex} from "../css-color"
+import {dropdownChevronStyles} from "./dropdown-chevron.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 export type RibbonComboboxChangeDetail = {
   name: string
@@ -23,6 +27,7 @@ export class RibbonCombobox extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       display: block;
       min-width: 0;
@@ -32,6 +37,7 @@ export class RibbonCombobox extends LitElement {
     }
 
     .combobox {
+      position: relative;
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -40,7 +46,7 @@ export class RibbonCombobox extends LitElement {
       width: 100%;
       height: 1.75rem;
       min-width: 0;
-      padding: 0.15rem 0.3rem 0.15rem 0.4rem;
+      padding: .15rem .2rem;
       border: 1px solid #c8d2df;
       border-radius: 0.3rem;
       color: inherit;
@@ -173,6 +179,9 @@ export class RibbonCombobox extends LitElement {
     :host([variant="color"]) .chevron {
       display: none;
     }
+    :host([variant="color"]) .dropdown-chevron {display: none;}
+
+    ${dropdownChevronStyles}
 
     :host([variant="color"]) .listbox {
       grid-template-columns: repeat(5, 1.75rem);
@@ -221,6 +230,31 @@ export class RibbonCombobox extends LitElement {
 
     .color-preview.background-color {
       background: var(--preview-color, transparent);
+    }
+
+    :host([variant="color"]) .option-custom-color {
+      display: flex;
+      grid-column: 1 / -1;
+      width: auto;
+    }
+
+    .custom-color-preview {
+      flex: 1;
+      height: 1.05rem;
+      border: 1px solid #9aa4b1;
+      border-radius: .15rem;
+      background: linear-gradient(90deg, #f33, #ff0, #3c3, #0cc, #36f, #c3f, #f33);
+    }
+
+    .custom-color-input {
+      position: fixed;
+      box-sizing: border-box;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      pointer-events: none;
     }
   `
 
@@ -276,18 +310,15 @@ export class RibbonCombobox extends LitElement {
     const trigger = this.getBoundingClientRect()
     const listbox = this.renderRoot.querySelector<HTMLElement>(".listbox")
     const listboxHeight = listbox?.getBoundingClientRect().height ?? 0
-    const margin = 8
     const width = this.variant === "color"? 0: Math.max(trigger.width, 144)
     const effectiveWidth = width || listbox?.getBoundingClientRect().width || 154
-    const left = Math.min(
-      Math.max(margin, trigger.left),
-      Math.max(margin, window.innerWidth - effectiveWidth - margin),
-    )
-    const below = trigger.bottom + 4
-    const top = below + listboxHeight <= window.innerHeight - margin
-      ? below
-      : Math.max(margin, trigger.top - listboxHeight - 4)
-    this.listboxPosition = {left, top, width}
+    this.listboxPosition = {
+      ...fixedPopupPosition(trigger, {width: effectiveWidth, height: listboxHeight}, {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }),
+      width,
+    }
     this.requestUpdate()
   }
 
@@ -297,6 +328,7 @@ export class RibbonCombobox extends LitElement {
   }
 
   private select(option: StyleMarkOption) {
+    if(this.disabled) return
     if(this.multiple) {
       const selected = this.selectedValues()
       if(selected.length === 1 && selected[0] === option.value) return
@@ -320,6 +352,18 @@ export class RibbonCombobox extends LitElement {
       bubbles: true,
       composed: true,
     }))
+  }
+
+  private pickCustomColor() {
+    if(this.disabled) return
+    const input = this.renderRoot.querySelector<HTMLInputElement>(".custom-color-input")!
+    anchorColorSubmenu(input, this.renderRoot.querySelector<HTMLElement>(".listbox")!,
+      this.renderRoot.querySelector<HTMLElement>(".option-custom-color")!)
+    this.dispatchEvent(new CustomEvent("ribbon-input-pointerdown", {
+      detail: {input}, bubbles: true, composed: true,
+    }))
+    if(typeof input.showPicker === "function") input.showPicker()
+    else input.click()
   }
 
   private handleTriggerKeydown(event: KeyboardEvent) {
@@ -416,7 +460,7 @@ export class RibbonCombobox extends LitElement {
             : activeLabel}
           ${selectionCount? html`<small class="selection-count">+${selectionCount}</small>`: ""}
         </span>
-        <span class="chevron" aria-hidden="true"></span>
+        <span class="dropdown-chevron" aria-hidden="true"><span class="chevron"></span></span>
       </button>
       ${this.open? html`
         <div
@@ -447,8 +491,18 @@ export class RibbonCombobox extends LitElement {
                 : option.label}
             </button>
           `)}
+          ${this.variant === "color" ? html`<button class="option option-custom-color" type="button" role="option"
+            aria-label="Custom" title="Custom color"
+            aria-selected=${Boolean(this.value && !this.options.some(option => this.valuesEqual(option.value, this.value)))}
+            @click=${this.pickCustomColor} @keydown=${this.handleOptionKeydown}>
+            <span class="custom-color-preview" aria-hidden="true"></span>Custom…
+          </button>` : nothing}
         </div>
       `: ""}
+      ${this.variant === "color" ? html`<input class="custom-color-input" type="color" tabindex="-1"
+        data-ribbon-input-persistent aria-label=${`Custom ${this.label.toLowerCase()}`} ?disabled=${this.disabled}
+        .value=${colorHex(this.value)}
+        @change=${(event: Event) => this.select({label: "Custom", value: (event.currentTarget as HTMLInputElement).value})}>` : nothing}
     `
   }
 }

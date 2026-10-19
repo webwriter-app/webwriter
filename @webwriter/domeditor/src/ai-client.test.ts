@@ -72,7 +72,7 @@ describe("OpenAI-compatible AI client", () => {
     const onProgress = vi.fn()
     await completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], readOnly: true,
       fetch: vi.fn().mockResolvedValue(response({choices: [{message: {content: "Done"}}]})), toolHandler: vi.fn().mockResolvedValue({}), onProgress})
-    expect(onProgress.mock.calls.map(([message]) => message)).toEqual(["Using read editor capabilities…", "Waiting for test (step 1 of 8)…"])
+    expect(onProgress.mock.calls.map(([message]) => message)).toEqual(["Using read editor capabilities…", "Waiting for test (step 1 of 16)…"])
   })
 
   it("advertises the original focused tools and prefers available widgets", async () => {
@@ -371,7 +371,69 @@ describe("OpenAI-compatible AI client", () => {
       provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], toolHandler, fetch,
     })).rejects.toThrow("could not queue")
     expect(toolHandler).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({name: "read_editor_capabilities"}), expect.anything())
-    expect(fetch).toHaveBeenCalledTimes(8)
+    expect(fetch).toHaveBeenCalledTimes(3)
+  })
+
+  it("explains how to recover from a target ID copied from an earlier read or turn", async () => {
+    const tool = (name: string, args: unknown) => response({choices: [{message: {tool_calls: [{id: "call", function: {name, arguments: JSON.stringify(args)}}]}}]})
+    const proposal = (target: string) => ({summary: "Add a factorial function.", operations: [{type: "insert_html", target, position: "append", html: "<p>Factorial</p>"}]})
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(tool("queue_document_change", proposal("old-target")))
+      .mockImplementationOnce(async (_url, init) => {
+        const failure = JSON.parse(JSON.parse(init.body).messages.at(-1).content)
+        expect(failure.message).toContain('Target "old-target"')
+        expect(failure.message).toContain("NEW returned target ID")
+        expect(failure.message).toContain("omit target to read BODY")
+        return tool("read_current_document", {})
+      })
+      .mockResolvedValueOnce(tool("queue_document_change", proposal("fresh-body")))
+    const toolHandler = vi.fn(async call => call.name === "queue_document_change" ? {status: "queued"} : {target: "fresh-body", html: "", truncated: false})
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler}))
+      .resolves.toBe("Queued: Add a factorial function.")
+    expect(toolHandler.mock.calls.filter(([call]) => call.name === "queue_document_change")).toHaveLength(1)
+  })
+
+  it("allows progressing documentation reads beyond eight rounds", async () => {
+    let round = 0
+    const fetch = vi.fn(async () => {
+      const name = round === 0 ? "read_current_document" : round < 10 ? "read_widget_documentation" : "queue_document_change"
+      const args = round === 0 ? {} : round < 10 ? {packageName: "widget", version: "1.0.0", startLine: round * 100, lineCount: 100}
+        : {summary: "Add a factorial example.", operations: [{type: "insert_html", target: "read-body", position: "append", html: "<p>Factorial</p>"}]}
+      round++
+      return response({choices: [{message: {tool_calls: [{id: `call-${round}`, function: {name, arguments: JSON.stringify(args)}}]}}]})
+    })
+    const toolHandler = vi.fn(async call => call.name === "queue_document_change" ? {status: "queued"} : {target: "read-body", html: "", truncated: false})
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler}))
+      .resolves.toBe("Queued: Add a factorial example.")
+    expect(fetch).toHaveBeenCalledTimes(11)
+  })
+
+  it.each(["outline", "truncated"])("requires a complete fresh read after a %s read", async kind => {
+    const tool = (name: string, args: unknown) => response({choices: [{message: {tool_calls: [{id: "call", function: {name, arguments: JSON.stringify(args)}}]}}]})
+    const proposal = (target: string) => ({summary: "Add a paragraph.", operations: [{type: "insert_html", target, position: "append", html: "<p>New</p>"}]})
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(tool("read_current_document", kind === "outline" ? {mode: "outline"} : {}))
+      .mockResolvedValueOnce(tool("queue_document_change", proposal("incomplete-target")))
+      .mockImplementationOnce(async (_url, init) => {
+        expect(JSON.parse(JSON.parse(init.body).messages.at(-1).content).message).toContain("has not been completely read")
+        return tool("read_current_document", {target: "incomplete-target", mode: "html"})
+      })
+      .mockResolvedValueOnce(tool("queue_document_change", proposal("fresh-target")))
+    let reads = 0
+    const toolHandler = vi.fn(async call => call.name === "queue_document_change" ? {status: "queued"}
+      : call.name === "read_current_document" ? {target: ++reads === 1 ? "incomplete-target" : "fresh-target", html: "", truncated: reads === 1 && kind === "truncated"} : {})
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler}))
+      .resolves.toBe("Queued: Add a paragraph.")
+    expect(toolHandler.mock.calls.filter(([call]) => call.name === "queue_document_change")).toHaveLength(1)
+  })
+
+  it("stops repeated unread proposals early with the underlying error", async () => {
+    const fetch = vi.fn(async () => response({choices: [{message: {tool_calls: [{id: crypto.randomUUID(), function: {
+      name: "queue_document_change", arguments: JSON.stringify({summary: "Add a factorial function.", operations: [{type: "insert_html", target: "body", position: "append", html: "<p>Factorial</p>"}]}),
+    }}]}}]}))
+    await expect(completeAIConversation({provider: createAIProvider("ollama"), model: "test", effort: "low", messages: [], fetch, toolHandler: vi.fn()}))
+      .rejects.toThrow(/same unsuccessful attempt three times.*Target "body"/)
+    expect(fetch).toHaveBeenCalledTimes(3)
   })
 
   it("validates concise declarative proposal summaries and explicit read-only requests", () => {

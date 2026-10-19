@@ -1,6 +1,42 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
+import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
+import type {WebWriterPackage} from "./packages"
+
+it("keeps encoding metadata before the adapter and installs it before widget modules", () => {
+  const root = new DOMParser().parseFromString('<html><head><meta charset="utf-8"><title>Grüße</title><script type="module" src="https://example.test/widget.js"></script></head><body><demo-widget></demo-widget></body></html>', "text/html")
+  const pkg = {scripts: ["https://example.test/widget.js"], styles: [], members: [{kind: "widget", tagName: "demo-widget"}]} as unknown as WebWriterPackage
+  appendSerializedAssets(root, [pkg], {imports: {lit: "https://example.test/lit.js"}})
+  expect(root.head.firstElementChild?.getAttribute("charset")).toBe("utf-8")
+  const scripts = Array.from(root.head.querySelectorAll("script"))
+  expect(scripts[0].id).toBe("webwriter-scoped-registry")
+  expect(scripts[1].type).toBe("importmap")
+  expect(scripts[2].src).toBe("https://example.test/widget.js")
+  expect(root.documentElement.outerHTML.indexOf('charset="utf-8"')).toBeLessThan(1024)
+})
+
+it("includes aligned marker styling in standalone exports without changing the body", () => {
+  const root = new DOMParser().parseFromString('<ul style="--ww-list-marker-image: url(data:image/png;base64,AQID); list-style-image: var(--ww-list-marker-image)"><li>Item</li></ul>', "text/html")
+  const body = root.body.innerHTML
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-list-marker-styles")!.textContent).toContain("inset-block-start: calc((1lh - 1em) / 2)")
+  expect(root.body.innerHTML).toBe(body)
+  appendSerializedAssets(root, [])
+  expect(root.querySelectorAll("#webwriter-list-marker-styles")).toHaveLength(1)
+  root.querySelector("ul")!.removeAttribute("style")
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-list-marker-styles")).toBeNull()
+})
+
+it("passes the document language dictionary into the import-free document reader", () => {
+  const root = new DOMParser().parseFromString('<html lang="de-AT"><body><p>Text</p></body></html>', "text/html")
+  appendSerializedAssets(root, [])
+  const viewer = root.querySelector<HTMLScriptElement>("#webwriter-document-viewer")!
+  expect(viewer.textContent).toMatch(/mountDocumentReader\([\s\S]*?, null, \{/)
+  expect(viewer.textContent).toContain('"Document information and actions":"Dokumentinformationen und Aktionen"')
+  expect(viewer.textContent).toContain('"Print document":"Dokument drucken"')
+  expect(viewer.textContent).not.toContain('import {')
+})
 
 describe("serializeDoctype()", () => {
   it("omits a missing doctype", () => {
@@ -30,4 +66,18 @@ describe("restoreOriginalResourceURLs()", () => {
     expect(image.getAttribute("src")).toBe("/photo.png")
     expect(image.hasAttribute("data-webwriter-original-src")).toBe(false)
   })
+})
+
+
+it("includes one hotspot popover runtime in standalone exports", () => {
+  const root = new DOMParser().parseFromString('<img usemap="#plan"><map name="plan"><area href="#details" popovertarget="details"></map><div id="details" popover="auto"><strong>Content</strong></div>', "text/html")
+  const body = root.body.innerHTML
+  appendSerializedAssets(root, [])
+  appendSerializedAssets(root, [])
+  expect(root.querySelectorAll("#webwriter-image-map-popovers")).toHaveLength(1)
+  expect(root.querySelector("#webwriter-image-map-popovers")!.textContent).toContain('document.addEventListener("pointerover", handle)')
+  expect(root.body.innerHTML).toBe(body)
+  root.querySelector("area")!.removeAttribute("popovertarget")
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-image-map-popovers")).toBeNull()
 })

@@ -1,15 +1,21 @@
 import {css} from "lit"
 
-export const editingControlStyles = css`
+/** UI labels stay unselectable; native fields and editable content keep text selection. */
+export const editorInteractionStyles = css`
     :host {
       -webkit-user-select: none;
       user-select: none;
     }
 
-    input, textarea {
+    input, textarea, select,
+    [contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i] {
       -webkit-user-select: text;
       user-select: text;
     }
+`
+
+export const editingControlStyles = css`
+    ${editorInteractionStyles}
 
     .history-timeline {
       box-sizing: border-box;
@@ -135,6 +141,41 @@ export const editingControlStyles = css`
     .history-count[data-kind="removed"] { color: #b42336; }
     .history-count[data-kind="modified"] { color: #9a6700; }
     .history-count[data-kind="comments"] { margin-left: auto; color: #526b86; }
+
+    .comment-threads {display: flex; flex-direction: column; gap: .45rem; grid-column: 1 / -1; min-width: 0;}
+    .comment-heading-actions {display: flex; align-items: center; gap: .15rem;}
+    .comment-review-highlight {margin: 0 0 0 .25rem; accent-color: #1769aa;}
+    .comment-thread button:disabled {opacity: .5; cursor: default;}
+    .comment-message button svg {width: .85rem; height: .85rem; flex-shrink: 0;}
+    .comment-message button {display: inline-flex; align-items: center; gap: .2rem;}
+    .comment-delete {float: right; margin: 0 0 .3rem .3rem;}
+
+    .comment-thread {display: flex; flex-direction: column; gap: .35rem; min-width: 0; padding: .45rem; border: 1px solid #d8dee6; border-radius: .4rem; background: transparent;}
+    .comment-thread[data-active] {border-color: #3977c7; box-shadow: inset 0 0 0 1px rgb(57 119 199 / 10%);}
+    .comment-thread button {border: 0; border-radius: .25rem; padding: .28rem .4rem; color: #344054; background: #edf2f7; font: inherit; font-size: .62rem; cursor: pointer;}
+    .comment-thread button:hover {background: #dce8f5;}
+    .comment-thread .comment-icon-button {display: inline-grid; place-items: center; padding: .25rem; color: #667085; background: transparent;}
+    .comment-thread .comment-icon-button:hover {color: #3977c7; background: #dce8f5;}
+    .comment-thread .comment-icon-button:active {color: #1e4f87; background: #c6daf0;}
+    .comment-thread .comment-icon-button:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px;}
+    .comment-thread-empty[inert] {opacity: .55; background: #e0e5eb;}
+    .comment-thread-empty[inert] textarea {background: transparent;}
+    .comment-thread[data-thread-id] {cursor: pointer;}
+    .comment-thread[data-thread-id]:hover {border-color: #8caed8;}
+    .comment-thread[data-thread-id]:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px;}
+    .comment-message {min-width: 0; padding: .35rem; border-radius: .3rem; background: transparent;}
+    .comment-message-meta {display: flex; flex-direction: column; justify-content: space-between; gap: .3rem; color: #667085; font-size: .56rem;}
+    .comment-message-meta strong {overflow: hidden; color: #344054; text-overflow: ellipsis;}
+    .comment-message p {margin: .3rem 0; overflow-wrap: anywhere; color: #344054; font-size: .68rem; line-height: 1.35; white-space: pre-wrap;}
+    .comment-message-actions {clear: both; display: flex; justify-content: flex-end; gap: .25rem;}
+    .comment-thread textarea {box-sizing: border-box; width: 100%; min-height: 2.8rem; resize: vertical; border: 1px solid #c5ccd5; border-radius: .3rem; padding: .35rem; color: inherit; background: #fff; font: inherit; font-size: .66rem;}
+    .comment-reply {position: relative;}
+    .comment-reply textarea {display: block; field-sizing: content; min-height: 2rem; resize: none; padding-right: calc(18px + .7rem); line-height: 1.35;}
+    .comment-reply .comment-submit {box-sizing: border-box; position: absolute; right: .35rem; bottom: .35rem; display: grid; place-items: center; width: 18px; height: 18px; padding: 3px; border-radius: 50%; color: #fff; background: #3977c7;}
+    .comment-reply .comment-submit:hover {background: #1e4f87;}
+    .comment-reply .comment-submit:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px;}
+    .comment-reply .comment-submit:disabled {opacity: 1; color: #7d8998; background: #e0e5eb; cursor: default;}
+    .comment-submit svg {display: block; width: 100%; height: 100%;}
 
     .history-version-changes {font-size: .6rem; color: #526b86;}
     .history-version-changes summary {padding: .3rem; cursor: pointer;}
@@ -987,6 +1028,15 @@ export const editingControlStyles = css`
       min-width: 0;
     }
 
+    .media-primary-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .4rem .75rem;
+      width: 100%;
+    }
+
+    .media-toolbox-controls.media-primary-options {display: grid;}
+
     .media-toolbox-controls .media-attribute {
       box-sizing: border-box;
       display: flex;
@@ -997,6 +1047,12 @@ export const editingControlStyles = css`
       font-size: 0.56rem;
       line-height: 0.7rem;
     }
+
+    .media-primary-options .media-attribute {
+      color: #2f3742;
+      font: .68rem/1.2 system-ui, sans-serif;
+    }
+    .media-primary-options > .media-attribute:only-child {grid-column: 1 / -1;}
 
     .media-toolbox-controls .media-attribute input,
     .media-toolbox-controls .media-attribute select {
@@ -1058,6 +1114,9 @@ export const editingControlStyles = css`
     }
 
     .media-resource-editor {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
       display: flex;
       flex-direction: column;
       gap: 0.35rem;
@@ -1109,6 +1168,18 @@ export const editingControlStyles = css`
       font-size: 0.6rem;
       cursor: pointer;
     }
+
+    .media-resource-heading {width: 100%; text-align: left;}
+    .media-resource-plus {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.55rem;
+      height: 1.55rem;
+      padding: 0;
+      flex: none;
+    }
+    .media-resource-plus svg {display: block; width: 1rem; height: 1rem;}
 
     .media-resource-action {
       min-width: 1.35rem;
@@ -1176,6 +1247,27 @@ export const editingControlStyles = css`
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 0.2rem;
+    }
+
+    .image-map-coordinates {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.2rem;
+      min-width: 0;
+    }
+
+    .image-map-coordinates-circle {
+      grid-template-columns: repeat(auto-fit, minmax(3.4rem, 1fr));
+    }
+
+    .image-map-coordinate {
+      min-width: 0;
+    }
+
+    .image-map-coordinate input {
+      box-sizing: border-box;
+      width: 100%;
+      min-width: 0;
     }
 
     .image-map-draw {

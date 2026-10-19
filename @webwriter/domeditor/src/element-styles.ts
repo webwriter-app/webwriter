@@ -328,7 +328,9 @@ export const elementStyleCategories: readonly ElementStyleCategory[] = [
 ] as const
 
 export const elementStylePropertyNames = Array.from(new Set(
-  elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced].map(definition => definition.name)),
+  [...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced].map(definition => definition.name)),
+    ...["top", "right", "bottom", "left"].flatMap(side => ["width", "style", "color"].map(part => `border-${side}-${part}`)),
+    ...["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => `border-${corner}-radius`)],
 ))
 
 export const elementStylePropertyNameSet = new Set(elementStylePropertyNames)
@@ -362,10 +364,16 @@ export type SpecializedElementStyle = {
   advanced: readonly string[]
 }
 
+/** Native CSS marker styles offered by each list type. */
+export const listMarkerImageProperty = "--ww-list-marker-image"
+export const listMarkerTypes = ["disc", "circle", "square", "disclosure-closed", "disclosure-open", '"–"', '"◆"', '"✓"', '"→"', '"★"'] as const
+export const enumerationMarkerTypes = ["decimal", "decimal-leading-zero", "lower-alpha", "upper-alpha", "lower-roman", "upper-roman", "lower-greek", "armenian", "georgian", "hebrew", "cjk-decimal", "hiragana", "katakana"] as const
+
 /** Properties absent from the universal Style drawer, reusing CSS controls. */
 export const specializedStyleDefinitions: readonly ElementStylePropertyDefinition[] = [
+  text("object-view-box", "Crop", "Media"),
   text("line-height", "Line height", "Paragraph"),
-  select("list-style-type", "Marker", "Lists", values("disc", "circle", "square", "decimal", "decimal-leading-zero", "lower-alpha", "upper-alpha", "lower-roman", "upper-roman", "none")),
+  select("list-style-type", "Marker", "Lists", values(...listMarkerTypes, ...enumerationMarkerTypes, "none")),
   select("vertical-align", "Vertical alignment", "Text", values("baseline", "middle", "top", "bottom", "sub", "super", "text-top", "text-bottom")),
   select("math-style", "Math style", "Formula", values("normal", "compact")),
   text("math-depth", "Math depth", "Formula"),
@@ -393,11 +401,11 @@ const headings: SpecializedElementStyle = {
   advanced: ["line-height", "letter-spacing", "word-spacing", "break-after", "break-inside"],
 }
 const listStyles: SpecializedElementStyle = {
-  primary: ["list-style-type", "list-style-position"],
-  advanced: ["list-style-image", "break-inside"],
+  primary: ["list-style-type", "list-style-image"],
+  advanced: ["list-style-position", "break-inside"],
 }
 const imageStyles: SpecializedElementStyle = {
-  primary: ["object-fit", "object-position"],
+  primary: ["object-fit", "object-position", "object-view-box"],
   advanced: ["image-rendering"],
 }
 export function specializedElementStyle(localName: string): SpecializedElementStyle | undefined {

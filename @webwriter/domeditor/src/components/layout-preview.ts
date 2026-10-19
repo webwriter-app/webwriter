@@ -1,11 +1,14 @@
 import {css, html} from "lit"
+import {guard} from "lit/directives/guard.js"
 import {documentLayoutConversionReason, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {ribbonIcon} from "../ribbon-icons"
 
 export const documentLayoutModes = ["document", "canvas", "slides", "board"] as const
 export const documentLayoutLabel = (mode: DocumentLayoutMode) => mode[0].toUpperCase() + mode.slice(1)
 
 /** Shared with the layout gallery so both pickers use the same visual language. */
 export const documentLayoutPreviewStyles = css`
+    .layout-preset-icon {display: none}
     .layout-preset {
       box-sizing: border-box;
       display: flex;
@@ -113,8 +116,8 @@ export const documentLayoutPreviewStyles = css`
     .document-layout-preview.slides .mock-heading { top: 12%; width: 62%; }
     .document-layout-preview.slides .layout-preset-line.short { top: 52%; width: 32%; }
     .document-layout-preview.slides .mock-image { right: 8%; top: 38%; width: 30%; height: 48%; }
-    .document-layout-preview.board { grid-template-columns: repeat(3, minmax(0, 1fr)); place-items: stretch; gap: 0.25rem; }
-    .document-layout-preview.board .board-column { box-sizing: border-box; display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; height: 100%; padding: 0.22rem; overflow: hidden; border: 1px solid #b8c8d9; border-radius: 0.15rem; background: #e5eef7; }
+    .document-layout-preview.board { container: board-preview / inline-size; grid-template-columns: repeat(6, minmax(0, 1fr)); place-items: stretch; gap: 0.25rem; }
+    .document-layout-preview.board .board-column { grid-column: span 2; box-sizing: border-box; display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; height: 100%; padding: 0.22rem; overflow: hidden; border: 1px solid #b8c8d9; border-radius: 0.15rem; background: #e5eef7; }
     .document-layout-preview.board .board-column > .mock-heading { flex: 0 0 0.25rem; width: 66%; margin: 0.02rem 0 0.06rem; }
     .document-layout-preview.board .board-card { flex: 0 0 auto; padding: 0.22rem; border-color: #c2d0df; background: white; }
     .document-layout-preview.board .board-card.short-card { height: 0.95rem; }
@@ -124,6 +127,11 @@ export const documentLayoutPreviewStyles = css`
     .document-layout-preview.board .board-card .layout-preset-line.mock-heading { width: 65%; height: 0.2rem; margin: 0 0 0.03rem; }
     .document-layout-preview.board .board-card .layout-preset-line.short { width: 48%; }
     .document-layout-preview.board .mock-image { flex: 0 0 0.65rem; height: 0.65rem; margin-top: 0.18rem; }
+
+    @container board-preview (max-width: 8rem) {
+      .document-layout-preview.board .board-column {grid-column: span 3}
+      .document-layout-preview.board .board-column:nth-child(3) {display: none}
+    }
 `
 
 export function renderDocumentLayoutPreview(mode: DocumentLayoutMode) {
@@ -160,5 +168,5 @@ export function renderDocumentLayoutCard(mode: DocumentLayoutMode, state: Docume
     @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
     @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
     @click=${() => select(mode)}
-  >${renderDocumentLayoutPreview(mode)}</button>`
+  >${guard([mode], () => html`<span class="layout-preset-icon" aria-hidden="true">${ribbonIcon({document: "Document", canvas: "Canvas", slides: "KeywordPresentation", board: "Columns"}[mode])}</span>${renderDocumentLayoutPreview(mode)}`)}</button>`
 }

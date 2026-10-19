@@ -1,0 +1,39 @@
+{
+  "name": "@webwriter/quiz-svelte",
+  "version": "1.0.0",
+  "description": "A true-or-false quiz widget built with Svelte custom elements.",
+  "keywords": [
+    "webwriter-widget",
+    "widget-practical",
+    "widget-lang-en"
+  ],
+  "exports": {
+    "./widgets/ww-quiz.js": "./dist/ww-quiz.js",
+    "./snippets/quiz.html": "./quiz.html",
+    "./tests/quiz.js": "./quiz-tests.js"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "editingConfig": {
+    "./widgets/ww-quiz": {
+      "label": "Quiz",
+      "content": "p+",
+      "sharedData": true
+    },
+    "./snippets/quiz": {
+      "label": "Quiz with question"
+    }
+  },
+  "dependencies": {
+    "svelte": "^5.57.2"
+  },
+  "devDependencies": {
+    "esbuild-wasm": "^0.25.12"
+  },
+  "files": [
+    "dist/ww-quiz.js",
+    "quiz.html",
+    "quiz-tests.js"
+  ]
+}

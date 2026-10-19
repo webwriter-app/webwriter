@@ -4,6 +4,7 @@ import type {WidgetGroupingContext} from "../widget-grouping.js"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {isGraphicPresetType} from "../graphic-shapes"
 import {LitElement, html, nothing} from "lit"
+import {styleMap} from "lit/directives/style-map.js"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
 import type {ElementStyleEditor} from "./element-style-editor"
@@ -25,9 +26,11 @@ import {
 } from "../editor-bridge"
 import {widgetOptionValue, type WidgetOptionState, type WidgetOptionsState, type WidgetOptionValue} from "../widget-options"
 import type {ElementAttributeState} from "../element-attributes"
+import {safeCssColor} from "../css-color"
 import type {LayoutSelectionState} from "../layouts"
 import {insertMathStructureButtons} from "./ribbon-menu-config"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
+import {getElementPresentation} from "../element-names"
 import {
   graphicShapeOptions,
   type GraphicLayerOperation,
@@ -141,6 +144,7 @@ export abstract class EditingControls extends LitElement {
     ruby: {attribute: false},
     commentState: {attribute: false},
     commentDraft: {type: String, state: true},
+    newCommentDraft: {type: String, state: true},
     localPackages: {attribute: false},
     localPackageRefreshingNames: {attribute: false},
     localPackagesLoading: {type: Boolean, attribute: "local-packages-loading"},
@@ -210,6 +214,13 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected commentDraft = ""
+
+  private newCommentDraft = ""
+
+  protected get commentReviewMode() { return false }
+
+  private commentReplyDrafts = new Map<string, string>()
+  private commentEditDrafts = new Map<string, string>()
 
   localPackages: WebWriterPackage[] = []
 
@@ -431,7 +442,8 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected spanGroupMembers() {
-    return (mergedMarkGroupFor("span")?.members ?? []).filter(mark => !excludedMarkNames.includes(mark))
+    return (mergedMarkGroupFor("span")?.members ?? []).filter(mark => !excludedMarkNames.includes(mark)
+      && [...primaryMarkOptions, ...secondaryMarkOptions].some(option => option.name === mark))
   }
 
   protected activeSpanMarks() {
@@ -794,19 +806,6 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected updateCommentDraft(event: Event) {
-    this.commentDraft = (event.currentTarget as HTMLTextAreaElement).value
-  }
-
-  protected commitCommentText() {
-    if(!this.commentState.active || this.commentDraft === this.commentState.text) return
-    this.dispatchEvent(new CustomEvent("comment-action", {
-      detail: {action: "set-text", text: this.commentDraft},
-      bubbles: true,
-      composed: true,
-    }))
-  }
-
   protected handleCommentButton(event: Event) {
     event.stopPropagation()
     const action = (event as CustomEvent<{label?: string}>).detail?.label
@@ -829,10 +828,104 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
+  private commentThreads() {
+    return this.commentState.threads ?? []
+  }
+
+  private dispatchThreadAction(action: string, id: string, text?: string) {
+    this.dispatchEvent(new CustomEvent("comment-action", {
+      detail: {action, id, ...(text === undefined ? {} : {text})}, bubbles: true, composed: true,
+    }))
+  }
+
+  protected renderCommentThreads() {
+    const state = this.commentState
+    const threads = this.commentThreads()
+    return html`<section class="comment-threads" aria-label="Document comment threads">
+      ${threads.map(thread => html`
+        <article class="comment-thread" data-thread-id=${thread.id} tabindex="0" aria-label="Comment thread"
+          aria-description="Press Enter or Space to select the commented content"
+          aria-current=${thread.active ? "true" : nothing}
+          ?data-active=${(thread.comments[0]?.id ?? thread.id) === state.activeThreadId}
+          @click=${(event: MouseEvent) => {
+            if(event.composedPath().some(target => target instanceof Element && target.matches("button, input, textarea, select, form, a, [contenteditable]"))) return
+            this.dispatchThreadAction("select", thread.comments[0]?.id ?? thread.id)
+          }}
+          @keydown=${(event: KeyboardEvent) => {
+            if(event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return
+            event.preventDefault()
+            this.dispatchThreadAction("select", thread.comments[0]?.id ?? thread.id)
+          }}>
+          ${thread.comments.map(comment => html`
+            <div class="comment-message" data-comment-id=${comment.id}>
+              <button class="comment-delete comment-icon-button" type="button" aria-label="Delete comment" title="Delete comment" @click=${() => this.dispatchThreadAction("remove", comment.id)}>${ribbonIcon("Delete")}</button>
+              <div class="comment-message-meta"><strong>${comment.author.name || "Anonymous"}</strong><time>${comment.editedAt > comment.createdAt
+                ? `Edited ${new Date(comment.editedAt).toLocaleString()}`
+                : comment.createdAt ? new Date(comment.createdAt).toLocaleString() : "Creation time unavailable"}</time></div>
+              ${this.commentEditDrafts.has(comment.id) ? html`
+                <textarea data-ribbon-input-persistent aria-label="Edit comment" .value=${this.commentEditDrafts.get(comment.id)!}
+                  @input=${(event: Event) => this.commentEditDrafts.set(comment.id, (event.currentTarget as HTMLTextAreaElement).value)}></textarea>
+                <button type="button" @click=${() => { this.dispatchThreadAction("edit", comment.id, this.commentEditDrafts.get(comment.id) ?? ""); this.commentEditDrafts.delete(comment.id); this.requestUpdate() }}>Save</button>
+                <button type="button" @click=${() => { this.commentEditDrafts.delete(comment.id); this.requestUpdate() }}>Cancel</button>
+              ` : html`<p>${comment.text}</p>`}
+              <div class="comment-message-actions">
+                <button class="comment-icon-button" type="button" aria-label="Edit comment" title="Edit comment" @click=${() => { this.commentEditDrafts.set(comment.id, comment.text); this.requestUpdate() }}>${ribbonIcon("Pencil")}</button>
+              </div>
+            </div>
+          `)}
+          <form class="comment-reply" @submit=${(event: Event) => {
+            event.preventDefault()
+            const text = this.commentReplyDrafts.get(thread.id)?.trim() ?? ""
+            if(!text) return
+            this.dispatchThreadAction("reply", thread.comments[0]?.id ?? thread.id, text)
+            this.commentReplyDrafts.delete(thread.id)
+            this.requestUpdate()
+          }}>
+            <textarea data-ribbon-input-persistent aria-label="Reply to comment" rows="1" placeholder="Write a reply…" .value=${this.commentReplyDrafts.get(thread.id) ?? ""}
+              @input=${(event: Event) => { this.commentReplyDrafts.set(thread.id, (event.currentTarget as HTMLTextAreaElement).value); this.requestUpdate() }}></textarea>
+            <button class="comment-submit" type="submit" aria-label="Reply to comment" title="Enter" ?disabled=${!this.commentReplyDrafts.get(thread.id)?.trim()}>${ribbonIcon("AIPromptSubmit")}</button>
+          </form>
+        </article>
+      `)}
+      <article class="comment-thread comment-thread-empty" ?inert=${!state.canComment} aria-disabled=${!state.canComment ? "true" : nothing}>
+        <form class="comment-reply" @submit=${(event: Event) => {
+          event.preventDefault()
+          const text = this.newCommentDraft.trim()
+          if(!text || !state.canComment) return
+          this.dispatchEvent(new CustomEvent("comment-action", {
+            detail: {action: "add", text}, bubbles: true, composed: true,
+          }))
+          this.newCommentDraft = ""
+        }}>
+          <textarea data-ribbon-input-persistent aria-label="New comment" rows="1" placeholder="Add a comment..." .value=${this.newCommentDraft}
+            ?disabled=${!state.canComment}
+            @input=${(event: Event) => { this.newCommentDraft = (event.currentTarget as HTMLTextAreaElement).value }}></textarea>
+          <button class="comment-submit" type="submit" aria-label="Add comment" title="Enter" ?disabled=${!state.canComment || !this.newCommentDraft.trim()}>${ribbonIcon("AIPromptSubmit")}</button>
+        </form>
+      </article>
+    </section>`
+  }
+
   protected renderCommentDrawer() {
     const {active, activeCount, canComment, count, highlighting} = this.commentState
+    if(this.commentReviewMode) return html`
+      <ribbon-drawer label="Comments" icon="Comments" layout="comments" show-pane-icon>
+        <div class="comment-heading-actions" slot="heading-action">
+          ${(["previous", "next", "remove-all"] as const).map(action => html`
+            <button type="button" class="style-reset" aria-label=${action === "previous" ? "Previous comment" : action === "next" ? "Next comment" : "Clear comments"}
+              title=${action === "previous" ? "Previous comment" : action === "next" ? "Next comment" : "Clear comments"}
+              ?disabled=${count === 0} @click=${() => this.dispatchEvent(new CustomEvent("comment-action", {
+                detail: {action}, bubbles: true, composed: true,
+              }))}>${ribbonIcon(action === "previous" ? "Previous" : action === "next" ? "Next" : "RemoveMarks")}</button>
+          `)}
+          <input class="comment-review-highlight" type="checkbox" data-ribbon-input-persistent
+            aria-label="Highlight" title="Highlight" .checked=${highlighting} @change=${this.changeCommentHighlighting}>
+        </div>
+        ${this.renderCommentThreads()}
+      </ribbon-drawer>
+    `
     return html`
-      <ribbon-drawer label="Comments" icon="Comments" layout="comments" @ribbon-button-click=${this.handleCommentButton}>
+      <ribbon-drawer label="Comments" icon="Comments" layout="comments" show-pane-icon @ribbon-button-click=${this.handleCommentButton}>
         <div class="comment-editor">
           <span class="comment-editor-header">
             <span>Comment${activeCount > 1 ? ` (${activeCount} selected)` : ""}</span>
@@ -846,16 +939,9 @@ export abstract class EditingControls extends LitElement {
               Highlight
             </label>
           </span>
-          <textarea
-            aria-label="Comment text"
-            data-ribbon-input-persistent
-            rows="2"
-            placeholder=${active ? "Comment text" : "Add a comment…"}
-            .value=${this.commentDraft}
-            ?disabled=${!canComment}
-            @input=${this.updateCommentDraft}
-            @change=${this.commitCommentText}
-          ></textarea>
+          ${!active ? html`<textarea aria-label="New comment" data-ribbon-input-persistent rows="2"
+            placeholder="Add a comment…" .value=${this.commentDraft} ?disabled=${!canComment}
+            @input=${(event: Event) => { this.commentDraft = (event.currentTarget as HTMLTextAreaElement).value }}></textarea>` : nothing}
         </div>
         <ribbon-button
           compact
@@ -1436,23 +1522,13 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderMediaAttributeOptions(type: MediaType, options: MediaAttributeOption[]) {
-    const advancedNames = type === "picture" || type === "img"
-      ? new Set(["loading", "decoding", "crossorigin", "referrerpolicy", "sizes", "srcset"])
-      : type === "audio" || type === "video"
-        ? new Set(["preload", "crossorigin", "playsinline"])
-        : new Set(["loading", "sandbox", "allow", "referrerpolicy"])
-    const primary = options.filter(option => !advancedNames.has(option.name))
-    const advanced = options.filter(option => advancedNames.has(option.name))
+    const primary = options.filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))
+    const advanced = options.filter(option => ["alt", "aria-label"].includes(option.name))
     return html`
-      ${primary.map(option => this.renderMediaAttribute(type, option))}
-      ${advanced.length ? html`
-        <details class="media-advanced-options">
-          <summary>More options</summary>
-          <div class="media-advanced-options-content">
-            ${advanced.map(option => this.renderMediaAttribute(type, option))}
-          </div>
-        </details>
-      ` : nothing}
+      ${primary.length ? html`<div class="media-primary-options">${primary.map(option => this.renderMediaAttribute(type, option))}</div>` : nothing}
+      ${advanced.length ? html`<details class="media-advanced-options"><summary>More options</summary>
+        <div class="media-advanced-options-content">${advanced.map(option => this.renderMediaAttribute(type, option))}</div>
+      </details>` : nothing}
     `
   }
 
@@ -1500,16 +1576,17 @@ export abstract class EditingControls extends LitElement {
 
   protected renderMediaResourceList(resource: TimedMediaResourceType, rows: TimedMediaResourceState[]) {
     const singular = resource === "source" ? "source" : "track"
-    const heading = resource === "source" ? "Sources" : "Text tracks"
+    const heading = resource === "source" ? "Fallback sources" : "Text tracks"
     return html`
       <section class="media-resource-editor" aria-label=${heading}>
         <div class="media-resource-heading">
           <span>${heading}</span>
           <button
-            class="media-resource-add"
+            class="media-resource-add media-resource-plus"
             type="button"
+            aria-label=${`Add ${singular}`} title=${`Add ${singular}`}
             @click=${() => this.dispatchMediaResourceAction({action: "add", resource})}
-          >Add ${singular}</button>
+          ><span aria-hidden="true">${ribbonIcon("Plus")}</span></button>
         </div>
         ${rows.map((row, position) => html`
           <div class="media-resource-card" data-resource=${resource}>
@@ -1554,28 +1631,11 @@ export abstract class EditingControls extends LitElement {
 
   protected renderTimedMediaResources() {
     if(!this.media || this.media.type !== "audio" && this.media.type !== "video") return nothing
-    const fallbackHTML = this.media.fallbackHTML ?? ""
+    const sources = this.media.sources ?? []
+    const primary = this.media.attributes.src ? undefined : sources.find(row => row.attributes.src)
     return html`
-      ${this.renderMediaResourceList("source", this.media.sources ?? [])}
+      ${this.renderMediaResourceList("source", sources.filter(row => row !== primary))}
       ${this.renderMediaResourceList("track", this.media.tracks ?? [])}
-      <section class="media-resource-editor" aria-label="Fallback content">
-        <label class="media-attribute">
-          <span>Fallback content</span>
-          <textarea
-            class="media-fallback-input"
-            data-ribbon-input-persistent
-            aria-label="Fallback content"
-            placeholder="Content shown when this media cannot be played"
-            .value=${fallbackHTML}
-            @change=${(event: Event) => this.dispatchMediaResourceAction({
-              action: "set-fallback",
-              html: (event.currentTarget as HTMLTextAreaElement).value,
-              expectedHTML: fallbackHTML,
-            })}
-          ></textarea>
-        </label>
-        <p class="media-fallback-help">Shown when the browser cannot play this media. Basic HTML is supported.</p>
-      </section>
     `
   }
 
@@ -1599,6 +1659,7 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderImageMapAreaAttribute(area: ImageMapAreaState, option: MediaAttributeOption) {
+    if(option.name === "coords") return this.renderImageMapCoordinates(area)
     const label = `Hotspot: ${option.label}`
     return this.renderMediaAttributeField(option, {
       attributes: area.attributes,
@@ -1608,33 +1669,47 @@ export abstract class EditingControls extends LitElement {
     })
   }
 
+  protected renderImageMapCoordinates(area: ImageMapAreaState) {
+    const shape = area.attributes.shape?.toLowerCase() || "rect"
+    const values = (area.attributes.coords ?? "").split(",")
+    const minimum = shape === "circle" ? 3 : shape === "poly" ? 2 : shape === "rect" ? 4 : 0
+    while(values.length < minimum) values.push("")
+    const labels = shape === "circle"
+      ? ["Center X", "Center Y", "Radius"]
+      : values.map((_, index) => `${index % 2 === 0 ? "X" : "Y"}${Math.floor(index / 2) + 1}`)
+    return html`<div class=${`image-map-coordinates${shape === "circle" ? " image-map-coordinates-circle" : ""}`} role="group" aria-label="Hotspot: Coordinates">
+      ${values.map((value, index) => html`
+        <label class="media-attribute image-map-coordinate">
+          <span>${labels[index] ?? `${index + 1}`}</span>
+          <input aria-label=${`Hotspot: ${labels[index] ?? `Coordinate ${index + 1}`}`}
+            type="text" inputmode="decimal" .value=${value.trim()}
+            @change=${(event: Event) => {
+              const input = event.currentTarget as HTMLInputElement
+              const number = input.value.trim()
+              if(!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(number) || !Number.isFinite(Number(number))) {
+                input.value = value.trim()
+                return
+              }
+              const updated = [...values]
+              updated[index] = number
+              this.dispatchImageMapAction({
+                action: "set-area-attribute", path: area.path, expected: area.attributes,
+                attribute: "coords", value: updated.join(","),
+              })
+            }}
+          />
+        </label>
+      `)}
+    </div>`
+  }
+
   protected renderImageMapControls() {
     if(!this.media || this.media.type !== "picture" && this.media.type !== "img") return nothing
     const map = this.media.imageMap
-    if(!map) return html`
-      <section class="media-resource-editor" aria-label="Image map">
-        <div class="media-resource-heading"><span>Interactive hotspots</span></div>
-        <button
-          class="media-type-switch"
-          type="button"
-          @click=${() => this.dispatchImageMapAction({action: "add-map"})}
-        >Add image map</button>
-        <p class="image-map-note">Create linked regions over this image.</p>
-      </section>
-    `
+    const areas = map?.areas ?? []
     return html`
-      <section class="media-resource-editor" aria-label="Image map">
-        <div class="media-resource-heading">
-          <span>Hotspots · ${map.name}</span>
-          <button
-            class="media-resource-add"
-            type="button"
-            @click=${() => this.dispatchImageMapAction({action: "remove-map"})}
-          >${map.shared ? "Unlink" : "Remove map"}</button>
-        </div>
-        ${map.shared ? html`
-          <p class="image-map-note">This map is shared. Unlinking keeps it available to the other images.</p>
-        ` : ""}
+      <section class="media-resource-editor" aria-label="Interactive hotspots">
+        <div class="media-resource-heading"><span>Interactive hotspots</span></div>
         <div class="image-map-draw-grid" role="group" aria-label="Draw hotspot">
           ${([
             ["rect", "Rectangle"],
@@ -1648,7 +1723,7 @@ export abstract class EditingControls extends LitElement {
             >${label}</button>
           `)}
         </div>
-        ${map.areas.length ? map.areas.map((area, position) => html`
+        ${areas.length ? areas.map((area, position) => html`
           <div class="media-resource-card image-map-area">
             <div class="media-resource-card-heading">
               <span>Hotspot ${position + 1}</span>
@@ -1662,6 +1737,26 @@ export abstract class EditingControls extends LitElement {
               >×</button>
             </div>
             ${imageMapAreaAttributeOptions.map(option => this.renderImageMapAreaAttribute(area, option))}
+            ${area.attributes.popovertarget || area.attributes.interestfor ? html`
+              <div>
+                ${this.renderMediaAttributeField({
+                  name: "popover-trigger", label: "Popover trigger", kind: "select",
+                  options: [{label: "Click", value: "click"}, {label: "Hover", value: "hover"}],
+                }, {
+                  attributes: {"popover-trigger": area.attributes.interestfor ? "hover" : "click"},
+                  label: "Hotspot: Popover trigger",
+                  onChange: event => this.dispatchImageMapAction({
+                    action: "set-popover-trigger", path: area.path, expected: area.attributes,
+                    value: (event.currentTarget as HTMLSelectElement).value,
+                  }),
+                })}
+                <button class="media-resource-action" type="button" aria-label=${`Open hotspot ${position + 1} popover`}
+                  @click=${() => this.dispatchImageMapAction({action: "open-popover", path: area.path, expected: area.attributes})}>Open popover</button>
+              </div>
+            ` : html`
+              <button class="media-resource-add" type="button" aria-label=${`Add hotspot ${position + 1} popover`}
+                @click=${() => this.dispatchImageMapAction({action: "add-popover", path: area.path, expected: area.attributes})}>Add popover</button>
+            `}
           </div>
         `) : html`<p class="image-map-note">Draw a shape to add the first hotspot.</p>`}
       </section>
@@ -1772,18 +1867,6 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
-  protected toggleTableHeader = () => {
-    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
-      detail: {label: "table-header"}, bubbles: true, composed: true,
-    }))
-  }
-
-  protected toggleTableFooter = () => {
-    this.dispatchEvent(new CustomEvent<{label: string}>("ribbon-button-click", {
-      detail: {label: "table-footer"}, bubbles: true, composed: true,
-    }))
-  }
-
   protected dispatchGraphicParameter(name: string, event: Event) {
     const input = event.currentTarget as HTMLInputElement
     this.dispatchGraphicParameterValue(name, input.value)
@@ -1830,7 +1913,7 @@ export abstract class EditingControls extends LitElement {
     const value = parameters[kind]
     const color = /^#[0-9a-f]{6}$/i.test(value ?? "") ? value! : kind === "fill" ? "#ffffff" : "#334155"
     const disabled = selectionCount < 1 || kind === "fill" && selectionCount === 1
-      && (this.graphic?.shape === "line" || this.graphic?.shape === "connector")
+      && (this.graphic?.shape === "line" || this.graphic?.shape === "connector" || this.graphic?.shape === "freehand" || ["polyline", "bezier"].includes(this.graphic?.shape ?? "") && parameters.closed !== "true")
     return html`
       <label class="mark-attribute graphic-parameter">
         <span>${kind === "fill" ? "Fill color" : "Stroke color"}</span>
@@ -2106,7 +2189,7 @@ export abstract class EditingControls extends LitElement {
     const selectionCount = this.graphic.selectionCount ?? (this.graphic.shape ? 1 : 0)
     const shapeSelected = selectionCount === 1 && Boolean(this.graphic.shape)
     const connectorSelected = shapeSelected && this.graphic.shape === "connector"
-    const labelableShapeSelected = shapeSelected && this.graphic.shape !== "line" && this.graphic.shape !== "connector"
+    const labelableShapeSelected = shapeSelected && this.graphic.shape !== "line" && this.graphic.shape !== "connector" && this.graphic.shape !== "freehand" && this.graphic.shape !== "polyline" && this.graphic.shape !== "bezier"
     const shapesSelected = selectionCount > 0
     const options = this.graphic.options
     const fileControls = html`
@@ -2169,16 +2252,22 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderTableStructureControls(showCaption = true) {
+  protected renderTableStructureControls(showCaption = true, toolboxGrid = false) {
     const active = Boolean(this.table?.active)
+    const sections = html`
+        <ribbon-button label="Header" action="table-header" icon="TableHeader" toggle .active=${this.table?.hasHeader ?? false}
+          variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || this.table?.canToggleHeader === false}></ribbon-button>
+        <ribbon-button label="Footer" action="table-footer" icon="TableFooter" toggle .active=${this.table?.hasFooter ?? false}
+          variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active || this.table?.canToggleFooter === false}></ribbon-button>
+    `
     return html`
-        <ribbon-button label="Row above" action="table-row-above" icon="TableRowAbove" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Row below" action="table-row-below" icon="TableRowBelow" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Column left" action="table-column-left" icon="TableColumnLeft" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Column right" action="table-column-right" icon="TableColumnRight" ?disabled=${!active}></ribbon-button>
-        <ribbon-button label="Merge cells" action="table-merge-cells" icon="TableMergeCells" ?disabled=${!this.table?.canMerge}></ribbon-button>
-        <ribbon-button label="Split cells" action="table-split-cells" icon="TableSplitCells" ?disabled=${!this.table?.canSplit}></ribbon-button>
-        <ribbon-button label="Split table" action="table-split" icon="TableSplit" ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column left" action="table-column-left" icon="TableColumnLeft" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Row above" action="table-row-above" icon="TableRowAbove" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Column right" action="table-column-right" icon="TableColumnRight" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Split cells" action="table-split-cells" icon="TableSplitCells" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!this.table?.canSplit}></ribbon-button>
+        <ribbon-button label="Row below" action="table-row-below" icon="TableRowBelow" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Split table" action="table-split" icon="TableSplit" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!active}></ribbon-button>
+        <ribbon-button label="Merge cells" action="table-merge-cells" icon="TableMergeCells" variant=${toolboxGrid ? "table-structure" : nothing} ?disabled=${!this.table?.canMerge}></ribbon-button>
         ${showCaption ? html`
         <label class="table-caption-toggle">
           <span class="table-caption-icon" aria-hidden="true">${ribbonIcon("TableCaption")}</span>
@@ -2191,14 +2280,7 @@ export abstract class EditingControls extends LitElement {
           /> Caption</span>
         </label>
         ` : nothing}
-        <label class="table-caption-toggle">
-          <span><input type="checkbox" aria-label="Table header" data-ribbon-input-persistent .checked=${this.table?.hasHeader ?? false}
-            ?disabled=${!active} @change=${this.toggleTableHeader} /> Header</span>
-        </label>
-        <label class="table-caption-toggle">
-          <span><input type="checkbox" aria-label="Table footer" data-ribbon-input-persistent .checked=${this.table?.hasFooter ?? false}
-            ?disabled=${!active} @change=${this.toggleTableFooter} /> Footer</span>
-        </label>
+        ${sections}
     `
   }
 
@@ -2445,6 +2527,9 @@ export abstract class EditingControls extends LitElement {
 
   protected commandShortcut(action: string) {
     const command = appCommands.find(candidate => candidate.action === action)
+      ?? (action.startsWith("element:")
+        ? appCommands.find(candidate => candidate.action === getElementPresentation(action.slice("element:".length)).name)
+        : undefined)
     return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "") : ""
   }
 
@@ -2533,47 +2618,51 @@ export abstract class EditingControls extends LitElement {
     }))
   }
 
-  protected renderHistoryEntry(entry: VersionHistoryCheckpoint, isVersion: boolean, isCurrent: boolean, isUnsaved = false) {
-    const selected = this.selectedHistoryCheckpointId === entry.id
+  protected renderHistoryEntry(entry: VersionHistoryCheckpoint, isVersion: boolean, isCurrent: boolean, isUnsaved = false, selected = this.selectedHistoryCheckpointId === entry.id) {
     return html`
       <div class=${isVersion ? "history-version-card" : "history-change-card"}
         data-checkpoint-id=${entry.id} ?data-selected=${selected}>
         <button class="history-checkpoint" type="button" data-checkpoint-id=${entry.id}
           aria-pressed=${selected} title=${entry.label} ?disabled=${this.historyLoading}
           @click=${this.selectHistoryCheckpoint}>
-          <span class="history-checkpoint-avatar" style=${`--history-user-color: ${entry.user.color}`}
+          <span class="history-checkpoint-avatar" style=${styleMap({"--history-user-color": safeCssColor(entry.user.color)})}
             aria-hidden="true">${entry.user.initials}</span>
           <span class="history-checkpoint-label">${isUnsaved ? "Unsaved changes" : this.historyTimestamp(entry.timestamp)}</span>
           <span class="history-checkpoint-meta">By ${this.historyAuthor(entry.user)}</span>
-          <span class="history-checkpoint-counts" aria-label=${`${entry.changes.added} added, ${entry.changes.removed} removed, ${entry.changes.modified} changed`}>
+          ${isVersion ? html`<span class="history-change-count" aria-label=${`${entry.changes.added + entry.changes.removed + entry.changes.modified} changes`}>
+            ${entry.changes.added + entry.changes.removed + entry.changes.modified}
+          </span>` : html`<span class="history-checkpoint-counts" aria-label=${`${entry.changes.added} added, ${entry.changes.removed} removed, ${entry.changes.modified} changed`}>
             <span class="history-count" data-kind="added">+${entry.changes.added}</span>
             <span class="history-count" data-kind="removed">−${entry.changes.removed}</span>
             <span class="history-count" data-kind="modified">~${entry.changes.modified}</span>
-            ${entry.commentCount ? html`<span class="history-count" data-kind="comments">${entry.commentCount} 💬</span>` : nothing}
-          </span>
+          </span>`}
         </button>
         <button class="history-card-restore-button" type="button" data-checkpoint-id=${entry.id}
           aria-label=${`Restore ${isVersion ? "version" : "change"} from ${this.historyTimestamp(entry.timestamp)}`}
           title=${isCurrent ? "Already active" : entry.label}
           ?disabled=${this.historyLoading || isCurrent} @click=${this.revertHistoryCheckpoint}>
           <span class="history-card-restore-icon" aria-hidden="true">${ribbonIcon("Restore")}</span>
-          <span>Restore</span>
+          ${isVersion ? html`<span>Restore</span>` : nothing}
         </button>
       </div>
     `
   }
 
-  protected renderHistoryVersionsDrawer() {
+  protected renderHistoryPreviewClear() {
+    return this.historyState.preview ? html`
+      <button class="history-preview-clear" type="button" ?disabled=${this.historyLoading}
+        @click=${() => this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))}>
+        Return to current document
+      </button>` : nothing
+  }
+
+  protected renderHistoryVersionsDrawer(expandedChanges = false, showPreviewClear = true) {
     const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
     const initialCheckpointId = this.historyState.checkpoints.at(-1)?.id
     return html`
       <ribbon-drawer label="Versions" icon="History" layout="history-versions">
         <div class="history-timeline" role="list" aria-label="Document versions">
-          ${this.historyState.preview ? html`
-            <button class="history-preview-clear" type="button" ?disabled=${this.historyLoading}
-              @click=${() => this.dispatchEvent(new Event("history-preview-clear", {bubbles: true, composed: true}))}>
-              Return to current document
-            </button>` : nothing}
+          ${showPreviewClear ? this.renderHistoryPreviewClear() : nothing}
           ${this.historyError ? html`<div class="history-error" role="alert">${this.historyError}</div>`
           : this.historyLoading && !this.historyState.versions.length
             ? html`<div class="history-loading">Loading versions…</div>`
@@ -2588,7 +2677,7 @@ export abstract class EditingControls extends LitElement {
                 <div class="history-version-group" role="listitem">
                   ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved)}
                   ${changeIds.length ? html`
-                    <details class="history-version-changes">
+                    <details class="history-version-changes" ?open=${expandedChanges}>
                       <summary>${changeIds.length} ${changeIds.length === 1 ? "change" : "changes"}</summary>
                       <div role="list" aria-label=${`Changes in ${version.label}`}>
                         ${changeIds.map(id => {

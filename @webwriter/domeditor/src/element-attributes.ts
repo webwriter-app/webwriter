@@ -1,8 +1,11 @@
 import {getElementPresentation} from "./element-names"
+import {authoredClassValue} from "./editor-artifacts"
 
 export type ElementAttributeState = {
   /** BODY-relative child-node path. Null addresses the document element. */
   path: number[] | null
+  /** Frame-local identity; never stored in the authored DOM. */
+  targetId?: string
   localName: string
   namespaceURI: string | null
   name: string
@@ -103,7 +106,6 @@ const commonAttributeOptions: readonly ElementAttributeOption[] = [
 
 const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[]>> = {
   html: [
-    {name: "lang", label: "Document language", placeholder: "English"},
     {name: "dir", label: "Text direction", kind: "select", options: commonAttributeOptions[4].options},
   ],
   bdo: [
@@ -156,6 +158,48 @@ const editorOnlyAttributes = new Set(["contenteditable", "spellcheck", "data-web
 const blockedAttributes = new Set(["srcdoc"])
 const urlAttributes = new Set(["href", "src", "xlink:href", "action", "formaction", "poster", "cite", "data"])
 const unsafeStyleValue = /(?:expression\s*\(|javascript\s*:|data\s*:\s*text\/html)/i
+const xmlNamespace = "http://www.w3.org/XML/1998/namespace"
+const xmlnsNamespace = "http://www.w3.org/2000/xmlns/"
+
+function lookupAttributeNamespace(element: Element, prefix: string) {
+  const domBinding = element.lookupNamespaceURI?.(prefix)
+  if(domBinding) return domBinding
+  for(let current: Element | null = element; current; current = current.parentElement) {
+    const declaration = current.getAttributeNode(`xmlns:${prefix}`)
+    if(declaration) return declaration.value || null
+  }
+  return null
+}
+
+/** Sets an authored attribute while honoring a qualified name's namespace.
+ * A rename that keeps its prefix retains the old binding; a new prefix must
+ * resolve on the element. Unprefixed names always remain unnamespaced. */
+export function setElementAttributeValue(element: Element, name: string, value: string | null, previousName?: string) {
+  if(value === null) {
+    element.removeAttribute(name)
+    return
+  }
+
+  if(name === "xmlns") {
+    element.setAttributeNS(xmlnsNamespace, name, value)
+    return
+  }
+
+  const separator = name.indexOf(":")
+  if(separator < 0) {
+    element.setAttribute(name, value)
+    return
+  }
+
+  const prefix = name.slice(0, separator)
+  const previous = previousName ? element.getAttributeNode(previousName) : null
+  const namespaceURI = previous?.prefix === prefix && previous.namespaceURI
+    || prefix === "xml" && xmlNamespace
+    || prefix === "xmlns" && xmlnsNamespace
+    || lookupAttributeNamespace(element, prefix)
+  if(!namespaceURI) throw new TypeError(`The ${prefix} namespace prefix is not bound`)
+  element.setAttributeNS(namespaceURI, name, value)
+}
 
 export function isUnsafeElementAttributeName(name: string) {
   const normalized = name.toLowerCase()
@@ -194,7 +238,7 @@ export function elementAttributeEditability(name: string, localName?: string, na
 }
 
 export function sanitizeAuthoredClass(value: string) {
-  return value.split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+  return authoredClassValue(value)
 }
 
 export function isUnsafeElementAttributeValue(name: string, value: string) {
@@ -206,6 +250,18 @@ export function isUnsafeElementAttributeValue(name: string, value: string) {
     || normalizedValue.startsWith("vbscript:")
     || normalizedValue.startsWith("data:text/html")
     || normalizedValue.startsWith("data:image/svg+xml")
+}
+
+const attributeTargetIds = new WeakMap<Element, string>()
+let attributeTargetSequence = 0
+
+export function elementAttributeTargetId(element: Element) {
+  let id = attributeTargetIds.get(element)
+  if(!id) {
+    id = `element-${++attributeTargetSequence}`
+    attributeTargetIds.set(element, id)
+  }
+  return id
 }
 
 export function elementAttributeState(element: Element, path: number[] | null): ElementAttributeState {
@@ -220,6 +276,7 @@ export function elementAttributeState(element: Element, path: number[] | null): 
   const presentation = getElementPresentation(element)
   return {
     path: path ? [...path] : null,
+    targetId: elementAttributeTargetId(element),
     localName: element.localName,
     namespaceURI: element.namespaceURI,
     name: presentation.name,

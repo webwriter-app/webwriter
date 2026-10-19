@@ -31,6 +31,105 @@ afterEach(() => {
 })
 
 describe("CSS-only Slides layout", () => {
+  it("uses fixed 1280 by 720 slide dimensions", () => {
+    convert("slides")
+    expect(getComputedStyle(slides()[0]).width).toBe("1280px")
+    expect(getComputedStyle(slides()[0]).height).toBe("720px")
+    expect(slidesStyles).not.toContain("width: min(100vw")
+  })
+
+  it.each(["p", "h2", "details", "table", "ul", "svg", "picture", "widget", "table-command", "media-command", "details-command", "list-command"])("inserts %s directly on the current slide from nested text", async tag => {
+    document.body.innerHTML = '<article><p>Keep <strong>nested</strong> text</p></article>'
+    convert("slides")
+    const slide = slides()[0], article = slide.querySelector("article")!
+    const original = article.innerHTML
+    $.move(article.querySelector("strong")!.firstChild!, 2)
+    if(tag === "widget") editor.features.manipulation.actions.insert({type: "insert", html: '<custom-card><p>Private</p></custom-card>'})
+    else if(tag === "table-command") editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
+    else if(tag === "media-command") editor.features.media.actions.insertMedia({type: "insertMedia", media: "picture"})
+    else if(tag === "details-command") editor.features.list.actions.insertDetails({type: "insertDetails"})
+    else if(tag === "list-command") editor.features.list.insertList("ul")
+    else editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+    const added = Array.from(slide.children).filter(element => element !== article && !element.matches(".ww-slide-directions"))
+    expect(added).toHaveLength(1)
+    expect((added[0] as HTMLElement).style.position).toBe("absolute")
+    expect(article.innerHTML).toBe(original)
+    await settle()
+    expect(slides()[0].contains(added[0])).toBe(true)
+  })
+
+  it("keeps pasted media on the slide and preserves the existing text box", async () => {
+    seed()
+    const paragraph = slides()[0].querySelector("p")!, text = paragraph.textContent
+    $.move(paragraph.firstChild!, 2)
+    const event = new ClipboardEvent("paste", {bubbles: true, cancelable: true})
+    const data = new DataTransfer()
+    data.setData("text/html", '<img alt="Pasted image">')
+    Object.defineProperty(event, "clipboardData", {value: data})
+    paragraph.dispatchEvent(event)
+    expect(slides()[0].querySelector(":scope > picture > img, :scope > img")).not.toBeNull()
+    expect(paragraph.textContent).toBe(text)
+    expect(slides()[0].querySelector<HTMLElement>(":scope > picture, :scope > img")!.style.position).toBe("absolute")
+    await settle()
+  })
+
+  it("undoes and redoes insertion and its authored placement together", async () => {
+    seed()
+    await settle()
+    editor.doc.syncFromDOM()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "details"})
+    await settle()
+    const placement = slides()[0].querySelector<HTMLElement>(":scope > details")!.getAttribute("style")
+    editor.doc.undo(); await settle()
+    expect(document.querySelector("details")).toBeNull()
+    editor.doc.redo(); await settle()
+    expect(slides()[0].querySelector<HTMLElement>(":scope > details")!.getAttribute("style")).toBe(placement)
+  })
+
+  it("inserts on the visible slide when selection endpoints have disappeared", () => {
+    seed()
+    document.getSelection()!.removeAllRanges()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "details"})
+    expect(slides()[1].querySelector(":scope > details")?.parentElement).toBe(slides()[1])
+  })
+
+  it("keeps slide zoom and controls local, and restores the view on teardown", async () => {
+    seed()
+    const feature = editor.features.slides
+    feature.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+    const before = await editor.serializeHTML()
+    editor.appendix.querySelector<HTMLButtonElement>('[part=slide-zoom-controls] button[name=zoom-in]')!.click()
+    expect(feature.zoom).toBeCloseTo(1.2)
+    expect(editor.getDocumentLayoutState().zoom).toBe(120)
+    expect(editor.appendix.querySelector('[part=slide-zoom-controls] output')!.textContent).toBe("120%")
+    expect(await editor.serializeHTML()).toBe(before)
+    expect(feature.clientPoint(slides()[0], 120, 240)).toEqual({x: 100, y: 200})
+    feature.actions.navigateSlides({type: "navigateSlides", operation: "zoom-out"})
+    expect(feature.zoom).toBeCloseTo(1)
+    feature.actions.navigateSlides({type: "navigateSlides", operation: "fit-content"})
+    expect(feature.zoom).toBeCloseTo(Math.min(1, window.innerWidth / 1280, window.innerHeight / 720))
+    feature.disable()
+    expect(feature.zoom).toBe(1)
+    expect(editor.appendix.querySelector('[part=slide-zoom-controls]')).toBeNull()
+    await settle()
+  })
+
+  it("gives native details a white background in editing and saved slides layouts", () => {
+    document.body.innerHTML = '<details><summary>Closed</summary></details><article><details open><summary>Nested</summary><p>Content</p></details></article><details style="background-color: pink"><summary>Authored</summary></details><details is="custom-details"><summary>Widget</summary></details>'
+    expect(convert("slides")).toBe(true)
+    const [closed, nested, authored, widget] = document.querySelectorAll("details")
+    const check = () => {
+      for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).toBe("white")
+      expect(getComputedStyle(authored).backgroundColor).toBe("pink")
+      expect(getComputedStyle(widget).backgroundColor).not.toBe("white")
+    }
+    check()
+    editor.features.slides.disable()
+    check()
+    expect(convert("document")).toBe(true)
+    for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).not.toBe("white")
+  })
+
   it("keeps outer body, carousel and navigation gaps inside a slide", () => {
     const [one, two] = seed(), viewport = one.parentElement!, navigation = document.querySelector("nav.ww-slides-navigation")!
     for(const container of [document.body, viewport, navigation, ...links()]) {

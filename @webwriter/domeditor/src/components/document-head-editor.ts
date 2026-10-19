@@ -1,5 +1,6 @@
 import {captionNumberStyles, defaultCaptionEnumeration, isCaptionEnumeration, type CaptionSeries} from "../caption-enumeration"
 import {LitElement, css, html, nothing} from "lit"
+import {fixedPopupPosition} from "./popup-position"
 import {
   WEBWRITER_GENERATOR,
   creativeCommonsLicenses,
@@ -11,6 +12,7 @@ import {
   type DocumentHeadState,
 } from "../document-head"
 import {EditorCombobox, type ComboboxOption} from "./editor-combobox"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {documentLanguages} from "../document-languages"
 import {documentThemes} from "../document-themes"
 
@@ -104,6 +106,7 @@ class DocumentThemePicker extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       display: block;
       min-width: 0;
@@ -273,13 +276,10 @@ class DocumentThemePicker extends LitElement {
     const bounds = listbox?.getBoundingClientRect()
     const width = bounds?.width ?? 272
     const height = bounds?.height ?? 360
-    const margin = 8
-    const left = Math.min(Math.max(margin, trigger.left), Math.max(margin, window.innerWidth - width - margin))
-    const below = trigger.bottom + 4
-    const top = below + height <= window.innerHeight - margin
-      ? below
-      : Math.max(margin, trigger.top - height - 4)
-    this.position = {left, top}
+    this.position = fixedPopupPosition(trigger, {width, height}, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    })
     this.requestUpdate()
   }
 
@@ -357,10 +357,12 @@ export class DocumentHeadEditor extends LitElement {
     mode: {type: String, reflect: true},
     state: {attribute: false},
     expanded: {type: Boolean, reflect: true},
+    compact: {type: Boolean, reflect: true},
     attributeEditorId: {type: String, attribute: false},
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     .caption-enumeration { margin-top: 1rem; }
     .caption-enumeration summary { cursor: pointer; }
     .caption-enumeration fieldset { border: 0; padding: .75rem 0; margin: 0; display: grid; gap: .5rem; }
@@ -735,9 +737,25 @@ export class DocumentHeadEditor extends LitElement {
       line-height: 0.85rem;
       resize: vertical;
     }
+
+    :host([compact]) {height: auto; font: .68rem/1.2 system-ui, sans-serif;}
+    :host([compact]) .common-grid {grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: .4rem; height: auto; padding: 0;}
+    :host([compact]) .common-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); align-items: center; gap: .35rem;}
+    :host([compact]) .field-label {font: inherit; color: inherit; white-space: normal;}
+    :host([compact]) .common-control,
+    :host([compact]) .generator-control {height: 1.7rem; padding: .2rem; font-size: .68rem; border-color: #c5ccd5;}
+    :host([compact]) document-head-combobox {height: 1.7rem; --metadata-combobox-height: 1.7rem; --metadata-combobox-font-size: .68rem;}
+    :host([compact]) .advanced {height: auto; padding: 0; border: 0;}
+    :host([compact]) .advanced-metadata {grid-template-columns: minmax(0, 1fr);}
+    .description-field {grid-column: 1 / -1;}
+    :host([compact]) .description-field {display: flex; align-items: stretch; gap: .2rem;}
+    .description-label {display: flex; align-items: center; justify-content: space-between;}
+    .description-field .common-control,
+    :host([compact]) .description-field .common-control {height: auto; min-height: calc(3lh + .4rem + 2px); padding: .2rem; line-height: 1.2; resize: vertical;}
   `
 
   mode: "common" | "advanced" = "common"
+  compact = false
   state: DocumentHeadState = emptyDocumentHeadState()
   expanded = false
   attributeEditorId = ""
@@ -755,7 +773,7 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   private handleCommonChange(event: Event) {
-    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
+    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
     this.setField(input.name as DocumentHeadField, input.value)
   }
 
@@ -1119,7 +1137,8 @@ export class DocumentHeadEditor extends LitElement {
       const element = this.entryForPreset(preset)
       return element ? [element.id] : []
     }))
-    const entries = this.state.elements.filter(element => !representedIds.has(element.id))
+    const entries = this.state.elements.filter(element => !representedIds.has(element.id)
+      && (!this.compact || element.preset !== "theme" && element.preset !== "generator"))
     const attributeEntry = this.state.elements.find(element =>
       element.id === this.attributeEditorId && representedIds.has(element.id),
     )
@@ -1128,15 +1147,15 @@ export class DocumentHeadEditor extends LitElement {
         <div class="advanced-metadata" aria-label="Advanced metadata options">
           ${this.advancedTextField("Description", "description", this.state.description, "description")}
           ${this.advancedTextField("Keywords", "keywords", this.state.keywords, "keywords")}
-          <span class="common-field generator-entry">
+          ${this.compact ? nothing : html`<span class="common-field generator-entry">
             <span class="field-label">Generator</span>
             <span class="generator-control" role="textbox" aria-label="Generator" aria-readonly="true">
               <code>${this.state.generator || WEBWRITER_GENERATOR}</code>
             </span>
-          </span>
+          </span>`}
         </div>
         ${this.renderCaptionEnumeration()}
-        <div class="add-toolbar" aria-label="Add head element">
+        ${this.compact ? nothing : html`<div class="add-toolbar" aria-label="Add head element">
           <button type="button" @click=${() => this.add("meta")}>＋ Meta</button>
           <span class="more-select">
             <select aria-label="Add another head element" data-ribbon-input-persistent @change=${this.handleMoreAdd}>
@@ -1151,18 +1170,24 @@ export class DocumentHeadEditor extends LitElement {
             </select>
             <span class="more-chevron" aria-hidden="true"></span>
           </span>
-        </div>
+        </div>`}
         <div class="entries">
           ${attributeEntry ? this.renderCommonAttributeEditor(attributeEntry) : nothing}
           ${entries.length
             ? entries.map(entry => this.renderEntry(entry))
-            : attributeEntry ? nothing : html`<div class="empty">No additional head elements.</div>`}
+            : attributeEntry || this.compact ? nothing : html`<div class="empty">No additional head elements.</div>`}
         </div>
       </section>
     `
   }
 
   private advancedTextField(label: string, field: "description" | "keywords", value: string, preset: string) {
+    if(field === "description") return html`<label class="common-field description-field">
+      <span class="description-label"><span class="field-label">${label}</span>
+        ${this.fieldActions(label, value, preset, field, true)}</span>
+      <textarea class="common-control" name=${field} aria-label=${label} rows="3" data-ribbon-input-persistent
+        .value=${value} @change=${this.handleCommonChange}></textarea>
+    </label>`
     return html`
       <label class="common-field">
         <span class="field-label">${label}</span>

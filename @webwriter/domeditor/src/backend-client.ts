@@ -127,6 +127,20 @@ export class BackendClient {
     await this.request<void>(`documents/${encodeURIComponent(id)}`, {method: "DELETE"})
   }
 
+  async getDocumentSharing(id: string) {
+    return (await this.request<{sharing: {enabled: boolean, token?: string}}>(`documents/${encodeURIComponent(id)}/sharing`)).sharing
+  }
+
+  async setDocumentSharing(id: string, enabled: boolean) {
+    return (await this.request<{sharing: {enabled: boolean, token?: string}}>(`documents/${encodeURIComponent(id)}/sharing`, {
+      method: "PUT", body: JSON.stringify({enabled}),
+    })).sharing
+  }
+
+  async getSharedDocument(token: string) {
+    return (await this.request<{document: BackendDocument}>(`shared-documents/${encodeURIComponent(token)}`)).document
+  }
+
   async listAIProviders() {
     return await this.request<ProviderCollection>("providers")
   }
@@ -181,6 +195,21 @@ const backendCandidates = () => {
   return [...new Map(urls.map(url => [url.href, url])).values()]
 }
 
+/** Fetches the shared session JSON envelope; callers apply their own service
+ * and origin policy after parsing it. */
+async function fetchSessionJSON(url: URL, signal: AbortSignal | undefined, fetchImplementation: typeof fetch,
+  options: {redirect?: RequestRedirect} = {}) {
+  const response = await fetchImplementation.call(globalThis, url, {
+    signal,
+    ...(options.redirect ? {redirect: options.redirect} : {}),
+    headers: {Accept: "application/json"},
+    cache: "no-store",
+    credentials: "omit",
+  })
+  if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) return null
+  return await response.json() as unknown
+}
+
 export async function probeDevelopmentBackend(
   signal?: AbortSignal,
   fetchImplementation = globalThis.fetch,
@@ -191,14 +220,7 @@ export async function probeDevelopmentBackend(
   const candidates = base === undefined ? backendCandidates() : [new URL(`${base}/session`)]
   for(const url of candidates) {
     try {
-      const response = await fetchImplementation.call(globalThis, url, {
-        signal,
-        headers: {Accept: "application/json"},
-        cache: "no-store",
-        credentials: "omit",
-      })
-      if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) continue
-      const session = sessionFrom(await response.json())
+      const session = sessionFrom(await fetchSessionJSON(url, signal, fetchImplementation))
       if(session?.kind === "webwriter-dev-server" && session.authentication === "none"
         && (base === undefined || normalizedBaseUrl(session.apiBaseUrl) === base)) return session
     }
@@ -240,8 +262,17 @@ export async function connectCloudService(service: CloudService, options: {
       cache: "no-store", headers: {Accept: "application/json", ...(init.body ? {"Content-Type": "application/json"} : {}),
         ...(service.accessToken && options.password === undefined ? {Authorization: `Bearer ${service.accessToken}`} : {})}})
     if(response.status === 401 && options.password === undefined) throw new CloudAuthenticationError("Sign in again in Settings.")
-    const value = await response.json()
-    if(!response.ok) throw new Error(errorText(value, `Cloud request failed (${response.status})`))
+    const context = `Service request to ${url} failed (HTTP ${response.status})`
+    const body = await response.text()
+    if(!body.trim()) throw new Error(`${context}: empty response; expected JSON.`)
+    let value: unknown
+    try {
+      value = JSON.parse(body)
+    }
+    catch {
+      throw new Error(`${context}: invalid JSON response.`)
+    }
+    if(!response.ok) throw new Error(`${context}: ${errorText(value, "Request failed")}`)
     return value
   }
   if(options.password === undefined && cloudServiceExpired(service)) throw new CloudAuthenticationError("Sign in again in Settings.")
@@ -271,15 +302,20 @@ export class CloudAuthenticationError extends Error {}
 /** Discover only the current host; localhost port fallback belongs to dev setups. */
 export async function discoverHostBackend(signal?: AbortSignal, fetchImplementation = globalThis.fetch) {
   try {
-    const response = await fetchImplementation.call(globalThis, new URL("/api/session", location.href), {
-      signal, credentials: "omit", cache: "no-store", redirect: "error", headers: {Accept: "application/json"},
-    })
-    if(!response.ok || !response.headers.get("content-type")?.includes("application/json")) return null
-    const value = await response.json()
+    const value = await fetchSessionJSON(new URL("/api/session", location.href), signal, fetchImplementation, {redirect: "error"})
     if(!isRecord(value)) return null
     const session = sessionFrom(value.kind === "webwriter-cloud-service" ? {...value, user: value.user ?? {id: "", name: ""}} : value)
     if(!session || session.kind === "webwriter-cloud-service" && new URL(session.apiBaseUrl).origin !== location.origin) return null
     return session
   }
   catch(error) {if(isAbortError(error)) throw error; return null}
+}
+
+/** Connect a link recipient without requiring an account or persisting credentials. */
+export async function connectSharingBackend(apiBaseUrl: string, fetchImplementation = globalThis.fetch) {
+  const base = cloudServiceURL(apiBaseUrl)
+  const value = await fetchSessionJSON(new URL(`${base}/session`), AbortSignal.timeout(10000), fetchImplementation, {redirect: "error"})
+  const session = sessionFrom(isRecord(value) ? {...value, user: value.user ?? {id: "", name: ""}} : value)
+  if(!session || session.apiBaseUrl.replace(/\/$/, "") !== base) throw new Error("This server does not support document sharing.")
+  return new BackendClient(session, fetchImplementation)
 }

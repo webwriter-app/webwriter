@@ -153,17 +153,17 @@ export class CommentFeature extends EditorFeature {
   private cachedMarkers: {node: Comment, marker: CommentMarker}[] | null = null
   private stateRefreshQueued = false
   private highlighting = true
-  private paneOpen = false
-  private paneSelection: Range | null = null
-  private readonly repositionCommentUI = () => {
-    if(this.isEnabled) this.renderBauble(this.comments())
-  }
-
+  private activeThreadId: string | null = null
   activeListeners = {
-    selectionchange: () => this.repositionCommentUI(),
+    selectionchange: () => this.renderCommentUI(),
   }
 
   actions = {
+    selectComment: ({id}: {type: "selectComment", id: string}) => this.selectComment(id),
+    addCommentReply: ({id, text}: {type: "addCommentReply", id: string, text: string}) => this.addReply(id, text),
+    updateComment: ({id, text}: {type: "updateComment", id: string, text: string}) => this.updateCommentTextById(id, text),
+    removeComment: ({id}: {type: "removeComment", id: string}) => this.removeCommentById(id),
+    addComment: ({text}: {type: "addComment", text: string}) => this.addComment(text),
     toggleComment: ({text}: {type: "toggleComment", text: string}) => this.toggleComment(text),
     setCommentText: ({text}: {type: "setCommentText", text: string}) => this.setCommentText(text),
     removeAllComments: ({}: {type: "removeAllComments"}) => this.removeAllComments(),
@@ -193,8 +193,6 @@ export class CommentFeature extends EditorFeature {
         this.observer = null
       }
     }
-    window.addEventListener("resize", this.repositionCommentUI)
-    window.addEventListener("scroll", this.repositionCommentUI, {capture: true, passive: true})
     this.renderCommentUI()
   }
 
@@ -203,11 +201,9 @@ export class CommentFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.cachedMarkers = null
-    window.removeEventListener("resize", this.repositionCommentUI)
-    window.removeEventListener("scroll", this.repositionCommentUI, true)
     this.highlightRegistry()?.delete(commentHighlightName)
-    this.closeThreadPane()
-    this.editor.appendix.querySelector(".◆comment-bauble")?.remove()
+    this.activeThreadId = null
+    this.highlightRegistry()?.delete("webwriter-active-comment")
     this.stateRefreshQueued = false
     super.disable()
   }
@@ -220,12 +216,19 @@ export class CommentFeature extends EditorFeature {
       ? active[0].text
       : ""
     return {
-      canComment: context !== null,
+      canComment: context !== null && !context.range.collapsed && !this.isVoidTarget(this.elementTarget(context.range)),
       active: active.length > 0,
       text,
       activeCount: active.length,
       count: comments.length,
       highlighting: this.highlighting,
+      threads: this.threads(comments).map(thread => ({
+        id: thread.comments[0].id,
+        target: thread.comments[0].kind === "node" ? "element" : "text",
+        active: thread.comments.some(comment => comment.id === this.activeThreadId),
+        comments: thread.comments.map(({id, text, author, createdAt, editedAt}) => ({id, text, author, createdAt, editedAt})),
+      })),
+      activeThreadId: this.activeThreadId,
     }
   }
 
@@ -234,6 +237,16 @@ export class CommentFeature extends EditorFeature {
     if(!context) return false
     const active = this.comments().filter(comment => this.isActive(comment, context.range))
     if(active.length) return this.removeComments(active, context)
+    if(context.range.collapsed || this.isVoidTarget(this.elementTarget(context.range))) return false
+    this.insertComment(context.range, text, context.backwards, true)
+    this.renderCommentUI()
+    this.editor.postCommentState()
+    return true
+  }
+
+  addComment(text: string) {
+    const context = this.getSelection()
+    if(!context || context.range.collapsed || !text.trim() || this.isVoidTarget(this.elementTarget(context.range))) return false
     this.insertComment(context.range, text, context.backwards, true)
     this.renderCommentUI()
     this.editor.postCommentState()
@@ -248,13 +261,29 @@ export class CommentFeature extends EditorFeature {
     return true
   }
 
+  private elementTarget(range: Range) {
+    if(range.collapsed) return range.startContainer instanceof Element
+      ? range.startContainer : range.startContainer.parentElement
+    if(range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1) {
+      const child = range.startContainer.childNodes[range.startOffset]
+      if(child instanceof Element) return child
+    }
+    return null
+  }
+
+  private isVoidTarget(target: Element | null) {
+    return target?.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && target.matches("area,base,br,col,embed,hr,img,input,link,meta,param,source,track,wbr")
+  }
+
   private insertComment(range: Range, text: string, backwards = false, select = false) {
     const id = this.createId()
     const metadata = this.newMetadata()
-    if(range.collapsed) {
+    const target = this.elementTarget(range)
+    if(target) {
       const marker = document.createComment(markerData("node", id, text, metadata))
-      this.insertBoundary(marker, range.startContainer, range.startOffset)
-      if(select) this.setSelectionAfter(marker)
+      target.append(marker)
+      if(select) this.selectNodeComment(marker)
     }
     else {
       const start = document.createComment(markerData("start", id, text, metadata))
@@ -346,7 +375,9 @@ export class CommentFeature extends EditorFeature {
     const comment = comments[(index + comments.length) % comments.length]
     if(comment.kind === "span") this.selectSpan(comment.start, comment.end, false)
     else this.selectNodeComment(comment.marker)
+    this.activeThreadId = comment.id
     this.scrollCommentIntoView(comment)
+    this.renderCommentUI()
     this.editor.postCommentState()
     return true
   }
@@ -457,253 +488,46 @@ export class CommentFeature extends EditorFeature {
     if(ranges.length) registry.set(commentHighlightName, new Highlight(...ranges))
   }
 
-  private renderCommentUI(forcePane = false) {
+  private renderCommentUI() {
     if(!this.isEnabled) return
     const comments = this.comments()
+    if(!comments.some(comment => comment.id === this.activeThreadId)) this.activeThreadId = null
     this.syncHighlights(comments)
-    this.renderBauble(comments)
-    if(this.paneOpen && (forcePane || !this.threadPaneHasFocus())) this.renderThreadPane(comments)
+    const registry = this.highlightRegistry()
+    registry?.delete("webwriter-active-comment")
+    const active = comments.find(comment => comment.id === this.activeThreadId)
+    const range = active && this.commentRange(active)
+    const Highlight = this.highlightConstructor()
+    if(range && Highlight) registry?.set("webwriter-active-comment", new Highlight(range))
   }
 
-  private threadPaneHasFocus() {
-    const pane = this.editor.appendix.querySelector(".◆comment-thread-pane")
-    const active = this.editor.appendix.activeElement
-    return pane !== null && active !== null && pane.contains(active)
-  }
-
-  private renderBauble(comments: DocumentComment[]) {
-    const appendix = this.editor.appendix
-    appendix.querySelector(".◆comment-bauble")?.remove()
-    const context = this.getSelection()
-    if(!context) return
-    const threads = this.threads(comments).filter(thread =>
-      thread.comments.some(comment => this.selectionIntersects(comment, context.range)),
-    )
-    if(!threads.length) return
-
-    const button = document.createElement("button")
-    button.type = "button"
-    button.className = "◆ ◆editor-only ◆comment-bauble"
-    button.setAttribute("part", "comment-bauble")
-    button.setAttribute("aria-label", `Open ${threads.length} comment ${threads.length === 1 ? "thread" : "threads"}`)
-    button.textContent = threads.length === 1 ? "💬" : `💬 ${threads.length}`
-    button.addEventListener("pointerdown", event => {
-      event.preventDefault()
-      event.stopPropagation()
-    })
-    button.addEventListener("click", event => {
-      event.stopPropagation()
-      this.openThreadPane(context.range)
-    })
-    this.editor.addAppendix(button)
-    this.positionBauble(button, context.range)
-  }
-
-  private positionBauble(button: HTMLElement, range: Range) {
-    const rect = this.rangeRect(range)
-    if(!rect) return
-    const width = button.getBoundingClientRect().width || 32
-    const left = Math.max(8, Math.min(window.innerWidth - width - 8, rect.left + rect.width / 2 - width / 2))
-    button.style.left = `${left}px`
-    button.style.top = `${Math.max(8, rect.top - 34)}px`
-  }
-
-  private rangeRect(range: Range) {
-    try {
-      const rect = range.getBoundingClientRect()
-      if(rect.width || rect.height) return rect
-      const element = range.commonAncestorContainer instanceof Element
-        ? range.commonAncestorContainer
-        : range.commonAncestorContainer.parentElement
-      return element?.getBoundingClientRect() ?? rect
-    }
-    catch {
-      return null
-    }
-  }
-
-  private openThreadPane(range: Range) {
-    this.paneOpen = true
-    this.paneSelection = range.cloneRange()
-    this.renderThreadPane(this.comments())
-  }
-
-  private closeThreadPane() {
-    this.paneOpen = false
-    this.paneSelection = null
-    document.body.shadowRoot?.querySelector(".◆comment-thread-pane")?.remove()
-  }
-
-  private renderThreadPane(comments: DocumentComment[]) {
-    const selectedRange = this.connectedPaneSelection()
-    if(!selectedRange) {
-      this.closeThreadPane()
-      return
-    }
-    const appendix = this.editor.appendix
-    let pane = appendix.querySelector<HTMLElement>(".◆comment-thread-pane")
-    if(!pane) {
-      pane = document.createElement("aside")
-      pane.className = "◆ ◆editor-only ◆comment-thread-pane"
-      pane.setAttribute("part", "comment-thread-pane")
-      pane.setAttribute("aria-label", "Comment threads")
-      for(const type of ["pointerdown", "click", "keydown"] as const) {
-        pane.addEventListener(type, event => event.stopPropagation())
-      }
-      pane.addEventListener("focusout", () => queueMicrotask(() => {
-        if(this.paneOpen && !this.threadPaneHasFocus()) this.renderThreadPane(this.comments())
-      }))
-      this.editor.addAppendix(pane)
-    }
-
-    const threads = this.threads(comments).filter(thread =>
-      thread.comments.some(comment => this.selectionIntersects(comment, selectedRange)),
-    )
-    const exactThreadExists = threads.some(thread => this.isExactThread(thread, selectedRange))
-    pane.replaceChildren()
-
-    const header = document.createElement("header")
-    header.className = "◆comment-pane-header"
-    const title = document.createElement("h2")
-    title.textContent = threads.length === 1 ? "Comment thread" : "Comment threads"
-    const close = this.paneButton("Close", () => this.closeThreadPane())
-    close.classList.add("◆comment-pane-close")
-    close.setAttribute("aria-label", "Close comment threads")
-    header.append(title, close)
-    pane.append(header)
-
-    const list = document.createElement("div")
-    list.className = "◆comment-thread-list"
-    for(const thread of threads) list.append(this.renderThread(thread))
-    if(!exactThreadExists) list.append(this.renderNewThreadComposer())
-    pane.append(list)
-  }
-
-  private renderThread(thread: CommentThread) {
-    const section = document.createElement("section")
-    section.className = "◆comment-thread"
-    section.setAttribute("aria-label", "Comment thread")
-    thread.comments.forEach((comment, index) => section.append(this.renderCommentCard(comment, index === 0)))
-
-    const composer = document.createElement("div")
-    composer.className = "◆comment-composer"
-    const input = document.createElement("textarea")
-    input.rows = 2
-    input.placeholder = "Write a reply…"
-    input.setAttribute("aria-label", "Reply text")
-    const add = this.paneButton("Add reply", () => {
-      if(this.addReply(thread.comments[0].id, input.value)) input.value = ""
-    })
-    composer.append(input, add)
-    section.append(composer)
-    return section
-  }
-
-  private renderCommentCard(comment: DocumentComment, primary: boolean) {
-    const article = document.createElement("article")
-    article.className = `◆comment-card ${primary ? "◆comment-primary" : "◆comment-reply"}`
-
-    const header = document.createElement("header")
-    const author = document.createElement("strong")
-    author.textContent = comment.author.name
-    const role = document.createElement("span")
-    role.textContent = primary ? "Primary" : "Reply"
-    header.append(author, role)
-
-    const time = document.createElement("time")
-    time.textContent = this.commentTimeText(comment)
-    if(comment.editedAt) time.dateTime = new Date(comment.editedAt).toISOString()
-
-    const input = document.createElement("textarea")
-    input.rows = 3
-    input.value = comment.text
-    input.setAttribute("aria-label", `${primary ? "Primary comment" : "Reply"} by ${comment.author.name}`)
-    input.addEventListener("change", () => this.updateCommentTextById(comment.id, input.value))
-
-    const remove = this.paneButton(primary ? "Remove comment" : "Remove reply", () =>
-      this.removeCommentById(comment.id),
-    )
-    remove.classList.add("◆comment-remove")
-    article.append(header, time, input, remove)
-    return article
-  }
-
-  private renderNewThreadComposer() {
-    const section = document.createElement("section")
-    section.className = "◆comment-thread ◆comment-new-thread"
-    const title = document.createElement("h3")
-    title.textContent = "Start a new thread for this selection"
-    const input = document.createElement("textarea")
-    input.rows = 3
-    input.placeholder = "Write a comment…"
-    input.setAttribute("aria-label", "New thread comment")
-    const add = this.paneButton("Start thread", () => {
-      if(this.startThread(input.value)) input.value = ""
-    })
-    section.append(title, input, add)
-    return section
-  }
-
-  private paneButton(label: string, action: () => void) {
-    const button = document.createElement("button")
-    button.type = "button"
-    button.className = "◆comment-pane-button"
-    button.textContent = label
-    button.addEventListener("click", action)
-    return button
-  }
-
-  private connectedPaneSelection() {
-    const range = this.paneSelection
-    if(!range || !range.startContainer.isConnected || !range.endContainer.isConnected) return null
-    return range
-  }
-
-  private isExactThread(thread: CommentThread, range: Range) {
-    if(!range.collapsed) return this.rangesHaveSameContent(thread.range, range)
-    return thread.comments.some(comment => comment.kind === "node" && this.isActive(comment, range))
-  }
-
-  private startThread(text: string) {
-    const range = this.connectedPaneSelection()?.cloneRange()
+  selectComment(id: string) {
+    const thread = this.threads().find(candidate => candidate.comments.some(comment => comment.id === id))
+    if(!thread) return false
+    const comment = thread.comments.find(comment => comment.id === id)!
+    const range = this.commentRange(comment)
     if(!range) return false
-    try {
-      const id = this.insertComment(range, text)
-      const comment = this.comments().find(candidate => candidate.id === id)
-      const commentRange = comment && this.commentRange(comment)
-      if(commentRange) this.paneSelection = commentRange.cloneRange()
-      this.editor.postCommentState()
-      this.renderCommentUI(true)
-      return true
-    }
-    catch {
-      return false
-    }
+    this.restoreRange(range, false)
+    this.activeThreadId = thread.comments[0].id
+    this.scrollCommentIntoView(comment)
+    this.renderCommentUI()
+    this.editor.postCommentState()
+    return true
   }
 
   private addReply(primaryId: string, text: string) {
     const thread = this.threads().find(candidate => candidate.comments.some(comment => comment.id === primaryId))
-    if(!thread) return false
+    if(!thread || thread.range.collapsed || !text.trim()) return false
     const id = this.createId()
     const metadata = this.newMetadata()
     const primary = thread.comments[0]
     if(primary.kind === "node") {
-      let reference: Node = primary.marker
-      for(const comment of thread.comments) {
-        if(comment.kind === "node" && comment.marker.parentNode === reference.parentNode
-          && comment.marker.compareDocumentPosition(reference) & Node.DOCUMENT_POSITION_PRECEDING) {
-          reference = comment.marker
-        }
-      }
-      reference.parentNode?.insertBefore(
-        document.createComment(markerData("node", id, text, metadata)),
-        reference.nextSibling,
-      )
+      primary.marker.parentElement?.append(document.createComment(markerData("node", id, text, metadata)))
     }
     else {
       const innermost = [...thread.comments].reverse().find(comment => comment.kind === "span") as SpanComment | undefined
       const range = innermost ? this.spanRange(innermost.start, innermost.end) : thread.range.cloneRange()
-      if(!range) return false
+      if(!range || range.collapsed) return false
       const startContainer = range.startContainer
       const startOffset = range.startOffset
       const endContainer = range.endContainer
@@ -712,7 +536,7 @@ export class CommentFeature extends EditorFeature {
       this.insertBoundary(document.createComment(markerData("start", id, text, metadata)), startContainer, startOffset)
     }
     this.editor.postCommentState()
-    this.renderCommentUI(true)
+    this.renderCommentUI()
     return true
   }
 
@@ -737,19 +561,10 @@ export class CommentFeature extends EditorFeature {
     else {
       comment.marker.remove()
       if(comment.kind === "span") comment.end.remove()
-      this.editor.postCommentState()
     }
-    this.renderCommentUI(true)
+    this.renderCommentUI()
+    this.editor.postCommentState()
     return true
-  }
-
-  private commentTimeText(comment: DocumentComment) {
-    if(!comment.createdAt) return "Creation time unavailable"
-    const created = new Date(comment.createdAt).toLocaleString()
-    if(comment.editedAt > comment.createdAt) {
-      return `Created ${created} · Edited ${new Date(comment.editedAt).toLocaleString()}`
-    }
-    return `Created ${created}`
   }
 
   private appliesTo(comment: DocumentComment, range: Range) {
@@ -757,10 +572,6 @@ export class CommentFeature extends EditorFeature {
     if(!commentRange) return false
     if(range.collapsed) return this.containsPoint(commentRange, range)
     return this.rangesOverlap(commentRange, range)
-  }
-
-  private selectionIntersects(comment: DocumentComment, range: Range) {
-    return this.appliesTo(comment, range) || this.isActive(comment, range)
   }
 
   private isActive(comment: DocumentComment, range: Range) {
@@ -789,12 +600,9 @@ export class CommentFeature extends EditorFeature {
 
   private nodeCommentRange(marker: Comment) {
     if(!marker.isConnected || !marker.parentNode) return null
-    let target = marker.previousSibling
-    while(target && parseCommentMarker(target)) target = target.previousSibling
     const range = document.createRange()
     try {
-      if(target) range.selectNode(target)
-      else if(marker.parentNode === document.body) range.selectNodeContents(document.body)
+      if(marker.parentNode === document.body) range.selectNodeContents(document.body)
       else range.selectNode(marker.parentNode)
       return range
     }
@@ -1033,13 +841,6 @@ export class CommentFeature extends EditorFeature {
     container.insertBefore(marker, container.childNodes.item(offset))
   }
 
-  private setSelectionAfter(marker: Comment) {
-    const selection = document.getSelection()
-    if(!selection || !marker.parentNode) return
-    const offset = Array.from(marker.parentNode.childNodes).indexOf(marker) + 1
-    selection.setPosition(marker.parentNode, offset)
-  }
-
   private selectSpan(start: Comment, end: Comment, backwards: boolean) {
     const range = this.spanRange(start, end)
     if(range) this.restoreRange(range, backwards)
@@ -1052,7 +853,7 @@ export class CommentFeature extends EditorFeature {
 
   private scrollCommentIntoView(comment: DocumentComment) {
     const node = comment.kind === "node"
-      ? comment.marker.previousElementSibling ?? comment.marker.parentElement
+      ? comment.marker.parentElement
       : comment.start.parentElement
     node?.scrollIntoView?.({block: "nearest"})
   }

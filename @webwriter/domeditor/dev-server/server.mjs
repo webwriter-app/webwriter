@@ -1,5 +1,5 @@
 import {createServer as createHTTPServer} from "node:http"
-import {createHash, randomUUID} from "node:crypto"
+import {createHash, randomBytes, randomUUID} from "node:crypto"
 import {mkdir, readFile, readdir, rename, rm, writeFile} from "node:fs/promises"
 import {dirname, extname, join, resolve} from "node:path"
 import {fileURLToPath, pathToFileURL} from "node:url"
@@ -76,6 +76,7 @@ const safeId = value => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]
 // Scoped IDs are hashed into room names; preserve valid authored Unicode IDs.
 const safeScopeId = value => typeof value === "string" && value.length > 0 && value.length <= 1024 && !/[\u0000-\u001f\u007f]/.test(value)
 const safeSessionToken = value => typeof value === "string" && /^[A-Za-z0-9_-]{24,256}$/.test(value)
+const publicDocument = ({sharing: _sharing, ...document}) => document
 const widgetNodeKind = "__domeditor_node_kind"
 const widgetProcessingInstructionTarget = "__domeditor_processing_instruction_target"
 const widgetProcessingInstructionKind = "processing-instruction"
@@ -304,14 +305,20 @@ export async function createDevServer(options = {}) {
   await mkdir(widgetDataDirectory, {recursive: true})
   await mkdir(widgetGroupingDirectory, {recursive: true})
 
-  // Seed editable copies once; restarting must preserve saved changes.
-  for(const [id, title, filename] of [
-    ["preset-mozilla-mathml-test", "Mozilla MathML Test", "mozilla-mathml-test.html"],
-    ["preset-kitchen-sink", "Kitchen Sink", "kitchen-sink.html"],
-  ]) {
+  // Retire only the bundled legacy examples, leaving other saved documents alone.
+  const legacyExamples = (await readdir(join(projectRoot, "examples")))
+    .filter(filename => /^\d{2}-.+\.html$/.test(filename))
+    .map(filename => `example-${filename.slice(0, -5)}`)
+  for(const id of [...legacyExamples, "preset-mozilla-mathml-test", "preset-kitchen-sink"]) {
+    await rm(join(documentsDirectory, `${id}.json`), {force: true})
+  }
+
+  // Use the landing page's catalog and seed editable copies once; preserve saved changes.
+  const examples = await readJSONFile(join(projectRoot, "src", "example-documents.json"))
+  for(const {id: exampleId, title} of examples) {
     const preset = {
-      id, title, format: "html",
-      content: await readFile(join(projectRoot, "examples", filename), "utf8"),
+      id: `example-${exampleId}`, title, format: "html",
+      content: await readFile(join(projectRoot, "examples", "subjects", `${exampleId}.html`), "utf8"),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
@@ -332,8 +339,19 @@ export async function createDevServer(options = {}) {
     return transaction
   }
 
+  // Document updates are read-modify-write transactions too. Serialize them
+  // after request bodies are read so concurrent partial updates merge against
+  // the latest persisted document without holding the queue open on clients.
+  let documentTransactionQueue = Promise.resolve()
+  const withDocumentTransaction = operation => {
+    const transaction = documentTransactionQueue.then(operation)
+    documentTransactionQueue = transaction.catch(() => {})
+    return transaction
+  }
+
   let viteServer
   const liveSessionTokens = new Map()
+  const sharedDocumentSockets = new Map()
   const widgetDataCapabilities = new Map()
   const widgetDataDocuments = new Map()
   const widgetDataWrites = new Map()
@@ -487,6 +505,15 @@ export async function createDevServer(options = {}) {
     // A stale browser connection can produce a malformed frame after wake.
     // Handle it so ws does not turn the expected disconnect into a process error.
     socket.on("error", () => {})
+    if(request.shareToken) {
+      const sockets = sharedDocumentSockets.get(request.shareToken) ?? new Set()
+      sockets.add(socket)
+      sharedDocumentSockets.set(request.shareToken, sockets)
+      socket.once("close", () => {
+        sockets.delete(socket)
+        if(!sockets.size) sharedDocumentSockets.delete(request.shareToken)
+      })
+    }
     setupWSConnection(socket, request)
     if(request.liveRole !== "learner") return
     const shared = getYDoc(request.liveRoom)
@@ -737,44 +764,105 @@ export async function createDevServer(options = {}) {
         const documents = await Promise.all(entries
           .filter(entry => entry.isFile() && extname(entry.name) === ".json")
           .map(entry => readJSONFile(join(documentsDirectory, entry.name), null)))
-        json(response, 200, {documents: documents.filter(isRecord).map(({content: _content, ...document}) => document)
+        json(response, 200, {documents: documents.filter(isRecord).map(({content: _content, ...document}) => publicDocument(document))
           .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)))})
         return
+      }
+
+      const sharedDocumentMatch = path.match(/^\/api\/shared-documents\/([^/]+)$/)
+      if(sharedDocumentMatch && request.method === "GET") {
+        const token = decodeURIComponent(sharedDocumentMatch[1])
+        const entries = await readdir(documentsDirectory, {withFileTypes: true})
+        for(const entry of entries.filter(entry => entry.isFile() && extname(entry.name) === ".json")) {
+          const document = await readJSONFile(join(documentsDirectory, entry.name), null)
+          if(isRecord(document) && document.sharing?.enabled === true && document.sharing.token === token) {
+            return json(response, 200, {document: publicDocument(document)})
+          }
+        }
+        return apiError(response, 404, "Shared document not found")
       }
 
       if(path === "/api/documents" && request.method === "POST") {
         const now = new Date().toISOString()
         const id = randomUUID()
         const document = {id, ...documentInput(await readJSON(request)), createdAt: now, updatedAt: now}
-        await atomicJSONWrite(join(documentsDirectory, `${id}.json`), document)
+        await withDocumentTransaction(() => atomicJSONWrite(join(documentsDirectory, `${id}.json`), document))
         json(response, 201, {document}, {Location: `/api/documents/${id}`})
         return
       }
 
       const documentMatch = path.match(/^\/api\/documents\/([^/]+)$/)
+      const sharingMatch = path.match(/^\/api\/documents\/([^/]+)\/sharing$/)
+      if(sharingMatch && (request.method === "GET" || request.method === "PUT")) {
+        const id = decodeURIComponent(sharingMatch[1])
+        if(!safeId(id)) return apiError(response, 400, "Invalid document ID")
+        const documentPath = join(documentsDirectory, `${id}.json`)
+        if(request.method === "GET") {
+          const document = await readJSONFile(documentPath, null)
+          if(!document) return apiError(response, 404, "Document not found")
+          const sharing = document.sharing?.enabled === true && typeof document.sharing.token === "string"
+            ? {enabled: true, token: document.sharing.token}
+            : {enabled: false}
+          return json(response, 200, {sharing})
+        }
+        const input = await readJSON(request)
+        if(!isRecord(input) || typeof input.enabled !== "boolean") return apiError(response, 400, "Sharing enabled must be a boolean")
+        return await withDocumentTransaction(async () => {
+          const document = await readJSONFile(documentPath, null)
+          if(!document) return apiError(response, 404, "Document not found")
+          const sharing = input.enabled
+            ? {enabled: true, token: document.sharing?.enabled === true && typeof document.sharing.token === "string"
+              ? document.sharing.token : randomBytes(32).toString("base64url")}
+            : {enabled: false}
+          await atomicJSONWrite(documentPath, {...document, sharing})
+          if(!input.enabled && document.sharing?.token) {
+            for(const socket of sharedDocumentSockets.get(document.sharing.token) ?? []) socket.close(1008, "Sharing revoked")
+            sharedDocumentSockets.delete(document.sharing.token)
+          }
+          return json(response, 200, {sharing})
+        })
+      }
       if(documentMatch) {
         const id = decodeURIComponent(documentMatch[1])
         if(!safeId(id)) return apiError(response, 400, "Invalid document ID")
         const documentPath = join(documentsDirectory, `${id}.json`)
-        const existing = await readJSONFile(documentPath, null)
-        if(!existing) return apiError(response, 404, "Document not found")
-        if(request.method === "GET") return json(response, 200, {document: existing})
+        if(request.method === "GET") {
+          const existing = await readJSONFile(documentPath, null)
+          if(!existing) return apiError(response, 404, "Document not found")
+          return json(response, 200, {document: publicDocument(existing)})
+        }
         if(request.method === "PUT" || request.method === "PATCH") {
-          const updated = {
-            ...existing,
-            ...documentInput(await readJSON(request), existing),
-            id,
-            createdAt: existing.createdAt,
-            updatedAt: new Date().toISOString(),
-          }
-          await atomicJSONWrite(documentPath, updated)
-          return json(response, 200, {document: updated})
+          const input = await readJSON(request)
+          return await withDocumentTransaction(async () => {
+            const existing = await readJSONFile(documentPath, null)
+            if(!existing) return apiError(response, 404, "Document not found")
+            const updated = {
+              ...existing,
+              ...documentInput(input, existing),
+              id,
+              createdAt: existing.createdAt,
+              updatedAt: new Date().toISOString(),
+            }
+            await atomicJSONWrite(documentPath, updated)
+            return json(response, 200, {document: publicDocument(updated)})
+          })
         }
         if(request.method === "DELETE") {
-          await rm(documentPath)
-          response.writeHead(204)
-          response.end()
-          return
+          return await withDocumentTransaction(async () => {
+            const existing = await readJSONFile(documentPath, null)
+            if(!existing) return apiError(response, 404, "Document not found")
+            await rm(documentPath)
+            const room = `document-${id}`
+            if(existing.sharing?.token) {
+              for(const socket of sharedDocumentSockets.get(existing.sharing.token) ?? []) socket.close(1008, "Document deleted")
+              sharedDocumentSockets.delete(existing.sharing.token)
+            }
+            const sharedDocument = docs.get(room)
+            docs.delete(room)
+            sharedDocument?.destroy()
+            response.writeHead(204)
+            response.end()
+          })
         }
       }
 
@@ -933,7 +1021,7 @@ export async function createDevServer(options = {}) {
     const {createServer: createViteServer} = await import("vite")
     viteServer = await createViteServer({
       root: projectRoot,
-      appType: "spa",
+      appType: "mpa",
       server: {middlewareMode: true, hmr: {server}},
     })
   }
@@ -953,6 +1041,24 @@ export async function createDevServer(options = {}) {
     const room = requestUrl.pathname.replace(/^\/+/, "")
     let liveSession
     let learnerKey
+    if(requestUrl.searchParams.has("share")) {
+      const token = requestUrl.searchParams.get("share")
+      const match = /^document-(.+)$/.exec(room)
+      if(!match || !safeId(match[1])) {
+        socket.destroy()
+        return
+      }
+      void withDocumentTransaction(async () => {
+        const document = await readJSONFile(join(documentsDirectory, `${match[1]}.json`), null)
+        if(!document || document.sharing?.enabled !== true || document.sharing.token !== token) {
+          socket.destroy()
+          return
+        }
+        request.shareToken = token
+        websocketServer.handleUpgrade(request, socket, head, webSocket => websocketServer.emit("connection", webSocket, request))
+      }).catch(() => socket.destroy())
+      return
+    }
     if(room.startsWith("widget-data-")) {
       const token = requestUrl.searchParams.get("token")
       const capability = widgetDataCapabilities.get(token)
@@ -1061,5 +1167,7 @@ if(isDirectRun) {
   const developmentServer = await createDevServer()
   const address = await developmentServer.listen()
   console.log(`WebWriter development server: ${address.url}`)
+  console.log(`Editor: ${address.url}/editor/`)
   console.log(`Admin dashboard: ${address.url}/admin`)
+  console.log(`Widget documentation: ${address.url}/docs/`)
 }

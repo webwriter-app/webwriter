@@ -1,6 +1,8 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {createProofreader, normalizeProofreadingDictionary, type Proofreader, type ProofreadingIssue} from "../proofreading"
-import {$, createStylesheet, adoptStylesheet, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
+import {createAccessibilityReviewer, type AccessibilityFinding, type AccessibilityReviewer} from "../accessibility"
+import {isAuthoredMutation, isEditorOwnedAttribute} from "../editor-artifacts"
+import {$, authoredClassValue, createStylesheet, adoptStylesheet, fixedClientX, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 import {render} from "lit"
 import {proofreadingCardStyles, proofreadingKindLabels, renderProofreadingCard} from "../components/proofreading-card"
 import {getDocumentRoot} from "../document-template"
@@ -10,9 +12,22 @@ import type {RelativePosition} from "yjs"
 
 type TextPart = {node: Text, start: number, value: string}
 type TextRun = {text: string, language: string, parts: TextPart[]}
-type Diagnostic = ProofreadingIssue & {id: string, run: TextRun, range: Range}
+type ProseDiagnostic = ProofreadingIssue & {id: string, run: TextRun, range: Range}
+type AccessibilityDiagnostic = AccessibilityFinding & {id: string, kind: "accessibility", start: number, end: number,
+  suggestions: [], range: Range, generation: number}
+type Diagnostic = ProseDiagnostic | AccessibilityDiagnostic
 type IgnoredIssue = {start: RelativePosition, end: RelativePosition, range: Range, language: string, text: string, kind: ProofreadingIssue["kind"], message: string}
 const highlightNames = {spelling: "webwriter-spelling", grammar: "webwriter-grammar", style: "webwriter-style"} as const
+
+function accessibilityContext(element: Element) {
+  return JSON.stringify([Array.from(element.attributes).filter(attribute => attribute.name !== "class"
+    && !isEditorOwnedAttribute(element, attribute.name)).map(attribute => [attribute.name, attribute.value]).sort(),
+  authoredClassValue(element.getAttribute("class"), true), element.textContent])
+}
+
+function diagnosticText(issue: Diagnostic) {
+  return issue.kind === "accessibility" ? issue.text : issue.run.text.slice(issue.start, issue.end)
+}
 
 /** A disposable projection of eligible prose, never an editor document model.
  * Formatting stays transparent; unrelated flows, languages and atomic hosts
@@ -62,6 +77,46 @@ function sameRun(first: TextRun, second: TextRun) {
     && first.parts.every((part, index) => part.node === second.parts[index].node && part.value === second.parts[index].value)
 }
 
+type RunIndex = Map<Text, TextRun[]>
+
+function indexRuns(runs: TextRun[]): RunIndex {
+  const index: RunIndex = new Map()
+  for(const run of runs) {
+    const first = run.parts[0]?.node
+    if(first) {
+      const grouped = index.get(first) ?? []
+      grouped.push(run)
+      index.set(first, grouped)
+    }
+  }
+  return index
+}
+
+function findSameRun(index: RunIndex, run: TextRun) {
+  const first = run.parts[0]?.node
+  return first ? index.get(first)?.find(candidate => sameRun(candidate, run)) : undefined
+}
+
+function issueSignature(issue: ProofreadingIssue) {
+  return JSON.stringify([issue.start, issue.end, issue.kind, issue.message])
+}
+
+function indexDiagnostics(diagnostics: Diagnostic[]) {
+  const index = new Map<Text, Map<string, ProseDiagnostic[]>>()
+  for(const diagnostic of diagnostics) {
+    if(diagnostic.kind === "accessibility") continue
+    const first = diagnostic.run.parts[0]?.node
+    if(!first) continue
+    const byIssue = index.get(first) ?? new Map<string, ProseDiagnostic[]>()
+    const signature = issueSignature(diagnostic)
+    const grouped = byIssue.get(signature) ?? []
+    grouped.push(diagnostic)
+    byIssue.set(signature, grouped)
+    index.set(first, byIssue)
+  }
+  return index
+}
+
 function runRange(run: TextRun, start: number, end: number) {
   if(!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start || end > run.text.length) return null
   const first = run.parts.find(part => start < part.start + part.value.length)
@@ -78,7 +133,7 @@ function sameRange(first: Range, second: Range) {
     && first.endContainer === second.endContainer && first.endOffset === second.endOffset
 }
 
-/** Local proofreading paints ranges and publishes cards through the editor bridge. */
+/** Local document checks share diagnostics, highlighting and review controls. */
 export class ProofreadingFeature extends EditorFeature {
   private observer: MutationObserver | null = null
   private timer: ReturnType<typeof setTimeout> | undefined
@@ -90,15 +145,22 @@ export class ProofreadingFeature extends EditorFeature {
   private enabled = false
   private manualChecking = false
   private checkingAllowed = true
+  private documentCheckingEnabled = true
+  private accessibilityReviewEnabled = false
   private loading = false
   private ready = false
   private lastStatus = ""
   private error: string | null = null
   private diagnostics: Diagnostic[] = []
+  private checkedRuns = new WeakMap<Text, {run: TextRun, issues: ProofreadingIssue[]}>()
   private ignored: IgnoredIssue[] = []
   private dictionary: string[] = []
   private reader: Promise<Proofreader> | null = null
   private readerAbort: AbortController | null = null
+  private reviewer: Promise<AccessibilityReviewer> | null = null
+  private ignoredAccessibility: {element: Element, rule: string, context: string}[] = []
+  private accessibilityOutline: HTMLElement | null = null
+  private accessibilityFrame: number | null = null
   private operation: Promise<void> | null = null
   private hoveredIssueId: string | null = null
   private popup: HTMLElement | null = null
@@ -112,6 +174,7 @@ export class ProofreadingFeature extends EditorFeature {
     retryProofreading: ({}: {type: "retryProofreading"}) => this.retry(),
     selectProofreadingIssue: ({id}: {type: "selectProofreadingIssue", id: string}) => this.selectIssue(id),
     getProofreadingState: ({}: {type: "getProofreadingState"}) => this.state(),
+    setAccessibilityReviewEnabled: ({enabled}: {type: "setAccessibilityReviewEnabled", enabled: boolean}) => this.setAccessibilityReviewEnabled(enabled),
     setProofreadingEnabled: ({enabled}: {type: "setProofreadingEnabled", enabled: boolean}) => this.setChecking(enabled),
     setDocumentProofreadingEnabled: ({enabled}: {type: "setDocumentProofreadingEnabled", enabled: boolean}) => this.setDocumentChecking(enabled),
     applyProofreadingSuggestion: ({id, index}: {type: "applyProofreadingSuggestion", id: string, index: number}) => this.applySuggestion(id, index),
@@ -127,8 +190,9 @@ export class ProofreadingFeature extends EditorFeature {
 
   captureListeners: DocumentListenerMap = {
     contextmenu: event => this.contextMenu(event),
-    pointermove: event => this.setHoveredIssue(event.buttons ? null : this.issueAtPoint(event)?.id ?? null),
-    pointerout: event => { if(!event.relatedTarget) this.setHoveredIssue(null) },
+    pointermove: event => this.setHoveredIssue(event.buttons ? null : this.isPopupEvent(event)
+      ? this.popupIssueId : this.issueAtPoint(event)?.id ?? null),
+    pointerout: event => { if(!event.relatedTarget) this.setHoveredIssue(this.popupIssueId) },
     pointerdown: event => {
       if(event.button === 0 && !this.isPopupEvent(event)) this.closePopup()
     },
@@ -142,8 +206,8 @@ export class ProofreadingFeature extends EditorFeature {
       else if(this.isPopupEvent(event) && ["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
         event.preventDefault()
         event.stopImmediatePropagation()
-        const buttons = Array.from(this.popup.querySelectorAll<HTMLButtonElement>("button"))
-        const index = buttons.indexOf(this.editor.appendix.activeElement as HTMLButtonElement)
+        const buttons = Array.from(this.popup.querySelectorAll<HTMLElement>("button, a[href]"))
+        const index = buttons.indexOf(this.editor.appendix.activeElement as HTMLElement)
         const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
           : (index + (event.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length
         buttons[next]?.focus()
@@ -158,10 +222,10 @@ export class ProofreadingFeature extends EditorFeature {
     super.enable()
     window.addEventListener("blur", this.handleBlur)
     this.observer = new MutationObserver(records => this.handleMutations(records))
-    this.observer.observe(document.body, {subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true,
-      attributeFilter: ["lang", "hidden", "inert", "contenteditable", "is", "style", "class"]})
-    this.observer.observe(document.documentElement, {attributes: true, attributeFilter: ["lang", "spellcheck"]})
-    this.observer.observe(document.head, {subtree: true, childList: true, characterData: true, attributes: true})
+    // Accessibility also depends on alt, labels, roles, relationships and
+    // arbitrary attributes changed by native editing, widgets or collaboration.
+    this.observer.observe(document.documentElement, {subtree: true, childList: true, characterData: true,
+      attributes: true, attributeOldValue: true, characterDataOldValue: true})
     this.enabled = this.checkingAllowed && this.documentCheckingEnabled
     this.error = null
     // Let the editor finish starting before loading the local checker.
@@ -183,7 +247,10 @@ export class ProofreadingFeature extends EditorFeature {
     this.observer = null
     window.removeEventListener("blur", this.handleBlur)
     this.clearDiagnostics()
+    this.checkedRuns = new WeakMap()
     this.ignored = []
+    this.ignoredAccessibility = []
+    this.disposeReviewer()
     const reader = this.reader
     this.reader = null
     this.readerAbort?.abort()
@@ -200,11 +267,13 @@ export class ProofreadingFeature extends EditorFeature {
 
   private snapshot(): ProofreadingState {
     return {
-      enabled: this.enabled, documentEnabled: this.documentCheckingEnabled,
+      allowed: this.checkingAllowed, enabled: this.enabled, documentEnabled: this.documentCheckingEnabled,
       loading: this.loading, ready: this.ready, checking: this.checking, error: this.error,
       hoveredIssueId: this.hoveredIssueId,
-      issues: this.diagnostics.map(({id, start, end, kind, message, suggestions, run}) => ({
-        id, start, end, kind, message, text: run.text.slice(start, end), suggestions: suggestions.map(suggestion => ({...suggestion})),
+      issues: this.diagnostics.map(issue => ({
+        id: issue.id, start: issue.start, end: issue.end, kind: issue.kind, message: issue.message,
+        text: diagnosticText(issue), suggestions: issue.suggestions.map(suggestion => ({...suggestion})),
+        ...(issue.kind === "accessibility" ? {helpUrl: issue.helpUrl} : {}),
       })),
     }
   }
@@ -229,29 +298,33 @@ export class ProofreadingFeature extends EditorFeature {
     return this.state()
   }
 
+  /** Automatic accessibility review starts after the host confirms a saved document. */
+  setAccessibilityReviewEnabled(enabled: boolean) {
+    if(typeof enabled !== "boolean" || enabled === this.accessibilityReviewEnabled) return this.state()
+    this.accessibilityReviewEnabled = enabled
+    if(!enabled) {
+      this.diagnostics = this.diagnostics.filter(issue => issue.kind !== "accessibility")
+      this.ignoredAccessibility = []
+      this.disposeReviewer()
+    }
+    this.invalidate()
+    return this.state()
+  }
+
   setChecking(enabled: boolean) {
     if(typeof enabled !== "boolean" || !this.isEnabled) return
     this.checkingAllowed = enabled
     this.manualChecking = false
     this.updateChecking(enabled && this.documentCheckingEnabled)
+    this.postStatus()
     return this.state()
-  }
-
-  private get documentCheckingEnabled() {
-    return document.documentElement.getAttribute("spellcheck")?.toLowerCase() !== "false"
   }
 
   setDocumentChecking(enabled: boolean) {
     if(typeof enabled !== "boolean" || !this.isEnabled || this.editor.isEditingLocked) return false
+    this.documentCheckingEnabled = enabled
     this.manualChecking = false
-    const finish = this.editor.doc.beginUndoGroup()
-    try {
-      // The native HTML preference travels with the document and its history.
-      if(enabled) document.documentElement.removeAttribute("spellcheck")
-      else document.documentElement.setAttribute("spellcheck", "false")
-    }
-    finally { finish() }
-    this.updateChecking(this.checkingAllowed && this.documentCheckingEnabled)
+    this.updateChecking(this.checkingAllowed && enabled)
     return this.state()
   }
 
@@ -269,6 +342,8 @@ export class ProofreadingFeature extends EditorFeature {
       this.readerAbort = null
       this.loading = false
       this.ready = false
+      this.disposeReviewer()
+      this.ignoredAccessibility = []
       void reader?.then(value => value.dispose()).catch(() => {})
     }
     this.postStatus()
@@ -297,31 +372,27 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   private hasProseChanges(records: MutationRecord[]) {
-    const authoredClasses = (value: string | null) => (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).sort().join(" ")
-    return records.some(record => {
-      if(record.type !== "attributes" || !(record.target instanceof Element)) return true
-      if(record.attributeName === "class") return authoredClasses(record.oldValue) !== authoredClasses(record.target.getAttribute("class"))
-      if(record.attributeName === "contenteditable" && record.target.classList.contains("◆widget-editable")) return false
-      return true
-    })
+    return records.some(isAuthoredMutation)
   }
 
   private invalidate(schedule = true) {
     this.generation++
     clearTimeout(this.timer)
-    const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
+    const runs = this.diagnostics.length ? proofreadingRuns(getDocumentRoot(), this.editor.schema) : []
     // Keep the cards until the complete replacement check is ready. Stale
     // ranges are no longer painted and commands still resolve against the DOM.
+    const currentRuns = indexRuns(runs)
     for(const diagnostic of this.diagnostics) {
-      if(!runs.some(run => sameRun(run, diagnostic.run))) continue
+      if(diagnostic.kind === "accessibility") continue
+      if(!findSameRun(currentRuns, diagnostic.run)) continue
       const range = runRange(diagnostic.run, diagnostic.start, diagnostic.end)!
       // Moving an intact paragraph can collapse its live Range even though
       // the text nodes and checking context remain unchanged.
       if(!sameRange(diagnostic.range, range)) diagnostic.range = range
     }
-    this.paint()
+    this.paint(runs, currentRuns)
     if(schedule && this.enabled && this.documentCheckingEnabled && !this.composing && !this.error) {
-      this.timer = setTimeout(() => { void this.checkNow() }, 500)
+      this.timer = setTimeout(() => { void this.checkNow(true) }, 500)
     }
     this.postStatus()
   }
@@ -331,6 +402,12 @@ export class ProofreadingFeature extends EditorFeature {
     this.hoveredIssueId = null
     this.closePopup()
     for(const name of Object.values(highlightNames)) globalThis.CSS?.highlights?.delete(name)
+  }
+
+  private disposeReviewer() {
+    const reviewer = this.reviewer
+    this.reviewer = null
+    void reviewer?.then(value => value.dispose()).catch(() => {})
   }
 
   private setHoveredIssue(id: string | null) {
@@ -345,15 +422,25 @@ export class ProofreadingFeature extends EditorFeature {
 
   private issueAtPoint(event: MouseEvent) {
     if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked
-      || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema)
-      || isFormControlInteraction(event)) return null
+      || isWidgetShadowInteraction(event, this.editor.schema)) return null
+    if(isAppendixInteraction(event)) return null
     this.flushMutations()
     const target = event.composedPath()[0]
     if(!(target instanceof Node)) return null
-    return this.diagnostics.find(diagnostic => diagnostic.run.parts.some(part => target.contains(part.node))
-      && Array.from(diagnostic.range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0
+    const formControl = isFormControlInteraction(event)
+    return this.diagnostics.filter(diagnostic => (diagnostic.kind === "accessibility"
+      ? diagnostic.element.contains(target) : !formControl && diagnostic.run.parts.some(part => target.contains(part.node)))
+      && Array.from(diagnostic.kind === "accessibility" ? diagnostic.element.getClientRects() : diagnostic.range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0
         && event.clientX >= rect.left && event.clientX <= rect.right
-        && event.clientY >= rect.top && event.clientY <= rect.bottom + 3)) ?? null
+        && event.clientY >= rect.top && event.clientY <= rect.bottom + 3
+        // Page findings belong to the page outline, not every word inside it.
+        && (diagnostic.kind !== "accessibility" || ![document.documentElement, document.body].includes(diagnostic.element as HTMLElement)
+          || event.clientX <= rect.left + 3 || event.clientX >= rect.right - 3
+          || event.clientY <= rect.top + 3 || event.clientY >= rect.bottom - 3))
+      && this.isCurrentDiagnostic(diagnostic))
+      .sort((first, second) => first.kind !== "accessibility" ? (second.kind !== "accessibility" ? 0 : -1)
+        : second.kind !== "accessibility" ? 1 : first.element === second.element ? 0
+        : first.element.contains(second.element) ? 1 : second.element.contains(first.element) ? -1 : 0)[0] ?? null
   }
 
   private contextMenu(event: MouseEvent) {
@@ -370,6 +457,10 @@ export class ProofreadingFeature extends EditorFeature {
 
   private closePopup(restoreFocus = false) {
     const focused = this.popup && this.popup.contains(this.editor.appendix.activeElement)
+    if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
+    this.accessibilityFrame = null
+    this.accessibilityOutline?.remove()
+    this.accessibilityOutline = null
     this.popup?.remove()
     this.popup = null
     if(this.popupStylesheet) {
@@ -382,40 +473,56 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   private openPopup(issue: Diagnostic, x: number, y: number) {
-    const anchor = Array.from(issue.range.getClientRects()).find(rect => rect.width > 0 && rect.height > 0
+    const rects = issue.kind === "accessibility" ? issue.element.getClientRects() : issue.range.getClientRects()
+    const anchor = Array.from(rects).find(rect => rect.width > 0 && rect.height > 0
       && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom + 3)
-      ?? issue.range.getBoundingClientRect()
+      ?? (issue.kind === "accessibility" ? issue.element.getBoundingClientRect() : issue.range.getBoundingClientRect())
     const popup = document.createElement("aside")
     popup.className = "◆ ◆editor-only ◆proofreading-popup"
     popup.setAttribute("part", "proofreading-popup")
     popup.setAttribute("role", "menu")
     popup.setAttribute("aria-label", `${proofreadingKindLabels[issue.kind]} suggestions`)
     popup.setAttribute("popover", "manual")
-    render(renderProofreadingCard({...issue, text: issue.run.text.slice(issue.start, issue.end)}, action => {
+    render(renderProofreadingCard({...issue, text: diagnosticText(issue)}, action => {
       if(this.popup !== popup || !popup.isConnected) return
       this.closePopup(true)
       if(action.type === "applyProofreadingSuggestion") this.applySuggestion(action.id, action.index)
       else if(action.type === "addProofreadingWord") this.addWord(action.id)
       else if(action.type === "ignoreProofreadingIssue") this.ignore(action.id)
-    }, {popup: true}), popup)
+    }, {popup: true, hovered: true}), popup)
     this.popup = popup
     this.popupIssueId = issue.id
     this.popupSuggestions = JSON.stringify(issue.suggestions)
+    if(issue.kind === "accessibility") {
+      this.accessibilityOutline = document.createElement("div")
+      this.accessibilityOutline.className = "◆ ◆editor-only"
+      this.accessibilityOutline.setAttribute("part", "accessibility-issue-outline")
+      this.accessibilityOutline.setAttribute("aria-hidden", "true")
+      this.editor.addAppendix(this.accessibilityOutline)
+      this.positionAccessibilityOutline()
+    }
     this.editor.addAppendix(popup)
     this.popupStylesheet = createStylesheet(proofreadingCardStyles.cssText)
     adoptStylesheet(this.editor.appendix, this.popupStylesheet)
     popup.showPopover?.()
-    const rect = popup.getBoundingClientRect()
-    popup.style.left = `${Math.max(6, Math.min(anchor.left, innerWidth - rect.width - 6))}px`
-    const below = anchor.bottom + 6
-    popup.style.top = `${below + rect.height <= innerHeight - 6 ? below : Math.max(6, anchor.top - rect.height - 6)}px`
-    popup.querySelector<HTMLButtonElement>("button")?.focus()
+    this.positionPopup(anchor)
+    popup.querySelector<HTMLElement>("button, a[href]")?.focus()
   }
 
-  async checkNow() {
+  private positionPopup(anchor: DOMRect) {
+    if(!this.popup) return
+    const rect = this.popup.getBoundingClientRect()
+    const right = Math.min(innerWidth, document.documentElement.getBoundingClientRect().right || innerWidth) - 6
+    this.popup.style.left = `${fixedClientX(Math.max(6, Math.min(anchor.left, right - rect.width)))}px`
+    const below = anchor.bottom + 6
+    this.popup.style.top = `${below + rect.height <= innerHeight - 6 ? below : Math.max(6, anchor.top - rect.height - 6)}px`
+  }
+
+  async checkNow(reuseUnchanged = false) {
     this.flushMutations()
     clearTimeout(this.timer)
     if(!this.enabled || !this.isEnabled || this.composing) return
+    if(!reuseUnchanged) this.checkedRuns = new WeakMap()
     this.requested = true
     if(this.operation) return this.operation
     this.operation = this.checkRuns().finally(() => {
@@ -449,18 +556,39 @@ export class ProofreadingFeature extends EditorFeature {
         this.requested = false
         generation = this.generation
         const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
+        const checkedRuns = this.checkedRuns
         const diagnostics: Diagnostic[] = []
+        const previousDiagnostics = indexDiagnostics(this.diagnostics)
         if(runs.length) {
+          const pendingRuns = runs.filter(run => {
+            const cached = checkedRuns.get(run.parts[0].node)
+            return !cached || !sameRun(run, cached.run)
+          })
+          const pendingIndexes = new Map(pendingRuns.map((run, index) => [run, index]))
+          let checked: ProofreadingIssue[][] | null = null
+          if(reader.checkBatch) {
+            checked = []
+            // Yield between bounded batches so edits can supersede old work
+            // without waiting for the rest of a large document to be checked.
+            for(let index = 0; index < pendingRuns.length; index += 64) {
+              this.flushMutations()
+              if(generation !== this.generation || !this.enabled || !this.isEnabled) break
+              checked.push(...await reader.checkBatch(pendingRuns.slice(index, index + 64), this.dictionary))
+            }
+          }
           for(const run of runs) {
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
-            const issues = await reader.check(run.text, run.language, this.dictionary)
+            const cached = checkedRuns.get(run.parts[0].node)
+            const index = pendingIndexes.get(run)
+            const issues = index === undefined ? cached!.issues
+              : checked ? checked[index] : await reader.check(run.text, run.language, this.dictionary)
             if(generation !== this.generation || !this.enabled || !this.isEnabled) break
+            checkedRuns.set(run.parts[0].node, {run, issues})
             for(const issue of issues) {
               const range = runRange(run, issue.start, issue.end)
               if(range && !this.isDictionaryWord(run, issue) && !this.isIgnored(run, issue, range)) {
-                const previous = this.diagnostics.find(diagnostic => sameRun(run, diagnostic.run)
-                  && diagnostic.start === issue.start && diagnostic.end === issue.end
-                  && diagnostic.kind === issue.kind && diagnostic.message === issue.message)
+                const previous = previousDiagnostics.get(run.parts[0].node)?.get(issueSignature(issue))
+                  ?.find(diagnostic => sameRun(run, diagnostic.run))
                 diagnostics.push({...issue, run, id: previous?.id ?? String(++this.sequence),
                   range: previous && sameRange(previous.range, range) ? previous.range : range})
               }
@@ -469,10 +597,34 @@ export class ProofreadingFeature extends EditorFeature {
         }
         this.flushMutations()
         if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
+        let findings: AccessibilityFinding[] = []
+        if(this.accessibilityReviewEnabled || this.manualChecking) {
+          const reviewer = await (this.reviewer ??= createAccessibilityReviewer())
+          this.flushMutations()
+          if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
+          findings = await reviewer.check(getDocumentRoot(), this.editor.schema)
+        }
+        this.flushMutations()
+        if(generation !== this.generation || !this.enabled || !this.isEnabled) continue
+        this.ignoredAccessibility = this.ignoredAccessibility.filter(ignored => ignored.element.isConnected
+          && accessibilityContext(ignored.element) === ignored.context
+          && findings.some(finding => finding.element === ignored.element && finding.rule === ignored.rule))
+        for(const finding of findings) {
+          if(!finding.element.isConnected || this.ignoredAccessibility.some(ignored => ignored.element === finding.element
+            && ignored.rule === finding.rule)) continue
+          const previous = this.diagnostics.find((issue): issue is AccessibilityDiagnostic => issue.kind === "accessibility"
+            && issue.element === finding.element && issue.rule === finding.rule && issue.message === finding.message)
+          const range = document.createRange()
+          if(document.body.contains(finding.element) && finding.element !== document.body) range.selectNode(finding.element)
+          else range.selectNodeContents(getDocumentRoot())
+          diagnostics.push({...finding, kind: "accessibility", id: previous?.id ?? String(++this.sequence),
+            start: 0, end: Math.max(1, finding.text.length), suggestions: [], range, generation})
+        }
         const current = proofreadingRuns(getDocumentRoot(), this.editor.schema)
-        this.diagnostics = diagnostics.filter(diagnostic => current.some(run => sameRun(run, diagnostic.run))
+        const currentRuns = indexRuns(current)
+        this.diagnostics = diagnostics.filter(diagnostic => diagnostic.kind === "accessibility" || findSameRun(currentRuns, diagnostic.run)
           && !this.isIgnored(diagnostic.run, diagnostic, diagnostic.range))
-        this.paint()
+        this.paint(current, currentRuns)
         this.postStatus()
       }
     }
@@ -487,6 +639,7 @@ export class ProofreadingFeature extends EditorFeature {
         this.readerAbort = null
         this.loading = false
         this.ready = false
+        this.disposeReviewer()
         void reader?.then(value => value.dispose()).catch(() => {})
         this.postStatus()
       }
@@ -497,9 +650,9 @@ export class ProofreadingFeature extends EditorFeature {
     }
   }
 
-  private paint() {
-    const runs = proofreadingRuns(getDocumentRoot(), this.editor.schema)
-    const current = this.diagnostics.filter(issue => runs.some(run => sameRun(run, issue.run)))
+  private paint(runs = this.diagnostics.length ? proofreadingRuns(getDocumentRoot(), this.editor.schema) : [], currentRuns = indexRuns(runs)) {
+    const current = this.diagnostics.filter(issue => issue.kind === "accessibility"
+      ? this.isCurrentDiagnostic(issue) : findSameRun(currentRuns, issue.run))
     if(this.hoveredIssueId && !current.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
     if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId
       && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
@@ -522,10 +675,29 @@ export class ProofreadingFeature extends EditorFeature {
     }
   }
 
+  private readonly positionAccessibilityOutline = () => {
+    if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
+    this.accessibilityFrame = null
+    const issue = this.diagnostics.find((issue): issue is AccessibilityDiagnostic => issue.kind === "accessibility"
+      && issue.id === this.popupIssueId && this.isCurrentDiagnostic(issue))
+    if(!issue || !this.accessibilityOutline) { this.closePopup(); return }
+    const rect = issue.element.getBoundingClientRect()
+    Object.assign(this.accessibilityOutline.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
+      width: `${rect.width}px`, height: `${rect.height}px`})
+    this.positionPopup(rect)
+    this.accessibilityFrame = requestAnimationFrame(this.positionAccessibilityOutline)
+  }
+
+  private isCurrentDiagnostic(issue: Diagnostic) {
+    return issue.kind === "accessibility" ? issue.generation === this.generation
+      && issue.element.isConnected && issue.element.ownerDocument === document
+      : proofreadingRuns(getDocumentRoot(), this.editor.schema).some(run => sameRun(run, issue.run))
+  }
+
   private resolve(id: string) {
     this.flushMutations()
     const diagnostic = this.diagnostics.find(candidate => candidate.id === id)
-    if(!diagnostic || !proofreadingRuns(getDocumentRoot(), this.editor.schema).some(run => sameRun(run, diagnostic.run))) return null
+    if(!diagnostic || !this.isCurrentDiagnostic(diagnostic)) return null
     return diagnostic
   }
 
@@ -533,7 +705,7 @@ export class ProofreadingFeature extends EditorFeature {
     if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked || !Number.isInteger(index) || index < 0) return false
     const diagnostic = this.resolve(id)
     const suggestion = diagnostic?.suggestions[index]
-    if(!diagnostic || !suggestion) return false
+    if(!diagnostic || diagnostic.kind === "accessibility" || !suggestion) return false
     const {run, start, end} = diagnostic
     const range = runRange(run, start, end)
     if(!range) return false
@@ -614,7 +786,7 @@ export class ProofreadingFeature extends EditorFeature {
     if(JSON.stringify(dictionary) === JSON.stringify(this.dictionary)) return true
     this.dictionary = dictionary
     this.generation++
-    this.diagnostics = this.diagnostics.filter(issue => !this.isDictionaryWord(issue.run, issue))
+    this.diagnostics = this.diagnostics.filter(issue => issue.kind === "accessibility" || !this.isDictionaryWord(issue.run, issue))
     this.paint()
     this.postStatus()
     if(this.enabled && this.isEnabled) void this.checkNow()
@@ -633,8 +805,16 @@ export class ProofreadingFeature extends EditorFeature {
   }
 
   ignore(id: string) {
+    if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked) return false
     const diagnostic = this.resolve(id)
     if(!diagnostic) return false
+    if(diagnostic.kind === "accessibility") {
+      this.ignoredAccessibility.push({element: diagnostic.element, rule: diagnostic.rule, context: accessibilityContext(diagnostic.element)})
+      this.diagnostics = this.diagnostics.filter(candidate => candidate.id !== id)
+      this.paint()
+      this.postStatus()
+      return true
+    }
     // Stable shared positions keep this occurrence ignored as surrounding
     // prose changes, without suppressing the same error elsewhere.
     this.editor.doc.syncFromDOM()
@@ -652,13 +832,14 @@ export class ProofreadingFeature extends EditorFeature {
   selectIssue(id: string) {
     if(!this.enabled || !this.isEnabled || this.composing || this.editor.isEditingLocked) return false
     const current = this.resolve(id)
-    const range = current && runRange(current.run, current.start, current.end)
+    const range = current && (current.kind === "accessibility" ? current.range : runRange(current.run, current.start, current.end))
     if(!range) return false
     const selection = document.getSelection()
     if(!selection) return false
     $.selectRanges([range])
     this.editor.doc.updateLocalSelection()
-    range.startContainer.parentElement?.scrollIntoView({block: "nearest"})
+    const target = current?.kind === "accessibility" ? current.element : range.startContainer.parentElement
+    target?.scrollIntoView({block: "nearest"})
     return true
   }
 }

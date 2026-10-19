@@ -17,6 +17,7 @@ import {cloudServiceURL, EDUMIX_URL, cloudServiceExpired, type CloudService} fro
 import {connectCloudService} from "../backend-client"
 import {normalizeProofreadingDictionary} from "../proofreading"
 import componentLicenses from "virtual:component-licenses"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 const languageLabel = (code: string, fallback: string) => {
   try {
@@ -36,9 +37,12 @@ const languageOptions = documentLanguages.map(language => ({
   label: languageLabel(language.code, language.name),
 }))
 
+export type SettingsTab = "Editor" | "Cloud" | "Commands"
+
 export class SettingsPanel extends LitElement {
   static properties = {
     settings: {attribute: false},
+    tab: {attribute: false},
     recordingCommandId: {type: String, state: true},
     message: {type: String, state: true},
     error: {type: String, state: true},
@@ -47,7 +51,10 @@ export class SettingsPanel extends LitElement {
     providerType: {type: String, state: true},
   }
 
+  tab: SettingsTab = "Editor"
+
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       box-sizing: border-box;
       display: block;
@@ -57,19 +64,10 @@ export class SettingsPanel extends LitElement {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
-    .licenses-link {
-      display: block;
-      margin-top: 1.5rem;
-      padding: 0;
-      border: 0;
-      color: #3977c7;
-      background: transparent;
-      font: inherit;
-      font-size: .66rem;
-      text-decoration: underline;
-      cursor: pointer;
-    }
-    .licenses-link:focus-visible { outline: 2px solid #3977c7; outline-offset: 3px; }
+    [hidden] { display: none !important; }
+    .settings-tab-panel { min-width: 0; }
+    slot[name="ai"] { display: block; padding-top: 1.5rem; }
+
     #licenses-dialog {
       box-sizing: border-box;
       width: min(48rem, calc(100vw - 2rem));
@@ -85,6 +83,10 @@ export class SettingsPanel extends LitElement {
     #licenses-dialog::backdrop { background: rgb(15 23 42 / 45%); }
     #licenses-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
     #licenses-dialog h2 { margin: 0; font-size: 1rem; }
+    .licenses-close { display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: .35rem; color: inherit; background: transparent; cursor: pointer; }
+    .licenses-close svg { display: block; width: 1.1rem; height: 1.1rem; }
+    .licenses-close:hover { background: #f1f5f9; }
+    .licenses-close:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
     #licenses-dialog pre {
       min-height: 0;
       margin: 1rem 0 0;
@@ -169,7 +171,7 @@ export class SettingsPanel extends LitElement {
     .local-settings { display: flex; align-items: center; gap: .75rem; }
     .local-settings > .setting-label { display: flex; align-items: center; gap: .5rem; flex: 0 0 auto; margin: 0; }
     .local-settings input[type="radio"] { margin: 0; accent-color: #3977c7; }
-    .local-settings #local-username { width: min(18rem, 100%); min-width: 0; margin: 0; }
+    .local-settings #local-username { flex: 1 1 18rem; width: 0; max-width: 18rem; min-width: 0; margin: 0; }
     #local-username:disabled { color: #8993a1; background: #f2f4f7; }
     .cloud-service-header .provider-icon { flex: 0 0 1.1rem; }
     .dictionary-words { display: flex; flex-wrap: wrap; gap: .4rem; margin: .65rem 0; padding: 0; list-style: none; }
@@ -227,7 +229,8 @@ export class SettingsPanel extends LitElement {
     .provider-types button:first-child { border-radius: .35rem 0 0 .35rem; }
     .provider-types button:last-child { border-radius: 0 .35rem .35rem 0; margin-left: -1px; }
     .provider-types button[aria-pressed="true"] { position: relative; color: #1e4f87; background: #e8f2fd; border-color: #3977c7; }
-    .add-provider-label { margin-top: 1rem; }
+    .add-cloud-service { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin-top: 1rem; }
+    .add-provider-label { flex: 0 0 auto; margin: 0; }
     .cloud-button:focus-visible, .cloud-remove:focus-visible, .provider-types button:focus-visible,
     .cloud-service input:focus-visible, .new-provider input:focus-visible, #local-username:focus-visible,
     .dictionary-form input:focus-visible, .dictionary-word button:focus-visible {
@@ -283,7 +286,7 @@ export class SettingsPanel extends LitElement {
       background: #fff0e8;
     }
 
-    .commands-heading, .cloud-heading, .editor-heading {
+    .cloud-heading {
       margin: 1.5rem 0 0.5rem;
       font-size: 0.85rem;
       font-weight: 700;
@@ -293,6 +296,7 @@ export class SettingsPanel extends LitElement {
     .settings-panel > :first-child {
       margin-top: 0;
     }
+    #settings-cloud > .setting-card > .cloud-heading { margin-top: 0; }
 
     .command-section + .command-section {
       margin-top: 0.32rem;
@@ -508,7 +512,7 @@ export class SettingsPanel extends LitElement {
   private renderCloudSettings() {
     return html`<section class="setting-card" aria-label="Identity and cloud services">
       <h2 class="cloud-heading">Cloud services</h2>
-      <div class="local-settings">
+      <div class="cloud-service local-settings" ?data-active=${!this.settings.activeCloudServiceId}>
         <label class="setting-label"><input type="radio" name="active-cloud" .checked=${!this.settings.activeCloudServiceId}
           @change=${() => this.changeCloudServices(this.settings.cloudServices, null)}> Local</label>
         <input id="local-username" aria-label="Local username" placeholder="Username" autocomplete="nickname"
@@ -538,12 +542,14 @@ export class SettingsPanel extends LitElement {
             </div>
           </form>`}
       </div>`)}
+      <div class="add-cloud-service">
       <p class="setting-label add-provider-label">Add a cloud service</p>
       <div class="provider-types" role="group" aria-label="Provider type">
         <button type="button" aria-pressed=${this.providerType === "edumix"} aria-controls="new-cloud-provider"
           ?disabled=${Boolean(this.signingIn)} @click=${() => this.chooseProvider("edumix")}>${this.renderProviderIcon("edumix")}edumix.eu</button>
         <button type="button" aria-pressed=${this.providerType === "url"} aria-controls="new-cloud-provider"
           ?disabled=${Boolean(this.signingIn)} @click=${() => this.chooseProvider("url")}>${this.renderProviderIcon("url")}Custom provider</button>
+      </div>
       </div>
       <div id="new-cloud-provider">
         ${this.providerType ? keyed(this.providerType, html`<form class="new-provider" @submit=${this.addCloudService}>
@@ -679,6 +685,10 @@ export class SettingsPanel extends LitElement {
       : "Shortcut updated."
   }
 
+  showLicenses() {
+    this.renderRoot.querySelector<HTMLDialogElement>("#licenses-dialog")?.showModal()
+  }
+
   resetSettings() {
     this.providerType = null
     this.recordingCommandId = ""
@@ -734,7 +744,12 @@ export class SettingsPanel extends LitElement {
     const elementSections = ["Table", "Graphic"] as const
     return html`
       <div class="settings-panel">
-        <h2 class="editor-heading">Editor</h2>
+        ${this.message || this.error ? html`
+          <div class="status" role="status" aria-live="polite" ?data-error=${Boolean(this.error)}>
+            ${this.error || this.message}
+          </div>
+        ` : ""}
+        <section id="settings-editor" role="tabpanel" aria-label="Editor" class="settings-tab-panel" ?hidden=${this.tab !== "Editor"}>
         <section class="setting-card" aria-label="Language">
           <select aria-label="Interface language" .value=${this.settings.language} @change=${this.changeLanguage}>
             ${languageOptions.map(option => html`
@@ -773,6 +788,18 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
+        <section class="setting-card" aria-label="Guided tour">
+          <label class="checkbox-setting">
+            <input
+              type="checkbox"
+              .checked=${this.settings.showGuidedTour}
+              @change=${(event: Event) => this.emitSettings({...this.settings, showGuidedTour: (event.currentTarget as HTMLInputElement).checked})}
+            />
+            <span class="checkbox-label">Show guided tour</span>
+            <span class="checkbox-description">A quick tour of the editor. Editing dismisses it.</span>
+          </label>
+        </section>
+
         <section class="setting-card" aria-label="AI">
           <label class="checkbox-setting">
             <input type="checkbox" .checked=${this.settings.disableAI}
@@ -795,13 +822,13 @@ export class SettingsPanel extends LitElement {
           </label>
         </section>
 
-        <section class="setting-card" aria-label="Spell checking">
+        <section class="setting-card" aria-label="Issues">
           <label class="checkbox-setting">
-            <input type="checkbox" .checked=${this.settings.disableSpellChecking}
-              @change=${(event: Event) => this.emitSettings({...this.settings, disableSpellChecking: (event.currentTarget as HTMLInputElement).checked})}
+            <input type="checkbox" .checked=${!this.settings.proofreadingEnabledByDefault}
+              @change=${(event: Event) => this.emitSettings({...this.settings, proofreadingEnabledByDefault: !(event.currentTarget as HTMLInputElement).checked})}
             />
-            <span class="checkbox-label">Disable spell checking for all documents</span>
-            <span class="checkbox-description">Disable spelling, grammar, and style suggestions.</span>
+            <span class="checkbox-label">Disable checking for issues</span>
+            <span class="checkbox-description">Disable spelling, grammar, style, and accessibility checks.</span>
           </label>
         </section>
         ${this.renderProofreadingDictionary()}
@@ -832,14 +859,13 @@ export class SettingsPanel extends LitElement {
           </section>
         </details>
 
-        ${this.renderCloudSettings()}
-        <h3 class="commands-heading">Commands</h3>
+        </section>
+        <section id="settings-cloud" role="tabpanel" aria-label="Cloud" class="settings-tab-panel" ?hidden=${this.tab !== "Cloud"}>
+          ${this.renderCloudSettings()}
+          <slot name="ai"></slot>
+        </section>
+        <section id="settings-commands" role="tabpanel" aria-label="Commands" class="settings-tab-panel" ?hidden=${this.tab !== "Commands"}>
         <p class="shortcut-help">Select a shortcut, then press its replacement. Reserved system and browser shortcuts cannot be assigned.</p>
-        ${this.message || this.error ? html`
-          <div class="status" role="status" aria-live="polite" ?data-error=${Boolean(this.error)}>
-            ${this.error || this.message}
-          </div>
-        ` : ""}
         ${sections.map(section => html`
           <section class="command-section" aria-label=${`${section} commands`}>
             ${this.renderCommands(section)}
@@ -851,16 +877,14 @@ export class SettingsPanel extends LitElement {
             ${this.renderCommands(section)}
           </details>
         `)}
-        <button class="licenses-link" type="button" aria-haspopup="dialog" aria-controls="licenses-dialog"
-          @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#licenses-dialog")?.showModal()}
-        >View licenses of components</button>
+        </section>
       </div>
       <dialog id="licenses-dialog" aria-labelledby="licenses-title">
         <header>
           <h2 id="licenses-title">Licenses of components</h2>
-          <button class="cloud-button" type="button" aria-label="Close licenses"
+          <button class="licenses-close" type="button" aria-label="Close licenses" title="Close licenses"
             @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#licenses-dialog")?.close()}
-          >Close</button>
+          >${ribbonIcon("Reject")}</button>
         </header>
         <pre>${componentLicenses}</pre>
       </dialog>

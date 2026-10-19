@@ -7,6 +7,45 @@ import {DomEditorToolbox} from "./toolbox"
 beforeEach(() => document.body.replaceChildren())
 
 describe("media ribbon drawer", () => {
+  it("warns about source files larger than 50 MiB with a focusable tooltip", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}, sourceSize: 50 * 1024 * 1024 + 1}
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const warning = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".large-source-warning")!
+    expect(warning).not.toBeNull()
+    expect(warning.getAttribute("aria-describedby")).toBe("large-source-warning-message")
+    expect(warning.querySelector('[role="tooltip"]')?.textContent?.trim())
+      .toBe("Large source files can lead to performance issues for readers")
+    expect(getComputedStyle(warning.querySelector<HTMLElement>(".large-source-warning-bubble")!).position).toBe("absolute")
+  })
+
+  it.each([undefined, 50 * 1024 * 1024])("does not warn for source size %s", async sourceSize => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}, ...(sourceSize === undefined ? {} : {sourceSize})}
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".large-source-warning")).toBeNull()
+  })
+
+  it.each(["picture", "img", "video", "audio"] as const)("offers cropping only for visual media: %s", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type, attributes: {}}
+    toolbox.elementStyle = {target: {localName: "figure", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const editor = toolbox.shadowRoot!.querySelector("[data-specialized] element-style-editor")!
+    await (editor as unknown as {updateComplete: Promise<unknown>}).updateComplete
+    expect(editor.shadowRoot!.querySelectorAll('.crop-edges input').length).toBe(type === "audio" ? 0 : 4)
+  })
+
   it("dispatches the Image insertion command from a Start media button", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
@@ -154,12 +193,14 @@ describe("media ribbon drawer", () => {
     toolbox.addEventListener("media-attribute-change", attributeListener)
     const alt = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
     expect(alt.value).toBe("A diagram")
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Source URL"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Source"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Width"]')).toBeNull()
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Image: Height"]')).toBeNull()
     const loading = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
       .find(combo => (combo as HTMLElement & {label: string}).label === "Image: Loading") as (HTMLElement & {value: string}) | undefined
-    expect(loading?.value).toBe("lazy")
+    expect(loading).toBeUndefined()
+    expect(alt.closest('[slot="more"]')).not.toBeNull()
+    expect(alt.closest('[slot="more"]')!.querySelector("element-style-editor")).toBeNull()
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-type-switch"))
       .some(button => button.textContent?.includes("Use <"))).toBe(false)
     alt.value = "A photo"
@@ -169,19 +210,29 @@ describe("media ribbon drawer", () => {
     }))
   })
 
-  it("keeps media-only options in the specialized Options tier", async () => {
+  it.each(["audio", "video"] as const)("shows %s playback options in two primary columns", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
-    toolbox.activeMenu = "Edit"
-    toolbox.media = {type: "video", attributes: {controls: "", preload: "metadata", playsinline: ""}}
+    toolbox.media = {type, attributes: {autoplay: "", preload: "metadata", playsinline: ""}}
     document.body.append(toolbox)
     await toolbox.updateComplete
-
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Video: Controls"]')).toBeNull()
-    const preload = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
-      .find(combo => (combo as HTMLElement & {label: string}).label === "Video: Preload") as (HTMLElement & {value: string}) | undefined
-    expect(preload?.value).toBe("metadata")
-    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Video: Play inline"]')?.checked).toBe(true)
+    const primary = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-primary-options")!
+    expect(getComputedStyle(primary).display).toBe("grid")
+    expect(getComputedStyle(primary).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect(primary.closest('[slot="more"]')).toBeNull()
+    expect(Array.from(primary.querySelectorAll("input")).map(input => input.getAttribute("aria-label")))
+      .toEqual([`${type === "audio" ? "Audio" : "Video"}: Autoplay`, `${type === "audio" ? "Audio" : "Video"}: Loop`, `${type === "audio" ? "Audio" : "Video"}: Muted`])
+    expect(primary.querySelector<HTMLInputElement>("input")!.checked).toBe(true)
+    for(const label of ["Controls", "Preload", "Cross-origin", "Play inline"]) {
+      expect(toolbox.shadowRoot!.querySelector(`[aria-label="${type === "audio" ? "Audio" : "Video"}: ${label}"]`)).toBeNull()
+    }
+    expect(toolbox.shadowRoot!.querySelector(".media-fallback-input")).toBeNull()
+    const listener = vi.fn()
+    toolbox.addEventListener("media-attribute-change", listener)
+    const loop = primary.querySelectorAll<HTMLInputElement>("input")[1]
+    loop.checked = true
+    loop.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type, attribute: "loop", value: ""}}))
   })
 
   it("offers a Caption button group below Placement in the media toolbox", async () => {
@@ -222,7 +273,7 @@ describe("media ribbon drawer", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to figure"], ribbon-button[label^="Add caption"]')).toBeNull()
   })
 
-  it("renders timed-media resources and dispatches guarded row and fallback edits", async () => {
+  it("renders only fallback sources and dispatches guarded resource edits", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -241,51 +292,42 @@ describe("media ribbon drawer", () => {
     const listener = vi.fn()
     toolbox.addEventListener("media-resource-action", listener)
 
-    expect(toolbox.shadowRoot!.querySelectorAll('[data-resource="source"]')).toHaveLength(2)
+    expect(toolbox.shadowRoot!.querySelectorAll('[data-resource="source"]')).toHaveLength(1)
     expect(toolbox.shadowRoot!.querySelectorAll('[data-resource="track"]')).toHaveLength(1)
     const source = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Source: Source URL"]')!
-    expect(source.value).toBe("movie.mp4")
+    expect(source.value).toBe("movie.webm")
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Video: Source"]')!.value).toBe("movie.mp4")
     source.value = "movie-hd.mp4"
     source.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
       type: "video",
       action: "set-attribute",
       resource: "source",
-      index: 0,
-      expected: {src: "movie.mp4", type: "video/mp4"},
+      index: 1,
+      expected: {src: "movie.webm", type: "video/webm"},
       attribute: "src",
       value: "movie-hd.mp4",
     }}))
 
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Move source 1 down"]')!.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
-      action: "move", resource: "source", index: 0, direction: 1,
-    })}))
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Move source 1 up"]')!.disabled).toBe(true)
     toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove track 1"]')!.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
       action: "remove", resource: "track", index: 2,
     })}))
 
-    const fallback = toolbox.shadowRoot!.querySelector<HTMLTextAreaElement>('.media-fallback-input')!
-    expect(fallback.value).toBe("<p>Download the movie.</p>")
-    fallback.value = "<p>Use the download link.</p>"
-    fallback.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
-      type: "video",
-      action: "set-fallback",
-      html: "<p>Use the download link.</p>",
-      expectedHTML: "<p>Download the movie.</p>",
-    }}))
-
-    const addTrack = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-resource-add"))
-      .find(button => button.textContent === "Add track")!
+    expect(toolbox.shadowRoot!.querySelector('.media-fallback-input')).toBeNull()
+    const heading = toolbox.shadowRoot!.querySelector('[aria-label="Fallback sources"] .media-resource-heading')!
+    expect(heading.firstElementChild?.textContent).toBe("Fallback sources")
+    expect(getComputedStyle(heading).justifyContent).toBe("space-between")
+    const addTrack = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Add track"]')!
+    expect(addTrack.querySelector("svg")).not.toBeNull()
     addTrack.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
       type: "video", action: "add", resource: "track",
     }}))
   })
 
-  it("offers image-map lifecycle, drawing, and hotspot attribute controls", async () => {
+  it("draws hotspots without map lifecycle controls and edits popover behavior", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -295,8 +337,11 @@ describe("media ribbon drawer", () => {
     const listener = vi.fn()
     toolbox.addEventListener("image-map-action", listener)
 
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".media-resource-editor .media-type-switch")!.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "add-map"}}))
+    expect(toolbox.shadowRoot!.querySelector('button[aria-label="Add hotspot"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('button[aria-label="Remove map"]')).toBeNull()
+    Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".image-map-draw"))
+      .find(button => button.textContent === "Rectangle")!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "draw", shape: "rect"}}))
 
     toolbox.media = {
       type: "img",
@@ -306,11 +351,15 @@ describe("media ribbon drawer", () => {
         shared: false,
         areas: [{
           path: [0],
-          attributes: {shape: "rect", coords: "1,2,30,40", href: "old.html", alt: "Library"},
+          attributes: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"},
         }],
       },
     }
     await toolbox.updateComplete
+
+    for(const label of ["Alternative text", "Open in", "Link relationship", "Referrer policy"]) {
+      expect(toolbox.shadowRoot!.querySelector(`[aria-label="Hotspot: ${label}"]`)).toBeNull()
+    }
 
     const rectangle = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".image-map-draw"))
       .find(button => button.textContent === "Rectangle")!
@@ -327,19 +376,95 @@ describe("media ribbon drawer", () => {
       type: "img",
       action: "set-area-attribute",
       path: [0],
-      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", alt: "Library"},
+      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"},
       attribute: "href",
       value: "library.html",
     }}))
+
+    const trigger = toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Hotspot: Popover trigger"]')!
+    expect(trigger.value).toBe("click")
+    trigger.value = "hover"
+    trigger.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
+      type: "img", action: "set-popover-trigger", path: [0],
+      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"}, value: "hover",
+    }}))
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Open hotspot 1 popover"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({action: "open-popover", path: [0]})}))
 
     toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove hotspot 1"]')!.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
       type: "img", action: "remove-area", path: [0],
     })}))
-    const removeMap = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-resource-add"))
-      .find(button => button.textContent === "Remove map")!
-    removeMap.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", action: "remove-map"}}))
+    expect(toolbox.shadowRoot!.querySelector("button[aria-label='Remove map']")).toBeNull()
+  })
+
+  it("edits hotspot coordinates one numeric field at a time for each shape", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "plan.png"}, imageMap: {
+      name: "plan", shared: false, areas: [
+        {path: [0], attributes: {shape: "rect", coords: "1,2,30,40"}},
+        {path: [1], attributes: {shape: "circle", coords: "5,6,7"}},
+        {path: [2], attributes: {shape: "poly", coords: "1,2,3,4,odd"}},
+      ],
+    }}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const listener = vi.fn()
+    toolbox.addEventListener("image-map-action", listener)
+
+    for(const label of ["X1", "Y1", "X2", "Y2"]) {
+      expect(toolbox.shadowRoot!.querySelector(`input[aria-label="Hotspot: ${label}"]`)).not.toBeNull()
+    }
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Hotspot: Coordinates"]')).toBeNull()
+    const rectX2 = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: X2"]')!
+    rectX2.value = "31"
+    rectX2.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener.mock.lastCall?.[0].detail).toEqual({
+      type: "img", action: "set-area-attribute", path: [0],
+      expected: {shape: "rect", coords: "1,2,30,40"}, attribute: "coords", value: "1,2,31,40",
+    })
+    listener.mockClear()
+    rectX2.value = "invalid"
+    rectX2.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener).not.toHaveBeenCalled()
+
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Hotspot: Center X"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Hotspot: Radius"]')).not.toBeNull()
+    const radius = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Radius"]')!
+    radius.value = "9"
+    radius.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener.mock.lastCall?.[0].detail).toEqual({
+      type: "img", action: "set-area-attribute", path: [1],
+      expected: {shape: "circle", coords: "5,6,7"}, attribute: "coords", value: "5,6,9",
+    })
+
+    const polygon = toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".image-map-area")[2]
+    expect(polygon.querySelector<HTMLInputElement>('input[aria-label="Hotspot: X3"]')!.value).toBe("odd")
+    const poly = polygon.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Y2"]')!
+    poly.value = "8"
+    poly.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(listener.mock.lastCall?.[0].detail).toEqual({
+      type: "img", action: "set-area-attribute", path: [2],
+      expected: {shape: "poly", coords: "1,2,3,4,odd"}, attribute: "coords", value: "1,2,3,8,odd",
+    })
+  })
+
+  it("adds a popover to an existing hotspot", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "plan.png"}, imageMap: {
+      name: "plan", shared: false, areas: [{path: [0], attributes: {shape: "rect", coords: "0,0,10,10"}}],
+    }}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const listener = vi.fn()
+    toolbox.addEventListener("image-map-action", listener)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Add hotspot 1 popover"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
+      type: "img", action: "add-popover", path: [0], expected: {shape: "rect", coords: "0,0,10,10"},
+    }}))
   })
 
   it("uses iframe website controls without exposing an element switch", async () => {
@@ -351,8 +476,157 @@ describe("media ribbon drawer", () => {
     await toolbox.updateComplete
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
       .some(combo => (combo as HTMLElement & {label: string}).label === "Website: Element")).toBe(false)
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).not.toBeNull()
-    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Source URL"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: MIME type"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Source"]')).not.toBeNull()
     expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Sandbox"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Website: Allow fullscreen"]')!.closest('[slot="more"]')).toBeNull()
+  })
+})
+
+
+describe("primary media Source control", () => {
+  it.each(["picture", "img", "audio", "video"] as const)("joins the %s input buttons and URL above Options", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {src: "https://example.com/media"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const source = toolbox.shadowRoot!.querySelector(".media-source")!
+    expect(source.closest('[slot="more"]')).toBeNull()
+    expect(source.querySelector("label")?.textContent).toBe("Source")
+    expect(source.querySelectorAll('.media-source-buttons button')).toHaveLength(3)
+    expect(source.querySelector('input')?.value).toBe("https://example.com/media")
+    expect(source.querySelector('.media-source-field button[aria-label="Remove source"]')).not.toBeNull()
+    const listener = vi.fn()
+    toolbox.addEventListener("ribbon-button-click", listener)
+    for(const button of source.querySelectorAll<HTMLButtonElement>('button')) button.click()
+    expect(listener.mock.calls.map(([event]) => event.detail.label)).toEqual([
+      "selected-media-file", `selected-media-capture:screen-${type === "picture" || type === "img" ? "image" : type}`,
+      `selected-media-capture:${type === "audio" ? "microphone-audio" : type === "video" ? "camera-video" : "camera-image"}`, "remove-media-source",
+    ])
+    expect(toolbox.shadowRoot!.querySelector('[slot="more"] input[type="url"][aria-label$=": Source URL"]')).toBeNull()
+  })
+
+  it.each([
+    ["file", "photo.png", "folder-open"],
+    ["capture", "Capture 2", "screen-share"],
+    ["recording", "Recording 3", "player-record"],
+  ] as const)("shows the active %s label and clear button inside the URL field", async (kind, label, icon) => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "data:image/png;base64,YQ=="}, sourceLabel: label, sourceKind: kind}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const field = toolbox.shadowRoot!.querySelector('.media-source-field')!
+    const input = field.querySelector<HTMLInputElement>('input')!
+    expect(input.value).toBe(label)
+    expect(field.querySelector('svg')?.classList.toString()).toContain(icon)
+    expect(field.querySelector('button[aria-label="Remove source"]')).not.toBeNull()
+    const listener = vi.fn()
+    toolbox.addEventListener("media-attribute-change", listener)
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).not.toHaveBeenCalled()
+    input.value = "https://example.com/replacement.png"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "img", attribute: "src", value: input.value}}))
+  })
+
+  it("hides the source icon and clear button when empty", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "img", attributes: {}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const field = toolbox.shadowRoot!.querySelector('.media-source-field')!
+    expect(field.querySelector<HTMLInputElement>('input')?.value).toBe("")
+    expect(field.querySelector('svg')).toBeNull()
+    expect(field.querySelector('button')).toBeNull()
+  })
+})
+
+
+describe("advanced media alternative text", () => {
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("edits %s alternative text in Options", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    const attribute = ["img", "picture"].includes(type) ? "alt" : "aria-label"
+    toolbox.media = {type, attributes: {[attribute]: "Description"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label$=": Alternative text"]')!
+    expect(input.value).toBe("Description")
+    expect(input.closest('[slot="more"]')).not.toBeNull()
+    const listener = vi.fn()
+    toolbox.addEventListener("media-attribute-change", listener)
+    input.value = "New description"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type, attribute, value: "New description"}}))
+  })
+
+  it("keeps every child source as fallback when the media has its own src", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "audio", attributes: {src: "primary.mp3"}, sources: [{index: 2, attributes: {src: "fallback.ogg"}}]}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelectorAll('[data-resource="source"]')).toHaveLength(1)
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Source: Source URL"]')!.value).toBe("fallback.ogg")
+  })
+
+  it("offers image inputs for video covers and edits only poster", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4", poster: "cover.png"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const cover = toolbox.shadowRoot!.querySelector('[data-cover="true"]')!
+    expect(cover.closest('[slot="more"]')).toBeNull()
+    expect(cover.querySelector("label")!.textContent).toBe("Cover image")
+    const actions = vi.fn()
+    const edits = vi.fn()
+    toolbox.addEventListener("ribbon-button-click", actions)
+    toolbox.addEventListener("media-attribute-change", edits)
+    for(const button of cover.querySelectorAll<HTMLButtonElement>(".media-source-buttons button")) button.click()
+    expect(actions.mock.calls.map(([event]) => event.detail.label)).toEqual([
+      "selected-media-cover-file", "selected-media-cover-capture:screen-image", "selected-media-cover-capture:camera-image",
+    ])
+    const input = cover.querySelector<HTMLInputElement>("input")!
+    expect(input.value).toBe("cover.png")
+    input.value = "new-cover.png"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(edits).toHaveBeenLastCalledWith(expect.objectContaining({detail: {type: "video", attribute: "poster", value: "new-cover.png"}}))
+    cover.querySelector<HTMLButtonElement>('button[aria-label="Remove cover image"]')!.click()
+    expect(edits).toHaveBeenLastCalledWith(expect.objectContaining({detail: {type: "video", attribute: "poster", value: null}}))
+  })
+})
+
+
+describe("media source file drops", () => {
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("accepts a file on the %s source input", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {src: "old"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const file = new File(["file"], "media.bin")
+    const data = new DataTransfer()
+    data.items.add(file)
+    const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>("#media-source-url")!
+    const event = (type: string) => {
+      const event = new Event(type, {bubbles: true, cancelable: true})
+      Object.defineProperty(event, "dataTransfer", {value: data})
+      return event
+    }
+    const received = vi.fn()
+    toolbox.addEventListener("media-file-drop", received)
+    const over = event("dragover")
+    input.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    const drop = event("drop")
+    input.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(received).toHaveBeenCalledOnce()
+    expect((received.mock.calls[0][0] as CustomEvent).detail).toEqual({type, file, attribute: undefined})
   })
 })

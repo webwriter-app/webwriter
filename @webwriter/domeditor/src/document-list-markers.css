@@ -1,0 +1,25 @@
+/* Authored image markers stay aligned in editing and standalone documents. */
+@layer webwriter-theme {
+  :is(ul, ol, menu)[style*="--ww-list-marker-image:"][style*="list-style-image: var(--ww-list-marker-image)"] > li {
+    position: relative;
+  }
+  :is(ul, ol, menu)[style*="--ww-list-marker-image:"][style*="list-style-image: var(--ww-list-marker-image)"] > li::marker {
+    content: "";
+  }
+  :is(ul, ol, menu)[style*="--ww-list-marker-image:"][style*="list-style-image: var(--ww-list-marker-image)"] > li::before {
+    content: "";
+    position: absolute;
+    inset-inline-end: calc(100% + .4em);
+    inset-block-start: calc((1lh - 1em) / 2);
+    inline-size: 1em;
+    block-size: 1em;
+    background: var(--ww-list-marker-image) center / contain no-repeat;
+    pointer-events: none;
+  }
+  :is(ul, ol, menu)[style*="--ww-list-marker-image:"][style*="list-style-image: var(--ww-list-marker-image)"][style*="list-style-position: inside"] > li::before {
+    position: static;
+    display: inline-block;
+    vertical-align: middle;
+    margin-inline-end: .4em;
+  }
+}

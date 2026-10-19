@@ -1,4 +1,6 @@
-import { Schema } from "./schema"
+import {clearEditorMarkerClasses} from "./editor-artifacts"
+export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker, widgetEditableMarker} from "./editor-artifacts"
+import type { Schema } from "./schema"
 import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
@@ -6,7 +8,17 @@ import {isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
 import {boardLayoutRole, documentLayoutMode, slideLayoutRole} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
-import {inlineMathRoot, mathBoundaryPoint, mathRoot} from "./math"
+import {inlineMathRoot, mathBoundaryPoint, mathRoot, MATH_NAMESPACE} from "./math"
+
+/** Prose, its formatting, and inline formulas; comments and line breaks
+ * remain part of the text flow. Widgets are always separate content. */
+export function isParagraphContent(node: Node): boolean {
+  if(node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) return true
+  if(!isElement(node) || node.hasAttribute("is")) return false
+  if(node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
+  if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return true
+  return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
+}
 
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
@@ -20,6 +32,29 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+const fixedGutterOffsets = new WeakMap<Document, {key: string, offset: number}>()
+
+/** Client rects include the root's leading gutter; fixed CSS insets start
+ * inside it. Keep hit-test geometry in client coordinates and convert only
+ * when positioning fixed editor UI. */
+export function fixedClientX(x: number, doc = document) {
+  const view = doc.defaultView
+  if(!view) return x
+  const root = doc.documentElement
+  const key = `${view.innerWidth}:${root.style.cssText}:${root.className}:${documentLayoutMode(doc.body)}`
+  const cached = fixedGutterOffsets.get(doc)
+  if(cached?.key === key) return x - cached.offset
+  const width = root.clientWidth
+  const offset = width && view.getComputedStyle(root).scrollbarGutter?.includes("both-edges")
+    ? Math.max(0, view.innerWidth - width) : 0
+  const entry = {key, offset}
+  fixedGutterOffsets.set(doc, entry)
+  // A refresh can position hundreds of affordances. Avoid flushing styles
+  // after every UI write, while rereading geometry on the next task.
+  queueMicrotask(() => { if(fixedGutterOffsets.get(doc) === entry) fixedGutterOffsets.delete(doc) })
+  return x - offset
+}
+
 /** Inherited across editor UI shadow roots; authored styles do not use this token. */
 export function uiMotionDisabled(element: Element) {
   return element.ownerDocument.defaultView?.getComputedStyle(element)
@@ -27,12 +62,13 @@ export function uiMotionDisabled(element: Element) {
 }
 
 export function setPart(element: Element, part: string, enabled = true) {
-  const parts = new Set((element.getAttribute("part") ?? "").split(/\s+/).filter(Boolean))
+  const current = element.getAttribute("part")
+  const parts = new Set((current ?? "").split(/\s+/).filter(Boolean))
   enabled ? parts.add(part) : parts.delete(part)
-  if(parts.size) {
-    element.setAttribute("part", Array.from(parts).join(" "))
-  } else {
-    element.removeAttribute("part")
+  const value = parts.size ? Array.from(parts).join(" ") : null
+  if(value !== current) {
+    if(value === null) element.removeAttribute("part")
+    else element.setAttribute("part", value)
   }
 }
 
@@ -42,7 +78,7 @@ type Granularity = "character" | "word" | "line"
 type Direction = "left" | "right" | "forward" | "backward"
 
 /** Focuses the outer editing surface, releasing focus held inside a widget. */
-function focusEditorWindow() {
+export function focusEditorWindow() {
   const widget = focusedWidgetHost()
   let focused: Element | null = widget
   while(focused?.shadowRoot?.activeElement) focused = focused.shadowRoot.activeElement
@@ -245,7 +281,8 @@ function hasLayoutRect(node: Node) {
   return rect.width > 0 || rect.height > 0
 }
 
-function nodeEdgeRect(node: Node, edge: "first" | "last" = "first") {
+/** The first or last rendered line box, with a bounding-box fallback. */
+export function nodeEdgeRect(node: Node, edge: "first" | "last" = "first") {
   if(isElement(node)) {
     const rects = Array.from(node.getClientRects())
     return edge === "last" ? rects.at(-1) ?? node.getBoundingClientRect() : rects[0] ?? node.getBoundingClientRect()
@@ -455,6 +492,8 @@ export class EditingSelection {
     const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
       && element !== document.documentElement && root.contains(element))
     const layoutChildren = (element: Element) => Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
+      // Closed disclosures can retain measurable boxes for hidden body content.
+      if(element.matches("details:not([open])") && node !== element.querySelector(":scope > summary")) return []
       if(node instanceof Element && (!isOutOfFlow(node) || selectionRoot?.contains(node)) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
       if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
         const range = document.createRange()
@@ -479,6 +518,24 @@ export class EditingSelection {
         : !(node instanceof Text) || !node.textContent?.trim())) {
       return {node: root, offset: 0, overrideNative: true}
     }
+    let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
+    const insideDisclosure = disclosure?.open && root.contains(disclosure)
+      && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
+      && y >= disclosure.getBoundingClientRect().top && y <= disclosure.getBoundingClientRect().bottom ? disclosure : null
+    let disclosureGap: ReturnType<typeof gap> | null = null
+    while(disclosure && root.contains(disclosure)) {
+      const rect = disclosure.getBoundingClientRect()
+      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+        disclosureGap = gap(disclosure, y < rect.top ? "before" : "after")
+      }
+      else if(!disclosureGap && !disclosure.open) {
+        const boxes = layoutChildren(disclosure)
+        if(boxes.length && y < boxes[0].rect.top) disclosureGap = gap(disclosure, "before")
+        else if(boxes.length && y > boxes.at(-1)!.rect.bottom) disclosureGap = gap(disclosure, "after")
+      }
+      disclosure = disclosure.parentElement?.closest("details") ?? null
+    }
+    if(disclosureGap) return disclosureGap
     const captioned = pointerElement?.closest("figure, table:has(> caption)") ?? caretElement?.closest("figure, table:has(> caption)")
     if(captioned && root.contains(captioned) && !isOutOfFlow(captioned)) {
       const rect = captioned.getBoundingClientRect()
@@ -541,24 +598,6 @@ export class EditingSelection {
         return point(node, y > rect.bottom || y >= rect.top && x > rect.left + rect.width / 2 ? node.length : 0)
       }
     }
-    let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
-    const insideDisclosure = disclosure?.open && root.contains(disclosure)
-      && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
-      && y >= disclosure.getBoundingClientRect().top && y <= disclosure.getBoundingClientRect().bottom ? disclosure : null
-    let disclosureGap: ReturnType<typeof gap> | null = null
-    while(disclosure && root.contains(disclosure)) {
-      const rect = disclosure.getBoundingClientRect()
-      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
-        disclosureGap = gap(disclosure, y < rect.top ? "before" : "after")
-      }
-      else if(!disclosureGap && !disclosure.open) {
-        const boxes = layoutChildren(disclosure)
-        if(boxes.length && y < boxes[0].rect.top) disclosureGap = gap(disclosure, "before")
-        else if(boxes.length && y > boxes.at(-1)!.rect.bottom) disclosureGap = gap(disclosure, "after")
-      }
-      disclosure = disclosure.parentElement?.closest("details") ?? null
-    }
-    if(disclosureGap) return disclosureGap
     if(insideDisclosure) {
       // Chromium can report BODY even for a click inside an open DETAILS.
       // Recover from live child geometry rather than treating that parent
@@ -769,24 +808,51 @@ export class EditingSelection {
 
   /** Whether the caret sits in a gap between elements: collapsed, anchored in an element without text children, and not in an empty container. A body boundary before its first element is also a gap when any preceding text is only whitespace. */
   static get isGapSelection() {
-    if(this.isEmpty && this.anchor && this.summaryAtLeadingBoundary(this.anchor, this.anchorOffset)) return false
-    if(mathRoot(this.anchor)) return false
+    const anchor = this.anchor
+    if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
+    if(mathRoot(anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
     if(this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
-    const inSlide = isElement(this.anchor) && slideLayoutRole(this.anchor) === "slide"
-    const root = inSlide ? this.anchor as Element : getDocumentRoot()
-    const firstRootElement = Array.from(root.children).find(element => !isOutOfFlow(element)) ?? null
-    const firstRootElementIndex = firstRootElement? Array.from(root.childNodes).indexOf(firstRootElement): -1
-    const isRootBoundaryBeforeFirstElement = this.anchor === root &&
-      firstRootElementIndex >= 0 &&
-      this.anchorOffset <= firstRootElementIndex &&
-      Array.from(root.childNodes).slice(this.anchorOffset, firstRootElementIndex).every(node => !isText(node) || !node.textContent?.trim())
-    const isNestedListBoundary = isElement(this.anchor) && this.anchor.matches("li, dt, dd") &&
-      [this.anchor.childNodes.item(this.anchorOffset - 1), this.anchor.childNodes.item(this.anchorOffset)]
+    if(!isElement(anchor)) return false
+    const inSlide = slideLayoutRole(anchor) === "slide"
+    const root = inSlide ? anchor : getDocumentRoot()
+    let isRootBoundaryBeforeFirstElement = false
+    if(anchor === root) {
+      let firstRootElementIndex = -1
+      let childIndex = 0
+      for(const node of root.childNodes) {
+        if(isElement(node) && !isOutOfFlow(node)) {
+          firstRootElementIndex = childIndex
+          break
+        }
+        childIndex++
+      }
+      if(firstRootElementIndex >= 0 && this.anchorOffset <= firstRootElementIndex) {
+        isRootBoundaryBeforeFirstElement = true
+        for(let index = this.anchorOffset; index < firstRootElementIndex; index++) {
+          const node = root.childNodes.item(index)
+          if(isText(node) && node.textContent?.trim()) {
+            isRootBoundaryBeforeFirstElement = false
+            break
+          }
+        }
+      }
+    }
+    const isNestedListBoundary = anchor.matches("li, dt, dd") &&
+      [anchor.childNodes.item(this.anchorOffset - 1), anchor.childNodes.item(this.anchorOffset)]
         .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
-    const isInsideTable = isElement(this.anchor) && Boolean(this.anchor.closest("table"))
-    return isElement(this.anchor) && (!isSectionElement(this.anchor) || inSlide) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
-      (!Array.from(this.anchor.childNodes).filter(node => !isOutOfFlow(node)).some(node => (isText(node) && Boolean(node.textContent?.trim())) || isMarkElement(node))
+    const isInsideTable = Boolean(anchor.closest("table"))
+    let hasTextOrMarkChild = false
+    if(this.isEmpty && !this.isEmptySelection) {
+      for(const node of anchor.childNodes) {
+        if(!isOutOfFlow(node) && (isText(node) && Boolean(node.textContent?.trim()) || isMarkElement(node))) {
+          hasTextOrMarkChild = true
+          break
+        }
+      }
+    }
+    return (!isSectionElement(anchor) || inSlide) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
+      (!hasTextOrMarkChild
         || isRootBoundaryBeforeFirstElement
         || isNestedListBoundary)
   }
@@ -836,7 +902,7 @@ export class EditingSelection {
     const index = Math.min(this.#selection.anchorOffset, this.#selection.focusOffset)
     const selected = this.anchor.childNodes.item(index)
     if(inlineMathRoot(selected) || isElement(selected) && selected.matches("caption, figcaption, details > summary")) return false
-    return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide"
+    return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide" || Boolean(boardLayoutRole(selected))
       || selected.localName === "figure" || !isMarkElement(selected) && !isSectionElement(selected))
   }
 
@@ -890,8 +956,11 @@ export class EditingSelection {
     const root = getDocumentRoot()
     const anchor = this.anchor
     const inRoot = anchor === root || Boolean(anchor && root.contains(anchor) && editingFlowRoot(anchor) === root)
-    return this.isEmpty && inRoot
-      && !Array.from(root.children).some(element => !isOutOfFlow(element) && element.getAttribute("contenteditable") !== "false")
+    if(!this.isEmpty || !inRoot) return false
+    for(const element of root.children) {
+      if(!isOutOfFlow(element) && element.getAttribute("contenteditable") !== "false") return false
+    }
+    return true
   }
 
   /** The selection's anchor node (where it started). */
@@ -1001,16 +1070,32 @@ export class EditingSelection {
   static get excludedFlowElements() {
     if(this.isMultiElementSelection || this.isDocumentSelection) return []
     const range = this.range
+    if(range.collapsed || !(range.commonAncestorContainer instanceof Element)) return []
     const excluded: Element[] = []
+    const childAtBoundary = (parent: Element, container: Node, offset: number, start: boolean): ChildNode | null => {
+      if(container === parent) return parent.childNodes.item(start ? offset : offset - 1)
+      if(parent.contains(container)) {
+        let child = container
+        while(child.parentNode !== parent) child = child.parentNode!
+        return child as ChildNode
+      }
+      return start ? parent.firstChild : parent.lastChild
+    }
     const visit = (element: Element) => {
       if(!range.intersectsNode(element)) return
       if(!this.includesNode(element) && !element.contains(this.flowRoot)) {
         excluded.push(element)
         return
       }
-      Array.from(element.children).forEach(visit)
+      const firstChild = childAtBoundary(element, range.startContainer, range.startOffset, true)
+      const lastChild = childAtBoundary(element, range.endContainer, range.endOffset, false)
+      if(!firstChild || !lastChild) return
+      for(let child: ChildNode | null = firstChild; child; child = child.nextSibling) {
+        if(isElement(child)) visit(child)
+        if(child === lastChild) break
+      }
     }
-    Array.from(getDocumentRoot().children).forEach(visit)
+    visit(range.commonAncestorContainer)
     return excluded
   }
 
@@ -1465,63 +1550,6 @@ export function textPointAtOffset(root: Element, offset: number, fallback?: [Nod
   return fallback ?? (lastText ? [lastText, lastText.length] : [root, 0])
 }
 
-/** Marks a widget whose `contenteditable` attribute the editor set. */
-export const widgetEditableMarker = "◆widget-editable"
-
-/** Whether the editor set this attribute to tell a widget that it is being
- * edited. It is never authored content, so collaboration, history and
- * serialization ignore it. */
-export function isEditorOwnedAttribute(element: Element, name: string) {
-  return name.toLowerCase() === "contenteditable" && element.classList.contains(widgetEditableMarker)
-    && element.getAttribute("contenteditable") === ""
-}
-
-/** Removes editor-owned attributes from a node and all descendants,
- * including inert template contents. */
-export function clearEditorOwnedAttributes(root: Node) {
-  const visit = (node: Node) => {
-    if(node.nodeType === Node.ELEMENT_NODE) {
-      const element = node as Element
-      if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
-      if(element.localName === "template" && "content" in element) {
-        Array.from((element as HTMLTemplateElement).content.childNodes).forEach(visit)
-      }
-    }
-    Array.from(node.childNodes).forEach(visit)
-  }
-  visit(root)
-  return root
-}
-
-/** Removes transient editor marker classes from a node and all descendants,
- * including inert template contents, while preserving authored classes. */
-export function clearEditorMarkerClasses(root: Node) {
-  const visit = (node: Node) => {
-    if(node.nodeType === Node.ELEMENT_NODE) {
-      const element = node as Element
-      if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
-      const markers = Array.from(element.classList).filter(name => name.startsWith("◆"))
-      if(markers.length) element.classList.remove(...markers)
-      if(!element.classList.length) element.removeAttribute("class")
-      if(element.localName === "template" && "content" in element) {
-        Array.from((element as HTMLTemplateElement).content.childNodes).forEach(visit)
-      }
-    }
-    Array.from(node.childNodes).forEach(visit)
-  }
-  visit(root)
-  return root
-}
-
-/** Removes selected transient marker classes while retaining authored classes.
- * The umbrella marker is removed when no other editor marker remains. */
-export function removeEditorMarker(element: Element, ...markers: string[]) {
-  element.classList.remove(...markers)
-  if(!Array.from(element.classList).some(name => name !== "◆" && name.startsWith("◆"))) element.classList.remove("◆")
-  if(!element.classList.length) element.removeAttribute("class")
-  return element
-}
-
 /** Clones a node without copying transient editor marker classes. */
 export function cloneWithoutEditorMarkers<T extends Node>(node: T, deep=false, {inert = false} = {}) {
   return clearEditorMarkerClasses(inert ? cloneInert(node, deep) : node.cloneNode(deep)) as T
@@ -1773,6 +1801,22 @@ export function isWidgetShadowInteraction(event: Event, schema?: Schema) {
   const widget = widgetHostForShadowInteraction(event, schema)
   if(!widget) return false
   return !schema?.get(widget)?.propagateEvents?.includes(event.type)
+}
+
+/** Text fields and explicitly editable UI content keep native editing menus. */
+export function isTextFieldInteraction(event: Event, editingRoot?: Element) {
+  const path = event.composedPath()
+  if(path.some(target => isElement(target) && target.matches("input, textarea"))) return true
+  const origin = path[0]
+  const originNode = origin && typeof origin === "object" && "nodeType" in origin ? origin as Node : null
+  let element = isElement(originNode) ? originNode : originNode?.parentElement ?? null
+  while(element && element !== editingRoot) {
+    const value = element.getAttribute("contenteditable")?.toLowerCase()
+    if(value === "false") return false
+    if(value === "" || value === "true" || value === "plaintext-only") return true
+    element = element.parentElement
+  }
+  return false
 }
 
 /** Whether an interaction originated in the editor-owned shadow appendix.

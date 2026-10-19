@@ -1,6 +1,6 @@
 import {readFileSync, readdirSync, existsSync} from "node:fs"
 import {createRequire} from "node:module"
-import {join} from "node:path"
+import {dirname, join} from "node:path"
 
 const moduleId = "virtual:component-licenses"
 
@@ -31,7 +31,10 @@ export function componentLicensesPlugin(manifestPath) {
         const files = readdirSync(directory, {withFileTypes: true})
           .filter(file => file.isFile() && /^(licen[sc]e|copying|notice)([.-]|$)/i.test(file.name))
           .map(file => file.name).sort()
-        if(!files.some(file => /^(licen[sc]e|copying)([.-]|$)/i.test(file))) {
+        // Some published packages omit their upstream license text.
+        const supplementalPath = join(dirname(manifestPath), "licenses", `${name}.txt`)
+        const supplemental = !files.some(file => /^(licen[sc]e|copying)([.-]|$)/i.test(file)) && existsSync(supplementalPath)
+        if(!files.some(file => /^(licen[sc]e|copying)([.-]|$)/i.test(file)) && !supplemental) {
           throw new Error(`Cannot find license text for ${name}`)
         }
         const license = typeof pkg.license === "string" ? pkg.license
@@ -42,6 +45,10 @@ export function componentLicensesPlugin(manifestPath) {
           this.addWatchFile(path)
           return `${file}\n\n${readFileSync(path, "utf8").trim()}`
         })
+        if(supplemental) {
+          this.addWatchFile(supplementalPath)
+          contents.push(readFileSync(supplementalPath, "utf8").trim())
+        }
         return [heading, "=".repeat(heading.length), ...contents].join("\n\n")
       }).join("\n\n\n")
       return `export default ${JSON.stringify(text)}`

@@ -7,15 +7,81 @@ import '@testing-library/jest-dom/vitest'
 import * as Y from "yjs"
 import { DOMEditor } from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
-import { $, cloneWithoutEditorMarkers } from "../utility"
+import { $, cloneWithoutEditorMarkers, getInertDocument } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {mathElement} from "../math"
+import {elementAttributeState} from "../element-attributes"
 import {floatSideFromStyles} from "../element-styles"
 import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
-import {replayHostDrag, type RibbonDropPosition} from "../editor-bridge"
+import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type SelectionChangeDetail} from "../editor-bridge"
 
 let editor: DOMEditor
+
+describe("paragraph insertion content", () => {
+  it("retains an empty paragraph when inserting a mark", () => {
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+    const mark = document.createElement("b")
+    mark.textContent = "text"
+    editor.features.manipulation.insert(mark)
+    expect(mark.parentElement).toBe(paragraph)
+    expectBodyToBe('<p><b>text</b></p>')
+  })
+  it.each(["svg", "iframe", "hr", "inline-widget"])("splits nested marks around inserted %s", tag => {
+    editor.schema.extendWidgets([{tagName: "inline-widget", editingConfig: {inline: true, group: "phrasing"}}])
+    document.body.innerHTML = '<section><!--keep--><p class="authored">one <b><i>abcd</i></b> end</p><p>Other</p></section>'
+    const section = document.querySelector("section")!, other = section.lastChild
+    const text = document.querySelector("i")!.firstChild!
+    $.move(text, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const node = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag)
+    editor.features.manipulation.insert(node)
+    expect(node.parentElement).toBe(section)
+    expect(section.querySelectorAll("p")[0].innerHTML).toBe('one <b><i>ab</i></b>')
+    expect(section.querySelectorAll("p")[1].innerHTML).toBe('<b><i>cd</i></b> end')
+    expect(section.querySelectorAll("p")[1].classList.contains("authored")).toBe(true)
+    expect(section.lastChild).toBe(other)
+    expect(section.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe('<section><!--keep--><p class="authored">one <b><i>abcd</i></b> end</p><p>Other</p></section>')
+    editor.doc.redo()
+    expect(document.querySelector(`p ${tag}`)).toBeNull()
+    expect(document.querySelector(tag)?.parentElement?.localName).toBe("section")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("splits around non-text runs in an HTML fragment", () => {
+    document.body.innerHTML = '<p>abcd</p>'
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    editor.features.manipulation.insertHTML('<b>left</b><hr><em>right</em>')
+    expectBodyToBe('<p>ab</p><p><b>left</b></p><hr><p><em>right</em></p><p>cd</p>')
+  })
+
+  it("keeps text, marks, line breaks and inline formulas inside a paragraph", () => {
+    document.body.innerHTML = '<p>abcd</p>'
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const fragment = fragmentFromHTML('<b><em>text</em></b><br>')
+    const formula = mathElement("math", mathElement("mi", "x"))
+    formula.setAttribute("display", "inline")
+    fragment.append(formula)
+    editor.features.manipulation.insert(fragment)
+    expect(editor.toHTML(true)).toBe('<p>ab<b><em>text</em></b><br><math display="inline"><mi>x</mi></math>cd</p>')
+    expect(document.querySelector("p math")?.getAttribute("display")).toBe("inline")
+    expect(document.querySelector("p")?.textContent).toBe("abtextxcd")
+  })
+
+  it("splits around an explicitly displayed formula", () => {
+    document.body.innerHTML = '<p>abcd</p>'
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const formula = mathElement("math", mathElement("mi", "x"))
+    formula.setAttribute("display", "block")
+    editor.features.manipulation.insert(formula)
+    expectBodyToBe('<p>ab</p><math display="block"><mi>x</mi></math><p>cd</p>')
+  })
+})
 
 const fragmentFromHTML = (html: string) => {
   const template = document.createElement("template")
@@ -1012,6 +1078,12 @@ function expectFarFloat(element: HTMLElement, side: "left" | "right") {
   expect(element.style.getPropertyValue("--ww-float-size")).toBe("")
 }
 
+function expectNoFloat(element: HTMLElement) {
+  expect(element).not.toHaveClass("ww-float-left")
+  expect(element).not.toHaveClass("ww-float-right")
+  expect(element.style.float).toBe("")
+}
+
 beforeEach(async () => {
   vi.restoreAllMocks()
   document.documentElement.removeAttribute("class")
@@ -1060,7 +1132,7 @@ describe("legacy column groups are preserved as authored DOM", () => {
 })
 
 describe("column insertion", () => {
-  it.each(["p", "h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
+  it.each(["h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
     document.body.innerHTML = `<${tag}>before<b>after</b><!--keep--></${tag}>`
     const block = document.body.firstElementChild!
     const bold = block.querySelector("b")!
@@ -1072,8 +1144,7 @@ describe("column insertion", () => {
     expect(block.textContent).toBe("beforeafter")
     expect(block.querySelector("b")).toBe(bold)
     expect(document.body.children).toHaveLength(2)
-    expect(image.style.maxWidth).toBe("var(--ww-float-width)")
-    expect(image).toHaveClass("ww-float-right")
+    expectFarFloat(image, "right")
     expect(image.parentElement).toBe(block.parentElement)
     expect(block.previousElementSibling).toBe(image)
     expect(bold.innerHTML).toBe("after")
@@ -1086,8 +1157,9 @@ describe("column insertion", () => {
     $.move(block.firstChild!, 2)
     const widget = document.createElement("float-widget")
     editor.features.manipulation.insert(widget)
-    expect(widget.style.float).toBe(content ? "" : "right")
-    if(!content) expect(widget.nextElementSibling).toBe(block)
+    expectNoFloat(widget)
+    expect(block.textContent).toBe("te")
+    expect(widget.nextElementSibling?.textContent).toBe("xt")
   })
 
   it.each(["", " ", "<br>", "<b></b>"])("does not float insertion at a caret in an empty paragraph: %s", html => {
@@ -1129,7 +1201,7 @@ describe("column insertion", () => {
     expect(paragraph.textContent).toBe("detached")
   })
 
-  it("undoes and redoes a floated insertion", () => {
+  it("undoes and redoes media insertion splitting a paragraph", () => {
     document.querySelector("p")!.textContent = "text"
     $.move(document.querySelector("p")!.firstChild!, 2)
     editor.doc.syncFromDOM()
@@ -1137,7 +1209,7 @@ describe("column insertion", () => {
     editor.features.manipulation.insert(document.createElement("img"))
     editor.doc.syncFromDOM()
     const inserted = editor.toHTML(true)
-    expect(document.querySelector("p")!.previousElementSibling).toBe(document.querySelector("img"))
+    expect(document.querySelector("p")!.nextElementSibling).toBe(document.querySelector("picture"))
     editor.doc.undo()
     expect(document.querySelector("img")).toBeNull()
     editor.doc.redo()
@@ -1222,6 +1294,65 @@ describe("column insertion", () => {
     expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), var(--ww-float-width))")
     manipulation.setFloat(target, "none")
     expect(target.style.getPropertyValue("--ww-float-size")).toBe("")
+  })
+
+  it.each([
+    ["margin", "margin-top", "7px", "8px", "margin-right"],
+    ["margin", "margin-inline-start", "11px", "8px", "margin-bottom"],
+    ["padding", "padding-block-end", "13px", "8px", "padding-left"],
+    ["border-width", "border-left-width", "3px", "2px", "border-right-width"],
+    ["border-width", "border-block-start-width", "5px", "2px", "border-bottom-width"],
+    ["border-style", "border-inline-end-style", "dashed", "solid", "border-top-style"],
+    ["border-color", "border-bottom-color", "red", "blue", "border-top-color"],
+    ["border-radius", "border-top-left-radius", "4px", "8px", "border-bottom-right-radius"],
+    ["border-radius", "border-start-start-radius", "6px", "8px", ""],
+  ])("preserves authored %s longhand %s while updating untouched sides", (shorthand, longhand, value, globalValue, untouched) => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", `${longhand}: ${value}${longhand === "margin-top" ? " !important" : ""}`)
+    editor.features.manipulation.setElementStyles(target, {[shorthand]: globalValue})
+    expect(target.style.getPropertyValue(longhand)).toBe(value)
+    if(untouched) expect(target.style.getPropertyValue(untouched)).toBe(globalValue)
+    if(longhand === "margin-top") expect(target.style.getPropertyPriority(longhand)).toBe("important")
+  })
+
+  it("preserves all authored sides when setting a global margin shorthand", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px; margin-top: 3px; margin-right: 4px; margin-bottom: 5px; margin-left: 6px")
+    editor.features.manipulation.setElementStyles(target, {margin: "8px"})
+    expect(["top", "right", "bottom", "left"].map(side => target.style.getPropertyValue(`margin-${side}`)))
+      .toEqual(["3px", "4px", "5px", "6px"])
+  })
+
+  it("keeps raw directional declarations across successive shorthand and unrelated edits", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px; margin-top: 3px")
+    const manipulation = editor.features.manipulation
+    manipulation.setElementStyles(target, {margin: "8px"})
+    manipulation.setElementStyles(target, {"margin-top": "4px"})
+    manipulation.setElementStyles(target, {opacity: "0.5"})
+    manipulation.setElementStyles(target, {margin: "10px"})
+    expect(target.style.getPropertyValue("margin-top")).toBe("4px")
+    expect(target.style.getPropertyValue("margin-right")).toBe("10px")
+    expect(manipulation.getStyleState(["margin"], target, false).authoredProperties).toEqual(expect.arrayContaining(["margin", "margin-top"]))
+    expect(manipulation.getStyleState(["margin"], target, false).authoredProperties).not.toContain("margin-right")
+  })
+
+  it("reports raw global shorthand value and priority beside a directional override", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px !important; margin-top: 3px !important")
+    const state = editor.features.manipulation.getStyleState(["margin"], target, false)
+    expect(state.inline.margin).toEqual({value: "2px", priority: "important"})
+    expect(state.authoredProperties).toEqual(["margin", "margin-top"])
+  })
+
+  it("parses authored priorities and case-sensitive custom property names", () => {
+    const target = document.body.appendChild(document.createElement("aside"))
+    target.setAttribute("style", "margin: 2px ! /* comment */ important; margin: 3px; --Theme: red; --theme: blue")
+    const state = editor.features.manipulation.getStyleState(["margin", "--Theme", "--theme"], target, false)
+    expect(state.inline.margin).toEqual({value: "2px", priority: "important"})
+    expect(state.authoredProperties).toEqual(["margin", "--Theme", "--theme"])
+    expect(state.inline["--Theme"]?.value).toBe("red")
+    expect(state.inline["--theme"]?.value).toBe("blue")
   })
 
   it("refuses far floating disconnected targets, the document root and widget internals", () => {
@@ -1423,7 +1554,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       document.body.dispatchEvent(event)
 
       expect(event.defaultPrevented).toBe(true)
-      expectBodyToBe(`<section><${tag}><b><i>he</i></b></${tag}><p><b><i>llo</i></b><span> world</span></p><p>after</p></section>`)
+      expectBodyToBe(`<section><${tag} id="he"><b><i>he</i></b></${tag}><p><b><i>llo</i></b><span> world</span></p><p>after</p></section>`)
       expect(document.querySelectorAll("p")[1]).toBe(following)
       expect($.anchor).toBe(document.querySelectorAll("i")[1].firstChild)
       expect($.anchorOffset).toBe(0)
@@ -1568,20 +1699,22 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
   it("inserts HTML through its action handler", () => {
     editor.features.manipulation.actions.insert({type: "insert", html: "<p></p>"})
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
-    expectFarFloat(document.body.firstElementChild as HTMLElement, "right")
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p"])
+    expectNoFloat(document.body.firstElementChild as HTMLElement)
   })
   it("sanitizes arbitrary HTML while preserving safe inline styles", () => {
+    const activeContent = "script, style, link[rel~='stylesheet']"
+    const existingActiveContent = Array.from(document.querySelectorAll(activeContent))
     editor.features.manipulation.actions.insert({
       type: "insert",
       html: '<style>body { display: none }</style><link rel="stylesheet"><dialog><p style="color: red" onclick="evil()">Safe<script>while(true) {}</script></p></dialog>',
     })
 
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p"])
     expect(document.body.firstElementChild?.textContent).toBe("Safe")
     expect((document.body.firstElementChild as HTMLElement).style.color).toBe("red")
-    expectFarFloat(document.body.firstElementChild as HTMLElement, "right")
-    expect(document.querySelector("script, style, link[rel~='stylesheet']")).toBeNull()
+    expectNoFloat(document.body.firstElementChild as HTMLElement)
+    expect(Array.from(document.querySelectorAll(activeContent))).toEqual(existingActiveContent)
   })
   it("schema-corrects arbitrary HTML before insertion", () => {
     const correct = vi.spyOn(editor.schema, "checkAndCorrect")
@@ -1608,9 +1741,9 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     await new Promise(resolve => setTimeout(resolve, 0))
     expect(document.querySelector("webwriter-demo")).not.toHaveAttribute("contenteditable")
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["section", "p"])
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["section"])
     expect(document.querySelector("section > webwriter-demo")).not.toBeNull()
-    expectFarFloat(document.querySelector("section")!, "right")
+    expectNoFloat(document.querySelector("section")!)
   })
   it("preserves authored contenteditable through inserted widget undo and redo", async () => {
     editor.features.manipulation.actions.insert({
@@ -1637,8 +1770,8 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["webwriter-demo", "p"])
-    expectFarFloat(widget as HTMLElement, "right")
+    expect(Array.from(document.body.children, element => element.localName)).toEqual(["webwriter-demo"])
+    expectNoFloat(widget as HTMLElement)
   })
   it.each(["node", "HTML"] as const)("replaces a capture-selected widget through %s insertion", kind => {
     document.body.innerHTML = "<p>before</p><opaque-widget><span>Authored fallback</span></opaque-widget><p>after</p>"
@@ -1773,7 +1906,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const widget = document.querySelector("webwriter-demo")!
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect((document.querySelector("webwriter-demo") as HTMLElement | null)?.style.float).toBe("right")
+    expectNoFloat(document.querySelector("webwriter-demo") as HTMLElement)
   })
   it.each([0, 6, 12])("places an atomic widget beside a paragraph at text offset %i", offset => {
     editor.schema.extendWidgets([{tagName: "webwriter-demo"}])
@@ -1786,9 +1919,22 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       html: "<webwriter-demo></webwriter-demo>",
     })
 
-    expect((document.querySelector("webwriter-demo") as HTMLElement | null)?.style.float).toBe("right")
+    expectNoFloat(document.querySelector("webwriter-demo") as HTMLElement)
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.nextElementSibling).toBe(document.querySelector("p"))
+    const paragraphs = Array.from(document.querySelectorAll("p"))
+    if(offset === 0) {
+      expect(widget.nextElementSibling).toBe(paragraphs[0])
+      expect(paragraphs[0].textContent).toBe("before after")
+    }
+    else if(offset === 12) {
+      expect(widget.previousElementSibling).toBe(paragraphs[0])
+      expect(paragraphs[0].textContent).toBe("before after")
+    }
+    else {
+      expect(paragraphs.map(paragraph => paragraph.textContent)).toEqual(["before", " after"])
+      expect(widget.previousElementSibling).toBe(paragraphs[0])
+      expect(widget.nextElementSibling).toBe(paragraphs[1])
+    }
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
   })
@@ -1857,6 +2003,75 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expectBodyToBe("<details open=\"\"><summary>Heading</summary><p>a</p><p>b</p></details>")
   })
+  it("validates a block split without cloning unrelated document siblings", () => {
+    document.body.innerHTML = `<section><p>ab</p><p>tail</p></section><aside>${"<span>unrelated</span>".repeat(100)}</aside>`
+    const section = document.querySelector("section")!
+    $.move(document.querySelector("section p")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(section), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenNthCalledWith(1, section, false)
+    expect(importNode).toHaveBeenNthCalledWith(2, section.querySelector("p")!, true)
+    expectBodyToBe(`<section><p>a</p><p>b</p><p>tail</p></section><aside>${"<span>unrelated</span>".repeat(100)}</aside>`)
+  })
+  it("validates direct body splits without cloning unrelated sibling subtrees", () => {
+    document.body.innerHTML = `<p>ab</p>${"<aside><span>unrelated</span></aside>".repeat(100)}`
+    const body = document.body
+    const unrelated = document.querySelector("aside")!
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(body), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenNthCalledWith(1, body, false)
+    expect(importNode).toHaveBeenNthCalledWith(2, document.querySelector("p")!, true)
+    expect(document.querySelector("p")!.textContent).toBe("a")
+    expect(document.querySelectorAll("p").item(1).textContent).toBe("b")
+    expect(document.querySelectorAll("aside")).toHaveLength(100)
+  })
+  it("uses full range context when splitting a selection across paragraphs", () => {
+    document.body.innerHTML = "<section><p>first</p><p>second</p><p>third</p></section><aside>keep</aside>"
+    const section = document.querySelector("section")!
+    const aside = document.querySelector("aside")!
+    const paragraphs = section.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 1, paragraphs[1].firstChild!, 2)
+    const importNode = vi.spyOn(getInertDocument(document.body), "importNode")
+
+    editor.features.manipulation.insert()
+
+    expect(importNode).toHaveBeenCalledWith(document.body, true)
+    expect(Array.from(section.children).map(element => element.textContent)).toEqual(["first", "second", "third"])
+    expect(document.querySelector("section")).toBe(section)
+    expect(document.querySelector("aside")).toBe(aside)
+    $.move(paragraphs[0].firstChild!, 0)
+  })
+  it("uses full root context for selector rules and rejects an invalid split", () => {
+    editor.schema.extend({body: {content: {selector: "p", min: 1, max: 3}}})
+    document.body.innerHTML = `<p>ab</p><p>second</p><p>third</p>`
+    const body = document.body
+    $.move(document.querySelector("p")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(body), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenCalledWith(body, true)
+    expect(document.querySelectorAll("p")).toHaveLength(3)
+    expect(document.querySelector("p")!.textContent).toBe("ab")
+  })
+  it("keeps nested selector context when validating a split", () => {
+    editor.schema.extend({p: {content: {selector: ":is(body>p:first-child>b)", min: 0, max: Infinity}}})
+    document.body.innerHTML = "<p><b>ab</b></p>"
+    const body = document.body
+    $.move(document.querySelector("b")!.firstChild!, 1)
+    const importNode = vi.spyOn(getInertDocument(body), "importNode")
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+
+    expect(importNode).toHaveBeenCalledWith(body, true)
+    expect(document.querySelector("b")!.textContent).toBe("ab")
+    expect(document.querySelectorAll("p")).toHaveLength(1)
+  })
   it("continues a heading group with a paragraph when splitting its heading", () => {
     document.body.innerHTML = "<hgroup><h1>ab</h1></hgroup>"
     $.move(document.querySelector("h1")!.firstChild!, 1)
@@ -1865,7 +2080,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe("<hgroup><h1>a</h1><p>b</p></hgroup>")
+    expectBodyToBe('<hgroup><h1 id="a">a</h1><p>b</p></hgroup>')
   })
   it("splits nested marks with their containing block", () => {
     document.body.innerHTML = "<p><b><i>hello</i></b> world</p>"
@@ -1891,13 +2106,13 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     document.body.innerHTML = "<h1>hello</h1>"
     $.move(document.body.firstElementChild!.firstChild!, 2)
     editor.features.manipulation.insert()
-    expectBodyToBe("<h1>he</h1><p>llo</p>")
+    expectBodyToBe('<h1 id="he">he</h1><p>llo</p>')
   })
   it("splits an inseperable element into a default node when strict", () => {
     document.body.innerHTML = "<h1>hello</h1>"
     $.move(document.body.firstElementChild!.firstChild!, 2)
     editor.features.manipulation.insert(undefined, 0, true)
-    expectBodyToBe("<h1>he</h1><p>llo</p>")
+    expectBodyToBe('<h1 id="he">he</h1><p>llo</p>')
   })/*
   it("can laxly insert invalid content", () => {
     document.body.innerHTML = "<p>hello world</p>"
@@ -1961,7 +2176,7 @@ describe("heading groups", () => {
 
     editor.features.manipulation.addHeadingGroupText("after")
 
-    expectBodyToBe("<hgroup><x-note></x-note><p></p><h1>Title</h1><p>Deck</p><p></p><x-widget></x-widget></hgroup>")
+    expectBodyToBe('<hgroup><x-note></x-note><p></p><h1 id="title">Title</h1><p>Deck</p><p></p><x-widget></x-widget></hgroup>')
     expect(editor.features.manipulation.getHeadingGroupState()).toEqual({
       heading: "h1", beforeCount: 1, afterCount: 2,
     })
@@ -1976,7 +2191,7 @@ describe("heading groups", () => {
     })
     editor.features.manipulation.setHeadingGroupLevel("h4")
 
-    expectBodyToBe("<hgroup><h4></h4><p>Supporting text</p><custom-title></custom-title></hgroup>")
+    expectBodyToBe('<hgroup><h4 id="heading"></h4><p>Supporting text</p><custom-title></custom-title></hgroup>')
   })
 })
 
@@ -2202,6 +2417,49 @@ describe("Tab paragraph behavior", () => {
   })
 })
 describe("delete()", () => {
+  it.each(["hello w", "hello <b>w</b>", "hello <!--keep--><b data-authored='keep'><i>w</i></b>"])("preserves the trailing space when deleting the last letter in %s", html => {
+    document.body.innerHTML = `<p>${html}</p>`
+    const paragraph = document.querySelector("p")!
+    const text = paragraph.querySelector("i, b")?.lastChild ?? paragraph.firstChild!
+    const target = text instanceof Text ? text : text.firstChild!
+    $.selectRange(target, target.textContent!.length - 1, target, target.textContent!.length)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    editor.features.manipulation.delete("backward")
+
+    expect(paragraph.textContent).toBe("hello\u00a0")
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    if(html.includes("<!--")) {
+      expect(paragraph.innerHTML).toContain("<!--keep-->")
+      expect(paragraph.querySelector("b")!.getAttribute("data-authored")).toBe("keep")
+    }
+    editor.doc.syncFromDOM()
+    const deleted = editor.toHTML(true)
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("hello\u00a0")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(deleted)
+  })
+
+  it.each(["pre", "pre-wrap", "break-spaces"])("preserves ordinary spaces under white-space: %s", whiteSpace => {
+    document.body.innerHTML = `<p style="white-space: ${whiteSpace}">hello w</p>`
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 6, text, 7)
+    editor.features.manipulation.delete("backward")
+    expect(document.querySelector("p")!.textContent).toBe("hello ")
+  })
+
+  it.each([" world", "<opaque-widget></opaque-widget>", "<br>"])("leaves spaces before following content unchanged: %s", following => {
+    document.body.innerHTML = `<p>hello w${following}</p>`
+    const paragraph = document.querySelector("p")!, text = paragraph.firstChild!
+    $.selectRange(text, 6, text, 7)
+    editor.features.manipulation.delete("backward")
+    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe(`hello ${following}`)
+  })
+
   describe.each(["backward", "forward"] as const)("selecting an adjacent widget on %s deletion", direction => {
     it.each(["gap", "inline", "block"])("selects before deleting from a %s caret", shape => {
       const widget = document.createElement("opaque-widget")
@@ -2390,7 +2648,7 @@ describe("delete()", () => {
     document.body.innerHTML = "<p>a</p><p></p><h1>b</h1>"
     $.selectGap(document.body.children[1])
     editor.features.manipulation.delete("backward")
-    expectBodyToBe("<p>a</p><h1>b</h1>")
+    expectBodyToBe('<p>a</p><h1 id="b">b</h1>')
   })
   it("removes only an empty next element on forward delete", () => {
     document.body.innerHTML = "<p>a</p><h1></h1><p>b</p>"
@@ -2402,7 +2660,7 @@ describe("delete()", () => {
     document.body.innerHTML = "<p>a</p><p></p><h1>b</h1>"
     $.move(document.body.lastElementChild!.firstChild!, 0)
     editor.features.manipulation.delete("backward")
-    expectBodyToBe("<p>a</p><h1>b</h1>")
+    expectBodyToBe('<p>a</p><h1 id="b">b</h1>')
   })
   it("removes an empty next element when deleting forward at the previous element's end", () => {
     document.body.innerHTML = "<p>a</p><h1></h1><p>b</p>"
@@ -2677,6 +2935,62 @@ describe("cut()", () => {
     finally { Object.defineProperty(navigator.clipboard, "write", {value: write, configurable: true}) }
   })
 })
+describe("insertion beside a lone float", () => {
+  it.each(["left", "right"])("places typing, Enter, pasted blocks and command elements after a lone %s float", side => {
+    for(const operation of ["typing", "enter", "paste", "command", "node"]) {
+      document.body.innerHTML = `<audio controls style="float:${side}"></audio><!--keep-->`
+      const floated = document.querySelector("audio")!, comment = floated.nextSibling!
+      $.move(document.body, 0)
+      if(operation === "typing" || operation === "enter") {
+        document.body.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true,
+          inputType: operation === "typing" ? "insertText" : "insertParagraph", data: operation === "typing" ? "Hello" : null}))
+      }
+      else if(operation === "paste") {
+        const clipboardData = new DataTransfer()
+        clipboardData.setData("text/html", "<p>Hello</p>")
+        document.dispatchEvent(new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData}))
+      }
+      else if(operation === "command") editor.features.manipulation.insertHTML("<h2>Hello</h2>")
+      else editor.features.manipulation.insert(document.createElement("hr"))
+      expect(document.body.firstElementChild).toBe(floated)
+      expect(floated.nextElementSibling?.localName).toBe(operation === "node" ? "hr" : operation === "command" ? "h2" : "p")
+      if(operation !== "node" && operation !== "enter") expect(floated.nextElementSibling?.textContent).toBe("Hello")
+      expect(comment.isConnected).toBe(true)
+      expect(floated.getAttribute("style")).toBe(`float:${side}`)
+      expect(editor.toHTML(true)).not.toContain("◆")
+    }
+  })
+
+  it("preserves explicit insertion order when normal flow already exists", () => {
+    document.body.innerHTML = '<audio style="float:right"></audio><p>Existing</p>'
+    $.move(document.body, 0)
+    editor.features.manipulation.insert(document.createElement("hr"))
+    expect(document.body.firstElementChild?.localName).toBe("hr")
+  })
+
+  it("uses a stylesheet float in a template root and supports undo and redo", () => {
+    const style = document.createElement("style")
+    style.textContent = "audio {float: right}"
+    document.head.append(style)
+    try {
+      document.body.innerHTML = '<demo-widget role="document"><audio controls></audio></demo-widget>'
+      const root = document.querySelector("demo-widget")!, floated = root.firstElementChild!
+      $.move(root, 0)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      editor.features.manipulation.insertHTML("<p>Hello</p>")
+      expect(root.firstElementChild).toBe(floated)
+      expect(floated.nextElementSibling?.textContent).toBe("Hello")
+      editor.doc.syncFromDOM()
+      editor.doc.undo()
+      expect(document.querySelector("demo-widget")!.children).toHaveLength(1)
+      editor.doc.redo()
+      expect(document.querySelector("demo-widget")!.lastElementChild?.textContent).toBe("Hello")
+    }
+    finally { style.remove() }
+  })
+})
+
 describe("paste()", () => {
   it("handles a native plain-text paste into an empty document", () => {
     const clipboardData = new DataTransfer()
@@ -2712,7 +3026,7 @@ describe("paste()", () => {
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe("<h1>Heading</h1>")
+    expectBodyToBe('<h1 id="heading">Heading</h1>')
   })
 
   it("fills the DOM with correct HTML clipboard content", async () => {
@@ -2776,9 +3090,9 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expectBodyToBe("<p>he</p><h1>Title</h1><p>llo</p>")
+    expectBodyToBe('<p>he</p><h1 id="title">Title</h1><p>llo</p>')
   })
-  it("preserves a pasted custom element as an atomic native float", async () => {
+  it("preserves a pasted custom element between paragraph halves", async () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "Widget",
       "text/html": "<demo-widget>Widget</demo-widget>",
@@ -2788,7 +3102,8 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expect(document.querySelector("demo-widget")).toHaveClass("ww-float-right")
+    expectNoFloat(document.querySelector("demo-widget") as HTMLElement)
+    expectBodyToBe('<p>he</p><demo-widget>Widget</demo-widget><p>llo</p>')
     expect(document.querySelector("demo-widget")).not.toHaveAttribute("contenteditable")
     expect(document.getSelection()!.isCollapsed).toBe(true)
     expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector("demo-widget"))
@@ -2970,6 +3285,37 @@ describe("explicit multi-element selection editing", () => {
     expect(document.body.children).toHaveLength(5)
   })
 
+  it("preserves attribute namespaces when renaming qualified names and rejects unbound prefixes", () => {
+    const svgNamespace = "http://www.w3.org/2000/svg"
+    const xlinkNamespace = "http://www.w3.org/1999/xlink"
+    const xmlnsNamespace = "http://www.w3.org/2000/xmlns/"
+    const svg = document.createElementNS(svgNamespace, "svg")
+    svg.setAttributeNS(xmlnsNamespace, "xmlns:xlink", xlinkNamespace)
+    svg.setAttributeNS(xmlnsNamespace, "xmlns:ww", "urn:example:widget")
+    svg.setAttributeNS(xlinkNamespace, "xlink:href", "original")
+    document.body.replaceChildren(svg)
+    const setAttribute = (name: string, previousName?: string) => editor.features.manipulation.actions.setElementAttribute({
+      ...elementAttributeState(svg, [0]), type: "setElementAttribute",
+      name, previousName, value: "updated",
+    })
+
+    setAttribute("xlink:label", "xlink:href")
+    expect(svg.getAttributeNodeNS(xlinkNamespace, "label")?.name).toBe("xlink:label")
+    expect(svg.hasAttribute("xlink:href")).toBe(false)
+
+    setAttribute("ww:reference", "xlink:label")
+    expect(svg.getAttributeNodeNS("urn:example:widget", "reference")?.name).toBe("ww:reference")
+    expect(svg.hasAttribute("xlink:label")).toBe(false)
+
+    setAttribute("href", "ww:reference")
+    expect(svg.getAttributeNode("href")?.namespaceURI).toBeNull()
+    expect(svg.hasAttribute("ww:reference")).toBe(false)
+
+    expect(() => setAttribute("missing:reference", "href")).toThrow(/namespace prefix is not bound/)
+    expect(svg.getAttribute("href")).toBe("updated")
+    expect(svg.hasAttribute("missing:reference")).toBe(false)
+  })
+
   it("uses the current selection and safely ignores disconnected members", () => {
     document.body.innerHTML = '<p id="first">one</p><p id="second">two</p><p id="third">three</p>'
     const [first, second, third] = Array.from(document.body.children)
@@ -3100,6 +3446,41 @@ describe("text input normalization", () => {
   })
 })
 describe("setBlockType()", () => {
+  it("changes only scoped headings in a mixed selection and preserves DOM and undo", () => {
+    document.body.innerHTML = '<section><h2 id="intro" class="lead"><b>Hello</b><!--keep--></h2><p>Paragraph</p><h3>Other level</h3><h2>Second</h2><test-widget><h2>Widget heading</h2></test-widget></section>'
+    const section = document.querySelector("section")!, first = document.querySelector("h2")!
+    const children = Array.from(first.childNodes)
+    const paragraph = document.querySelector("p"), other = document.querySelector("h3"), widget = document.querySelector("test-widget")
+    $.selectRange(section, 0, section, section.childNodes.length)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const converted = editor.features.manipulation.setBlockType("h6", {localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml"})
+    expect(converted).toBe(2)
+    const replacement = document.querySelector("h6")!
+    expect(replacement.id).toBe("intro")
+    expect(replacement).toHaveClass("lead")
+    expect(Array.from(replacement.childNodes)).toEqual(children)
+    expect(document.querySelector("section")).toBe(section)
+    expect(document.querySelector("p")).toBe(paragraph)
+    expect(document.querySelector("h3")).toBe(other)
+    expect(widget!.innerHTML).toBe("<h2>Widget heading</h2>")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelectorAll("section > h2")).toHaveLength(2)
+    editor.doc.redo()
+    expect(document.querySelectorAll("section > h6")).toHaveLength(2)
+  })
+
+  it("does nothing when the scoped heading was replaced before the command", () => {
+    document.body.innerHTML = '<h2>Heading</h2>'
+    const heading = document.querySelector("h2")!
+    $.move(heading.firstChild!)
+    heading.replaceWith(document.createElement("p"))
+    expect(editor.features.manipulation.setBlockType("h1", {localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml"})).toBe(0)
+    expectBodyToBe("<p></p>")
+  })
+
   it.each(["caret", "range", "node"])("converts paragraphs to heading text and back with a %s selection", selection => {
     document.body.innerHTML = '<section><test-widget></test-widget><!--keep--><p id="intro" class="lead">  first\n<b>hello</b><br>tail</p></section>'
     const section = document.querySelector("section")!
@@ -3192,7 +3573,7 @@ describe("setBlockType()", () => {
 
     editor.features.manipulation.setBlockType("h3")
 
-    expectBodyToBe("<section><h3>one</h3><h3>two</h3><h3>three</h3></section>")
+    expectBodyToBe('<section><h3 id="one">one</h3><h3 id="two">two</h3><h3 id="three">three</h3></section>')
     expect(document.querySelector("section")).toBe(section)
   })
 
@@ -3233,7 +3614,7 @@ describe("setBlockType()", () => {
     const count = editor.features.manipulation.setBlockType("h2")
 
     expect(count).toBe(2)
-    expectBodyToBe("<h2>before</h2><demo-widget><p>inside</p></demo-widget><h2>after</h2>")
+    expectBodyToBe('<h2 id="before">before</h2><demo-widget><p>inside</p></demo-widget><h2 id="after">after</h2>')
   })
 
   it("retains parent selector constraints when unfamiliar siblings are present", () => {
@@ -3251,11 +3632,41 @@ describe("setBlockType()", () => {
 
     editor.features.manipulation.actions.setBlockType({type: "setBlockType", tag: "h1"})
 
-    expectBodyToBe("<h1></h1>")
+    expectBodyToBe('<h1 id="heading"></h1>')
     expect($.anchor).toBe(document.querySelector("h1"))
   })
 })
 describe("setStyle()", () => {
+  it.each(["picture", "video"])("crops selected %s figure content without changing its caption, sources or siblings", media => {
+    document.body.innerHTML = `<figure data-keep="yes"><!--keep--><${media}><!--source--><source src="movie.mp4" srcset="large.png 2x">${media === "picture" ? '<img src="small.png">' : 'Fallback'}</${media}><figcaption>Caption</figcaption></figure><p>Other</p>`
+    const figure = document.querySelector("figure")!
+    const target = document.querySelector<HTMLImageElement | HTMLVideoElement>(media === "picture" ? "img" : "video")!
+    const caption = figure.querySelector("figcaption")!
+    const source = figure.querySelector("source")!
+    $.selectElement(figure)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    expect(editor.features.manipulation.setElementStyles(figure, {"clip-path": "inset(10% 20% 5% 0%)"})).toBe(true)
+    expect(target.style.clipPath).toBe("inset(10% 20% 5% 0%)")
+    expect(figure.hasAttribute("style")).toBe(false)
+    expect(figure.querySelector("figcaption")).toBe(caption)
+    expect(figure.querySelector("source")).toBe(source)
+    expect(editor.features.manipulation.getStyleState(["clip-path"]).inline["clip-path"]?.value).toBe(target.style.clipPath)
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).toContain("clip-path")
+    expect(changed).not.toContain("◆")
+    expect(editor.doc.body.toString()).toContain("clip-path")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+    $.selectElement(document.querySelector("figure")!)
+    editor.features.manipulation.setStyle({"clip-path": null})
+    expect(document.querySelector(media === "picture" ? "img" : "video")!.hasAttribute("style")).toBe(false)
+  })
+
   it("styles the rendered image inside a picture while preserving responsive sources and undo", () => {
     document.body.innerHTML = '<picture data-keep="yes"><!--keep--><source srcset="large.png 2x"><img src="small.png" style="object-fit:contain !important"></picture><p>Other</p>'
     const picture = document.querySelector("picture")!
@@ -3289,12 +3700,13 @@ describe("setStyle()", () => {
     const old = picture.querySelector("img")!
     const replacement = document.createElement("img")
     old.replaceWith(replacement)
-    editor.features.manipulation.setStyle({"object-fit": "cover"})
+    editor.features.manipulation.setStyle({"object-fit": "cover", "clip-path": "inset(10%)"})
     expect(replacement.style.objectFit).toBe("cover")
+    expect(replacement.style.clipPath).toBe("inset(10%)")
     expect(old.style.objectFit).toBe("")
     replacement.remove()
     $.selectElement(picture)
-    expect(editor.features.manipulation.setStyle({"object-fit": "contain"})).toBe(false)
+    expect(editor.features.manipulation.setStyle({"object-fit": "contain", "clip-path": "inset(10%)"})).toBe(false)
     expect(picture.style.objectFit).toBe("")
     expect(editor.features.manipulation.getStyleState(["object-fit"]).inline["object-fit"]).toBeUndefined()
   })
@@ -3331,6 +3743,18 @@ describe("setStyle()", () => {
     expect(paragraph.style.borderBottomStyle).toBe("solid")
     editor.features.manipulation.setStyle({"border-width": null})
     expect(paragraph.style.borderTopWidth).toBe("")
+  })
+
+  it("clears every border part together without disturbing other formatting", () => {
+    document.body.innerHTML = '<p style="border-top: 3px dotted green !important; border-bottom-width: 7px; color: blue">Text</p>'
+    const paragraph = document.body.firstElementChild as HTMLElement
+    $.selectElement(paragraph)
+    editor.features.manipulation.setStyle({"border-width": null, "border-style": null, "border-color": null})
+    for(const side of ["top", "right", "bottom", "left"]) {
+      for(const part of ["width", "style", "color"]) expect(paragraph.style.getPropertyValue(`border-${side}-${part}`)).toBe("")
+    }
+    expect(paragraph.style.color).toBe("blue")
+    expect(paragraph.textContent).toBe("Text")
   })
 
   it("allows only background changes on a document-template root", () => {
@@ -4001,7 +4425,7 @@ describe("unified content transfer", () => {
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 800, 600))
     vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x: (x - 100) / 2, y: (y - 50) / 2}))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
-      const scale = mode === "canvas" ? 2 : 1
+      const scale = mode === "canvas" ? 2 : editor.features.slides.zoom
       return new DOMRect(100 + parseFloat(this.style.left || "0") * scale, 50 + parseFloat(this.style.top || "0") * scale, 80 * scale, 40 * scale)
     })
     const message = packageDrop("user-snippet:saved", target, 300, 150)!
@@ -4010,8 +4434,8 @@ describe("unified content transfer", () => {
     const inserted = target.lastElementChild as HTMLElement
     expect(inserted.innerHTML, target.outerHTML).toBe('<b>Saved</b><!--keep-->')
     expect(inserted.style.width).toBe("80px")
-    expect(inserted.style.left).toBe(mode === "canvas" ? "60px" : "160px")
-    expect(inserted.style.top).toBe(mode === "canvas" ? "30px" : "80px")
+    expect(inserted.style.left).toBe(mode === "canvas" ? "60px" : `${200 / editor.features.slides.zoom - 40}px`)
+    expect(inserted.style.top).toBe(mode === "canvas" ? "30px" : `${100 / editor.features.slides.zoom - 20}px`)
     expect(inserted.parentElement).toBe(target)
   })
 
@@ -4094,6 +4518,7 @@ describe("unified content transfer", () => {
   it("centers ribbon elements within the slide under the drop", () => {
     document.body.removeAttribute("class")
     expect(editor.features.slides.convert("slides")).toBe(true)
+    editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
     const slide = document.querySelector<HTMLElement>("section.ww-slide")!
     vi.spyOn(slide, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 800, 600))
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
@@ -4126,6 +4551,46 @@ describe("unified content transfer", () => {
     document.body.dispatchEvent(event)
     return event
   }
+
+  it.each(["move", "copy", "cancel"])("keeps the dragged widget in the breadcrumb until %s ends", ending => {
+    document.body.innerHTML = '<section><demo-widget>source<!--keep--></demo-widget></section><article><p>target</p></article>'
+    const source = document.querySelector("demo-widget")!, target = document.querySelector("article")!
+    const {data, surface} = beginDrag(source)
+    const post = vi.spyOn(editor, "postHostMessage")
+    const latest = () => post.mock.calls.filter(([message]) => (message as {type: string}).type === selectionChangeEvent)
+      .at(-1)![0] as {detail: SelectionChangeDetail}
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target, offset: 1})
+    target.dispatchEvent(transferEvent("dragover", data))
+    editor.postSelectionPath()
+    expect(latest().detail.path.at(-1)?.path).toEqual([0, 0])
+    expect(latest().detail.gap).toBeUndefined()
+    if(ending === "cancel") surface.dispatchEvent(transferEvent("dragend", data))
+    else dropAt(data, target, 1, {ctrlKey: ending === "copy"})
+    expect(editor.features.manipulation.draggedElement).toBeNull()
+    expect(latest().detail.path.at(-1)?.path).toEqual(ending === "cancel" ? [0, 0] : [1, 1])
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("derives the dragged breadcrumb from the current DOM and releases disconnected sources", () => {
+    document.body.innerHTML = '<section><demo-widget>source</demo-widget></section><article><p>target</p></article>'
+    const source = document.querySelector("demo-widget")!, target = document.querySelector("article")!
+    beginDrag(source)
+    const post = vi.spyOn(editor, "postHostMessage")
+    const latest = () => post.mock.calls.filter(([message]) => (message as {type: string}).type === selectionChangeEvent)
+      .at(-1)![0] as {detail: SelectionChangeDetail}
+    target.append(source)
+    $.move(target, 0)
+    editor.postSelectionPath()
+    expect(latest().detail.path.at(-1)?.path).toEqual([1, 1])
+    source.remove()
+    editor.postSelectionPath()
+    expect(editor.features.manipulation.draggedElement).toBeNull()
+    expect(latest().detail.path.at(-1)?.path).toEqual([])
+    expect(latest().detail.path.at(-1)?.sections?.at(-1)?.path).toEqual([1])
+    $.move(document.body, 2)
+    editor.postSelectionPath()
+    expect(latest().detail.gap).toEqual({parentPath: [], offset: 2})
+  })
 
   it.each(["mover", "scale-up", "scale-right", "scale-down", "scale-left"].flatMap(handle =>
     [false, true].map(copy => ({handle, copy}))))("uses native element drag semantics from $handle (copy: $copy)", ({handle, copy}) => {
@@ -4192,9 +4657,10 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<p><strong>source <span>nested</span></strong> rest</p>'
     const source = document.querySelector("strong")!
     const child = source.querySelector("span")!
-    vi.spyOn(editor, "hitTestBeneathAppendix").mockReturnValue(child)
     vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
-    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX: 125, clientY: 50}), source)).toBeNull()
+    const event = new MouseEvent("mousemove", {clientX: 125, clientY: 50, bubbles: true})
+    child.dispatchEvent(event)
+    expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
   })
 
   it.each([
@@ -4556,7 +5022,7 @@ describe("unified content transfer", () => {
   })
 
   it("strips marks in imported templates while preserving widget and foreign subtrees", () => {
-    const {fragment} = editor.parseHTMLFragment('<template><p><span><abbr>plain</abbr></span></p></template><test-widget><span><abbr>widget</abbr></span></test-widget><p is="custom-text"><span>customized</span></p><svg><text><span>foreign</span></text></svg>', true)
+    const {fragment} = editor.parseHTMLFragment('<template><p><span><abbr>plain</abbr></span></p></template><test-widget><span><abbr>widget</abbr></span></test-widget><p is="custom-text"><span>customized</span></p><svg><text><span>foreign</span></text></svg>', true, false)
     expect(fragment.querySelector("template")?.innerHTML).toBe('<p>plain</p>')
     expect(fragment.querySelector("test-widget")?.innerHTML).toBe('<span><abbr>widget</abbr></span>')
     expect(fragment.querySelector('[is="custom-text"]')?.innerHTML).toBe('<span>customized</span>')
@@ -4646,7 +5112,7 @@ describe("unified content transfer", () => {
       await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
       await editor.features.manipulation.paste()
     }
-    expectBodyToBe('<h2>Title</h2><p><b>Bold</b></p><picture><img src="photo.png"></picture><p><i>Caption</i></p><ul><li>Item</li></ul>')
+    expectBodyToBe('<h2 id="title">Title</h2><p><b>Bold</b></p><picture><img src="photo.png"></picture><p><i>Caption</i></p><ul><li>Item</li></ul>')
   })
 
   it.each(["paste", "clipboard", "drop"])("unwraps forms and extracts control values on %s", async method => {
@@ -4696,8 +5162,9 @@ describe("unified content transfer", () => {
       else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
       parser.mockRestore()
       const math = document.querySelector("math")!
-      expect(math.getAttribute("display")).toBe(inline ? "inline" : "block")
-      expect(math.parentElement).toBe(inline ? document.querySelector("p") : document.body)
+      const remainsInline = inline && display !== "block"
+      expect(math.getAttribute("display")).toBe(remainsInline ? "inline" : "block")
+      expect(math.parentElement).toBe(remainsInline ? document.querySelector("p") : document.body)
     }
   })
 
@@ -4711,13 +5178,14 @@ describe("unified content transfer", () => {
     document.body.append(math)
     const {data} = beginDrag(math)
     dropAt(data, document.querySelector("p")!.firstChild!, 3, {ctrlKey: copy})
-    const inline = document.querySelector("p math")!
-    expect(inline.getAttribute("display")).toBe("inline")
-    expect(inline === math).toBe(!copy)
-    const next = beginDrag(inline)
+    const displayed = document.querySelector("p")!.nextElementSibling!
+    expect(displayed.localName).toBe("math")
+    expect(displayed.getAttribute("display")).toBe("block")
+    expect(displayed === math).toBe(!copy)
+    const next = beginDrag(displayed)
     dropAt(next.data, document.body, 0)
-    expect(document.body.firstElementChild).toBe(inline)
-    expect(inline.getAttribute("display")).toBe("block")
+    expect(document.body.firstElementChild).toBe(displayed)
+    expect(displayed.getAttribute("display")).toBe("block")
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -5288,7 +5756,7 @@ describe("conversion boundaries", () => {
     const first = document.querySelector("p")!.firstChild!, second = document.querySelector("h2")!.firstChild!
     $.selectRange(first, 7, second, 6)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
-    expect(editor.toHTML(true)).toBe("<p>before </p><ul><li><p>first</p></li><!--keep--><li><p>second</p></li></ul><h2> after</h2><p>other</p>")
+    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li><p>first</p></li><!--keep--><li><p>second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
   })
 
   it("leaves an invalid heading conversion untouched", () => {

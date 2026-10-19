@@ -56,7 +56,7 @@ let microphonePermission: Permission
 let permissionQuery: ReturnType<typeof vi.fn>
 let panel: MediaCapture | undefined
 let editor: DOMEditor | undefined
-const inserted = vi.fn(() => true)
+const inserted = vi.fn((_blob: Blob) => true)
 const closed = vi.fn()
 const button = (selector: string) => panel!.root.querySelector<HTMLButtonElement>(selector)!
 const status = () => panel!.root.querySelector(".status")!.textContent
@@ -204,7 +204,9 @@ describe("native media capture lifecycle", () => {
     button(".stop").click()
     expect(audio.stop).toHaveBeenCalledOnce()
     expect(inserted).not.toHaveBeenCalled()
-    await vi.waitFor(() => expect(inserted).toHaveBeenCalledWith(`data:audio/mp4;base64,${btoa("final recording")}`))
+    await vi.waitFor(() => expect(inserted).toHaveBeenCalledOnce())
+    expect(inserted.mock.calls[0][0]).toBeInstanceOf(Blob)
+    expect(inserted.mock.calls[0][0]).toMatchObject({type: "audio/mp4", size: "final recording".length})
     expect(closed).toHaveBeenCalledOnce()
   })
 
@@ -310,7 +312,9 @@ describe("native media capture lifecycle", () => {
     expect(video.stop).toHaveBeenCalledOnce()
     expect(preview.srcObject).toBeNull()
     encode(new Blob(["image"], {type: "image/png"}))
-    await vi.waitFor(() => expect(inserted).toHaveBeenCalledWith(`data:image/png;base64,${btoa("image")}`))
+    await vi.waitFor(() => expect(inserted).toHaveBeenCalledOnce())
+    expect(inserted.mock.calls[0][0]).toBeInstanceOf(Blob)
+    expect(inserted.mock.calls[0][0]).toMatchObject({type: "image/png", size: "image".length})
   })
 
   it("releases devices on page exit and ignores later device events", async () => {
@@ -377,17 +381,33 @@ describe("media capture in the DOM editor", () => {
     await vi.waitFor(() => expect(captureRoot().querySelector(".capture")).not.toHaveAttribute("hidden"))
     clickCapture(".capture")
     clickCapture(".stop")
-    await vi.waitFor(() => expect(target.getAttribute("src")).toMatch(/^data:audio\/mp4;base64,/))
+    await vi.waitFor(() => expect(target.getAttribute("src")).toMatch(/^blob:/))
     expect(target.querySelector("track")).toHaveAttribute("label", "captions")
     expect(target.querySelector("custom-widget")).toHaveAttribute("data-value", "7")
     expect(editor.toHTML(true)).toContain("<!--keep-->")
     editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).toContain("data:audio/mp4;base64,")
+    expect(editor.doc.body.toString()).toContain("blob:")
     expect(editor.toHTML(true)).not.toContain("◆")
     editor.doc.undo()
     expect(document.querySelector("audio")).not.toHaveAttribute("src")
     editor.doc.redo()
-    expect(document.querySelector("audio")!.getAttribute("src")).toMatch(/^data:audio\/mp4;base64,/)
+    expect(document.querySelector("audio")!.getAttribute("src")).toMatch(/^blob:/)
+  })
+
+  it("replaces a selected recording and numbers it by its current media position", async () => {
+    const editor = createEditor('<audio src="first.mp3"></audio><audio src="old.mp3"><track label="keep"></audio>')
+    const target = document.querySelectorAll("audio")[1]
+    $.selectElement(target)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.captureSelectedMedia({type: "captureSelectedMedia", mode: "microphone-audio"})).toBe(true)
+    clickCapture(".connect")
+    await vi.waitFor(() => expect(captureRoot().querySelector(".capture")).not.toHaveAttribute("hidden"))
+    clickCapture(".capture")
+    clickCapture(".stop")
+    await vi.waitFor(() => expect(target.getAttribute("src")).toMatch(/^blob:/))
+    expect(document.querySelectorAll("audio")).toHaveLength(2)
+    expect(target.querySelector("track")).toHaveAttribute("label", "keep")
+    expect(editor.features.media.getState()).toMatchObject({sourceLabel: "Recording 2", sourceKind: "recording"})
   })
 
   it("closes capture when collaboration fills its placeholder", async () => {

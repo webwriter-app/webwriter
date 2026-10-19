@@ -40,13 +40,13 @@ export function documentLayoutMode(body: HTMLElement = document.body): DocumentL
 /** Board structure and styles are authored content, usable without an editor. */
 export const boardClass = "ww-board"
 export const boardStyles = `
-html:has(> body.ww-board) { min-height: 100%; overflow: auto; background: #eaf0f6; }
+html:has(> body.ww-board) { height: 100%; overflow: auto; background: #eaf0f6; }
 body.ww-board {
   box-sizing: border-box; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: stretch; gap: 1rem;
-  width: max-content; min-width: 100%; max-width: none; min-height: 100vh; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
+  width: max-content; min-width: 100%; max-width: none; min-height: 100%; margin: 0; padding: 1.25rem 9rem 1.25rem 1.25rem;
 }
 body.ww-board > section.ww-board-column:not([is]) {
-  box-sizing: border-box; flex: 0 0 min(20rem, calc(100vw - 2.5rem)); width: min(20rem, calc(100vw - 2.5rem)); min-width: 0;
+  box-sizing: border-box; flex: 0 0 min(450px, calc(100vw - 2.5rem)); width: min(450px, calc(100vw - 2.5rem)); min-width: 0;
   display: flex; flex-direction: column; align-self: flex-start; gap: .75rem; min-height: 10rem;
   margin: 0; padding: 1rem 1rem 3.5rem; border: 1px solid #d4deea; border-radius: .75rem; background: #f4f7fa;
 }
@@ -54,7 +54,7 @@ body.ww-board > section.ww-board-column:not([is]) > h2:not([is]) {
   margin: 0; padding: 0 3.5rem 0 0; min-height: 1.5rem; font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;
 }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
-  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: 1rem;
+  box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: .75rem;
   border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere;
 }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
@@ -95,10 +95,13 @@ body.ww-canvas {
 }
 body.ww-canvas > :not(style, script, link, meta, template) { position: absolute; }
 body.ww-canvas > p:not([is]) { inline-size: max-content; min-inline-size: 25px; max-inline-size: none; }
+body.ww-canvas details:not([is]) { background-color: white; }
 `
 
 export const slidesClass = "ww-slides"
 export const slideClass = "ww-slide"
+export const slideWidth = 1280
+export const slideHeight = 720
 export const slidesStyles = `
 @media screen {
   html:has(> body.ww-slides) { height: 100%; overflow: hidden; }
@@ -106,16 +109,24 @@ export const slidesStyles = `
 }
 body.ww-slides > .ww-slides-viewport {
   position: relative; display: flex; width: 100%; max-width: none; height: 100%; min-height: 0;
-  margin: auto; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-behavior: smooth;
+  margin: auto; overflow-x: auto; overflow-y: auto; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-behavior: smooth;
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
-  box-sizing: border-box; display: block; flex: 0 0 auto; width: min(100vw, 177.7777778dvh); min-width: 0; height: min(100dvh, 56.25vw); overflow: clip;
-  margin: auto max(0px, calc((100vw - 177.7777778dvh) / 2)); padding: 1.25rem var(--ww-page-gutter, 1.25rem); position: relative; scroll-snap-align: center; background: #fff;
+  box-sizing: border-box; display: block; flex: 0 0 auto; width: ${slideWidth}px; min-width: ${slideWidth}px; height: ${slideHeight}px; min-height: ${slideHeight}px; aspect-ratio: 16 / 9; overflow: clip;
+  margin: auto max(0px, calc((100vw - ${slideWidth}px) / 2)); padding: 1.25rem var(--ww-page-gutter, 1.25rem); position: relative; scroll-snap-align: center; background: #fff;
+}
+@media screen {
+  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
+    --ww-slide-scale: min(1, calc(100vw / ${slideWidth}px), calc(100dvh / ${slideHeight}px));
+    zoom: var(--ww-slide-scale);
+    margin-inline: max(0px, calc((100vw / var(--ww-slide-scale) - ${slideWidth}px) / 2));
+  }
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > :not(style, script, link, meta, template, .ww-slide-directions) {
   position: absolute; box-sizing: border-box; margin: 0; max-width: none; max-inline-size: none;
 }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) > p:not([is]) { inline-size: max-content; min-inline-size: 25px; }
+body.ww-slides details:not([is]) { background-color: white; }
 body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):focus { outline: none; }
 body.ww-slides > nav.ww-slides-navigation {
   box-sizing: border-box; position: absolute; bottom: 1rem; left: 1rem;
@@ -158,7 +169,7 @@ body.ww-slides .ww-slide-directions > a:focus-visible { outline: 2px solid curre
 }
 @media print {
   body.ww-slides > .ww-slides-viewport { position: static; display: block; width: 100%; height: auto; min-height: 0; overflow: visible; }
-  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) { width: 100%; height: auto; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; break-after: page; }
+  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) { width: ${slideWidth}px; height: ${slideHeight}px; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; break-after: page; }
   body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):last-child { break-after: auto; }
   body.ww-slides > nav.ww-slides-navigation, body.ww-slides .ww-slide-directions { display: none; }
 }

@@ -6,6 +6,7 @@ import {messageSync} from "y-websocket"
 import * as encoding from "lib0/encoding"
 import * as decoding from "lib0/decoding"
 import * as syncProtocol from "y-protocols/sync"
+import {applyAwarenessUpdate, encodeAwarenessUpdate} from "y-protocols/awareness"
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
 import {collectReferences} from "./document-viewer.js"
 import {$} from "./utility"
@@ -54,6 +55,91 @@ async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
 }
 
+describe("concurrent minimum-content repairs", () => {
+  function repair(peer: ReturnType<typeof createShared>) {
+    peer.root.replaceChildren()
+    peer.shared.syncFromDOM()
+    const paragraph = document.createElement("p")
+    peer.root.append(paragraph)
+    peer.shared.markMinimumContentRepair(paragraph)
+    peer.shared.syncFromDOM()
+    return paragraph
+  }
+
+  it("converges concurrent repairs without putting provenance in the authored DOM", () => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    repair(first)
+    repair(second)
+    const left = Y.encodeStateAsUpdate(first.shared.doc)
+    const right = Y.encodeStateAsUpdate(second.shared.doc)
+    Y.applyUpdate(first.shared.doc, right, "remote")
+    Y.applyUpdate(second.shared.doc, left, "remote")
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    Y.applyUpdate(second.shared.doc, Y.encodeStateAsUpdate(first.shared.doc), "remote")
+    expect(first.root.innerHTML).toBe("<p></p>")
+    expect(second.root.innerHTML).toBe(first.root.innerHTML)
+    expect(cloneShared(first.shared).root.innerHTML).toBe("<p></p>")
+  })
+
+  it.each(["text", "attributes", "comments", "custom-element"])("retains an edited repair and authored empty paragraphs: %s", edit => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    const paragraph = repair(first)
+    repair(second)
+    if(edit === "text") paragraph.textContent = "Keep"
+    if(edit === "attributes") paragraph.setAttribute("data-authored", "keep")
+    if(edit === "comments") paragraph.append(document.createComment("keep"))
+    if(edit === "custom-element") paragraph.append(document.createElement("repair-widget"))
+    const authored = document.createElement("p")
+    first.root.append(authored)
+    first.shared.syncFromDOM()
+    const left = Y.encodeStateAsUpdate(first.shared.doc)
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    Y.applyUpdate(second.shared.doc, left, "remote")
+    expect(first.root.querySelectorAll("p")).toHaveLength(3)
+    expect(second.root.innerHTML).toBe(first.root.innerHTML)
+    expect(first.root.contains(paragraph)).toBe(true)
+    expect(first.root.contains(authored)).toBe(true)
+    expect(first.root.innerHTML).not.toContain("__domeditor_minimum_repair")
+  })
+
+  it("ends provenance on an edit even when the paragraph later becomes empty again", () => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    const paragraph = repair(first)
+    repair(second)
+    paragraph.textContent = "Typed"
+    first.shared.syncFromDOM()
+    paragraph.textContent = ""
+    first.shared.syncFromDOM()
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    expect(first.root.children).toHaveLength(2)
+    expect(first.root.contains(paragraph)).toBe(true)
+  })
+
+  it("ends repair provenance when a widget adopts generated paragraphs", () => {
+    const first = createShared("<p>Last</p>")
+    const second = cloneShared(first.shared)
+    repair(first)
+    repair(second)
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    const paragraph = first.root.firstElementChild!
+    const widget = document.createElement("repair-widget")
+    first.root.append(widget)
+    widget.append(paragraph)
+    first.shared.syncFromDOM()
+    const another = document.createElement("p")
+    first.root.append(another)
+    first.shared.markMinimumContentRepair(another)
+    first.shared.syncFromDOM()
+    widget.append(another)
+    first.shared.syncFromDOM()
+    expect(widget.innerHTML).toBe("<p></p><p></p>")
+    expect(cloneShared(first.shared).root.querySelector("repair-widget")!.innerHTML).toBe(widget.innerHTML)
+  })
+})
+
 afterEach(() => {
   sharedDocs.splice(0).reverse().forEach(shared => shared.destroy())
   document.body.replaceChildren()
@@ -62,6 +148,20 @@ afterEach(() => {
 })
 
 describe("content-derived document permalinks", () => {
+  it("renders remote paragraph text without inspecting unrelated subtrees", () => {
+    const {owner, shared} = createDocumentShared("", '<p>Before</p><section><h2>Unrelated</h2><test-widget arbitrary="keep"></test-widget><!--keep--></section>', "", undefined, true)
+    const section = owner.body.querySelector("section")!
+    const attributes = vi.spyOn(section, "attributes", "get")
+    const before = section.outerHTML
+    const paragraph = sharedDOMBody(shared.doc).get(0) as Y.XmlElement
+    const text = paragraph.get(0) as Y.XmlText
+    shared.doc.transact(() => { text.delete(0, text.length); text.insert(0, "After") }, "remote")
+    expect(owner.body.querySelector("p")!.textContent).toBe("After")
+    expect(attributes).not.toHaveBeenCalled()
+    expect(owner.body.querySelector("section")).toBe(section)
+    expect(section.outerHTML).toBe(before)
+  })
+
   it("assigns readable IDs without touching authored IDs, widgets or irregular nesting", () => {
     const {owner} = createDocumentShared("", '<!--keep--><h1>Technical <em>summary</em></h1><section><h2>Technical summary</h2></section><h3 id="authored">Keep</h3><figure><img><figcaption>Café &amp; tea</figcaption></figure><table><caption>Results</caption><tbody><tr><td>Cell</td></tr></tbody></table><test-widget><h2>Private</h2></test-widget><h4 is="special-heading">Private</h4>', "", undefined, true)
     expect(Array.from(owner.body.querySelectorAll("h1, h2, h3, figure, table")).map(element => element.id))
@@ -228,6 +328,68 @@ describe("SharedDOMDoc initialization", () => {
     }
   })
 
+  it.each([false, true])("keeps DOM edits and history after disconnecting collaboration (initial sync: %s)", synced => {
+    const owner = document.implementation.createHTMLDocument("")
+    owner.body.innerHTML = '<p title="keep">Before</p><!--keep-->'
+    const shared = new SharedDOMDoc("ws://localhost:1234", "disconnect-room", [], ["◆"], {root: owner.body, connect: false})
+    sharedDocs.push(shared)
+    if(synced) shared.provider!.emit("sync", [true])
+    const paragraph = owner.querySelector("p")!
+    const disconnect = vi.spyOn(shared.provider!, "disconnect")
+    shared.provider!.shouldConnect = true
+    shared.disconnectCollaboration()
+    expect(disconnect).toHaveBeenCalledOnce()
+    expect(shared.provider!.shouldConnect).toBe(false)
+    expect(shared.connectionStatus).toBe("disconnected")
+    expect(owner.querySelector("p")).toBe(paragraph)
+    expect(paragraph.getAttribute("title")).toBe("keep")
+    shared.stopCapturing()
+    paragraph.textContent = "After"
+    shared.syncFromDOM()
+    expect(shared.body.toString()).toContain("After")
+    shared.undo()
+    expect(paragraph.textContent).toBe("Before")
+    shared.redo()
+    expect(paragraph.textContent).toBe("After")
+    expect(owner.body.innerHTML).toContain("<!--keep-->")
+  })
+
+  it("waits for a successful provider sync before seeding a legacy room", () => {
+    const owner = document.implementation.createHTMLDocument("")
+    const joining = new SharedDOMDoc("ws://localhost:1234", "legacy-room", [], ["◆"], {root: owner.body, connect: false})
+    sharedDocs.push(joining)
+
+    joining.provider!.emit("sync", [false])
+    expect(sharedDOMBody(joining.doc).length).toBe(0)
+    expect(joining.doc.getMap("domeditor").get("initialized")).toBeUndefined()
+
+    joining.provider!.emit("sync", [true])
+    expect(owner.documentElement.id).toMatch(/^ww[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+    expect(joining.doc.getMap("domeditor").get("initialized")).toBe(true)
+  })
+
+  it("ignores duplicate provider sync callbacks after the room is initialized", () => {
+    const owner = document.implementation.createHTMLDocument("")
+    owner.body.innerHTML = "<p>placeholder</p>"
+    const joining = new SharedDOMDoc("ws://localhost:1234", "sync-callback-room", [], ["◆"], {root: owner.body, connect: false})
+    sharedDocs.push(joining)
+    const room = createShared("<article>room content</article>")
+    Y.applyUpdate(joining.doc, Y.encodeStateAsUpdate(room.shared.doc), "room-sync")
+
+    joining.provider!.emit("sync", [true])
+    expect(owner.body.innerHTML).toBe("<article>room content</article>")
+    owner.body.firstElementChild!.textContent = "local edit after sync"
+    joining.syncFromDOM()
+    const stateAfterFirstSync = Y.encodeStateAsUpdate(joining.doc)
+
+    joining.provider!.emit("sync", [false])
+    joining.provider!.emit("sync", [true])
+
+    expect(owner.body.innerHTML).toBe("<article>local edit after sync</article>")
+    expect(joining.body.toString()).toContain("local edit after sync")
+    expect(Y.encodeStateAsUpdate(joining.doc)).toEqual(stateAfterFirstSync)
+  })
+
   it.each(["<p></p>", "<p>same</p>"])("elects one initial tree when independent clients merge %s", html => {
     const left = createShared(html)
     const right = createShared(html)
@@ -318,6 +480,65 @@ describe("SharedDOMDoc initialization", () => {
     expect(remote.root.innerHTML).toBe(local.root.innerHTML)
   })
 
+  it("preserves mixed authored DOM and unaffected node identity through reconciliation", async () => {
+    const {root, shared} = createShared('<!--lead--><section><p data-x="">alpha <em>beta</em></p><custom-card><svg viewBox="0 0 2 2"><circle cx="1"></circle></svg></custom-card><template><b>kept</b></template></section><aside>stable</aside>')
+    const aside = root.lastElementChild!
+    const section = root.firstElementChild!
+    const paragraph = section.querySelector("p")!
+    paragraph.querySelector("em")!.textContent = "changed"
+    paragraph.classList.add("◆text-selected", "authored")
+    await mutationsDelivered()
+
+    const peer = cloneShared(shared)
+    expect(peer.root.innerHTML).toBe('<!--lead--><section><p data-x="" class="authored">alpha <em>changed</em></p><custom-card><svg viewBox="0 0 2 2"><circle cx="1"></circle></svg></custom-card><template><b>kept</b></template></section><aside>stable</aside>')
+    expect(root.lastElementChild).toBe(aside)
+    expect(root.querySelector("custom-card svg circle")).toBeTruthy()
+    expect(shared.body.toString()).not.toContain("◆text-selected")
+    expect(shared.body.toString()).not.toContain("◆")
+  })
+
+  it.each(["left-first", "right-first"] as const)("converges across %s observer delivery with duplicates and preserves remote edits on redo", async order => {
+    const left = createShared('<p id="first">start</p><aside>stable</aside>')
+    const right = cloneShared(left.shared)
+    const observer = cloneShared(left.shared)
+    const observerUpdates = vi.fn()
+    observer.shared.doc.on("update", observerUpdates)
+    const stable = left.root.lastElementChild
+    left.root.querySelector("p")!.textContent = "local edit"
+    right.root.querySelector("p")!.setAttribute("title", "remote edit")
+    await mutationsDelivered()
+    const leftUpdate = Y.encodeStateAsUpdate(left.shared.doc)
+    const rightUpdate = Y.encodeStateAsUpdate(right.shared.doc)
+
+    const delivered = order === "left-first" ? [leftUpdate, rightUpdate] : [rightUpdate, leftUpdate]
+    for(const update of delivered) Y.applyUpdate(observer.shared.doc, update, "client-update")
+    // Each originating client receives the other client's update; replaying it is idempotent.
+    Y.applyUpdate(left.shared.doc, rightUpdate, "right-client")
+    Y.applyUpdate(right.shared.doc, leftUpdate, "left-client")
+    Y.applyUpdate(left.shared.doc, rightUpdate, "right-client-duplicate")
+    Y.applyUpdate(right.shared.doc, leftUpdate, "left-client-duplicate")
+    const converged = '<p id="first" title="remote edit">local edit</p><aside>stable</aside>'
+    expect(left.root.innerHTML).toBe(converged)
+    expect(right.root.innerHTML).toBe(converged)
+    expect(observer.root.innerHTML).toBe(converged)
+    expect(observerUpdates).toHaveBeenCalledTimes(2)
+    expect(left.root.lastElementChild).toBe(stable)
+
+    left.shared.undo()
+    expect(left.root.innerHTML).toBe('<p id="first" title="remote edit">start</p><aside>stable</aside>')
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-undo")
+    Y.applyUpdate(observer.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-undo")
+    expect(right.root.innerHTML).toBe(left.root.innerHTML)
+    expect(observer.root.innerHTML).toBe(left.root.innerHTML)
+
+    left.shared.redo()
+    expect(left.root.innerHTML).toBe(converged)
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-redo")
+    Y.applyUpdate(observer.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-redo")
+    expect(right.root.innerHTML).toBe(converged)
+    expect(observer.root.innerHTML).toBe(converged)
+  })
+
   it("commits pending DOM edits under the local origin before a provider applies a sync message", () => {
     const source = createShared("<p>before</p>")
     const ydoc = new Y.Doc()
@@ -375,6 +596,64 @@ describe("SharedDOMDoc initialization", () => {
     expect(root.firstElementChild!.localName).toBe("hr")
     expect(children).not.toHaveBeenCalled()
     expect(attributes).not.toHaveBeenCalled()
+  })
+
+  it("maps new descendant mutations within their changed container", async () => {
+    const {root, shared} = createShared('<p>edited</p><aside>untouched</aside>')
+    const unrelated = shared.body.get(1) as Y.XmlElement
+    const attributes = vi.spyOn(unrelated, "getAttributes")
+    const children = vi.spyOn(unrelated, "toArray")
+    const paragraph = root.firstElementChild!
+    const link = document.createElement("a")
+    paragraph.append(link)
+    link.append(document.createTextNode("first"))
+    link.firstChild!.textContent = "current"
+    link.setAttribute("href", "https://example.com")
+    await mutationsDelivered()
+
+    expect(shared.body.get(0).toString()).toContain('<a href="https://example.com">current</a>')
+    expect(attributes).not.toHaveBeenCalled()
+    expect(children).not.toHaveBeenCalled()
+    const peer = cloneShared(shared)
+    expect(peer.root.innerHTML).toBe(root.innerHTML)
+    shared.undo()
+    expect(root.innerHTML).toBe('<p>edited</p><aside>untouched</aside>')
+    shared.redo()
+    expect(root.querySelector("a")?.textContent).toBe("current")
+  })
+
+  it("batches a complete remote child replacement without changing retained nodes", () => {
+    const {root, shared} = createShared('<p>Old one</p><p>Old two</p>')
+    const replace = vi.spyOn(root, "replaceChildren")
+    const paragraph = new Y.XmlElement("p")
+    paragraph.insert(0, [new Y.XmlText("New")])
+    const comment = shared.domToYxmlNode(document.createComment("keep"))!
+    shared.doc.transact(() => {
+      shared.body.delete(0, shared.body.length)
+      shared.body.insert(0, [paragraph, comment])
+    }, "remote-client")
+    expect(replace).toHaveBeenCalledOnce()
+    expect(root.innerHTML).toBe('<p>New</p><!--keep-->')
+
+    replace.mockClear()
+    const retained = root.firstElementChild!
+    shared.doc.transact(() => shared.body.insert(1, [new Y.XmlElement("hr")]), "remote-client")
+    expect(root.firstElementChild).toBe(retained)
+    expect(replace).not.toHaveBeenCalled()
+  })
+
+  it("retains ignored children during a complete remote content replacement", () => {
+    const {root, shared} = createShared('<p>Old</p><aside class="◆editor-only">Editor</aside>')
+    const appendix = root.lastElementChild!
+    const replace = vi.spyOn(root, "replaceChildren")
+    shared.doc.transact(() => {
+      shared.body.delete(0, shared.body.length)
+      shared.body.insert(0, [new Y.XmlElement("hr")])
+    }, "remote-client")
+    expect(replace).not.toHaveBeenCalled()
+    expect(root.contains(appendix)).toBe(true)
+    expect(root.querySelector("hr")).not.toBeNull()
+    expect(shared.body.toString()).not.toContain("Editor")
   })
 
   it("continues observing templates inserted immediately before a remote update", async () => {
@@ -568,6 +847,21 @@ describe("SharedDOMDoc initialization", () => {
 })
 
 describe("DOM to Yjs synchronization", () => {
+  it("publishes lastChange only for local authored document updates", () => {
+    const {root, shared} = createShared("<p>content</p>")
+    shared.setUser({lastChange: 1})
+    const now = vi.spyOn(Date, "now").mockReturnValue(1234)
+
+    shared.syncFromDOM()
+    expect((shared.awareness.getLocalState()?.user as {lastChange?: number}).lastChange).toBe(1)
+
+    root.firstElementChild!.textContent = "edited"
+    shared.syncFromDOM()
+    expect((shared.awareness.getLocalState()?.user as {lastChange?: number}).lastChange).toBe(1234)
+
+    now.mockRestore()
+  })
+
   it("synchronizes transitions into and out of editor-only state", async () => {
     const {root, shared} = createShared("<p>content</p>")
     const paragraph = root.firstElementChild!
@@ -594,6 +888,7 @@ describe("DOM to Yjs synchronization", () => {
     const paragraph = root.firstElementChild!
     paragraph.setAttribute("__domeditor_node_kind", "comment")
     paragraph.setAttribute("__domeditor_namespace", "authored-value")
+    paragraph.setAttribute("__domeditor_minimum_repair", "authored-value")
     paragraph.setAttribute("__domeditor_user_attribute__example", "user-value")
 
     shared.syncFromDOM()
@@ -602,6 +897,7 @@ describe("DOM to Yjs synchronization", () => {
     expect(peerParagraph.localName).toBe("p")
     expect(peerParagraph.getAttribute("__domeditor_node_kind")).toBe("comment")
     expect(peerParagraph.getAttribute("__domeditor_namespace")).toBe("authored-value")
+    expect(peerParagraph.getAttribute("__domeditor_minimum_repair")).toBe("authored-value")
     expect(peerParagraph.getAttribute("__domeditor_user_attribute__example")).toBe("user-value")
   })
 
@@ -670,6 +966,31 @@ describe("DOM to Yjs synchronization", () => {
     expect(shared.body.toArray()[1]).toBe(yA)
     expect(shared.body.toArray()[2].toString()).toContain("<aside>X</aside>")
     expect(shared.body.toString()).not.toContain("<p>B</p>")
+  })
+
+  it("reconciles split, normalized, reparented and replaced nodes without disturbing siblings", async () => {
+    const {root, shared} = createShared('<section><p>alpha beta</p><h2>retained</h2><small>swap me</small></section><div></div><aside>tail</aside>')
+    const section = root.querySelector("section")!
+    const target = root.querySelector("div")!
+    const paragraph = section.querySelector("p")!
+    const retained = section.querySelector("h2")!
+    const tail = root.querySelector("aside")!
+    const originalText = paragraph.firstChild as Text
+
+    originalText.splitText(5)
+    paragraph.normalize()
+    target.append(paragraph)
+    const replacement = document.createElement("article")
+    replacement.textContent = "replacement"
+    section.replaceChild(replacement, section.querySelector("small")!)
+    await mutationsDelivered()
+
+    const expected = '<section><h2>retained</h2><article>replacement</article></section><div><p>alpha beta</p></div><aside>tail</aside>'
+    const peer = cloneShared(shared)
+    expect(root.innerHTML).toBe(expected)
+    expect(peer.root.innerHTML).toBe(expected)
+    expect(section.querySelector("h2")).toBe(retained)
+    expect(root.lastElementChild).toBe(tail)
   })
 
   it("captures innerHTML replacement and adjacent-text normalization", async () => {
@@ -743,6 +1064,49 @@ describe("DOM to Yjs synchronization", () => {
     await mutationsDelivered()
 
     expect((shared.body.firstChild as Y.XmlElement).getAttribute("class")).toBe("after")
+  })
+})
+
+describe("public document state accessors", () => {
+  it("exposes shared head state and clears the local selection", () => {
+    const {owner, shared} = createDocumentShared('<title>Page</title>', "<p>Body</p>", "en")
+    const title = shared.headElement!.firstChild as Y.XmlElement
+    const text = (shared.body.firstChild as Y.XmlElement).firstChild as Y.XmlText
+
+    expect(shared.head).toBeInstanceOf(Y.Map)
+    expect(title.nodeName).toBe("title")
+    expect(shared.documentAttributes).toBeInstanceOf(Y.XmlElement)
+    expect(shared.isWritingToDOM).toBe(false)
+
+    shared.setSelection(text, 2)
+    expect(shared.selection?.anchorNode).toBe(text)
+    expect(shared.domSelection?.anchorNode).toBe(owner.querySelector("p")!.firstChild)
+    expect(shared.awareness.getLocalState()?.selection).not.toBeNull()
+
+    shared.clearSelection()
+    expect(shared.selection).toBeNull()
+    expect(shared.domSelection).toBeNull()
+    expect(shared.awareness.getLocalState()?.selection).toBeNull()
+  })
+
+  it("resolves another client's collaborative selection from awareness", () => {
+    const {root, shared} = createShared("<p>Hello</p>")
+    const peer = cloneShared(shared).shared
+    const yText = (shared.body.firstChild as Y.XmlElement).firstChild as Y.XmlText
+
+    peer.awareness.setLocalStateField("selection", {
+      anchor: Y.createRelativePositionFromTypeIndex(yText, 1),
+      focus: Y.createRelativePositionFromTypeIndex(yText, 4),
+    })
+    applyAwarenessUpdate(shared.awareness, encodeAwarenessUpdate(peer.awareness, [peer.awareness.clientID]), "peer")
+
+    expect(shared.domSelectionForClient(peer.awareness.clientID)).toMatchObject({
+      anchorNode: root.querySelector("p")!.firstChild,
+      anchorOffset: 1,
+      focusNode: root.querySelector("p")!.firstChild,
+      focusOffset: 4,
+    })
+    expect(shared.domSelectionForClient(-1)).toBeNull()
   })
 })
 
@@ -1026,6 +1390,87 @@ describe("Yjs to DOM synchronization", () => {
 })
 
 describe("relative selections and history", () => {
+  it("keeps nested interactive DOM edits in one undo group when scopes end out of order", async () => {
+    const {root, shared} = createShared("<p>before</p>")
+    const paragraph = root.firstElementChild!
+    const endOuter = shared.beginUndoGroup()
+    paragraph.textContent = "first"
+    const endInner = shared.beginUndoGroup()
+    paragraph.textContent = "final"
+    endOuter()
+    paragraph.textContent = "still grouped"
+    endInner()
+
+    shared.undo()
+    expect(paragraph.textContent).toBe("before")
+    shared.redo()
+    expect(paragraph.textContent).toBe("still grouped")
+    await mutationsDelivered()
+    expect(shared.body.toString()).toContain("still grouped")
+  })
+
+  it("restores the capture window when ending an undo group fails", () => {
+    const {root, shared} = createShared("<p>before</p>")
+    const paragraph = root.firstElementChild!
+    const end = shared.beginUndoGroup()
+    paragraph.textContent = "grouped"
+    const sync = vi.spyOn(shared, "syncFromDOM").mockImplementationOnce(() => {
+      throw new Error("sync failed")
+    })
+    expect(end).toThrow("sync failed")
+    sync.mockRestore()
+
+    shared.syncFromDOM()
+    shared.stopCapturing()
+    paragraph.textContent = "after failure"
+    shared.syncFromDOM()
+    shared.undo()
+    expect(paragraph.textContent).toBe("grouped")
+    shared.undo()
+    expect(paragraph.textContent).toBe("before")
+  })
+
+  it("guards capture and preview lifecycle calls while DOM sync is paused", () => {
+    const {root, shared} = createShared("<p>before</p>")
+    shared.pauseDOMSync()
+    expect(() => shared.captureDOMChange("paused", () => {
+      root.firstElementChild!.textContent = "captured"
+    })).toThrow("DOM synchronization is paused")
+    expect(() => shared.beginDOMPreview()).toThrow("Another temporary DOM rendering is already active")
+    expect(shared.hasCapturedChange("paused")).toBe(false)
+    expect(shared.undoCapturedChange("missing")).toBe(false)
+    expect(shared.resumeDOMSync()).toBe(false)
+  })
+
+  it("exposes document mirrors and clears malformed multi-range snapshots", () => {
+    const {owner, shared} = createDocumentShared("<title>Title</title>", "<p>Text</p>")
+    expect(shared.headElement?.toString()).toContain("<title>Title</title>")
+    expect(shared.documentAttributes).toBeInstanceOf(Y.XmlElement)
+    expect(shared.head).toBeInstanceOf(Y.Map)
+
+    const text = owner.body.querySelector("p")!.firstChild!
+    const relative = shared.relativePositionFromDOMPoint(text, 1)!
+    shared.restoreSelection({anchor: Y.relativePositionToJSON(relative), focus: Y.relativePositionToJSON(relative), ranges: [null]} as never)
+    expect(shared.selection).toBeNull()
+    expect(shared.domSelection).toBeNull()
+    expect(shared.awareness.getLocalState()?.selection).toBeNull()
+  })
+
+  it("keeps a relative caret anchored through sibling insertion and text edits", async () => {
+    const {root, shared} = createShared("<p>alpha beta</p><aside>tail</aside>")
+    const text = root.querySelector("p")!.firstChild as Text
+    const relative = shared.relativePositionFromDOMPoint(text, 6)!
+    const stable = root.lastElementChild
+
+    root.querySelector("p")!.before(document.createElement("h2"))
+    text.textContent = "alpha! beta"
+    await mutationsDelivered()
+    const resolved = shared.domPointFromRelativePosition(relative)
+    expect(resolved?.node).toBe(text)
+    expect(resolved?.offset).toBe(7)
+    expect(root.lastElementChild).toBe(stable)
+  })
+
   it("normalizes invalid DOM selection offsets consistently", () => {
     const {root, shared} = createShared("<p>Hello</p>")
     const paragraph = root.firstElementChild!
@@ -1043,6 +1488,35 @@ describe("relative selections and history", () => {
       node: paragraph,
       offset: 0,
     })
+  })
+
+  it("rejects points outside the shared root and relative positions from another Y document", () => {
+    const {root, shared} = createShared("<p>Hello</p>")
+    const foreign = createShared("<p>Other</p>").shared
+    const outside = document.createTextNode("outside")
+
+    expect(shared.relativePositionFromDOMPoint(outside, 2)).toBeNull()
+    expect(shared.relativePositionFromDOMPoint(document, 0)).toBeNull()
+    const foreignPosition = foreign.relativePositionFromDOMPoint(foreign.root.firstChild!.firstChild!, 2)!
+    expect(shared.domPointFromRelativePosition(foreignPosition)).toBeNull()
+
+    expect(root.textContent).toBe("Hello")
+  })
+
+  it("accepts legacy selection mutations and converts standalone DOM nodes through the public bridge", () => {
+    const {root, shared} = createShared("<p>Hello</p>")
+    const text = root.firstElementChild!.firstChild!
+    shared.readDomMutation({type: "selection", anchorNode: text, anchorOffset: 2, focusNode: text, focusOffset: 4})
+    expect(shared.domSelectionForClient(shared.awareness.clientID)).toMatchObject({
+      anchorNode: text, anchorOffset: 2, focusNode: text, focusOffset: 4,
+    })
+
+    const converted = shared.domToYxmlNode(document.createComment("note")) as Y.XmlElement
+    shared.body.insert(shared.body.length, [converted])
+    expect(shared.yxmlToDomNode(converted)?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(shared.yxmlToDomNode(converted)?.textContent).toBe("note")
+    expect(shared.domToYxmlNode(document.implementation.createDocumentType("html", "", ""))).toBeNull()
+    expect(shared.yxmlToDomNode(new Y.XmlFragment())).toBeNull()
   })
 
   it("rejects foreign Y selection nodes and malformed restored selections", () => {
@@ -1252,6 +1726,30 @@ describe("relative selections and history", () => {
     shared.redo()
     expect(root.innerHTML).toBe('<p data-state="changed">after</p><aside>new</aside>')
     expect(shared.body.toString()).toContain('<p data-state="changed">after</p><aside>new</aside>')
+  })
+
+  it.each([
+    ["emoji at the changed prefix", "😀x", "😁x"],
+    ["emoji with a shared low surrogate", "x\u{1F600}", "y\u{1FA00}"],
+  ])("keeps surrogate pairs intact across replicas and undo/redo (%s)", async (_case, before, after) => {
+    const left = createShared(`<p>${before}</p>`)
+    const right = cloneShared(left.shared)
+    left.root.querySelector("p")!.textContent = after
+    await mutationsDelivered()
+
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-client")
+    expect(left.root.querySelector("p")!.textContent).toBe(after)
+    expect(right.root.querySelector("p")!.textContent).toBe(after)
+
+    left.shared.undo()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-undo")
+    expect(left.root.querySelector("p")!.textContent).toBe(before)
+    expect(right.root.querySelector("p")!.textContent).toBe(before)
+
+    left.shared.redo()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-redo")
+    expect(left.root.querySelector("p")!.textContent).toBe(after)
+    expect(right.root.querySelector("p")!.textContent).toBe(after)
   })
 
   it("does not put remote transactions on the local undo stack", async () => {

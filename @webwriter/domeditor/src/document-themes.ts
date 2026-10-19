@@ -24,5 +24,15 @@ export const defaultDocumentTheme = documentThemes[0]
 
 export const documentTheme = (value: string) => documentThemes.find(theme => theme.value === value)
 
+/** The same default theme is used in the editor, example documents, and exports. */
+export function ensureDefaultDocumentTheme(root: Document) {
+  if([...root.head.querySelectorAll("style[data-ww-theme]")].some(style => documentTheme(style.getAttribute("data-ww-theme") ?? ""))) return
+  const style = root.createElement("style")
+  style.setAttribute("data-ww-theme", defaultDocumentTheme.value)
+  style.setAttribute("blocking", "render")
+  style.textContent = defaultDocumentTheme.source
+  root.head.append(style)
+}
+
 /** All bundled themes share a low-priority layer in editing and exports. */
 export const editingDocumentThemeSource = (theme: DocumentTheme) => theme.source

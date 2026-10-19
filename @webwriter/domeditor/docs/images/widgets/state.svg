@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Choose where widget state belongs</title>
+  <desc id="desc">A widget connects to four stores: temporary properties, saved attributes, authored content, and persistent participant data.</desc>
+  <g fill="none" stroke="#29a3dd" stroke-width="3">
+    <path d="M140 112h42M182 41v138M182 41h28M182 87h28M182 133h28M182 179h28"/>
+  </g>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="40" y="70" width="100" height="84" rx="4"/>
+    <path d="M56 90h42M78 112h42M78 134h28"/>
+    <circle cx="62" cy="134" r="5"/>
+    <rect x="210" y="26" width="112" height="30" rx="4" fill="#eae5e2" fill-opacity=".5"/>
+    <rect x="210" y="72" width="112" height="30" rx="4"/>
+    <rect x="210" y="118" width="112" height="30" rx="4"/>
+    <rect x="210" y="164" width="112" height="30" rx="4" fill="#82d0f5" fill-opacity=".35"/>
+  </g>
+  <circle cx="62" cy="112" r="5" fill="#29a3dd"/>
+  <g fill="#0f2f48" font-family="system-ui, sans-serif" font-size="15" text-anchor="middle">
+    <text x="266" y="46">properties</text>
+    <text x="266" y="92">attributes</text>
+    <text x="266" y="138">content</text>
+    <text x="266" y="184">data</text>
+  </g>
+</svg>

@@ -1,6 +1,6 @@
 import type {CollaborationUser} from "../domdoc"
 import type {PresenceUser} from "../editor-bridge"
-import {caretRect, isElement} from "../utility"
+import {caretRect, fixedClientX, isElement, nodeEdgeRect} from "../utility"
 import {userInitials} from "../user-identity"
 import {EditorFeature} from "."
 import {isMarkElement} from "../marks"
@@ -22,6 +22,7 @@ export class CollaborationFeature extends EditorFeature {
   readonly #carets = new Map<number, HTMLElement>()
   #frame: number | null = null
   readonly #handleAwarenessChange = () => this.renderPresence(true)
+  readonly #handleProviderStatus = () => this.renderPresence(true)
   /** Document edits and scrolling can occur many times per frame. */
   readonly #scheduleRender = () => {
     if(this.#frame === null) this.#frame = requestAnimationFrame(() => {
@@ -34,6 +35,7 @@ export class CollaborationFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     this.editor.doc.awareness.on("change", this.#handleAwarenessChange)
+    this.editor.doc.provider?.on("status", this.#handleProviderStatus)
     this.editor.doc.doc.on("afterTransaction", this.#scheduleRender)
     window.addEventListener("resize", this.#scheduleRender)
     document.addEventListener("scroll", this.#scheduleRender, true)
@@ -43,6 +45,7 @@ export class CollaborationFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.editor.doc.awareness.off("change", this.#handleAwarenessChange)
+    this.editor.doc.provider?.off("status", this.#handleProviderStatus)
     this.editor.doc.doc.off("afterTransaction", this.#scheduleRender)
     window.removeEventListener("resize", this.#scheduleRender)
     document.removeEventListener("scroll", this.#scheduleRender, true)
@@ -64,7 +67,7 @@ export class CollaborationFeature extends EditorFeature {
       ...this.#user(clientId, state.user),
     } satisfies PresenceUser))
     const usersByClientId = new Map(users.map(user => [user.clientId, user]))
-    if(notify) this.editor.postPresence(users)
+    if(notify) this.editor.postPresence(users, this.editor.doc.connectionStatus)
     const carets: CaretLayout[] = []
 
     for(const [clientId, state] of states) {
@@ -147,7 +150,7 @@ export class CollaborationFeature extends EditorFeature {
       // Range rectangles are viewport coordinates, so fixed positioning keeps
       // the virtual caret exactly over the browser's native caret even when
       // the editor body has a margin, is scrolled, or is transformed.
-      element.style.left = `${caret.rect.left}px`
+      element.style.left = `${fixedClientX(caret.rect.left)}px`
       element.style.top = `${caret.rect.top}px`
 
       const label = element.querySelector("span") ?? document.createElement("span")
@@ -174,6 +177,9 @@ export class CollaborationFeature extends EditorFeature {
       name,
       initials: userInitials(name),
       color: colorProbe.style.color ? color : "#64748b",
+      ...(Number.isFinite(user.lastChange) ? {lastChange: user.lastChange} : {}),
+      ...(user.connectionStatus === "connected" || user.connectionStatus === "disconnected"
+        ? {connectionStatus: user.connectionStatus} : {}),
     }
   }
 
@@ -221,22 +227,11 @@ export class CollaborationFeature extends EditorFeature {
     if(isElement(node)) {
       const anchor = this.#gapAnchor(node, offset, placement)
       if(anchor) {
-        const rect = this.#nodeRect(anchor, placement === "before" ? "first" : "last")
+        const rect = nodeEdgeRect(anchor, placement === "before" ? "first" : "last")
         return new DOMRect(rect.left, placement === "before" ? rect.top : rect.bottom, 0, 0)
       }
     }
     return caretRect(node, offset)
-  }
-
-  #nodeRect(node: Node, edge: "first" | "last" = "first") {
-    if(isElement(node)) {
-      const rects = Array.from(node.getClientRects())
-      return edge === "last" ? rects.at(-1) ?? node.getBoundingClientRect() : rects[0] ?? node.getBoundingClientRect()
-    }
-    const range = document.createRange()
-    range.selectNode(node)
-    const rects = Array.from(range.getClientRects())
-    return edge === "last" ? rects.at(-1) ?? range.getBoundingClientRect() : rects[0] ?? range.getBoundingClientRect()
   }
 
 }

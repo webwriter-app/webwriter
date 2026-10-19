@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Libraries and assets feed the widget</title>
+  <desc id="desc">A code module and an image asset connect to an interactive widget.</desc>
+  <path d="M122 62h46v50h48M122 162h46v-50" fill="none" stroke="#29a3dd" stroke-width="3" stroke-linejoin="round"/>
+  <g fill="none" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="40" y="28" width="82" height="68" rx="4"/>
+    <path d="m62 50-12 12 12 12M100 50l12 12-12 12M88 44l-14 36"/>
+    <rect x="40" y="128" width="82" height="68" rx="4"/>
+    <path d="m50 184 24-28 16 18 12-12 10 12"/>
+    <rect x="216" y="62" width="104" height="100" rx="4"/>
+    <path d="M232 82h42M254 108h34M254 138h24"/>
+    <circle cx="240" cy="138" r="5"/>
+  </g>
+  <circle cx="102" cy="146" r="5" fill="#29a3dd"/>
+  <path d="M228 96h80v24h-80z" fill="#82d0f5" fill-opacity=".35"/>
+  <circle cx="240" cy="108" r="5" fill="#29a3dd"/>
+</svg>

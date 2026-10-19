@@ -1,5 +1,10 @@
-import {css, html, nothing, render} from "lit"
+import {css, html, noChange, nothing, render} from "lit"
+import {guard} from "lit/directives/guard.js"
+import {when} from "lit/directives/when.js"
+import type {QRCodeElement} from "./qr-code"
+import {styleMap} from "lit/directives/style-map.js"
 import {aiChatStyles} from "./ai-chat.styles"
+import {sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
 import {version} from "../../package.json"
 import {
   requestsReadOnlyAI,
@@ -14,21 +19,20 @@ import {AIProviderStore, type AIProviderConfig} from "../ai-provider"
 import {isAIReadTool} from "../ai-tools"
 import {persistAppSettings, type AppSettings} from "../app-settings"
 import type {BackendClient} from "../backend-client"
-import {type PresenceUser} from "../editor-bridge"
+import {type PresenceUser, type UndoState} from "../editor-bridge"
 import {mediaCaptureOptions, type MediaType} from "../media"
 import {fontFamilyOptions, fontSizeOptions, textColorOptions, backgroundColorOptions, primaryDrawerMarkNames} from "../marks"
 import {packageKeywordPresentations} from "../package-keywords"
 import type {PackageMember, WebWriterPackage} from "../packages"
 import {packageAction, packageMemberAction, packageToggleAction} from "../packages"
+import {safeCssColor} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
 import {uiMotionDisabled} from "../utility"
 import "./ai-settings"
-import type {AISettingsDialog} from "./ai-settings"
 import "./element-attribute-editor"
 import "./element-style-editor"
 import {emptyElementHTML, insertionMenuItems} from "./insertion-menu"
 import "./package-search"
-import type {QRCodeElement} from "./qr-code"
 import "./ribbon-button"
 import {type RibbonButton, type RibbonButtonDetails} from "./ribbon-button"
 import "./ribbon-combobox"
@@ -44,13 +48,12 @@ import {
   fileFormatButtons,
   menuTabs,
   orderedListStyles,
-  placeholderSharingLink,
   insertMathStructureButtons,
   type RibbonMenuName,
 } from "./ribbon-menu-config"
 import "./ribbon-tab"
 import "./settings-panel"
-import {type SettingsPanel} from "./settings-panel"
+import {type SettingsPanel, type SettingsTab} from "./settings-panel"
 import {EditingControls} from "./editing-controls"
 
 export type LiveLearnerRibbonItem = {
@@ -68,12 +71,19 @@ type AIChatMessage = {
   content: string
   attachments?: AIAttachment[]
   edit?: AIEditProtocol
+  queueState?: "queued" | "cancelled"
 }
+
+type QueuedAIPrompt = {prompt: string, chatId: string, messageId: string, attachments: AIAttachment[]}
 
 type AIChat = {
   id: string
   title: string
   messages: AIChatMessage[]
+  prompt?: string
+  attachments?: AIAttachment[]
+  error?: string
+  dismissedReplyId?: string
 }
 
 type AIPromptSubmitDetail = {
@@ -99,7 +109,7 @@ type AIEditProtocol = {
   call: AIDocumentToolCall
   editId: string
   summary: string
-  decision: "accepted" | "rejected" | "undone"
+  decision: "queued" | "review" | "accepted" | "rejected" | "undone"
   busy?: boolean
 }
 
@@ -112,10 +122,18 @@ export class AppRibbon extends EditingControls {
   static properties = {
     ...EditingControls.properties,
     expanded: {type: Boolean, reflect: true},
+    heightConstrained: {state: true},
     menuOpen: {type: Boolean, reflect: true},
     documentDialog: {state: true},
+    settingsTab: {state: true},
     logoUrl: {type: String, attribute: "logo-url"},
     presenceUsers: {attribute: false},
+    undoState: {attribute: false},
+    collaborationLink: {attribute: false},
+    linkSharingEnabled: {type: Boolean},
+    linkSharingBusy: {type: Boolean},
+    collaborationStatus: {type: String},
+    collaborationError: {type: String},
     packages: {attribute: false},
     editingSnippetId: {attribute: false},
     installedPackages: {attribute: false},
@@ -136,7 +154,6 @@ export class AppRibbon extends EditingControls {
     liveSessionRole: {type: String, attribute: "live-session-role"},
     liveSessionLink: {type: String, attribute: "live-session-link"},
     liveLearners: {attribute: false},
-    aiPrompt: {type: String, state: true},
     aiChatOpen: {type: Boolean, attribute: false},
     aiToolboxTarget: {attribute: false},
     aiChats: {attribute: false, state: true},
@@ -144,10 +161,10 @@ export class AppRibbon extends EditingControls {
     aiModel: {type: String, state: true},
     aiEffort: {type: String, state: true},
     aiProviders: {attribute: false, state: true},
-    aiAttachments: {attribute: false, state: true},
     aiBusy: {type: Boolean, state: true},
+    aiRequestChatId: {state: true},
+    queuedAIPrompts: {state: true},
     aiProgress: {type: String, state: true},
-    aiError: {type: String, state: true},
     pendingAIEdit: {attribute: false, state: true},
     aiDocumentToolHandler: {attribute: false},
     aiEditReviewHandler: {attribute: false},
@@ -163,7 +180,8 @@ export class AppRibbon extends EditingControls {
       box-sizing: border-box;
       display: block;
       position: relative;
-      z-index: 1;
+      /* Ribbon menus and drawers must paint above the toolbox and its tabs. */
+      z-index: 3;
       width: 100%;
       height: 140px;
       max-height: 140px;
@@ -191,16 +209,13 @@ export class AppRibbon extends EditingControls {
       max-height: 40px;
     }
 
-    :host([package-drawer-open]) {
-      z-index: 3;
-    }
-
     :host(:not([expanded])) .ribbon {
       background: #f2f2f2;
     }
 
     .ribbon {
       box-sizing: border-box;
+      container: ribbon / inline-size;
       display: flex;
       flex-direction: column;
       position: relative;
@@ -255,6 +270,27 @@ export class AppRibbon extends EditingControls {
 
     .brand:hover:not(:disabled) .brand-logo {
       opacity: 0.8;
+    }
+
+    .ribbon-top[data-app-menu-tab] .brand::before {
+      content: "";
+      position: absolute;
+      inset: 1px 0 -1px;
+      box-sizing: border-box;
+      background: #ffffff;
+      border: solid #a8a8a8;
+      border-width: 1px 0 0 1px;
+      border-radius: 0.45rem 0 0 0;
+      pointer-events: none;
+    }
+
+    .ribbon-top[data-app-menu-tab] .brand-logo {
+      position: relative;
+    }
+
+    .ribbon-top[data-app-menu-tab] ribbon-tab[label="File"]::part(button) {
+      border-left-color: transparent;
+      border-top-left-radius: 0;
     }
 
     .brand:focus-visible {
@@ -330,7 +366,7 @@ export class AppRibbon extends EditingControls {
       align-self: flex-start;
       height: 41px;
       /* Prefer a 100px filename and roomy actions, leaving room for the AI bar. */
-      min-width: calc(100px + 1.7rem + 3rem);
+      min-width: calc(100px + 1.7rem + 4.1rem);
       /* Extend the file tab toward the brand without moving its filename. */
       margin-left: -0.5rem;
       overflow: clip;
@@ -355,19 +391,15 @@ export class AppRibbon extends EditingControls {
     .file-quick-actions {
       box-sizing: border-box;
       display: flex;
-      flex: 0 1 4rem;
-      width: 4rem;
+      flex: 0 1 4.1rem;
+      width: 4.1rem;
       min-width: 3rem;
       align-items: center;
       align-self: flex-start;
       justify-content: space-between;
+      gap: .2rem;
+      padding-inline: .2rem;
       height: 40px;
-    }
-
-    .file-quick-actions::before,
-    .file-quick-actions::after {
-      content: "";
-      flex: 0 100 0.2rem;
     }
 
     ribbon-button.file-quick-action {
@@ -390,6 +422,18 @@ export class AppRibbon extends EditingControls {
     }
 
     ${aiChatStyles}
+
+    @container ribbon (max-width: 42rem) {
+      .tabs {min-width: 0}
+      .tabs > ribbon-tab[label="File"] {min-width: 0; --file-label-min-width: 0px}
+    }
+
+    @container ribbon (max-width: 28rem) {
+      .ai-bar-slot {flex: 0 0 24px; width: 24px; max-width: 24px}
+      .ai-chat-panel:not([data-open]) {width: 24px}
+      .ai-chat-panel:not([data-open]) .ai-chat-brand-button {inset: 0; width: 100%; height: 100%; padding: 3px}
+      .ai-chat-panel:not([data-open]) .ai-chat-composer {display: none}
+    }
 
     .document-dialog {
       box-sizing: border-box;
@@ -417,6 +461,16 @@ export class AppRibbon extends EditingControls {
       cursor: pointer;
     }
     .document-dialog header button:hover { background: #eef4fb; }
+    #link-sharing-dialog { width: min(30rem, calc(100vw - 2rem)); }
+    #link-sharing-dialog p { margin: 0 0 1.25rem; font-size: .875rem; line-height: 1.5; }
+    #link-sharing-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+    #link-sharing-dialog footer button { padding: .45rem .75rem; border: 1px solid #cbd5e1; border-radius: .35rem; color: inherit; background: white; font: inherit; font-size: .8rem; cursor: pointer; }
+    #link-sharing-dialog footer button:hover { background: #eef4fb; }
+    #link-sharing-dialog footer .primary { border-color: #155e9b; color: white; background: #155e9b; }
+    #link-sharing-dialog footer .primary:hover { background: #124f83; }
+    #link-sharing-dialog button:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
+    #link-sharing-dialog .dialog-close { display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; }
+    #link-sharing-dialog .dialog-close svg { width: 1.1rem; height: 1.1rem; }
     #settings-dialog {
       height: min(45rem, calc(100dvh - 2rem));
       padding: 0;
@@ -430,12 +484,24 @@ export class AppRibbon extends EditingControls {
 
     .settings-dialog-nav {
       display: flex;
+      flex-wrap: wrap;
       flex: 0 0 auto;
       align-items: center;
       justify-content: space-between;
       gap: 1rem;
       padding: 0.85rem 1.25rem;
       border-bottom: 1px solid #e2e8f0;
+    }
+
+    .settings-dialog-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; min-width: 0; }
+    .settings-tabs { display: flex; gap: .25rem; }
+    .settings-dialog-nav .settings-tabs button { border-color: transparent; }
+    .settings-dialog-nav .settings-tabs button[aria-selected="true"] { color: #1e4f87; background: #e8f2fd; border-color: #93b9e8; }
+    @media (max-width: 42rem) {
+      .settings-dialog-nav { flex-wrap: wrap; gap: .5rem; padding: .75rem; }
+      .settings-dialog-heading { flex-wrap: wrap; gap: .5rem; }
+      .settings-dialog-nav form { margin-left: auto; }
+      .settings-dialog-main { padding: .75rem; }
     }
 
     .settings-dialog-nav form {
@@ -450,6 +516,12 @@ export class AppRibbon extends EditingControls {
       font-size: 0.75rem;
       white-space: nowrap;
     }
+    .settings-version-info { display: grid; justify-items: center; gap: .1rem; }
+    .settings-dialog-nav .licenses-link {
+      min-height: 0; padding: 0; border: 0; color: #3977c7;
+      background: transparent; font-size: .6rem; line-height: 1.2; text-decoration: underline;
+    }
+    .settings-dialog-nav .licenses-link:hover { background: transparent; }
 
     .settings-dialog-nav button {
       min-height: 2rem;
@@ -499,6 +571,10 @@ export class AppRibbon extends EditingControls {
       }
     }
 
+    .ribbon-top[data-app-menu-tab] ~ ribbon-menu {
+      left: 0;
+    }
+
     .history-button {
       display: grid;
       flex: 0 0 2rem;
@@ -516,10 +592,11 @@ export class AppRibbon extends EditingControls {
     .history-controls {
       box-sizing: border-box;
       display: flex;
-      align-items: center;
+      align-items: stretch;
       height: var(--ribbon-compact-bar-height);
       margin-inline: 0.15rem;
-      padding: 0 0.1rem;
+      padding: 0;
+      overflow: hidden;
       border: 1px solid #c4ccd6;
       border-radius: 0.62rem;
       color: #5e6977;
@@ -527,8 +604,8 @@ export class AppRibbon extends EditingControls {
     }
 
     .history-controls .history-button {
-      height: 1.35rem;
-      border-radius: 0.45rem;
+      height: auto;
+      border-radius: 0;
     }
 
     .ribbon-top-actions {
@@ -538,12 +615,14 @@ export class AppRibbon extends EditingControls {
       margin-left: auto;
     }
 
+    .file-share-action:has(.presence-user + .presence-user) { width: 2.25rem; min-width: 2.25rem; flex-basis: 2.25rem; }
+
     .presence-users {
       display: flex;
       flex: 0 0 auto;
       align-items: center;
-      height: 40px;
-      margin: 0 0.35rem 0 0.5rem;
+      height: 1.75rem;
+      margin: 0;
     }
 
     .presence-user,
@@ -560,7 +639,7 @@ export class AppRibbon extends EditingControls {
     }
 
     .presence-user {
-      margin-left: -0.45rem;
+      margin-left: -0.9rem;
       color: #ffffff;
       background: var(--presence-color);
       font-size: 0.55rem;
@@ -575,7 +654,7 @@ export class AppRibbon extends EditingControls {
     }
 
     .presence-more {
-      margin-left: -0.45rem;
+      margin-left: -0.9rem;
       flex-basis: 1.25rem;
       width: 1.25rem;
       height: 1.25rem;
@@ -655,74 +734,99 @@ export class AppRibbon extends EditingControls {
 
     .learners-summary {
       display: flex;
+      flex: 1 1 auto;
       align-items: center;
       gap: 0.35rem;
       min-width: 0;
       padding: 0 0.3rem;
-      color: var(--ribbon-control-color, #526b86);
+      color: #7b8795;
       font-size: 0.68rem;
+    }
+
+    .reader-learners:has(.learners-summary) .learner-list {
+      display: none;
     }
 
     .live-session-switch {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
+      flex: 0 1 auto;
+      min-width: 0;
       align-self: center;
       align-items: center;
       gap: 0.35rem;
       min-height: 1.55rem;
-      padding: 0.25rem;
+      padding: 0.25rem 0.25rem 0.25rem 0;
       border-radius: 0.3rem;
       color: var(--ribbon-control-color, #334155);
       font-size: 0.66rem;
       cursor: pointer;
     }
 
+    .live-session-switch span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .live-session-switch:hover {
       color: var(--ribbon-control-color, #1e4f87);
     }
 
-    .live-session-switch:focus-within {
+    .live-session-switch:has(input:focus-visible) {
       outline: 2px solid #3977c7;
       outline-offset: -2px;
     }
 
-    .live-session-switch input {
-      appearance: none;
-      position: relative;
-      margin: 0;
-      width: 1.9rem;
-      height: 1.05rem;
-      border: 1px solid #9aa9b8;
-      border-radius: 999px;
-      background: #d8dee6;
-      cursor: pointer;
-    }
+    ${switchInputStyles}
 
-    .live-session-switch input::after {
-      position: absolute;
-      top: 0.12rem;
-      left: 0.12rem;
-      width: 0.69rem;
-      height: 0.69rem;
-      border-radius: 50%;
-      background: white;
-      box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
-      content: "";
-      transition: var(--ww-ui-transition, transform 120ms ease);
-    }
+    ${sharingLinkStyles}
 
-    .live-session-switch input:checked {
-      border-color: #3977c7;
-      background: #3977c7;
-    }
-
-    .live-session-switch input:checked::after {
-      transform: translateX(0.83rem);
-    }
-
-    .learners-summary-avatars {
+    .reader-sharing-bar {
       display: flex;
-      min-width: 1.5rem;
+      align-items: center;
+      gap: 0.3rem;
+      min-width: 0;
+      padding: 0 0.25rem 0 0;
+    }
+
+    .reader-sharing-bar .session-share {
+      flex: 1 1 0;
+      min-width: 0;
+    }
+
+    .reader-sharing-bar .sharing-link-input {
+      text-overflow: ellipsis;
+      border-color: var(--reader-link-border-color, #c8d2df);
+    }
+
+    .reader-sharing-bar .sharing-link-copy {
+      background: var(--sharing-link-copy-background, var(--ribbon-area-background));
+    }
+
+    .reader-link-popup {
+      display: none;
+    }
+
+    .reader-learners {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    @container reader-sharing (max-width: 20rem) {
+      .reader-sharing-bar .session-share > .sharing-link-field {
+        display: none;
+      }
+
+      .reader-sharing-bar .session-share {
+        flex: 0 0 1.75rem;
+      }
+
+      .reader-link-popup {
+        display: block;
+      }
     }
 
     .learner-avatar {
@@ -747,12 +851,16 @@ export class AppRibbon extends EditingControls {
     .learner-list {
       box-sizing: border-box;
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+      flex: 1 1 0;
+      align-content: start;
+      /* Two complete learner rows fill the remaining drawer height. */
+      grid-auto-rows: calc((100% - 0.25rem) / 2);
+      grid-template-columns: repeat(auto-fill, minmax(min(9rem, 100%), 1fr));
       gap: 0.25rem;
       width: 100%;
-      max-height: 100%;
+      min-height: 0;
       overflow: auto;
-      padding: 0.25rem;
+      padding: 0.125rem 0.25rem;
     }
 
     .learner-toggle {
@@ -761,7 +869,7 @@ export class AppRibbon extends EditingControls {
       align-items: center;
       gap: 0.35rem;
       min-width: 0;
-      height: 1.8rem;
+      height: 100%;
       padding: 0 0.4rem;
       border: 1px solid #cbd5e1;
       border-radius: 0.35rem;
@@ -770,6 +878,12 @@ export class AppRibbon extends EditingControls {
       font: inherit;
       font-size: 0.66rem;
       cursor: pointer;
+    }
+
+    .learner-toggle .learner-avatar {
+      width: 1.1rem;
+      height: 1.1rem;
+      flex-shrink: 0;
     }
 
     .learner-toggle[aria-pressed="false"] {
@@ -807,9 +921,19 @@ export class AppRibbon extends EditingControls {
       background: #22c55e;
     }
 
-    .history-button:hover {
+    .history-button:hover:not(:disabled) {
       color: #243447;
       background: #e8eef5;
+    }
+
+    .history-button:active:not(:disabled) {
+      color: #243447;
+      background: #d8e3ef;
+    }
+
+    .history-button:disabled {
+      color: #a4acb6;
+      cursor: default;
     }
 
     .history-button:focus-visible {
@@ -864,6 +988,10 @@ export class AppRibbon extends EditingControls {
 
     .ribbon-content[hidden] {
       display: none;
+    }
+
+    .ribbon-content:has(> ribbon-drawer[layout="learners"]) {
+      padding-inline-start: 0.35rem;
     }
 
     .ribbon-content > ribbon-drawer:not(:first-child) {
@@ -956,10 +1084,18 @@ export class AppRibbon extends EditingControls {
   menuOpen = false
 
   private documentDialog: "settings" | null = null
+  private resolveLinkSharingConfirmation?: (confirmed: boolean) => void
+  private settingsTab: SettingsTab = "Editor"
 
   logoUrl = ""
 
   presenceUsers: PresenceUser[] = []
+  undoState: UndoState = {canUndo: false, canRedo: false}
+  collaborationLink = ""
+  linkSharingEnabled = false
+  linkSharingBusy = false
+  collaborationStatus = "disconnected"
+  collaborationError = ""
 
   packages: WebWriterPackage[] = []
   editingSnippetId: string | null = null
@@ -980,31 +1116,11 @@ export class AppRibbon extends EditingControls {
 
   private tableGridColumns = 2
 
-  private sharingQRCodeImageDataURL = ""
-
-  private sharingQRCodeImageLink = ""
-
-  private sharingQRCodeImageLoading = false
-
-  private sharingQRCodeImageRetryScheduled = false
-
   private sharingCopyLinkActive = false
 
   private sharingCopyLinkSuccess = false
 
-  private sharingCopyQRActive = false
-
-  private sharingCopyQRSuccess = false
-
-  private sharingDownloadQRActive = false
-
   private sharingCopyLinkActiveTimer: ReturnType<typeof setTimeout> | undefined
-
-  private sharingCopyQRActiveTimer: ReturnType<typeof setTimeout> | undefined
-
-  private sharingCopyQRSuccessTimer: ReturnType<typeof setTimeout> | undefined
-
-  private sharingDownloadQRActiveTimer: ReturnType<typeof setTimeout> | undefined
 
   private sharingCopyLinkSuccessTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -1017,6 +1133,8 @@ export class AppRibbon extends EditingControls {
   liveSessionActive = false
 
   liveSessionRole: "host" | "learner" | "" = ""
+
+  private readerSharingCopyPending = false
 
   liveSessionLink = ""
 
@@ -1044,7 +1162,6 @@ export class AppRibbon extends EditingControls {
 
   private backendConnectionSequence = 0
 
-  private aiPrompt = ""
 
   aiChatOpen = false
   aiToolboxTarget: HTMLElement | null = null
@@ -1061,12 +1178,12 @@ export class AppRibbon extends EditingControls {
 
   private aiEffort: AIEffort = "medium"
 
-  private aiAttachments: AIAttachment[] = []
 
   private aiBusy = false
+  private aiRequestChatId = "chat-1"
+  private queuedAIPrompts: QueuedAIPrompt[] = []
   private aiProgress = "AI is working…"
 
-  private aiError = ""
 
   private pendingAIEdit: PendingAIEdit | null = null
   private pendingAIQueue: Promise<unknown> | null = null
@@ -1091,7 +1208,26 @@ export class AppRibbon extends EditingControls {
 
   private previewTransitionTimer: ReturnType<typeof setTimeout> | undefined
 
-  private readonly handleWindowResize = () => this.scheduleResponsiveLayout()
+  private heightConstrained = false
+  private expandedBeforeHeightConstraint = true
+
+  private updateHeightConstraint() {
+    const constrained = window.innerHeight <= 600
+    if(constrained === this.heightConstrained) return
+    this.heightConstrained = constrained
+    if(constrained) {
+      this.expandedBeforeHeightConstraint = this.expanded
+      this.expanded = false
+      this.menuOpen = false
+      this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => drawer.closeDrawer())
+    }
+    else this.expanded = this.expandedBeforeHeightConstraint
+  }
+
+  private readonly handleWindowResize = () => {
+    this.updateHeightConstraint()
+    this.scheduleResponsiveLayout()
+  }
 
   private readonly handleAIProviderChange = () => {
     this.aiProviders = this.aiProviderStore.providers
@@ -1128,17 +1264,16 @@ export class AppRibbon extends EditingControls {
 
   private readonly handleDocumentKeydown = (event: KeyboardEvent) => {
     if(event.key !== "Escape") return
-    const settings = this.renderRoot.querySelector<AISettingsDialog>("ai-settings-dialog")
-    if(settings?.open) {
-      event.stopImmediatePropagation()
-      event.preventDefault()
-      settings.close()
-      return
-    }
+    if(this.renderRoot.querySelector(".document-dialog[open]")) return
     if(this.aiChatOpen) {
       event.stopImmediatePropagation()
       this.closeAIChat(true)
       return
+    }
+    if(this.renderRoot.querySelector(".ai-bar-reply")) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.dismissAIBarReply()
     }
   }
 
@@ -1158,9 +1293,12 @@ export class AppRibbon extends EditingControls {
     document.addEventListener("pointerdown", this.handleDocumentPointerDown)
     document.addEventListener("keydown", this.handleDocumentKeydown, true)
     window.addEventListener("resize", this.handleWindowResize)
+    this.updateHeightConstraint()
   }
 
   disconnectedCallback() {
+    this.finishLinkSharingConfirmation(false)
+    this.readerSharingCopyPending = false
     if(this.aiToolboxTarget) render(nothing, this.aiToolboxTarget)
     this.aiProviderStore.removeEventListener("change", this.handleAIProviderChange)
     void this.cancelAIWork()
@@ -1168,9 +1306,6 @@ export class AppRibbon extends EditingControls {
     this.previewTransitionTimer = undefined
     if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
     if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
-    if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
-    if(this.sharingCopyQRSuccessTimer !== undefined) clearTimeout(this.sharingCopyQRSuccessTimer)
-    if(this.sharingDownloadQRActiveTimer !== undefined) clearTimeout(this.sharingDownloadQRActiveTimer)
     this.ribbonContentObserver?.disconnect()
     this.ribbonContentObserver = undefined
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
@@ -1218,6 +1353,16 @@ export class AppRibbon extends EditingControls {
       (Number.parseFloat(contentStyle.paddingRight) || 0)
     const availableWidth = content.clientWidth - inlinePadding
     if(availableWidth <= 0) return
+
+    // Reader controls fill the remaining ribbon width and adapt inside the
+    // drawer instead of being exchanged for a collapsed summary.
+    if(this.previewActive && this.liveSessionRole !== "learner") {
+      drawers.forEach(drawer => {
+        drawer.compact = false
+        drawer.collapsed = false
+      })
+      return
+    }
 
     const widths = drawers.map(drawer => drawer.layoutWidths)
     const layouts: Array<"collapsed" | "compact" | "expanded"> = drawers
@@ -1268,6 +1413,10 @@ export class AppRibbon extends EditingControls {
   }
 
   private toggleExpanded() {
+    if(this.heightConstrained) {
+      this.toggleFileMenu()
+      return
+    }
     if(this.previewActive) {
       this.selectStart()
       return
@@ -1300,8 +1449,37 @@ export class AppRibbon extends EditingControls {
     this.aiPrompt = (event.currentTarget as HTMLTextAreaElement).value
   }
 
+  get aiWorkActive() {
+    return this.aiBusy || this.queuedAIPrompts.length > 0
+  }
+
   private get activeAIChat() {
-    return this.aiChats.find(chat => chat.id === this.activeAIChatId) ?? this.aiChats[0]
+    return this.aiChats.find(chat => chat.id === this.activeAIChatId)
+  }
+
+  private updateAIChat(chatId: string, changes: Partial<AIChat>) {
+    this.aiChats = this.aiChats.map(chat => chat.id === chatId ? {...chat, ...changes} : chat)
+  }
+
+  private get aiPrompt() { return this.activeAIChat?.prompt ?? "" }
+  private set aiPrompt(prompt: string) { this.updateAIChat(this.activeAIChatId, {prompt}) }
+  private get aiAttachments() { return this.activeAIChat?.attachments ?? [] }
+  private set aiAttachments(attachments: AIAttachment[]) { this.updateAIChat(this.activeAIChatId, {attachments}) }
+  private get aiError() { return this.activeAIChat?.error ?? "" }
+  private set aiError(error: string) { this.updateAIChat(this.activeAIChatId, {error}) }
+  private get dismissedAIBarReplyId() { return this.activeAIChat?.dismissedReplyId ?? "" }
+  private set dismissedAIBarReplyId(dismissedReplyId: string) {
+    if(dismissedReplyId !== this.dismissedAIBarReplyId) this.updateAIChat(this.activeAIChatId, {dismissedReplyId})
+  }
+
+  private get latestAIBarReply() {
+    const message = this.activeAIChat?.messages.at(-1)
+    return message?.role === "assistant" ? message : undefined
+  }
+
+  private dismissAIBarReply() {
+    this.dismissedAIBarReplyId = this.latestAIBarReply?.id ?? ""
+    this.aiError = ""
   }
 
   private get activeAIProvider() {
@@ -1317,21 +1495,44 @@ export class AppRibbon extends EditingControls {
     content: string,
     chatId = this.activeAIChatId,
     attachments: AIAttachment[] = [],
+    queueState?: AIChatMessage["queueState"],
   ) {
     const message: AIChatMessage = {
       id: `message-${++this.aiMessageSequence}`,
       role,
       content,
       ...(attachments.length ? {attachments: attachments.map(attachment => ({...attachment}))} : {}),
+      ...(queueState ? {queueState} : {}),
     }
     this.aiChats = this.aiChats.map(chat => chat.id === chatId ? {
       ...chat,
       title: chat.messages.length === 0 && role === "user" ? this.promptTitle(content) : chat.title,
-      messages: [...chat.messages, message],
+      messages: this.insertAIMessage(chat.messages, message),
     } : chat)
     void this.updateComplete.then(() => {
       this.scrollAIChatToEnd()
     })
+    return message.id
+  }
+
+  private insertAIMessage(messages: AIChatMessage[], message: AIChatMessage) {
+    const index = messages.findIndex(current => current.queueState === "queued")
+    return index < 0 || message.queueState ? [...messages, message]
+      : [...messages.slice(0, index), message, ...messages.slice(index)]
+  }
+
+  private clearQueuedAIPrompts(chatId?: string) {
+    const ids = new Set(this.queuedAIPrompts.filter(prompt => !chatId || prompt.chatId === chatId).map(prompt => prompt.messageId))
+    this.queuedAIPrompts = this.queuedAIPrompts.filter(prompt => !ids.has(prompt.messageId))
+    this.aiChats = this.aiChats.map(chat => ({...chat, messages: chat.messages.map(message => ids.has(message.id)
+      ? {...message, queueState: "cancelled" as const} : message)}))
+  }
+
+  private runNextQueuedAIPrompt() {
+    if(this.aiBusy || this.pendingAIEdit || this.settings.disableAI || !this.isConnected) return
+    const next = this.queuedAIPrompts[0]
+    if(!next) return
+    void this.runAIPrompt(next.prompt, next)
   }
 
   private scrollAIChatToEnd() {
@@ -1340,13 +1541,16 @@ export class AppRibbon extends EditingControls {
   }
 
   private appendAIEditProtocol(pending: PendingAIEdit, decision: AIEditProtocol["decision"]) {
-    const content = decision === "accepted"
+    const content = decision === "queued" ? `Queued: ${pending.summary}`
+      : decision === "review" ? `Review document change: ${pending.summary}`
+      : decision === "accepted"
       ? `Accepted: ${pending.summary}`
       : decision === "rejected"
         ? `Rejected: ${pending.summary}`
         : `Undone: ${pending.summary}`
+    const existing = this.aiChats.find(chat => chat.id === pending.chatId)?.messages.find(message => message.edit?.editId === pending.call.id)
     const message: AIChatMessage = {
-      id: `message-${++this.aiMessageSequence}`,
+      id: existing?.id ?? `message-${++this.aiMessageSequence}`,
       role: "event",
       content,
       edit: {
@@ -1357,9 +1561,14 @@ export class AppRibbon extends EditingControls {
       },
     }
     this.aiChats = this.aiChats.map(chat => chat.id === pending.chatId
-      ? {...chat, messages: [...chat.messages, message]}
+      ? {...chat, messages: existing ? chat.messages.map(current => current.id === existing.id ? message : current) : this.insertAIMessage(chat.messages, message)}
       : chat)
     void this.updateComplete.then(() => this.scrollAIChatToEnd())
+  }
+
+  private removePendingAIEditMessage(callId: string, chatId: string) {
+    this.aiChats = this.aiChats.map(chat => chat.id === chatId ? {...chat, messages: chat.messages.filter(message =>
+      message.edit?.editId !== callId || !["queued", "review"].includes(message.edit.decision))} : chat)
   }
 
   appendAIResponse(content: string, chatId = this.activeAIChatId) {
@@ -1391,9 +1600,17 @@ export class AppRibbon extends EditingControls {
 
   private submitAIPrompt(event: SubmitEvent) {
     event.preventDefault()
-    if(this.aiBusy) return
     const prompt = this.aiPrompt.trim() || (this.aiAttachments.length ? "Please review the attached file(s)." : "")
     if(!prompt) return
+    if(this.aiBusy || this.pendingAIEdit) {
+      const attachments = this.aiAttachments.map(attachment => ({...attachment}))
+      const chatId = this.activeAIChatId
+      const messageId = this.appendAIMessage("user", prompt, chatId, attachments, "queued")
+      this.queuedAIPrompts = [...this.queuedAIPrompts, {prompt, attachments, chatId, messageId}]
+      this.aiPrompt = ""
+      this.aiAttachments = []
+      return
+    }
     void this.runAIPrompt(prompt)
   }
 
@@ -1419,20 +1636,19 @@ export class AppRibbon extends EditingControls {
 
   private startNewAIChat = () => {
     const activeChat = this.activeAIChat
-    if(activeChat?.title === "New chat" && activeChat.messages.length === 0) return
+    if(activeChat?.title === "New chat" && activeChat.messages.length === 0 && !this.aiPrompt && !this.aiAttachments.length && !this.aiError) return
     const id = `chat-${++this.aiChatSequence}`
     this.aiChats = [{id, title: "New chat", messages: []}, ...this.aiChats]
     this.activeAIChatId = id
-    this.aiPrompt = ""
     void this.updateComplete.then(() => {
       (this.aiToolboxTarget ?? this.renderRoot).querySelector<HTMLTextAreaElement>(".ai-prompt-input")?.focus()
     })
   }
 
   private switchAIChat(event: Event) {
-    this.activeAIChatId = (event.currentTarget as HTMLSelectElement).value
-    this.aiPrompt = ""
-    this.aiError = ""
+    const id = (event.currentTarget as HTMLSelectElement).value
+    if(!this.aiChats.some(chat => chat.id === id)) return
+    this.activeAIChatId = id
   }
 
   private updateAIModelAndEffort(event: Event) {
@@ -1463,7 +1679,8 @@ export class AppRibbon extends EditingControls {
 
   private showAISettings = () => {
     this.dispatchAIBarAction("settings")
-    this.renderRoot.querySelector<AISettingsDialog>("ai-settings-dialog")?.show()
+    this.settingsTab = "Cloud"
+    void this.showRibbonDialog("settings")
   }
 
   private chooseAIAttachments = () => {
@@ -1498,6 +1715,7 @@ export class AppRibbon extends EditingControls {
   }
 
   private addAIAttachments = async (event: Event) => {
+    const chatId = this.activeAIChatId
     const input = event.currentTarget as HTMLInputElement
     const files = Array.from(input.files ?? [])
     input.value = ""
@@ -1525,11 +1743,12 @@ export class AppRibbon extends EditingControls {
     }
     try {
       const attachments = await Promise.all(accepted.map(file => this.attachmentFromFile(file)))
-      this.aiAttachments = [...this.aiAttachments, ...attachments]
-      this.aiChatOpen = true
+      const chat = this.aiChats.find(chat => chat.id === chatId)
+      if(chat) this.updateAIChat(chatId, {attachments: [...(chat.attachments ?? []), ...attachments]})
+      if(this.activeAIChatId === chatId) this.aiChatOpen = true
     }
     catch(error) {
-      this.aiError = error instanceof Error ? error.message : String(error)
+      this.updateAIChat(chatId, {error: error instanceof Error ? error.message : String(error)})
     }
   }
 
@@ -1540,6 +1759,7 @@ export class AppRibbon extends EditingControls {
   private conversationFor(chatId: string): AIConversationMessage[] {
     const chat = this.aiChats.find(candidate => candidate.id === chatId)
     return chat?.messages
+      .filter(message => !message.queueState)
       .map(message => ({
       role: message.role === "event" ? "assistant" as const : message.role,
       content: message.edit ? `Document change ${message.edit.editId}: ${message.edit.decision}. ${message.edit.summary}` : message.content,
@@ -1568,9 +1788,12 @@ export class AppRibbon extends EditingControls {
     }
     this.pendingAIQueue = new Promise(resolve => {
       this.pendingAIEdit = {call, chatId, summary, previewing: true, deciding: false, resolve}
-      this.activeAIChatId = chatId
+      this.appendAIEditProtocol(this.pendingAIEdit, "queued")
       const cancel = () => {
-        if(this.pendingAIEdit?.call.id === call.id) this.pendingAIEdit = null
+        if(this.pendingAIEdit?.call.id === call.id) {
+          this.pendingAIEdit = null
+          this.removePendingAIEditMessage(call.id, chatId)
+        }
         resolve({status: "error", message: "The document preview was cancelled"})
       }
       signal?.addEventListener("abort", cancel, {once: true})
@@ -1584,13 +1807,17 @@ export class AppRibbon extends EditingControls {
           if(this.pendingAIEdit?.call.id === call.id) {
             const queuedDecision = this.pendingAIEdit.queuedDecision
             this.pendingAIEdit = {...this.pendingAIEdit, previewing: false, queuedDecision: undefined}
+            this.appendAIEditProtocol(this.pendingAIEdit, "review")
             resolve({status: "queued", proposalId: call.id, summary})
             if(queuedDecision) queueMicrotask(() => this.reviewPendingAIEdit(queuedDecision, call.id))
           }
           else void this.aiEditReviewHandler?.("reject", call).catch(() => {})
         },
       ).catch(error => {
-          if(this.pendingAIEdit?.call.id === call.id) this.pendingAIEdit = null
+          if(this.pendingAIEdit?.call.id === call.id) {
+            this.pendingAIEdit = null
+            this.removePendingAIEditMessage(call.id, chatId)
+          }
           resolve({status: "error", message: error instanceof Error ? error.message : String(error)})
       }).finally(() => signal?.removeEventListener("abort", cancel))
       void this.updateComplete.then(() => this.scrollAIChatToEnd())
@@ -1602,7 +1829,7 @@ export class AppRibbon extends EditingControls {
     const pending = this.pendingAIEdit
     if(!pending || pending.previewing || pending.deciding) return
     this.pendingAIEdit = {...pending, deciding: true}
-    this.aiError = ""
+    this.updateAIChat(pending.chatId, {error: ""})
     try {
       const result = this.aiEditReviewHandler
         ? await this.aiEditReviewHandler("accept", pending.call)
@@ -1610,9 +1837,10 @@ export class AppRibbon extends EditingControls {
       if((result as {status?: string})?.status !== "applied") throw new Error("The document change could not be accepted")
       this.appendAIEditProtocol(pending, "accepted")
       if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = null
+      this.runNextQueuedAIPrompt()
     }
     catch(error) {
-      this.aiError = error instanceof Error ? error.message : String(error)
+      this.updateAIChat(pending.chatId, {error: error instanceof Error ? error.message : String(error)})
       if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = {...pending, deciding: false}
     }
   }
@@ -1621,15 +1849,16 @@ export class AppRibbon extends EditingControls {
     const pending = this.pendingAIEdit
     if(!pending || pending.previewing || pending.deciding) return
     this.pendingAIEdit = {...pending, deciding: true}
-    this.aiError = ""
+    this.updateAIChat(pending.chatId, {error: ""})
     try {
       const result = await this.aiEditReviewHandler?.("reject", pending.call)
       if((result as {status?: string})?.status !== "rejected") throw new Error("The document change could not be rejected")
       this.appendAIEditProtocol(pending, "rejected")
       this.pendingAIEdit = null
+      this.runNextQueuedAIPrompt()
     }
     catch(error) {
-      this.aiError = error instanceof Error ? error.message : String(error)
+      this.updateAIChat(pending.chatId, {error: error instanceof Error ? error.message : String(error)})
       if(this.pendingAIEdit?.call.id === pending.call.id) this.pendingAIEdit = {...pending, deciding: false}
     }
   }
@@ -1645,6 +1874,8 @@ export class AppRibbon extends EditingControls {
 
   private undoProtocolAIEdit = async (messageId: string, edit: AIEditProtocol) => {
     if(edit.decision !== "accepted" || edit.busy || this.pendingAIEdit) return
+    const chatId = this.aiChats.find(chat => chat.messages.some(message => message.id === messageId))?.id
+    if(!chatId) return
     this.aiChats = this.aiChats.map(chat => ({
       ...chat,
       messages: chat.messages.map(message => message.id === messageId && message.edit
@@ -1666,7 +1897,7 @@ export class AppRibbon extends EditingControls {
       }))
     }
     catch(error) {
-      this.aiError = error instanceof Error ? error.message : String(error)
+      this.updateAIChat(chatId, {error: error instanceof Error ? error.message : String(error)})
       this.aiChats = this.aiChats.map(chat => ({
         ...chat,
         messages: chat.messages.map(message => message.id === messageId && message.edit
@@ -1691,11 +1922,14 @@ export class AppRibbon extends EditingControls {
       this.aiError = "Accept or reject the pending document change before stopping the request."
       return
     }
+    if(!this.aiBusy || this.aiRequestChatId !== this.activeAIChatId) return
+    this.clearQueuedAIPrompts(this.activeAIChatId)
     this.aiAbortController?.abort()
   }
 
   /** Called before an iframe is replaced, and when the ribbon is destroyed. */
   async cancelAIWork() {
+    this.clearQueuedAIPrompts()
     this.aiAbortController?.abort()
     this.aiAbortController = null
     this.aiBusy = false
@@ -1703,51 +1937,63 @@ export class AppRibbon extends EditingControls {
     this.pendingAIEdit = null
     this.pendingAIQueue = null
     pending?.resolve({status: "error", message: "The document change was cancelled"})
+    if(pending) this.removePendingAIEditMessage(pending.call.id, pending.chatId)
     if(pending && !pending.previewing) {
       await this.aiEditReviewHandler?.("reject", pending.call).catch(() => {})
     }
   }
 
-  private async runAIPrompt(prompt: string) {
+  private async runAIPrompt(prompt: string, queued?: QueuedAIPrompt) {
     if(this.settings.disableAI) return
     if(this.pendingAIEdit) {
       this.aiError = "Accept or reject the pending document change before continuing the chat."
       return
     }
+    const chatId = queued?.chatId ?? this.activeAIChatId
     const provider = this.activeAIProvider
     if(!provider) {
-      this.aiError = "Set up an AI provider before sending a message."
+      if(queued) this.clearQueuedAIPrompts()
+      this.updateAIChat(chatId, {error: "Set up an AI provider before sending a message."})
       this.aiChatOpen = true
       this.showAISettings()
       return
     }
     if(!this.aiModel) {
-      this.aiError = "Add or load a model for this provider."
+      if(queued) this.clearQueuedAIPrompts()
+      this.updateAIChat(chatId, {error: "Add or load a model for this provider."})
       this.aiChatOpen = true
       this.showAISettings()
       return
     }
     const apiKey = this.aiProviderStore.keyFor(provider)
     if(provider.managed !== "backend" && provider.auth !== "none" && !apiKey) {
-      this.aiError = this.aiProviderStore.credentialStatus(provider) === "locked"
+      if(queued) this.clearQueuedAIPrompts()
+      this.updateAIChat(chatId, {error: this.aiProviderStore.credentialStatus(provider) === "locked"
         ? "Unlock this provider's encrypted API key in AI settings."
-        : "Enter an API key for this provider in AI settings."
+        : "Enter an API key for this provider in AI settings."})
       this.aiChatOpen = true
       this.showAISettings()
       return
     }
 
-    const chatId = this.activeAIChatId
-    const attachments = this.aiAttachments.map(attachment => ({...attachment}))
-    this.appendAIMessage("user", prompt, chatId, attachments)
+    const attachments = queued?.attachments ?? this.aiAttachments.map(attachment => ({...attachment}))
+    if(queued) {
+      this.queuedAIPrompts = this.queuedAIPrompts.slice(1)
+      this.aiChats = this.aiChats.map(chat => chat.id === chatId ? {...chat, messages: chat.messages.map(message =>
+        message.id === queued.messageId ? {...message, queueState: undefined} : message)} : chat)
+    }
+    else this.appendAIMessage("user", prompt, chatId, attachments)
     this.dispatchAIPrompt(prompt, provider, attachments, chatId)
-    this.aiPrompt = ""
-    this.aiAttachments = []
-    this.aiError = ""
+    if(!queued) {
+      this.updateAIChat(chatId, {prompt: "", attachments: []})
+    }
+    this.updateAIChat(chatId, {error: ""})
+    this.aiRequestChatId = chatId
     this.aiBusy = true
     this.aiProgress = "Reading editor capabilities…"
     const controller = new AbortController()
     this.aiAbortController = controller
+    let queuedChange = false
     try {
       const response = await completeAIConversation({
         provider,
@@ -1756,24 +2002,29 @@ export class AppRibbon extends EditingControls {
         effort: this.aiEffort,
         messages: this.conversationFor(chatId),
         readOnly: requestsReadOnlyAI(prompt),
-        toolHandler: (call, options) => this.handleAIDocumentTool(call, chatId, options?.signal),
+        toolHandler: async (call, options) => {
+          const result = await this.handleAIDocumentTool(call, chatId, options?.signal)
+          if((result as {status?: string})?.status === "queued") queuedChange = true
+          return result
+        },
         onProgress: message => {
           if(this.aiAbortController === controller) this.aiProgress = message
         },
         signal: controller.signal,
       })
-      if(this.aiAbortController === controller) this.appendAIResponse(response, chatId)
+      if(this.aiAbortController === controller && !queuedChange) this.appendAIResponse(response, chatId)
     }
     catch(error) {
       if(this.aiAbortController !== controller) return
-      this.aiError = error instanceof DOMException && error.name === "AbortError"
+      this.updateAIChat(chatId, {error: error instanceof DOMException && error.name === "AbortError"
         ? "Request stopped."
-        : error instanceof Error ? error.message : String(error)
+        : error instanceof Error ? error.message : String(error)})
     }
     finally {
       if(this.aiAbortController === controller) {
         this.aiAbortController = null
         this.aiBusy = false
+        this.runNextQueuedAIPrompt()
       }
     }
   }
@@ -1793,12 +2044,14 @@ export class AppRibbon extends EditingControls {
 
   private selectMenu(event: Event) {
     const label = (event as CustomEvent<{label?: string}>).detail?.label
-    if(label === "File") {
-      this.closeAIChat()
-      const open = !this.menuOpen
-      this.dismissCollapsedMenu()
-      this.menuOpen = open
-    }
+    if(label === "File") this.toggleFileMenu()
+  }
+
+  private toggleFileMenu() {
+    this.closeAIChat()
+    const open = !this.menuOpen
+    this.dismissCollapsedMenu()
+    this.menuOpen = open
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
@@ -1830,13 +2083,26 @@ export class AppRibbon extends EditingControls {
       this.expanded = this.liveSessionRole !== "learner"
       this.menuOpen = false
     }
+    if(this.heightConstrained) this.expanded = false
   }
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    if(this.readerSharingCopyPending && this.liveSessionActive && this.liveSessionLink) {
+      this.readerSharingCopyPending = false
+      void this.copyReaderSharing(this.liveSessionLink)
+    }
     const previousTarget = changed.get("aiToolboxTarget") as HTMLElement | null | undefined
     if(previousTarget && previousTarget !== this.aiToolboxTarget) render(nothing, previousTarget)
-    if(this.aiToolboxTarget) render(this.settings.disableAI ? nothing : this.renderAIChat(true), this.aiToolboxTarget, {host: this})
+    if(this.aiToolboxTarget) render(guard(this.aiChatRenderDependencies, () => when(
+      !this.settings.disableAI, () => this.renderAIChat(true),
+    )), this.aiToolboxTarget, {host: this})
+    if((changed.has("aiChatOpen") || changed.has("aiChats") || changed.has("activeAIChatId")) && this.aiChatOpen) this.dismissedAIBarReplyId = this.latestAIBarReply?.id ?? ""
+    const reply = this.renderRoot.querySelector<HTMLElement>(".ai-bar-reply")
+    if(reply && typeof reply.showPopover === "function") {
+      try { if(!reply.matches(":popover-open")) reply.showPopover() }
+      catch { /* The reply remains available in browsers without popovers. */ }
+    }
     if(changed.has("aiChatOpen")) this.dispatchEvent(new CustomEvent("ai-toolbox-change", {detail: {open: this.aiChatOpen}, bubbles: true, composed: true}))
     if(changed.has("backendClient")) void this.connectAIBackend(this.backendClient)
     if(changed.has("previewActive") && changed.get("previewActive") !== undefined) {
@@ -1896,14 +2162,25 @@ export class AppRibbon extends EditingControls {
     return Boolean(this.packageSearchQuery.trim()) || this.packageDrawerOpen
   }
 
+  private readonly packageDetailsCache = new WeakMap<WebWriterPackage, {key: string, details: RibbonButtonDetails}>()
+  private readonly emptyPackageSubmenu: RibbonButton["submenu"] = []
+
   private packageDetails(pkg: WebWriterPackage): RibbonButtonDetails {
-    return {
+    const locale = navigator.language || "en"
+    // Compare values rather than array identities: local package editing can
+    // change metadata in place, and changing UI language must update labels.
+    const key = JSON.stringify([locale, pkg.label, pkg.name, pkg.version, pkg.description, pkg.authors, pkg.keywords])
+    const cached = this.packageDetailsCache.get(pkg)
+    if(cached?.key === key) return cached.details
+    const details = {
       heading: pkg.label,
       subheading: `${pkg.name}@${pkg.version}`,
       description: pkg.description,
       authors: pkg.authors,
-      keywords: packageKeywordPresentations(pkg.keywords).slice(0, 8),
+      keywords: packageKeywordPresentations(pkg.keywords, locale).slice(0, 8),
     }
+    this.packageDetailsCache.set(pkg, {key, details})
+    return details
   }
 
   private packageDragHTML(pkg: WebWriterPackage, member: PackageMember | undefined) {
@@ -1926,7 +2203,7 @@ export class AppRibbon extends EditingControls {
         icon-url=${pkg.iconUrl ?? ""}
         .action=${packageAction(pkg)}
         .dragHTML=${this.packageDragHTML(pkg, members[0])}
-        .submenu=${management || !installed ? [] : members.slice(1).map(member => ({
+        .submenu=${management || !installed ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
           dragHTML: this.packageDragHTML(pkg, member),
@@ -2202,6 +2479,11 @@ export class AppRibbon extends EditingControls {
     }))
   }
 
+  private fileButtonsForStorage(buttons: RibbonMenuButton[]) {
+    return buttons.map(button => this.settings.activeCloudServiceId && typeof button !== "string" && ["Save", "Save as"].includes(button.label)
+      ? {...button, submenu: []} : button)
+  }
+
   private renderFileDrawer(drawer: RibbonMenuGroup) {
     const activeService = this.settings.cloudServices.find(service => service.id === this.settings.activeCloudServiceId)
     const selectedStorageLocation = {icon: activeService ? "Cloud" : "Local",
@@ -2223,7 +2505,7 @@ export class AppRibbon extends EditingControls {
             <span>${selectedStorageLocation.label}</span>
           </span>
         </div>
-        ${drawer.buttons.map(button => {
+        ${this.fileButtonsForStorage(drawer.buttons).map(button => {
           const item = typeof button === "string" ? {label: button} : button
           return html`
             <ribbon-button
@@ -2265,8 +2547,29 @@ export class AppRibbon extends EditingControls {
     this.documentDialog = name
     await this.updateComplete
     if(this.isConnected && this.documentDialog === name) {
-      this.renderRoot.querySelector<HTMLDialogElement>(`#${name}-dialog`)?.showModal()
+      const dialog = this.renderRoot.querySelector<HTMLDialogElement>(`#${name}-dialog`)
+      if(dialog && !dialog.open) dialog.showModal()
     }
+  }
+
+  async confirmLinkSharing(): Promise<boolean> {
+    if(!this.isConnected || this.resolveLinkSharingConfirmation) return false
+    const result = new Promise<boolean>(resolve => { this.resolveLinkSharingConfirmation = resolve })
+    this.dismissMenus()
+    this.closeAIChat()
+    await this.updateComplete
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#link-sharing-dialog")
+    if(!this.isConnected || !dialog) this.finishLinkSharingConfirmation(false)
+    else if(this.resolveLinkSharingConfirmation && !dialog.open) dialog.showModal()
+    return result
+  }
+
+  private finishLinkSharingConfirmation(confirmed: boolean) {
+    const resolve = this.resolveLinkSharingConfirmation
+    this.resolveLinkSharingConfirmation = undefined
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#link-sharing-dialog")
+    if(dialog?.open) dialog.close()
+    resolve?.(confirmed)
   }
 
   private collapsedEditingMenuGroups(): RibbonMenuGroup[] {
@@ -2351,216 +2654,124 @@ export class AppRibbon extends EditingControls {
       event.stopPropagation()
       void this.showRibbonDialog("settings")
     }
+    if(event.detail.label === "about-webwriter") {
+      event.stopPropagation()
+      window.open(new URL(import.meta.env.BASE_URL, location.href).href, "_blank", "noopener,noreferrer")
+    }
+  }
+
+  private handleSettingsTabKeydown = (event: KeyboardEvent) => {
+    const tabs = ["Editor", "Cloud", "Commands"] as const
+    const index = tabs.indexOf(this.settingsTab)
+    const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+      : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+      : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1
+    if(next < 0) return
+    event.preventDefault()
+    this.settingsTab = tabs[next]
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLButtonElement>(`#settings-tab-${this.settingsTab.toLowerCase()}`)?.focus())
   }
 
   private renderDocumentDialogs() {
     return html`
+      <dialog id="link-sharing-dialog" class="document-dialog" aria-labelledby="link-sharing-dialog-title" aria-describedby="link-sharing-dialog-description"
+        @cancel=${(event: Event) => { event.preventDefault(); this.finishLinkSharingConfirmation(false) }}
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishLinkSharingConfirmation(false) }}>
+        <header><h2 id="link-sharing-dialog-title">Enable link sharing?</h2>
+          <button class="dialog-close" type="button" aria-label="Close link sharing confirmation" @click=${() => this.finishLinkSharingConfirmation(false)}>${ribbonIcon("Reject")}</button>
+        </header>
+        <p id="link-sharing-dialog-description">Link sharing requires a document saved on the server. Move this document to the server and enable sharing?</p>
+        <footer>
+          <button type="button" autofocus @click=${() => this.finishLinkSharingConfirmation(false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishLinkSharingConfirmation(true)}>Move and enable sharing</button>
+        </footer>
+      </dialog>
       <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"
+        @cancel=${(event: Event) => { event.preventDefault(); (event.currentTarget as HTMLDialogElement).close() }}
         @close=${() => { this.documentDialog = null }}>
         ${this.documentDialog === "settings" ? html`
         <nav class="settings-dialog-nav" aria-label="Settings">
-          <h2 id="settings-dialog-title">Settings</h2>
+          <div class="settings-dialog-heading">
+            <h2 id="settings-dialog-title">Settings</h2>
+            <div class="settings-tabs" role="tablist" aria-label="Settings categories">
+              ${(["Editor", "Cloud", "Commands"] as const).map(tab => html`<button type="button" role="tab"
+                id=${`settings-tab-${tab.toLowerCase()}`} aria-selected=${this.settingsTab === tab}
+                aria-controls="settings-content" tabindex=${this.settingsTab === tab ? "0" : "-1"}
+                @click=${() => { this.settingsTab = tab }} @keydown=${this.handleSettingsTabKeydown}>${tab}</button>`)}
+            </div>
+          </div>
           <form method="dialog">
-            <span class="settings-version">WebWriter ${version}</span>
+            <div class="settings-version-info">
+              <span class="settings-version">WebWriter ${version}</span>
+              <button class="licenses-link" type="button" aria-haspopup="dialog"
+                @click=${() => this.renderRoot.querySelector<SettingsPanel>("settings-panel")?.showLicenses()}>View licenses</button>
+            </div>
             <button
               class="reset-settings-button"
               type="button"
               @click=${() => this.renderRoot.querySelector<SettingsPanel>("settings-panel")?.resetSettings()}
-            >Reset settings</button>
+            >Reset</button>
             <button class="settings-close-button" aria-label="Close settings" title="Close settings">
               ${ribbonIcon("Reject")}
             </button>
           </form>
         </nav>
-        <main class="settings-dialog-main">
+        <main id="settings-content" class="settings-dialog-main">
           <settings-panel
             .settings=${this.settings}
+            .tab=${this.settingsTab}
             @settings-change=${this.handleSettingsChange}
-          ></settings-panel>
+          ><ai-settings-dialog slot="ai" embedded .store=${this.aiProviderStore} .open=${this.settingsTab === "Cloud"}></ai-settings-dialog></settings-panel>
         </main>
         ` : ""}
       </dialog>
     `
   }
 
-  private sharingButton() {
-    return this.renderRoot.querySelector<RibbonButton>(
-      'ribbon-button.sharing-qr',
-    ) ?? this.renderRoot.querySelector<RibbonButton>("ribbon-button.file-share-action")
-  }
-
-  private sharingQRCodeElement() {
-    return this.sharingButton()?.shadowRoot?.querySelector<QRCodeElement>("webwriter-qr-code")
-  }
-
-  private async sharingQRCodeBlob() {
-    const qrCode = this.sharingQRCodeElement()
-    if(!qrCode) return null
-    await qrCode.updateComplete
-    return qrCode.toBlob()
-  }
-
-  private async ensureSharingQRCodeImage(link: string) {
-    if(this.sharingQRCodeImageLoading) return
-    if(this.sharingQRCodeImageLink === link && this.sharingQRCodeImageDataURL) return
-    if(this.sharingQRCodeImageLink !== link) {
-      this.sharingQRCodeImageDataURL = ""
-      this.sharingQRCodeImageLink = ""
-    }
-    this.sharingQRCodeImageLoading = true
-    try {
-      const qrCode = this.sharingQRCodeElement()
-      if(!qrCode) {
-        this.scheduleSharingQRCodeImageRetry(link)
-        return
-      }
-      await qrCode.updateComplete
-      const dataURL = qrCode.toDataURL()
-      if(dataURL && dataURL.startsWith("data:image/png")) {
-        this.sharingQRCodeImageDataURL = dataURL
-        this.sharingQRCodeImageLink = link
-        this.requestUpdate()
-        return
-      }
-
-      const blob = await qrCode.toBlob()
-      if(!blob) {
-        this.scheduleSharingQRCodeImageRetry(link)
-        return
-      }
-
-      const fallbackDataURL = await new Promise<string | null>(resolve => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null)
-        reader.onerror = () => resolve(null)
-        reader.readAsDataURL(blob)
-      })
-      if(!fallbackDataURL?.startsWith("data:image/png")) {
-        this.scheduleSharingQRCodeImageRetry(link)
-        return
-      }
-
-      this.sharingQRCodeImageDataURL = fallbackDataURL
-      this.sharingQRCodeImageLink = link
-      this.requestUpdate()
-    }
-    finally {
-      this.sharingQRCodeImageLoading = false
-    }
-  }
-
-  private scheduleSharingQRCodeImageRetry(link: string) {
-    if(this.sharingQRCodeImageRetryScheduled || !this.renderRoot.isConnected) return
-    this.sharingQRCodeImageRetryScheduled = true
-    requestAnimationFrame(() => {
-      this.sharingQRCodeImageRetryScheduled = false
-      void this.ensureSharingQRCodeImage(link)
-    })
-  }
-
-  private async handleSharingQRCodeImageError() {
-    if(!this.sharingQRCodeImageLink || !this.renderRoot.isConnected) return
-    this.sharingQRCodeImageDataURL = ""
-    this.scheduleSharingQRCodeImageRetry(this.sharingQRCodeImageLink)
-    this.requestUpdate()
-  }
-
-  private renderSharingDropdown(link: string) {
+  private renderSharingDropdown(link: string, sessionShare = false) {
     return html`
-      <div class="sharing-dropdown" role="group" aria-label="Sharing options">
-        <div class="sharing-document-actions" role="group" aria-label="Document actions">
-          <ribbon-button label="Print" action="Print" variant="toolbar"></ribbon-button>
-          <ribbon-button label="Download" action="Download" variant="toolbar" .submenu=${fileFormatButtons("download")}></ribbon-button>
-        </div>
-        <webwriter-qr-code hidden .value=${link} .size=${56}></webwriter-qr-code>
-        <label class="sharing-link-field">
-          <span class="sharing-link-label">Link</span>
+      <div class="sharing-dropdown" role="group" aria-label="Collaboration">
+        ${sessionShare ? nothing : html`
+          <button class="sharing-toggle" type="button" role="switch" aria-label="Invite to edit or review"
+              aria-checked=${this.linkSharingEnabled} ?disabled=${this.linkSharingBusy}
+              @click=${() => this.dispatchEvent(new CustomEvent("link-sharing-change", {
+                detail: {enabled: !this.linkSharingEnabled}, bubbles: true, composed: true,
+              }))}>
+            <span class="sharing-invite-icon" aria-hidden="true">${ribbonIcon("UserEdit")}</span>
+            <strong>Invite to edit or review</strong>
+            <span class="sharing-switch" aria-hidden="true" ?data-checked=${this.linkSharingEnabled}></span>
+          </button>`}
+        ${link && (sessionShare || this.linkSharingEnabled) ? html`<label class="sharing-link-field">
+          <span class="sharing-link-label">Editing link</span>
           <span class="sharing-link-input-row">
-            <input
-              class="sharing-link-input"
-              aria-label="Sharing link"
-              readonly
-              .value=${link}
-              @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()}
-            />
-            <button
-              class=${`sharing-link-copy${this.sharingCopyLinkActive ? " is-active" : ""}${this.sharingCopyLinkSuccess ? " is-success" : ""}`}
-              type="button"
-              aria-label="Copy link"
-              aria-pressed=${this.sharingCopyLinkActive}
+            <input class="sharing-link-input" aria-label="Sharing link" readonly .value=${link}
+              @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()} />
+            <button class="sharing-link-copy" type="button" aria-label="Copy link"
               title=${this.sharingCopyLinkSuccess ? "Copied link" : "Copy link"}
-              @click=${() => void this.copySharingLinkAndShowFeedback(link)}
-            >${ribbonIcon("Copy")}</button>
+              @click=${() => void this.copySharingLinkAndShowFeedback(link)}>${ribbonIcon("Copy")}</button>
           </span>
-        </label>
-        <div class="sharing-qr-group" role="group" aria-label="QR code">
-          <div class="sharing-dropdown-qr" aria-label="Sharing QR code" role="img">
-            <img
-              class="sharing-dropdown-qr-code"
-              alt="Sharing QR code"
-              draggable="true"
-              src=${this.sharingQRCodeImageDataURL || undefined}
-              @error=${() => void this.handleSharingQRCodeImageError()}
-            />
-          </div>
-          <div class="sharing-dropdown-actions">
-            <button
-              class=${`button-dropdown-more sharing-dropdown-action${this.sharingCopyQRActive ? " is-active" : ""}${this.sharingCopyQRSuccess ? " is-success" : ""}`}
-              type="button"
-              aria-pressed=${this.sharingCopyQRActive}
-              @click=${() => void this.copySharingQRCodeAndShowFeedback()}
-              aria-label="Copy QR code"
-              title=${this.sharingCopyQRSuccess ? "Copied QR code" : "Copy QR code"}
-            >${ribbonIcon("Copy")}<span>Copy QR code</span></button>
-            <button
-              class=${`button-dropdown-more sharing-dropdown-action${this.sharingDownloadQRActive ? " is-active" : ""}`}
-              type="button"
-              aria-pressed=${this.sharingDownloadQRActive}
-              @click=${() => void this.downloadSharingQRCodeAndShowFeedback()}
-              aria-label="Download QR code"
-              title="Download QR code"
-            >${ribbonIcon("FileDownload")}<span>Download QR code</span></button>
-          </div>
-        </div>
+        </label>` : nothing}
+        ${this.collaborationError ? html`<p role="alert">${this.collaborationError}</p>` : nothing}
+        ${this.collaborationStatus === "disconnected" ? nothing : html`<p class="collaboration-status" role="status">${this.collaborationStatus === "connected" ? "Connected" : "Connecting…"}</p>`}
+        <ul class="collaboration-authors" aria-label="Connected authors">
+          ${this.presenceUsers.map(user => html`<li>
+            <span class="presence-user" style=${styleMap({"--presence-color": safeCssColor(user.color)})}>${user.initials}</span>
+            <span><strong>${user.name}</strong>${user.connectionStatus === "disconnected" ? nothing : html`<span class="author-status">Connected</span>`}
+              <span class="author-change">${user.lastChange ? `Last change: ${new Date(user.lastChange).toLocaleString()}` : "No changes yet"}</span></span>
+          </li>`)}
+        </ul>
+        ${!this.presenceUsers.length ? html`<p class="collaboration-empty">No other authors connected</p>` : nothing}
+        ${sessionShare ? nothing : html`
+          <p class="sharing-reader-hint">
+            <button class="sharing-preview-button" type="button" aria-label="Share with readers: open preview" title="Open preview"
+              ?disabled=${Boolean(this.pendingAIEdit) || this.historyState.preview !== null}
+              @click=${() => {
+                this.renderRoot.querySelector<RibbonButton>(".file-share-action")?.closeSubmenu()
+                if(!this.previewActive) this.handleTopButtonClick("Preview")
+              }}><span>Share with readers</span><span class="sharing-preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span></button>
+          </p>`}
       </div>
     `
-  }
-
-  private async copySharingContent(link: string): Promise<boolean> {
-    try {
-      if(!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
-        return await this.copySharingLink(link)
-      }
-
-      const qrCode = this.sharingQRCodeElement()
-      if(!qrCode) {
-        return await this.copySharingLink(link)
-      }
-      await qrCode.updateComplete
-      const qrDataURL = qrCode.toDataURL()
-      if(!qrDataURL) {
-        return await this.copySharingLink(link)
-      }
-
-      const content = document.createElement("div")
-      const linkElement = document.createElement("a")
-      linkElement.href = link
-      linkElement.textContent = link
-      const qrImage = document.createElement("img")
-      qrImage.src = qrDataURL
-      qrImage.alt = `QR code for ${link}`
-      content.append(linkElement, document.createElement("br"), qrImage)
-
-      await navigator.clipboard.write([new ClipboardItem({
-        "text/html": content.innerHTML,
-        "text/plain": link,
-      })])
-      return true
-    }
-    catch {
-      // Clipboard access can be denied by the browser or document context.
-      return false
-    }
   }
 
   private async copySharingLink(link: string): Promise<boolean> {
@@ -2609,130 +2820,135 @@ export class AppRibbon extends EditingControls {
     }
   }
 
-  private async copySharingQRCode(): Promise<boolean> {
-    try {
-      const blob = await this.sharingQRCodeBlob()
-      if(!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") return false
-      await navigator.clipboard.write([new ClipboardItem({[blob.type || "image/png"]: blob})])
-      return true
-    }
-    catch {
-      // Clipboard access can be denied by the browser or document context.
-      return false
-    }
+  private renderReaderLinkField(link: string, slot = "") {
+    return html`<label class="sharing-link-field" slot=${slot}>
+      <span class="sharing-link-input-row">
+        <input class="sharing-link-input" aria-label="Reader sharing link" readonly .value=${link}
+          ?disabled=${!link}
+          placeholder="Sharing link"
+          @click=${(event: Event) => (event.currentTarget as HTMLInputElement).select()} />
+        <button class=${`sharing-link-copy${this.sharingCopyLinkSuccess ? " is-success" : ""}`}
+          type="button" aria-label="Copy reader link" ?disabled=${!link}
+          title=${this.sharingCopyLinkSuccess ? "Copied link" : "Copy link"}
+          @click=${() => void this.copyReaderSharing(link)}>${ribbonIcon("Copy")}</button>
+      </span>
+    </label>`
   }
 
-  private async copySharingQRCodeAndShowFeedback() {
-    this.sharingCopyQRActive = true
-    this.sharingCopyQRSuccess = false
-    if(this.sharingCopyQRActiveTimer !== undefined) clearTimeout(this.sharingCopyQRActiveTimer)
-    if(this.sharingCopyQRSuccessTimer !== undefined) clearTimeout(this.sharingCopyQRSuccessTimer)
-    this.requestUpdate()
-    const copied = await this.copySharingQRCode()
-    this.sharingCopyQRActive = false
-    this.sharingCopyQRSuccess = copied
-    this.requestUpdate()
-    this.sharingCopyQRActiveTimer = setTimeout(() => {
-      this.sharingCopyQRActive = false
-      this.requestUpdate()
-    }, 140)
-    if(copied) {
-      this.sharingCopyQRSuccessTimer = setTimeout(() => {
-        this.sharingCopyQRSuccess = false
-        this.requestUpdate()
-      }, 900)
-    }
-  }
-
-  private async downloadSharingQRCode(): Promise<boolean> {
-    try {
-      const blob = await this.sharingQRCodeBlob()
-      if(!blob) return false
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `webwriter-qr-code.${blob.type === "image/svg+xml" ? "svg" : "png"}`
-      link.click()
-      URL.revokeObjectURL(url)
-      return true
-    }
-    catch {
-      // QR export can fail when the browser cannot rasterize the QR code.
-      return false
-    }
-  }
-
-  private async downloadSharingQRCodeAndShowFeedback() {
-    this.sharingDownloadQRActive = true
-    if(this.sharingDownloadQRActiveTimer !== undefined) clearTimeout(this.sharingDownloadQRActiveTimer)
-    this.requestUpdate()
-    await this.downloadSharingQRCode()
-    this.sharingDownloadQRActive = false
-    this.requestUpdate()
-    this.sharingDownloadQRActiveTimer = setTimeout(() => {
-      this.sharingDownloadQRActive = false
-      this.requestUpdate()
-    }, 140)
-  }
-
-  private get sharingLink() {
-    return this.liveSessionActive && this.liveSessionLink
-      ? this.liveSessionLink
-      : placeholderSharingLink
-  }
-
-  private handleSharingButtonClick = (event: Event) => {
-    const label = (event as CustomEvent<{label?: string}>).detail?.label
-    if(label !== "Share") return
-    event.stopPropagation()
-    void this.copySharingContent(this.sharingLink).then(copied => {
-      if(copied) this.sharingButton()?.showNotification("Copied QR code and link")
+  private async readerSharingClipboardData(link: string) {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    if(!button) throw new Error("Sharing controls unavailable")
+    const blob = await this.sharingQRCodeBlob()
+    if(!blob || !this.isConnected || !this.liveSessionActive || this.liveSessionLink !== link) throw new Error("Sharing link changed")
+    const imageURL = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsDataURL(blob)
     })
+    const content = document.createElement("div")
+    const anchor = document.createElement("a")
+    anchor.href = link
+    anchor.textContent = link
+    const image = document.createElement("img")
+    image.src = imageURL
+    image.alt = "QR code"
+    content.append(anchor, document.createElement("br"), image)
+    return {
+      "text/html": new Blob([content.innerHTML], {type: "text/html"}),
+      "image/png": blob,
+      "text/plain": new Blob([link], {type: "text/plain"}),
+    }
   }
 
-  private renderSharingDrawer(drawer: RibbonMenuGroup, excludeShare = false) {
-    return html`
-      <ribbon-drawer label="Sharing" icon="Share" layout=${excludeShare ? "sharing-preview" : "sharing"}>
-        ${drawer.buttons.map(button => {
-          const item = typeof button === "string" ? {label: button} : button
-          if(excludeShare && item.label === "Share") return ""
-          if(item.label === "Share") return this.renderSharingButton()
-          return html`
-            <ribbon-button
-              class="sharing-action"
-              label=${item.label}
-              .action=${item.action ?? item.label}
-              .icon=${item.icon ?? item.label}
-              .submenu=${item.submenu ?? []}
-            ></ribbon-button>
-          `
-        })}
-      </ribbon-drawer>
-    `
+  private async copyReaderSharing(link: string) {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    try {
+      if(!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+        throw new Error("Clipboard unavailable")
+      }
+      const data = this.readerSharingClipboardData(link)
+      // Start the clipboard write during the click; promised formats preserve
+      // browser user activation while the QR image is generated.
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html": data.then(value => value["text/html"]),
+        "image/png": data.then(value => value["image/png"]),
+        "text/plain": data.then(value => value["text/plain"]),
+      })])
+      if(button?.isConnected) button.showNotification("Link and QR code copied!", 2800)
+    }
+    catch {
+      if(button?.isConnected) button.showNotification("Could not copy link and QR code", 2800)
+    }
   }
 
-  private renderSharingButton(previewOnly = false) {
-    const link = this.sharingLink
-    const enabled = !previewOnly || Boolean(this.liveSessionActive && this.liveSessionLink)
+  private async sharingQRCodeBlob() {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    await button?.updateComplete
+    const qrCode = button?.shadowRoot?.querySelector<QRCodeElement>("webwriter-qr-code")
+    if(!qrCode) return null
+    await qrCode.updateComplete
+    return qrCode.toBlob()
+  }
+
+  private async copySharingQRCode() {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    try {
+      const blob = await this.sharingQRCodeBlob()
+      if(!blob || !navigator.clipboard?.write || typeof ClipboardItem === "undefined") throw new Error("Clipboard unavailable")
+      await navigator.clipboard.write([new ClipboardItem({[blob.type || "image/png"]: blob})])
+      button?.showNotification("Copied QR code")
+    }
+    catch {
+      button?.showNotification("Could not copy QR code")
+    }
+  }
+
+  private async downloadSharingQRCode() {
+    const button = this.renderRoot.querySelector<RibbonButton>(".session-share")
+    try {
+      const blob = await this.sharingQRCodeBlob()
+      if(!blob) throw new Error("QR export unavailable")
+      const url = URL.createObjectURL(blob)
+      try {
+        const link = document.createElement("a")
+        link.href = url
+        link.download = "webwriter-qr-code.png"
+        link.click()
+      }
+      finally { URL.revokeObjectURL(url) }
+    }
+    catch {
+      button?.showNotification("Could not download QR code")
+    }
+  }
+
+  private renderSharingButton() {
+    const link = this.liveSessionActive ? this.liveSessionLink : ""
     return html`
-      <ribbon-button
-        class="sharing-qr"
-        label="Share"
-        action="Share"
-        variant="qr"
-        .qrValue=${link}
-        .dropdown=${this.renderSharingDropdown(link)}
-        keep-drawer-open
-        dropdown-no-scroll
-        ?disabled=${!enabled}
-        @ribbon-button-click=${this.handleSharingButtonClick}
-        @ribbon-dropdown-open=${() => void this.ensureSharingQRCodeImage(link)}
-      ></ribbon-button>
+      <ribbon-button class="session-share" label="QR" action="QR" icon="QR" compact icon-only variant="reader-sharing"
+        dropdown-on-click
+        .dropdown=${html`<div class="sharing-dropdown" role="group" aria-label="Share">
+          <div class="sharing-qr-group" role="group" aria-label="QR code">
+            <webwriter-qr-code class="sharing-qr-code" .value=${link} .size=${224}></webwriter-qr-code>
+            <div class="sharing-dropdown-actions">
+              <button class="sharing-dropdown-action" type="button" @click=${() => void this.downloadSharingQRCode()}>
+                ${ribbonIcon("FileDownload")}<span>Download QR code</span>
+              </button>
+              <button class="sharing-dropdown-action" type="button" @click=${() => void this.copySharingQRCode()}>
+                ${ribbonIcon("Copy")}<span>Copy QR code</span>
+              </button>
+            </div>
+          </div>
+        </div>`}
+        keep-drawer-open dropdown-no-scroll ?disabled=${!link}
+      >${this.renderReaderLinkField(link, "trailing")}</ribbon-button>
     `
   }
 
   private handleLiveSessionToggle = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement
+    this.readerSharingCopyPending = input.checked
     this.dispatchEvent(new CustomEvent<{enabled: boolean}>("live-session-toggle", {
       detail: {enabled: input.checked},
       bubbles: true,
@@ -2741,53 +2957,44 @@ export class AppRibbon extends EditingControls {
   }
 
   private renderLearnersDrawer() {
-    const enabledCount = this.liveLearners.filter(learner => learner.enabled).length
-    const visibleAvatars = this.liveLearners.filter(learner => learner.enabled).slice(0, 4)
     return html`
-      <ribbon-drawer label="Learners" icon="Plus" layout="learners" expandable>
-        ${this.liveSessionActive ? html`
-          <div class="learners-summary" aria-label=${`${enabledCount} of ${this.liveLearners.length} learners visualized`}>
-            <span class="learners-summary-avatars" aria-hidden="true">
-              ${visibleAvatars.map(learner => html`
-                <span class="learner-avatar" style=${`--learner-color:${learner.color}`}>${learner.initials}</span>
-              `)}
-            </span>
-            <span>${this.liveLearners.length
-              ? `${enabledCount}/${this.liveLearners.length} shown`
-              : "Waiting for learners"}</span>
+      <ribbon-drawer label="Learners" icon="Plus" layout="learners">
+        <div class="reader-sharing-bar" role="group" aria-label="Reader sharing">
+          <label class="live-session-switch">
+            <input type="checkbox" role="switch" aria-label="Share"
+              .checked=${this.liveSessionActive} @change=${this.handleLiveSessionToggle} />
+            <span>Share</span>
+          </label>
+          ${this.renderSharingButton()}
+          <ribbon-button class="reader-link-popup" label="Reader sharing link" icon="Link" compact
+            dropdown-on-click .dropdown=${html`<div class="sharing-dropdown">${this.renderReaderLinkField(this.liveSessionLink)}</div>`}
+            keep-drawer-open dropdown-no-scroll ?disabled=${!this.liveSessionActive || !this.liveSessionLink}></ribbon-button>
+        </div>
+        <div class="reader-learners">
+          ${this.liveSessionActive && !this.liveLearners.length ? html`
+            <div class="learners-summary" role="status">Waiting for participants</div>
+          ` : nothing}
+          <div class="learner-list" role="group" aria-label="Session learners">
+            ${this.liveLearners.map(learner => html`
+              <button
+                class="learner-toggle"
+                type="button"
+                data-learner-id=${learner.id}
+                aria-pressed=${learner.enabled}
+                aria-label=${`${learner.name}, ${learner.connected ? "connected" : "disconnected"}`}
+                title=${learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}
+                @click=${() => this.dispatchEvent(new CustomEvent("live-learner-toggle", {
+                  detail: {id: learner.id, enabled: !learner.enabled},
+                  bubbles: true,
+                  composed: true,
+                }))}
+              >
+                <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})} aria-hidden="true">${learner.initials}</span>
+                <span class="learner-toggle-name">${learner.name}</span>
+                <span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>
+              </button>
+            `)}
           </div>
-        ` : ""}
-        <label class="live-session-switch">
-          <input
-            type="checkbox"
-            role="switch"
-            aria-label="LIVE"
-            .checked=${this.liveSessionActive}
-            @change=${this.handleLiveSessionToggle}
-          />
-          <span>LIVE</span>
-        </label>
-        ${this.renderSharingButton(true)}
-        <div slot="more" class="learner-list" role="group" aria-label="Session learners">
-          ${this.liveLearners.map(learner => html`
-            <button
-              class="learner-toggle"
-              type="button"
-              data-learner-id=${learner.id}
-              aria-pressed=${learner.enabled}
-              aria-label=${`${learner.name}, ${learner.connected ? "connected" : "disconnected"}`}
-              title=${learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}
-              @click=${() => this.dispatchEvent(new CustomEvent("live-learner-toggle", {
-                detail: {id: learner.id, enabled: !learner.enabled},
-                bubbles: true,
-                composed: true,
-              }))}
-            >
-              <span class="learner-avatar" style=${`--learner-color:${learner.color}`} aria-hidden="true">${learner.initials}</span>
-              <span class="learner-toggle-name">${learner.name}</span>
-              <span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>
-            </button>
-          `)}
         </div>
       </ribbon-drawer>
     `
@@ -2795,15 +3002,19 @@ export class AppRibbon extends EditingControls {
 
   protected renderDrawers() {
     if(this.previewActive && this.liveSessionRole !== "learner") {
-      const sharing = menuGroups.File.find(group => group.label === "Sharing")!
-      return [this.renderSharingDrawer(sharing, true), this.renderLearnersDrawer()]
+      return [this.renderLearnersDrawer(), html`
+        <ribbon-drawer label="Sharing" icon="Share" layout="sharing-preview">
+          <ribbon-button class="sharing-action" label="Download" action="Download"
+            .submenu=${fileFormatButtons("download")}></ribbon-button>
+          <ribbon-button class="sharing-action" label="Print" action="Print"></ribbon-button>
+        </ribbon-drawer>
+      `]
     }
     return super.renderDrawers()
   }
 
   protected renderDrawer(drawer: RibbonMenuGroup) {
     if(drawer.label === "File") return this.renderFileDrawer(drawer)
-    if(drawer.label === "Sharing") return this.renderSharingDrawer(drawer)
     if(drawer.label === "Packages") return this.renderPackageDrawer()
     if(drawer.label === "Elements") return this.renderInsertionDrawer(drawer)
     return super.renderDrawer(drawer)
@@ -2814,7 +3025,7 @@ export class AppRibbon extends EditingControls {
       target.matches(
         ".ai-prompt-submit, .ai-chat-brand-button, " +
         ".ai-chat-header-button, .ai-chat-send, .ai-composer-attachment, " +
-        ".ai-attachment-remove, .ai-edit-action",
+        ".ai-attachment-remove, .ai-edit-action, .ai-bar-reply-close",
       )
     ))
     if(aiAction) return true
@@ -2867,9 +3078,10 @@ export class AppRibbon extends EditingControls {
 
   private renderPresence() {
     if(!this.presenceUsers.length) return ""
-    const visibleUsers = this.presenceUsers.slice(0, 3)
+    const visibleUsers = this.presenceUsers.slice(0, 2)
     return html`
       <div
+        slot="icon"
         class="presence-users"
         role="group"
         aria-label="Active collaborators"
@@ -2878,28 +3090,45 @@ export class AppRibbon extends EditingControls {
         ${visibleUsers.map(user => html`
           <span
             class="presence-user"
-            style=${`--presence-color: ${user.color}`}
+            style=${styleMap({"--presence-color": safeCssColor(user.color)})}
             title=${user.name}
             aria-label=${user.name}
           >${user.initials}</span>
         `)}
-        ${this.presenceUsers.length >= 4 ? html`
-          <span
-            class="presence-more"
-            title=${`+ ${this.presenceUsers.length} peers connected`}
-            aria-label=${`+ ${this.presenceUsers.length} peers connected`}
-          >
-            <span class="presence-more-content">
-              <span class="presence-more-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
-              <span class="presence-more-count">${this.presenceUsers.length}</span>
-            </span>
-          </span>
-        ` : ""}
       </div>
     `
   }
 
+  private renderPendingAIEditActions(compact = false) {
+    const pending = this.pendingAIEdit
+    if(!pending) return nothing
+    const buttons = [
+      {label: "Accept", icon: "Accept", kind: "approve", click: this.approveAIEdit},
+      {label: "Go to", icon: "Goto", kind: "goto", click: this.gotoPendingAIEdit},
+      {label: "Reject", icon: "Reject", kind: "reject", click: this.rejectAIEdit},
+    ]
+    return html`<div class=${compact ? "ai-prompt-review-actions" : "ai-edit-actions ai-toolbox-review"} aria-label="Review pending AI change">
+      ${buttons.map(button => html`<button type="button" class=${compact ? "ai-prompt-review-action" : "ai-edit-action"}
+        data-kind=${button.kind} aria-label=${`${button.label} AI change`} title=${button.label}
+        ?disabled=${pending.previewing || pending.deciding} @click=${button.click}>
+        ${ribbonIcon(button.icon)}${compact ? nothing : html`<span>${button.kind === "approve" && pending.deciding ? "Saving…" : button.label}</span>`}
+      </button>`)}
+    </div>`
+  }
+
+  private get aiChatRenderDependencies() {
+    return [this.settings.disableAI, this.previewActive, this.historyState.preview,
+      this.aiChats, this.activeAIChatId, this.aiChatOpen, this.aiBusy, this.aiRequestChatId,
+      this.aiProviders, this.activeAIProvider, this.aiModel, this.aiEffort, this.aiProgress, this.pendingAIEdit]
+  }
+
   private renderAIChat(expanded: boolean) {
+    const requestBusy = this.aiBusy && this.aiRequestChatId === this.activeAIChatId
+    const pending = this.pendingAIEdit?.chatId === this.activeAIChatId ? this.pendingAIEdit : null
+    const waiting = this.aiBusy || Boolean(this.pendingAIEdit)
+    const hasDraft = Boolean(this.aiPrompt.trim() || this.aiAttachments.length)
+    const stopButton = requestBusy && !hasDraft
+    const barThinking = !expanded && !this.aiChatOpen && requestBusy && !pending && !hasDraft
     const activeProvider = this.activeAIProvider
     const selectedModelValue = activeProvider && this.aiModel
       ? JSON.stringify([activeProvider.id, this.aiModel, this.aiEffort])
@@ -2928,13 +3157,13 @@ export class AppRibbon extends EditingControls {
             aria-controls="ai-toolbox-chat"
             @click=${this.toggleAIChat}
           ><span class="ai-chat-brand-icon" aria-hidden="true">${ribbonIcon("AI")}</span></button>
-          <header class="ai-chat-header" ?hidden=${!expanded} ?inert=${!expanded || Boolean(this.pendingAIEdit)}>
+          <header class="ai-chat-header" ?hidden=${!expanded} ?inert=${!expanded}>
             <select
               class="ai-chat-switcher"
               aria-label="Current AI chat"
+              title=${this.activeAIChat?.title ?? "Current AI chat"}
               data-ribbon-input-persistent
               .value=${this.activeAIChatId}
-              ?disabled=${this.aiBusy}
               @change=${this.switchAIChat}
             >${this.aiChats.map(chat => html`
               <option value=${chat.id}>${chat.title}</option>
@@ -2944,7 +3173,6 @@ export class AppRibbon extends EditingControls {
               type="button"
               aria-label="New chat"
               title="New chat"
-              ?disabled=${this.aiBusy}
               @click=${this.startNewAIChat}
             >
               <span class="ai-chat-new-icon" aria-hidden="true">${ribbonIcon("Plus")}</span>
@@ -2955,11 +3183,11 @@ export class AppRibbon extends EditingControls {
               type="button"
               aria-label="AI settings"
               title="AI settings"
-              ?disabled=${Boolean(this.pendingAIEdit)}
+              ?disabled=${Boolean(pending)}
               @click=${this.showAISettings}
             ><span class="ai-chat-settings-icon" aria-hidden="true">${ribbonIcon("AISettings")}</span></button>
           </header>
-          <div
+          ${when(expanded, () => html`<div
             class="ai-chat-messages"
             ?hidden=${!expanded}
             role="log"
@@ -2968,9 +3196,9 @@ export class AppRibbon extends EditingControls {
             ?inert=${!expanded}
           >
             ${this.activeAIChat?.messages.length ? this.activeAIChat.messages.map(message => html`
-              <article class="ai-chat-message" data-role=${message.role}>
-                <span class="ai-chat-message-role">${message.role === "user" ? "You" : message.role === "assistant" ? "AI" : "Document change"}</span>
-                ${message.content}
+              <article class="ai-chat-message" data-role=${message.role} data-edit-phase=${message.edit?.decision ?? nothing}>
+                <span class="ai-chat-message-role">${message.role === "user" ? message.queueState === "queued" ? "You · Queued" : message.queueState === "cancelled" ? "You · Cancelled" : "You" : message.role === "assistant" ? "AI" : "Document change"}</span>
+                <div class="ai-chat-message-content">${message.content}</div>
                 ${message.attachments?.length ? html`
                   <div class="ai-message-attachments" aria-label="Attachments">
                     ${message.attachments.map(attachment => html`
@@ -2978,9 +3206,8 @@ export class AppRibbon extends EditingControls {
                     `)}
                   </div>
                 ` : ""}
-                ${message.edit ? html`
+                ${message.edit?.decision === "accepted" ? html`
                   <div class="ai-edit-actions" aria-label="Document change actions">
-                    ${message.edit.decision === "accepted" ? html`
                       <button
                         class="ai-edit-action"
                         type="button"
@@ -2994,38 +3221,27 @@ export class AppRibbon extends EditingControls {
                         ?disabled=${message.edit.busy || Boolean(this.pendingAIEdit)}
                         @click=${() => this.undoProtocolAIEdit(message.id, message.edit!)}
                       >${ribbonIcon("Undo")}<span>${message.edit.busy ? "Undoing…" : "Undo change"}</span></button>
-                    ` : ""}
                   </div>
                 ` : ""}
               </article>
             `) : html`<div class="ai-chat-empty">${this.aiProviders.length
               ? "Start a conversation with your AI model."
               : "Open AI settings to connect a provider."}</div>`}
-            ${this.pendingAIEdit?.chatId === this.activeAIChatId ? html`
-              <section class="ai-edit-approval" aria-label="Proposed document edit">
-                <strong>${this.pendingAIEdit.previewing ? "Preparing document preview…" : "Review document change"}</strong>
-                <span>${this.pendingAIEdit.summary}</span>
-                <div class="ai-edit-actions">
-                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}<span>Reject</span></button>
-                  <button class="ai-edit-action" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}<span>Go to</span></button>
-                  <button class="ai-edit-action" data-kind="approve" type="button" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>
-                    ${ribbonIcon("Accept")}<span>${this.pendingAIEdit.deciding ? "Saving…" : "Accept"}</span>
-                  </button>
-                </div>
-              </section>
-            ` : ""}
-            ${this.aiBusy && !this.pendingAIEdit ? html`<div class="ai-chat-working" role="status">${this.aiProgress}</div>` : ""}
+            ${requestBusy && !pending ? html`<div class="ai-chat-working" role="status"><span title=${this.aiProgress}>Thinking...</span></div>` : ""}
             ${this.aiError ? html`<div class="ai-chat-error" role="alert">${this.aiError}</div>` : ""}
           </div>
+          `)}
           <form
             class="ai-chat-composer"
-            ?inert=${Boolean(this.pendingAIEdit) && expanded}
+            ?data-review=${Boolean(pending) && expanded}
             @submit=${this.submitAIPrompt}
           >
+            ${pending && expanded ? this.renderPendingAIEditActions() : html`
             <div
               class="ai-composer-surface"
+              ?data-thinking=${barThinking}
               ?data-has-attachments=${this.aiAttachments.length > 0}
-              ?data-review-pending=${Boolean(this.pendingAIEdit) && !expanded}
+              ?data-review-pending=${Boolean(pending) && !expanded}
             >
               ${this.aiAttachments.length ? html`
                 <div class="ai-pending-attachments" aria-label="Pending attachments">
@@ -3045,15 +3261,17 @@ export class AppRibbon extends EditingControls {
               <textarea
                 class="ai-prompt-input ai-chat-input"
                 aria-label=${expanded ? "Chat message" : "AI prompt"}
-                placeholder=${this.pendingAIEdit ? "Accept or reject the document change…" : expanded ? "Message AI…" : "Ask AI…"}
+                placeholder=${pending ? "Accept or reject the document change…" : expanded ? "Message AI…" : "Ask AI…"}
                 .rows=${expanded ? 3 : 1}
                 autocomplete="off"
                 data-ribbon-input-persistent
                 .value=${this.aiPrompt}
-                ?disabled=${Boolean(this.pendingAIEdit)}
+                ?disabled=${Boolean(pending)}
+                title=${barThinking ? this.aiProgress : ""}
                 @input=${this.updateAIPrompt}
                 @keydown=${this.handleAIChatPromptKeydown}
               ></textarea>
+              ${barThinking ? html`<span class="ai-bar-status" role="status" title=${this.aiProgress}>Thinking...</span>` : nothing}
               <input
                 class="ai-attachment-input"
                 type="file"
@@ -3067,7 +3285,7 @@ export class AppRibbon extends EditingControls {
                   type="button"
                   aria-label="Add attachments"
                   title="Attachments"
-                  ?disabled=${this.aiBusy}
+                  ?disabled=${Boolean(pending)}
                   @click=${this.chooseAIAttachments}
                 ><span class="ai-composer-attachment-icon" aria-hidden="true">${ribbonIcon("Attachment")}</span></button>
                 <div class="ai-composer-selects">
@@ -3099,35 +3317,50 @@ export class AppRibbon extends EditingControls {
                   </div>
                 </div>
               </div>
-              ${this.pendingAIEdit && !expanded ? html`
-                <div class="ai-prompt-review-actions" aria-label="Review pending AI change">
-                  <button class="ai-prompt-review-action" type="button" aria-label="Reject AI change" title="Reject" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.rejectAIEdit}>${ribbonIcon("Reject")}</button>
-                  <button class="ai-prompt-review-action" type="button" aria-label="Go to AI change" title="Go to change" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.gotoPendingAIEdit}>${ribbonIcon("Goto")}</button>
-                  <button class="ai-prompt-review-action" data-kind="approve" type="button" aria-label="Accept AI change" title="Accept" ?disabled=${this.pendingAIEdit.previewing || this.pendingAIEdit.deciding} @click=${this.approveAIEdit}>${ribbonIcon("Accept")}</button>
-                </div>
-              ` : html`
+              ${pending && !expanded ? this.renderPendingAIEditActions(true) : html`
                 <button
                   class="ai-prompt-submit ai-chat-send"
                   type="button"
-                  aria-label=${this.aiBusy ? "Stop AI request" : expanded ? "Send chat message" : "Enter AI prompt"}
-                  title=${this.aiBusy ? "Stop" : expanded ? "Send" : "Enter"}
-                  ?data-busy=${this.aiBusy}
-                  ?disabled=${Boolean(this.pendingAIEdit) || !this.aiBusy && !this.aiPrompt.trim() && this.aiAttachments.length === 0}
-                  @click=${(event: MouseEvent) => this.aiBusy
+                  aria-label=${stopButton ? "Stop AI request" : waiting ? "Queue chat message" : expanded ? "Send chat message" : "Enter AI prompt"}
+                  title=${stopButton ? "Stop" : waiting ? "Queue" : expanded ? "Send" : "Enter"}
+                  ?data-busy=${stopButton}
+                  ?disabled=${Boolean(pending) || !stopButton && !hasDraft}
+                  @click=${(event: MouseEvent) => stopButton
                     ? this.stopAIRequest()
                     : (event.currentTarget as HTMLButtonElement).form?.requestSubmit()}
-                >${this.aiBusy ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
+                >${stopButton ? html`<span class="ai-stop-icon" aria-hidden="true"></span>` : ribbonIcon("AIPromptSubmit")}</button>
               `}
             </div>
+            `}
           </form>
         </section>
+        ${!expanded && !this.aiChatOpen && !this.previewActive && !requestBusy && !pending
+          && (this.aiError || this.latestAIBarReply && this.latestAIBarReply.id !== this.dismissedAIBarReplyId)
+          ? html`<aside class="ai-bar-reply" popover="manual" role=${this.aiError ? "alert" : "status"} aria-label=${this.aiError ? "AI error" : "AI reply"}>
+            <button type="button" class="ai-bar-reply-close" aria-label="Dismiss AI reply" title="Dismiss" @click=${this.dismissAIBarReply}>×</button>
+            <div class="ai-bar-reply-content">${this.aiError || this.latestAIBarReply?.content}</div>
+          </aside>` : nothing}
     `
   }
 
-  render() {
+  private fileMenuGroups(): RibbonMenuGroup[] {
     const configuredFileMenu = menuGroups.File.find(group => group.label === "File")!
-    const fileMenu = {...configuredFileMenu, buttons: [...configuredFileMenu.buttons,
-      ...(this.settings.activeCloudServiceId ? [{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: fileFormatButtons("download")}] : [])]}
+    const fileMenu = {...configuredFileMenu, buttons: [...this.fileButtonsForStorage(configuredFileMenu.buttons.filter(button => (typeof button === "string" ? button : button.label) !== "Print")),
+      ...(this.settings.activeCloudServiceId ? [{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: fileFormatButtons("download")}] : []), "Print"]}
+    return [
+      {...fileMenu, buttons: fileMenu.buttons.map(button =>
+        (typeof button === "string" ? button : button.label) === "Open"
+          ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
+      ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
+      {label: "Settings", buttons: [
+        ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
+        {label: "Settings", warning: this.cloudSessionWarning},
+      ]},
+      {label: "About", buttons: [{label: "About WebWriter...", icon: "About", action: "about-webwriter"}]},
+    ]
+  }
+
+  render() {
     const visibleTabs = this.previewActive ? ["File"] : menuTabs
     const aiReviewPending = Boolean(this.pendingAIEdit)
     const historyPreviewPending = this.historyState.preview !== null
@@ -3145,15 +3378,16 @@ export class AppRibbon extends EditingControls {
         @ribbon-icon-hover=${this.handleRibbonIconHover}
         @ribbon-drawer-state-change=${this.handleRibbonDrawerState}
       >
-        <div class="ribbon-top">
+        <div class="ribbon-top" ?data-app-menu-tab=${this.heightConstrained && this.menuOpen}>
           <button
             class="brand"
             type="button"
-            aria-controls="ribbon-content"
-            aria-expanded=${this.expanded}
+            aria-controls=${this.heightConstrained ? "ribbon-file-menu" : "ribbon-content"}
+            aria-expanded=${this.heightConstrained ? this.menuOpen : this.expanded}
+            aria-haspopup=${this.heightConstrained ? "menu" : nothing}
             ?disabled=${!this.previewActive && (this.previewTransitioning || aiReviewPending)}
-            aria-label=${this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
-            title=${this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            aria-label=${this.heightConstrained ? this.menuOpen ? "Close File menu" : "Open File menu" : this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
+            title=${this.heightConstrained ? this.menuOpen ? "Close File menu" : "Open File menu" : this.previewActive ? "Return to editing" : this.expanded ? "Collapse ribbon" : "Expand ribbon"}
             @click=${this.toggleExpanded}
           >
             ${this.logoUrl ? html`<img class="brand-logo" src=${this.logoUrl} alt="WebWriter" />` : ""}
@@ -3181,20 +3415,21 @@ export class AppRibbon extends EditingControls {
                     <ribbon-button
                       class="file-quick-action file-share-action"
                       variant="tab"
-                      label="Share"
-                      action="Share"
+                      label="Collaboration"
+                      icon="UserShare"
+                      action="Collaboration"
                       compact
                       dropdown-on-click
                       lazy-dropdown
                       dropdown-no-scroll
-                      ?disabled=${this.previewActive && !(this.liveSessionActive && this.liveSessionLink)}
-                      .qrValue=${this.sharingLink}
-                      .dropdown=${this.renderSharingDropdown(this.sharingLink)}
+                      ?custom-icon=${this.presenceUsers.length > 0}
+                      ?disabled=${this.previewActive || historyPreviewPending}
+                      .dropdown=${this.renderSharingDropdown(this.collaborationLink)}
                       @ribbon-dropdown-open=${() => {
                         this.menuOpen = false
-                        void this.ensureSharingQRCodeImage(this.sharingLink)
+                        this.dispatchEvent(new CustomEvent("collaboration-menu-open", {bubbles: true, composed: true}))
                       }}
-                    ></ribbon-button>
+                    >${this.renderPresence()}</ribbon-button>
                   </div>
                 ` : ""}
               `)}
@@ -3214,7 +3449,7 @@ export class AppRibbon extends EditingControls {
               : void this.showRibbonDialog("settings")}
           >${this.backendState === "connected" ? this.backendClient?.session.kind === "webwriter-dev-server" ? "Local dev" : "Cloud"
             : this.backendState === "probing" ? "Connecting…" : "Sign in"}</button>
-          ${this.renderPresence()}
+
           <div class="ribbon-top-actions">
             ${this.previewActive ? "" : html`
               <div class="history-controls" role="group" aria-label="Undo and redo">
@@ -3223,7 +3458,7 @@ export class AppRibbon extends EditingControls {
                   type="button"
                   aria-label="Undo"
                   title="Undo"
-                  ?disabled=${aiReviewPending || historyPreviewPending}
+                  ?disabled=${!this.undoState.canUndo || aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Undo")}
                 >
                   <span class="history-icon" aria-hidden="true">${ribbonIcon("Undo")}</span>
@@ -3233,7 +3468,7 @@ export class AppRibbon extends EditingControls {
                   type="button"
                   aria-label="Redo"
                   title="Redo"
-                  ?disabled=${aiReviewPending || historyPreviewPending}
+                  ?disabled=${!this.undoState.canRedo || aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Redo")}
                 >
                   <span class="history-icon" aria-hidden="true">${ribbonIcon("Redo")}</span>
@@ -3254,21 +3489,11 @@ export class AppRibbon extends EditingControls {
             </button>
           </div>
         </div>
-        ${this.settings.disableAI ? nothing : this.renderAIChat(false)}
-        <ai-settings-dialog .store=${this.aiProviderStore}></ai-settings-dialog>
+        ${guard(this.aiChatRenderDependencies, () => when(!this.settings.disableAI, () => this.renderAIChat(false)))}
         ${this.renderDocumentDialogs()}
         <ribbon-menu
-          .groups=${[
-            {...fileMenu, buttons: fileMenu.buttons.map(button =>
-              (typeof button === "string" ? button : button.label) === "Open"
-                ? {...(typeof button === "string" ? {label: button} : button), submenu: this.recentDocumentButtons} : button)},
-            ...(!this.expanded && !this.previewActive ? this.collapsedEditingMenuGroups() : []),
-            {label: "Settings", buttons: [
-              ...(!this.previewActive ? [{label: this.breadcrumbVisible ? "Hide breadcrumb" : "Show breadcrumb", icon: this.breadcrumbVisible ? "Hidden" : "Visible", action: "toggle-breadcrumb"}] : []),
-              ...(!this.previewActive || this.settings.pinDeveloperConsole ? [{label: "Developer console", icon: "Develop", action: "show-developer-console"}] : []),
-              {label: "Settings", warning: this.cloudSessionWarning},
-            ]},
-          ]}
+          id="ribbon-file-menu"
+          .groups=${when(this.menuOpen, () => this.fileMenuGroups(), () => noChange)}
           @ribbon-button-click=${this.handleFileMenuAction}
           @keydown=${(event: KeyboardEvent) => {
             if(event.key !== "Escape") return

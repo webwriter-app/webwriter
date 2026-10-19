@@ -87,6 +87,37 @@ describe("AIProviderStore", () => {
     expect(store.activeProviderId).toBeNull()
   })
 
+  it("preserves the selected provider when saving another provider's card", async () => {
+    const store = new AIProviderStore(localStorage)
+    const first = store.upsert({...createAIProvider("custom"), name: "First"})
+    const second = store.upsert({...createAIProvider("custom"), name: "Second"})
+    await store.save({...first, name: "Updated first"}, undefined, false)
+    expect(store.activeProviderId).toBe(second.id)
+    expect(store.provider(first.id)!.name).toBe("Updated first")
+    expect(new AIProviderStore(localStorage).activeProviderId).toBe(second.id)
+  })
+
+  it("does not override a newer radio selection when a backend card save completes", async () => {
+    const first = {...createAIProvider("custom"), id: "first", managed: "backend" as const}
+    const second = {...createAIProvider("custom"), id: "second", managed: "backend" as const}
+    const saved = deferred<{provider: typeof first, activeProviderId: string}>()
+    const backend = {
+      listAIProviders: async () => ({providers: [first, second], activeProviderId: first.id}),
+      createAIProvider: async () => ({provider: first, activeProviderId: first.id}),
+      updateAIProvider: async () => saved.promise,
+      deleteAIProvider: async () => undefined,
+      setActiveAIProvider: async () => undefined,
+    }
+    const store = new AIProviderStore(null)
+    await store.connectBackend(backend)
+    const saving = store.save({...first, name: "Updated first"}, undefined, false)
+    await store.activate(second.id)
+    saved.resolve({provider: {...first, name: "Updated first"}, activeProviderId: first.id})
+    await saving
+    expect(store.activeProviderId).toBe(second.id)
+    expect(store.provider(first.id)!.name).toBe("Updated first")
+  })
+
   it("uses backend provider management without copying credentials into browser storage", async () => {
     const provider = {
       ...createAIProvider("openai"),
@@ -130,6 +161,96 @@ describe("AIProviderStore", () => {
 
     await expect(store.activate(second.id)).rejects.toThrow("backend unavailable")
     expect(store.activeProviderId).toBe(first.id)
+  })
+
+  it("serializes backend activation so the latest provider remains active", async () => {
+    const first = {...createAIProvider("openai"), id: "first", managed: "backend" as const}
+    const second = {...createAIProvider("custom"), id: "second", managed: "backend" as const}
+    const firstRequest = deferred<void>()
+    const secondRequest = deferred<void>()
+    const requests = new Map([[first.id, firstRequest], [second.id, secondRequest]])
+    const started: string[] = []
+    let backendActiveId = "first"
+    const backend = {
+      listAIProviders: async () => ({providers: [first, second], activeProviderId: first.id}),
+      createAIProvider: async () => ({provider: first, activeProviderId: first.id}),
+      updateAIProvider: async () => ({provider: first, activeProviderId: first.id}),
+      deleteAIProvider: async () => undefined,
+      setActiveAIProvider: async (id: string) => {
+        started.push(id)
+        await requests.get(id)!.promise
+        backendActiveId = id
+      },
+    }
+    const store = new AIProviderStore(localStorage)
+    await store.connectBackend(backend)
+
+    const activatingFirst = store.activate(first.id)
+    await Promise.resolve()
+    expect(started).toEqual([first.id])
+    const activatingSecond = store.activate(second.id)
+    expect(started).toEqual([first.id])
+
+    firstRequest.resolve()
+    await activatingFirst
+    expect(started).toEqual([first.id, second.id])
+    secondRequest.resolve()
+    await activatingSecond
+
+    expect(backendActiveId).toBe(second.id)
+    expect(store.activeProviderId).toBe(second.id)
+  })
+
+  it("does not let a pending activation on a disconnected backend block a new backend", async () => {
+    const firstA = {...createAIProvider("openai"), id: "backend-a-first", managed: "backend" as const}
+    const secondA = {...createAIProvider("custom"), id: "backend-a-second", managed: "backend" as const}
+    const pendingA = deferred<void>()
+    let startedA = false
+    let activeA = firstA.id
+    const backendA = {
+      listAIProviders: async () => ({providers: [firstA, secondA], activeProviderId: firstA.id}),
+      createAIProvider: async () => ({provider: firstA, activeProviderId: firstA.id}),
+      updateAIProvider: async () => ({provider: firstA, activeProviderId: firstA.id}),
+      deleteAIProvider: async () => undefined,
+      setActiveAIProvider: async (id: string) => {
+        startedA = true
+        await pendingA.promise
+        activeA = id
+      },
+    }
+    const firstB = {...createAIProvider("openai"), id: "backend-b-first", managed: "backend" as const}
+    const secondB = {...createAIProvider("custom"), id: "backend-b-second", managed: "backend" as const}
+    let activeB = firstB.id
+    const backendB = {
+      listAIProviders: async () => ({providers: [firstB, secondB], activeProviderId: firstB.id}),
+      createAIProvider: async () => ({provider: firstB, activeProviderId: firstB.id}),
+      updateAIProvider: async () => ({provider: firstB, activeProviderId: firstB.id}),
+      deleteAIProvider: async () => undefined,
+      setActiveAIProvider: async (id: string) => { activeB = id },
+    }
+    const store = new AIProviderStore(localStorage)
+    await store.connectBackend(backendA)
+
+    const activatingA = store.activate(secondA.id)
+    await Promise.resolve()
+    expect(startedA).toBe(true)
+
+    store.disconnectBackend()
+    await store.connectBackend(backendB)
+    const activatingB = store.activate(secondB.id)
+    const completedWithoutA = await Promise.race([
+      activatingB.then(() => true),
+      new Promise<boolean>(resolve => setTimeout(() => resolve(false), 100)),
+    ])
+    expect(completedWithoutA).toBe(true)
+    expect(activeB).toBe(secondB.id)
+    expect(store.activeProviderId).toBe(secondB.id)
+
+    pendingA.resolve()
+    await activatingA
+    expect(activeA).toBe(secondA.id)
+    expect(activeB).toBe(secondB.id)
+    expect(store.activeProviderId).toBe(secondB.id)
   })
 
   it("ignores a backend save result after that backend disconnects", async () => {

@@ -2,12 +2,13 @@
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import {ElementAttributeEditor} from "./element-attribute-editor"
-import {deliberatelyUnsupportedElementNames, elementEditingLimitation} from "../element-attributes"
+import {deliberatelyUnsupportedElementNames, elementEditingLimitation, elementAttributeState} from "../element-attributes"
 
 beforeEach(() => document.body.replaceChildren())
 
 async function mount(localName = "details", attributes: Record<string, string> = {}) {
   const editor = new ElementAttributeEditor()
+  editor.showOtherAttributes = true
   editor.state = {
     path: [0],
     localName,
@@ -21,6 +22,22 @@ async function mount(localName = "details", attributes: Record<string, string> =
 }
 
 describe("element attribute editor", () => {
+  it("carries the captured element identity through attribute changes", async () => {
+    const editor = await mount()
+    const target = document.createElement("details")
+    editor.state = elementAttributeState(target, [0])
+    await editor.updateComplete
+    const listener = vi.fn()
+    editor.addEventListener("element-attribute-change", listener)
+    const field = editor.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Details: ID"]')!
+    field.value = "changed"
+    field.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
+      targetId: editor.state.targetId, name: "id", value: "changed",
+    })}))
+    expect(target.attributes).toHaveLength(0)
+  })
+
   it("keeps only Language visible and opens other attributes with the vertical ellipsis", async () => {
     const editor = await mount("details", {id: "faq", open: ""})
     const root = editor.shadowRoot!
@@ -37,6 +54,9 @@ describe("element attribute editor", () => {
 
     trigger.click()
     expect(dialog.open).toBe(true)
+    const close = dialog.querySelector<HTMLButtonElement>('[aria-label="Close attributes"]')!
+    expect(close.textContent?.trim()).toBe("")
+    expect(close.querySelector("svg")).not.toBeNull()
     expect(dialog.getAttribute("aria-labelledby")).toBe("attributes-heading")
     const listener = vi.fn()
     editor.addEventListener("element-attribute-change", listener)
@@ -181,10 +201,21 @@ describe("element attribute editor", () => {
     ])
     expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
     expect(buttons.find(button => button.getAttribute("aria-pressed") === "true")?.getAttribute("aria-label")).toBe("a, b, c")
+    expect(group.hasAttribute("data-default")).toBe(false)
+  })
+
+  it("marks an absent enumeration type as the default choice", async () => {
+    const editor = await mount("ol")
+    editor.expanded = true
+    await editor.updateComplete
+    const group = editor.shadowRoot!.querySelector<HTMLElement>('[aria-labelledby="attribute-label-type"]')!
+    expect(group.hasAttribute("data-default")).toBe(true)
+    expect(group.querySelector('[aria-label="Default"]')!.getAttribute("aria-pressed")).toBe("true")
   })
 
   it("shows disabled global attributes without a selected element", async () => {
     const editor = new ElementAttributeEditor()
+    editor.showOtherAttributes = true
     editor.disabled = true
     document.body.append(editor)
     await editor.updateComplete
@@ -396,3 +427,15 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector('[aria-label="Rename controls"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector('[aria-label="Rename data-credit"]')).not.toBeNull()
   })
+
+
+it("omits the other-attributes dialog and trigger by default while keeping Language", async () => {
+  const editor = new ElementAttributeEditor()
+  editor.state = {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", attributes: {lang: "en", id: "intro"}}
+  document.body.append(editor)
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector("dialog")).toBeNull()
+  expect(editor.shadowRoot!.querySelector('[aria-label="Other attributes"]')).toBeNull()
+  expect(editor.shadowRoot!.querySelector('[aria-label="Paragraph: Language"]')).not.toBeNull()
+  expect(editor.state.attributes).toEqual({lang: "en", id: "intro"})
+})

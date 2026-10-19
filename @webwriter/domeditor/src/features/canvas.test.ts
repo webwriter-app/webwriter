@@ -47,6 +47,22 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it("gives native details a white background in editing and saved canvas layouts", () => {
+    document.body.innerHTML = '<details><summary>Closed</summary></details><article><details open><summary>Nested</summary><p>Content</p></details></article><details style="background-color: pink"><summary>Authored</summary></details><details is="custom-details"><summary>Widget</summary></details>'
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    const [closed, nested, authored, widget] = document.querySelectorAll("details")
+    const check = () => {
+      for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).toBe("white")
+      expect(getComputedStyle(authored).backgroundColor).toBe("pink")
+      expect(getComputedStyle(widget).backgroundColor).not.toBe("white")
+    }
+    check()
+    editor.features.canvas.disable()
+    check()
+    expect(editor.setDocumentLayout("document", "canvas")).toBe(true)
+    for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).not.toBe("white")
+  })
+
   it.each(["text", "root"])("keeps the canvas camera still when Backspace deletes %s", async kind => {
     document.body.innerHTML = "<p>Text</p><p>Neighbor</p>"
     expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
@@ -239,6 +255,14 @@ describe("canvas document layout", () => {
       else expect(canvas.emptyParagraph()).toBeNull()
       expect(canvas.getState().mode).toBe("document")
     }
+  })
+
+  it("recognizes an empty paragraph alongside bootstrap and metadata elements", () => {
+    document.body.innerHTML = '<p></p><script class="◆editor-only" type="module"></script><style></style>'
+    const paragraph = document.body.querySelector("p")!
+    expect(editor.features.canvas.emptyParagraph()).toBe(paragraph)
+    paragraph.textContent = "Authored content"
+    expect(editor.features.canvas.emptyParagraph()).toBeNull()
   })
 
   it("rechecks a stale startCanvas request against current DOM", () => {
@@ -446,6 +470,63 @@ describe("canvas document layout", () => {
     expect(inserted.style.width).toBe("")
   })
 
+  it.each(["p", "h2", "details", "table", "widget", "table-command", "media-command", "details-command", "list-command", "graphic-command"])("centers clicked %s insertion in the current panned and zoomed view", tag => {
+    document.body.innerHTML = '<p>Existing content</p>'
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const canvas = editor.features.canvas, existing = document.body.firstElementChild as HTMLElement
+    const slot = editor.appendix.querySelector("slot")!
+    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    mockGeometry(slot, makeRect(-1700, -900, 0, 0))
+    const camera = slot.style.transform
+    Object.assign(existing.style, {left: "-5000px", top: "-4000px"})
+    const original = existing.outerHTML
+    $.move(existing.firstChild!, 3)
+    function geometry(this: HTMLElement | SVGSVGElement) {
+      if(this.parentElement !== document.body) return makeRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0)
+      const width = parseFloat(this.style.width) || 180, height = this.localName.includes("-") ? 460 : 84
+      // Include offsets from authored margins and transforms as well as the camera.
+      return makeRect(-1700 + ((parseFloat(this.style.left) || 0) + 19) * canvas.zoom,
+        -900 + ((parseFloat(this.style.top) || 0) - 13) * canvas.zoom, width * canvas.zoom, height * canvas.zoom)
+    }
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(geometry)
+    vi.spyOn(SVGSVGElement.prototype, "getBoundingClientRect").mockImplementation(geometry)
+    if(tag === "widget") {
+      editor.schema.extendWidgets([{tagName: "centered-canvas-widget", editingConfig: {}}])
+      editor.features.selection.withoutSelectionScroll(() => editor.features.selection.captureElement(existing))
+      editor.features.manipulation.actions.insert({type: "insert", html: '<centered-canvas-widget style="width:540px"></centered-canvas-widget>'})
+    }
+    else if(tag === "table-command") editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
+    else if(tag === "media-command") editor.features.media.actions.insertMedia({type: "insertMedia", media: "picture"})
+    else if(tag === "details-command") editor.features.list.actions.insertDetails({type: "insertDetails"})
+    else if(tag === "list-command") editor.features.list.insertList("ul")
+    else if(tag === "graphic-command") editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    else editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+    const inserted = document.body.lastElementChild as HTMLElement
+    expect(inserted).not.toBe(existing)
+    expect(inserted.parentElement).toBe(document.body)
+    expect(existing.outerHTML).toBe(original)
+    const rect = inserted.getBoundingClientRect()
+    expect(rect.left + rect.width / 2).toBeCloseTo(window.innerWidth / 2)
+    expect(rect.top + rect.height / 2).toBeCloseTo(window.innerHeight / 2)
+    expect(slot.style.transform).toBe(camera)
+    if(tag === "widget") expect(inserted.style.width).toBe("540px")
+    if(tag === "p") expect(inserted.style.width).toBe("")
+  })
+
+  it("centers click insertion without requiring a retained selection and undoes placement with insertion", () => {
+    document.body.innerHTML = '<p>Keep</p>'
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    document.getSelection()!.removeAllRanges()
+    editor.doc.syncFromDOM()
+    const before = editor.toHTML(true)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "details"})
+    const after = editor.toHTML(true)
+    expect(document.body.querySelector("details")).not.toBeNull()
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
+  })
+
   it("only creates a paragraph when a double click is outside existing canvas items", () => {
     document.body.innerHTML = "<section><p>Existing text</p></section><custom-widget></custom-widget>"
     editor.doc.syncFromDOM()
@@ -579,18 +660,38 @@ describe("canvas document layout", () => {
     expect(document.body.children).toHaveLength(2)
   })
 
-  it("keeps centered items still and uses the pointer for items spanning both canvas edges", () => {
+  it.each(["left", "right", "top", "bottom", "oversized"])("does not autoscroll for a canvas item at %s while the pointer is away from the edge", edge => {
     const canvas = editor.features.canvas
     canvas.actions.startCanvas({type: "startCanvas"})
     const slot = editor.appendix.querySelector("slot")!
     const initial = slot.style.transform
     const center = {x: window.innerWidth / 2, y: window.innerHeight / 2}
-    expect(canvas.panAtEdge(center, makeRect(center.x - 50, center.y - 50, 100, 100))).toBe(false)
-    const oversized = makeRect(-100, -100, window.innerWidth + 200, window.innerHeight + 200)
-    expect(canvas.panAtEdge(center, oversized)).toBe(false)
+    const rect = edge === "oversized" ? makeRect(-100, -100, window.innerWidth + 200, window.innerHeight + 200)
+      : makeRect(edge === "left" ? -10 : edge === "right" ? window.innerWidth - 50 : center.x - 50,
+        edge === "top" ? -10 : edge === "bottom" ? window.innerHeight - 50 : center.y - 50, 100, 100)
+    mockGeometry(document.body.firstElementChild!, rect)
+    expect(canvas.panAtEdge(center)).toBe(false)
+    expect(canvas.panAtEdge({x: 32, y: 32})).toBe(false)
+    expect(canvas.panAtEdge({x: window.innerWidth - 32, y: window.innerHeight - 32})).toBe(false)
     expect(slot.style.transform).toBe(initial)
-    expect(canvas.panAtEdge({x: window.innerWidth - 1, y: center.y}, oversized)).toBe(true)
-    expect(slot.style.transform).not.toBe(initial)
+  })
+
+  it.each(["left", "right", "top", "bottom"])("autoscrolls toward the %s edge only while the pointer is near it", edge => {
+    const canvas = editor.features.canvas
+    canvas.actions.startCanvas({type: "startCanvas"})
+    const slot = editor.appendix.querySelector("slot")!
+    const initial = new DOMMatrix(slot.style.transform)
+    const center = {x: window.innerWidth / 2, y: window.innerHeight / 2}
+    mockGeometry(document.body.firstElementChild!, makeRect(center.x - 50, center.y - 50, 100, 100))
+    const point = {x: edge === "left" ? 31 : edge === "right" ? window.innerWidth - 31 : center.x,
+      y: edge === "top" ? 31 : edge === "bottom" ? window.innerHeight - 31 : center.y}
+    expect(canvas.panAtEdge(point)).toBe(true)
+    const after = new DOMMatrix(slot.style.transform)
+    expect(after.e - initial.e).toBeCloseTo(edge === "left" ? 1 / 3 : edge === "right" ? -1 / 3 : 0)
+    expect(after.f - initial.f).toBeCloseTo(edge === "top" ? 1 / 3 : edge === "bottom" ? -1 / 3 : 0)
+    const stopped = slot.style.transform
+    expect(canvas.panAtEdge(center)).toBe(false)
+    expect(slot.style.transform).toBe(stopped)
   })
 
   it("keeps spaces as text input and returns irregular canvas content to document flow", () => {

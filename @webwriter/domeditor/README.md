@@ -6,17 +6,55 @@ Run the editor and its localhost backend together:
 npm start
 ```
 
+Open the landing page at `http://127.0.0.1:1234/`, the editor at `http://127.0.0.1:1234/editor/`, or the documentation at `http://127.0.0.1:1234/docs/`.
+
 The server listens on `http://127.0.0.1:1234` and refuses non-loopback bind addresses. It has no authentication and must never be exposed to a network. The editor probes `/api/session`, automatically signs in to this no-auth development session, and uses server documents and server-managed AI providers by default. Click **Local dev** in the ribbon to open the admin dashboard, or visit `http://127.0.0.1:1234/admin`.
 
 Editor and preview iframes use the paired `localhost` origin in development. The app at `127.0.0.1` and the frames at `localhost` share the port but have different origins. For a deployed build, serve the same static files at a dedicated editor origin and set `VITE_APP_ORIGIN` and `VITE_EDITOR_ORIGIN` to the two exact HTTPS origins when building. The frame origin must serve `frame-shell.html`, `local-package-service-worker.js`, and the generated `assets/` files. Collaboration servers and widget asset hosts must also accept requests from the editor origin. Keep it separate from the application origin; the frames require both `allow-scripts` and `allow-same-origin` for native editing and widget support.
 
 Data is stored in the ignored `.webwriter-dev/` directory. Provider files have owner-only permissions, but API keys are still stored as plaintext development secrets. `OPENAI_API_KEY` can instead be set in `.env.local`; it creates an OpenAI provider whose key stays in the environment.
 
+## Static multipage build
+
+```sh
+npm run build
+npm run preview
+```
+
+The build produces `dist/` with independent landing (`/`), Widgets (`/gallery/`), documentation (`/docs/`), and editor (`/editor/`) pages. Serve directory indexes normally and return 404 for missing pages; no SPA fallback or documentation server is required. The preview server binds only to `127.0.0.1`.
+
+Documentation uses the same Markdown renderer as development. The build emits highlighted HTML, navigation, styles, icons, original example downloads, and bundled live previews. Lit uses the default `.html` pages; the other library choices have `.vanilla.html`, `.react.html`, `.vue.html`, `.angular.html`, and `.svelte.html` variants. The library selector preserves the current page and fragment. Existing `?library=` links to generated pages select the corresponding variant.
+
+Keep the build base at `/`: moving the application entry to `/editor/` does not move `frame-shell.html`, frame entry assets, the service worker, or `/api/` endpoints. Deploy the frame files on the separate origin described above and configure the existing backend separately. The local development backend is not a production server.
+
+Legacy root and `/index.html` URLs with document, collaboration, or live-session parameters redirect in the browser to `/editor/`, retaining the complete query and fragment. Newly created document and invitation links use `/editor/` directly. A plain root URL displays the landing page.
+
+The public pages support English, German, French, Dutch, Spanish, Portuguese,
+and Italian. The first supported browser language is selected automatically;
+the footer switcher saves an explicit choice for future visits. A `?lang=de`
+query can override that choice for a link. Shared site copy lives in
+`src/site-translations.ts`; curated documents and layout recordings have locale
+subdirectories in `examples/subjects/` and `src/assets/layouts/`. Example dialogs,
+downloads, and “Edit in WebWriter” use the selected language. Documentation
+content and the published widget catalog remain English.
+
+## Widgets
+
+The **Widgets** navigation item opens `/gallery/`. It reads the current npm catalog of published `@webwriter/…` packages carrying the `webwriter-widget` keyword, following all search result pages. Each package gets one card; search includes its widget and snippet names. No package list is frozen into the build.
+
+Open a package to switch between its widgets and published snippets in learner view. Widget defaults use a matching published example when available, or an existing example lesson before falling back to the widget's default state. Snippet-only collections such as PhET are included. Reset recreates the example; closing it removes the frame. Previews use the existing separate frame origin, package dependency resolver, and preview serialization, with editing disabled. The catalog and published assets require an internet connection; the gallery needs no development backend.
+
 ## Document links
 
 Opening or saving a document updates the editor URL's `open` parameter. Reloading that URL restores the saved document. A local link has the form `?open=local%3A<id>` and uses a file handle retained in this browser, including after the file leaves the recent-document list. The file must remain accessible; another browser or device needs to open the file first.
 
 A server document link contains its full API document URL, for example `?open=http%3A%2F%2Flocalhost%3A1234%2Fapi%2Fdocuments%2F<document-id>`. The editor connects to that exact endpoint and loads the document by ID. Server links use the existing supported backend and its access rules. Links store references only; they do not contain document content or credentials. Creating a new document clears `open`, while failed or cancelled opens keep the previous document URL. Live-session links take precedence over document links.
+
+## Widget documentation
+
+Start with the [widget documentation](docs/widgets/index.md) for an introduction, quick start, quiz tutorial, guides, and interface reference.
+
+With `npm start`, browse [Widget documentation](http://127.0.0.1:1234/docs/) for section navigation, syntax highlighting, and live tutorial examples in JS, Lit, React, Vue, Angular, and Svelte. The library selector keeps the choice across pages. Markdown changes reload the page automatically. The same `/docs/` route is available with `npm run start:frontend` on its printed local URL.
 
 ## Developer packages
 
@@ -26,11 +64,11 @@ Git packages require the development backend and Git installed on its host. Thei
 
 ## Example lessons
 
-[`examples/`](examples/) contains twelve editable HTML lessons. Open them in the editor or a browser; widget assets load online.
+[`examples/`](examples/) contains editable HTML lessons. The public `/examples/` gallery offers biology, history, computer science, arts, languages, social science, chemistry, earth science, physics, and mathematics activities with learner previews, standalone HTML downloads, and `/editor/?example=…` links that open editable copies. The landing-page miniatures are extracted from those same documents. Widget assets and external media load online.
 
-The [Mozilla MathML Test](examples/mozilla-mathml-test.html) is also bundled as a preset. Start or restart the dev server, then load **Mozilla MathML Test** from the server document list. It contains all 30 comparisons from [Frédéric Wang's test](https://fred-wang.github.io/MathFonts/mozilla_mathml_test/), with native MathML, a forced `math-style: compact` column, and online TeX reference images. The table extends beyond the normal content width to fit the comparisons. The font selector is omitted so rendering uses the browser's default math font. Saved edits survive restarts; deleting the preset restores the bundled version on the next server start.
+Start or restart the dev server to load editable copies of the ten landing-page lessons into the server document list. The server uses the same catalog and authored HTML as the main page. Saved edits survive restarts; deleting an example restores the bundled version on the next start. Startup removes the old numbered lessons and the former MathML and Kitchen Sink presets from server storage, leaving other saved documents alone.
 
-The [Kitchen Sink](examples/kitchen-sink.html) preset pairs empty and populated versions of every built-in insertable element using the two-column layout. Start or restart the dev server and select **Kitchen Sink** in the document list. Saved edits survive restarts; deleting the preset restores the bundled example on the next start. Only the sample video requires an internet connection.
+The [Mozilla MathML Test](examples/mozilla-mathml-test.html) and [Kitchen Sink](examples/kitchen-sink.html) remain available as standalone HTML fixtures.
 
 ## APIs
 
@@ -69,7 +107,7 @@ Before any widget script runs, the editor links the scripts of all installed pac
 
 jsDelivr is the canonical CDN: maps, package metadata and exports use its URLs. When jsDelivr fails, throttles or does not answer within 8 seconds, the frames' service worker and the package registry fetch the same npm file from unpkg, jsDelivr's other networks or raw.esm.sh, and keep the jsDelivr URL, so import-map scopes and relative imports are unchanged. When jsDelivr is unreachable while linking, the map is linked on the first reachable mirror and mapped back to jsDelivr. Exported HTML documents load from jsDelivr directly.
 
-Import maps resolve JavaScript modules only. Export widget CSS separately, for example with a `"./widgets/my-widget.*"` export whose target provides both `my-widget.js` and `my-widget.css`. The editor loads that stylesheet in the live frame, preview, and HTML export; offline export embeds it. A widget using Shoelace components must provide its theme CSS rather than relying on another installed widget's stylesheet. [`@webwriter/build`](packages.md#building) builds widget scripts that share dependencies this way, and prebuilds those that cannot or should not be shared.
+Import maps resolve JavaScript modules only. Export widget CSS separately, for example with a `"./widgets/my-widget.*"` export whose target provides both `my-widget.js` and `my-widget.css`. The editor loads that stylesheet in the live frame, preview, and HTML export; offline export embeds it. A widget using Shoelace components must provide its theme CSS rather than relying on another installed widget's stylesheet. [`@webwriter/build`](docs/widgets/reference/build-test.md) builds widget scripts that share dependencies this way, and prebuilds those that cannot or should not be shared.
 
 ## Formula editing
 

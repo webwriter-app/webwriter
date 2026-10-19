@@ -49,16 +49,19 @@ export function frameImportMap(map: IImportMap | null | undefined, appOrigin: st
   } satisfies IImportMap
 }
 
+/** Relay a local request from a controlled frame or an authenticated test child. */
+export function relayFrameLocalPackageRequest(event: MessageEvent, hostOrigin: string, nonce: string) {
+  if(event.data?.type !== "frame-local-package-request" || typeof event.data.url !== "string"
+    || !event.ports[0] || !["GET", "HEAD"].includes(event.data.method)) return
+  let url: URL
+  try { url = new URL(event.data.url) }
+  catch { return }
+  if(url.origin !== location.origin || !url.pathname.startsWith(LOCAL_PACKAGE_ROUTE_PREFIX)) return
+  window.parent.postMessage({type: "frame-local-package-request", bridgeNonce: nonce, url: url.href,
+    method: event.data.method}, hostOrigin, [event.ports[0]])
+}
+
 /** A frame client relays only service-worker requests, using the same port. */
 export function connectFrameLocalPackages(hostOrigin: string, nonce: string) {
-  navigator.serviceWorker?.addEventListener("message", event => {
-    if(event.data?.type !== "frame-local-package-request" || typeof event.data.url !== "string"
-      || !event.ports[0]) return
-    let url: URL
-    try { url = new URL(event.data.url) }
-    catch { return }
-    if(url.origin !== location.origin || !url.pathname.startsWith(LOCAL_PACKAGE_ROUTE_PREFIX)) return
-    window.parent.postMessage({type: "frame-local-package-request", bridgeNonce: nonce, url: url.href,
-      method: event.data.method}, hostOrigin, [event.ports[0]])
-  })
+  navigator.serviceWorker?.addEventListener("message", event => relayFrameLocalPackageRequest(event, hostOrigin, nonce))
 }

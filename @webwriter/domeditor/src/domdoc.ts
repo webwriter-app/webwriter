@@ -1,16 +1,17 @@
 import * as Y from "yjs"
 import {Awareness} from "y-protocols/awareness"
 import {messageSync, WebsocketProvider} from "y-websocket"
-import {$, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
+import {$, cloneWithoutEditorMarkers, createInertScript, isComment, isDocument, isEditorOwnedAttribute, isElement, isText} from "./utility"
 import {documentLayoutMode} from "./document-layout"
 import {updateDocumentPermalinks} from "./document-permalinks"
 import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
-import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, type WidgetDataOptions} from "./widget-data"
+import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, widgetDataHistoryGroup, type WidgetDataOptions} from "./widget-data"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
 const INTERNAL_NAMESPACE = "__domeditor_namespace"
 const INTERNAL_QUALIFIED_NAME = "__domeditor_qualified_name"
+const INTERNAL_MINIMUM_REPAIR = "__domeditor_minimum_repair"
 const INTERNAL_USER_ATTRIBUTE_PREFIX = "__domeditor_user_attribute__"
 const INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX = "__domeditor_namespaced_attribute__"
 const COMMENT_NODE_NAME = "domeditor-comment"
@@ -58,6 +59,8 @@ export type YDelta = Y.YXmlEvent["delta"][number]
 export type CollaborationUser = {
   name?: string
   color?: string
+  lastChange?: number
+  connectionStatus?: "connected" | "disconnected"
 }
 
 export type RelativeSelection = {
@@ -90,6 +93,7 @@ export type SharedDOMDocOptions = {
   awareness?: Awareness
   connect?: boolean
   user?: CollaborationUser
+  connectionParams?: Record<string, string>
 }
 
 type DOMAttribute = {
@@ -166,8 +170,11 @@ export class SharedDOMDoc {
   readonly #domOrigin = {source: "domeditor-dom"}
   readonly #initialOrigin = {source: "domeditor-initial"}
   readonly #remoteReactionOrigin = {source: "domeditor-remote-reaction"}
+  readonly #renderedTransactions = new WeakSet<Y.Transaction>()
   readonly #nodes = new WeakMap<YXmlNode, Node>()
   readonly #xmlNodes = new WeakMap<Node, YXmlNode>()
+  readonly #minimumRepairs = new Set<Element>()
+  readonly #repairBaselines = new WeakMap<Element, string>()
   readonly #document: Document
 
   #relativeSelection: RelativeSelection | null = null
@@ -181,6 +188,11 @@ export class SharedDOMDoc {
   #awaitingInitialSync = false
   #undoGroupDepth = 0
   #undoGroupTimeout = 0
+  #undoGroup: object | undefined
+  readonly #unobserveDataHistory: () => void
+  readonly #unobserveDataHistoryState: () => void
+  readonly #historyStateObservers = new Set<() => void>()
+  #historyStateQueued = false
   readonly #documentPermalinks: boolean
 
   constructor(
@@ -242,12 +254,15 @@ export class SharedDOMDoc {
     this.#undoManager = new Y.UndoManager(this.#undoScopes(), {
       trackedOrigins: new Set([this.#domOrigin]),
     })
-    stampUndo(this.#undoManager)
+    stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo, this.#queueHistoryState)
+    this.#unobserveDataHistory = this.widgetData.observeHistory(this.#clearRedo)
+    this.#unobserveDataHistoryState = this.widgetData.observeHistoryState(this.#queueHistoryState)
 
     const DocumentMutationObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
     this.#observer = new DocumentMutationObserver(this.#handleDOMChanges)
     this.startObserve()
     this.doc.on("beforeTransaction", this.#flushPendingDOMChanges)
+    this.doc.on("afterTransaction", this.#publishLastChange)
 
     const defaultUser: CollaborationUser = {
       name: `User ${this.doc.clientID.toString(36).toUpperCase()}`,
@@ -259,6 +274,7 @@ export class SharedDOMDoc {
     if(this.serverUrl && this.sessionId) {
       this.provider = new WebsocketProvider(this.serverUrl, this.sessionId, this.doc as any, {
         awareness: this.awareness,
+        params: options.connectionParams,
         // Wait for the room's first snapshot before proposing an initial tree.
         // BroadcastChannel sync does not establish that server boundary.
         disableBc: true,
@@ -354,7 +370,8 @@ export class SharedDOMDoc {
     if(this.#undoManager) {
       this.#undoManager.destroy()
       this.#undoManager = new Y.UndoManager(this.#undoScopes(), {trackedOrigins: new Set([this.#domOrigin])})
-      stampUndo(this.#undoManager)
+      stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo, this.#queueHistoryState)
+      this.#queueHistoryState()
     }
   }
 
@@ -525,6 +542,31 @@ export class SharedDOMDoc {
     this.awareness.setLocalStateField("user", {...previous, ...user})
   }
 
+  get connectionStatus(): "connected" | "connecting" | "disconnected" {
+    if(this.provider?.wsconnected) return "connected"
+    return this.provider?.shouldConnect ? "connecting" : "disconnected"
+  }
+
+  /** Keep the current DOM and history editable after leaving a server room. */
+  disconnectCollaboration() {
+    this.provider?.disconnect()
+    if(this.#awaitingInitialSync) {
+      this.#awaitingInitialSync = false
+      this.#initializeSharedDOM(true)
+      this.syncFromDOM(this.#initialOrigin)
+    }
+  }
+
+  readonly #publishLastChange = (transaction: Y.Transaction) => {
+    if(!transaction.local || transaction.origin === this.#initialOrigin || transaction.origin === this.#remoteReactionOrigin) return
+    const changedTypes = transaction.changedParentTypes
+    if(![this.#body, this.#documentHead, this.#documentAttributes, this.#headMetadata]
+      .some(type => type && changedTypes.has(type as Y.AbstractType<any>))) return
+    const user = this.awareness.getLocalState()?.user
+    if(!user || typeof user !== "object") return
+    this.awareness.setLocalStateField("user", {...user, lastChange: Date.now()})
+  }
+
   setSelection(anchorNode: YXmlNode, anchorOffset = 0, focusNode = anchorNode, focusOffset = anchorOffset) {
     if(!this.#isSelectionNode(anchorNode) || !this.#isSelectionNode(focusNode)) {
       throw new TypeError("Selection nodes must belong to this shared document")
@@ -658,9 +700,14 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
-    this.widgetData.sync()
     let records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
-    if(this.#documentPermalinks && derivePermalinks) {
+    // Explicit synchronization without pending records still discovers upgrades
+    // and retries invalid data. Ordinary edits inspect only affected bindings.
+    const discover = !mutations && !records?.length
+    this.widgetData.sync(discover ? undefined : records)
+    if(discover && records) records = this.#observer.takeRecords()
+    if(this.#documentPermalinks && derivePermalinks && (!records || records.some(record =>
+      record.type !== "characterData" || record.target.parentElement?.closest("h1, h2, h3, h4, h5, h6, caption, figcaption")))) {
       updateDocumentPermalinks(this.root)
       // Generated attributes and ownership metadata join the content batch.
       if(records) records = [...records, ...this.#observer.takeRecords()]
@@ -668,6 +715,7 @@ export class SharedDOMDoc {
     this.doc.transact(() => {
       if(records) this.#reconcileMutations(records)
       else this.#reconcileDocument()
+      this.#reconcileMinimumRepairs()
     }, origin)
     if(this.#isObserving && (!records || records.some(record => record.type === "childList"))) {
       const templates = this.#templateContents()
@@ -681,6 +729,58 @@ export class SharedDOMDoc {
       (selection.anchorNode === this.root || this.root.contains(selection.anchorNode)) &&
       (selection.focusNode === this.root || this.root.contains(selection.focusNode))) {
       this.updateLocalSelection(selection)
+    }
+  }
+
+  /** Transient collaboration provenance for a generated minimum flow child.
+   * The authored DOM stays authoritative, and any authored edit ends it. */
+  markMinimumContentRepair(element: Element) {
+    if(element.parentElement !== this.root) return
+    this.#repairBaselines.set(element, this.#repairMarkup(element))
+    this.#minimumRepairs.add(element)
+  }
+
+  #repairMarkup(element: Element) {
+    const clone = cloneWithoutEditorMarkers(element, true, {inert: true}) as Element
+    const fragment = clone.ownerDocument.createDocumentFragment()
+    fragment.append(clone)
+    this.widgetData.writeDefaults(fragment)
+    return clone.outerHTML
+  }
+
+  #reconcileMinimumRepairs() {
+    const parents = new Map<Element, Element[]>()
+    for(const element of this.#minimumRepairs) {
+      const shared = this.#xmlNodes.get(element)
+      if(!this.root.contains(element) || !(shared instanceof Y.XmlElement)) {
+        this.#minimumRepairs.delete(element)
+        continue
+      }
+      const baseline = shared.getAttribute(INTERNAL_MINIMUM_REPAIR)
+      if(!baseline || element.parentElement !== this.root || this.#repairMarkup(element) !== baseline) {
+        if(baseline) shared.removeAttribute(INTERNAL_MINIMUM_REPAIR)
+        this.#repairBaselines.delete(element)
+        this.#minimumRepairs.delete(element)
+        continue
+      }
+      const parent = element.parentElement!
+      const siblings = parents.get(parent) ?? []
+      siblings.push(element)
+      parents.set(parent, siblings)
+    }
+    for(const [parent, repairs] of parents) {
+      if(repairs.length < 2) continue
+      // Yjs child order converges on every replica. Keep its first pristine
+      // repair, while authored paragraphs and edited repairs remain untouched.
+      const candidates = new Set(repairs)
+      const ordered = Array.from(parent.children).filter(child => candidates.has(child))
+      for(const duplicate of ordered.slice(1)) {
+        duplicate.remove()
+        this.#minimumRepairs.delete(duplicate)
+        this.#repairBaselines.delete(duplicate)
+      }
+      const sharedParent = this.#xmlNodes.get(parent)
+      if(sharedParent instanceof Y.XmlElement) this.#reconcileYElement(parent, sharedParent)
     }
   }
 
@@ -700,18 +800,23 @@ export class SharedDOMDoc {
 
   #reconcileMutations(records: MutationRecord[]) {
     const relevant = records.filter(record => this.#isRelevantMutation(record))
+    const containers = new Set(relevant.filter(record => record.type === "childList").map(record => record.target))
+    const mappedContainers = [...containers].filter(node => {
+      const shared = this.#xmlNodes.get(node)
+      return isElement(node) && shared instanceof Y.XmlElement && this.#isSelectionNode(shared)
+    })
     // Changes to template fragments, ignored-node membership and unmapped
     // structure need the full reconciler. Ordinary typing/attribute changes
     // only inspect their current DOM targets.
     if(relevant.some(record => !this.#xmlNodes.has(record.target)
       && record.target !== this.#document.documentElement
+      && !mappedContainers.some(parent => parent.contains(record.target))
       || record.type === "attributes" && (record.attributeName === "data-webwriter-editor-only"
         || record.attributeName === "class" && ((record.oldValue ?? "").includes("◆editor-only")
           || (record.target as Element).classList.contains("◆editor-only"))))) {
       this.#reconcileDocument()
       return
     }
-    const containers = new Set(relevant.filter(record => record.type === "childList").map(record => record.target))
     // Containers revisit only retained children whose subtree has records.
     const changed = new Set<Node>()
     for(const record of relevant) {
@@ -797,7 +902,8 @@ export class SharedDOMDoc {
       this.stopCapturing()
       this.#undoGroupTimeout = this.#undoManager.captureTimeout
       this.#undoManager.captureTimeout = Infinity
-      this.widgetData.startUndoGroup()
+      this.#undoGroup = {}
+      this.widgetData.startUndoGroup(this.#undoGroup)
     }
     let ended = false
     return () => {
@@ -808,6 +914,7 @@ export class SharedDOMDoc {
         if(--this.#undoGroupDepth === 0) {
           this.#undoManager.captureTimeout = this.#undoGroupTimeout
           this.widgetData.endUndoGroup()
+          this.#undoGroup = undefined
           this.stopCapturing()
         }
       }
@@ -976,14 +1083,51 @@ export class SharedDOMDoc {
     return true
   }
 
+  get canUndo() { return this.#undoManager.canUndo() || Boolean(this.widgetData.history("undo")) }
+
+  get canRedo() { return this.#undoManager.canRedo() || Boolean(this.widgetData.history("redo")) }
+
+  observeHistoryState(callback: () => void) {
+    this.#historyStateObservers.add(callback)
+    return () => { this.#historyStateObservers.delete(callback) }
+  }
+
+  readonly #queueHistoryState = () => {
+    if(this.#historyStateQueued || !this.#historyStateObservers.size) return
+    this.#historyStateQueued = true
+    queueMicrotask(() => {
+      this.#historyStateQueued = false
+      this.#historyStateObservers.forEach(callback => callback())
+    })
+  }
+
   undo() {
     this.#commitPendingDOMChanges()
-    this.#historyManager("undo").undo()
+    this.#applyHistory("undo")
   }
 
   redo() {
     this.#commitPendingDOMChanges()
-    this.#historyManager("redo").redo()
+    this.#applyHistory("redo")
+  }
+
+  readonly #clearRedo = () => {
+    this.#undoManager.clear(false, true)
+    this.widgetData.clearRedo()
+  }
+
+  #applyHistory(kind: "undo" | "redo") {
+    const latest = this.#historyManager(kind)
+    const stack = (manager: Y.UndoManager) => kind === "undo" ? manager.undoStack : manager.redoStack
+    const group = stack(latest).at(-1)?.meta.get(widgetDataHistoryGroup)
+    if(!group) { latest[kind](); return }
+    // Data must be undone before DOM edits can remove its binding; redo the
+    // DOM first so restored widgets are present when data is rendered.
+    const data = this.widgetData.historyManagers(kind)
+    const managers = kind === "undo" ? [...data, this.#undoManager] : [this.#undoManager, ...data]
+    for(const manager of new Set(managers)) {
+      if(stack(manager).at(-1)?.meta.get(widgetDataHistoryGroup) === group) manager[kind]()
+    }
   }
 
   #historyManager(kind: "undo" | "redo") {
@@ -996,9 +1140,14 @@ export class SharedDOMDoc {
 
   destroy() {
     this.#activeDOMPreview?.reject()
+    this.#unobserveDataHistory()
+    this.#unobserveDataHistoryState()
+    this.#historyStateObservers.clear()
+    this.#minimumRepairs.clear()
     this.stopObserve()
     if(this.#ownsWidgetData) this.widgetData.destroy()
     this.doc.off("beforeTransaction", this.#flushPendingDOMChanges)
+    this.doc.off("afterTransaction", this.#publishLastChange)
     this.#metadata.unobserve(this.#handleMirrorChange)
     this.#body.unobserveDeep(this.#handleYChanges)
     this.#documentHead?.unobserveDeep(this.#handleYChanges)
@@ -1049,7 +1198,15 @@ export class SharedDOMDoc {
       this.#hasQueuedYChanges = true
       return
     }
-    this.#writeYToDOM(events, this.#documentPermalinks && !(transaction.origin instanceof Y.UndoManager))
+    if(this.#renderedTransactions.has(transaction)) return
+    this.#renderedTransactions.add(transaction)
+    // Body, head and root attributes have separate observers. Render their
+    // events together before deriving IDs that span those trees.
+    const changes = new Set(events)
+    for(const scope of [this.#body, this.#documentHead, this.#documentAttributes]) {
+      if(scope) for(const event of transaction.changedParentTypes.get(scope as any) ?? []) changes.add(event as Y.YEvent<YXmlNode>)
+    }
+    this.#writeYToDOM([...changes], this.#documentPermalinks && !(transaction.origin instanceof Y.UndoManager))
   }
 
   #writeYToDOM(events?: Y.YEvent<YXmlNode>[], derivePermalinks = false) {
@@ -1057,10 +1214,7 @@ export class SharedDOMDoc {
     this.#isWritingToDOM = true
     let reactions: MutationRecord[] | undefined
     try {
-      // A generated fragment and its ownership metadata span body and head.
-      // Their deep observers run separately, but the shared transaction already
-      // contains both; render both before checking concurrent slug collisions.
-      if(events && !derivePermalinks) {
+      if(events) {
         for(const event of events) this.#renderYChange(event)
       }
       else {
@@ -1082,13 +1236,14 @@ export class SharedDOMDoc {
       // Drop MutationRecords caused by applying the shared tree. A custom
       // element may have synchronously changed its own light DOM while being
       // connected; reconcile once in the other direction to capture that.
-      reactions = this.#observer?.takeRecords()
+      // Without observation (e.g. restoring a preview), there is no mutation
+      // batch to route: the restored tree needs full widget discovery.
+      reactions = this.#isObserving ? this.#observer.takeRecords() : undefined
     }
     finally {
       this.#isWritingToDOM = false
     }
     this.syncFromDOM(this.#remoteReactionOrigin, reactions, derivePermalinks)
-    this.widgetData.sync()
   }
 
   #renderYChange(event: Y.YEvent<YXmlNode>) {
@@ -1278,6 +1433,9 @@ export class SharedDOMDoc {
   #addNodePair(node: Node, yNode: YXmlNode) {
     this.#nodes.set(yNode, node)
     this.#xmlNodes.set(node, yNode)
+    if(isElement(node) && yNode instanceof Y.XmlElement && yNode.doc && yNode.hasAttribute(INTERNAL_MINIMUM_REPAIR)) {
+      this.#minimumRepairs.add(node)
+    }
   }
 
   #createYNode(node: Node, addPair = true): YXmlNode | null {
@@ -1305,6 +1463,8 @@ export class SharedDOMDoc {
     if(!isElement(node) || this.#isInsideIgnoredElement(node)) return null
 
     const yElement = new Y.XmlElement(node.localName)
+    const repair = this.#repairBaselines.get(node)
+    if(repair) yElement.setAttribute(INTERNAL_MINIMUM_REPAIR, repair)
     if(node.prefix) yElement.setAttribute(INTERNAL_QUALIFIED_NAME, `${node.prefix}:${node.localName}`)
     if(node.namespaceURI !== this.#document.documentElement.namespaceURI) {
       yElement.setAttribute(INTERNAL_NAMESPACE, node.namespaceURI ?? "")
@@ -1400,7 +1560,7 @@ export class SharedDOMDoc {
 
     const current = yElement.getAttributes()
     for(const name of Object.keys(current)) {
-      if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME) continue
+      if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === INTERNAL_MINIMUM_REPAIR) continue
       if(!desired.has(name)) yElement.removeAttribute(name)
     }
     desired.forEach((value, name) => {
@@ -1410,6 +1570,7 @@ export class SharedDOMDoc {
 
   #copyYAttributesToDOM(yElement: Y.XmlElement, element: Element, excluded: string[] = []) {
     const shared = yElement.getAttributes()
+    if(this.#xmlNodes.get(element) === yElement && typeof shared[INTERNAL_MINIMUM_REPAIR] === "string") this.#minimumRepairs.add(element)
     const sharedClassNames = String(shared.class ?? "").split(/\s+/).filter(Boolean)
     const internalClassNames = Array.from(element.classList).filter(name => this.#isIgnoredClass(name))
     const classNames = Array.from(new Set([...sharedClassNames, ...internalClassNames]))
@@ -1450,7 +1611,7 @@ export class SharedDOMDoc {
     if(attribute.namespaceURI !== null) {
       return `${INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX}${encodeURIComponent(JSON.stringify([attribute.namespaceURI, attribute.name]))}`
     }
-    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE || attribute.name === INTERNAL_QUALIFIED_NAME ||
+    if(attribute.name === INTERNAL_NODE_KIND || attribute.name === INTERNAL_NAMESPACE || attribute.name === INTERNAL_QUALIFIED_NAME || attribute.name === INTERNAL_MINIMUM_REPAIR ||
       attribute.name.startsWith(INTERNAL_USER_ATTRIBUTE_PREFIX) ||
       attribute.name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
       return `${INTERNAL_USER_ATTRIBUTE_PREFIX}${encodeURIComponent(attribute.name)}`
@@ -1459,7 +1620,7 @@ export class SharedDOMDoc {
   }
 
   #decodeYAttribute(name: string): DOMAttribute | null {
-    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === "class") return null
+    if(name === INTERNAL_NODE_KIND || name === INTERNAL_NAMESPACE || name === INTERNAL_QUALIFIED_NAME || name === INTERNAL_MINIMUM_REPAIR || name === "class") return null
     if(name.startsWith(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX)) {
       try {
         const value = JSON.parse(decodeURIComponent(name.slice(INTERNAL_NAMESPACED_ATTRIBUTE_PREFIX.length)))
@@ -1496,11 +1657,23 @@ export class SharedDOMDoc {
 
     let prefix = 0
     while(prefix < current.length && prefix < desired.length && current[prefix] === desired[prefix]) prefix++
+    // Y.Text indexes use UTF-16 offsets, but deleting only one half of a
+    // surrogate pair can leave peers with different invalid intermediate text.
+    if(prefix > 0 && prefix < current.length &&
+      current.charCodeAt(prefix - 1) >= 0xD800 && current.charCodeAt(prefix - 1) <= 0xDBFF &&
+      current.charCodeAt(prefix) >= 0xDC00 && current.charCodeAt(prefix) <= 0xDFFF) prefix--
     let suffix = 0
     while(
       suffix < current.length - prefix && suffix < desired.length - prefix &&
       current[current.length - suffix - 1] === desired[desired.length - suffix - 1]
     ) suffix++
+    const splitsSurrogatePair = (value: string, length: number) => {
+      const boundary = value.length - length
+      return boundary > 0 && boundary < value.length &&
+        value.charCodeAt(boundary - 1) >= 0xD800 && value.charCodeAt(boundary - 1) <= 0xDBFF &&
+        value.charCodeAt(boundary) >= 0xDC00 && value.charCodeAt(boundary) <= 0xDFFF
+    }
+    if(splitsSurrogatePair(current, suffix) || splitsSurrogatePair(desired, suffix)) suffix--
     const deleteLength = current.length - prefix - suffix
     const insert = desired.slice(prefix, desired.length - suffix)
     if(deleteLength) yText.delete(prefix, deleteLength)
@@ -1608,17 +1781,27 @@ export class SharedDOMDoc {
       return domChild ? [{yChild, domChild}] : []
     })
     const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)
-
-    let current = container.firstChild
-    desiredDOMChildren.forEach(desiredChild => {
-      while(current && !this.#isSyncableNode(current)) current = current.nextSibling
-      if(current !== desiredChild) container.insertBefore(desiredChild, current ?? null)
-      else current = current.nextSibling
-    })
     const desiredSet = new Set(desiredDOMChildren)
-    Array.from(container.childNodes)
-      .filter(child => this.#isSyncableNode(child) && !desiredSet.has(child))
-      .forEach(child => child.remove())
+    const currentChildren = Array.from(container.childNodes)
+    if(currentChildren.every(child => this.#isSyncableNode(child) && !desiredSet.has(child))) {
+      // A new mirror can replace every child. Install that fragment in one
+      // operation instead of repeatedly assigning thousands of BODY slots.
+      if(currentChildren.length || desiredDOMChildren.length) {
+        const fragment = domElement.ownerDocument.createDocumentFragment()
+        for(const child of desiredDOMChildren) fragment.append(child)
+        container.replaceChildren(fragment)
+      }
+    }
+    else {
+      let current = container.firstChild
+      desiredDOMChildren.forEach(desiredChild => {
+        while(current && !this.#isSyncableNode(current)) current = current.nextSibling
+        if(current !== desiredChild) container.insertBefore(desiredChild, current ?? null)
+        else current = current.nextSibling
+      })
+      currentChildren.filter(child => this.#isSyncableNode(child) && !desiredSet.has(child))
+        .forEach(child => child.remove())
+    }
 
     if(deep) renderableChildren.forEach(({yChild, domChild}) => {
       if(yChild instanceof Y.XmlText && isText(domChild)) this.#reconcileDOMText(yChild, domChild)

@@ -38,7 +38,7 @@ describe("insertion menu", () => {
 
     expect(editor.appendix.querySelector(".◆insertion-add")).toBeNull()
     expect(editor.features.insertion.menu.open).toBe(false)
-    expect(editorHTML()).toBe(html)
+    expect(editorHTML()).toBe(html.replace("<h1>", '<h1 id="heading">'))
 
     typeCommand()
     await editor.features.insertion.menu.updateComplete
@@ -172,6 +172,20 @@ describe("insertion menu", () => {
     expect(menu.style.top).toBe("126px")
   })
 
+  it.each(["auto", "stable both-edges"])("anchors the command menu with %s scrollbar gutters", async gutter => {
+    const root = document.documentElement, original = root.style.scrollbarGutter
+    root.style.scrollbarGutter = gutter
+    const width = vi.spyOn(root, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    try {
+      await Promise.resolve()
+      const menu = editor.features.insertion.menu
+      menu.setPosition(40, 126)
+      expect(menu.style.left).toBe(gutter === "auto" ? "40px" : "25px")
+      expect(menu.style.top).toBe("126px")
+    }
+    finally { root.style.scrollbarGutter = original; width.mockRestore() }
+  })
+
   it("opens when the second plus key is typed and keeps both pluses", async () => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
@@ -207,7 +221,7 @@ describe("insertion menu", () => {
     typeCommand()
 
     expect(editor.features.insertion.menu.open).toBe(true)
-    expect(editorHTML()).toBe("<h1>Heading++</h1>")
+    expect(editorHTML()).toBe('<h1 id="heading">Heading++</h1>')
   })
 
   it("inserts the selected item when it is activated by a pointer", async () => {
@@ -225,7 +239,7 @@ describe("insertion menu", () => {
     item.click()
 
     expect(pointerDown.defaultPrevented).toBe(true)
-    expect(editorHTML()).toBe("<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>")
+    expect(editorHTML()).toBe('<table id="table"><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>')
     expect(menu.open).toBe(false)
     expect(postSelectionPath).toHaveBeenLastCalledWith(true)
     postSelectionPath.mockRestore()
@@ -313,8 +327,12 @@ describe("insertion menu", () => {
     menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {kind: "element", tag: "picture"}}))
     const picture = document.querySelector("picture")!
     expect(picture).not.toBeNull()
-    expect(picture.classList.contains("ww-column-right")).toBe(Boolean(text))
-    expect(picture.parentElement).toBe(text ? document.querySelector(".ww-column-group") : document.body)
+    expect(picture.classList.contains("ww-float-right")).toBe(false)
+    expect(picture.parentElement).toBe(document.body)
+    if(text) {
+      expect(picture.previousElementSibling).toBe(paragraph)
+      expect(paragraph.textContent).toBe(text)
+    }
   })
 
   it("places an atomic widget beside its paragraph", async () => {
@@ -335,7 +353,7 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe('<div class="ww-column-group"><p class="ww-column-left">before</p><webwriter-demo class="ww-column-right"></webwriter-demo></div>')
+    expect(editorHTML()).toBe('<p>before</p><webwriter-demo></webwriter-demo>')
     const widget = document.querySelector("webwriter-demo")!
     expect(widget.previousElementSibling).toBe(document.querySelector("p"))
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
@@ -450,7 +468,7 @@ describe("insertion menu", () => {
     expect(menu.activeItem?.name).toBe("Heading 1")
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
-    expect(editorHTML()).toBe("<h1></h1>")
+    expect(editorHTML()).toBe('<h1 id="heading"></h1>')
     expect(menu.open).toBe(false)
     expect($.anchor?.nodeName).toBe("H1")
     expect($.anchorOffset).toBe(0)
@@ -588,7 +606,7 @@ describe("insertion menu", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
 
-    expect(editorHTML()).toBe("<table><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>")
+    expect(editorHTML()).toBe('<table id="table"><tbody><tr><td></td><td></td></tr><tr><td></td><td></td></tr></tbody></table>')
     expect(editor.features.table.selectedCells).toEqual([document.querySelector("td")])
   })
 

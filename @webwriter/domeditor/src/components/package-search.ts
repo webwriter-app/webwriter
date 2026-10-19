@@ -1,5 +1,6 @@
 import {LitElement, css, html} from "lit"
 import {ribbonIcon} from "../ribbon-icons"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 /** A package-button-wide filter that fits directly in the ribbon grid. */
 export class PackageSearch extends LitElement {
@@ -10,6 +11,7 @@ export class PackageSearch extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       box-sizing: border-box;
       display: block;

@@ -28,6 +28,12 @@ import hyphen from "@tabler/icons/outline/minus.svg?raw"
 import signRight from "@tabler/icons/outline/sign-right.svg?raw"
 import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
+import handClick from "@tabler/icons/outline/hand-click.svg?raw"
+import scribble from "@tabler/icons/outline/scribble.svg?raw"
+import arrowBigRight from "@tabler/icons/outline/arrow-big-right.svg?raw"
+import arrowRotaryRight from "@tabler/icons/outline/arrow-rotary-right.svg?raw"
+import userShare from "./assets/user-share.svg?raw"
+import userEdit from "@tabler/icons/outline/user-edit.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
@@ -62,6 +68,7 @@ import clearFormatting from "@tabler/icons/outline/clear-formatting.svg?raw"
 import clipboard from "@tabler/icons/outline/clipboard.svg?raw"
 import code from "@tabler/icons/outline/code.svg?raw"
 import columns3 from "@tabler/icons/outline/columns-3.svg?raw"
+import column from "@tabler/icons/outline/columns-1.svg?raw"
 import columnInsertLeft from "@tabler/icons/outline/column-insert-left.svg?raw"
 import columnInsertRight from "@tabler/icons/outline/column-insert-right.svg?raw"
 import colorSwatch from "@tabler/icons/outline/color-swatch.svg?raw"
@@ -88,6 +95,7 @@ import h4 from "@tabler/icons/outline/h-4.svg?raw"
 import h5 from "@tabler/icons/outline/h-5.svg?raw"
 import h6 from "@tabler/icons/outline/h-6.svg?raw"
 import heading from "@tabler/icons/outline/heading.svg?raw"
+import id from "@tabler/icons/outline/id.svg?raw"
 import highlight from "@tabler/icons/outline/highlight.svg?raw"
 import historyToggle from "@tabler/icons/outline/history-toggle.svg?raw"
 import circleDot from "@tabler/icons/outline/circle-dot.svg?raw"
@@ -138,6 +146,8 @@ import superscript from "@tabler/icons/outline/superscript.svg?raw"
 import table from "@tabler/icons/outline/table.svg?raw"
 import trash from "@tabler/icons/outline/trash.svg?raw"
 import rowInsertBottom from "@tabler/icons/outline/row-insert-bottom.svg?raw"
+import layoutNavbar from "@tabler/icons/outline/layout-navbar.svg?raw"
+import layoutBottombar from "@tabler/icons/outline/layout-bottombar.svg?raw"
 import rowInsertTop from "@tabler/icons/outline/row-insert-top.svg?raw"
 import textCaption from "@tabler/icons/outline/text-caption.svg?raw"
 import textSize from "@tabler/icons/outline/text-size.svg?raw"
@@ -149,6 +159,7 @@ import triangle from "@tabler/icons/outline/triangle.svg?raw"
 import diamond from "@tabler/icons/outline/diamond.svg?raw"
 import hexagon from "@tabler/icons/outline/hexagon.svg?raw"
 import line from "@tabler/icons/outline/line.svg?raw"
+import vectorBezier from "@tabler/icons/outline/vector-bezier.svg?raw"
 import polygon from "@tabler/icons/outline/polygon.svg?raw"
 import rectangle from "@tabler/icons/outline/rectangle.svg?raw"
 import route from "@tabler/icons/outline/route.svg?raw"
@@ -263,11 +274,15 @@ const icons: Record<string, string> = {
   Document: fileDescription,
   FileHorizontal: fileHorizontal,
   Canvas: artboard,
+  BoardColumn: column,
+  BoardCard: id,
   ChevronRight: chevronRight,
   ArrowUp: arrowUp,
   ArrowDown: arrowDown,
   ArrowLeft: arrowLeft,
   ArrowRight: arrowRight,
+  ArrowBigRight: arrowBigRight,
+  ArrowRotaryRight: arrowRotaryRight,
   Section: section,
   Article: article,
   Layout: layout,
@@ -307,6 +322,8 @@ const icons: Record<string, string> = {
   Print: printer,
   QR: qrcode,
   Share: share,
+  UserShare: userShare,
+  UserEdit: userEdit,
   Paste: clipboard,
   Cut: scissors,
   Copy: copy,
@@ -360,6 +377,8 @@ const icons: Record<string, string> = {
   Details: circleChevronRight,
   Table: table,
   TableLayout: layoutGrid,
+  TableHeader: layoutNavbar,
+  TableFooter: layoutBottombar,
   TableRowAbove: rowInsertTop,
   TableRowBelow: rowInsertBottom,
   TableColumnLeft: columnInsertLeft,
@@ -371,6 +390,7 @@ const icons: Record<string, string> = {
   TableBorders: borderAll,
   TableBackground: bucket,
   Image: photo,
+  "Image hotspot": handClick,
   Graphic: vector,
   Rectangle: rectangle,
   Ellipse: oval,
@@ -379,6 +399,8 @@ const icons: Record<string, string> = {
   Hexagon: hexagon,
   Arrow: arrowRight,
   Line: line,
+  Lines: polygon,
+  Curves: vectorBezier,
   Connector: route,
   Polygon: polygon,
   Fill: colorSwatch,
@@ -392,6 +414,7 @@ const icons: Record<string, string> = {
   Heading: heading,
   Theme: palette,
   Pencil: pencil,
+  Freehand: scribble,
   Develop: terminal2,
   Clear: clearFormatting,
   Family: typography,
@@ -501,6 +524,16 @@ const fallbackIcon = dots
 export const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 
 export const ribbonIcon = (label: string) => unsafeSVG(icons[label] ?? fallbackIcon)
+
+export function captionIconSource(position: "none" | "above" | "below", alignment: "left" | "center" | "right" = "left", add = false) {
+  const x = alignment === "left" ? 6 : alignment === "center" ? 9 : 12
+  const y = position === "above" ? 3 : 21
+  const annotation = position === "none"
+    ? add ? '<path d="M9 10.143h6M12 7.143v6M6 16.857h12"/>' : ""
+    : `<line x1="${x}" x2="${x + 6}" y1="${y}" y2="${y}"/>`
+  const content = position === "none" && add ? annotation : `<rect x="6" y="6" width="12" height="12" rx="1"/>${annotation}`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">${content}</svg>`
+}
 
 /** Tabler glyphs for compact option groups; labels remain on each button. */
 const optionIcons: Record<string, Record<string, string>> = {

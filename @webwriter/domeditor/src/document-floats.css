@@ -7,6 +7,12 @@
     --ww-float-gap: 1rem;
   }
 
+  @media screen {
+    html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {
+      scrollbar-gutter: stable both-edges;
+    }
+  }
+
   body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
     --ww-lane: 0px;
     display: flow-root;
@@ -29,6 +35,12 @@
       margin-inline: auto;
     }
 
+    /* Native media defaults to inline display, where auto margins cannot
+     * center it. Keep inline media within prose and widget contracts intact. */
+    :is(&, & > main, & > article, & > section) > :is(picture, img, audio[controls], video, iframe, embed, object):not([is]) {
+      display: block;
+    }
+
     > :is(main, article, section) {
       padding-inline: 0;
       max-inline-size: none;
@@ -37,6 +49,12 @@
     p:not([is]) {
       display: flow-root;
       min-inline-size: min(300px, 100%);
+    }
+
+    /* Empty summaries still need a line box for floated disclosure icons
+     * after the editor's text placeholder is removed. */
+    details:not([is]) > summary {
+      min-block-size: 1lh;
     }
 
     .ww-float-left { float: left !important; }
@@ -105,6 +123,7 @@
   @container (width < 600px) {
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
       --ww-float-width: 100%;
+      --ww-responsive-float: none;
     }
 
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) :is(
@@ -117,5 +136,15 @@
       margin-left: auto !important;
       margin-right: auto !important;
     }
+  }
+
+  /* Keep table section rows distinct across themes while allowing document
+   * styles outside this low-priority layer to override the defaults. */
+  thead > tr > :is(th, td) {
+    background-color: #deebf7;
+  }
+
+  tfoot > tr > :is(th, td) {
+    background-color: #f2f2f2;
   }
 }

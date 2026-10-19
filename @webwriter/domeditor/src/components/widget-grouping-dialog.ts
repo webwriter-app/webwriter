@@ -1,4 +1,6 @@
 import {LitElement, css, html, nothing} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
+import {ribbonIcon} from "../ribbon-icons"
 import {defaultGroupingRules, formWidgetGroups, validateGroupingRules} from "../widget-grouping.js"
 import type {WidgetGroupingContext, WidgetGroupingRules} from "../widget-grouping"
 
@@ -16,6 +18,7 @@ export class WidgetGroupingDialog extends LitElement {
     error: {type: String, state: true}, preview: {attribute: false, state: true},
   }
   static styles = css`
+    ${editorInteractionStyles}
     :host { color: #202833; font: 14px/1.4 system-ui, sans-serif; }
     dialog { box-sizing: border-box; width: min(58rem, calc(100vw - 2rem)); max-height: min(48rem, calc(100dvh - 2rem)); padding: 0; border: 1px solid #cbd5e1; border-radius: .7rem; color: inherit; background: white; box-shadow: 0 1rem 3rem rgb(15 23 42 / 25%); }
     dialog::backdrop { background: rgb(15 23 42 / 42%); }
@@ -35,6 +38,10 @@ export class WidgetGroupingDialog extends LitElement {
     .manual-group select { min-height: 5rem; }
     button { min-height: 2rem; padding: .4rem .7rem; border: 1px solid #cbd5e1; border-radius: .35rem; color: #25344a; background: #fff; font: inherit; cursor: pointer; }
     button.primary { border-color: #2563eb; color: #fff; background: #2563eb; } button:disabled { cursor: default; opacity: .55; }
+    .dialog-close { display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; background: transparent; }
+    .dialog-close svg { display: block; width: 1.1rem; height: 1.1rem; }
+    .dialog-close:hover { background: #f1f5f9; }
+    .dialog-close:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
     .preview { display: grid; gap: .3rem; margin-top: .65rem; padding: .65rem; border-radius: .4rem; background: #f8fafc; font-size: .75rem; }
     @media (max-width: 38rem) { .grid, .manual-group { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
   `
@@ -120,7 +127,7 @@ export class WidgetGroupingDialog extends LitElement {
     const r = this.rules, c = this.context, canEdit = this.canEdit(), canSave = this.canSave()
     const participants = c?.participants ?? [], groupings = c?.groupings ?? []
     return html`<dialog aria-labelledby="grouping-heading" @cancel=${(event: Event) => { event.preventDefault(); this.close(undefined) }} @close=${() => { if(this.resolveShow) this.close(undefined) }}>
-      <div class="shell"><header><h2 id="grouping-heading">Participant groups</h2><button type="button" aria-label="Close" @click=${() => this.close(undefined)}>×</button></header>
+      <div class="shell"><header><h2 id="grouping-heading">Participant groups</h2><button class="dialog-close" type="button" aria-label="Close" title="Close" @click=${() => this.close(undefined)}>${ribbonIcon("Reject")}</button></header>
       <div class="content">
         ${this.loading ? html`<p class="status" role="status">Loading participants…</p>` : nothing}
         ${this.error ? html`<p class="status ${canSave ? "" : "error"}" role="status">${this.error}</p>` : nothing}

@@ -1,7 +1,8 @@
 import {DocumentListenerMap, EditorFeature} from "."
-import type {ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
+import type {ElementSelectionType, ListSelectionState, ListType} from "../editor-bridge"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
+import {listMarkerImageProperty} from "../element-styles"
 
 const listSelector = "ul, ol, dl, menu"
 const listItemSelector = "li, dt, dd"
@@ -42,6 +43,9 @@ export class ListFeature extends EditorFeature {
   actions = {
     toggleList: ({listType}: {type: "toggleList", listType: ListType}) => {
       this.toggleList(listType)
+    },
+    setListType: ({listType, selectionTypes}: {type: "setListType", listType: "ul" | "ol", selectionTypes: ElementSelectionType[]}) => {
+      return this.setListType(listType, selectionTypes)
     },
     setListStyle: ({listType, style}: {type: "setListStyle", listType: ListType, style: string}) => {
       this.setListStyle(listType, style)
@@ -196,6 +200,7 @@ export class ListFeature extends EditorFeature {
       setPart(marker, "virtual-list-item-hidden")
       ;(["ul", "ol", "dl", "menu"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, false))
       setPart(marker, "virtual-list-item-custom-marker", false)
+      setPart(marker, "virtual-list-item-image-marker", false)
       setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden")
       marker.style.listStyleType = "none"
       marker.style.listStyleImage = "none"
@@ -212,6 +217,7 @@ export class ListFeature extends EditorFeature {
         "--virtual-list-marker-font-size",
         "--virtual-list-marker-font-style",
         "--virtual-list-marker-font-weight",
+        listMarkerImageProperty,
       ].forEach(property => marker.style.removeProperty(property))
       marker.removeAttribute("value")
     }
@@ -255,10 +261,14 @@ export class ListFeature extends EditorFeature {
     // and counter(list-item) expressions render identically as well.
     const markerStyle = getComputedStyle(source, "::marker")
     const content = markerStyle.content
+    const image = listStyle.listStyleImage === "none" ? "" : listStyle.getPropertyValue(listMarkerImageProperty).trim()
+    if(image) marker.style.setProperty(listMarkerImageProperty, image)
+    else marker.style.removeProperty(listMarkerImageProperty)
+    setPart(marker, "virtual-list-item-image-marker", Boolean(image))
     const hasCustomContent = Boolean(content && content !== "normal")
-    setPart(marker, "virtual-list-item-custom-marker", hasCustomContent)
-    if(hasCustomContent) {
-      marker.style.setProperty("--virtual-list-marker-content", content)
+    setPart(marker, "virtual-list-item-custom-marker", hasCustomContent || Boolean(image))
+    if(hasCustomContent || image) {
+      marker.style.setProperty("--virtual-list-marker-content", image ? '""' : content)
       ;(["font-family", "font-size", "font-style", "font-weight"] as const).forEach(property => {
         const value = markerStyle.getPropertyValue(property)
         if(value) marker.style.setProperty(`--virtual-list-marker-${property}`, value)
@@ -348,7 +358,7 @@ export class ListFeature extends EditorFeature {
     const contentLeft = list.matches("dl")
       ? listRect.left + (nextType === "dd" ? 40 : 0)
       : laidOutPrevious ? anchorRect.left : listRect.left + listPadding
-    marker.style.left = `${Math.max(0, contentLeft)}px`
+    marker.style.left = `${fixedClientX(Math.max(0, contentLeft))}px`
     marker.style.top = `${Math.max(0, previous ? anchorRect.bottom : listRect.top)}px`
     marker.style.minHeight = `${lineHeight}px`
     marker.style.setProperty("--virtual-list-line-height", `${lineHeight}px`)
@@ -725,7 +735,7 @@ export class ListFeature extends EditorFeature {
       return this.activeList
     }
     const list = document.createElement(type)
-    this.editor.features.manipulation.insert(list)
+    this.editor.features.manipulation.insert(list, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     if(list.isConnected) this.moveToVirtual(list, 0)
     this.syncVirtualMarker()
     return list
@@ -763,6 +773,23 @@ export class ListFeature extends EditorFeature {
     if(this.activeList?.localName !== type) this.toggleList(type)
     const list = this.activeList
     if(list?.localName === type) list.style.listStyleType = style
+  }
+
+  setListType(type: "ul" | "ol", selectionTypes: ElementSelectionType[]) {
+    if(type !== "ul" && type !== "ol") throw new TypeError("Unsupported list type")
+    const lists = [...new Set(selectionTypes.filter(scope => scope.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && (scope.localName === "ul" || scope.localName === "ol"))
+      .flatMap(scope => this.editor.features.manipulation.selectedElementsOfType(scope)))]
+    const selected = $.selectedElements
+    const replacements = new Map<Element, Element>()
+    for(const list of lists) {
+      if(list.isConnected && list.localName !== type) replacements.set(list, this.changeListType(list as HTMLElement, type))
+    }
+    if(selected.length > 1 && replacements.size) {
+      $.selectElements(selected.map(element => replacements.get(element) ?? element).filter(element => element.isConnected))
+    }
+    this.syncVirtualMarker()
+    return replacements.size
   }
 
   setOrderedListAttribute(name: "start" | "reversed" | "type", value: string | null) {
@@ -804,7 +831,7 @@ export class ListFeature extends EditorFeature {
       details.append($.slice)
       details.open = true
     }
-    this.editor.features.manipulation.insert(details)
+    this.editor.features.manipulation.insert(details, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     if(details.isConnected) $.move(summary)
   }
 
@@ -949,6 +976,7 @@ export class ListFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection?.rangeCount || !selection.anchorNode) return []
     const range = selection.getRangeAt(0)
+    const flowRoot = editingFlowRoot(range.startContainer)
     const isTextBlock = (element: Element) => element !== document.body
       && !element.matches(`${listSelector}, ${listItemSelector}, details`)
       && this.editor.schema.isBlock(element)
@@ -965,7 +993,7 @@ export class ListFeature extends EditorFeature {
 
     const candidates = Array.from(document.body.querySelectorAll("*"))
       .filter(element => {
-        if(!$.includesNode(element) || !isTextBlock(element) || element.closest(listSelector)) return false
+        if(!$.includesNode(element) || editingFlowRoot(element) !== flowRoot || !isTextBlock(element) || element.closest(listSelector)) return false
         try {
           return range.intersectsNode(element)
         }
@@ -1064,7 +1092,7 @@ export class ListFeature extends EditorFeature {
     const mappedSelected = selectedElement ? replacements.get(selectedElement) : null
     if(isElement(mappedSelected)) {
       $.selectElement(mappedSelected)
-      return
+      return replacement
     }
     const mappedAnchor = anchor?.isConnected ? anchor : anchor ? replacements.get(anchor) : null
     const mappedFocus = focus?.isConnected ? focus : focus ? replacements.get(focus) : null
@@ -1081,6 +1109,7 @@ export class ListFeature extends EditorFeature {
     else {
       $.move(replacement)
     }
+    return replacement
   }
 
   private selectedDirectItems(list: HTMLElement) {

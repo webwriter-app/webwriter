@@ -43,7 +43,10 @@ describe("widget grouping dialog", () => {
     await dialog.updateComplete
     await settle(dialog)
     expect(dialog.rules.seed).toBeTruthy()
-    dialog.shadowRoot!.querySelector<HTMLButtonElement>('button:not(.primary)')!.click()
+    const close = dialog.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close"]')!
+    expect(close.textContent?.trim()).toBe("")
+    expect(close.querySelector("svg")).not.toBeNull()
+    close.click()
     expect(await resultPromise).toBeUndefined()
   })
 

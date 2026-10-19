@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Compter comme un ordinateur</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+</head>
+<body>
+<p><small>Informatique · environ 15 minutes</small></p>
+<h1>Compter comme un ordinateur</h1>
+<p>Un ordinateur peut utiliser deux symboles, <code>0</code> et <code>1</code>, pour représenter un nombre. Lisons quatre symboles grâce à leurs valeurs de position.</p>
+<h2>Deux symboles suffisent</h2>
+<p>Nous comptons généralement avec dix chiffres, de 0 à 9. Un ordinateur représente l’information avec deux états, par exemple un signal éteint ou allumé. Un 0 ou un 1 s’appelle un <em>bit</em>. Des groupes de bits peuvent représenter des nombres et d’autres informations.</p>
+<p>Dans le système décimal, les positions valent 1, 10, 100, etc. En binaire, chaque valeur double vers la gauche : 1, 2, 4, 8. Pour cette activité, lisez le nombre de 4 bits de gauche à droite avec les valeurs ci-dessous. Un 1 signifie « ajouter cette valeur » ; un 0, « l’ignorer ».</p>
+<p>Ces symboles décrivent les deux états de façon compréhensible. Dans un vrai ordinateur, des circuits stockent et traitent des suites d’états.</p>
+
+<table>
+<caption>Quatre positions binaires</caption>
+<thead><tr><th scope="col">Valeur de position</th><th scope="col">8</th><th scope="col">4</th><th scope="col">2</th><th scope="col">1</th></tr></thead>
+<tbody>
+<tr><th scope="row">Suite de bits</th><td>0 ou 1</td><td>0 ou 1</td><td>0 ou 1</td><td>0 ou 1</td></tr>
+<tr><th scope="row">Exemple : 1010</th><td>1 → 8</td><td>0 → 0</td><td>1 → 2</td><td>0 → 0</td></tr>
+</tbody>
+</table>
+
+<h2>Additionnez les positions activées</h2>
+<p>Pour <code>1010</code>, les positions 8 et 2 sont activées. Additionnez-les : 8 + 2 = 10. Le nombre binaire de quatre bits <code>1010</code> vaut donc dix en décimal. Cette suite n’est pas une rangée de quatre chiffres décimaux distincts, mais un nombre dont les positions ont des valeurs différentes.</p>
+<p>Essayez la même méthode avec <code>0111</code>: ajoutez 4, 2 et 1. Le zéro initial maintient chaque exemple à quatre bits. Quatre bits permettent seize suites, de <code>0000</code> (zéro) à <code>1111</code> (quinze).</p>
+
+<h2>Construisez et vérifiez un nombre</h2>
+<p>Lancez ce petit programme. Faites ensuite passer un bit de <code>0</code> à <code>1</code> et relancez-le. Prévoyez le nouveau total avant de cliquer sur Run. Le programme ci-dessous est modifiable : c’est votre expérience, pas une image de code.</p>
+<webwriter-code-javascript code="const bits = [1, 0, 1, 0];
+const places = [8, 4, 2, 1];
+const total = bits.reduce((sum, bit, i) =&gt; sum + bit * places[i], 0);
+console.log(bits.join('') + ' = ' + total);"></webwriter-code-javascript>
+<p>Pouvez-vous faire afficher 7 au programme ? Et le plus grand nombre possible avec quatre bits ? Ajoutez une cinquième position de valeur 16 et expliquez quelle autre ligne doit changer.</p>
+<details><summary>Un indice si vous êtes bloqué</summary><p>Pour obtenir sept, activez les positions 4, 2 et 1 : <code>[0, 1, 1, 1]</code>. Pour une cinquième position, ajoutez un bit au début de <code>bits</code> et placez <code>16</code> au début de <code>places</code>.</p></details>
+<p>Avant d’additionner, écrivez les valeurs au-dessus de la suite. Cela aide à éviter une erreur fréquente : lire dans le mauvais sens. La position tout à droite vaut toujours 1, puis viennent 2, 4 et 8 vers la gauche.</p>
+<ol>
+<li>Décodez <code>0101</code> en additionnant ses positions activées.</li>
+<li>Écrivez la suite de quatre bits correspondant à six. Vérifiez que les positions 4 et 2 sont activées.</li>
+<li>Comparez votre méthode avec celle d’un camarade : par quelle position avez-vous commencé ?</li>
+</ol>
+
+
+
+<h2>Réfléchir</h2>
+<p><label for="binary-reflection">Comment expliqueriez-vous la méthode 8/4/2/1 à quelqu’un qui n’a jamais vu le système binaire ?</label></p>
+<textarea id="binary-reflection" name="binary-reflection" rows="4" placeholder="Écrivez votre explication ici."></textarea>
+
+<h2>Sources</h2>
+<ul>
+<li><a href="https://www.computerhistory.org/blog/generative-music-with-the-muse/">Computer History Museum, “Generative Music with the Muse”</a> (exemple de compteur à quatre bits).</li>
+</ul>
+</body>
+</html>

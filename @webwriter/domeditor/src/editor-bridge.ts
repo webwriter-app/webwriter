@@ -34,6 +34,7 @@ export const proofreadingDictionaryAddEvent = "dom-editor-proofreading-dictionar
 export const presenceChangeEvent = "dom-editor-presence-change"
 export const documentHeadStateChangeEvent = "dom-editor-document-head-state-change"
 export const historyStateChangeEvent = "dom-editor-history-state-change"
+export const undoStateChangeEvent = "dom-editor-undo-state-change"
 export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
 export const editorFrameControlMessage = "editor-frame-control"
@@ -78,6 +79,40 @@ export function replayHostDrag(detail: Partial<HostDragDetail>, doc: Document = 
   return !target.dispatchEvent(drag)
 }
 
+export type HostPointerDetail = {
+  event: "pointerdown" | "pointermove" | "pointerup" | "pointercancel"
+  x: number
+  y: number
+  pointerId: number
+  buttons: number
+  ctrlKey?: boolean
+  altKey?: boolean
+  shiftKey?: boolean
+  metaKey?: boolean
+}
+
+/** Chrome device emulation can deliver touch to the cross-site iframe element
+ * itself. Replay that input through the document's ordinary pointer handlers. */
+export function replayHostPointer(detail: Partial<HostPointerDetail>, doc: Document = document) {
+  if(!["pointerdown", "pointermove", "pointerup", "pointercancel"].includes(detail.event ?? "")
+    || !Number.isFinite(detail.x) || !Number.isFinite(detail.y) || !Number.isInteger(detail.pointerId)) return false
+  let target = doc.elementFromPoint(detail.x!, detail.y!) ?? doc.body
+  // Preserve composed origins for widget controls and appendix UI.
+  for(let inner = target.shadowRoot?.elementFromPoint?.(detail.x!, detail.y!);
+    inner && inner !== target; inner = target.shadowRoot?.elementFromPoint?.(detail.x!, detail.y!)) {
+    if(target === doc.body && inner.localName === "slot" && !inner.getAttribute("name")) break
+    target = inner
+  }
+  const event = new PointerEvent(detail.event!, {
+    bubbles: true, composed: true, cancelable: true, pointerType: "touch", isPrimary: true,
+    pointerId: detail.pointerId, button: detail.event === "pointermove" ? -1 : 0,
+    buttons: detail.buttons ?? 0, clientX: detail.x, clientY: detail.y,
+    ctrlKey: detail.ctrlKey === true, altKey: detail.altKey === true,
+    shiftKey: detail.shiftKey === true, metaKey: detail.metaKey === true,
+  })
+  return !target.dispatchEvent(event)
+}
+
 export type AIEditReviewAction = "accept" | "reject"
 
 export type AIEditReviewMessage = {
@@ -114,7 +149,10 @@ export type InitializeEditorMessage = {
   disableAnimations?: boolean
   shortcuts?: Record<string, string>
   proofreadingDictionary?: string[]
-  disableSpellChecking?: boolean
+  proofreadingAllowed?: boolean
+  proofreadingEnabled?: boolean
+  accessibilityReviewEnabled?: boolean
+  commentHighlighting?: boolean
 }
 
 export type LoadWidgetsMessage = {
@@ -167,7 +205,10 @@ export function isInitializeEditorMessage(value: unknown): value is InitializeEd
     && (message.language === undefined || typeof message.language === "string")
     && (message.username === undefined || typeof message.username === "string")
     && (message.disableAnimations === undefined || typeof message.disableAnimations === "boolean")
-    && (message.disableSpellChecking === undefined || typeof message.disableSpellChecking === "boolean")
+    && (message.proofreadingEnabled === undefined || typeof message.proofreadingEnabled === "boolean")
+    && (message.proofreadingAllowed === undefined || typeof message.proofreadingAllowed === "boolean")
+    && (message.accessibilityReviewEnabled === undefined || typeof message.accessibilityReviewEnabled === "boolean")
+    && (message.commentHighlighting === undefined || typeof message.commentHighlighting === "boolean")
     && (message.proofreadingDictionary === undefined || Array.isArray(message.proofreadingDictionary)
       && message.proofreadingDictionary.every(word => typeof word === "string" && Boolean(word.trim()) && !/\s/u.test(word)))
     && (message.shortcuts === undefined || !!message.shortcuts && typeof message.shortcuts === "object"
@@ -221,17 +262,23 @@ export type SelectionPathItem = {
   icon?: string
   /** An optional package-provided icon displayed instead of the shared icon. */
   iconUrl?: string
+  /** Whether this image currently resolves to an authored image map. */
+  imageMap?: boolean
   /** The element's computed non-static positioning mode, omitting relative positioning without an offset. */
   position?: "absolute" | "fixed" | "relative" | "sticky"
   /** The element's authored left or right float, including floats hidden by responsive styles. */
   float?: "far-left" | "far-right"
+  /** Responsive single-lane layout currently places this left float on the right. */
+  floatForcedRight?: boolean
+  /** Responsive layout has no side lanes and keeps this right float in normal flow. */
+  floatRightInFlow?: boolean
   /** Whether this element anchors positioning in the current selection path. */
   positionAnchor?: boolean
   /** Transparent section wrappers applying to this structural element. */
   sections?: SelectionPathSection[]
 }
 
-export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor" | "float"> & {
+export type SelectionPathSection = Pick<SelectionPathItem, "position" | "positionAnchor" | "float" | "floatForcedRight" | "floatRightInFlow"> & {
   /** The child-node path from BODY to the section wrapper. */
   path: number[]
   /** The wrapper's semantic HTML element type. */
@@ -290,11 +337,15 @@ export type ElementStyleState = {
     namespaceURI: string | null
   } | null
   inline: Record<string, ElementStyleDeclaration>
+  /** CSS declarations explicitly present in the authored style attribute. */
+  authoredProperties?: string[]
   computed: Record<string, string>
   context: {
     display: string
     parentDisplay: string
     positioning?: boolean
+    floatLeftForcedRight?: boolean
+    floatRightInFlow?: boolean
   }
 }
 
@@ -418,6 +469,7 @@ export type CommentStateChangeMessage = {
 }
 
 export type ProofreadingState = {
+  allowed: boolean
   enabled: boolean
   documentEnabled: boolean
   loading: boolean
@@ -429,15 +481,16 @@ export type ProofreadingState = {
     id: string
     start: number
     end: number
-    kind: "spelling" | "grammar" | "style"
+    kind: "spelling" | "grammar" | "style" | "accessibility"
     message: string
     text: string
+    helpUrl?: string
     suggestions: {kind: "replace" | "remove" | "insertAfter", text: string}[]
   }[]
 }
 
 export function emptyProofreadingState(): ProofreadingState {
-  return {enabled: true, documentEnabled: true, loading: false, ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
+  return {allowed: true, enabled: true, documentEnabled: true, loading: false, ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
 }
 
 export type ProofreadingAction =
@@ -454,7 +507,16 @@ export type ProofreadingStateChangeMessage = {
   detail: ProofreadingState
 }
 
+export type CommentThreadState = {
+  id: string
+  target: "element" | "text"
+  active: boolean
+  comments: {id: string, text: string, author: {id: string, name: string}, createdAt: number, editedAt: number}[]
+}
+
 export type CommentState = {
+  threads?: CommentThreadState[]
+  activeThreadId?: string | null
   /** Whether the current DOM selection can be annotated. */
   canComment: boolean
   /** Whether one or more comments apply to the current selection. */
@@ -474,10 +536,13 @@ export type PresenceUser = {
   name: string
   initials: string
   color: string
+  lastChange?: number
+  connectionStatus?: "connected" | "disconnected"
 }
 
 export type PresenceChangeDetail = {
   users: PresenceUser[]
+  connectionStatus?: "connected" | "connecting" | "disconnected"
 }
 
 export type PresenceChangeMessage = {
@@ -547,6 +612,15 @@ export const emptyVersionHistoryState = (): VersionHistoryState => ({
 export type HistoryStateChangeMessage = {
   type: typeof historyStateChangeEvent
   detail: VersionHistoryState
+}
+
+export type UndoState = {canUndo: boolean, canRedo: boolean}
+
+export function isUndoStateChangeMessage(value: unknown): value is {type: typeof undoStateChangeEvent, detail: UndoState} {
+  if(!value || typeof value !== "object") return false
+  const message = value as {type?: unknown, detail?: Partial<UndoState>}
+  return message.type === undoStateChangeEvent && !!message.detail && typeof message.detail === "object"
+    && typeof message.detail.canUndo === "boolean" && typeof message.detail.canRedo === "boolean"
 }
 
 export type DocumentHeadStateChangeMessage = {
@@ -661,6 +735,8 @@ const isOptionalBoolean = (value: unknown) => value === undefined || isBoolean(v
 const isSelectionPosition = (value: UnknownRecord) => isOptional(value.position, position => ["absolute", "fixed", "relative", "sticky"].includes(position as string))
   && isOptional(value.positionAnchor, isBoolean)
   && isOptional(value.float, float => float === "far-left" || float === "far-right")
+  && isOptional(value.floatForcedRight, isBoolean)
+  && isOptional(value.floatRightInFlow, isBoolean)
 
 const isSelectionPathItem = (value: unknown) => {
   if(!isRecord(value)) return false
@@ -674,6 +750,7 @@ const isSelectionPathItem = (value: unknown) => {
     && isString(value.name)
     && isOptional(value.icon, isString)
     && isOptional(value.iconUrl, isString)
+    && isOptional(value.imageMap, isBoolean)
     && isSelectionPosition(value)
     && isOptional(value.sections, sections => Array.isArray(sections) && sections.every(isSection))
 }
@@ -749,6 +826,7 @@ const isTableSelection = (table: UnknownRecord) => isBoolean(table.active)
 
 const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
   && isBoolean(graphic.capture)
+  && isOptional(graphic.mode, value => value === "select" || value === "draw" || value === "lines" || value === "curves")
   && isOptional(graphic.selectionCount, isNonnegativeInteger)
   && isOptional(graphic.shape, isGraphicShapeType)
   && isOptional(graphic.parameters, isStringRecord)
@@ -867,6 +945,14 @@ export function isCommentStateChangeMessage(value: unknown): value is CommentSta
     && Number.isInteger(detail.count)
     && detail.count >= detail.activeCount
     && typeof detail.highlighting === "boolean"
+    && (detail.activeThreadId === undefined || detail.activeThreadId === null || typeof detail.activeThreadId === "string")
+    && (detail.threads === undefined || Array.isArray(detail.threads) && detail.threads.every(thread =>
+      !!thread && typeof thread.id === "string" && ["element", "text"].includes(thread.target)
+      && typeof thread.active === "boolean" && Array.isArray(thread.comments) && thread.comments.length > 0
+      && thread.comments.every(comment => !!comment && typeof comment.id === "string" && typeof comment.text === "string"
+        && !!comment.author && typeof comment.author.id === "string" && typeof comment.author.name === "string"
+        && Number.isSafeInteger(comment.createdAt) && comment.createdAt >= 0
+        && Number.isSafeInteger(comment.editedAt) && comment.editedAt >= comment.createdAt)))
 }
 
 export function isProofreadingStateChangeMessage(value: unknown): value is ProofreadingStateChangeMessage {
@@ -874,7 +960,7 @@ export function isProofreadingStateChangeMessage(value: unknown): value is Proof
   const message = value as Partial<ProofreadingStateChangeMessage>
   if(message.type !== proofreadingStateChangeEvent || !message.detail || typeof message.detail !== "object") return false
   const detail = message.detail as Partial<ProofreadingState>
-  return typeof detail.enabled === "boolean" && typeof detail.loading === "boolean" && typeof detail.ready === "boolean"
+  return typeof detail.allowed === "boolean" && typeof detail.enabled === "boolean" && typeof detail.loading === "boolean" && typeof detail.ready === "boolean"
     && typeof detail.documentEnabled === "boolean"
     && typeof detail.checking === "boolean"
     && (detail.error === null || typeof detail.error === "string")
@@ -883,7 +969,8 @@ export function isProofreadingStateChangeMessage(value: unknown): value is Proof
       if(!isRecord(issue)) return false
       return typeof issue.id === "string" && typeof issue.message === "string" && typeof issue.text === "string"
         && isNonnegativeInteger(issue.start) && isNonnegativeInteger(issue.end) && issue.end > issue.start
-        && (issue.kind === "spelling" || issue.kind === "grammar" || issue.kind === "style")
+        && (issue.kind === "spelling" || issue.kind === "grammar" || issue.kind === "style" || issue.kind === "accessibility")
+        && (issue.helpUrl === undefined || typeof issue.helpUrl === "string" && /^https:\/\//.test(issue.helpUrl))
         && Array.isArray(issue.suggestions) && issue.suggestions.every(suggestion => isRecord(suggestion)
           && ["replace", "remove", "insertAfter"].includes(suggestion.kind as string) && typeof suggestion.text === "string")
     })
@@ -894,6 +981,7 @@ export function isPresenceChangeMessage(value: unknown): value is PresenceChange
   const message = value as Partial<PresenceChangeMessage>
   if(message.type !== presenceChangeEvent || !message.detail || typeof message.detail !== "object") return false
   if(!Array.isArray(message.detail.users)) return false
+  if(message.detail.connectionStatus !== undefined && !["connected", "connecting", "disconnected"].includes(message.detail.connectionStatus)) return false
   return message.detail.users.every(user => {
     if(!user || typeof user !== "object") return false
     const presenceUser = user as Partial<PresenceUser>
@@ -901,6 +989,8 @@ export function isPresenceChangeMessage(value: unknown): value is PresenceChange
       && typeof presenceUser.name === "string"
       && typeof presenceUser.initials === "string"
       && typeof presenceUser.color === "string"
+      && (presenceUser.lastChange === undefined || Number.isFinite(presenceUser.lastChange))
+      && (presenceUser.connectionStatus === undefined || presenceUser.connectionStatus === "connected" || presenceUser.connectionStatus === "disconnected")
   })
 }
 

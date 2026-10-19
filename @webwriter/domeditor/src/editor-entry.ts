@@ -1,10 +1,68 @@
 import { DOMEditor } from "./domeditor"
-import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag} from "./editor-bridge"
+import {openFrameLinksInNewTabs} from "./frame-links"
+import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
-import {isAppendixInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
+import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
+import {isAuthoredMutation} from "./editor-artifacts"
 
 /** Shortest time between two document snapshots posted to the host. */
 const snapshotInterval = 250
+
+const mutationOptions: MutationObserverInit = {attributes: true, attributeOldValue: true, characterData: true,
+  characterDataOldValue: true, childList: true, subtree: true}
+
+/** Observes the document and all nested inert template contents. */
+export function observeFrameDocument(document: Document, callback: MutationCallback) {
+  const Observer = document.defaultView?.MutationObserver ?? MutationObserver
+  let templateContents: Set<DocumentFragment> | null = null
+  const observer = new Observer((mutations, currentObserver) => {
+    callback(mutations, currentObserver)
+    if(mutations.some(mutation => mutation.type === "childList")) observe()
+  })
+  const findTemplateContents = () => {
+    const contents: DocumentFragment[] = []
+    const roots: ParentNode[] = [document.documentElement]
+    for(let index = 0; index < roots.length; index++) {
+      roots[index].querySelectorAll("template").forEach(element => {
+        const content = (element as HTMLTemplateElement).content
+        if(!content || content.nodeType !== Node.DOCUMENT_FRAGMENT_NODE) return
+        contents.push(content)
+        roots.push(content)
+      })
+    }
+    return contents
+  }
+  const flushPending = () => {
+    let records = observer.takeRecords()
+    while(records.length) {
+      callback(records, observer)
+      records = observer.takeRecords()
+    }
+  }
+  const observe = () => {
+    flushPending()
+    const contents = findTemplateContents()
+    const observed = templateContents
+    if(observed && contents.length === observed.size && contents.every(content => observed.has(content))) return
+    observer.disconnect()
+    observer.observe(document.documentElement, mutationOptions)
+    contents.forEach(content => observer.observe(content, mutationOptions))
+    templateContents = new Set(contents)
+  }
+  observe()
+  return () => {
+    flushPending()
+    observer.disconnect()
+    templateContents = null
+  }
+}
+
+/** Whether a frame-level shortcut belongs to the editor document. */
+export function shouldCaptureFrameShortcut(event: KeyboardEvent) {
+  return !event.defaultPrevented && !event.isComposing
+    && !isWidgetShadowInteraction(event) && !isAppendixInteraction(event)
+    && !isTextFieldInteraction(event, document.body)
+}
 
 type SelectionBookmark = {
   anchorNode: Node
@@ -48,21 +106,29 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   // proportion to its size. Post the first change at once, then at most one
   // snapshot per interval while changes continue.
   let pending = false
+  let pendingTreeChanged = true
   let timer: ReturnType<typeof setTimeout> | null = null
   const flushSnapshot = () => {
     timer = null
     if(!pending) return
     pending = false
-    post({type: "editor-frame-snapshot", html: snapshot()})
+    const treeChanged = pendingTreeChanged
+    pendingTreeChanged = false
+    post({type: "editor-frame-snapshot", html: snapshot(), treeChanged})
     timer = setTimeout(flushSnapshot, snapshotInterval)
   }
-  const publishSnapshot = () => {
+  const publishSnapshot = (mutations?: MutationRecord[]) => {
+    if(mutations) {
+      const authoredMutations = mutations.filter(isAuthoredMutation)
+      if(authoredMutations.length === 0) return
+      pendingTreeChanged ||= authoredMutations.some(mutation => mutation.type === "childList" || mutation.type === "attributes")
+    }
     if(pending) return
     pending = true
     if(timer === null) queueMicrotask(flushSnapshot)
   }
-  const observer = new MutationObserver(publishSnapshot)
-  observer.observe(document.documentElement, {attributes: true, characterData: true, childList: true, subtree: true})
+  const stopObserving = observeFrameDocument(document, publishSnapshot)
+  window.addEventListener("unload", stopObserving, {once: true})
   publishSnapshot()
   // Run before feature capture listeners can claim canvas/slide gestures.
   window.addEventListener("pointerdown", event => {
@@ -77,8 +143,10 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   // body need not emit focusin, and cross-origin hosts cannot observe Window.focus.
   window.addEventListener("focus", () => post({type: "editor-frame-window-focus"}))
   window.addEventListener("blur", () => post({type: "editor-frame-window-blur"}))
+  document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true})
   document.addEventListener("keydown", event => {
-    if(event.defaultPrevented || event.isComposing) return
+    post({type: "editor-frame-interaction"})
+    if(!shouldCaptureFrameShortcut(event)) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => shortcuts[candidate.id] === shortcut)
@@ -95,6 +163,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     if(data.command === "snapshot") {
       post({type: "editor-frame-response", requestId: data.requestId, html: snapshot()})
     }
+    else if(data.command === "disconnect-collaboration") editor.doc?.disconnectCollaboration()
     else if(data.command === "registered-tags") {
       post({type: "editor-frame-response", requestId: data.requestId,
         tags: (data.tags ?? []).filter(tag => typeof tag === "string" && !!customElements.get(tag))})
@@ -123,6 +192,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     else if(data.command === "shortcuts" && data.shortcuts) shortcuts = data.shortcuts
     else if(data.command === "username" && typeof data.username === "string") setUsername(data.username)
     else if(data.command === "drag") replayHostDrag(event.data)
+    else if(data.command === "pointer") replayHostPointer(event.data)
   })
   void editor
 }
@@ -137,14 +207,18 @@ const initialize = (event: MessageEvent) => {
     bridgeNonce: event.data.bridgeNonce,
     bridgeOrigin: event.origin && event.origin !== "null" ? event.origin : window.location.origin,
     initialState: event.data.initialState,
+    accessibilityReviewEnabled: event.data.accessibilityReviewEnabled === true,
   })
-  editor.features.proofreading.setChecking(event.data.disableSpellChecking !== true)
+  editor.features.proofreading.setChecking(event.data.proofreadingAllowed !== false)
+  editor.features.proofreading.setDocumentChecking(event.data.proofreadingEnabled !== false)
+  editor.features.comment.setCommentHighlighting(event.data.commentHighlighting !== false)
   editor.features.proofreading.setDictionary(event.data.proofreadingDictionary ?? [])
   connectHost(editor, event.origin, event.data.bridgeNonce, event.data)
   /* @ts-ignore */
   window.editor = editor
 }
 
+openFrameLinksInNewTabs(window)
 window.addEventListener("message", initialize)
 
 const bridge = document.querySelector<HTMLMetaElement>('meta[name="webwriter-editor-bridge"]')

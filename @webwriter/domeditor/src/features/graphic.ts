@@ -1,10 +1,12 @@
 import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, atomicEditingContainer, isAppendixInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
+import {getDocumentRoot} from "../document-template"
 import {
+  graphicShapeDragType,
   SVG_NAMESPACE,
   graphicContainerForNode,
   graphicShapeForNode,
@@ -13,6 +15,9 @@ import {
   graphicShapeRoots,
   graphicShapeType,
   graphicShapeIsOpen,
+  graphicStrokePoints,
+  graphicPathGeometry,
+  defaultGraphicShapePaint,
   standaloneGraphicShape,
   isGraphicArrangeOperation,
   isGraphicLayerOperation,
@@ -21,6 +26,7 @@ import {
   type GraphicArrangeOperation,
   type GraphicLayerOperation,
   type GraphicSelectionState,
+  type GraphicMode,
   type GraphicShapeType,
   type GraphicShapePaint,
   type GraphicViewportOperation,
@@ -57,7 +63,7 @@ type InteractionItem = {
 }
 
 type Interaction = {
-  kind: "adjust" | "move" | "resize" | "rotate" | "roundness" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
+  kind: "path-point" | "adjust" | "move" | "resize" | "rotate" | "roundness" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
   handle: string
   start: Point
   startClient: Point
@@ -157,6 +163,26 @@ type PanInteraction = {
   captureTarget: Element | null
 }
 
+type StrokeInteraction = {
+  graphic: SVGSVGElement
+  pointerId: number
+  points: Point[]
+  previewRoot: SVGSVGElement
+  preview: SVGPathElement
+}
+
+type PathNode = {point: Point, incoming: Point, outgoing: Point}
+type PathInteraction = {
+  graphic: SVGSVGElement
+  mode: "lines" | "curves"
+  nodes: PathNode[]
+  cursor?: Point
+  drag?: {pointerId: number, index: number, startClient: Point, handle: boolean}
+  previewRoot: SVGSVGElement
+  preview: SVGPathElement
+  controls: HTMLDivElement
+}
+
 const numberPattern = "[-+]?(?:\\d*\\.)?\\d+(?:[eE][-+]?\\d+)?"
 const rotatePattern = new RegExp(`rotate\\(\\s*(${numberPattern})(?:[ ,]+(${numberPattern})[ ,]+(${numberPattern}))?\\s*\\)`, "i")
 
@@ -234,6 +260,103 @@ const rotateAround = (point: Point, center: Point, angle: number): Point => {
 }
 
 const midpoint = (a: Point, b: Point): Point => ({x: (a.x + b.x) / 2, y: (a.y + b.y) / 2})
+
+const strokePath = (points: Point[]) => {
+  const pair = (point: Point) => `${cleanNumber(point.x)} ${cleanNumber(point.y)}`
+  let path = `M ${pair(points[0])}`
+  for(let index = 1; index < points.length; index++) {
+    path += ` Q ${pair(points[index - 1])} ${pair(midpoint(points[index - 1], points[index]))}`
+  }
+  return `${path} L ${pair(points.at(-1)!)}`
+}
+
+const strokeBounds = (points: Point[]) => {
+  const extrema = [points[0], points.at(-1)!]
+  for(let index = 1; index + 1 < points.length; index += 2) {
+    const start = points[index - 1], control = points[index], end = points[index + 1]
+    extrema.push(end)
+    for(const axis of ["x", "y"] as const) {
+      const denominator = start[axis] - 2 * control[axis] + end[axis]
+      const t = denominator ? (start[axis] - control[axis]) / denominator : 0
+      if(t > 0 && t < 1) extrema.push({
+        x: (1 - t) ** 2 * start.x + 2 * (1 - t) * t * control.x + t ** 2 * end.x,
+        y: (1 - t) ** 2 * start.y + 2 * (1 - t) * t * control.y + t ** 2 * end.y,
+      })
+    }
+  }
+  return boundsForPoints(extrema)
+}
+
+const pair = (point: Point) => `${cleanNumber(point.x)} ${cleanNumber(point.y)}`
+const editablePath = (points: Point[], kind: "lines" | "curves", closed = false) => {
+  let path = `M ${pair(points[0])}`
+  if(kind === "lines") points.slice(1).forEach(point => path += ` L ${pair(point)}`)
+  else for(let index = 1; index + 2 < points.length; index += 3) {
+    path += ` C ${pair(points[index])} ${pair(points[index + 1])} ${pair(points[index + 2])}`
+  }
+  return path + (closed ? " Z" : "")
+}
+
+const cubicBounds = (points: Point[]) => {
+  const extrema = [points[0]]
+  for(let index = 1; index + 2 < points.length; index += 3) {
+    const [start, a, b, end] = points.slice(index - 1, index + 3)
+    extrema.push(end)
+    for(const axis of ["x", "y"] as const) {
+      const qa = -start[axis] + 3 * a[axis] - 3 * b[axis] + end[axis]
+      const qb = 2 * (start[axis] - 2 * a[axis] + b[axis])
+      const qc = a[axis] - start[axis]
+      const discriminant = qb * qb - 4 * qa * qc
+      const roots = Math.abs(qa) < 1e-10 ? Math.abs(qb) < 1e-10 ? [] : [-qc / qb]
+        : discriminant < 0 ? [] : [(-qb + Math.sqrt(discriminant)) / (2 * qa), (-qb - Math.sqrt(discriminant)) / (2 * qa)]
+      roots.filter(t => t > 0 && t < 1).forEach(t => extrema.push({
+        x: (1 - t) ** 3 * start.x + 3 * (1 - t) ** 2 * t * a.x + 3 * (1 - t) * t ** 2 * b.x + t ** 3 * end.x,
+        y: (1 - t) ** 3 * start.y + 3 * (1 - t) ** 2 * t * a.y + 3 * (1 - t) * t ** 2 * b.y + t ** 3 * end.y,
+      }))
+    }
+  }
+  return boundsForPoints(extrema)
+}
+
+/** Move an anchor together with its tangents. Smooth tangents stay linked;
+ * Alt breaks the link, without storing editing metadata in the document. */
+const movePathPoint = (points: Point[], index: number, point: Point, cubic: boolean, closed: boolean, independent = false) => {
+  const joined = closed && points[0].x === points.at(-1)!.x && points[0].y === points.at(-1)!.y
+  const next = points.map(point => ({...point}))
+  const previous = points[index]
+  if(!previous) return next
+  const delta = {x: point.x - previous.x, y: point.y - previous.y}
+  next[index] = point
+  if(!cubic) return next
+  if(index % 3 === 0) {
+    const attached = [index - 1, index + 1]
+    if(joined && index === 0) {
+      next[next.length - 1] = {...point}
+      attached.push(next.length - 2)
+    }
+    attached.forEach(control => {
+      if(next[control]) next[control] = {x: points[control].x + delta.x, y: points[control].y + delta.y}
+    })
+  }
+  else if(!independent) {
+    let anchorIndex = index % 3 === 1 ? index - 1 : index + 1
+    if(joined && anchorIndex === points.length - 1) anchorIndex = 0
+    let oppositeIndex = index % 3 === 1 ? anchorIndex - 1 : anchorIndex + 1
+    if(joined && oppositeIndex === -1) oppositeIndex = points.length - 2
+    const anchor = points[anchorIndex], opposite = points[oppositeIndex]
+    if(opposite) {
+      const a = {x: previous.x - anchor.x, y: previous.y - anchor.y}
+      const b = {x: opposite.x - anchor.x, y: opposite.y - anchor.y}
+      const smooth = Math.abs(a.x * b.y - a.y * b.x) < .01 * Math.max(1, Math.hypot(a.x, a.y) * Math.hypot(b.x, b.y)) && a.x * b.x + a.y * b.y < 0
+      const length = Math.hypot(point.x - anchor.x, point.y - anchor.y)
+      if(smooth && length) {
+        const ratio = Math.hypot(b.x, b.y) / length
+        next[oppositeIndex] = {x: anchor.x - (point.x - anchor.x) * ratio, y: anchor.y - (point.y - anchor.y) * ratio}
+      }
+    }
+  }
+  return next
+}
 
 const attributeNumber = (element: Element, name: string, fallback = 0) => {
   const value = Number.parseFloat(element.getAttribute(name) ?? "")
@@ -351,6 +474,9 @@ const shapeBounds = (shape: Element): Bounds => {
       {x: attributeNumber(geometry, "x2"), y: attributeNumber(geometry, "y2")},
     ])
     case "connector": return boundsForPoints(parsePoints(geometry))
+    case "freehand": return strokeBounds(graphicStrokePoints(geometry)!)
+    case "polyline": return boundsForPoints(graphicPathGeometry(geometry)!.points)
+    case "bezier": return cubicBounds(graphicPathGeometry(geometry)!.points)
     case "triangle":
     case "diamond":
     case "hexagon":
@@ -393,7 +519,9 @@ const rotatedBounds = (bounds: Bounds, rotation: number) => {
 
 const visualBounds = (shape: Element) => rotatedBounds(shapeBounds(shape), rotationOf(shape))
 
-const shapePoints = (shape: Element) => isPolygonShape(shape) || graphicShapeType(shape) === "connector" ? parsePoints(shapeGeometry(shape))
+const shapePoints = (shape: Element) => graphicShapeType(shape) === "freehand" ? graphicStrokePoints(shapeGeometry(shape))!
+  : ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") ? graphicPathGeometry(shapeGeometry(shape))!.points
+  : isPolygonShape(shape) || graphicShapeType(shape) === "connector" ? parsePoints(shapeGeometry(shape))
   : graphicShapeType(shape) === "line" ? [
     {x: attributeNumber(shapeGeometry(shape), "x1"), y: attributeNumber(shapeGeometry(shape), "y1")},
     {x: attributeNumber(shapeGeometry(shape), "x2"), y: attributeNumber(shapeGeometry(shape), "y2")},
@@ -505,6 +633,17 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
     return
   }
   switch(graphicShapeType(shape)) {
+    case "polyline":
+    case "bezier":
+    case "freehand": {
+      const points = initialPoints.map(scalePoint)
+      let index = 0
+      geometry.setAttribute("d", geometry.getAttribute("d")!.replace(new RegExp(numberPattern, "g"), () => {
+        const point = points[Math.floor(index / 2)]
+        return cleanNumber(index++ % 2 === 0 ? point.x : point.y)
+      }))
+      break
+    }
     case "image":
     case "rectangle":
       geometry.setAttribute("x", cleanNumber(safe.x))
@@ -549,7 +688,6 @@ export class GraphicFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
 
   protected handlesCapturedElementInteractions = true
-  #imageReaders = new Set<FileReader>()
   #cancelImport: (() => void) | null = null
   #selectedShapes = new Set<SVGGraphicsElement>()
   #primaryShape: SVGGraphicsElement | null = null
@@ -557,6 +695,13 @@ export class GraphicFeature extends EditorFeature {
   #connector: ConnectorDrawInteraction | null = null
   #marquee: MarqueeInteraction | null = null
   #pan: PanInteraction | null = null
+  #stroke: StrokeInteraction | null = null
+  #path: PathInteraction | null = null
+  #drawMode: Exclude<GraphicMode, "select"> = "draw"
+  #activePathPoint: {shape: SVGGraphicsElement, index: number} | null = null
+  #drawObserver: MutationObserver | null = null
+  #drawGraphic: SVGSVGElement | null = null
+  #drawPaint: GraphicShapePaint = {...defaultGraphicShapePaint}
   #labelEditor: LabelEditor | null = null
   #overlay: HTMLElement | null = null
   #refreshQueued = false
@@ -579,8 +724,6 @@ export class GraphicFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.#cancelImport?.()
-    this.#imageReaders.forEach(reader => { if(reader.readyState === 1) reader.abort() })
-    this.#imageReaders.clear()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
     document.removeEventListener("scroll", this.#scheduleRefresh, true)
@@ -588,6 +731,8 @@ export class GraphicFeature extends EditorFeature {
     this.#cancelConnector()
     this.#cancelMarquee()
     this.#cancelPan()
+    this.#cancelStroke()
+    this.#setDrawGraphic(null)
     this.#closeLabelEditor(false, false)
     this.#clearCanvasPresentation()
     this.#clearShapeSelection()
@@ -601,6 +746,22 @@ export class GraphicFeature extends EditorFeature {
   }
 
   actions = {
+    setGraphicMode: ({mode, paint}: {type: "setGraphicMode", mode: GraphicMode, paint?: GraphicShapePaint}) => {
+      if(!["select", "draw", "lines", "curves"].includes(mode) || !this.isEnabled || this.editor.isEditingLocked) return
+      const graphic = this.#capturedGraphic()
+      if(!graphic || !this.#canInsertText(graphic)) return
+      this.#cancelPointer()
+      this.#closeLabelEditor(true)
+      this.#drawMode = mode === "select" ? "draw" : mode
+      this.#setDrawGraphic(mode !== "select" ? graphic : null)
+      if(paint) this.#drawPaint = {...this.#drawPaint, ...paint}
+      this.#clearShapeSelection()
+      this.#refresh()
+      this.editor.postSelectionPath()
+    },
+    setGraphicDrawPaint: ({paint}: {type: "setGraphicDrawPaint", paint: GraphicShapePaint}) => {
+      if(paint && typeof paint === "object") this.#drawPaint = {...this.#drawPaint, ...paint}
+    },
     importGraphic: (_: {type: "importGraphic"}) => {
       this.#cancelImport?.()
       const target = this.#activeGraphic()
@@ -626,7 +787,8 @@ export class GraphicFeature extends EditorFeature {
             if(!file) return
             if(!/\.svg$/i.test(file.name)) throw new TypeError("Choose an SVG file")
             const source = await file.text()
-            if(cancelled || target && !target.isConnected) return
+            if(cancelled || target && (!target.isConnected || !getDocumentRoot().contains(target)
+              || atomicEditingContainer(target.parentElement, this.editor.schema))) return
             const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
             const root = parsed.documentElement
             if(parsed.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== SVG_NAMESPACE) {
@@ -662,10 +824,12 @@ export class GraphicFeature extends EditorFeature {
         input.click()
       })
     },
-    serializeGraphic: (_: {type: "serializeGraphic"}) => {
+    serializeGraphic: async (_: {type: "serializeGraphic"}) => {
       const graphic = this.#activeGraphic()
       if(!graphic?.isConnected) return null
-      return new XMLSerializer().serializeToString(clearEditorMarkerClasses(graphic.cloneNode(true)))
+      const clone = clearEditorMarkerClasses(graphic.cloneNode(true)) as Element
+      await this.editor.inlineBlobSources(clone)
+      return new XMLSerializer().serializeToString(clone)
     },
     insertGraphic: ({shape}: {type: "insertGraphic", shape?: GraphicShapeType}) => {
       if(shape !== undefined && !isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
@@ -676,7 +840,7 @@ export class GraphicFeature extends EditorFeature {
         if(shape === "text-box") element = this.#setLabel(element, "Text")
         this.#fitStandaloneGraphic(graphic, element)
       }
-      this.editor.features.manipulation.insert(graphic)
+      this.editor.features.manipulation.insert(graphic, 0, false, this.editor.features.canvas.active || undefined)
       if(graphic.isConnected) {
         if(shape) this.editor.features.selection.selectElement(graphic)
         else this.editor.features.selection.captureElement(graphic)
@@ -688,18 +852,7 @@ export class GraphicFeature extends EditorFeature {
       if(!isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#capturedGraphic()
       if(!graphic) return
-      let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
-      for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
-        const value = paint?.[name]
-        if(typeof value === "string" && !(name === "fill" && graphicShapeIsOpen(shape))) {
-          this.#setParameter(element, name, value)
-        }
-      }
-      graphic.append(element)
-      if(shape === "text-box") element = this.#setLabel(element, "Text")
-      this.#selectShape(element)
-      this.#refresh()
-      this.editor.postSelectionPath()
+      this.#insertShape(graphic, shape, paint)
     },
     setGraphicParameter: ({name, value}: {type: "setGraphicParameter", name: string, value: string}) => {
       const shapes = this.selectedShapes
@@ -799,6 +952,7 @@ export class GraphicFeature extends EditorFeature {
     return {
       active: true,
       capture: Boolean(capture),
+      mode: this.#drawGraphic === graphic ? this.#drawMode : "select",
       selectionCount: shapes.length,
       options: {...this.#options},
       ...(layers.length ? {layers} : {}),
@@ -814,25 +968,126 @@ export class GraphicFeature extends EditorFeature {
     this.#refresh()
   }
 
-  // Claim graphic image drops before document insertion resolves a text caret.
+  #insertShape(graphic: SVGSVGElement, shape: GraphicShapeType, paint?: GraphicShapePaint, point?: Point, label = "Text") {
+    let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
+    for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
+      const value = paint?.[name]
+      if(typeof value === "string" && !(name === "fill" && graphicShapeIsOpen(shape))) {
+        this.#setParameter(element, name, value)
+      }
+    }
+    graphic.append(element)
+    if(shape === "text-box") element = this.#setLabel(element, label)
+    if(point) {
+      const bounds = shapeBounds(element)
+      this.#moveShape(element, point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2)
+    }
+    if(point) this.editor.features.selection.captureElement(graphic)
+    this.#selectShape(element)
+    this.#refresh()
+    this.editor.postSelectionPath()
+  }
+
+  get textInsertionGraphic() {
+    const selected = $.selectedElement
+    const graphic = this.#activeGraphic() ?? (selected?.localName === "svg" && selected.namespaceURI === SVG_NAMESPACE ? selected as SVGSVGElement : null)
+    return graphic && this.#canInsertText(graphic) ? graphic : null
+  }
+
+  #canInsertText(graphic: SVGSVGElement) {
+    return this.isEnabled && !this.editor.isEditingLocked && graphic.isConnected
+      && getDocumentRoot().contains(graphic) && !atomicEditingContainer(graphic.parentElement, this.editor.schema)
+  }
+
+  #insertText(graphic: SVGSVGElement, value: string, point?: Point) {
+    if(!value || !this.#canInsertText(graphic)) return false
+    this.#closeLabelEditor(true, false)
+    this.editor.doc.stopCapturing()
+    this.editor.features.selection.captureElement(graphic)
+    this.#insertShape(graphic, "text-box", undefined, point, value)
+    this.editor.doc.stopCapturing()
+    return true
+  }
+
+  /** Routes the toolbar clipboard command to the live graphic or label. */
+  async paste() {
+    const graphic = this.textInsertionGraphic
+    const label = this.#labelEditor
+    if(!graphic || !navigator.clipboard?.read) return false
+    const items = await navigator.clipboard.read()
+    const item = items.find(item => item.types.includes("text/plain"))
+    const value = item ? await (await item.getType("text/plain")).text() : ""
+    if(graphic !== this.textInsertionGraphic || label !== this.#labelEditor || !value) return false
+    if(label) {
+      if(!this.textEditingRange) return false
+      this.editor.features.mark.handleSVGTextInput(new InputEvent("beforeinput", {inputType: "insertFromPaste", data: value, cancelable: true}))
+      this.#positionLabelEditor()
+      return true
+    }
+    return this.#insertText(graphic, value)
+  }
+
+  #dropShape(event: DragEvent) {
+    const data = event.dataTransfer
+    if(!data?.types.includes(graphicShapeDragType)) return false
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    const graphic = this.#imageDropGraphic(event)
+    if(!graphic) return true
+    let detail
+    try { detail = JSON.parse(data.getData(graphicShapeDragType)) }
+    catch { return true }
+    if(!detail || !isGraphicShapeType(detail.shape)) return true
+    const point = applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})
+    this.editor.doc.stopCapturing()
+    this.#insertShape(graphic, detail.shape, detail.paint, point)
+    this.editor.doc.stopCapturing()
+    return true
+  }
+
+  // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
     dragover: event => {
+      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        event.dataTransfer.dropEffect = this.#imageDropGraphic(event) ? "copy" : "none"
+        return
+      }
       if(!this.#imageDropGraphic(event) || !event.dataTransfer) return
       const data = event.dataTransfer
-      if(!Array.from(data.items).some(item => item.kind === "file" && item.type.startsWith("image/"))
-        && !Array.from(data.types).some(type => type === "text/html" || type === "text/uri-list")) return
+      if(!Array.from(data.items).some(item => item.kind === "file" && (!item.type || /^(image|audio|video)\//.test(item.type)))
+        && !Array.from(data.types).some(type => type === "text/plain" || type === "text/html" || type === "text/uri-list")) return
       event.preventDefault()
       event.stopImmediatePropagation()
       data.dropEffect = "copy"
     },
-    drop: event => this.#dropImage(event),
+    drop: event => {
+      if(this.#dropShape(event)) return
+      this.#dropImage(event)
+      if(event.defaultPrevented) return
+      const graphic = this.#imageDropGraphic(event)
+      const value = event.dataTransfer?.getData("text/plain")
+      if(!graphic || !value) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#insertText(graphic, value, applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY}))
+    },
+    paste: event => {
+      if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || this.textEditingRange) return
+      const graphic = this.textInsertionGraphic
+      const value = event.clipboardData?.getData("text/plain")
+      if(!graphic || !value) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#insertText(graphic, value)
+    },
   }
 
   #imageDropGraphic(event: DragEvent) {
     if(this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
-    const placeholder = this.editor.features.media.placeholder
-    const target = event.composedPath().includes(placeholder.element) ? placeholder.target
-      : event.target instanceof Node ? event.target : null
+    const target = this.editor.features.media.mediaDropTarget(event)
+      ?? (event.target instanceof Node ? event.target : null)
     const graphic = graphicContainerForNode(target)
     return graphic?.isConnected && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
   }
@@ -841,7 +1096,7 @@ export class GraphicFeature extends EditorFeature {
     const graphic = this.#imageDropGraphic(event)
     const data = event.dataTransfer
     if(!graphic || !data) return
-    const files = Array.from(data.files).filter(file => file.type.startsWith("image/"))
+    const files = Array.from(data.files).filter(file => /^(image|audio|video)\//.test(file.type))
     const template = document.createElement("template")
     template.innerHTML = data.getData("text/html")
     stripActiveContent(template.content)
@@ -878,13 +1133,28 @@ export class GraphicFeature extends EditorFeature {
       this.editor.doc.stopCapturing()
     }
     if(files.length) files.forEach((file, index) => {
-      const reader = new FileReader()
-      this.#imageReaders.add(reader)
-      reader.addEventListener("load", () => {
-        if(this.#imageReaders.delete(reader) && typeof reader.result === "string") commit(reader.result, index)
-      }, {once: true})
-      reader.addEventListener("error", () => this.#imageReaders.delete(reader), {once: true})
-      reader.readAsDataURL(file)
+      if(file.type.startsWith("image/")) { commit(this.editor.createMediaURL(file), index); return }
+      if(!this.isEnabled || this.editor.isEditingLocked || !graphic.isConnected
+        || atomicEditingContainer(graphic.parentElement, this.editor.schema)) return
+      const container = document.createElementNS(SVG_NAMESPACE, "foreignObject")
+      const video = file.type.startsWith("video/")
+      const width = 320, height = video ? 180 : 54
+      container.setAttribute("x", cleanNumber(point.x - width / 2 + index * 24))
+      container.setAttribute("y", cleanNumber(point.y - height / 2 + index * 24))
+      container.setAttribute("width", String(width))
+      container.setAttribute("height", String(height))
+      const media = document.createElement(video ? "video" : "audio")
+      media.setAttribute("controls", "")
+      media.setAttribute("src", this.editor.createMediaURL(file))
+      media.style.width = "100%"
+      media.style.height = "100%"
+      container.append(media)
+      this.editor.doc.stopCapturing()
+      graphic.append(container)
+      this.editor.features.selection.captureElement(graphic)
+      this.#refresh()
+      this.editor.postSelectionPath()
+      this.editor.doc.stopCapturing()
     })
     else if(safeSource) commit(safeSource, 0)
   }
@@ -920,6 +1190,10 @@ export class GraphicFeature extends EditorFeature {
       if(this.#labelEditor && this.#labelEditor.pointerId !== undefined && this.#labelEditor.pointerId === event.pointerId) this.#labelEditor.pointerId = undefined
       this.#cancelPointer(event)
     },
+    lostpointercapture: event => {
+      if(this.#stroke?.pointerId === event.pointerId) this.#cancelStroke()
+      if(this.#path?.drag?.pointerId === event.pointerId) this.#cancelPath()
+    },
     wheel: event => this.#handleWheel(event),
     beforeinput: event => {
       if(isAppendixInteraction(event) && (!this.#labelEditor || !event.composedPath().includes(this.#labelEditor.element))) return
@@ -939,11 +1213,32 @@ export class GraphicFeature extends EditorFeature {
       }
       const graphic = this.#capturedGraphic()
       if(!graphic) return
-      if(this.#handleSpaceDown(event)) return
-      if(event.key === "Escape" && this.#labelEditor) {
-        event.preventDefault()
+      if(!event.altKey && modifierKeyDown(event) && ["z", "y"].includes(event.key.toLowerCase())) {
+        this.#cancelPointer()
+        this.editor.features.history.activeListeners.keydown?.(event)
         event.stopImmediatePropagation()
-        this.#closeLabelEditor(false)
+        this.#refresh()
+        this.editor.postSelectionPath()
+        return
+      }
+      if(this.#path && ["Enter", "Escape", "Backspace", "Delete", "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+        this.#claimKeyboardEvent(event)
+        if(event.key === "Enter") this.#finishPath()
+        else if(event.key === "Escape") this.#cancelPath()
+        else if(event.key === "Backspace" || event.key === "Delete") {
+          this.#path.nodes.pop()
+          if(!this.#path.nodes.length) this.#cancelPath()
+          else this.#renderPath()
+        }
+        else {
+          const node = this.#path.nodes.at(-1)!
+          const step = event.shiftKey ? 50 : 1
+          const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0
+          const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0
+          for(const point of [node.point, node.incoming, node.outgoing]) { point.x += dx; point.y += dy }
+          this.#path.cursor = undefined
+          this.#renderPath()
+        }
         return
       }
       if(event.key === "Escape" && (this.#interaction || this.#connector || this.#marquee || this.#pan)) {
@@ -952,6 +1247,27 @@ export class GraphicFeature extends EditorFeature {
         const stateChanged = Boolean(this.#marquee || this.#pan)
         this.#cancelPointer()
         if(stateChanged) this.editor.postSelectionPath()
+        return
+      }
+      if(event.key === "Escape" && this.#activePathPoint) {
+        this.#claimKeyboardEvent(event)
+        this.#activePathPoint = null
+        this.#refresh()
+        return
+      }
+      if(event.key === "Escape" && this.#drawGraphic) {
+        this.#claimKeyboardEvent(event)
+        this.#cancelStroke()
+        this.#setDrawGraphic(null)
+        this.#refresh()
+        this.editor.postSelectionPath()
+        return
+      }
+      if(this.#handleSpaceDown(event)) return
+      if(event.key === "Escape" && this.#labelEditor) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        this.#closeLabelEditor(false)
         return
       }
       const shapes = this.selectedShapes
@@ -975,7 +1291,7 @@ export class GraphicFeature extends EditorFeature {
       if(event.key === "Enter" && !event.altKey && !event.shiftKey && !modifierKeyDown(event) && shapes.length === 1) {
         const shape = shapes[0]
         const type = graphicShapeType(shape)
-        if(type && type !== "line" && type !== "connector" && !this.#isLocked(shape)) {
+        if(type && type !== "line" && type !== "connector" && type !== "freehand" && type !== "polyline" && type !== "bezier" && !this.#isLocked(shape)) {
           event.preventDefault()
           event.stopImmediatePropagation()
           this.#openLabelEditor(shape)
@@ -1004,7 +1320,18 @@ export class GraphicFeature extends EditorFeature {
               : null
       if(movement) {
         this.#claimKeyboardEvent(event)
-        if(shapes.length) {
+        const active = this.#activePathPoint
+        const path = active && this.selectedShapes.includes(active.shape) ? graphicPathGeometry(shapeGeometry(active.shape)) : null
+        if(active && path?.points[active.index] && !this.#isLocked(active.shape)) {
+          const point = path.points[active.index]
+          const points = movePathPoint(path.points, active.index, {x: point.x + movement.x, y: point.y + movement.y}, path.kind === "curves", path.closed, event.altKey)
+          const end = this.editor.doc.beginUndoGroup()
+          try { shapeGeometry(active.shape).setAttribute("d", editablePath(points, path.kind, path.closed)) }
+          finally { end() }
+          this.#refresh()
+          this.editor.postSelectionPath()
+        }
+        else if(shapes.length) {
           const attached = this.#captureAttachedConnectors(graphic, shapes)
           this.editor.doc.stopCapturing()
           shapes.forEach(shape => this.#moveShape(shape, movement.x, movement.y))
@@ -1066,6 +1393,8 @@ export class GraphicFeature extends EditorFeature {
     this.#spaceDown = false
     removeEditorMarker(document.body, "◆graphic-pan-ready")
     this.#cancelPan()
+    this.#cancelStroke()
+    this.#cancelPath()
   }
 
   #handleWheel(event: WheelEvent) {
@@ -1163,6 +1492,18 @@ export class GraphicFeature extends EditorFeature {
       shape.setAttribute("fill", "none")
       shape.setAttribute("stroke-linecap", "round")
     }
+    else if(type === "freehand" || type === "polyline" || type === "bezier") {
+      shape = document.createElementNS(SVG_NAMESPACE, "path")
+      const points = [
+        {x: bounds.x, y: bounds.y},
+        {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height},
+        {x: bounds.x + bounds.width, y: bounds.y},
+      ]
+      shape.setAttribute("d", type === "freehand" ? strokePath(points) : type === "polyline" ? editablePath(points, "lines")
+        : editablePath([points[0], {x: bounds.x + bounds.width / 3, y: bounds.y}, {x: bounds.x + bounds.width * 2 / 3, y: bounds.y + bounds.height}, points[2]], "curves"))
+      shape.setAttribute("stroke-linecap", "round")
+      shape.setAttribute("stroke-linejoin", "round")
+    }
     else if(type === "connector") {
       shape = document.createElementNS(SVG_NAMESPACE, "polyline")
       setPoints(shape, connectorPoints(
@@ -1185,7 +1526,7 @@ export class GraphicFeature extends EditorFeature {
                 : regularPolygonPoints(bounds, 5)
       setPoints(shape, points)
     }
-    if(type !== "line" && type !== "connector") shape.setAttribute("fill", "#ffffff")
+    shape.setAttribute("fill", graphicShapeIsOpen(type) ? "none" : "#ffffff")
     shape.setAttribute("stroke", "#334155")
     shape.setAttribute("stroke-width", type === "line" || type === "connector" ? "6" : "4")
     shape.setAttribute("vector-effect", "non-scaling-stroke")
@@ -1266,12 +1607,20 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #handleDoubleClick(event: MouseEvent) {
+    if(this.#path) {
+      if(event.button !== 0 || !(event.target instanceof Node) || graphicContainerForNode(event.target) !== this.#path.graphic) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#finishPath()
+      return
+    }
+    if(this.#drawGraphic) return
     if(event.button !== 0 || !(event.target instanceof Node)) return
     const graphic = graphicContainerForNode(event.target)
     const element = event.target instanceof Element ? event.target : event.target.parentElement
     const shape = graphicShapeForNode(event.target) ?? element?.closest<SVGTextElement>("text") ?? null
     const type = graphicShapeType(shape)
-    if(!graphic || !shape || this.#isLocked(shape) || !type && shape.localName !== "text" || type === "line" || type === "connector") return
+    if(!graphic || !shape || this.#isLocked(shape) || !type && shape.localName !== "text" || type === "line" || type === "connector" || type === "freehand" || type === "polyline" || type === "bezier") return
     event.preventDefault()
     event.stopImmediatePropagation()
     if(this.#labelEditor?.text.contains(event.target)) {
@@ -1558,7 +1907,7 @@ export class GraphicFeature extends EditorFeature {
       editor.caret.style.cssText = "position:fixed;pointer-events:none;left:0;top:0;width:0;height:0"
       editor.caret.replaceChildren(...Array.from(range.getClientRects(), rect => {
         const highlight = document.createElement("div")
-        highlight.style.cssText = `position:fixed;pointer-events:none;background:var(--editor-selection-background,rgba(37,99,235,.25));left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+        highlight.style.cssText = `position:fixed;pointer-events:none;background:var(--editor-selection-background,rgba(37,99,235,.25));left:${fixedClientX(rect.left)}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
         return highlight
       }))
       return
@@ -1574,8 +1923,8 @@ export class GraphicFeature extends EditorFeature {
     const x = rect.height ? rect.left : fallback.left
     const y = rect.height ? rect.top : fallback.top
     const height = rect.height || fallback.height || 16
-    Object.assign(editor.caret.style, {left: `${x}px`, top: `${y}px`, height: `${height}px`})
-    Object.assign(editor.element.style, {left: `${x}px`, top: `${y}px`})
+    Object.assign(editor.caret.style, {left: `${fixedClientX(x)}px`, top: `${y}px`, height: `${height}px`})
+    Object.assign(editor.element.style, {left: `${fixedClientX(x)}px`, top: `${y}px`})
   }
 
   #emptyTextCaretRect(text: SVGTextElement): DOMRect | null {
@@ -1612,6 +1961,36 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #handlePointerDown(event: PointerEvent) {
+    // A palm or second contact must not replace a stroke already in progress.
+    if(this.#stroke) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    const draftHandle = event.composedPath().find(target => target instanceof HTMLElement && target.hasAttribute("data-path-node")) as HTMLElement | undefined
+    if(this.#path?.drag) { event.preventDefault(); event.stopImmediatePropagation(); return }
+    if(this.#path && draftHandle && event.button === 0) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if(draftHandle.dataset.pathNode === "0") this.#finishPath(true)
+      return
+    }
+    const drawing = this.#drawGraphic
+    if(drawing && event.isPrimary === false && event.target instanceof Node && graphicContainerForNode(event.target) === drawing) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    if(drawing && event.button === 0 && !this.#spaceDown && event.isPrimary !== false
+      && event.target instanceof Node && graphicContainerForNode(event.target) === drawing) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if(this.#canInsertText(drawing) && this.#capturedGraphic() === drawing) {
+        if(this.#drawMode === "draw") this.#startStroke(drawing, event)
+        else this.#addPathNode(drawing, event)
+      }
+      return
+    }
     const target = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null
     const label = target?.closest<SVGTextElement>("text")
     const labelShape = label && (graphicShapeForNode(label) ?? label)
@@ -1707,12 +2086,14 @@ export class GraphicFeature extends EditorFeature {
     const captureTarget = event.composedPath().find(target => target instanceof Element) as Element | undefined
     const kind = handle.startsWith("adjust-") ? "adjust"
       : handle.startsWith("resize-") ? "resize"
+      : handle.startsWith("path-point-") ? "path-point"
       : handle.startsWith("vertex-") ? "vertex"
         : handle === "line-start" || handle === "line-end" || handle === "connector-start" || handle === "connector-end"
           || handle === "roundness" || handle === "radius-x" || handle === "radius-y" || handle === "rotate"
           ? handle
           : "move"
     if(shapes.length > 1 && kind !== "move" && kind !== "resize" && kind !== "rotate") return
+    this.#activePathPoint = kind === "path-point" ? {shape, index: Number(handle.slice("path-point-".length))} : null
     const items = shapes.map(source => ({
       source,
       bounds: shapeBounds(source),
@@ -1738,6 +2119,7 @@ export class GraphicFeature extends EditorFeature {
       candidates: this.#snapCandidates(graphic, new Set(shapes)),
       items,
       attachedConnectors: this.#captureAttachedConnectors(graphic, shapes),
+      ...(kind === "path-point" ? {vertex: Number(handle.slice("path-point-".length))} : {}),
       ...(kind === "vertex" ? {vertex: Number.parseInt(handle.slice("vertex-".length))} : {}),
     }
     this.#capturePointer(captureTarget, event.pointerId)
@@ -1783,7 +2165,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #startPan(graphic: SVGSVGElement, event: PointerEvent) {
-    if(this.#interaction || this.#connector || this.#marquee || this.#pan) this.#cancelPointer()
+    if(this.#path || this.#interaction || this.#connector || this.#marquee || this.#pan) this.#cancelPointer()
     const captureTarget = event.composedPath().find(target => target instanceof Element) as Element | undefined
     this.#pan = {
       graphic,
@@ -1849,6 +2231,11 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #handlePointerMove(event: PointerEvent) {
+    if(this.#path) { this.#movePath(event); return }
+    if(this.#stroke) {
+      if(event.pointerId === this.#stroke.pointerId) this.#moveStroke(event)
+      return
+    }
     if(this.#pan) {
       this.#movePan(event)
       return
@@ -1876,17 +2263,303 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #finishPointer(event: PointerEvent) {
-    if(this.#pan) this.#finishPan(event)
+    if(this.#path) this.#finishPathPointer(event)
+    else if(this.#stroke) this.#finishStroke(event)
+    else if(this.#pan) this.#finishPan(event)
     else if(this.#connector) this.#finishConnector(event)
     else if(this.#marquee) this.#finishMarquee(event)
     else this.#finishInteraction(event)
   }
 
   #cancelPointer(event?: PointerEvent) {
+    if(this.#path && (!event || this.#path.drag?.pointerId === event.pointerId)) this.#cancelPath()
+    if(this.#stroke && (!event || event.pointerId === this.#stroke.pointerId)) this.#cancelStroke()
     if(this.#pan) this.#cancelPan(event)
     if(this.#connector) this.#cancelConnector(event)
     if(this.#marquee) this.#cancelMarquee(event)
     if(this.#interaction) this.#cancelInteraction(event)
+  }
+
+  #setDrawGraphic(graphic: SVGSVGElement | null) {
+    this.#cancelPath()
+    this.#drawObserver?.disconnect()
+    this.#drawObserver = null
+    if(this.#drawGraphic) removeEditorMarker(this.#drawGraphic, "◆graphic-drawing")
+    // Direct DOM replacements may have cloned a temporary marker as well.
+    document.querySelectorAll(".◆graphic-drawing").forEach(element => removeEditorMarker(element, "◆graphic-drawing"))
+    this.#drawGraphic = graphic
+    if(!graphic) return
+    graphic.classList.add("◆", "◆graphic-drawing")
+    document.body.classList.add("◆", "◆graphic-drawing")
+    this.#drawObserver = new MutationObserver(() => {
+      if(this.#drawGraphic === graphic && (this.#capturedGraphic() !== graphic || !this.#canInsertText(graphic))) {
+        this.#cancelStroke()
+        this.#setDrawGraphic(null)
+        this.#refresh()
+        this.editor.postSelectionPath()
+      }
+    })
+    this.#drawObserver.observe(document.body, {subtree: true, childList: true, attributes: true})
+  }
+
+  #createDrawingPreview(graphic: SVGSVGElement) {
+    const previewRoot = document.createElementNS(SVG_NAMESPACE, "svg")
+    previewRoot.classList.add("◆", "◆editor-only", "◆graphic-preview")
+    previewRoot.setAttribute("part", "graphic-preview")
+    previewRoot.setAttribute("aria-hidden", "true")
+    previewRoot.setAttribute("viewBox", graphic.getAttribute("viewBox") ?? "0 0 1600 900")
+    const aspect = graphic.getAttribute("preserveAspectRatio")
+    if(aspect) previewRoot.setAttribute("preserveAspectRatio", aspect)
+    this.#positionPreviewRoot(previewRoot, graphic)
+    const preview = document.createElementNS(SVG_NAMESPACE, "path")
+    preview.setAttribute("fill", "none")
+    preview.setAttribute("stroke-linecap", "round")
+    preview.setAttribute("stroke-linejoin", "round")
+    preview.setAttribute("vector-effect", "non-scaling-stroke")
+    for(const name of ["stroke", "stroke-width", "opacity"] as const) {
+      this.#setParameter(preview, name, this.#drawPaint[name] ?? defaultGraphicShapePaint[name])
+    }
+    previewRoot.append(preview)
+    this.editor.addAppendix(previewRoot)
+    return {previewRoot, preview}
+  }
+
+  #startStroke(graphic: SVGSVGElement, event: PointerEvent) {
+    this.#cancelPointer()
+    this.#clearShapeSelection()
+    const {previewRoot, preview} = this.#createDrawingPreview(graphic)
+    const points = [this.#clientPoint(graphic, event.clientX, event.clientY)]
+    preview.setAttribute("d", strokePath(points))
+    this.#stroke = {graphic, pointerId: event.pointerId, points, previewRoot, preview}
+    this.#capturePointer(graphic, event.pointerId)
+    this.#refresh()
+  }
+
+  #constrainPathPoint(point: Point, origin: Point): Point {
+    const dx = point.x - origin.x, dy = point.y - origin.y
+    const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI / 4
+    const length = Math.hypot(dx, dy)
+    return {x: origin.x + Math.cos(angle) * length, y: origin.y + Math.sin(angle) * length}
+  }
+
+  #drawingPoint(graphic: SVGSVGElement, event: PointerEvent, origin?: Point) {
+    const latest = this.#pointerSnapshot(graphic, event)
+    const point = origin && latest.shiftKey ? this.#constrainPathPoint(latest.point, origin) : latest.point
+    return this.#snapPoint(point, {
+      latest, matrix: this.#screenMatrix(graphic), candidates: this.#snapCandidates(graphic, new Set(this.selectedShapes)),
+    }, true).point
+  }
+
+  #addPathNode(graphic: SVGSVGElement, event: PointerEvent) {
+    if(!this.#path) {
+      this.#clearShapeSelection()
+      const {previewRoot, preview} = this.#createDrawingPreview(graphic)
+      const controls = document.createElement("div")
+      controls.classList.add("◆", "◆editor-only", "◆graphic-path-controls")
+      controls.setAttribute("part", "graphic-overlay")
+      controls.contentEditable = "false"
+      controls.style.left = `${fixedClientX(0)}px`
+      this.editor.addAppendix(controls)
+      this.#path = {graphic, mode: this.#drawMode === "curves" ? "curves" : "lines", nodes: [], previewRoot, preview, controls}
+    }
+    const path = this.#path
+    const first = path.nodes[0]
+    const min = path.mode === "curves" ? 2 : 3
+    if(first && path.nodes.length >= min) {
+      const client = applyMatrix(this.#screenMatrix(graphic), first.point)
+      if(Math.hypot(client.x - event.clientX, client.y - event.clientY) <= 10) { this.#finishPath(true); return }
+    }
+    const point = this.#drawingPoint(graphic, event, path.nodes.at(-1)?.point)
+    if(!Number.isFinite(point.x) || !Number.isFinite(point.y)) return
+    const previous = path.nodes.at(-1)?.point
+    // The second click of a double-click must not add a duplicate vertex.
+    if(previous?.x === point.x && previous.y === point.y) return
+    path.nodes.push({point, incoming: {...point}, outgoing: {...point}})
+    path.cursor = undefined
+    path.drag = {pointerId: event.pointerId, index: path.nodes.length - 1, startClient: {x: event.clientX, y: event.clientY}, handle: false}
+    this.#capturePointer(graphic, event.pointerId)
+    this.#renderPath()
+    this.#refresh()
+  }
+
+  #movePath(event: PointerEvent) {
+    const path = this.#path
+    if(!path) return
+    if(this.#drawGraphic !== path.graphic || this.#capturedGraphic() !== path.graphic || !this.#canInsertText(path.graphic)) { this.#cancelPath(); return }
+    if(path.drag && path.drag.pointerId !== event.pointerId || event.isPrimary === false) return
+    if(!path.drag && (!(event.target instanceof Node) || graphicContainerForNode(event.target) !== path.graphic)) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if(path.drag) {
+      const drag = path.drag
+      if(path.mode !== "curves" || Math.hypot(event.clientX - drag.startClient.x, event.clientY - drag.startClient.y) < 3 && !drag.handle) return
+      drag.handle = true
+      const node = path.nodes[drag.index]
+      node.outgoing = this.#drawingPoint(path.graphic, event, node.point)
+      node.incoming = event.altKey ? {...node.point} : {x: 2 * node.point.x - node.outgoing.x, y: 2 * node.point.y - node.outgoing.y}
+    }
+    else path.cursor = this.#drawingPoint(path.graphic, event, path.nodes.at(-1)?.point)
+    this.#renderPath()
+  }
+
+  #finishPathPointer(event: PointerEvent) {
+    const path = this.#path
+    if(!path?.drag || path.drag.pointerId !== event.pointerId) return
+    this.#movePath(event)
+    if(this.#path !== path) return
+    const pointerId = path.drag.pointerId
+    path.drag = undefined
+    this.#releasePointer(path.graphic, pointerId)
+    this.#renderPath()
+  }
+
+  #pathPoints(path: PathInteraction, closed = false, cursor = false) {
+    const nodes = [...path.nodes]
+    if(cursor && path.cursor && !path.drag) nodes.push({point: path.cursor, incoming: path.cursor, outgoing: path.cursor})
+    if(path.mode === "lines") return nodes.map(node => node.point)
+    if(closed) nodes.push(nodes[0])
+    const points = [nodes[0].point]
+    for(let index = 1; index < nodes.length; index++) {
+      const previous = nodes[index - 1], node = nodes[index]
+      const along = (fraction: number) => ({x: previous.point.x + (node.point.x - previous.point.x) * fraction, y: previous.point.y + (node.point.y - previous.point.y) * fraction})
+      points.push(
+        previous.outgoing.x === previous.point.x && previous.outgoing.y === previous.point.y ? along(1 / 3) : previous.outgoing,
+        node.incoming.x === node.point.x && node.incoming.y === node.point.y ? along(2 / 3) : node.incoming,
+        node.point,
+      )
+    }
+    return points
+  }
+
+  #renderPath() {
+    const path = this.#path
+    if(!path || !path.nodes.length) return
+    this.#positionPreviewRoot(path.previewRoot, path.graphic)
+    const points = this.#pathPoints(path, false, true)
+    path.preview.setAttribute("d", points.length > 1 ? editablePath(points, path.mode) : `M ${pair(points[0])} L ${pair(points[0])}`)
+    const toClient = (point: Point) => applyMatrix(this.#screenMatrix(path.graphic), point)
+    let tangents = path.controls.querySelector("svg")
+    if(!tangents) {
+      tangents = document.createElementNS(SVG_NAMESPACE, "svg")
+      tangents.setAttribute("part", "graphic-outline")
+      path.controls.prepend(tangents)
+    }
+    tangents.replaceChildren()
+    if(path.mode === "curves") path.nodes.forEach(node => {
+      for(const control of [node.incoming, node.outgoing]) {
+        if(control.x === node.point.x && control.y === node.point.y) continue
+        const a = toClient(node.point), b = toClient(control)
+        const line = document.createElementNS(SVG_NAMESPACE, "line")
+        line.setAttribute("part", "graphic-tangent")
+        line.setAttribute("x1", cleanNumber(a.x)); line.setAttribute("y1", cleanNumber(a.y))
+        line.setAttribute("x2", cleanNumber(b.x)); line.setAttribute("y2", cleanNumber(b.y))
+        tangents.append(line)
+        const handle = document.createElementNS(SVG_NAMESPACE, "circle")
+        handle.setAttribute("part", "graphic-tangent-point")
+        handle.setAttribute("cx", cleanNumber(b.x)); handle.setAttribute("cy", cleanNumber(b.y))
+        handle.setAttribute("r", "4")
+        tangents.append(handle)
+      }
+    })
+    path.nodes.forEach((node, index) => {
+      let handle = path.controls.querySelector<HTMLButtonElement>(`[data-path-node="${index}"]`)
+      if(!handle) {
+        handle = this.#createHandle("draft-node", index === 0 ? "Close shape" : `Vertex ${index + 1}`, "graphic-anchor")
+        handle.dataset.pathNode = String(index)
+        path.controls.append(handle)
+      }
+      this.#positionHandle(handle, toClient(node.point))
+    })
+    path.controls.querySelectorAll<HTMLElement>("[data-path-node]").forEach(handle => {
+      if(Number(handle.dataset.pathNode) >= path.nodes.length) handle.remove()
+    })
+  }
+
+  #finishPath(closed = false) {
+    const draft = this.#path
+    if(!draft || draft.nodes.length < (closed && draft.mode === "lines" ? 3 : 2)) return
+    const path = draft.preview.cloneNode() as SVGPathElement
+    path.setAttribute("d", editablePath(this.#pathPoints(draft, closed), draft.mode, closed))
+    path.setAttribute("fill", closed ? this.#drawPaint.fill ?? defaultGraphicShapePaint.fill : "none")
+    this.#cancelPath()
+    if(this.#drawGraphic !== draft.graphic || this.#capturedGraphic() !== draft.graphic || !this.#canInsertText(draft.graphic)) return
+    const end = this.editor.doc.beginUndoGroup()
+    try { draft.graphic.append(path) }
+    finally { end() }
+    this.#setDrawGraphic(null)
+    this.#selectShape(path)
+    document.body.focus({preventScroll: true})
+    this.#refresh()
+    this.editor.postSelectionPath()
+  }
+
+  #cancelPath() {
+    const path = this.#path
+    if(!path) return
+    this.#path = null
+    if(path.drag) this.#releasePointer(path.graphic, path.drag.pointerId)
+    path.previewRoot.remove()
+    path.controls.remove()
+  }
+
+  #strokeIsCurrent(stroke: StrokeInteraction) {
+    return this.#drawGraphic === stroke.graphic && this.#capturedGraphic() === stroke.graphic
+      && this.#canInsertText(stroke.graphic)
+  }
+
+  #moveStroke(event: PointerEvent) {
+    const stroke = this.#stroke
+    if(!stroke) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if(!this.#strokeIsCurrent(stroke)) { this.#cancelStroke(); return }
+    const samples = event.getCoalescedEvents?.() ?? []
+    const matrix = this.#screenMatrix(stroke.graphic)
+    for(const sample of samples.length ? samples : [event]) {
+      const point = applyInverseMatrix(matrix, {x: sample.clientX, y: sample.clientY})
+      if(!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
+      const previous = stroke.points.at(-1)!
+      // Keep all distinct samples, including tiny handwriting and pen-up dots.
+      if(point.x !== previous.x || point.y !== previous.y) stroke.points.push(point)
+    }
+    if(this.#frame === null) this.#frame = requestAnimationFrame(() => {
+      this.#frame = null
+      if(this.#stroke !== stroke) return
+      if(!this.#strokeIsCurrent(stroke)) { this.#cancelStroke(); return }
+      this.#positionPreviewRoot(stroke.previewRoot, stroke.graphic)
+      stroke.preview.setAttribute("d", strokePath(stroke.points))
+    })
+  }
+
+  #finishStroke(event: PointerEvent) {
+    const stroke = this.#stroke
+    if(!stroke || event.pointerId !== stroke.pointerId) return
+    this.#moveStroke(event)
+    if(this.#stroke !== stroke) return
+    const path = stroke.preview.cloneNode() as SVGPathElement
+    path.setAttribute("d", strokePath(stroke.points))
+    this.#cancelStroke()
+    // Revalidate the live container, then let normal observation share one
+    // authored insertion. Preview samples never enter collaboration or history.
+    if(!this.#strokeIsCurrent(stroke)) return
+    const endUndoGroup = this.editor.doc.beginUndoGroup()
+    try { stroke.graphic.append(path) }
+    finally { endUndoGroup() }
+    this.#setDrawGraphic(null)
+    this.#selectShape(path)
+    document.body.focus({preventScroll: true})
+    this.#refresh()
+    this.editor.postSelectionPath()
+  }
+
+  #cancelStroke() {
+    const stroke = this.#stroke
+    if(!stroke) return
+    this.#stroke = null
+    if(this.#frame !== null) cancelAnimationFrame(this.#frame)
+    this.#frame = null
+    this.#releasePointer(stroke.graphic, stroke.pointerId)
+    stroke.previewRoot.remove()
   }
 
   #moveConnector(event: PointerEvent) {
@@ -1952,6 +2625,7 @@ export class GraphicFeature extends EditorFeature {
 
   #setMarquee(bounds: Bounds, graphic: SVGSVGElement) {
     const overlay = this.#overlay ?? this.#createOverlay()
+    overlay.style.setProperty("left", `${fixedClientX(0)}px`, "important")
     const marquee = overlay.querySelector<SVGRectElement>(".◆graphic-marquee")!
     const matrix = this.#screenMatrix(graphic)
     const screenBounds = boundsForPoints([
@@ -2182,7 +2856,7 @@ export class GraphicFeature extends EditorFeature {
       const matrix = this.#screenMatrix(graphic)
       const origin = applyMatrix(matrix, {x: box.x, y: box.y})
       Object.assign(preview.style, {
-        left: "0", top: "0", width: `${box.width}px`, height: `${box.height}px`,
+        left: `${fixedClientX(0)}px`, top: "0", width: `${box.width}px`, height: `${box.height}px`,
         overflow: "visible", transformOrigin: "0 0",
         transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${origin.x}, ${origin.y})`,
       })
@@ -2190,7 +2864,7 @@ export class GraphicFeature extends EditorFeature {
     }
     const rect = graphic.getBoundingClientRect()
     Object.assign(preview.style, {
-      left: `${rect.left}px`,
+      left: `${fixedClientX(rect.left)}px`,
       top: `${rect.top}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
@@ -2382,6 +3056,19 @@ export class GraphicFeature extends EditorFeature {
       )
       return {}
     }
+    if(interaction.kind === "path-point" && interaction.vertex !== undefined) {
+      const path = graphicPathGeometry(geometry)
+      if(!path) return {}
+      const index = interaction.vertex
+      const origin = interaction.points[index]
+      if(!origin) return {}
+      if(latest.shiftKey) point = this.#constrainPathPoint(point, origin)
+      const snapped = this.#snapPoint(point, interaction, true)
+      const points = movePathPoint(interaction.points, index, snapped.point, path.kind === "curves", path.closed, latest.altKey)
+      geometry.setAttribute("d", editablePath(points, path.kind, path.closed))
+      setRotation(shape, interaction.rotation)
+      return snapped.guides
+    }
     if(interaction.kind === "vertex" && interaction.vertex !== undefined) {
       const snapped = this.#snapPoint(point, interaction)
       const points = [...interaction.points]
@@ -2520,11 +3207,13 @@ export class GraphicFeature extends EditorFeature {
     return {bounds: resized.bounds, direction: resized.direction, guides: {x: x?.target, y: y?.target}}
   }
 
-  #snapPoint(point: Point, interaction: Interaction) {
+  #snapPoint(point: Point, interaction: Pick<Interaction, "latest" | "matrix" | "candidates">, forceGrid = false) {
     if(this.#standaloneShape() || !this.#options.snap || interaction.latest.altKey) return {point, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
-    const x = this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x)
-    const y = this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y)
+    const x = forceGrid ? this.#gridSnap(point.x, Infinity)
+      : this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x)
+    const y = forceGrid ? this.#gridSnap(point.y, Infinity)
+      : this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y)
     return {
       point: {x: point.x + (x?.delta ?? 0), y: point.y + (y?.delta ?? 0)},
       guides: {x: x?.target, y: y?.target},
@@ -2590,7 +3279,7 @@ export class GraphicFeature extends EditorFeature {
     let nearest: (PortTarget & {distance: number}) | null = null
     graphicShapeRoots(graphic).forEach(shape => {
       const type = graphicShapeType(shape)
-      if(excluded.has(shape) || !type || type === "line" || type === "connector") return
+      if(excluded.has(shape) || !type || type === "line" || type === "connector" || type === "freehand" || type === "polyline" || type === "bezier") return
       const ports = shapePorts(shape)
       ;(["n", "e", "s", "w"] as const).forEach(port => {
         const point = ports[port]
@@ -2611,7 +3300,7 @@ export class GraphicFeature extends EditorFeature {
     const selected = new Set(shapes)
     const attachable = shapes.filter(shape => {
       const type = graphicShapeType(shape)
-      return type && type !== "line" && type !== "connector" && graphic.contains(shape)
+      return type && type !== "line" && type !== "connector" && type !== "freehand" && type !== "polyline" && type !== "bezier" && graphic.contains(shape)
     })
     if(!attachable.length) return []
     const result: AttachedConnector[] = []
@@ -2947,6 +3636,8 @@ export class GraphicFeature extends EditorFeature {
     if(!graphic || !shape) return
     if(operation === "select") {
       if(this.#isLocked(shape) || shape.getAttribute("visibility") === "hidden") return
+      this.#cancelStroke()
+      this.#setDrawGraphic(null)
       this.#selectShape(shape)
     }
     else if(operation === "toggle-lock") {
@@ -3050,11 +3741,13 @@ export class GraphicFeature extends EditorFeature {
       if(!next.has(shape)) removeEditorMarker(shape, "◆graphic-shape-selected")
     })
     next.forEach(shape => shape.classList.add("◆", "◆graphic-shape-selected"))
+    if(this.#activePathPoint && !next.has(this.#activePathPoint.shape)) this.#activePathPoint = null
     this.#selectedShapes = next
     this.#primaryShape = primary && next.has(primary) ? primary : next.values().next().value ?? null
   }
 
   #clearShapeSelection() {
+    this.#activePathPoint = null
     this.#closeLabelEditor(false, false)
     if(this.#connector) {
       this.#cleanupConnector(this.#connector)
@@ -3106,6 +3799,12 @@ export class GraphicFeature extends EditorFeature {
 
   #refresh() {
     if(!this.isEnabled) return
+    if(this.#drawGraphic && (this.#capturedGraphic() !== this.#drawGraphic || !this.#canInsertText(this.#drawGraphic))) {
+      this.#cancelStroke()
+      this.#setDrawGraphic(null)
+    }
+    if(this.#path) this.#renderPath()
+    if(this.#stroke) this.#positionPreviewRoot(this.#stroke.previewRoot, this.#stroke.graphic)
     this.editor.features.media.refreshPlaceholder()
     if(!this.#activeGraphic()) this.#clearShapeSelection()
     this.#syncCanvasPresentation()
@@ -3117,7 +3816,7 @@ export class GraphicFeature extends EditorFeature {
     const shapes = interaction?.active
       ? interaction.items.flatMap(item => item.preview ? [item.preview] : [])
       : this.selectedShapes
-    if(!shapes.length) {
+    if(!shapes.length || this.#path || this.#drawGraphic && this.#drawMode === "draw") {
       if(marquee?.active) this.#setMarquee(boundsForPoints([marquee.start, marquee.latest]), marquee.graphic)
       else if(this.#overlay) this.#overlay.hidden = true
       return
@@ -3220,6 +3919,7 @@ export class GraphicFeature extends EditorFeature {
 
   #updateOverlaySelection(shapes: Element[], graphic: SVGSVGElement, matrix: Matrix, interaction?: Interaction) {
     const overlay = this.#overlay ?? this.#createOverlay()
+    overlay.style.setProperty("left", `${fixedClientX(0)}px`, "important")
     const outline = overlay.querySelector<SVGPolygonElement>(".◆graphic-selection-outline")!
     const stem = overlay.querySelector<SVGLineElement>(".◆graphic-rotation-stem")!
     const individualOutlines = overlay.querySelector<SVGGElement>(".◆graphic-individual-outlines")!
@@ -3315,7 +4015,10 @@ export class GraphicFeature extends EditorFeature {
   #ensureSpecificHandles(overlay: HTMLElement, shape: Element | null) {
     const container = overlay.querySelector<HTMLElement>(".◆graphic-specific-handles")!
     const type = graphicShapeType(shape)
-    const signature = shape && isPolygonShape(shape) ? `${type}:${parsePoints(shapeGeometry(shape)).length}` : type ?? ""
+    const path = shape && graphicPathGeometry(shapeGeometry(shape))
+    const joined = path && path.closed && path.points[0].x === path.points.at(-1)!.x && path.points[0].y === path.points.at(-1)!.y
+    const signature = path ? `${type}:${path.points.length}:${joined}`
+      : shape && isPolygonShape(shape) ? `${type}:${parsePoints(shapeGeometry(shape)).length}` : type ?? ""
     if(container.dataset.signature === signature) return
     container.dataset.signature = signature
     container.replaceChildren()
@@ -3346,6 +4049,17 @@ export class GraphicFeature extends EditorFeature {
         this.#createHandle("connector-start", "Reconnect start", "graphic-affordance graphic-affordance-connector-start"),
         this.#createHandle("connector-end", "Reconnect end", "graphic-affordance graphic-affordance-connector-end"),
       )
+    }
+    else if(path && (type === "polyline" || type === "bezier")) {
+      const tangents = document.createElementNS(SVG_NAMESPACE, "svg")
+      tangents.setAttribute("part", "graphic-outline")
+      tangents.classList.add("◆graphic-tangents")
+      container.append(tangents)
+      path.points.forEach((_, index) => {
+        if(path.kind === "curves" && joined && index === path.points.length - 1) return
+        const anchor = path.kind === "lines" || index % 3 === 0
+        container.append(this.#createHandle(`path-point-${index}`, anchor ? `Move vertex ${path.kind === "lines" ? index + 1 : index / 3 + 1}` : `Adjust curve control ${index}`, anchor ? "graphic-anchor" : "graphic-control-point"))
+      })
     }
     else if(isPolygonShape(shape)) {
       container.append(...parsePoints(shapeGeometry(shape)).map((_, index) => this.#createHandle(
@@ -3381,13 +4095,34 @@ export class GraphicFeature extends EditorFeature {
       if(points[0]) position("connector-start", points[0])
       if(points.length > 1) position("connector-end", points.at(-1)!)
     }
+    else if(type === "polyline" || type === "bezier") {
+      const path = graphicPathGeometry(geometry)
+      if(!path) return
+      path.points.forEach((point, index) => {
+        position(`path-point-${index}`, point)
+        const handle = overlay.querySelector(`[data-graphic-handle="path-point-${index}"]`)
+        handle?.setAttribute("aria-pressed", String(this.#activePathPoint?.shape === this.selectedShape && this.#activePathPoint?.index === index))
+      })
+      const tangents = overlay.querySelector(".◆graphic-tangents")!
+      tangents.replaceChildren()
+      if(path.kind === "curves") for(let index = 1; index + 2 < path.points.length; index += 3) {
+        for(const [anchor, control] of [[index - 1, index], [index + 2, index + 1]]) {
+          const a = toClient(path.points[anchor]), b = toClient(path.points[control])
+          const line = document.createElementNS(SVG_NAMESPACE, "line")
+          line.setAttribute("part", "graphic-tangent")
+          line.setAttribute("x1", cleanNumber(a.x)); line.setAttribute("y1", cleanNumber(a.y))
+          line.setAttribute("x2", cleanNumber(b.x)); line.setAttribute("y2", cleanNumber(b.y))
+          tangents.append(line)
+        }
+      }
+    }
     else if(isPolygonShape(shape)) parsePoints(geometry).forEach((point, index) => position(`vertex-${index}`, point))
   }
 
   #updatePorts(overlay: HTMLElement, shape: Element | null, matrix: Matrix) {
     const container = overlay.querySelector<HTMLElement>(".◆graphic-ports")!
     const type = graphicShapeType(shape)
-    const visible = Boolean(shape && type !== "line" && type !== "connector")
+    const visible = Boolean(shape && type !== "line" && type !== "connector" && type !== "freehand" && type !== "polyline" && type !== "bezier")
     if(!visible) {
       container.replaceChildren()
       return
@@ -3471,7 +4206,7 @@ export class GraphicFeature extends EditorFeature {
 
   #setLabel(shape: SVGGraphicsElement, value: string) {
     const type = graphicShapeType(shape)
-    if(!type || type === "line" || type === "connector") return shape
+    if(!type || type === "line" || type === "connector" || type === "freehand" || type === "polyline" || type === "bezier") return shape
     let root = shape
     if(shape.localName !== "g") {
       if(!value || !shape.parentNode) return shape
@@ -3535,7 +4270,7 @@ export class GraphicFeature extends EditorFeature {
       stroke: geometry.getAttribute("stroke") ?? shape.getAttribute("stroke") ?? "#334155",
       "stroke-width": geometry.getAttribute("stroke-width") ?? shape.getAttribute("stroke-width") ?? (type === "line" || type === "connector" ? "6" : "4"),
       opacity: shape.getAttribute("opacity") ?? geometry.getAttribute("opacity") ?? "1",
-      ...(type !== "line" && type !== "connector" ? {
+      ...(type !== "line" && type !== "connector" && type !== "freehand" && type !== "polyline" && type !== "bezier" ? {
         label: shapeLabel(shape),
         "text-color": text?.getAttribute("fill") ?? "#0f172a",
         "font-size": text?.getAttribute("font-size") ?? "48",
@@ -3550,6 +4285,7 @@ export class GraphicFeature extends EditorFeature {
         "head-size": cleanNumber(bounds.width ? (bounds.x + bounds.width - (points[1]?.x ?? bounds.x)) / bounds.width * 100 : 36),
         "tail-width": cleanNumber(bounds.height ? Math.abs((points[6]?.y ?? bounds.y) - (points[0]?.y ?? bounds.y)) / bounds.height * 100 : 42),
       } : {}),
+      ...(["polyline", "bezier"].includes(type ?? "") ? {closed: String(graphicPathGeometry(geometry)?.closed ?? false)} : {}),
       ...(type === "connector" ? {
         routing: connectorRouting(shape),
         "start-arrow": String(shape.hasAttribute("marker-start")),
@@ -3576,6 +4312,7 @@ export class GraphicFeature extends EditorFeature {
       this.#setConnectorArrow(shape as SVGPolylineElement, name === "start-arrow" ? "start" : "end", value === "true")
       return shape
     }
+    if(name === "fill" && (graphicShapeType(shape) === "freehand" || ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") && !graphicPathGeometry(geometry)?.closed)) return shape
     if(name === "fill" || name === "stroke") {
       if(value) geometry.setAttribute(name, value)
       else geometry.removeAttribute(name)

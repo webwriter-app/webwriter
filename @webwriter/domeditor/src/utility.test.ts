@@ -1,17 +1,62 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import {Window} from "happy-dom"
 import '@testing-library/jest-dom/vitest'
 
 import {
-  $, getContainer, getSidesOfPoint, getSelectionAnchorBlock, getSelectionFocusBlock,
+  $, fixedClientX, getContainer, getSidesOfPoint, getSelectionAnchorBlock, getSelectionFocusBlock,
   getIndexBefore, isElement, isComment, isText, isDocument, isOnApple, modifierKeyDown,
   cloneInert, cloneRangeIn, cloneRangeContents, cloneWithoutEditorMarkers, roundByDPR, roundTo, midpoint, findClosest, findContainingBlock,
   findScrollingAncestor, compareStackingOrder, getDescendantsInStackingOrder,
   createsStackingContext, findStackingContainer, getStaticCoords,
-  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, removeEditorMarker,
-  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement
+  isContentfulWidget, isAtomicEditingElement, atomicEditingContainer, authoredClassValue, removeEditorMarker,
+  pathFromNode, nodeAtPath, textOffsetIn, textPointAtOffset, createInertScript, clearInlinePlacement, setPart
 } from "./utility"
 import { Schema } from "./schema"
+import {clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, nodeEdgeRect, isTextFieldInteraction} from "./utility"
+
+describe("native text field interactions", () => {
+  it.each([
+    ['<input readonly>', true], ['<textarea readonly></textarea>', true],
+    ['<div contenteditable><b>Text</b></div>', true],
+    ['<div contenteditable="plaintext-only"><b>Text</b></div>', true],
+    ['<div contenteditable="true"><span contenteditable="inherit"><b>Text</b></span></div>', true],
+    ['<div contenteditable="true"><span contenteditable="false"><b>Text</b></span></div>', false],
+    ['<div contenteditable="invalid"><b>UI</b></div>', false],
+  ])("recognizes the actual editable boundary in %s", (html, expected) => {
+    const host = document.createElement("div")
+    const shadow = host.attachShadow({mode: "open"})
+    shadow.innerHTML = html
+    document.body.append(host)
+    let result: boolean | undefined
+    host.addEventListener("contextmenu", event => { result = isTextFieldInteraction(event) })
+    const target = shadow.querySelector("b, input, textarea")!
+    target.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true}))
+    expect(result).toBe(expected)
+    host.remove()
+  })
+
+  it("recognizes text controls from another document realm", () => {
+    const foreignWindow = new Window()
+    const owner = foreignWindow.document
+    const input = owner.createElement("input")
+    owner.body.append(input)
+    // happy-dom shares Element constructors across windows, so make the
+    // foreign path node structurally element-like without the host prototype.
+    const foreignInput = new Proxy(input, {
+      getPrototypeOf: () => null,
+      get(target, property) {
+        const value = Reflect.get(target, property, target)
+        return typeof value === "function" ? value.bind(target) : value
+      },
+    })
+
+    const event = new foreignWindow.Event("keydown")
+    Object.defineProperty(event, "composedPath", {value: () => [foreignInput]})
+    expect(isTextFieldInteraction(event as unknown as Event, owner.body as unknown as Element)).toBe(true)
+    foreignWindow.happyDOM.abort()
+  })
+})
 
 // Tests for the EditingSelection class. No DOMEditor is instantiated, so the
 // selection state is not post-processed by any editor feature.
@@ -26,6 +71,37 @@ beforeEach(() => {
 function setBody(html: string) {
   document.body.innerHTML = html
 }
+
+describe("fixed editor coordinates", () => {
+  it.each(["auto", "stable", "stable both-edges"])("accounts for %s root gutters", gutter => {
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: gutter} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    try { expect(fixedClientX(120)).toBe(gutter.includes("both-edges") ? 105 : 120) }
+    finally { style.mockRestore(); width.mockRestore() }
+  })
+
+  it("keeps overlay-scrollbar coordinates unchanged", () => {
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth)
+    try { expect(fixedClientX(120)).toBe(120) }
+    finally { style.mockRestore(); width.mockRestore() }
+  })
+
+  it("shares gutter measurements during a refresh and rereads them on the next task", async () => {
+    const style = vi.spyOn(window, "getComputedStyle").mockReturnValue({scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration)
+    const width = vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 15)
+    try {
+      expect(fixedClientX(120)).toBe(105)
+      expect(fixedClientX(140)).toBe(125)
+      expect(style).toHaveBeenCalledTimes(1)
+      await Promise.resolve()
+      width.mockReturnValue(window.innerWidth)
+      expect(fixedClientX(120)).toBe(120)
+      expect(style).toHaveBeenCalledTimes(2)
+    }
+    finally { style.mockRestore(); width.mockRestore() }
+  })
+})
 
 function firstText(parent: Element | null = document.body.firstElementChild) {
   return parent!.firstChild as Text
@@ -460,6 +536,28 @@ describe("selectCoords()", () => {
     expect($.pointFromCoords(50, 120)).toEqual({node: summary.firstChild, offset: 7})
   })
 
+  it.each([
+    '<video controls></video>',
+    '<video controls style="position:absolute"></video>',
+    '<figure><video controls></video><figcaption>Caption</figcaption></figure>',
+    '<math><mi>x</mi></math>',
+    '<test-widget><p>Owned</p></test-widget>',
+  ])("ignores measurable hidden content below a closed summary: %s", content => {
+    setBody(`<section><p>Before</p><!--keep--><details><summary>Heading</summary>${content}</details>After</section>`)
+    const section = document.querySelector("section")!
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    const hidden = details.lastElementChild!
+    details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 60)
+    summary.getBoundingClientRect = () => new DOMRect(30, 110, 180, 20)
+    hidden.getBoundingClientRect = () => new DOMRect(30, 130, 180, 200)
+    for(const node of [summary.firstChild as Text, hidden]) {
+      mockHitTest(node, 0)
+      expect($.pointFromCoords(50, 145, details)).toEqual({node: section, offset: 3})
+      expect($.pointFromCoords(50, 170, section)).toEqual({node: section, offset: 3})
+    }
+  })
+
   it("keeps gaps between open disclosure body blocks inside the disclosure", () => {
     setBody('<details open><summary>Heading</summary><p>A</p><p>B</p></details>')
     const details = document.querySelector("details")!
@@ -825,6 +923,47 @@ describe("isEmptyDocumentSelection", () => {
     setBody(`<div style="position: absolute">overlay</div><div style="position: fixed">toolbar</div>`)
     $.selectDocumentStart()
     expect($.isEmptyDocumentSelection).toBe(true)
+  })
+})
+
+describe("excludedFlowElements", () => {
+  it("does not inspect intersecting nodes for a collapsed caret", () => {
+    setBody(`${Array.from({length: 40}, (_, index) => `<div style="position:absolute">${index}</div>`).join("")}<p>caret</p>`)
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+
+    try {
+      expect($.excludedFlowElements).toEqual([])
+      expect(intersectsNode).not.toHaveBeenCalled()
+    }
+    finally { intersectsNode.mockRestore() }
+  })
+
+  it("limits range intersection checks to the common ancestor scope", () => {
+    const outside = Array.from({length: 40}, (_, index) => `<div class="outside" style="position:absolute">${index}</div>`).join("")
+    setBody(`${outside}<p><b>left</b><i>right</i></p>${outside}`)
+    const paragraph = document.querySelector("p")!
+    $.selectRange(paragraph.querySelector("b")!.firstChild!, 0, paragraph.querySelector("i")!.firstChild!, 5)
+    const outsideElements = new Set(document.querySelectorAll(".outside"))
+    const intersectsNode = vi.spyOn(Range.prototype, "intersectsNode")
+
+    try {
+      expect($.excludedFlowElements).toEqual([])
+      expect(intersectsNode.mock.calls.some(([node]) => outsideElements.has(node as Element))).toBe(false)
+    }
+    finally { intersectsNode.mockRestore() }
+  })
+
+  it("excludes a foreign positioned descendant intersected by a normal-flow range", () => {
+    setBody('<p>before<span style="position:absolute"><b>overlay</b><i style="position:fixed">nested</i></span>after</p>')
+    const paragraph = document.querySelector("p")!
+    const before = paragraph.firstChild!
+    const after = paragraph.lastChild!
+    const overlay = paragraph.querySelector("span")!
+    $.selectRange(before, 0, after, after.textContent!.length)
+
+    expect($.excludedFlowElements).toEqual([overlay])
+    expect($.slice.textContent).toBe("beforeafter")
   })
 })
 
@@ -1697,6 +1836,25 @@ describe("getStaticCoords()", () => {
   })
 })
 
+describe("idempotent editor presentation", () => {
+  it("does not mutate absent markers or unchanged parts", () => {
+    const element = document.createElement("div")
+    element.className = "authored ◆ ◆text-selected"
+    element.setAttribute("part", "caret other")
+    const observer = new MutationObserver(() => {})
+    observer.observe(element, {attributes: true})
+    removeEditorMarker(element, "◆empty-selected")
+    setPart(element, "caret")
+    setPart(element, "missing", false)
+    expect(observer.takeRecords()).toEqual([])
+    removeEditorMarker(element, "◆text-selected")
+    setPart(element, "caret", false)
+    expect(element.className).toBe("authored")
+    expect(element.getAttribute("part")).toBe("other")
+    observer.disconnect()
+  })
+})
+
 describe("removeEditorMarker()", () => {
   it("removes selected and umbrella markers while preserving authored classes", () => {
     const element = document.createElement("p")
@@ -1712,6 +1870,18 @@ describe("removeEditorMarker()", () => {
     element.className = "◆ ◆first ◆second"
     removeEditorMarker(element, "◆first", "◆second")
     expect(element.hasAttribute("class")).toBe(false)
+  })
+})
+
+describe("authoredClassValue()", () => {
+  it("omits editor markers while preserving authored class order by default", () => {
+    expect(authoredClassValue("second ◆selected first ◆")).toBe("second first")
+    expect(authoredClassValue(null)).toBe("")
+  })
+
+  it("canonicalizes authored class order only when requested", () => {
+    expect(authoredClassValue("second ◆selected first", true)).toBe("first second")
+    expect(authoredClassValue("first second", true)).toBe("first second")
   })
 })
 
@@ -1740,6 +1910,79 @@ describe("DOM path and text point helpers", () => {
   })
 })
 
+
+describe("authored snapshot cleanup", () => {
+  it("preserves unfamiliar content and namespaces while cleaning nested templates", () => {
+    const root = document.createElement("template")
+    root.innerHTML = '<unfamiliar-node class="keep ◆selected" data-authored="yes" data-ignore="remove"><!--keep--><template><demo-widget class="◆widget-editable keep" contenteditable=""><i class="◆editor-only">UI</i><template><b class="◆caret keep">nested</b></template></demo-widget></template><svg><template class="keep ◆selected"></template></svg></unfamiliar-node>'
+    const node = root.content.firstElementChild!
+    const comment = node.firstChild
+    const template = node.querySelector("template")!
+    const widget = template.content.querySelector("demo-widget")!
+    const nested = widget.querySelector("template")!
+    const svgTemplate = node.querySelector("svg template")!
+
+    expect(clearEditorArtifacts(root.content, ["data-ignore"])).toBe(root.content)
+
+    expect(root.content.firstElementChild).toBe(node)
+    expect(node.firstChild).toBe(comment)
+    expect(node.getAttribute("data-authored")).toBe("yes")
+    expect(node.hasAttribute("data-ignore")).toBe(false)
+    expect(node.className).toBe("keep")
+    expect(widget.hasAttribute("contenteditable")).toBe(false)
+    expect(widget.querySelector("i")).toBeNull()
+    expect(nested.content.querySelector("b")?.outerHTML).toBe('<b class="keep">nested</b>')
+    expect(svgTemplate.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    expect(svgTemplate.getAttribute("class")).toBe("keep")
+  })
+
+  it("cleans the root and preserves authored editability and private widget shadows", () => {
+    const root = document.createElement("div")
+    root.innerHTML = '<p contenteditable="">authored</p><p contenteditable="false">locked</p><demo-widget class="◆widget-editable" contenteditable=""></demo-widget><aside data-webwriter-editor-only>UI</aside>'
+    root.className = "authored ◆selected"
+    const widget = root.querySelector("demo-widget")!
+    const shadow = widget.attachShadow({mode: "open"})
+    shadow.innerHTML = '<p class="◆selected" contenteditable="">private</p>'
+    const privateHTML = shadow.innerHTML
+
+    clearEditorArtifacts(root)
+
+    expect(root.className).toBe("authored")
+    expect(root.querySelectorAll("p")[0].getAttribute("contenteditable")).toBe("")
+    expect(root.querySelectorAll("p")[1].getAttribute("contenteditable")).toBe("false")
+    expect(widget.hasAttribute("contenteditable")).toBe(false)
+    expect(widget.hasAttribute("class")).toBe(false)
+    expect(root.querySelector("aside")).toBeNull()
+    expect(shadow.innerHTML).toBe(privateHTML)
+  })
+
+  it("keeps attribute-only and marker-only cleaning contracts distinct", () => {
+    const root = document.createElement("template")
+    root.innerHTML = '<demo-widget class="keep ◆widget-editable" contenteditable=""><span class="◆editor-only">UI</span></demo-widget>'
+    const widget = root.content.firstElementChild!
+    clearEditorOwnedAttributes(root)
+    expect(widget.hasAttribute("contenteditable")).toBe(false)
+    expect(widget.className).toBe("keep ◆widget-editable")
+    clearEditorMarkerClasses(root)
+    expect(widget.className).toBe("keep")
+    expect(widget.querySelector("span")?.textContent).toBe("UI")
+  })
+})
+
+describe("nodeEdgeRect", () => {
+  it("uses the first and last line boxes and falls back for an empty rect list", () => {
+    const element = document.createElement("p")
+    const first = new DOMRect(5, 10, 20, 30)
+    const last = new DOMRect(5, 40, 10, 30)
+    vi.spyOn(element, "getClientRects").mockReturnValue([first, last] as unknown as DOMRectList)
+    const bounding = new DOMRect(5, 10, 20, 60)
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(bounding)
+    expect(nodeEdgeRect(element)).toBe(first)
+    expect(nodeEdgeRect(element, "last")).toBe(last)
+    vi.mocked(element.getClientRects).mockReturnValue([] as unknown as DOMRectList)
+    expect(nodeEdgeRect(element, "last")).toBe(bounding)
+  })
+})
 
 describe("clearInlinePlacement", () => {
   it.each(["custom-card", "svg"])("clears float placement from a %s without changing authored content or unrelated presentation", tag => {

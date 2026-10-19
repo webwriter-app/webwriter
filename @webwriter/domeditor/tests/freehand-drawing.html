@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Freehand drawing</title>
+<style>
+  body {margin: 32px 180px 32px 32px; font: 16px system-ui;}
+  p {margin-bottom: 3rem;}
+  svg {display: block; width: min(800px, calc(100vw - 320px)); height: 480px; border: 1px solid #cbd5e1; background: white;}
+</style></head>
+<body>
+<h1>Freehand drawing</h1>
+<p>Choose Freehand, then draw with a mouse, touch, or pen. Choose a shape tab to select or insert shapes.</p>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 480" aria-label="Drawing canvas"><!--Preserve unfamiliar content--><g><path d="M 40 40 C 60 0 80 80 100 40" fill="none" stroke="#94a3b8"/></g></svg>
+<script class="◆editor-only" type="module">
+import {DOMEditor} from '../src/domeditor.ts'
+import {DomEditorToolbox} from '../src/components/toolbox.ts'
+import {ShapeKeyboard} from '../src/components/shape-keyboard.ts'
+import {MathKeyboard} from '../src/components/math-keyboard.ts'
+import {selectionChangeEvent} from '../src/editor-bridge.ts'
+const editor = new DOMEditor()
+const graphic = document.querySelector('svg')
+const toolbox = new DomEditorToolbox()
+toolbox.activeTool = 'Edit'
+toolbox.style.cssText = 'position:fixed;right:12px;top:12px;height:calc(100vh - 24px);background:#f8fafc'
+toolbox.contentEditable = 'false'
+editor.addAppendix(toolbox)
+const keyboard = new ShapeKeyboard()
+const formulaKeyboard = new MathKeyboard()
+const keyboardArea = document.createElement('div')
+keyboardArea.contentEditable = 'false'
+keyboardArea.style.cssText = 'position:fixed;left:12px;right:240px;bottom:12px;z-index:2147483647'
+keyboardArea.append(keyboard)
+editor.addAppendix(keyboardArea)
+const refresh = () => {
+  toolbox.graphic = editor.features.graphic.getState() ?? null
+  keyboard.mode = toolbox.graphic?.mode ?? 'select'
+  keyboard.paint = toolbox.shapePaint
+}
+window.addEventListener(selectionChangeEvent, refresh)
+toolbox.addEventListener('ribbon-button-click', event => {
+  const label = event.detail.label
+  if(label.startsWith('toggle-graphic-option:')) editor.features.graphic.actions.toggleGraphicOption({type:'toggleGraphicOption', name:label.slice(22)})
+  refresh()
+})
+keyboard.addEventListener('ribbon-button-click', event => editor.features.graphic.actions.setGraphicMode({type:'setGraphicMode', mode:event.detail.label.slice(13), paint:keyboard.paint}))
+keyboard.addEventListener('shape-keyboard-command', event => editor.features.graphic.actions.addGraphicShape({type:'addGraphicShape', ...event.detail}))
+const setPaint = event => {
+  toolbox.shapePaint = {...event.detail.paint}
+  editor.features.graphic.actions.setGraphicDrawPaint({type:'setGraphicDrawPaint', paint:event.detail.paint})
+  refresh()
+}
+toolbox.addEventListener('shape-paint-change', setPaint)
+keyboard.addEventListener('shape-paint-change', setPaint)
+toolbox.addEventListener('graphic-parameter-change', event => editor.features.graphic.actions.setGraphicParameter({type:'setGraphicParameter', ...event.detail}))
+const history = document.createElement('div')
+history.contentEditable = 'false'
+history.style.cssText = 'position:fixed;left:32px;top:150px;display:flex;gap:8px;font:14px system-ui'
+for(const action of ['undo', 'redo']) {
+  const button = document.createElement('button')
+  button.textContent = action[0].toUpperCase() + action.slice(1)
+  button.addEventListener('pointerdown', event => event.preventDefault())
+  button.addEventListener('click', () => { editor.features.history.actions[action]({type:action}); refresh() })
+  history.append(button)
+}
+for(const [label, action] of [
+  ['Shapes', () => keyboardArea.replaceChildren(keyboard)],
+  ['Formula', () => keyboardArea.replaceChildren(formulaKeyboard)],
+  ['Narrow keyboard', () => {
+    const narrow = keyboardArea.style.width === '320px'
+    keyboardArea.style.width = narrow ? '' : '320px'
+    keyboardArea.style.right = narrow ? '240px' : 'auto'
+  }],
+]) {
+  const button = document.createElement('button')
+  button.textContent = label
+  button.addEventListener('pointerdown', event => event.preventDefault())
+  button.addEventListener('click', action)
+  history.append(button)
+}
+editor.addAppendix(history)
+editor.features.selection.captureElement(graphic)
+refresh()
+</script>
+</body></html>

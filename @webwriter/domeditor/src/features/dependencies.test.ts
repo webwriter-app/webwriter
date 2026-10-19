@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {loadWidgetsMessage} from "../editor-bridge"
-import {packageCdnUrl, SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
+import {packageCdnUrl, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import {DependencyFeature} from "./dependencies"
 
 const demoPackage: WebWriterPackage = {
@@ -268,9 +268,11 @@ describe("DependencyFeature", () => {
     expect(serializedScript.getAttribute("nonce")).toBeNull()
     expect(serializedScript.classList.contains("◆editor-only")).toBe(false)
     expect(parsed.head.querySelector(`link[href="${demoPackage.styles[0]}"]`)).not.toBeNull()
-    expect(parsed.head.querySelectorAll(`script[src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"]`)).toHaveLength(1)
-    expect(parsed.head.querySelector("script")?.getAttribute("src")).toBe(SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL)
-    expect(parsed.head.querySelector("script")?.hasAttribute("type")).toBe(false)
+    const adapter = parsed.head.querySelector<HTMLScriptElement>('#webwriter-scoped-registry')
+    expect(adapter?.textContent).toBeTruthy()
+    expect(adapter?.hasAttribute("src")).toBe(false)
+    expect(parsed.head.querySelectorAll("#webwriter-scoped-registry")).toHaveLength(1)
+    expect(parsed.head.querySelector('script[src*="scoped-custom-element-registry"]')).toBeNull()
     editor.destroy()
   })
 
@@ -317,7 +319,7 @@ describe("DependencyFeature", () => {
     editor.destroy()
   })
 
-  it("omits all widget assets and the polyfill from an empty offline export", async () => {
+  it("omits all widget assets and the adapter from an empty offline export", async () => {
     vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
       queueMicrotask(() => assets.forEach(asset => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load"))))
     })
@@ -328,10 +330,10 @@ describe("DependencyFeature", () => {
       widgets: [{name: demoPackage.name, version: demoPackage.version}],
       packages: [demoPackage],
     })
-    document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script><link rel="stylesheet" href="${demoPackage.styles[0]}"><script src="${SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL}"></script>`)
+    document.head.insertAdjacentHTML("beforeend", `<script src="${demoPackage.scripts[0]}"></script><link rel="stylesheet" href="${demoPackage.styles[0]}"><script src="https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"></script>`)
     const fetch = vi.spyOn(globalThis, "fetch")
     const parsed = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
-    expect(parsed.querySelector("script, link[rel='stylesheet']")).toBeNull()
+    expect(parsed.querySelector("script:not(#webwriter-document-viewer), link[rel='stylesheet']")).toBeNull()
     expect(fetch).not.toHaveBeenCalled()
     editor.destroy()
   })
@@ -451,6 +453,8 @@ describe("DependencyFeature", () => {
     it("collects test-update events until the run ends", async () => {
       const editor = new DOMEditor()
       const {result, frame, post} = start(editor)
+      expect(frame.srcdoc).toMatch(/<script id="webwriter-scoped-registry" class="◆ ◆editor-only" nonce="[^"]+">/)
+      expect(frame.srcdoc.indexOf("webwriter-scoped-registry")).toBeLessThan(frame.srcdoc.indexOf('src="https://cdn.test/tests/basics.js"'))
       expect(frame.srcdoc).toContain('src="https://cdn.test/tests/basics.js"')
       post({type: "beforeAll"})
       post({type: "afterOne", id: "a", path: ["Suite", "passes"], passed: true, duration: 3})
@@ -477,6 +481,59 @@ describe("DependencyFeature", () => {
       vi.useRealTimers()
       expect(() => editor.features.dependency.runPackageTest("javascript:alert(1)")).toThrow("HTTP")
       editor.destroy()
+    })
+
+    it("relays local test requests only from the active test frame with its token", async () => {
+      const editor = new DOMEditor()
+      const {result, frame, post} = start(editor)
+      const token = frame.srcdoc.match(/token: "([^"]+)"/)![1]
+      const relay = vi.spyOn(window.parent, "postMessage").mockImplementation(() => {})
+      const bootstrap = vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {})
+      const port = {postMessage: vi.fn()} as unknown as MessagePort
+      const url = `${location.origin}/__webwriter/local-packages/quiz/test.js?revision=1`
+      const send = (source: Window | null, data: object) => window.dispatchEvent(new MessageEvent("message", {
+        source, data: {type: "frame-local-package-request", bridgeNonce: token, method: "GET", url, ...data}, ports: [port],
+      }))
+      expect(new URL(frame.src).pathname).toBe("/frame-shell.html")
+      const ready = () => window.dispatchEvent(new MessageEvent("message", {
+        source: frame.contentWindow,
+        data: {type: "webwriter-frame-shell-ready", kind: "package-test", bridgeNonce: token},
+      }))
+      ready()
+      ready()
+      expect(bootstrap).toHaveBeenCalledExactlyOnceWith({type: "webwriter-frame-document", html: frame.srcdoc}, location.origin)
+      send(window, {})
+      send(frame.contentWindow, {bridgeNonce: "forged"})
+      send(frame.contentWindow, {url: "https://other.example/__webwriter/local-packages/quiz/test.js"})
+      send(frame.contentWindow, {url: `${location.origin}/unrelated.js`})
+      send(frame.contentWindow, {method: "POST"})
+      expect(relay).not.toHaveBeenCalled()
+      send(frame.contentWindow, {})
+      expect(relay.mock.calls[0]?.[0]).toEqual({type: "frame-local-package-request", url, method: "GET", bridgeNonce: editor.trustedScriptNonce})
+      expect((relay.mock.calls[0] as unknown as [unknown, string, MessagePort[]])[2][0]).toBe(port)
+      expect(editor.toHTML()).not.toContain("<iframe")
+      post({type: "afterAll"})
+      await result
+      send(frame.contentWindow, {})
+      expect(relay.mock.calls.filter(([message]) => message.type === "frame-local-package-request")).toHaveLength(1)
+      editor.destroy()
+    })
+
+    it("cancels pending package tests on disable and editor destruction", async () => {
+      const editor = new DOMEditor()
+      const pending = start(editor, 60_000)
+
+      editor.features.dependency.disable()
+
+      await expect(pending.result).resolves.toEqual({status: "error", tests: [], error: "The package test was canceled"})
+      expect(pending.frame.isConnected).toBe(false)
+      editor.destroy()
+
+      const destroyedEditor = new DOMEditor()
+      const destroyed = start(destroyedEditor, 60_000)
+      destroyedEditor.destroy()
+      await expect(destroyed.result).resolves.toEqual({status: "error", tests: [], error: "The package test was canceled"})
+      expect(destroyed.frame.isConnected).toBe(false)
     })
   })
 })

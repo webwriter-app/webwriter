@@ -208,16 +208,16 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="sharing-preview"]) {
-      --ribbon-drawer-expanded-width: 6.25rem;
-      --ribbon-drawer-width: min(6.25rem, calc(100vw - 1rem));
+      --ribbon-drawer-expanded-width: 4.5rem;
+      --ribbon-drawer-width: min(4.5rem, calc(100vw - 1rem));
       --ribbon-drawer-height: 6rem;
     }
 
     :host([layout="learners"]) {
       --ribbon-drawer-expanded-width: 20rem;
-      --ribbon-drawer-width: min(30rem, calc(100vw - 1rem));
-      --ribbon-drawer-height: min(22rem, calc(100vh - 3rem));
-      --ribbon-drawer-more-height: min(16rem, calc(100vh - 9rem));
+      --ribbon-drawer-min-width: 0;
+      flex: 1 1 0;
+      container: reader-sharing / inline-size;
     }
 
     :host([layout="metadata"]) {
@@ -443,6 +443,10 @@ export class RibbonDrawer extends LitElement {
       gap: 0.1rem;
     }
 
+    :host([layout="sharing-preview"]) .drawer {
+      padding-inline: 0.2rem;
+    }
+
     :host([layout="sharing-preview"]) .controls {
       grid-template-columns: minmax(0, 1fr);
       grid-template-rows: repeat(2, minmax(0, 1fr));
@@ -452,28 +456,26 @@ export class RibbonDrawer extends LitElement {
     }
 
     :host([layout="learners"]) .controls {
-      grid-template-columns: minmax(3.5rem, 0.55fr) minmax(5rem, 0.8fr) minmax(9rem, 1.45fr);
-      grid-template-rows: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: 2rem minmax(0, 1fr);
       grid-auto-flow: row;
-      grid-auto-columns: minmax(0, 1fr);
-      grid-auto-rows: minmax(0, 1fr);
-      gap: 0.1rem;
+      gap: 0.15rem;
+      align-items: stretch;
     }
 
-    :host([layout="learners"]) ::slotted(.live-session-switch) {
+    :host([layout="learners"]) .drawer {
+      padding-inline-start: 0;
+      border-left: 0;
+    }
+
+    :host([layout="learners"]) ::slotted(.reader-sharing-bar) {
       grid-column: 1;
       grid-row: 1;
     }
 
-    :host([layout="learners"]) ::slotted(.sharing-qr) {
-      grid-column: 2;
-      grid-row: 1;
-      min-width: 0;
-    }
-
-    :host([layout="learners"]) ::slotted(.learners-summary) {
-      grid-column: 3;
-      grid-row: 1;
+    :host([layout="learners"]) ::slotted(.reader-learners) {
+      grid-column: 1;
+      grid-row: 2;
     }
 
     :host([layout="metadata"]) .controls,
@@ -848,6 +850,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="elements"][collapsed][drawer-open]) .controls {
       max-height: var(--layout-expanded-height, var(--ribbon-drawer-height));
+      padding-block: var(--ribbon-drawer-panel-padding-block);
     }
 
     :host([layout="settings"][collapsed]) .controls,
@@ -936,7 +939,7 @@ export class RibbonDrawer extends LitElement {
       min-height: 0;
       padding: 0 var(--ribbon-drawer-pane-padding-inline, 0.7rem) 0.75rem;
       border: 0;
-      border-bottom: 1px solid #d8dee6;
+      border-bottom: var(--ribbon-drawer-pane-border-bottom, 1px solid #d8dee6);
       background: transparent;
       box-shadow: none;
       clip-path: none;
@@ -952,8 +955,16 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
     }
 
-    :host([pane]) .drawer.options .pane-label { padding-right: 0; }
+    :host([pane]) .drawer.options .pane-label,
+    :host([pane][layout="comments"]) .pane-label { padding-right: 0; }
     slot[name="heading-action"] { display: flex; margin-left: auto; }
+
+    :host([pane][hide-pane-label][layout="history-versions"]) .drawer {
+      display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0; border: 0; overflow: hidden;
+    }
+    :host([pane][hide-pane-label][layout="history-versions"]) .controls {
+      display: block; flex: 1; min-height: 0; height: 100%; overflow: hidden;
+    }
 
     :host([pane][hide-pane-label]) .pane-label {
       display: none;
@@ -1022,10 +1033,20 @@ export class RibbonDrawer extends LitElement {
       grid-column: span 2 !important;
     }
 
+    :host([pane][layout="comments"]) {display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;}
+    :host([pane][layout="comments"]) .drawer {display: flex; flex-direction: column; flex: 1 1 auto; overflow: hidden; padding-bottom: 0;}
+    :host([pane][layout="comments"]) .pane-label {flex: 0 0 auto;}
+    :host([pane][layout="comments"]) .controls {display: block; flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; padding-bottom: .75rem;}
+
+    :host([pane][layout="comments"]) ::slotted(.comment-threads) {
+      grid-column: 1 / -1;
+      grid-row: auto;
+    }
+
     :host([pane][layout="comments"]) ::slotted(.comment-editor) {
       grid-column: 1 / -1;
       grid-row: auto;
-      min-height: 5rem;
+      min-height: 0;
     }
 
     :host([pane][layout="media"]) .controls {
@@ -1317,10 +1338,6 @@ export class RibbonDrawer extends LitElement {
     const paddingTop = Number.parseFloat(controlsStyle.paddingTop) || 0
     const paddingBottom = Number.parseFloat(controlsStyle.paddingBottom) || 0
     if(this.layout === "elements") {
-      const moreHeight = this.lengthInPixels(
-        getComputedStyle(this).getPropertyValue("--ribbon-drawer-more-height").trim(),
-        448,
-      )
       const viewportBottomMargin = this.lengthInPixels(
         getComputedStyle(this).getPropertyValue("--ribbon-drawer-viewport-bottom-margin").trim(),
         8,
@@ -1335,13 +1352,18 @@ export class RibbonDrawer extends LitElement {
       const collapsedHeight = Number.parseFloat(drawer.style.getPropertyValue("--drawer-collapsed-height"))
         || this.lengthInPixels("5.625rem", 90)
       const gallery = this.querySelector<HTMLElement>(".layout-gallery")
-      const galleryHeight = gallery?.scrollHeight || gallery?.getBoundingClientRect().height || moreHeight
+      const galleryHeight = gallery?.scrollHeight || gallery?.getBoundingClientRect().height || 0
       const primary = this.renderRoot.querySelector<HTMLElement>(".elements-primary-controls")
       const headerHeight = primary?.getBoundingClientRect().height || this.lengthInPixels("5.625rem", 90)
       const panelStyle = getComputedStyle(this.collapsed ? controls : drawer)
+      // Read the final padding token: computed padding is still interpolating
+      // from zero when the pullout's opening animation begins.
+      const blockPadding = this.collapsed
+        ? 2 * this.lengthInPixels(getComputedStyle(this).getPropertyValue("--ribbon-drawer-panel-padding-block").trim(), 8)
+        : paddingTop + paddingBottom
       const chromeHeight = (Number.parseFloat(panelStyle.borderTopWidth) || 0)
         + (Number.parseFloat(panelStyle.borderBottomWidth) || 0)
-        + paddingTop + paddingBottom
+        + blockPadding
       const naturalHeight = Math.ceil(headerHeight + galleryHeight + chromeHeight)
       const preferredHeight = Math.max(collapsedHeight, Math.min(naturalHeight, available))
       const currentTarget = Number.parseFloat(drawer.style.getPropertyValue("--layout-expanded-height")) || 0

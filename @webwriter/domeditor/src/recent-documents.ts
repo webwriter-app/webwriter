@@ -112,11 +112,15 @@ export function parseDocumentOpenReference(value: string) {
   if(value.startsWith("local:") && value.length > 6) return {kind: "local" as const, id: value.slice(6)}
   try {
     const url = new URL(value)
-    const match = url.pathname.match(/^(.*)\/documents\/([^/]+)$/)
+    const match = url.pathname.match(/^(.*)\/(documents|shared-documents)\/([^/]+)$/)
     if(!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !match) return null
-    const documentId = decodeURIComponent(match[2])
+    const documentId = decodeURIComponent(match[3])
     if(!documentId) return null
     url.pathname = match[1] || "/"
+    if(match[2] === "shared-documents") {
+      if(!/^[A-Za-z0-9_-]{24,256}$/.test(documentId)) return null
+      return {kind: "shared" as const, apiBaseUrl: url.href.replace(/\/$/, ""), token: documentId}
+    }
     return {kind: "backend" as const, apiBaseUrl: url.href.replace(/\/$/, ""), documentId}
   }
   catch {return null}

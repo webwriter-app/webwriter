@@ -7,6 +7,33 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "Lit documentation examples render and synchronize with LitElementWw",
+  "LitElementWw uses native registries and shared data handlers without the adapter",
+  "legacy and native scoped registries coexist without replacing browser globals",
+  "global directional shorthands preserve authored overrides in native CSSOM",
+  "gap carets track their authored boundary",
+  "insertion and saved-reader controls align inside symmetric scrollbar gutters",
+  "SVG shape outlines and handles align inside symmetric scrollbar gutters",
+  "editing affordances align with media inside symmetric scrollbar gutters",
+  "document scrollbar gutters stay symmetric as content grows",
+  "empty Details retains summary height and padding in standalone documents",
+  "media stays centered in editing and standalone documents",
+  "crop preview reveals the source and restores content outside the frame",
+  "video crop controls remain available after repeated crops",
+  "media interiors capture while outline edges element-select",
+  "Settings tabs share the heading and embed AI provider cards in Cloud",
+  "AI messages use normal padding without template whitespace",
+  "Closed AI bar shows status and anchored reply speech bubbles",
+  "Document toolbox combines metadata and layouts with primary and detailed options",
+  "Border controls are narrow and dropdown chevrons overlay field values",
+  "Ribbon custom colors show rainbow swatches and commit chosen colors",
+  "File actions align with the font size controls",
+  "Editor UI prevents text selection while preserving editable fields and the document",
+  "Toolbox choices distinguish defaults from explicit matching values",
+  "Style dropdowns draw a single border and focus ring",
+  "marker image uploads preview before applying",
+  "character deletion preserves adjacent spaces",
+  "Elements pullout reserves matching padding after its opening animation",
   "Board columns and cards retain native editing and standalone layout",
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
@@ -22,6 +49,8 @@ const expectedChecks = [
   "wide widgets remain centered between symmetric float lanes",
   "far floats adapt to column margins and survive standalone export",
   "Harper checks English in a worker without authored DOM artifacts",
+  "Accessibility review shares Issues controls without loading while disabled",
+  "Review shares bounded scroll areas and lays out versions beside responsive changes",
   "version previews preserve editing mode and reject native and direct mutations",
   "collaborated scripts remain inert with namespace prefixes, clones and later edits",
   "new paragraphs and line breaks reveal the caret at the document end",
@@ -39,6 +68,10 @@ const expectedChecks = [
   "blank space around a formula paragraph selects gaps for every click count",
   "leaving an empty inline formula removes it without moving the text caret",
   "bottom layout cards retain native editing focus after rendering",
+  "recent documents fit one layout card when space is limited",
+  "narrow ribbons show only the AI sparkles button",
+  "AI toolbox adapts its width and short-screen controls",
+  "ribbon collapses when vertical space is constrained",
   "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",
   "canvas and slide gestures relay pointer dismissal before feature capture",
@@ -46,13 +79,16 @@ const expectedChecks = [
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",
   "selection feature treats custom element as atomic",
+  "touch caret and ranges use shared pointer selection",
   "layout based hit testing returns the rendered target",
+  "clicks below closed details keep hidden media collapsed",
   "focused AI previews preserve widgets, contextual HTML, and rendered styles",
   "standalone SVG affordances refit rotated elements and resize beyond their original size",
   "ribbon shapes retain their aspect ratio under the document theme",
   "ribbon dropdowns join their triggers without gaps at viewport edges",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
+  "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
   "canvas Enter inserts a line break and conversion returns normal flow",
@@ -67,11 +103,15 @@ const expectedChecks = [
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
 const mathVisual = process.argv.includes("--math-visual")
+const performanceMode = process.argv.includes("--performance")
+const widgetStateDiagnostics = process.argv.includes("--widget-state-diagnostics")
+const widgetStateMode = process.argv.includes("--widget-state-benchmark") || widgetStateDiagnostics
+const widgetStorageMode = process.argv.includes("--widget-data-storage")
 const importMapMode = process.argv.includes("--import-map")
 const smoke = process.argv.includes("--smoke")
 const checkFilter = process.argv.find(argument => argument.startsWith("--filter="))?.slice("--filter=".length)
 const filteredChecks = checkFilter ? expectedChecks.filter(name => name.includes(checkFilter)) : expectedChecks
-if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode)) throw new Error("The filter must match a native check")
+if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode || performanceMode || widgetStateMode || widgetStorageMode)) throw new Error("The filter must match a native check")
 const browserArgument = process.argv.find(argument => argument.startsWith("--browser="))?.slice("--browser=".length)
 const browserName = browserArgument ?? "chromium"
 if(!["chromium", "firefox", "webkit"].includes(browserName)) throw new Error(`Unsupported native browser: ${browserName}`)
@@ -145,6 +185,7 @@ const port = await new Promise((resolve, reject) => {
   })
 })
 const vite = await createServer({
+  ...(widgetStateMode || widgetStorageMode ? {logLevel: "silent"} : {}),
   plugins: [resultPlugin],
   server: {host: "127.0.0.1", port, strictPort: true},
 })
@@ -169,11 +210,11 @@ let timeout
 try {
   await vite.listen()
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
+  const url = `http://127.0.0.1:${port}/tests/${widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
-    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", `--user-data-dir=${profile}`, url]
+    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
   browser = spawn(command, args, {
     stdio: ["ignore", "ignore", "pipe"],
     ...(browserName === "webkit" && swiftDeveloperDir
@@ -187,19 +228,23 @@ try {
   }))
   const failedToStart = new Promise(resolve => browser.once("error", error => resolve({error: String(error)})))
   const timedOut = new Promise(resolve => {
-    const timeoutMs = mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
+    const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
     timeout = setTimeout(() => resolve({error: "Native browser timed out"}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && (importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
+  const valid = !result?.error && (widgetStorageMode ? checks.length === 15 && result.samples?.length === 72 && result.paced?.length === 1
+    : widgetStateMode ? checks.length === 1 && checks[0].name === "widget state benchmark"
+    && checks[0].samples?.length === (widgetStateDiagnostics ? 30 : 180) && result.paced?.length === (widgetStateDiagnostics ? 0 : 27)
+    : performanceMode ? checks.length === 5 && ["hover float candidates", "local and remote reconciliation", "frame snapshot processing", "unchanged widget data", "catalog rendering and Lit settling"].every(name => checks.some(check => check?.name === name))
+    : importMapMode ? checks.length === expectedImportMapChecks.length && expectedImportMapChecks.every(name => checks.some(check => check?.name === name))
     : mathVisual ? checks.length >= 4640 && new Set(checks.map(check => check.name)).size === checks.length
     : smoke ? checks.length === expectedSmokeChecks.length && expectedSmokeChecks.every(name => checks.some(check => check?.name === name))
     : checks.length === filteredChecks.length
     && filteredChecks.every(name => checks.some(check => check?.name === name)))
     && checks.every(check => check && typeof check.name === "string" && check.error === undefined)
-  process.stdout.write(JSON.stringify(checks, null, 2) + "\n")
+  process.stdout.write(JSON.stringify(widgetStateMode || widgetStorageMode ? result : checks, null, 2) + "\n")
   if(!valid) {
     process.stderr.write(`${result?.error ?? "Native checks failed"}\n${mathVisual && checks.length ? "" : Buffer.concat(errors).toString()}`)
     process.exitCode = 1

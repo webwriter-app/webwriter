@@ -27,7 +27,7 @@ function isGroupingCarrier(comment: Comment) {
 function visit(root: Node, callback: (node: Node) => void) {
   const walk = (node: Node) => {
     callback(node)
-    if(node.nodeType === 1 && (node as Element).localName === "template") {
+    if(node.nodeType === 1 && (node as Element).localName === "template" && "content" in node) {
       walkChildren((node as HTMLTemplateElement).content)
     }
     walkChildren(node)
@@ -89,12 +89,27 @@ export function prepareWidgetGroupingsForSerialization(root: Node) {
     serialized.replace(`<!--${marker}-->`, `<?${target}${data ? ` ${data}` : ""}?>`), html)
 }
 
+function hasProcessingInstruction(root: Node): boolean {
+  if(root.nodeType === 1 && (root as Element).localName === "template" && "content" in root
+    && hasProcessingInstruction((root as HTMLTemplateElement).content)) return true
+  const ownerDocument = root.nodeType === 9 ? root as Document : root.ownerDocument ?? document
+  const walker = ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_PROCESSING_INSTRUCTION)
+  let node: Node | null
+  while((node = walker.nextNode())) {
+    if(node.nodeType === 7) return true
+    if(node.nodeType === 1 && (node as Element).localName === "template" && "content" in node
+      && hasProcessingInstruction((node as HTMLTemplateElement).content)) return true
+  }
+  return false
+}
+
 /** Restore PI children omitted by DOM implementations that clone only HTML node kinds. */
 export function restoreWidgetGroupingClones(source: Node, clone: Node) {
+  if(!hasProcessingInstruction(source)) return clone
   const restore = (sourceParent: Node, cloneParent: Node) => {
-    const sourceContent = sourceParent.nodeType === 1 && (sourceParent as Element).localName === "template"
+    const sourceContent = sourceParent.nodeType === 1 && (sourceParent as Element).localName === "template" && "content" in sourceParent
       ? (sourceParent as HTMLTemplateElement).content : sourceParent
-    const cloneContent = cloneParent.nodeType === 1 && (cloneParent as Element).localName === "template"
+    const cloneContent = cloneParent.nodeType === 1 && (cloneParent as Element).localName === "template" && "content" in cloneParent
       ? (cloneParent as HTMLTemplateElement).content : cloneParent
     const sourceContentChildren = Array.from(sourceContent.childNodes)
     for(const child of Array.from(cloneContent.childNodes)) if(child.nodeType === 7) child.remove()

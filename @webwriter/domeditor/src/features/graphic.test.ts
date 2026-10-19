@@ -1,15 +1,18 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
+import * as Y from "yjs"
 import {isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
 import {$} from "../utility"
 import {
+  graphicShapeDragType,
   SVG_NAMESPACE,
   graphicShapeForNode,
   graphicShapeOptions,
   graphicShapeRoots,
   graphicShapeType,
+  graphicPathGeometry,
   standaloneGraphicShape,
 } from "../graphic"
 
@@ -51,6 +54,130 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it.each(["captured", "selected"])("pastes plain text into a %s graphic without replacing content, with undo and redo", async selection => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const sibling = graphic.lastElementChild!
+    if(selection === "selected") editor.features.selection.selectElement(graphic)
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    data.setData("text/plain", "Hello <world>\r\nSecond line")
+    data.setData("text/html", "<p>Hello <b>world</b></p><p>Second line</p>")
+    const paste = new ClipboardEvent("paste", {bubbles: true, cancelable: true})
+    Object.defineProperty(paste, "clipboardData", {value: data})
+    document.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    expect(graphic.querySelectorAll("text tspan")).toHaveLength(2)
+    expect(graphic.querySelector("text tspan")).toHaveTextContent("Hello <world>")
+    expect(graphic.querySelector("text tspan:last-child")).toHaveTextContent("Second line")
+    expect(graphic.children[0]).toBe(sibling)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(editor.features.graphic.getState()?.shape).toBe("text-box")
+    await mutationsDelivered()
+    expect(editor.doc.body.toString()).toContain("Hello <world>")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.querySelector("text")).toBeNull()
+    expect(graphic.children[0]).toBe(sibling)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("text")).not.toBeNull()
+  })
+
+  it("drops plain text at SVG coordinates and preserves the existing shape", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const rectangle = graphic.firstElementChild!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    const data = new DataTransfer()
+    data.setData("text/plain", "Dropped text")
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
+    rectangle.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    const drop = imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 500, clientY: 350})
+    rectangle.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(graphic.children[0]).toBe(rectangle)
+    const text = graphic.querySelector("text")!
+    expect(text).toHaveTextContent("Dropped text")
+    expect(text).toHaveAttribute("x", "200")
+    expect(text).toHaveAttribute("y", "150")
+    expect(document.body.querySelectorAll("svg")).toHaveLength(1)
+  })
+
+  it.each(["removed", "disabled", "locked", "moved into widget"])("ignores text paste and drop when the graphic is %s", state => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    if(state === "removed") graphic.remove()
+    else if(state === "disabled") {
+      editor.features.graphic.disable()
+      editor.features.manipulation.disable()
+    }
+    else if(state === "locked") editor.lockEditing("text-test")
+    else {
+      const widget = document.createElement("test-widget")
+      graphic.replaceWith(widget)
+      widget.append(graphic)
+    }
+    const data = new DataTransfer()
+    data.setData("text/plain", "No insertion")
+    const paste = new ClipboardEvent("paste", {bubbles: true, cancelable: true})
+    Object.defineProperty(paste, "clipboardData", {value: data})
+    graphic.dispatchEvent(paste)
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    expect(graphic.querySelector("text")).toBeNull()
+  })
+
+  it("routes the toolbar paste command into the graphic using plain text", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+      {types: ["text/html", "text/plain"], getType: async (type: string) => new Blob([type === "text/plain" ? "Clipboard text" : "<b>HTML</b>"]), presentationStyle: "unspecified"} as ClipboardItem,
+    ])
+    expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
+    expect(graphic.querySelector("text")).toHaveTextContent("Clipboard text")
+  })
+
+  it("does not insert delayed toolbar paste into a replaced graphic", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    let resolve!: (items: ClipboardItem[]) => void
+    vi.spyOn(navigator.clipboard, "read").mockImplementation(() => new Promise(done => { resolve = done }))
+    const pending = editor.features.manipulation.actions.paste({type: "paste"})
+    const replacement = graphic.cloneNode(true) as SVGSVGElement
+    graphic.replaceWith(replacement)
+    editor.features.selection.captureElement(replacement)
+    resolve([{types: ["text/plain"], getType: async () => new Blob(["Late text"]), presentationStyle: "unspecified"} as ClipboardItem])
+    expect(await pending).toBe(false)
+    expect(replacement.querySelector("text")).toBeNull()
+  })
+
+  it("pastes into an open shape label instead of adding another text box", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    graphic.querySelector("rect")!.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+    const proxy = editor.appendix.querySelector<HTMLTextAreaElement>(".◆graphic-label-input")!
+    const data = new DataTransfer()
+    data.setData("text/plain", "Pasted label")
+    const paste = new ClipboardEvent("paste", {bubbles: true, composed: true, cancelable: true})
+    Object.defineProperty(paste, "clipboardData", {value: data})
+    proxy.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    expect(graphic.querySelectorAll("text")).toHaveLength(1)
+    expect(graphic.querySelector("text")).toHaveTextContent("Pasted label")
+    vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+      {types: ["text/plain"], getType: async () => new Blob(["!"]), presentationStyle: "unspecified"} as ClipboardItem,
+    ])
+    expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
+    expect(graphic.querySelector("text")).toHaveTextContent("Pasted label!")
+    expect(graphic.querySelectorAll("text")).toHaveLength(1)
+    proxy.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+    expect(graphic.querySelector('[class*="◆graphic-text-editing"]')).toBeNull()
+    expect(editor.appendix.querySelector(".◆graphic-label-input")).toBeNull()
+  })
+
   it("inserts painted shapes in one undo step while preserving unfamiliar content", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
@@ -65,7 +192,7 @@ describe("graphic editing", () => {
     expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
     expect(graphic.children[0]).toBe(sibling)
     await mutationsDelivered()
-    expect(editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
     editor.features.history.actions.undo({type: "undo"})
     expect(graphic.children).toHaveLength(1)
     expect(graphic.children[0]).toBe(sibling)
@@ -87,6 +214,86 @@ describe("graphic editing", () => {
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "heart", paint: {fill: "red"}})
     expect(graphic.children).toHaveLength(0)
     expect(document.querySelector("svg")).toBeNull()
+  })
+
+  it("drops keyboard shapes at SVG coordinates with paint and one undo step", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.insertAdjacentHTML("beforeend", '<!--keep--><g><path d="M0 0L5 5"/></g>')
+    const sibling = graphic.lastElementChild!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    data.setData(graphicShapeDragType, JSON.stringify({shape: "ellipse", paint: {fill: "red", stroke: "blue"}}))
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
+    graphic.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(data.dropEffect).toBe("copy")
+    const drop = imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 500, clientY: 350})
+    graphic.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    const shape = graphic.querySelector("ellipse")!
+    expect(shape).toHaveAttribute("cx", "200")
+    expect(shape).toHaveAttribute("cy", "150")
+    expect(shape).toHaveAttribute("fill", "red")
+    expect(shape).toHaveAttribute("stroke", "blue")
+    expect(graphic.children[0]).toBe(sibling)
+    await mutationsDelivered()
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.querySelector("ellipse")).toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
+  })
+
+  it.each(["audio/mpeg", "video/mp4"])("inserts %s files into an existing graphic and supports undo", async mime => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const sibling = graphic.lastElementChild
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    data.items.add(new File(["media"], "media", {type: mime}))
+    const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
+    graphic.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data, clientX: 200, clientY: 100})
+    graphic.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    const container = graphic.querySelector("foreignObject")!
+    expect(container).not.toBeNull()
+    const media = container.querySelector(mime.startsWith("video") ? "video" : "audio")!
+    expect(media.getAttribute("src")).toMatch(/^blob:/)
+    expect(media).toHaveAttribute("controls")
+    expect(graphic.firstElementChild).toBe(sibling)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphic.querySelector("foreignObject")).toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphic.querySelector("foreignObject")).not.toBeNull()
+  })
+
+  it("rejects invalid, locked, widget and disconnected shape drops", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const data = new DataTransfer()
+    for(const payload of ["{", JSON.stringify({shape: "unknown"}), "null"]) {
+      data.setData(graphicShapeDragType, payload)
+      graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+      expect(graphic.children).toHaveLength(0)
+    }
+    data.setData(graphicShapeDragType, JSON.stringify({shape: "rectangle"}))
+    editor.lockEditing("shape-test")
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    editor.unlockEditing("shape-test")
+    const widget = document.createElement("test-widget")
+    document.body.append(widget)
+    widget.append(graphic)
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    graphic.remove()
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    expect(graphic.children).toHaveLength(0)
   })
 
   it("reuses image source controls for a native SVG image and preserves canvas capture", async () => {
@@ -133,7 +340,9 @@ describe("graphic editing", () => {
     const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
     Object.defineProperty(picker, "files", {value: [new File(["image"], "photo.png", {type: "image/png"})]})
     picker.dispatchEvent(new Event("change"))
-    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^data:image\/png;base64,/))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^blob:/))
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).toContain(`data:image/png;base64,${btoa("image")}`)
+    expect(image.getAttribute("href")).toMatch(/^blob:/)
   })
 
   it("drops image URLs at SVG coordinates without changing unfamiliar siblings, with undo and redo", async () => {
@@ -145,6 +354,7 @@ describe("graphic editing", () => {
     await mutationsDelivered()
     const data = new DataTransfer()
     data.setData("text/html", '<img src="https://example.com/photo.png">')
+    data.setData("text/plain", "Image fallback text")
     const over = imageDragEvent("dragover", {bubbles: true, cancelable: true, dataTransfer: data})
     graphic.dispatchEvent(over)
     expect(over.defaultPrevented).toBe(true)
@@ -165,30 +375,26 @@ describe("graphic editing", () => {
     expect(graphic.querySelector("image")).toHaveAttribute("href", "https://example.com/photo.png")
   })
 
-  it.each(["filled", "removed", "disabled", "moved into widget"])("ignores a delayed image drop after the target is %s", state => {
-    let reader: FileReader | undefined
-    const readFile = vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) { reader = this })
+  it.each(["removed", "disabled", "locked", "moved into widget"])("ignores an image file drop when the target is %s", state => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
     const graphic = document.querySelector("svg")!
     const image = graphic.querySelector("image")!
     const data = new DataTransfer()
     data.items.add(new File(["image"], "photo.png", {type: "image/png"}))
-    image.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
-    expect(reader).toBeDefined()
-    if(state === "filled") image.setAttribute("href", "remote.png")
-    else if(state === "removed") image.remove()
+    if(state === "removed") graphic.remove()
     else if(state === "disabled") editor.features.graphic.disable()
+    else if(state === "locked") vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
     else {
       const widget = document.createElement("image-widget")
       graphic.replaceWith(widget)
       widget.append(graphic)
     }
-    Object.defineProperty(reader!, "result", {value: "data:image/png;base64,bG9jYWw="})
-    reader!.dispatchEvent(new Event("load"))
-    expect(image.getAttribute("href")).toBe(state === "filled" ? "remote.png" : null)
-    expect(graphic.querySelectorAll("image")).toHaveLength(state === "removed" ? 0 : 1)
-    readFile.mockRestore()
+    const createURL = vi.spyOn(editor, "createMediaURL")
+    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    expect(createURL).not.toHaveBeenCalled()
+    expect(image.getAttribute("href")).toBeNull()
+    expect(graphic.querySelectorAll("image")).toHaveLength(1)
   })
 
   it("fills an empty image on file drop and removes source controls after external changes", async () => {
@@ -200,7 +406,7 @@ describe("graphic editing", () => {
     const drop = imageDragEvent("drop", {bubbles: true, composed: true, cancelable: true, dataTransfer: data})
     editor.features.media.placeholder.element.dispatchEvent(drop)
     expect(drop.defaultPrevented).toBe(true)
-    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^data:image\/png;base64,/))
+    await vi.waitFor(() => expect(image.getAttribute("href")).toMatch(/^blob:/))
     expect(document.querySelectorAll("svg image")).toHaveLength(1)
     image.removeAttribute("href")
     await mutationsDelivered()
@@ -223,7 +429,7 @@ describe("graphic editing", () => {
     input.dispatchEvent(new Event("change"))
     await pending
     expect(old.isConnected).toBe(false)
-    const source = editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})!
+    const source = (await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"}))!
     expect(source).toContain('viewBox="0 0 42 24"')
     expect(source).toContain("<!--keep-->")
     expect(source).toContain("linearGradient")
@@ -241,7 +447,7 @@ describe("graphic editing", () => {
     input.dispatchEvent(new Event("change"))
     await pending
 
-    const source = editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})!
+    const source = (await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"}))!
     const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
     const root = parsed.documentElement
     expect(root).toHaveAttribute("viewBox", "0 0 42 24")
@@ -299,6 +505,27 @@ describe("graphic editing", () => {
     input.dispatchEvent(new Event("change"))
     await pending
     expect(document.querySelector("svg")).toBeNull()
+  })
+
+  it("does not replace a graphic moved into an atomic widget while a file is being read", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    let finishRead!: (source: string) => void
+    const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
+    const input = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(input, "files", {value: [{name: "drawing.svg", text: () => new Promise<string>(resolve => {
+      finishRead = resolve
+    })}]})
+    input.dispatchEvent(new Event("change"))
+
+    const widget = document.createElement("demo-graphic-widget")
+    document.body.append(widget)
+    widget.append(graphic)
+    finishRead('<svg xmlns="http://www.w3.org/2000/svg"><circle r="7"/></svg>')
+    await pending
+
+    expect(graphic.isConnected).toBe(true)
+    expect(widget.querySelector("svg circle")).toBeNull()
   })
 
   it("shows a move cursor over preset paths inside a captured graphic", () => {
@@ -484,6 +711,7 @@ describe("graphic editing", () => {
     expect(editor.features.graphic.getState()).toEqual({
       active: true,
       capture: true,
+      mode: "select",
       selectionCount: 0,
       options: {grid: true, snap: true, guides: true},
     })
@@ -735,6 +963,7 @@ describe("graphic editing", () => {
     expect(editor.features.graphic.getState()).toEqual({
       active: true,
       capture: false,
+      mode: "select",
       selectionCount: 0,
       options: {grid: true, snap: true, guides: true},
     })
@@ -2351,4 +2580,580 @@ it("keeps graphic grid tiles fixed when dimensions and the viewBox change", () =
     editor.features.graphic.refresh()
     expect(getComputedStyle(graphic).backgroundSize).toBe(tileSize)
   }
+})
+
+it("previews and commits a freehand stroke in SVG coordinates without touching existing content", async () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+  const sibling = graphic.lastElementChild!
+  graphic.setAttribute("viewBox", "0 0 400 300")
+  Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+  await mutationsDelivered()
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {isPrimary: true, pointerType: "pen", bubbles: true, cancelable: true, button: 0, pointerId: 11, clientX: 120, clientY: 90}))
+  expect(Array.from(graphic.querySelectorAll("path")).filter(path => graphicShapeType(path) === "freehand")).toHaveLength(0)
+  const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+  expect(preview).toBeTruthy()
+  expect(preview).toHaveAttribute("fill", "none")
+  expect(preview).toHaveAttribute("stroke", "#334155")
+  expect(preview).toHaveAttribute("stroke-width", "4")
+  graphic.dispatchEvent(new PointerEvent("pointermove", {isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 11, buttons: 1, clientX: 160, clientY: 110}))
+  expect(Array.from(graphic.querySelectorAll("path")).filter(path => graphicShapeType(path) === "freehand")).toHaveLength(0)
+  graphic.dispatchEvent(new PointerEvent("pointerup", {isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 11, clientX: 180, clientY: 130}))
+
+  const stroke = Array.from(graphic.querySelectorAll<SVGPathElement>("path")).find(path => graphicShapeType(path) === "freehand")!
+  expect(stroke).toBeTruthy()
+  expect(stroke.getAttribute("d")).toMatch(/^M\s*10\s*20/)
+  expect(stroke.getAttribute("d")).toContain("40 40")
+  expect(stroke.getAttribute("d")).toContain("30 30")
+  expect(stroke).toHaveAttribute("fill", "none")
+  expect(stroke).toHaveAttribute("stroke-linecap", "round")
+  expect(stroke).toHaveAttribute("stroke-linejoin", "round")
+  expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+  expect(graphic.children[0]).toBe(sibling)
+  expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+  await mutationsDelivered()
+  expect(editor.doc.body.toString()).not.toContain("◆")
+  expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+  editor.features.history.actions.undo({type: "undo"})
+  expect(Array.from(graphic.querySelectorAll("path")).some(path => graphicShapeType(path) === "freehand")).toBe(false)
+  expect(graphic.lastElementChild).toBe(sibling)
+  editor.features.history.actions.redo({type: "redo"})
+  expect(Array.from(graphic.querySelectorAll("path")).some(path => graphicShapeType(path) === "freehand")).toBe(true)
+})
+
+it("creates a freehand dot on tap and applies the selected drawing paint", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  editor.features.graphic.actions.setGraphicDrawPaint({type: "setGraphicDrawPaint", paint: {stroke: "rebeccapurple", "stroke-width": "7"}})
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {isPrimary: true, pointerType: "pen", bubbles: true, cancelable: true, button: 0, pointerId: 12, clientX: 32, clientY: 48}))
+  graphic.dispatchEvent(new PointerEvent("pointerup", {isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 12, clientX: 32, clientY: 48}))
+  const stroke = Array.from(graphic.querySelectorAll<SVGPathElement>("path")).find(path => graphicShapeType(path) === "freehand")!
+  expect(stroke.getAttribute("d")).toMatch(/^M\s*32\s*48/)
+  expect(stroke).toHaveAttribute("stroke", "rebeccapurple")
+  expect(stroke).toHaveAttribute("stroke-width", "7")
+  expect(stroke).toHaveAttribute("fill", "none")
+})
+
+it("selects, moves, and resizes a finished freehand stroke", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {isPrimary: true, pointerType: "pen", bubbles: true, cancelable: true, button: 0, pointerId: 15, clientX: 10, clientY: 10}))
+  graphic.dispatchEvent(new PointerEvent("pointermove", {isPrimary: true, pointerType: "pen", bubbles: true, buttons: 1, pointerId: 15, clientX: 50, clientY: 50}))
+  graphic.dispatchEvent(new PointerEvent("pointerup", {isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 15, clientX: 70, clientY: 70}))
+  const stroke = Array.from(graphic.querySelectorAll<SVGPathElement>("path")).find(path => graphicShapeType(path) === "freehand")!
+  expect(stroke).toBeTruthy()
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "select"})
+  clickShape(stroke)
+  expect(editor.features.graphic.selectedShape).toBe(stroke)
+  const overlay = editor.appendix.querySelector<HTMLElement>(".◆graphic-overlay")!
+  expect(overlay.querySelector('[data-graphic-handle="resize-se"]')).not.toBeNull()
+  const before = stroke.getAttribute("d")!
+  editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "x", value: "20"})
+  expect(stroke.getAttribute("d")).toMatch(/^M 20 10/)
+  editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "120"})
+  expect(stroke.getAttribute("d")).toMatch(/L 140 70$/)
+  expect(stroke.getAttribute("d")).not.toBe(before)
+  expect(stroke).toHaveAttribute("stroke-width", "4")
+  expect(graphicShapeType(stroke)).toBe("freehand")
+})
+
+it("keeps the first freehand pointer active when a secondary pointer presses the canvas", () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {isPrimary: true, pointerType: "pen", bubbles: true, cancelable: true, button: 0, pointerId: 21, clientX: 10, clientY: 15}))
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {isPrimary: true, pointerType: "pen", bubbles: true, cancelable: true, button: 0, pointerId: 22, clientX: 80, clientY: 85}))
+  graphic.dispatchEvent(new PointerEvent("pointermove", {isPrimary: true, pointerType: "pen", bubbles: true, buttons: 1, pointerId: 21, clientX: 40, clientY: 45}))
+  graphic.dispatchEvent(new PointerEvent("pointerup", {isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 21, clientX: 50, clientY: 55}))
+  const stroke = Array.from(graphic.querySelectorAll<SVGPathElement>("path")).find(path => graphicShapeType(path) === "freehand")!
+  expect(stroke).toBeTruthy()
+  expect(stroke.getAttribute("d")).toContain("40 45")
+  expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+})
+
+it.each(["pointercancel", "lostpointercapture", "blur"])("cleans up a freehand preview on %s", eventName => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {isPrimary: true, pointerType: "pen", bubbles: true, cancelable: true, button: 0, pointerId: 31, clientX: 10, clientY: 20}))
+  graphic.dispatchEvent(new PointerEvent("pointermove", {isPrimary: true, pointerType: "pen", bubbles: true, buttons: 1, pointerId: 31, clientX: 30, clientY: 40}))
+  expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
+  const target: EventTarget = eventName === "blur" ? window : graphic
+  target.dispatchEvent(eventName === "blur" ? new Event(eventName) : new PointerEvent(eventName, {isPrimary: true, pointerType: "pen", bubbles: true, pointerId: 31}))
+  expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+  expect(Array.from(graphic.querySelectorAll("path")).some(path => graphicShapeType(path) === "freehand")).toBe(false)
+  expect(graphic.querySelector("[class*='◆']")).toBeNull()
+  expect(editor.features.graphic.getState()?.mode).toBe("draw")
+})
+
+it("uses coalesced pen samples and keeps consecutive strokes in separate undo items across remote changes", async () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  await mutationsDelivered()
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  const pointer = (type: string, x: number, y: number) => new PointerEvent(type, {
+    bubbles: true, cancelable: true, isPrimary: true, pointerType: "pen", button: 0, pointerId: 7, clientX: x, clientY: y,
+  })
+  graphic.dispatchEvent(pointer("pointerdown", 10, 10))
+  const move = pointer("pointermove", 90, 90)
+  Object.defineProperty(move, "getCoalescedEvents", {value: () => [pointer("pointermove", 20, 30), pointer("pointermove", 40, 10)]})
+  graphic.dispatchEvent(move)
+  // A remote change to the same live canvas must survive the local commit and undo.
+  const sharedGraphic = editor.doc.body.toArray().find(node => node instanceof Y.XmlElement && node.nodeName === "svg") as Y.XmlElement
+  editor.doc.doc.transact(() => sharedGraphic.setAttribute("aria-label", "Remote label"), "remote-client")
+  graphic.dispatchEvent(pointer("pointerup", 50, 20))
+  const first = graphic.querySelector("path")!
+  expect(first.getAttribute("d")).toContain("20 30")
+  expect(first.getAttribute("d")).toContain("40 10")
+  expect(first.getAttribute("d")).not.toContain("90 90")
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  graphic.dispatchEvent(pointer("pointerdown", 60, 10))
+  graphic.dispatchEvent(pointer("pointerup", 80, 20))
+  expect(graphic.querySelectorAll("path")).toHaveLength(2)
+  editor.doc.undo()
+  expect(graphic.querySelectorAll("path")).toHaveLength(1)
+  expect(graphic.querySelector("path")).toBe(first)
+  editor.doc.undo()
+  expect(graphic.querySelector("path")).toBeNull()
+  expect(graphic).toHaveAttribute("aria-label", "Remote label")
+  editor.doc.redo()
+  editor.doc.redo()
+  expect(graphic.querySelectorAll("path")).toHaveLength(2)
+})
+
+it.each(["select", "escape", "disable", "replace", "widget", "lock"])("discards a pending freehand stroke on %s", async ending => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  const graphic = document.querySelector("svg")!
+  editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, isPrimary: true, button: 0, pointerId: 41}))
+  expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
+  if(ending === "select") editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "select"})
+  else if(ending === "escape") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+  else if(ending === "disable") editor.features.graphic.disable()
+  else if(ending === "replace") graphic.replaceWith(graphic.cloneNode(true))
+  else if(ending === "lock") editor.lockEditing("test")
+  else {
+    const widget = document.createElement("test-widget")
+    graphic.replaceWith(widget)
+    widget.append(graphic)
+  }
+  await mutationsDelivered()
+  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 41, clientX: 100, clientY: 100}))
+  expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+  expect(graphic.querySelector("path")).toBeNull()
+  expect(graphic).not.toHaveClass("◆graphic-drawing")
+  expect(editor.features.graphic.getState()?.mode).not.toBe("draw")
+})
+
+describe("polyline and Bezier path drawing", () => {
+  let pointerId = 100
+  const pointClick = (graphic: SVGSVGElement, x: number, y: number, options: {altKey?: boolean, shiftKey?: boolean} = {}) => {
+    const id = pointerId++
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, isPrimary: true, pointerType: "mouse", button: 0, pointerId: id,
+      clientX: x, clientY: y, ...options,
+    }))
+    graphic.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, pointerType: "mouse", button: 0, pointerId: id, clientX: x, clientY: y}))
+  }
+
+  it("draws through an SVG transform, snaps to the grid, and supports Alt bypass and captured undo shortcuts", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("viewBox", "0 0 400 300")
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    await mutationsDelivered()
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+
+    pointClick(graphic, 120, 90)
+    expect(editor.appendix.querySelector(".◆graphic-preview path")).not.toBeNull()
+    pointClick(graphic, 160, 110)
+    pointClick(graphic, 180, 130, {altKey: true})
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+
+    const path = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
+    expect(graphicShapeType(path)).toBe("polyline")
+    expect(path.getAttribute("d")).toBe("M 0 0 L 50 50 L 40 40")
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    await mutationsDelivered()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    const serialized = await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})
+    expect(serialized).toContain("<path")
+    expect(serialized).not.toContain("◆")
+    expect(serialized).not.toContain("data-graphic-handle")
+
+    const originalPlatform = navigator.platform
+    try {
+      Object.defineProperty(navigator, "platform", {value: "MacIntel", configurable: true})
+      const undo = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "z", metaKey: true})
+      document.dispatchEvent(undo)
+      expect(undo.defaultPrevented).toBe(true)
+      expect([...graphic.querySelectorAll("path")].some(shape => graphicShapeType(shape) === "polyline")).toBe(false)
+      const redo = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Z", metaKey: true, shiftKey: true})
+      document.dispatchEvent(redo)
+      expect(redo.defaultPrevented).toBe(true)
+      expect([...graphic.querySelectorAll("path")].some(shape => graphicShapeType(shape) === "polyline")).toBe(true)
+    }
+    finally { Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true}) }
+  })
+
+  it("uses Ctrl+Z and Ctrl+Y for a captured path on Windows and Linux", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    await mutationsDelivered()
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 0, 0)
+    pointClick(graphic, 100, 100)
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+    await mutationsDelivered()
+    const originalPlatform = navigator.platform
+    try {
+      Object.defineProperty(navigator, "platform", {value: "Win32", configurable: true})
+      const undo = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "z", ctrlKey: true})
+      document.dispatchEvent(undo)
+      expect(undo.defaultPrevented).toBe(true)
+      expect([...graphic.querySelectorAll("path")].some(shape => graphicShapeType(shape) === "polyline")).toBe(false)
+      const redo = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "y", ctrlKey: true})
+      document.dispatchEvent(redo)
+      expect(redo.defaultPrevented).toBe(true)
+      expect([...graphic.querySelectorAll("path")].some(shape => graphicShapeType(shape) === "polyline")).toBe(true)
+    }
+    finally { Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true}) }
+  })
+
+  it("closes a Lines path at its first vertex and finishes a Curves path on double-click", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 0, 0)
+    pointClick(graphic, 50, 0)
+    pointClick(graphic, 50, 50)
+    pointClick(graphic, 0, 0)
+    const closed = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
+    expect(closed.getAttribute("d")).toMatch(/^M 0 0 L 50 0 L 50 50 Z$/)
+
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "curves"})
+    pointClick(graphic, 100, 100)
+    pointClick(graphic, 200, 100)
+    graphic.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, cancelable: true, button: 0}))
+    const curve = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "bezier")!
+    expect(curve).toBeTruthy()
+    expect(curve.getAttribute("d")).toMatch(/^M\s*100\s*100\s*C/)
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+  })
+
+  it("constrains a shifted Lines segment to a 45 degree direction", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 0, 0)
+    pointClick(graphic, 80, 40, {shiftKey: true})
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+    const path = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
+    expect(path.getAttribute("d")).toBe("M 0 0 L 50 50")
+  })
+
+  it("creates symmetric curve handles and supports selected path point edits as one undo step", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "curves"})
+    const id = pointerId++
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, isPrimary: true, button: 0, pointerId: id, clientX: 50, clientY: 50}))
+    graphic.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, isPrimary: true, buttons: 1, pointerId: id, clientX: 100, clientY: 100}))
+    graphic.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, pointerId: id, clientX: 100, clientY: 100}))
+    const middleId = pointerId++
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, isPrimary: true, button: 0, pointerId: middleId, clientX: 200, clientY: 50}))
+    graphic.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, isPrimary: true, buttons: 1, pointerId: middleId, clientX: 250, clientY: 100}))
+    graphic.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, pointerId: middleId, clientX: 250, clientY: 100}))
+    pointClick(graphic, 350, 50)
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+
+    const curve = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "bezier")!
+    const symmetricPath = "M 50 50 C 100 100 150 0 200 50 C 250 100 300 50 350 50"
+    expect(curve.getAttribute("d")).toBe(symmetricPath)
+    const incomingHandle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-2"]')!
+    const tangentId = pointerId++
+    incomingHandle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: tangentId, clientX: 150, clientY: 0}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, altKey: true, pointerId: tangentId, clientX: 150, clientY: -50}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, altKey: true, pointerId: tangentId, clientX: 150, clientY: -50}))
+    expect(curve.getAttribute("d")).toBe("M 50 50 C 100 100 150 -50 200 50 C 250 100 300 50 350 50")
+
+    const firstAnchor = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-0"]')!
+    expect(firstAnchor).toBeTruthy()
+    const before = curve.getAttribute("d")!
+    const dragId = pointerId++
+    firstAnchor.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: dragId, clientX: 50, clientY: 50}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, pointerId: dragId, clientX: 125, clientY: 50}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: dragId, clientX: 125, clientY: 50}))
+    expect(curve.getAttribute("d")).not.toBe(before)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(curve.getAttribute("d")).toBe(before)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(curve.getAttribute("d")).not.toBe(before)
+  })
+
+  it("cleans a path preview and drawing markers when the captured graphic is replaced", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 10, 10)
+    expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
+    const replacement = graphic.cloneNode(true) as SVGSVGElement
+    graphic.replaceWith(replacement)
+    await mutationsDelivered()
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(editor.appendix.querySelector(".◆graphic-path-controls")).toBeNull()
+    expect(document.querySelectorAll(".◆graphic-drawing")).toHaveLength(0)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: pointerId - 1, clientX: 100, clientY: 100}))
+    expect(replacement.querySelector("path")).toBeNull()
+  })
+
+  it.each([
+    {mode: "select", platform: "Win32", modifier: "ctrl"},
+    {mode: "draw", platform: "Win32", modifier: "ctrl"},
+    {mode: "select", platform: "MacIntel", modifier: "meta"},
+    {mode: "draw", platform: "MacIntel", modifier: "meta"},
+  ] as const)("routes undo and redo while captured in $mode mode on $platform", async ({mode, platform, modifier}) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    await mutationsDelivered()
+    if(mode === "select") {
+      editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+      pointClick(graphic, 0, 0)
+      pointClick(graphic, 100, 100)
+      document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+      editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "select"})
+    }
+    else {
+      editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+      const id = pointerId++
+      graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, isPrimary: true, pointerType: "pen", button: 0, pointerId: id, clientX: 10, clientY: 10}))
+      graphic.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, pointerType: "pen", pointerId: id, clientX: 10, clientY: 10}))
+    }
+    await mutationsDelivered()
+    const shapeType = mode === "select" ? "polyline" : "freehand"
+    const hasShape = () => [...graphic.querySelectorAll<SVGPathElement>("path")].some(shape => graphicShapeType(shape) === shapeType)
+    expect(hasShape()).toBe(true)
+
+    const originalPlatform = navigator.platform
+    try {
+      Object.defineProperty(navigator, "platform", {value: platform, configurable: true})
+      const undo = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "z", ctrlKey: modifier === "ctrl", metaKey: modifier === "meta"})
+      document.dispatchEvent(undo)
+      expect(undo.defaultPrevented).toBe(true)
+      expect(hasShape()).toBe(false)
+      const redo = new KeyboardEvent("keydown", {
+        bubbles: true, cancelable: true, key: modifier === "ctrl" ? "y" : "Z",
+        ctrlKey: modifier === "ctrl", metaKey: modifier === "meta", shiftKey: modifier === "meta",
+      })
+      document.dispatchEvent(redo)
+      expect(redo.defaultPrevented).toBe(true)
+      expect(hasShape()).toBe(true)
+    }
+    finally { Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true}) }
+  })
+
+  it("moves a selected path point by one or fifty pixels with arrow keys", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    await mutationsDelivered()
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 100, 100)
+    pointClick(graphic, 200, 100)
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+    const path = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-0"]')!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: pointerId++, clientX: 100, clientY: 100}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: pointerId - 1, clientX: 100, clientY: 100}))
+
+    const one = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "ArrowRight"})
+    document.dispatchEvent(one)
+    expect(one.defaultPrevented).toBe(true)
+    expect(path.getAttribute("d")).toBe("M 101 100 L 200 100")
+    const fifty = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "ArrowRight", shiftKey: true})
+    document.dispatchEvent(fifty)
+    expect(fifty.defaultPrevented).toBe(true)
+    expect(path.getAttribute("d")).toBe("M 151 100 L 200 100")
+  })
+
+  it("moves the last draft vertex with arrows, removes it with Backspace, and cancels without inserting", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 0, 0)
+    pointClick(graphic, 100, 0)
+    const one = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "ArrowRight"})
+    document.dispatchEvent(one)
+    expect(one.defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector(".◆graphic-preview path")?.getAttribute("d")).toBe("M 0 0 L 101 0")
+    const fifty = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "ArrowRight", shiftKey: true})
+    document.dispatchEvent(fifty)
+    expect(fifty.defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector(".◆graphic-preview path")?.getAttribute("d")).toBe("M 0 0 L 151 0")
+    const removeLast = new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Backspace"})
+    document.dispatchEvent(removeLast)
+    expect(removeLast.defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector(".◆graphic-preview path")?.getAttribute("d")).toBe("M 0 0 L 0 0")
+    expect(graphic.querySelector("path")).toBeNull()
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Escape"}))
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(editor.appendix.querySelector(".◆graphic-path-controls")).toBeNull()
+    expect(graphic.querySelector("path")).toBeNull()
+  })
+
+  it("moves a closed curve's first anchor, closing endpoint, and adjacent controls together", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "curves"})
+    const first = pointerId++
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, isPrimary: true, button: 0, pointerId: first, clientX: 50, clientY: 50}))
+    graphic.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, isPrimary: true, buttons: 1, pointerId: first, clientX: 100, clientY: 100}))
+    graphic.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, pointerId: first, clientX: 100, clientY: 100}))
+    pointClick(graphic, 200, 50)
+    pointClick(graphic, 200, 200)
+    pointClick(graphic, 50, 50)
+    const path = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "bezier")!
+    expect(path.getAttribute("d")).toMatch(/Z$/)
+    const before = graphicPathGeometry(path)!
+    expect(before.points[0]).toEqual({x: 50, y: 50})
+    expect(before.points.at(-1)).toEqual(before.points[0])
+
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-0"]')!
+    const id = pointerId++
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: id, clientX: 50, clientY: 50}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, pointerId: id, clientX: 100, clientY: 50}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: id, clientX: 100, clientY: 50}))
+    const after = graphicPathGeometry(path)!
+    expect(after.points[0]).toEqual({x: 100, y: 50})
+    expect(after.points.at(-1)).toEqual(after.points[0])
+    expect(after.points[1]).toEqual({x: 150, y: 100})
+    expect(after.points.at(-2)).toEqual({x: 50, y: 0})
+  })
+
+  it("keeps an external path edit when the original geometry changes during a handle drag", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    await mutationsDelivered()
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 100, 100)
+    pointClick(graphic, 200, 100)
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+    const path = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-0"]')!
+    const id = pointerId++
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: id, clientX: 100, clientY: 100}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, pointerId: id, clientX: 150, clientY: 150}))
+    expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
+    const external = "M 10 20 L 30 40"
+    path.setAttribute("d", external)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: id, clientX: 150, clientY: 150}))
+    await mutationsDelivered()
+    expect(path.getAttribute("d")).toBe(external)
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+  it("keeps an imported curve's implicit closing edge when editing its first anchor", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<g><!--keep--><path d="M 50 50 C 100 0 150 100 200 50 Z" fill="none" stroke="black"/></g>'
+    const path = graphic.querySelector<SVGPathElement>("path")!
+    clickShape(path)
+    expect(editor.appendix.querySelector('[data-graphic-handle="path-point-3"]')).not.toBeNull()
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-0"]')!
+    const id = pointerId++
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: id, clientX: 50, clientY: 50}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: id, clientX: 50, clientY: 50}))
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "ArrowRight"}))
+    expect(path.getAttribute("d")).toBe("M 51 50 C 101 0 150 100 200 50 Z")
+    expect(graphic.querySelector("g")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("uses the grid ahead of object edges and ignores secondary contacts between vertices", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<rect x="12" y="31" width="100" height="100"/>'
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+    pointClick(graphic, 12, 31)
+    const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+    expect(preview.getAttribute("d")).toBe("M 0 50 L 0 50")
+    const secondary = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, isPrimary: false, pointerType: "touch", button: 0, pointerId: pointerId++, clientX: 200, clientY: 200})
+    graphic.dispatchEvent(secondary)
+    expect(secondary.defaultPrevented).toBe(true)
+    expect(editor.features.graphic.getState()?.mode).toBe("lines")
+    expect(preview.getAttribute("d")).toBe("M 0 50 L 0 50")
+    pointClick(graphic, 100, 100)
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+    expect(graphic.querySelector("path")!.getAttribute("d")).toBe("M 0 50 L 100 100")
+    expect(graphic.querySelector("rect")).toHaveAttribute("x", "12")
+  })
+
+  it("cancels a completed curve handle drag with Escape while its tab can remain open", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "curves"})
+    pointClick(graphic, 50, 50)
+    pointClick(graphic, 200, 100)
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+    const path = graphic.querySelector("path")!
+    const before = path.getAttribute("d")
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-1"]')!
+    const id = pointerId++
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: id, clientX: 100, clientY: 66.67}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, pointerId: id, clientX: 100, clientY: 150}))
+    expect(editor.appendix.querySelector(".◆graphic-preview")).not.toBeNull()
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Escape"}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: id, clientX: 100, clientY: 150}))
+    expect(path.getAttribute("d")).toBe(before)
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(editor.features.graphic.getState()?.mode).toBe("select")
+  })
+
+  it.each(["draw", "lines", "curves"] as const)("selects a completed %s shape and returns pointer and keyboard input to selection", async mode => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const sibling = document.createElementNS(SVG_NAMESPACE, "rect")
+    sibling.setAttribute("x", "300")
+    sibling.setAttribute("y", "300")
+    sibling.setAttribute("width", "100")
+    sibling.setAttribute("height", "100")
+    graphic.append(sibling)
+    await mutationsDelivered()
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode})
+    const focus = vi.spyOn(document.body, "focus")
+    if(mode === "draw") {
+      const id = pointerId++
+      graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, isPrimary: true, button: 0, pointerId: id, clientX: 50, clientY: 50}))
+      graphic.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, isPrimary: true, pointerId: id, clientX: 150, clientY: 100}))
+    }
+    else {
+      pointClick(graphic, 50, 50)
+      pointClick(graphic, 150, 100)
+      document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
+    }
+    const path = graphic.querySelector<SVGPathElement>("path")!
+    expect(editor.features.graphic.selectedShape).toBe(path)
+    expect(editor.features.graphic.getState()).toMatchObject({mode: "select", selectionCount: 1})
+    expect(graphic).not.toHaveClass("◆graphic-drawing")
+    expect(document.body).not.toHaveClass("◆graphic-drawing")
+    expect(editor.appendix.querySelector<HTMLElement>(".◆graphic-overlay")!.hidden).toBe(false)
+    expect(focus).toHaveBeenCalledWith({preventScroll: true})
+    const before = path.getAttribute("d")
+    document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "ArrowRight"}))
+    expect(path.getAttribute("d")).not.toBe(before)
+    clickShape(sibling)
+    expect(editor.features.graphic.selectedShape).toBe(sibling)
+    pointClick(graphic, 500, 500)
+    expect(graphic.querySelectorAll("path")).toHaveLength(1)
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(editor.features.graphic.getState()?.selectionCount).toBe(0)
+    await mutationsDelivered()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
 })

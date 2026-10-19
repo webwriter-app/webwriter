@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Cuenta como un ordenador</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+</head>
+<body>
+<p><small>Informática · unos 15 minutos</small></p>
+<h1>Cuenta como un ordenador</h1>
+<p>Un ordenador puede usar dos símbolos, <code>0</code> y <code>1</code>, para representar un número. Leamos cuatro símbolos mediante sus valores posicionales.</p>
+<h2>Bastan dos símbolos</h2>
+<p>Normalmente contamos con diez dígitos, del 0 al 9. Un ordenador puede representar información con dos estados, como una señal apagada o encendida. Cada 0 o 1 se llama <em>bit</em>. Los grupos de bits pueden representar números y otra información.</p>
+<p>En el sistema decimal, las posiciones valen 1, 10, 100, etc. En binario, cada valor se duplica hacia la izquierda: 1, 2, 4, 8. En esta actividad, lee el número de 4 bits de izquierda a derecha con los valores indicados. Un 1 significa «suma este valor» y un 0, «no lo cuentes».</p>
+<p>Estos símbolos son una forma sencilla de describir los dos estados. Dentro de un ordenador real, los circuitos almacenan y procesan patrones de estados.</p>
+
+<table>
+<caption>Cuatro posiciones binarias</caption>
+<thead><tr><th scope="col">Valor posicional</th><th scope="col">8</th><th scope="col">4</th><th scope="col">2</th><th scope="col">1</th></tr></thead>
+<tbody>
+<tr><th scope="row">Patrón de bits</th><td>0 o 1</td><td>0 o 1</td><td>0 o 1</td><td>0 o 1</td></tr>
+<tr><th scope="row">Ejemplo: 1010</th><td>1 → 8</td><td>0 → 0</td><td>1 → 2</td><td>0 → 0</td></tr>
+</tbody>
+</table>
+
+<h2>Suma las posiciones activadas</h2>
+<p>Para <code>1010</code>, están activadas las posiciones 8 y 2. Súmalas: 8 + 2 = 10. Por tanto, el número binario de cuatro bits <code>1010</code> equivale a diez en nuestro sistema decimal. El patrón de bits no es una fila de cuatro dígitos decimales independientes: es un número con posiciones de distinto valor.</p>
+<p>Prueba el mismo método con <code>0111</code>: suma 4, 2 y 1. El cero inicial mantiene cuatro bits en cada ejemplo. Con cuatro bits se forman dieciséis patrones, desde <code>0000</code> (cero) hasta <code>1111</code> (quince).</p>
+
+<h2>Construye y comprueba un número</h2>
+<p>Ejecuta este pequeño programa. Después cambia un bit de <code>0</code> hasta <code>1</code> y vuelve a ejecutarlo. Predice el nuevo total antes de pulsar Run. El programa se puede editar: es tu experimento, no una imagen de código.</p>
+<webwriter-code-javascript code="const bits = [1, 0, 1, 0];
+const places = [8, 4, 2, 1];
+const total = bits.reduce((sum, bit, i) =&gt; sum + bit * places[i], 0);
+console.log(bits.join('') + ' = ' + total);"></webwriter-code-javascript>
+<p>¿Puedes hacer que el programa muestre 7? ¿Y el mayor número posible con cuatro bits? Añade una quinta posición de valor 16 y explica qué otra línea debe cambiar.</p>
+<details><summary>Una pista si te atascas</summary><p>Para obtener siete, activa las posiciones 4, 2 y 1: <code>[0, 1, 1, 1]</code>. Para una quinta posición, añade un bit al principio de <code>bits</code> y coloca <code>16</code> al principio de <code>places</code>.</p></details>
+<p>Antes de sumar, escribe los valores posicionales encima del patrón. Así evitarás un error común: leer desde el lado equivocado. La posición de más a la derecha siempre vale 1; a su izquierda vienen 2, 4 y 8.</p>
+<ol>
+<li>Descifra <code>0101</code> sumando sus posiciones activadas.</li>
+<li>Escribe el patrón de cuatro bits para seis. Comprueba que estén activadas las posiciones 4 y 2.</li>
+<li>Compara tu método con el de otra persona: ¿por qué posición empezaste?</li>
+</ol>
+
+
+
+<h2>Reflexiona</h2>
+<p><label for="binary-reflection">¿Cómo explicarías el método 8/4/2/1 a alguien que nunca ha visto el sistema binario?</label></p>
+<textarea id="binary-reflection" name="binary-reflection" rows="4" placeholder="Escribe aquí tu explicación."></textarea>
+
+<h2>Fuentes</h2>
+<ul>
+<li><a href="https://www.computerhistory.org/blog/generative-music-with-the-muse/">Computer History Museum, “Generative Music with the Muse”</a> (ejemplo de contador de cuatro bits).</li>
+</ul>
+</body>
+</html>

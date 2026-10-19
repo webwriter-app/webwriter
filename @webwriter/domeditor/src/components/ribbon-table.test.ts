@@ -46,14 +46,14 @@ describe("table controls", () => {
     const actionIcons = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonButton>("ribbon-button"))
       .map(button => button.icon)
     expect(actionIcons).toEqual([
-      "TableRowAbove", "TableRowBelow", "TableColumnLeft", "TableColumnRight",
-      "TableMergeCells", "TableSplitCells", "TableSplit",
+      "TableColumnLeft", "TableRowAbove", "TableColumnRight",
+      "TableSplitCells", "TableRowBelow", "TableSplit", "TableMergeCells", "TableHeader", "TableFooter",
     ])
     expect(new Set(actionIcons).size).toBe(actionIcons.length)
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"] input[type="checkbox"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"] ribbon-button[action="table-header"]')).not.toBeNull()
   })
 
-  it("keeps table commands inside Options and Languages visible", async () => {
+  it("keeps table commands at the top of the drawer and Languages visible", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -84,10 +84,31 @@ describe("table controls", () => {
     expect(drawers.map(drawer => drawer.label)).toEqual([
       "Style", "Table",
     ])
-    const options = drawers[1].querySelector<HTMLElement>('[slot="more"]')!
-    expect(options.querySelector('ribbon-button[label="Row above"]')).not.toBeNull()
+    const controls = drawers[1].querySelector<HTMLElement>(".table-structure-controls")!
+    expect(controls.querySelectorAll("ribbon-button")).toHaveLength(9)
+    expect(controls.closest('[slot="more"]')).toBeNull()
+    expect(drawers[1].querySelector("element-style-editor")!.previousElementSibling).toBe(controls)
+    expect(controls.querySelector(".table-sections")).toBeNull()
     expect(drawers[1].querySelector("element-attribute-editor")!.closest('[slot="more"]')).toBeNull()
     expect(drawers[1].shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
+  })
+
+  it("shows table commands once when table and cell drawers are grouped", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.table = {...semanticTableState, active: true, cellSelection: true, rows: 2, columns: 2,
+      selectedCells: 4, canMerge: true, canSplit: false, hasCaption: false}
+    toolbox.selectedElementTypes = ["table", "td"].map(localName => ({
+      element: {localName, namespaceURI: "http://www.w3.org/1999/xhtml", name: localName, icon: "Table", attributes: {}, path: null},
+      style: {target: {localName, namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "table", parentDisplay: "block"}}, count: localName === "table" ? 1 : 4,
+      styleProperties: [], configuredWidgetOptions: [],
+    }))
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const controls = toolbox.shadowRoot!.querySelectorAll(".table-structure-controls")
+    expect(controls).toHaveLength(1)
+    expect(controls[0].closest("ribbon-drawer")!.getAttribute("data-specialized")).toBe("table")
+    expect(toolbox.shadowRoot!.querySelectorAll('ribbon-button[action="table-merge-cells"]')).toHaveLength(1)
   })
 
   it("offers a 10 by 10 insertion grid and dispatches the chosen size", async () => {
@@ -185,7 +206,7 @@ describe("table controls", () => {
     expect(fields).not.toContain("background-color")
   })
 
-  it("renders and toggles table header and footer checkboxes", async () => {
+  it("renders and toggles table header and footer buttons", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -206,12 +227,34 @@ describe("table controls", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const layout = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"]')!
-    const checkboxes = layout.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
-    expect(checkboxes).toHaveLength(2)
-    expect(checkboxes[0].checked).toBe(true)
-    checkboxes[0].click()
-    checkboxes[1].click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-header"}}))
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-footer"}}))
+    const header = layout.querySelector<RibbonButton>('ribbon-button[action="table-header"]')!
+    const footer = layout.querySelector<RibbonButton>('ribbon-button[action="table-footer"]')!
+    await Promise.all([header.updateComplete, footer.updateComplete])
+    expect(layout.querySelector('input[type="checkbox"]')).toBeNull()
+    expect(header.parentElement).toBe(layout.querySelector(".table-structure-controls"))
+    expect(footer.parentElement).toBe(header.parentElement)
+    expect(header.icon).toBe("TableHeader")
+    expect(footer.icon).toBe("TableFooter")
+    const headerButton = header.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const footerButton = footer.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    expect(headerButton.getAttribute("aria-pressed")).toBe("true")
+    expect(footerButton.getAttribute("aria-pressed")).toBe("false")
+    headerButton.click()
+    footerButton.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-header", keepDrawerOpen: false}}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {label: "table-footer", keepDrawerOpen: false}}))
   })
+  it("disables section toggles when merged cells cross their row boundaries", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.table = {...semanticTableState, active: true, cellSelection: true, rows: 2, columns: 2,
+      selectedCells: 1, canMerge: false, canSplit: true, hasCaption: false,
+      canToggleHeader: false, canToggleFooter: false}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const buttons = toolbox.shadowRoot!.querySelectorAll<RibbonButton>('ribbon-button[action="table-header"], ribbon-button[action="table-footer"]')
+    expect(buttons).toHaveLength(2)
+    expect(Array.from(buttons).every(button => button.disabled)).toBe(true)
+  })
+
 })

@@ -1,3 +1,4 @@
+import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
 import type {GitPackageSource} from "../git-package"
@@ -8,12 +9,17 @@ import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
 import "./shape-keyboard"
 import "./link-keyboard"
+import "./guided-tour"
+import type {LinkKeyboard} from "./link-keyboard"
 import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
 import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
-import { LitElement, css, html, nothing, type PropertyValues } from "lit"
+import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
 import {guard} from "lit/directives/guard.js"
+import {cache} from "lit/directives/cache.js"
+import {when} from "lit/directives/when.js"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
 import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
@@ -22,19 +28,21 @@ import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
 import {elementDragType, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
+import {isAuthoredMutation} from "../editor-artifacts"
 import {
+  defaultPackageExportSource,
   describePackageExport,
   editingConfigKey,
   normalizeEditingConfig,
   packageEditingConfigOptions,
   INSTALLED_PACKAGES_STORAGE_KEY,
   INSTALLED_PACKAGE_IMPORT_MAP_STORAGE_KEY,
-  SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL as scopedCustomElementRegistryPolyfillUrl,
   packageMemberAction,
   refreshPackageLabels,
   packageTestTimeout,
   WebWriterPackageRegistry,
   webWriterPackageExportName,
+  webWriterPackageExportTypes,
   withPackageExportSource,
   type PackageEditingConfig,
   type PackageMember,
@@ -57,8 +65,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {clearEditorOwnedAttributes, clearEditorMarkerClasses, clearInlinePlacement, isWidgetShadowInteraction, getInertDocument} from "../utility"
-import {stripActiveContent} from "../active-content"
+import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, isTextFieldInteraction, getInertDocument} from "../utility"
 import {
   imageMapAreaAttributeOptions,
   isImageMapHotspotShape,
@@ -84,6 +91,8 @@ import {
   isExecuteResponse,
   isDocumentHeadStateChangeMessage,
   isHistoryStateChangeMessage,
+  isUndoStateChangeMessage,
+  type UndoState,
   isMarkStateChangeMessage,
   isCommentStateChangeMessage,
   isProofreadingStateChangeMessage,
@@ -119,6 +128,7 @@ import {
   type CommentState,
   type RibbonDropPosition,
   type HostDragDetail,
+  type HostPointerDetail,
 } from "../editor-bridge"
 import {elementStylePropertyNames, paragraphStylePropertyNameSet, type FloatSide} from "../element-styles"
 import "./breadcrumb"
@@ -128,21 +138,27 @@ import type {OpenDocumentMenu} from "./open-document-menu"
 import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
-import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "../serialization"
+import {escapeHTMLAttribute, serializeDoctype} from "../serialization"
+import {editorFrameHTML, previewFrameHTML} from "../frame-document"
 import {isPackageImportMap, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
-import {applyPreviewWidgetSnapshot, cleanPreviewEditorArtifacts, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
+import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {editorFrameOrigin} from "../frame-origins"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "../frame-local-packages"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
 import {
+  isLocalPackageExportTarget,
+  localPackageMetadataFields,
   normalizeLocalPackagePath,
+  parseLocalPackageMetadata,
+  parsePackageMetadataJSON,
+  parsePackagePerson,
   type LocalPackageWarning,
 } from "../local-package"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {LocalPackageManager, type LocalPackageRecord} from "../local-package-manager"
-import {defaultDocumentTheme, documentTheme} from "../document-themes"
+import {defaultDocumentTheme} from "../document-themes"
 import type {AIDocumentToolCall, AIDocumentToolHandler} from "../ai-client"
 import {aiPage, type AIChangeOperation} from "../ai-tools"
 import type {TableSelectionState} from "../table"
@@ -154,10 +170,12 @@ import {
   isGraphicViewportOperation,
   type GraphicSelectionState,
   type GraphicShapeType,
+  graphicShapeDragType,
   type GraphicShapePaint,
 } from "../graphic"
 import {
   BackendClient,
+  connectSharingBackend,
   probeDevelopmentBackend,
   connectCloudService,
   discoverHostBackend,
@@ -175,6 +193,7 @@ import {
 import {
   LiveSession,
   type LiveSessionChange,
+  type LiveSessionFeedback,
   type LiveSessionLearner as SessionLearner,
   type LiveSessionLearnerState,
   type LiveSessionStep,
@@ -188,13 +207,16 @@ import {
   appCommands,
   builtinShortcuts,
   loadAppSettings,
+  loadDocumentSettings,
+  persistDocumentSettings,
+  type DocumentSettings,
   persistAppSettings,
   SNIPPET_LABEL_MAX_LENGTH,
   shortcutFromEvent,
   type AppSettings,
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
-import {canvasStyles, slidesStyles, boardStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {canvasStyles, slidesStyles, boardStyles, boardLayoutRole, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -207,28 +229,6 @@ type FilePickerWindow = Window & typeof globalThis & {
 type FileFormat = "html" | "offline"
 type StorageLocation = "local" | "development-server"
 
-const escapeAttribute = (value: string) => value
-  .replaceAll("&", "&amp;")
-  .replaceAll("\"", "&quot;")
-  .replaceAll("<", "&lt;")
-
-const ensureDefaultDocumentTheme = (root: Document) => {
-  const hasTheme = Array.from(root.head.querySelectorAll<HTMLStyleElement>("style[data-ww-theme]"))
-    .some(style => documentTheme(style.getAttribute("data-ww-theme") ?? ""))
-  if(hasTheme) return
-  const style = root.createElement("style")
-  style.setAttribute("data-ww-theme", defaultDocumentTheme.value)
-  style.setAttribute("blocking", "render")
-  style.textContent = defaultDocumentTheme.source
-  root.head.append(style)
-}
-
-const defaultDocumentThemeHTML = () => {
-  const root = document.implementation.createHTMLDocument()
-  ensureDefaultDocumentTheme(root)
-  return root.head.querySelector("style")!.outerHTML
-}
-
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const previewEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/preview-entry.ts" : "assets/preview-entry.js"}`
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
@@ -239,91 +239,7 @@ const executeTimeoutMs = 15_000
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value)
 
-const localPackageMetadataFields = new Set([
-  "name", "version", "description", "license", "keywords", "author", "contributors",
-  "customElements", "editingConfig",
-])
-
-const localPackageExportTypes = new Set<WebWriterPackageExportType>([
-  "widget", "test", "migration", "snippet", "theme", "icon", "editing-config", "custom-elements", "other",
-])
-
-const defaultPackageExportSource = (type: WebWriterPackageExportType, name: string) => {
-  if(type === "test") return `./tests/${name}.test.ts`
-  if(type === "migration") return "./src/migrate.ts"
-  if(type === "snippet") return `./src/snippets/${name}.html`
-  if(type === "theme") return `./src/themes/${name}.css`
-  if(type === "icon") return "./src/icon.svg"
-  if(type === "editing-config") return "./editing-config.json"
-  if(type === "custom-elements") return "./custom-elements.json"
-  if(type === "other") return `./src/${name}`
-  return `./src/widgets/${name}.ts`
-}
-
-type LocalPackageMetadataUpdate = {remove: true} | {remove: false, value: unknown}
-
-const optionalPackageMetadata = (value: string): LocalPackageMetadataUpdate => value.trim()
-  ? {remove: false, value}
-  : {remove: true}
-
-const parsePackageMetadataJSON = (field: string, value: string) => {
-  try { return JSON.parse(value) as unknown }
-  catch { throw new Error(`${field} must be valid JSON`) }
-}
-
-const isPersonMetadata = (value: unknown) => typeof value === "string" || isRecord(value)
-  && Object.values(value).every(part => typeof part === "string")
-
-const parsePackagePerson = (label: string, value: string) => {
-  const trimmed = value.trim()
-  const person = trimmed.startsWith("{") ? parsePackageMetadataJSON(label, trimmed) : trimmed
-  if(!isPersonMetadata(person)) throw new Error(`${label} must be a name or a JSON person object`)
-  return person
-}
-
-function isPackageExportTarget(value: unknown): boolean {
-  if(typeof value === "string") {
-    try { normalizeLocalPackagePath(value); return true }
-    catch { return false }
-  }
-  return isRecord(value) && Object.keys(value).length > 0
-    && Object.values(value).every(isPackageExportTarget)
-}
-
-const parseLocalPackageMetadata = (field: string, value: string): LocalPackageMetadataUpdate => {
-  if(field === "customElements") {
-    if(!value.trim()) return {remove: true}
-    normalizeLocalPackagePath(value.trim())
-    return {remove: false, value: value.trim()}
-  }
-  if(field === "description" || field === "license") {
-    return optionalPackageMetadata(value)
-  }
-  if(field === "keywords") {
-    const keywords = [...new Set(value.split(/\r?\n|,/).map(keyword => keyword.trim()).filter(Boolean))]
-    if(!keywords.includes("webwriter-widget")) throw new Error("Keywords must include webwriter-widget")
-    return {remove: false, value: keywords}
-  }
-  if(field === "author") {
-    if(!value.trim()) return {remove: true}
-    return {remove: false, value: parsePackagePerson("Author", value)}
-  }
-  if(field === "contributors") {
-    if(!value.trim()) return {remove: true}
-    const contributors = parsePackageMetadataJSON("Contributors", value)
-    if(!Array.isArray(contributors) || !contributors.every(isPersonMetadata)) {
-      throw new Error("Contributors must be a JSON array of names or person objects")
-    }
-    return {remove: false, value: contributors}
-  }
-  if(field === "editingConfig") {
-    if(!value.trim()) return {remove: true}
-    const editingConfig = parsePackageMetadataJSON("Editing config", value)
-    if(!isRecord(editingConfig)) throw new Error("Editing config must be a JSON object")
-    return {remove: false, value: editingConfig}
-  }
-  return {remove: false, value}
-}
+const localPackageExportTypes = new Set(webWriterPackageExportTypes.map(({value}) => value))
 
 const isAbortError = (error: unknown) => error instanceof DOMException
   ? error.name === "AbortError"
@@ -424,6 +340,11 @@ export class DomEditor extends LitElement {
     commentState: {attribute: false, state: true},
     proofreadingState: {attribute: false, state: true},
     presenceUsers: {attribute: false, state: true},
+    collaborationLink: {state: true},
+    linkSharingEnabled: {state: true},
+    linkSharingBusy: {state: true},
+    collaborationStatus: {state: true},
+    collaborationError: {state: true},
     packages: {attribute: false, state: true},
     installedPackages: {attribute: false, state: true},
     packagesLoading: {attribute: false, state: true},
@@ -463,6 +384,7 @@ export class DomEditor extends LitElement {
     fileName: {attribute: false, state: true},
     fileDirty: {attribute: false, state: true},
     documentLayoutsDismissed: {attribute: false, state: true},
+    sizeWarningDismissed: {state: true},
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     documentLoading: {attribute: false, state: true},
@@ -482,6 +404,7 @@ export class DomEditor extends LitElement {
     liveSessionLink: {attribute: false, state: true},
     liveLearners: {attribute: false, state: true},
     liveSteps: {attribute: false, state: true},
+    liveFeedback: {attribute: false, state: true},
     liveStreamStep: {attribute: false, state: true},
     liveStreamPlaying: {attribute: false, state: true},
     liveStreamTime: {attribute: false, state: true},
@@ -494,9 +417,11 @@ export class DomEditor extends LitElement {
     storageLocation: {attribute: false, state: true},
     documentHead: {attribute: false, state: true},
     historyState: {attribute: false, state: true},
+    undoState: {attribute: false, state: true},
     historyLoading: {attribute: false, state: true},
     historyError: {attribute: false, state: true},
     consoleOpen: {attribute: false, state: true},
+    reviewOpen: {attribute: false, state: true},
     consoleTab: {attribute: false, state: true},
     localPackageDraft: {attribute: false, state: true},
     localPackageDraftSaving: {attribute: false, state: true},
@@ -511,11 +436,13 @@ export class DomEditor extends LitElement {
     editingSnippetId: {state: true},
     breadcrumbVisible: {attribute: false, state: true},
     aiToolboxOpen: {state: true},
+    guidedTourReady: {state: true},
   }
 
   private editorDocument: Document | null = null
   private editorWindow: Window | null = null
   private editorOpaque = false
+  private editorFrameStartupError: {revision: number, message: string} | null = null
   private editorShellRevision = -1
   private editorShellInstanceId: string | null = null
   private editorInitializedRevision = -1
@@ -539,6 +466,8 @@ export class DomEditor extends LitElement {
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
+  private frameSnapshot: {document: Document, html: string} | null = null
+  private authoredSnapshotCache: {document: Document, value: string} | null = null
   private canMark = false
   private canSection = false
   private sectionType: SectionName = "section"
@@ -561,7 +490,12 @@ export class DomEditor extends LitElement {
     count: 0,
     highlighting: true,
   }
-  private proofreadingState: ProofreadingState = emptyProofreadingState()
+  private settings: AppSettings = loadAppSettings()
+  private guidedTourReady = false
+  private documentSettingsId: string | null = null
+  private accessibilityReviewEnabled = false
+  private documentSettings: DocumentSettings = {}
+  private proofreadingState: ProofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled, documentEnabled: this.documentProofreadingEnabled}
   private proofreadingReloading = false
   private listType: ListType | null = null
   private listStyle = ""
@@ -593,6 +527,8 @@ export class DomEditor extends LitElement {
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
   private consoleOpen = false
+  private consoleRendered = false
+  private reviewOpen = false
   private consoleTab: "HTML" | "Packages" | "Tests" | "Element" = "Packages"
   private htmlMode = false
   private htmlSource = ""
@@ -606,7 +542,22 @@ export class DomEditor extends LitElement {
   private htmlSourceFocused = false
   private htmlSourceHighlightActive = false
   private htmlSourceRefreshQueued = false
+  private htmlSourceWindow = {start: 0, end: 8192}
+  private htmlSourcePainted = ""
+  private htmlSourceTokens: {source: string, offsets: Uint32Array} | null = null
+  private htmlSourceRanges = new Map<string, Range[]>()
+  private htmlSourceScrollFrame = 0
+  private htmlSourceResizeObserver: ResizeObserver | null = null
+  private htmlSourceObservedInput: HTMLTextAreaElement | null = null
   private presenceUsers: PresenceUser[] = []
+  private collaborationLink = ""
+  private linkSharingEnabled = false
+  private linkSharingBusy = false
+  private collaborationStatus = "disconnected"
+  private collaborationError = ""
+  private collaborationRoom: string | null = null
+  private sharedDocumentToken: string | null = null
+  private sharingRequestRevision = 0
   private packages: WebWriterPackage[] = []
   private installedPackages: WebWriterPackage[] = []
   private packageImportMap: IImportMap | null = null
@@ -655,6 +606,7 @@ export class DomEditor extends LitElement {
   private fileName = ""
   private fileDirty = false
   private documentLayoutsDismissed = false
+  private sizeWarningDismissed = false
   private documentLayoutConversionCount = 0
   private fileError = ""
   private fileOperationActive = false
@@ -679,6 +631,7 @@ export class DomEditor extends LitElement {
   private previewFramePending = false
   /** Data of the ribbon drag in progress, relayed to the editor frame. */
   private ribbonDrag: Record<string, string> | null = null
+  private frameTouchPointer: number | null = null
   private previewDocumentHTML: string | null = null
   private previewFrameRevision = 0
   private previewShellRevision = -1
@@ -695,6 +648,7 @@ export class DomEditor extends LitElement {
   private liveSessionUnsubscribe: (() => void) | null = null
   private liveLearners: LiveLearnerRibbonItem[] = []
   private liveSteps: LiveSessionStep[] = []
+  private liveFeedback: LiveSessionFeedback[] = []
   private liveStreamStep = 0
   private liveStreamPlaying = false
   private liveStreamTime = 0
@@ -715,11 +669,11 @@ export class DomEditor extends LitElement {
   private storageLocation: StorageLocation = "local"
   private documentHead: DocumentHeadState = emptyDocumentHeadState()
   private historyState = emptyVersionHistoryState()
+  private undoState: UndoState = {canUndo: false, canRedo: false}
   private historyLoading = false
   private historyOperationCount = 0
   private historyDocumentTransitionCount = 0
   private historyError = ""
-  private settings: AppSettings = loadAppSettings()
   private editingSnippetId: string | null = null
   private freshDocumentLayoutSnapshot: string | null = null
   private initialDocumentLayoutStarted = false
@@ -748,6 +702,7 @@ export class DomEditor extends LitElement {
   }>()
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       box-sizing: border-box;
       display: grid;
@@ -768,9 +723,23 @@ export class DomEditor extends LitElement {
       display: contents;
     }
 
-    app-ribbon {
+    .ribbon-header {
       grid-row: 1;
       grid-column: 1 / -1;
+      min-width: 0;
+    }
+
+    .size-warning {display: none; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
+    .size-warning span {flex: 1; min-width: 0}
+    .size-warning button {order: 1; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
+    .size-warning button:hover {background: rgb(101 85 43 / 10%)}
+    .size-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    @media (width < 300px), (height < 300px) {
+      .size-warning {display: flex}
+    }
+    @media (width < 100px), (height < 100px) {
+      .size-warning {display: flow-root; box-sizing: border-box; max-width: calc(100vw - 1px); padding: clamp(2px, min(4vw, 4vh), 4px); font-size: clamp(6px, min(12vw, 12vh), 12px)}
+      .size-warning button {float: right; width: 1.3em; height: 1.3em; margin-left: .25em; font: inherit}
     }
 
     dom-editor-breadcrumb,
@@ -780,6 +749,11 @@ export class DomEditor extends LitElement {
     }
 
     dom-editor-breadcrumb[hidden] { display: none; }
+
+    live-session-controls {
+      grid-column: 1;
+      min-width: 0;
+    }
 
     dom-editor-breadcrumb {
       grid-column: 1;
@@ -885,20 +859,19 @@ export class DomEditor extends LitElement {
       justify-self: end;
     }
 
-    dom-editor-toolbox:not([active-tool]) {
-      grid-row: 2;
+    @media (width < 400px) {
+      dom-editor-toolbox:is([active-tool="AI"], [active-tool="Feedback"]) {grid-column: 1 / -1; justify-self: stretch; width: 100%}
     }
 
-    .app-bar:has(dom-editor-breadcrumb[tree-open]) ~ dom-editor-toolbox:not([active-tool]),
-    .app-bar:has(dom-editor-breadcrumb[tree-animating]) ~ dom-editor-toolbox:not([active-tool]) {
-      --toolbox-tabs-border-color: transparent;
+    dom-editor-toolbox:not([active-tool]) {
+      grid-row: 2;
     }
 
     .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {
       grid-column: 1;
     }
 
-    .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage:not(:has(+ dom-editor-toolbox[active-tool="AI"]:not([hidden]))) {
+    .app-bar:has(app-ribbon:not([expanded])) ~ .document-stage:not(:has(+ dom-editor-toolbox:is([active-tool="AI"], [active-tool="Feedback"]):not([hidden]))) {
       grid-column: 1 / -1;
     }
 
@@ -964,6 +937,7 @@ export class DomEditor extends LitElement {
     .html-source-highlight {
       pointer-events: none;
       overflow: hidden;
+      overflow-anchor: none;
     }
 
     .html-source-input {
@@ -981,6 +955,11 @@ export class DomEditor extends LitElement {
     .html-source-highlight .value { color: #166534; }
     .html-source-highlight .comment { color: #667085; }
     .html-source-highlight .entity { color: #7e22ce; }
+    ::highlight(webwriter-html-tag) { color: #155e9b; }
+    ::highlight(webwriter-html-attribute) { color: #854d0e; }
+    ::highlight(webwriter-html-value) { color: #166534; }
+    ::highlight(webwriter-html-comment) { color: #667085; }
+    ::highlight(webwriter-html-entity) { color: #7e22ce; }
 
     @media (forced-colors: active) {
       .html-source-input { color: CanvasText; caret-color: auto; }
@@ -1012,6 +991,7 @@ export class DomEditor extends LitElement {
       box-sizing: border-box;
       transition: var(--ww-ui-transition, transform 180ms ease);
       min-width: 0;
+      container: document-layouts / inline-size;
       padding: 0.55rem 0.8rem 0.65rem;
       border-top: 1px solid #c8c8c8;
       background: #f2f2f2;
@@ -1024,7 +1004,9 @@ export class DomEditor extends LitElement {
     .document-layouts-close:hover { background: #e2e5e9; }
     .document-layouts-close:focus-visible { outline: 2px solid #5e91bf; outline-offset: 2px; }
     .document-layouts-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
-    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 10rem)); gap: 0.45rem; }
+    .document-layouts-combined-title {display: none}
+    .recent-documents-short-title {display: none}
+    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, calc(10rem - 10px))); gap: 0.45rem; }
     .document-layouts-bar .layout-preset { min-height: 0; }
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
@@ -1039,6 +1021,43 @@ export class DomEditor extends LitElement {
     .document-layouts-documents button:focus-visible {outline: 2px solid #3977c7; outline-offset: 1px}
     .document-layouts-documents button:disabled {opacity: .5; cursor: default}
     .document-layouts-documents p {margin: .3rem 0; color: #687383; font-size: .7rem}
+
+    @container document-layouts (max-width: calc(63rem - 40px)) {
+      .document-layouts-options {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.25fr); align-items: stretch; gap: .45rem}
+      .document-layouts-bar .document-layout-cards {grid-column: span 4; grid-template-columns: repeat(4, minmax(0, 1fr))}
+      .document-layouts-bar .recent-documents-title {width: calc((100% - 1.8rem) / 5.25 * 1.25)}
+      .document-layouts-documents {position: relative; width: 100%; margin-left: 0; min-height: 0}
+      .document-layouts-documents ul {position: absolute; inset: 0; grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-rows: 1.6rem; grid-auto-flow: row; overflow-y: auto; padding: 2px; box-sizing: border-box}
+    }
+
+    @container document-layouts (max-width: 40rem) {
+      .document-layouts-options {grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.25fr); height: calc(6.45rem + 2px)}
+      .document-layouts-bar .document-layout-cards {grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); min-height: 0}
+      .document-layouts-bar .document-layout-preview {height: 0; min-height: 0; flex: 1 1 auto}
+      .document-layouts-bar .recent-documents-title {width: calc((100% - .9rem) / 3.25 * 1.25)}
+      .recent-documents-full-title {display: none}
+      .recent-documents-short-title {display: inline}
+      @media (min-height: 601px) {
+        .document-layouts-bar .layout-preset {position: relative; padding: 0; gap: 0}
+        .document-layouts-bar .document-layout-preview {position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: inherit}
+        .document-layouts-bar .layout-preset-name {position: absolute; z-index: 1; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: calc(100% - .5rem); box-sizing: border-box; padding: .2rem .35rem; border-radius: .25rem; background: rgb(255 255 255 / 85%)}
+      }
+    }
+
+    @media (max-height: 600px) {
+      .document-layouts-bar {padding-block: .25rem; min-height: 5.85rem}
+      .document-layouts-heading {min-height: 1rem; margin-bottom: .2rem}
+      .document-layouts-combined-title {display: inline}
+      .document-layouts-bar .recent-documents-title {display: none}
+      .document-layouts-options {display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1.25rem 2.6rem; gap: .15rem; height: auto}
+      .document-layouts-bar .document-layout-cards {grid-column: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none; gap: .3rem}
+      .document-layouts-bar .layout-preset {flex-direction: row; align-items: center; justify-content: center; gap: .25rem; padding: 0 .25rem}
+      .document-layouts-bar .document-layout-preview {display: none}
+      .document-layouts-bar .layout-preset-icon {display: block; flex: 0 0 .85rem; width: .85rem; height: .85rem}
+      .document-layouts-bar .layout-preset-icon svg {display: block; width: 100%; height: 100%}
+      .document-layouts-documents {grid-column: 1; position: relative; width: 100%; margin: 0; min-height: 0}
+      .document-layouts-documents ul {position: absolute; inset: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-flow: row; grid-auto-rows: calc((100% - .15rem) / 2); gap: .15rem .45rem; padding: 2px; box-sizing: border-box; overflow-y: auto}
+    }
 
     iframe {
       display: block;
@@ -1055,6 +1074,14 @@ export class DomEditor extends LitElement {
     iframe.window-inactive {
       pointer-events: none;
     }
+
+    /* Touch must be able to focus the frame even while DevTools owns focus.
+     * Retiring the hit-test target is only needed for mouse cursor refresh. */
+    @media (pointer: coarse) {
+      iframe.window-inactive {
+        pointer-events: auto;
+      }
+    }
   `
 
   private get editorSrcdoc() {
@@ -1062,45 +1089,15 @@ export class DomEditor extends LitElement {
   }
 
   private editorSrcdocFromHTML(documentHTML: string | null) {
-    // Keep authored script elements in the live DOM for serialization, but
-    // give only the editor bootstrap and explicitly installed package assets
-    // execution permission in this isolated editing frame. The nonce is
-    // also passed through the authenticated bridge, so a document script
-    // cannot learn or forge it before editor initialization.
-    const nonce = escapeAttribute(this.bridgeNonce)
-    // Installed widget bundles include shader and code compilers. They need
-    // string evaluation, while authored scripts still require the secret nonce.
-    const hasWidgetScripts = this.installedPackages.some(pkg => pkg.scripts.length)
-    const packageEvaluation = hasWidgetScripts ? " 'unsafe-eval'" : ""
-    // Libraries such as CodeMirror create their own style elements inside
-    // widget shadows. They cannot inherit the nonce on their module script.
-    const packageStyles = hasWidgetScripts ? "* data: blob: 'unsafe-inline'" : `'nonce-${nonce}'`
-    const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
-    const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">`
-    const bridge = `<meta class="◆ ◆editor-only" name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeAttribute(window.location.origin)}">`
-    // Happy DOM deliberately disables external script execution but reports
-    // each attempted iframe load as an uncaught exception. Keep virtual test
-    // frames inert; browser builds retain the executable script types.
-    const testScriptType = import.meta.env.MODE === "test" ? ' type="application/json"' : ""
-    const editorScriptType = import.meta.env.MODE === "test" ? "application/json" : "module"
-    const bootstrapScripts = `<script class="◆ ◆editor-only" nonce="${nonce}">globalThis.litIssuedWarnings ??= new Set(); globalThis.litIssuedWarnings.add("dev-mode");</script><script class="◆ ◆editor-only" nonce="${nonce}"${testScriptType} src="${escapeAttribute(scopedCustomElementRegistryPolyfillUrl)}"></script><script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}" src="${escapeAttribute(editorEntryUrl)}"></script>`
-    const bootstrap = `${csp}${bridge}${bootstrapScripts}`
-    if(documentHTML === null) {
-      return `<!-- frame ${this.frameRevision} --><!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head>${bootstrap}<meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}">${defaultDocumentThemeHTML()}</head><body></body></html>`
-    }
-
-    const parsed = new DOMParser().parseFromString(documentHTML, "text/html")
-    restoreOriginalResourceURLs(parsed)
-    // The iframe receives its trusted resolution through load-widgets.
-    parsed.getElementById(packageImportMapId)?.remove()
-    ensureDefaultDocumentTheme(parsed)
-    parsed.head.insertAdjacentHTML("beforeend", `${bridge}${bootstrapScripts}`)
-    const cspElement = parsed.createElement("meta")
-    cspElement.classList.add("◆", "◆editor-only")
-    cspElement.httpEquiv = "Content-Security-Policy"
-    cspElement.content = policy
-    parsed.head.prepend(cspElement)
-    return `<!-- frame ${this.frameRevision} -->${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
+    return editorFrameHTML(documentHTML, {
+      bridgeNonce: this.bridgeNonce,
+      revision: this.frameRevision,
+      language: this.settings.language,
+      packages: this.installedPackages,
+      hostOrigin: window.location.origin,
+      entryURL: editorEntryUrl,
+      executeScripts: import.meta.env.MODE !== "test",
+    })
   }
 
   /** Serialize the most recent host-side snapshot into a bootstrap payload
@@ -1110,22 +1107,7 @@ export class DomEditor extends LitElement {
     if(!source?.documentElement) return this.frameDocumentHTML
     const inertDocument = getInertDocument(source)
     const root = inertDocument.importNode(source.documentElement, true) as HTMLElement
-    const removeEditorOnly = (parent: Node) => {
-      for(const child of Array.from(parent.childNodes)) {
-        if(child.nodeType === Node.ELEMENT_NODE) {
-          const element = child as Element
-          if(element.classList.contains("◆editor-only") || element.hasAttribute("data-webwriter-editor-only")) {
-            element.remove()
-            continue
-          }
-          if(element.localName === "template") removeEditorOnly((element as HTMLTemplateElement).content)
-        }
-        removeEditorOnly(child)
-      }
-    }
-    removeEditorOnly(root)
-    clearEditorOwnedAttributes(root)
-    clearEditorMarkerClasses(root)
+    clearEditorArtifacts(root)
     return `${serializeDoctype(source.doctype)}${root.outerHTML}`
   }
 
@@ -1147,67 +1129,15 @@ export class DomEditor extends LitElement {
   }
 
   private preparePreviewDocument(source: Document) {
-    const nonce = crypto.randomUUID()
-    // srcdoc inherits the host URL for relative links; explicitly retain
-    // native carousel navigation inside the preview frame.
-    if(source.body.classList.contains("ww-slides")) {
-      source.querySelectorAll<HTMLAnchorElement>('body > nav.ww-slides-navigation a[href^="#"], body.ww-slides .ww-slide-directions a[href^="#"]').forEach(link => {
-        link.setAttribute("href", `about:srcdoc${link.getAttribute("href")}`)
-      })
-    }
-    cleanPreviewEditorArtifacts(source)
-
-    // Remove authored executable content before installing the trusted widget
-    // and preview bridge scripts in the isolated frame.
-    stripActiveContent(source, {allowStyles: true, allowIframes: true})
-
-    // Use the same dependency selection as saving, after stripping authored code.
-    if(import.meta.env.MODE !== "test") {
-      source.querySelectorAll<HTMLElement>("[src], [href]").forEach(element => {
-        for(const name of ["src", "href"]) {
-          const value = element.getAttribute(name)
-          if(!value) continue
-          const rewritten = frameLocalPackageURL(value, window.location.origin, editorFrameOrigin())
-          if(rewritten !== value) element.setAttribute(name, rewritten)
-        }
-      })
-    }
-    const frameOrigin = import.meta.env.MODE === "test" ? window.location.origin : editorFrameOrigin()
-    appendSerializedAssets(source,
-      framePackages(this.installedPackages, window.location.origin, frameOrigin),
-      frameImportMap(this.packageImportMap, window.location.origin, frameOrigin))
-    if(source.head) {
-      const scripts = Array.from(source.head.querySelectorAll("script"))
-      const policy = source.createElement("meta")
-      policy.httpEquiv = "Content-Security-Policy"
-      const packageEvaluation = scripts.some(script => script.hasAttribute("src")) ? " 'unsafe-eval'" : ""
-      policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
-      source.head.prepend(policy)
-      if(import.meta.env.MODE !== "test") {
-        const bridge = source.createElement("meta")
-        bridge.className = "◆ ◆editor-only"
-        bridge.name = "webwriter-preview-bridge"
-        bridge.setAttribute("data-nonce", this.bridgeNonce)
-        bridge.setAttribute("data-host-origin", window.location.origin)
-        source.head.append(bridge)
-        const entry = source.createElement("script")
-        entry.className = "◆ ◆editor-only"
-        entry.type = "module"
-        entry.src = previewEntryUrl
-        source.head.append(entry)
-      }
-      if(import.meta.env.MODE === "test") scripts.forEach(script => script.type = "application/json")
-      // Set the serialized attribute after connecting the nodes to the cloned
-      // document; a frame's nonce-hiding machinery can clear it on insertion.
-      source.head.querySelectorAll("script").forEach(script => script.setAttribute("nonce", nonce))
-    }
-
-    // `designMode` is a document property rather than serialized markup. A
-    // srcdoc that does not load editor-entry therefore starts in its default
-    // "off" state; explicitly clearing it also documents that invariant for
-    // DOM implementations that retain a cloned property.
-    source.designMode = "off"
-    return `${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`
+    return previewFrameHTML(source, {
+      bridgeNonce: this.bridgeNonce,
+      packages: this.installedPackages,
+      importMap: this.packageImportMap,
+      hostOrigin: window.location.origin,
+      frameOrigin: import.meta.env.MODE === "test" ? window.location.origin : editorFrameOrigin(),
+      entryURL: previewEntryUrl,
+      executeScripts: import.meta.env.MODE !== "test",
+    })
   }
 
   private get syncUrl() {
@@ -1219,6 +1149,8 @@ export class DomEditor extends LitElement {
       if(key === liveSessionTokenParameter || key === liveSessionParameter || key === "role" || key === "open") return
       syncUrl.searchParams.set(key, value)
     })
+    if(this.collaborationRoom) syncUrl.searchParams.set("session", this.collaborationRoom)
+    if(this.sharedDocumentToken) syncUrl.searchParams.set("share", this.sharedDocumentToken)
     return syncUrl.href
   }
 
@@ -1341,6 +1273,7 @@ export class DomEditor extends LitElement {
     })
     if(!appendOnly) this.resetLiveStateCache()
     this.liveSteps = steps
+    this.liveFeedback = session.feedback
 
     const sessionLearners = session.learners
     const knownIds = new Set(sessionLearners.map(learner => learner.id))
@@ -1619,6 +1552,7 @@ export class DomEditor extends LitElement {
     if(linkedBase && service && this.settings.activeCloudServiceId !== service.id) {
       this.settings = {...this.settings, activeCloudServiceId: service.id, cloudServicesConfigured: true}
       this.backendDocumentId = null
+      this.clearDocumentCollaboration()
       persistAppSettings(this.settings)
     }
     const discovery = service && discoverAdditional ? this.discoverAdditionalCloudServices(
@@ -1867,6 +1801,8 @@ export class DomEditor extends LitElement {
   }
 
   private initializeEditorFrame(iframe: HTMLIFrameElement) {
+    this.guidedTourReady = false
+    this.handleHostWindowFocus()
     for(const pending of this.frameRequests.values()) {
       clearTimeout(pending.timer)
       pending.reject(new Error("The editor iframe was reloaded"))
@@ -1890,6 +1826,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     iframe.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe.removeEventListener("blur", this.handleEditorFrameBlur)
     this.clearMotionStylesheet()
@@ -1936,13 +1873,22 @@ export class DomEditor extends LitElement {
       // outer-window MutationObserver when scoped-registry initialization
       // reloads the iframe and hands it an iframe-owned Node.
       const observer = new FrameMutationObserver((mutations: MutationRecord[]) => {
-        if(mutations.some(mutation => mutation.type === "childList")) {
+        const treeChanged = mutations.some(mutation => mutation.type === "childList"
+          || mutation.type === "attributes"
+            && (mutation.attributeName === "class" || mutation.attributeName === "is")
+            && isCurrentTarget(mutation.target)
+            && this.isAuthoredMutation(mutation))
+        if(treeChanged) {
           this.documentTree = this.buildDocumentTree()
+        }
+        if(mutations.some(mutation => mutation.type === "childList")) {
           observeLayouts(mutations)
         }
         const hasAuthoredMutation = mutations.some(mutation => isCurrentTarget(mutation.target) && this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
+          this.dismissGuidedTour()
           this.documentChangeSequence++
+          this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
@@ -1993,6 +1939,7 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.addEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.addEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.addEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.addEventListener("wheel", this.dismissFloatInfo, {capture: true, passive: true})
     if(!this.editorOpaque) this.editorWindow?.addEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
     if(!this.editorOpaque) this.editorWindow?.addEventListener("focus", this.handleHostWindowFocus)
     if(!this.editorOpaque) this.editorWindow?.addEventListener("blur", this.handleHostWindowBlur)
@@ -2011,7 +1958,10 @@ export class DomEditor extends LitElement {
         disableAnimations: this.settings.disableAnimations,
         shortcuts: {...this.settings.shortcuts},
         proofreadingDictionary: [...this.settings.proofreadingDictionary],
-        disableSpellChecking: this.settings.disableSpellChecking,
+        proofreadingEnabled: this.documentProofreadingEnabled,
+        proofreadingAllowed: this.settings.proofreadingEnabledByDefault,
+        accessibilityReviewEnabled: this.accessibilityReviewEnabled,
+        commentHighlighting: this.documentSettings.commentHighlighting ?? true,
         ...(this.frameState ? {initialState: this.frameState} : {}),
       }
       const importMap = this.packageImportMap ?? undefined
@@ -2065,6 +2015,10 @@ export class DomEditor extends LitElement {
       }
       else this.postToEditor({...loadMessage, requestId: packageLoadRequestId})
       void packageLoad.catch(error => {
+        // The bridge remains usable when a widget module fails. Let later
+        // saves and package refreshes take a snapshot and start a fresh realm;
+        // callers already waiting on this load still receive its failure.
+        if(this.editorWindow === editorWindow && this.packageLoadPromise === packageLoad) this.packageLoadPromise = null
         const message = error instanceof Error ? error.message : String(error)
         if(!this.isConnected || message === "The editor iframe was reloaded for a package change") return
         if(this.installedPackages.some(isLocalResourcePackage)) this.localPackageError = message
@@ -2098,6 +2052,7 @@ export class DomEditor extends LitElement {
             void this.applyDefaultLayout(this.settings.defaultLayout, 0).catch(error => this.reportFileError(error))
           }
           if(this.isConnected && this.editorWindow === editorWindow && this.stylesVisible()) this.queueElementStyleRefresh()
+          if(this.isConnected && this.editorWindow === editorWindow) this.guidedTourReady = true
         },
         error => editorReadyReject?.(error),
       )
@@ -2118,19 +2073,15 @@ export class DomEditor extends LitElement {
     this.editorReadyReject = null
   }
 
-  private authoredClasses(value: string | null) {
-    return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
-  }
-
   /** Dirty tracking for a generated Canvas or Slides document ignores local
    * markers and native empty-block placeholders. */
-  private authoredDocumentSnapshot() {
+  private authoredDocumentSnapshot(cached = false) {
+    if(cached && this.authoredSnapshotCache?.document === this.editorDocument) return this.authoredSnapshotCache.value
     const root = this.editorDocument?.documentElement.cloneNode(true) as HTMLElement | undefined
     if(!root) return null
-    root.querySelectorAll(".◆editor-only, [data-webwriter-editor-only]").forEach(element => element.remove())
-    clearEditorOwnedAttributes(root)
+    clearEditorArtifacts(root)
     for(const element of [root, ...root.querySelectorAll("*")]) {
-      const classes = this.authoredClasses(element.getAttribute("class"))
+      const classes = authoredClassValue(element.getAttribute("class"))
       if(classes) element.setAttribute("class", classes)
       else element.removeAttribute("class")
       if(element.getAttribute("style") === "") element.removeAttribute("style")
@@ -2149,7 +2100,9 @@ export class DomEditor extends LitElement {
       clearInlinePlacement(placeholder)
       if(!placeholder.attributes.length) paragraph.remove()
     }
-    return root.outerHTML
+    const value = root.outerHTML
+    if(cached && this.editorDocument) this.authoredSnapshotCache = {document: this.editorDocument, value}
+    return value
   }
 
   private pristineDocumentLayoutSnapshot(snapshot: string | null) {
@@ -2226,14 +2179,14 @@ export class DomEditor extends LitElement {
 
   private isFreshDocumentUnchanged() {
     if(this.fileHandle !== null || this.backendDocumentId !== null) return false
-    if(this.freshDocumentLayoutSnapshot !== null) return this.authoredDocumentSnapshot() === this.freshDocumentLayoutSnapshot
+    if(this.freshDocumentLayoutSnapshot !== null) return this.authoredDocumentSnapshot(this.editorOpaque) === this.freshDocumentLayoutSnapshot
     const body = this.editorDocument?.body
     const head = this.editorDocument?.head
     if(!body || !head) return false
     const hasAttributes = (element: Element, expected: Record<string, string> = {}) => {
       const attributes = Object.fromEntries(Array.from(element.attributes).flatMap(attribute => {
         if(attribute.name === "class") {
-          const value = this.authoredClasses(attribute.value)
+          const value = authoredClassValue(attribute.value)
           return value ? [[attribute.name, value]] : []
         }
         if(attribute.name === "style" && !attribute.value.trim()) return []
@@ -2291,30 +2244,17 @@ export class DomEditor extends LitElement {
   }
 
   private isAuthoredMutation(mutation: MutationRecord) {
-    const element = mutation.target.nodeType === Node.ELEMENT_NODE
-      ? mutation.target as Element : mutation.target.parentElement
-    // Resource loaders update their own attributes and text after startup.
-    // Those changes, like appendix UI, do not edit the authored document.
-    if(element?.closest(".◆editor-only, [data-webwriter-editor-only]")) return false
-    if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
-    if(mutation.type === "attributes") {
-      const current = mutation.attributeNamespace
-        ? element?.getAttributeNS(mutation.attributeNamespace, mutation.attributeName!) ?? null
-        : element?.getAttribute(mutation.attributeName!) ?? null
-      if(mutation.attributeName === "class") {
-        return this.authoredClasses(mutation.oldValue) !== this.authoredClasses(current)
-      }
-      // DOM synchronization can set an attribute to the value it already has.
-      return mutation.oldValue !== current
+    return isAuthoredMutation(mutation)
+  }
+
+  private dismissFloatInfo = () => {
+    for(const host of this.renderRoot.querySelectorAll("dom-editor-toolbox, dom-editor-breadcrumb")) {
+      host.shadowRoot?.querySelectorAll<FloatInfo>("float-info").forEach(info => info.hide())
     }
-    const nodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
-    return nodes.some(node => !(
-      node.nodeType === Node.ELEMENT_NODE && ((node as Element).classList.contains("◆editor-only")
-        || (node as Element).hasAttribute("data-webwriter-editor-only"))
-    ))
   }
 
   private handleEditorPointerDown = (event: PointerEvent) => {
+    this.dismissFloatInfo()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     const appendix = this.editorDocument?.body.shadowRoot
     if(isWidgetShadowInteraction(event) || appendix && event.composedPath().includes(appendix)) return
@@ -2325,7 +2265,35 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private relayFrameTouch = (event: PointerEvent) => {
+    const frame = this.editorIframe()
+    if(!frame || this.previewActive || event.pointerType !== "touch") return
+    if(event.type === "pointerdown") {
+      if(event.isPrimary === false || event.composedPath()[0] !== frame) return
+      this.frameTouchPointer = event.pointerId
+      try { frame.setPointerCapture(event.pointerId) } catch { /* Synthetic browser tests have no active pointer. */ }
+    }
+    if(this.frameTouchPointer !== event.pointerId) return
+    event.preventDefault()
+    const rect = frame.getBoundingClientRect()
+    this.postFrameControl("pointer", {
+      event: event.type === "lostpointercapture" ? "pointercancel" : event.type as HostPointerDetail["event"],
+      x: event.clientX - rect.left, y: event.clientY - rect.top,
+      pointerId: event.pointerId, buttons: event.buttons,
+      ctrlKey: event.ctrlKey, altKey: event.altKey, shiftKey: event.shiftKey, metaKey: event.metaKey,
+    } satisfies HostPointerDetail)
+    if(event.type === "pointerup" || event.type === "pointercancel" || event.type === "lostpointercapture") {
+      this.frameTouchPointer = null
+      if(frame.hasPointerCapture?.(event.pointerId)) frame.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  private handleFrameTouchStart = (event: TouchEvent) => {
+    if(this.frameTouchPointer !== null && event.touches.length === 1) event.preventDefault()
+  }
+
   private dismissEditorMenus() {
+    this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
     ribbon?.dismissMenus()
@@ -2377,18 +2345,39 @@ export class DomEditor extends LitElement {
     this.saveEditorSelection()
   }
 
+  private restoreFrameHitTesting?: () => void
+
   private handleHostWindowBlur = () => {
     // Entering a child frame also blurs the host Window. Check the completed
     // focus change before treating it as a switch to another app/window.
     queueMicrotask(() => {
-      if(!this.isConnected || this.ownerDocument.hasFocus()) return
-      // Retire Chrome's iframe hit-test target while inactive, so returning
-      // directly to the frame refreshes native cursors without a ribbon detour.
-      this.editorIframe()?.classList.add("window-inactive")
+      if(!this.isConnected || this.ownerDocument.hasFocus() || matchMedia("(pointer: coarse)").matches) return
+      this.handleHostWindowFocus()
+      const frame = this.editorIframe()
+      if(!frame) return
+      // Retire Chrome's iframe hit-test target for one paint to refresh native
+      // cursors, then restore it even while DevTools still owns focus. Leaving
+      // it disabled until focus returns prevents the element picker entering it.
+      frame.classList.add("window-inactive")
+      let animation: number
+      let timer: ReturnType<typeof setTimeout>
+      const restore = () => {
+        cancelAnimationFrame(animation)
+        clearTimeout(timer)
+        frame.classList.remove("window-inactive")
+        this.restoreFrameHitTesting = undefined
+      }
+      this.restoreFrameHitTesting = restore
+      animation = requestAnimationFrame(() => {
+        animation = requestAnimationFrame(restore)
+      })
+      // Animation frames can be suspended in background windows.
+      timer = setTimeout(restore, 100)
     })
   }
 
   private handleHostWindowFocus = () => {
+    this.restoreFrameHitTesting?.()
     this.editorIframe()?.classList.remove("window-inactive")
   }
 
@@ -2524,6 +2513,7 @@ export class DomEditor extends LitElement {
     this.liveSessionLink = ""
     this.liveLearners = []
     this.liveSteps = []
+    this.liveFeedback = []
     this.liveStreamStep = 0
     this.liveStreamPlaying = false
     this.liveStreamTime = 0
@@ -2846,13 +2836,11 @@ export class DomEditor extends LitElement {
       }
     }
     this.settings = {...settings, shortcuts: {...settings.shortcuts}}
-    if(previous.disableSpellChecking !== settings.disableSpellChecking) {
-      if(settings.disableSpellChecking) {
-        this.proofreadingReloading = false
-        this.proofreadingState = {...this.proofreadingState, enabled: false, loading: false,
-          ready: false, checking: false, error: null, hoveredIssueId: null, issues: []}
-      }
-      void this.execute({type: "setProofreadingEnabled", enabled: !settings.disableSpellChecking}).catch(() => {})
+    if(previous.proofreadingEnabledByDefault !== settings.proofreadingEnabledByDefault) {
+      this.proofreadingReloading = false
+      this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
+        documentEnabled: this.documentProofreadingEnabled}
+      void this.execute({type: "setProofreadingEnabled", enabled: settings.proofreadingEnabledByDefault}).catch(() => {})
     }
     if(JSON.stringify(previous.proofreadingDictionary) !== JSON.stringify(settings.proofreadingDictionary)) {
       void this.execute({type: "setProofreadingDictionary", words: [...settings.proofreadingDictionary]}).catch(() => {})
@@ -2862,7 +2850,10 @@ export class DomEditor extends LitElement {
     if(previous.activeCloudServiceId !== settings.activeCloudServiceId
       || JSON.stringify(connection(active(previous))) !== JSON.stringify(connection(active(settings)))) {
       if(previous.activeCloudServiceId !== settings.activeCloudServiceId
-        || active(previous)?.username !== active(settings)?.username || active(previous)?.url !== active(settings)?.url) this.backendDocumentId = null
+        || active(previous)?.username !== active(settings)?.username || active(previous)?.url !== active(settings)?.url) {
+        this.backendDocumentId = null
+        this.clearDocumentCollaboration()
+      }
       this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
       this.documentDialogClient = null
       this.savedDocuments = []
@@ -2896,8 +2887,28 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private dismissGuidedTour = () => {
+    if(!this.guidedTourReady || !this.settings.showGuidedTour) return
+    this.settings = {...this.settings, showGuidedTour: false}
+    persistAppSettings(this.settings)
+  }
+
+  private guidedTourAnchor = (step: number) => {
+    if(step === 0) return this.renderRoot.querySelector<HTMLElement>(".document-stage")
+    const ribbon = this.renderRoot.querySelector("app-ribbon")?.shadowRoot
+    const selectors = ["", 'ribbon-drawer[label="Elements"]', ".preview-button", 'ribbon-tab[label="File"]']
+    const anchor = ribbon?.querySelector<HTMLElement>(selectors[step])
+    const rect = anchor?.getBoundingClientRect()
+    return anchor && rect?.width && rect.height ? anchor : ribbon?.querySelector<HTMLElement>(".brand") ?? null
+  }
+
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
+    this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
+    if(isTextFieldInteraction(event, this.editorDocument?.body)
+      || event.currentTarget === this.editorDocument && isWidgetShadowInteraction(event)) return
+    const appendix = this.editorDocument?.body.shadowRoot
+    if(appendix && event.composedPath().includes(appendix)) return
     if(event.composedPath().some(target => target instanceof HTMLElement
       && target.classList.contains("html-source-input"))) return
     if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
@@ -2970,7 +2981,8 @@ export class DomEditor extends LitElement {
   }
 
   private readonly handleBeforeUnload = (event: BeforeUnloadEvent) => {
-    if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft) return
+    const aiWorkActive = this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.aiWorkActive
+    if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft && !aiWorkActive) return
     event.preventDefault()
     event.returnValue = ""
   }
@@ -2979,9 +2991,25 @@ export class DomEditor extends LitElement {
     return !this.fileDirty || window.confirm("Discard the unsaved changes to this document?")
   }
 
-  private async reloadDocument(htmlSource: string, isNewDocument = false) {
+  private get documentProofreadingEnabled() {
+    return this.documentSettings.proofreadingEnabled ?? true
+  }
+
+  private updateDocumentSettings(settings: DocumentSettings) {
+    this.documentSettings = {...this.documentSettings, ...settings}
+    persistDocumentSettings(this.documentSettingsId, this.documentSettings)
+  }
+
+  private saveDocumentSettingsAs(id: string | null) {
+    this.documentSettingsId = id
+    persistDocumentSettings(id, this.documentSettings)
+  }
+
+  private async reloadDocument(htmlSource: string, isNewDocument = false, settingsId: string | null = null, accessibilityReviewEnabled?: boolean) {
+    this.dismissGuidedTour()
     this.freshDocumentLayoutSnapshot = null
     this.aiDocumentedPackages.clear()
+    this.editorFrameStartupError = null
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
     stripExcludedMarks(parsed.body)
@@ -2994,6 +3022,8 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
     this.editorReadyPromise = null
@@ -3002,9 +3032,17 @@ export class DomEditor extends LitElement {
     this.savedEditorSelection = null
     this.frameState = undefined
     this.documentHead = emptyDocumentHeadState()
-    this.proofreadingState = emptyProofreadingState()
+    this.documentSettingsId = settingsId
+    if(isNewDocument) this.accessibilityReviewEnabled = false
+    else if(accessibilityReviewEnabled !== undefined) this.accessibilityReviewEnabled = accessibilityReviewEnabled
+    else if(settingsId) this.accessibilityReviewEnabled = true
+    this.documentSettings = loadDocumentSettings(settingsId)
+    this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
+      documentEnabled: this.documentProofreadingEnabled}
+    this.commentState = {...this.commentState, highlighting: this.documentSettings.commentHighlighting ?? true}
     this.proofreadingReloading = false
     this.historyState = emptyVersionHistoryState()
+    this.undoState = {canUndo: false, canRedo: false}
     this.historyLoading = false
     this.historyOperationCount = 0
     this.historyDocumentTransitionCount = 0
@@ -3023,6 +3061,12 @@ export class DomEditor extends LitElement {
     else this.frameStarted = true
     await this.updateComplete
     await this.waitForEditorWindow()
+  }
+
+  private markAccessibilityReviewEnabled() {
+    if(this.accessibilityReviewEnabled) return
+    this.accessibilityReviewEnabled = true
+    void this.execute({type: "setAccessibilityReviewEnabled", enabled: true}).catch(() => {})
   }
 
   private async runFileOperation(operation: () => Promise<void>) {
@@ -3130,14 +3174,61 @@ export class DomEditor extends LitElement {
   private updateDocumentURL(reference: string | null) {
     if(this.liveSessionActive) return
     const url = new URL(location.href)
+    url.searchParams.delete("example")
+    url.searchParams.delete("layout")
     if(reference === null) url.searchParams.delete("open")
     else url.searchParams.set("open", reference)
     history.replaceState(history.state, "", url.href)
   }
 
-  private updateBackendDocumentURL(id: string, client: BackendClient) {
+  private backendDocumentReference(id: string, client: BackendClient) {
     const apiBaseUrl = client.apiBaseUrl ?? this.backendSession?.apiBaseUrl
-    if(apiBaseUrl) this.updateDocumentURL(`${apiBaseUrl.replace(/\/$/, "")}/documents/${encodeURIComponent(id)}`)
+    return apiBaseUrl ? `${apiBaseUrl.replace(/\/$/, "")}/documents/${encodeURIComponent(id)}` : null
+  }
+
+  private updateBackendDocumentURL(id: string, client: BackendClient) {
+    if(this.sharedDocumentToken) return
+    const reference = this.backendDocumentReference(id, client)
+    if(reference) this.updateDocumentURL(reference)
+  }
+
+  private async restoreExampleDocument(id: string, startupReady: Promise<void>) {
+    this.linkedDocumentLoading = true
+    const revision = this.documentChangeSequence
+    try {
+      const {exampleDocumentLayout, findExampleDocument, loadExampleDocument, loadExamplePackages} = await import("../example-documents")
+      const example = findExampleDocument(id)
+      if(!example) throw new Error("This example could not be found.")
+      const layout = exampleDocumentLayout(new URL(location.href).searchParams.get("layout"))
+      const source = await loadExampleDocument(id, layout)
+      const packages = await loadExamplePackages(source, this.packageRegistry)
+      await startupReady
+      if(!this.isConnected || this.liveSessionActive || new URL(location.href).searchParams.get("example") !== id
+        || exampleDocumentLayout(new URL(location.href).searchParams.get("layout")) !== layout
+        || revision !== this.documentChangeSequence) return
+      await this.runFileOperation(async () => {
+        this.documentLoading = true
+        this.clearDocumentCollaboration()
+        this.installedPackages = [...this.installedPackages.filter(pkg => !packages.some(examplePackage => examplePackage.name === pkg.name)), ...packages]
+        // The trusted package loader supplies these modules inside the editor;
+        // exports restore them through the existing package serialization path.
+        const modules = new Set(packages.flatMap(pkg => pkg.scripts))
+        source.querySelectorAll<HTMLScriptElement>('script[type="module"][src]').forEach(script => {
+          if(modules.has(script.getAttribute("src")!)) script.remove()
+        })
+        await this.reloadDocument(serializeDoctype(source.doctype) + source.documentElement.outerHTML, false, null, false)
+        this.backendDocumentId = null
+        this.fileHandle = null
+        this.storageLocation = "local"
+        this.fileName = source.title || example.title
+        this.downloadedFileName = `${example.id}${layout === "document" ? "" : `-${layout}`}.html`
+        this.fileFormat = "html"
+        this.fileDirty = false
+        this.focusEditor()
+      })
+    }
+    catch(error) { this.reportFileError(error) }
+    finally { this.documentLoading = false; this.linkedDocumentLoading = false }
   }
 
   private async restoreLinkedDocument(value: string, startupReady: Promise<void> = Promise.resolve()) {
@@ -3146,6 +3237,31 @@ export class DomEditor extends LitElement {
     this.linkedDocumentLoading = true
     try {
       const reference = parseDocumentOpenReference(value)
+      if(reference?.kind === "shared") {
+        const client = await connectSharingBackend(reference.apiBaseUrl)
+        const token = reference.token
+        const revision = this.documentChangeSequence
+        const document = await client.getSharedDocument(token)
+        await startupReady
+        if(!this.isConnected || this.liveSessionActive || !currentLink()) return
+        if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening the editing link. Open the link again.")
+        this.backendClient = client
+        this.backendSession = client.session
+        this.backendState = "connected"
+        this.collaborationRoom = `document-${document.id}`
+        this.sharedDocumentToken = token
+        await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true)
+        this.backendDocumentId = document.id
+        this.fileHandle = null
+        this.storageLocation = "development-server"
+        this.fileName = this.baseFileName(document.title)
+        this.fileFormat = document.format
+        this.fileDirty = false
+        this.linkSharingEnabled = true
+        this.collaborationLink = location.href
+        this.previewActive = false
+        return
+      }
       if(!reference) throw new Error("The document link is invalid.")
       if(!this.isConnected || this.liveSessionActive || !currentLink()) return
       const beforeLoad = async () => {
@@ -3208,6 +3324,7 @@ export class DomEditor extends LitElement {
         void this.refreshRecentDocuments()
         if(this.backendDocumentId === summary.id) {
           this.backendDocumentId = null
+          this.clearDocumentCollaboration()
           this.updateDocumentURL(null)
           this.fileDirty = true
         }
@@ -3255,9 +3372,10 @@ export class DomEditor extends LitElement {
       this.fileHandle = null
       this.downloadedFileName = null
       this.backendDocumentId = null
+      this.clearDocumentCollaboration()
       this.fileName = ""
       this.fileFormat = "html"
-      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true)
+      await this.reloadDocument(`<!DOCTYPE html><html lang="${escapeHTMLAttribute(this.settings.language)}"><head><meta name="generator" content="${escapeHTMLAttribute(WEBWRITER_GENERATOR)}"></head><body></body></html>`, true)
       await this.applyDefaultLayout(layout, this.frameRevision)
       this.fileDirty = !this.isFreshDocumentUnchanged()
       this.updateDocumentURL(null)
@@ -3295,7 +3413,18 @@ export class DomEditor extends LitElement {
       const source = await file.text()
       if(beforeLoad && !await beforeLoad()) return
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
-      await this.reloadDocument(source)
+      let localDocument: RecentDocument | null = handle ? {
+        id: storedId ?? crypto.randomUUID(), title: file.name || handle.name, openedAt: Date.now(), kind: "local", handle,
+      } : null
+      // A retained deep link already has its identity. Only a newly picked
+      // handle needs history restored before matching an existing entry.
+      if(localDocument && !storedId) {
+        await this.recentDocumentsReady
+        localDocument = (await rememberRecentDocument(this.recentDocuments, localDocument))[0]
+      }
+      if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
+      this.clearDocumentCollaboration()
+      await this.reloadDocument(source, false, localDocument ? documentOpenReference(localDocument) : null, true)
       this.backendDocumentId = null
       this.fileHandle = handle
       this.storageLocation = "local"
@@ -3304,8 +3433,8 @@ export class DomEditor extends LitElement {
       this.fileName = this.baseFileName(openedName)
       this.fileFormat = this.formatForFileName(openedName)
       this.fileDirty = false
-      if(handle) {
-        const opened = await this.rememberOpenedDocument({id: storedId ?? crypto.randomUUID(), title: openedName, openedAt: Date.now(), kind: "local", handle})
+      if(localDocument) {
+        const opened = await this.rememberOpenedDocument(localDocument)
         this.updateDocumentURL(documentOpenReference(opened))
       }
       else this.updateDocumentURL(null)
@@ -3383,6 +3512,7 @@ export class DomEditor extends LitElement {
         await writable.close()
       }
       else this.triggerFileDownload(source, name)
+      this.markAccessibilityReviewEnabled()
       if(frameRevision === this.frameRevision) {
         this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
       }
@@ -3390,11 +3520,13 @@ export class DomEditor extends LitElement {
       this.downloadedFileName = name
       if(!localCopy) {
         this.backendDocumentId = null
+        this.clearDocumentCollaboration()
         this.fileName = this.baseFileName(name)
         this.fileFormat = selectedFormat
         this.fileDirty = revision !== this.documentChangeSequence
         if(handle) {
           const saved = await this.rememberOpenedDocument({id: crypto.randomUUID(), title: handle.name, openedAt: Date.now(), kind: "local", handle})
+          this.saveDocumentSettingsAs(documentOpenReference(saved))
           this.updateDocumentURL(documentOpenReference(saved))
         }
         else this.updateDocumentURL(null)
@@ -3415,7 +3547,11 @@ export class DomEditor extends LitElement {
       if(beforeLoad && !await beforeLoad()) return
       if(this.backendClient !== client) throw new Error("The document storage connection changed while opening the file.")
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
-      await this.reloadDocument(document.content)
+      this.collaborationLink = ""
+      this.linkSharingEnabled = false
+      this.collaborationRoom = `document-${document.id}`
+      this.sharedDocumentToken = null
+      await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true)
       this.backendDocumentId = document.id
       this.fileHandle = null
       this.downloadedFileName = null
@@ -3426,6 +3562,7 @@ export class DomEditor extends LitElement {
       if(session) await this.rememberOpenedDocument({id: crypto.randomUUID(), title: document.title, openedAt: Date.now(),
         kind: "backend", documentId: document.id, apiBaseUrl: session.apiBaseUrl, userId: session.user.id})
       this.updateBackendDocumentURL(document.id, client)
+      void this.refreshDocumentSharing()
       this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
       this.focusEditor()
     }
@@ -3466,10 +3603,16 @@ export class DomEditor extends LitElement {
         : await client.createDocument({title, content: source, format: requestedFormat})
       if(this.backendClient !== client) throw new Error("The cloud service changed while saving the document.")
       if(expectedDocument && (this.backendClient !== expectedDocument.client || this.backendDocumentId !== expectedDocument.id)) return
+      this.markAccessibilityReviewEnabled()
       if(frameRevision === this.frameRevision) {
         this.updateHistoryState(await this.execute({type: "recordVersionSave", checkpointId}))
       }
       if(this.backendClient !== client) throw new Error("The cloud service changed while saving the document.")
+      if(this.backendDocumentId !== document.id) {
+        this.sharedDocumentToken = null
+        this.collaborationLink = ""
+        this.linkSharingEnabled = false
+      }
       this.backendDocumentId = document.id
       this.storageLocation = "development-server"
       this.fileName = this.baseFileName(document.title)
@@ -3477,7 +3620,15 @@ export class DomEditor extends LitElement {
       this.fileDirty = revision !== this.documentChangeSequence
       const {id, title: savedTitle, format, createdAt, updatedAt} = document
       this.savedDocuments = [{id, title: savedTitle, format, createdAt, updatedAt}, ...this.savedDocuments.filter(summary => summary.id !== id)]
+      this.saveDocumentSettingsAs(this.backendDocumentReference(id, client))
       this.updateBackendDocumentURL(id, client)
+      if(this.collaborationRoom && this.collaborationRoom !== `document-${id}`) {
+        const previousRoom = this.collaborationRoom
+        this.collaborationRoom = `document-${id}`
+        try { await this.reloadEditor(this.installedPackages) }
+        catch(error) {this.collaborationRoom = previousRoom; throw error}
+      }
+      if(!this.linkSharingBusy) void this.refreshDocumentSharing()
       return true
     }
     catch(error) {
@@ -3485,8 +3636,84 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private clearDocumentCollaboration() {
+    if(this.editorOpaque) this.postFrameControl("disconnect-collaboration")
+    else (this.editorWindow as Window & {editor?: DOMEditor} | null)?.editor?.doc?.disconnectCollaboration()
+    this.sharingRequestRevision++
+    this.collaborationRoom = null
+    this.sharedDocumentToken = null
+    this.collaborationLink = ""
+    this.linkSharingEnabled = false
+    this.collaborationError = ""
+    this.collaborationStatus = "disconnected"
+    this.presenceUsers = []
+  }
+
+  private async refreshDocumentSharing() {
+    const revision = ++this.sharingRequestRevision
+    const client = this.backendClient
+    const id = this.backendDocumentId
+    this.collaborationError = ""
+    if(!client || !id || this.sharedDocumentToken) {
+      this.linkSharingEnabled = Boolean(this.sharedDocumentToken)
+      this.collaborationLink = this.sharedDocumentToken ? location.href : ""
+      return
+    }
+    try {
+      if(typeof client.getDocumentSharing !== "function") return
+      const sharing = await client.getDocumentSharing(id)
+      if(revision !== this.sharingRequestRevision || client !== this.backendClient || id !== this.backendDocumentId) return
+      this.applyDocumentSharing(sharing, client)
+    }
+    catch(error) {
+      if(revision === this.sharingRequestRevision && client === this.backendClient && id === this.backendDocumentId) this.collaborationError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  private applyDocumentSharing(sharing: {enabled: boolean, token?: string}, client: BackendClient) {
+    this.linkSharingEnabled = sharing.enabled
+    const url = new URL(location.href)
+    for(const key of ["session", "share", "role", liveSessionParameter, liveSessionTokenParameter]) url.searchParams.delete(key)
+    url.searchParams.set("open", `${client.apiBaseUrl}/shared-documents/${encodeURIComponent(sharing.token ?? "")}`)
+    this.collaborationLink = sharing.enabled && sharing.token ? url.href : ""
+  }
+
+  private handleLinkSharingChange = async (event: Event) => {
+    if(this.linkSharingBusy || this.sharedDocumentToken || this.fileOperationActive) return
+    const enabled = (event as CustomEvent<{enabled: boolean}>).detail.enabled
+    const revision = ++this.sharingRequestRevision
+    this.linkSharingBusy = true
+    this.collaborationError = ""
+    try {
+      if(enabled && (!this.backendDocumentId || this.storageLocation !== "development-server")) {
+        const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+        if(!await ribbon?.confirmLinkSharing() || !this.isConnected || revision !== this.sharingRequestRevision) return
+        if(!this.backendClient) throw new Error("Connect to a server in Settings before enabling link sharing.")
+        await this.runFileOperation(async () => { await this.saveBackendDocument(true, this.fileFormat) })
+        if(!this.backendDocumentId || this.storageLocation !== "development-server") throw new Error("Save the document on the server before enabling link sharing.")
+        this.fileHandle = null
+        this.downloadedFileName = null
+      }
+      const client = this.backendClient
+      const id = this.backendDocumentId
+      if(!client || !id) return
+      if(enabled && this.collaborationRoom !== `document-${id}`) {
+        const previousRoom = this.collaborationRoom
+        this.collaborationRoom = `document-${id}`
+        try { await this.reloadEditor(this.installedPackages) }
+        catch(error) {this.collaborationRoom = previousRoom; throw error}
+      }
+      if(client !== this.backendClient || id !== this.backendDocumentId) return
+      const sharing = await client.setDocumentSharing(id, enabled)
+      if(client === this.backendClient && id === this.backendDocumentId) this.applyDocumentSharing(sharing, client)
+    }
+    catch(error) { this.collaborationError = error instanceof Error ? error.message : String(error) }
+    finally { this.linkSharingBusy = false; this.requestUpdate() }
+  }
+
   private printDocument() {
-    if(this.editorOpaque) this.postFrameControl("print")
+    if(this.previewActive) this.postToPreview({type: "preview-frame-print"})
+    else if(this.editorOpaque) this.postFrameControl("print")
     else this.editorWindow?.print()
   }
 
@@ -3668,7 +3895,7 @@ export class DomEditor extends LitElement {
       void this.newDocument()
       return
     }
-    if(label === "new:document" || label === "new:canvas" || label === "new:slides") {
+    if(label === "new:document" || label === "new:canvas" || label === "new:slides" || label === "new:board") {
       void this.newDocument(label.slice("new:".length) as DocumentLayoutMode)
       return
     }
@@ -3790,6 +4017,28 @@ export class DomEditor extends LitElement {
       void this.execute({type: "redo"}).finally(() => this.focusEditor())
       return
     }
+    if(label === "selected-media-cover-file") {
+      void this.execute({type: "selectMediaFile", attribute: "poster"})
+      return
+    }
+    if(label?.startsWith("selected-media-cover-capture:")) {
+      const mode = label.slice("selected-media-cover-capture:".length)
+      if(isMediaCaptureMode(mode)) void this.execute({type: "captureSelectedMedia", mode, attribute: "poster"})
+      return
+    }
+    if(label === "selected-media-file") {
+      void this.execute({type: "selectMediaFile"})
+      return
+    }
+    if(label === "remove-media-source") {
+      void this.execute({type: "removeMediaSource"})
+      return
+    }
+    if(label?.startsWith("selected-media-capture:")) {
+      const mode = label.slice("selected-media-capture:".length)
+      if(isMediaCaptureMode(mode)) void this.execute({type: "captureSelectedMedia", mode})
+      return
+    }
     if(label?.startsWith("media-file:")) {
       const media = label.slice("media-file:".length)
       if(isMediaType(media)) void this.execute({type: "insertMedia", media, selectFile: true})
@@ -3832,15 +4081,18 @@ export class DomEditor extends LitElement {
     }
     if(label?.startsWith("mark-detail:")) {
       const mark = canonicalMarkName(label.slice("mark-detail:".length))
-      if(mark) void this.execute({type: "toggleMark", mark}).finally(() => this.focusEditor())
+      if(mark) void this.execute({type: "toggleMark", mark}).finally(() => mark === "a" ? this.focusLinkKeyboard() : this.focusEditor())
       else this.focusEditor()
       return
     }
     if(label?.startsWith("mark:")) {
       const detail = (event as CustomEvent<{keepDrawerOpen?: boolean, apply?: boolean}>).detail
       const keepDrawerOpen = Boolean(detail?.keepDrawerOpen)
-      const restoreFocus = () => { if(!keepDrawerOpen) this.focusEditor() }
       const mark = canonicalMarkName(label.slice("mark:".length))
+      const restoreFocus = () => {
+        if(mark === "a") return this.focusLinkKeyboard()
+        if(!keepDrawerOpen) this.focusEditor()
+      }
       const group = mark ? mergedMarkGroupFor(mark) : undefined
       if(!mark) restoreFocus()
       else if(detail?.apply === true) void this.execute({type: "addMark", mark}).finally(restoreFocus)
@@ -3905,6 +4157,12 @@ export class DomEditor extends LitElement {
     }
     if(label === "save-graphic") {
       void this.saveGraphic()
+      return
+    }
+    if(label === "graphic-mode:select" || label === "graphic-mode:draw" || label === "graphic-mode:lines" || label === "graphic-mode:curves") {
+      const mode = label.slice("graphic-mode:".length) as "select" | "draw" | "lines" | "curves"
+      void this.execute({type: "setGraphicMode", mode, ...(mode === "select" ? {} : {paint: this.shapePaint})})
+        .finally(() => this.focusEditor())
       return
     }
     if(label?.startsWith("insert-graphic-shape:")) {
@@ -4285,7 +4543,7 @@ export class DomEditor extends LitElement {
       await this.updateLocalPackageManifest(record, manifest => {
         const exports = isRecord(manifest.exports) ? {...manifest.exports} as Record<string, PackageExportTarget> : {}
         const target = exports[exportName]
-        if(!target || !isPackageExportTarget(target)) throw new Error(`Export '${exportName}' is no longer available`)
+        if(!target || !isLocalPackageExportTarget(target)) throw new Error(`Export '${exportName}' is no longer available`)
         if(field === "source") {
           normalizeLocalPackagePath(value)
           exports[exportName] = withPackageExportSource(target, value)
@@ -4674,6 +4932,8 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
     this.editorReadyPromise = null
@@ -4727,8 +4987,11 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     this.clearMotionStylesheet()
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.packageLoadPromise = null
     this.savedEditorSelection = null
@@ -4739,7 +5002,7 @@ export class DomEditor extends LitElement {
   }
 
   private retainProofreadingDuringReload() {
-    const checking = this.proofreadingState.enabled && !this.settings.disableSpellChecking
+    const checking = this.proofreadingState.enabled
     this.proofreadingReloading = checking
     this.proofreadingState = {...this.proofreadingState, loading: checking, ready: false,
       checking, error: null, hoveredIssueId: null}
@@ -4977,6 +5240,25 @@ export class DomEditor extends LitElement {
   }
 
 
+  private handleListTypeChange = (event: Event) => {
+    const detail = (event as CustomEvent<{listType?: unknown, selectionTypes?: unknown}>).detail
+    if((detail?.listType !== "ul" && detail?.listType !== "ol") || !Array.isArray(detail.selectionTypes)
+      || !detail.selectionTypes.length || !detail.selectionTypes.every(scope => isElementSelectionType(scope)
+        && scope.namespaceURI === "http://www.w3.org/1999/xhtml" && (scope.localName === "ul" || scope.localName === "ol"))) return
+    void this.execute({type: "setListType", listType: detail.listType, selectionTypes: detail.selectionTypes})
+      .finally(() => this.focusEditor())
+  }
+
+  private handleHeadingLevelChange = (event: Event) => {
+    const detail = (event as CustomEvent<{level?: unknown, selectionType?: unknown}>).detail
+    if(typeof detail?.level !== "string" || !/^h[1-6]$/.test(detail.level)
+      || !isElementSelectionType(detail.selectionType)
+      || detail.selectionType.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || !/^h[1-6]$/.test(detail.selectionType.localName)) return
+    void this.execute({type: "setBlockType", tag: detail.level as NonNullable<HeadingGroupSelectionState["heading"]>,
+      selectionType: detail.selectionType}).finally(() => this.focusEditor())
+  }
+
   private handleHeadingGroupLevelChange = (event: Event) => {
     const level = (event as CustomEvent<{level?: unknown}>).detail?.level
     if(typeof level !== "string" || !/^h[1-6]$/.test(level)) {
@@ -5000,7 +5282,7 @@ export class DomEditor extends LitElement {
 
   private handleProofreadingAction = (event: Event) => {
     const detail = (event as CustomEvent<{type?: unknown, id?: unknown, index?: unknown, enabled?: unknown}>).detail
-    if(!detail || this.htmlPending || this.historyState.preview !== null) return
+    if(!detail || !this.settings.proofreadingEnabledByDefault || this.htmlPending || this.historyState.preview !== null) return
     if(this.proofreadingReloading && detail.type !== "retryProofreading" && detail.type !== "checkProofreading" && detail.type !== "setDocumentProofreadingEnabled") return
     let action: ProofreadingAction
     if(detail.type === "retryProofreading" || detail.type === "checkProofreading") action = {type: detail.type}
@@ -5018,6 +5300,10 @@ export class DomEditor extends LitElement {
     const revision = this.frameRevision
     void this.execute(action).then(result => {
       if(revision !== this.frameRevision) return
+      if(action.type === "setDocumentProofreadingEnabled" && result !== false) {
+        this.updateDocumentSettings({proofreadingEnabled: action.enabled})
+        this.proofreadingState = {...this.proofreadingState, documentEnabled: action.enabled}
+      }
       if(result === true && (action.type === "selectProofreadingIssue" || action.type === "applyProofreadingSuggestion")) this.focusEditor()
     }).catch(() => {
       // A replaced frame or stale command should refresh the cards safely.
@@ -5030,9 +5316,19 @@ export class DomEditor extends LitElement {
   }
 
   private handleCommentAction = (event: Event) => {
-    const detail = (event as CustomEvent<{action?: unknown, text?: unknown, enabled?: unknown}>).detail
+    const detail = (event as CustomEvent<{action?: unknown, id?: unknown, text?: unknown, enabled?: unknown}>).detail
     if(!detail || typeof detail.action !== "string") return
-    const action = detail.action === "toggle" && typeof detail.text === "string"
+    const action = detail.action === "add" && typeof detail.text === "string"
+      ? {type: "addComment", text: detail.text} as const
+      : detail.action === "select" && typeof detail.id === "string"
+      ? {type: "selectComment", id: detail.id} as const
+      : detail.action === "reply" && typeof detail.id === "string" && typeof detail.text === "string"
+        ? {type: "addCommentReply", id: detail.id, text: detail.text} as const
+        : detail.action === "edit" && typeof detail.id === "string" && typeof detail.text === "string"
+          ? {type: "updateComment", id: detail.id, text: detail.text} as const
+          : detail.action === "remove" && typeof detail.id === "string"
+            ? {type: "removeComment", id: detail.id} as const
+            : detail.action === "toggle" && typeof detail.text === "string"
       ? {type: "toggleComment", text: detail.text} as const
       : detail.action === "set-text" && typeof detail.text === "string"
         ? {type: "setCommentText", text: detail.text} as const
@@ -5046,8 +5342,15 @@ export class DomEditor extends LitElement {
                 ? {type: "setCommentHighlighting", enabled: detail.enabled} as const
               : null
     if(!action) return
-    void this.execute(action).finally(() => {
-      if(detail.action !== "set-text" && detail.action !== "highlight") this.focusEditor()
+    const revision = this.frameRevision
+    void this.execute(action).then(result => {
+      if(revision !== this.frameRevision) return
+      if(action.type === "setCommentHighlighting" && result !== false) {
+        this.updateDocumentSettings({commentHighlighting: action.enabled})
+      }
+      if(action.type === "selectComment" && result === true) this.focusEditor()
+    }).catch(() => {}).finally(() => {
+      if(revision === this.frameRevision && ["toggle", "remove-all", "previous", "next"].includes(detail.action as string)) this.focusEditor()
     })
   }
 
@@ -5160,7 +5463,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(detail.action === "add-map") {
-      void this.execute({type: "addImageMap"})
+      void this.execute({type: "addImageMap", ...(isImageMapHotspotShape(detail.shape) ? {shape: detail.shape} : {})})
       return
     }
     if(detail.action === "remove-map") {
@@ -5183,6 +5486,18 @@ export class DomEditor extends LitElement {
     }
     const path = detail.path as number[]
     const expected = detail.expected as Record<string, string>
+    if(detail.action === "add-popover") {
+      void this.execute({type: "addImageMapPopover", path, expected})
+      return
+    }
+    if(detail.action === "open-popover") {
+      void this.execute({type: "openImageMapPopover", path, expected})
+      return
+    }
+    if(detail.action === "set-popover-trigger" && (detail.value === "click" || detail.value === "hover")) {
+      void this.execute({type: "setImageMapPopoverTrigger", path, expected, value: detail.value})
+      return
+    }
     if(detail.action === "remove-area") {
       void this.execute({type: "removeImageMapArea", path, expected})
       return
@@ -5207,6 +5522,7 @@ export class DomEditor extends LitElement {
     const detail = (event as CustomEvent<{
       selectionType?: unknown
       path?: unknown
+      targetId?: unknown
       localName?: unknown
       namespaceURI?: unknown
       name?: unknown
@@ -5230,9 +5546,11 @@ export class DomEditor extends LitElement {
         name: detail.name, value: detail.value, ...(detail.previousName ? {previousName: detail.previousName} : {})})
       return
     }
+    if(typeof detail.targetId !== "string") return
     void this.execute({
       type: "setElementAttribute",
       path: detail.path as number[] | null,
+      targetId: detail.targetId,
       localName: detail.localName,
       namespaceURI: detail.namespaceURI,
       name: detail.name,
@@ -5399,7 +5717,7 @@ export class DomEditor extends LitElement {
         // selection change; leaving the visual mode must still succeed.
       }
       if(sequence !== this.htmlSourceRefreshSequence) return
-      if(this.consoleTab === "HTML") this.consoleOpen = false
+      if(this.consoleTab === "HTML" && !this.reviewOpen) this.consoleOpen = false
       // Keep the source visible while the HTML view collapses; it is reset
       // when the view opens again.
       this.htmlOriginalSource = ""
@@ -5421,6 +5739,7 @@ export class DomEditor extends LitElement {
     if(typeof enabled !== "boolean" || this.htmlPending) return
     if(!enabled && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
     this.consoleOpen = enabled
+    if(enabled) this.reviewOpen = false
     if(enabled) {
       this.documentLayoutsDismissed = true
       this.selectWidgetElementPackage()
@@ -5478,12 +5797,36 @@ export class DomEditor extends LitElement {
 
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
+    if(tool !== "Review" && this.reviewOpen) {
+      this.reviewOpen = false
+      void this.setHTMLMode(this.consoleOpen && this.consoleTab === "HTML")
+    }
     this.aiToolboxOpen = tool === "AI"
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     if(ribbon) ribbon.aiChatOpen = this.aiToolboxOpen
     if(tool !== "Edit" && !this.htmlPending && !this.settings.pinDeveloperConsole) {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
     }
+  }
+
+  private handleVersionsConsoleChange = (event: Event) => {
+    const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
+    if(typeof enabled !== "boolean" || this.htmlPending) return
+    if(enabled && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool !== "Review") return
+    if(enabled && this.consoleOpen && this.renderRoot.querySelector<DeveloperConsole>("developer-console")?.flushPackageInputs() === false) return
+    if(enabled && this.localPackageDraft) {
+      void this.resolvePendingPackageChanges().then(continueAction => {
+        if(continueAction) this.handleVersionsConsoleChange(new CustomEvent("versions-console-change", {detail: {enabled: true}}))
+      })
+      return
+    }
+    this.reviewOpen = enabled
+    void this.setHTMLMode(!enabled && this.consoleOpen && this.consoleTab === "HTML")
+    if(enabled) {
+      this.documentLayoutsDismissed = true
+      void this.requestHistoryState()
+    }
+    else void this.clearHistoryPreview()
   }
 
   private handleDocumentLayoutChange = (event: Event) => {
@@ -5543,16 +5886,139 @@ export class DomEditor extends LitElement {
   }
 
   private syncHTMLSourceScroll(input: HTMLTextAreaElement) {
-    const highlight = input.previousElementSibling as HTMLElement
-    highlight.scrollTop = input.scrollTop
-    highlight.scrollLeft = input.scrollLeft
+    if(this.htmlSourceScrollFrame) return
+    this.htmlSourceScrollFrame = requestAnimationFrame(() => {
+      this.htmlSourceScrollFrame = 0
+      if(!input.isConnected || !this.consoleOpen || this.consoleTab !== "HTML") return
+      const highlight = input.previousElementSibling as HTMLElement
+      highlight.scrollTop = input.scrollTop
+      highlight.scrollLeft = input.scrollLeft
+      if(!this.nativeHTMLSourceHighlight) return
+      // Keep one stable text layout; syntax colors are native ranges over the
+      // visible source (plus ten lines), rather than thousands of token nodes.
+      const parts: {node: Text, start: number}[] = []
+      const walker = document.createTreeWalker(highlight, NodeFilter.SHOW_TEXT)
+      let length = 0
+      while(walker.nextNode()) {
+        const node = walker.currentNode as Text
+        if(node.length) parts.push({node, start: length})
+        length += node.length
+      }
+      if(!parts.length) return
+      const point = (offset: number): [Text, number] => {
+        let first = 0, last = parts.length - 1
+        while(first < last) {
+          const middle = Math.ceil((first + last) / 2)
+          if(parts[middle].start <= offset) first = middle
+          else last = middle - 1
+        }
+        return [parts[first].node, offset - parts[first].start]
+      }
+      const range = document.createRange()
+      const rectangle = highlight.getBoundingClientRect()
+      const offsetAt = (y: number) => {
+        let low = 0, high = Math.min(length, this.htmlSource.length)
+        while(low < high) {
+          const offset = (low + high) >>> 1
+          range.setStart(...point(offset))
+          range.setEnd(...point(Math.min(offset + 1, this.htmlSource.length)))
+          if(range.getBoundingClientRect().bottom < y) low = offset + 1
+          else high = offset
+        }
+        return low
+      }
+      const bounds = input.getBoundingClientRect()
+      const visible: number[] = []
+      if(bounds.height > 24 && document.caretPositionFromPoint) {
+        // Native text-control hit testing already knows wrapping, tabs and
+        // Unicode glyph widths. Avoid probing many ranges through long text.
+        for(const x of [bounds.left + 12, bounds.right - 20]) {
+          for(const y of [bounds.top + 12, bounds.bottom - 12]) {
+            const position = document.caretPositionFromPoint(x, y, {shadowRoots: this.shadowRoot ? [this.shadowRoot] : []})
+            if(position?.offsetNode === input) visible.push(position.offset)
+          }
+        }
+      }
+      let start = visible.length === 4 ? Math.max(0, Math.min(...visible) - 2048)
+        : highlight.clientHeight ? offsetAt(rectangle.top - 180) : 0
+      let end = visible.length === 4 ? Math.min(this.htmlSource.length, Math.max(...visible) + 2048)
+        : highlight.clientHeight ? Math.min(this.htmlSource.length, offsetAt(rectangle.bottom + 180) + 1) : Math.min(8192, this.htmlSource.length)
+      // Never separate UTF-16 surrogate pairs across token/text boundaries.
+      if(start && /[\uDC00-\uDFFF]/.test(this.htmlSource[start])) start--
+      if(end < this.htmlSource.length && /[\uDC00-\uDFFF]/.test(this.htmlSource[end])) end++
+      if(start !== this.htmlSourceWindow.start || end !== this.htmlSourceWindow.end || this.htmlSourcePainted !== this.htmlSource) {
+        this.clearHTMLSourceRanges(false)
+        this.htmlSourceWindow = {start, end}
+        const kinds = ["text", "tag", "attribute", "value", "comment", "entity"] as const
+        if(this.htmlSourceTokens?.source !== this.htmlSource) {
+          const offsets: number[] = []
+          let offset = 0
+          for(const token of tokenizeHTMLSource(this.htmlSource)) {
+            if(token.kind !== "text") offsets.push(offset, offset + token.text.length, kinds.indexOf(token.kind))
+            offset += token.text.length
+          }
+          this.htmlSourceTokens = {source: this.htmlSource, offsets: Uint32Array.from(offsets)}
+        }
+        const tokens = this.htmlSourceTokens.offsets
+        let first = 0, last = tokens.length / 3
+        while(first < last) {
+          const middle = (first + last) >>> 1
+          if(tokens[middle * 3 + 1] <= start) first = middle + 1
+          else last = middle
+        }
+        for(let index = first * 3; index < tokens.length && tokens[index] < end; index += 3) {
+          const colored = document.createRange()
+          colored.setStart(...point(Math.max(start, tokens[index])))
+          colored.setEnd(...point(Math.min(end, tokens[index + 1])))
+          const name = `webwriter-html-${kinds[tokens[index + 2]]}`
+          const ranges = this.htmlSourceRanges.get(name) ?? []
+          ranges.push(colored)
+          this.htmlSourceRanges.set(name, ranges)
+        }
+        for(const [name, ranges] of this.htmlSourceRanges) {
+          let colored = CSS.highlights.get(name)
+          if(!colored) {
+            colored = new Highlight()
+            CSS.highlights.set(name, colored)
+          }
+          for(const range of ranges) colored.add(range)
+        }
+        this.htmlSourcePainted = this.htmlSource
+      }
+    })
+  }
+
+  private renderHTMLSourceHighlight() {
+    const source = this.htmlSource
+    const native = this.nativeHTMLSourceHighlight
+    return guard([source, native], () => native ? source : tokenizeHTMLSource(source)
+      .map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))
+  }
+
+  private get nativeHTMLSourceHighlight() {
+    return this.htmlSource.length > 20000 && Boolean(globalThis.CSS?.highlights) && typeof globalThis.Highlight === "function"
+  }
+
+  private clearHTMLSourceRanges(removeEmpty = true) {
+    for(const [name, ranges] of this.htmlSourceRanges) {
+      const colored = globalThis.CSS?.highlights?.get(name)
+      if(colored) {
+        for(const range of ranges) colored.delete(range)
+        if(removeEmpty && !colored.size) CSS.highlights.delete(name)
+      }
+      ranges.length = 0
+    }
+    if(removeEmpty) this.htmlSourceRanges.clear()
+    this.htmlSourcePainted = ""
   }
 
   private renderHTMLSourceEditor() {
+    // Keep the opened console through collapse; inactive consoles suspend rendering.
+    this.consoleRendered ||= this.consoleOpen || this.reviewOpen
     return html`
-      <div class="html-source-panel" ?inert=${!this.consoleOpen} aria-hidden=${String(!this.consoleOpen)}>
+      <div class="html-source-panel" ?inert=${!this.consoleOpen && !this.reviewOpen} aria-hidden=${String(!this.consoleOpen && !this.reviewOpen)}>
         <div class="html-source-clip">
-          <developer-console .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
+          ${when(this.consoleRendered, () => html`<developer-console .active=${this.consoleOpen || this.reviewOpen} .review=${this.reviewOpen} .tab=${this.consoleTab} .htmlPending=${this.htmlPending} .pinned=${this.settings.pinDeveloperConsole}
             .packageDraft=${this.localPackageDraft?.manifest ?? null} .packageSaving=${this.localPackageDraftSaving}
             .packageDraftRevision=${this.localPackageDraftRevision}
             ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
@@ -5587,9 +6053,9 @@ export class DomEditor extends LitElement {
             @html-source-apply=${this.handleHTMLSourceApply}
             @html-source-discard=${this.handleHTMLSourceDiscard}
           >
-          <section class="html-source-editor" aria-label="Selected HTML source" ?hidden=${this.consoleTab !== "HTML"}>
+          ${when(this.consoleOpen && this.consoleTab === "HTML", () => html`<section class="html-source-editor" aria-label="Selected HTML source" ?hidden=${this.consoleTab !== "HTML"}>
             <div class="html-source-field">
-              <pre class="html-source-highlight" aria-hidden="true">${guard([this.htmlSource], () => tokenizeHTMLSource(this.htmlSource).map(token => token.kind === "text" ? token.text : html`<span class=${token.kind}>${token.text}</span>`))}${"\n"}</pre>
+              <pre class="html-source-highlight" aria-hidden="true">${cache(this.htmlSource ? html`${this.renderHTMLSourceHighlight()}` : nothing)}${"\n"}</pre>
               <textarea
                 class="html-source-input"
                 aria-label="Selected HTML"
@@ -5604,8 +6070,8 @@ export class DomEditor extends LitElement {
               ></textarea>
             </div>
             ${this.htmlSourceError ? html`<p class="html-source-error" role="alert">${this.htmlSourceError}</p>` : ""}
-          </section>
-          </developer-console>
+          </section>`, () => noChange)}
+          </developer-console>`, () => noChange)}
         </div>
       </div>
     `
@@ -5626,8 +6092,21 @@ export class DomEditor extends LitElement {
       if(this.isConnected) ribbon.aiToolboxTarget = toolbox.renderRoot.querySelector<HTMLElement>(".ai-toolbox-content")
     })
     if(changed.has("htmlSource")) {
+      this.clearHTMLSourceRanges(!this.nativeHTMLSourceHighlight)
+      if(this.htmlSource && !this.nativeHTMLSourceHighlight) this.htmlSourceTokens = null
+    }
+    if(!this.consoleOpen || this.consoleTab !== "HTML") this.clearHTMLSourceRanges()
+    if(changed.has("htmlSource") || changed.has("consoleOpen") || changed.has("consoleTab")) {
       const input = this.renderRoot.querySelector<HTMLTextAreaElement>(".html-source-input")
-      if(input) this.syncHTMLSourceScroll(input)
+      if(input) {
+        if(input !== this.htmlSourceObservedInput) {
+          this.htmlSourceResizeObserver?.disconnect()
+          this.htmlSourceObservedInput = input
+          this.htmlSourceResizeObserver = new ResizeObserver(() => this.syncHTMLSourceScroll(input))
+          this.htmlSourceResizeObserver.observe(input)
+        }
+        this.syncHTMLSourceScroll(input)
+      }
     }
   }
 
@@ -5638,11 +6117,29 @@ export class DomEditor extends LitElement {
       .finally(() => this.focusEditor())
   }
 
+  private handleShapePaintChange = (event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
+    if(!this.graphicSelection?.capture || this.previewActive || this.liveSessionActive) return
+    this.shapePaint = {...event.detail.paint}
+    if(this.graphicSelection.mode && this.graphicSelection.mode !== "select") void this.execute({type: "setGraphicDrawPaint", paint: this.shapePaint})
+  }
+
+  private get isMathEditing() {
+    return this.mathSelection?.active && (this.mathSelection.display === "inline" || this.captureSelection)
+  }
+
   private handleMathKeyboardCommand = (event: CustomEvent<{command: string}>) => {
-    if(!this.mathSelection?.active || this.previewActive || this.liveSessionActive || typeof event.detail?.command !== "string") return
+    if(!this.isMathEditing || this.previewActive || this.liveSessionActive || typeof event.detail?.command !== "string") return
     void this.execute({type: "editMath", command: `keyboard:${event.detail.command}`})
       .catch(() => { /* A removed/replaced document no longer has a formula caret. */ })
       .finally(() => this.focusEditor())
+  }
+
+  private async focusLinkKeyboard() {
+    this.linkKeyboardHidden = false
+    await this.updateComplete
+    const keyboard = this.renderRoot.querySelector<LinkKeyboard>("dom-editor-link-keyboard")
+    if(keyboard) await keyboard.focusWebAddress()
+    else this.focusEditor()
   }
 
   private handleLinkKeyboardCommand = (event: CustomEvent<LinkEdit>) => {
@@ -5757,7 +6254,10 @@ export class DomEditor extends LitElement {
   private handleRibbonBreadcrumbVisibilityChange = async (event: Event) => {
     const visible = (event as CustomEvent<{visible?: unknown}>).detail?.visible
     if(visible === false && !this.settings.pinDeveloperConsole && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
-    if(typeof visible === "boolean") this.breadcrumbVisible = visible
+    if(typeof visible === "boolean") {
+      this.breadcrumbVisible = visible
+      if(!visible) this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
+    }
   }
 
   private handleBreadcrumbItemSelect = (event: Event) => {
@@ -5831,7 +6331,7 @@ export class DomEditor extends LitElement {
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
-      if(element.matches("table")) return item
+      if(element.matches("table, math")) return item
 
       const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[]) => {
         Array.from(container.childNodes).forEach((child, index) => {
@@ -5839,7 +6339,8 @@ export class DomEditor extends LitElement {
           const childElement = child as Element
           const slideRole = slideLayoutRole(childElement)
           if(slideRole === "navigation") return
-          if(childElement.matches("source, math, caption, figcaption, details > summary")
+          if(childElement.matches("source, caption, figcaption, details > summary")
+            || childElement.localName === "math" && childElement.getAttribute("display") !== "block"
             || childElement.matches("img") && childElement.closest("picture")
             || isLineBreakElement(childElement)) return
           const childPath = [...containerPath, index]
@@ -5858,7 +6359,7 @@ export class DomEditor extends LitElement {
             appendChildren(childElement, childPath, inherited)
             return
           }
-          if(slideRole !== "slide" && isSectionElement(childElement)) {
+          if(slideRole !== "slide" && !boardLayoutRole(childElement) && isSectionElement(childElement)) {
             const currentSection = sectionItem(childElement, childPath)
             const nextSections = [...inherited, currentSection]
             const childCount = item.children.length
@@ -5946,11 +6447,16 @@ export class DomEditor extends LitElement {
     return {
       target,
       inline,
+      ...(Array.isArray(value.authoredProperties) ? {
+        authoredProperties: value.authoredProperties.filter((name): name is string => typeof name === "string"),
+      } : {}),
       computed,
       context: {
         display: value.context.display,
         parentDisplay: value.context.parentDisplay,
         ...(typeof value.context.positioning === "boolean" ? {positioning: value.context.positioning} : {}),
+        ...(typeof value.context.floatLeftForcedRight === "boolean" ? {floatLeftForcedRight: value.context.floatLeftForcedRight} : {}),
+        ...(typeof value.context.floatRightInFlow === "boolean" ? {floatRightInFlow: value.context.floatRightInFlow} : {}),
       },
     }
   }
@@ -5998,6 +6504,17 @@ export class DomEditor extends LitElement {
         || mutation !== null && typeof mutation !== "string" && !validDeclaration
     })) return
     const styles = Object.fromEntries(entries) as Record<string, ElementStyleMutation>
+    const mediaDrawer = event.composedPath().find(node => node instanceof Element && node.matches('ribbon-drawer[data-specialized="picture"], ribbon-drawer[data-specialized="img"], ribbon-drawer[data-specialized="video"]'))
+    if(mediaDrawer && Object.hasOwn(styles, "object-view-box")) {
+      const crop = styles["object-view-box"]
+      if((mediaDrawer as HTMLElement & {elementCount: number}).elementCount > 1) {
+        if(!isElementSelectionType(detail.selectionType)) return
+        void this.execute({type: "setSelectedElementStyles", selectionType: detail.selectionType, styles: {"object-view-box": crop}})
+      }
+      else void this.execute({type: "setMediaCrop", crop}).then(() => this.refreshElementStyleState()).catch(() => this.refreshElementStyleState())
+      delete styles["object-view-box"]
+      if(!Object.keys(styles).length) return
+    }
     const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
       && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
     if(detail.selectionType !== undefined && !topLevel) {
@@ -6058,7 +6575,7 @@ export class DomEditor extends LitElement {
   private handleRibbonDragStart = (event: DragEvent) => {
     const data = event.dataTransfer
     if(event.defaultPrevented || !data
-      || !Array.from(data.types).some(type => type === elementDragType || type === ribbonInsertionDragType)) return
+      || !Array.from(data.types).some(type => type === elementDragType || type === ribbonInsertionDragType || type === graphicShapeDragType)) return
     this.ribbonDrag = Object.fromEntries(Array.from(data.types).map(type => [type, data.getData(type)]))
   }
 
@@ -6162,10 +6679,23 @@ export class DomEditor extends LitElement {
       }
       return
     }
+    if(event.data?.type === "webwriter-frame-error") {
+      const frame = this.editorIframe()
+      if(event.origin !== editorFrameOrigin() || event.source !== frame?.contentWindow
+        || event.data.kind !== "editor" || event.data.revision !== String(this.frameRevision)
+        || event.data.bridgeNonce !== this.bridgeNonce || typeof event.data.message !== "string") return
+      const message = event.data.message.slice(0, 2000)
+      this.editorFrameStartupError = {revision: this.frameRevision, message}
+      this.fileError = message
+      this.documentLoading = false
+      this.editorReadyReject?.(new Error(message))
+      return
+    }
     if(event.data?.type === "webwriter-editor-frame-ready") {
       const frame = this.editorIframe()
       if(event.origin !== editorFrameOrigin() || event.source !== frame?.contentWindow
         || event.data.bridgeNonce !== this.bridgeNonce || this.editorInitializedRevision === this.frameRevision) return
+      this.editorFrameStartupError = null
       this.editorInitializedRevision = this.frameRevision
       this.initializeEditorFrame(frame)
       return
@@ -6173,11 +6703,18 @@ export class DomEditor extends LitElement {
     if(this.handlePreviewMessage(event)) return
     if(event.data?.type === "editor-frame-snapshot") {
       if(!this.editorOpaque || !this.isEditorMessage(event) || typeof event.data.html !== "string") return
-      const before = this.authoredDocumentSnapshot()
+      if(this.frameSnapshot?.document === this.editorDocument && this.frameSnapshot.html === event.data.html) return
+      // Current frames filter editor artifacts before publishing. Older frames
+      // still need the canonical comparison for marker-only snapshots.
+      const authoredChange = typeof event.data.treeChanged === "boolean"
+      const before = authoredChange ? null : this.authoredDocumentSnapshot(true)
       this.editorDocument = new DOMParser().parseFromString(event.data.html, "text/html")
-      this.documentTree = this.buildDocumentTree()
-      if(before !== null && before !== this.authoredDocumentSnapshot()) {
+      this.frameSnapshot = {document: this.editorDocument, html: event.data.html}
+      if(event.data.treeChanged !== false || !this.documentTree) this.documentTree = this.buildDocumentTree()
+      if(authoredChange || before !== null && before !== this.authoredDocumentSnapshot(true)) {
+        this.dismissGuidedTour()
         this.documentChangeSequence++
+        this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
         if(this.historyDocumentTransitionCount === 0) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true
@@ -6196,8 +6733,13 @@ export class DomEditor extends LitElement {
       pending.resolve(event.data)
       return
     }
+    if(event.data?.type === "editor-frame-interaction") {
+      if(this.editorOpaque && this.isEditorMessage(event)) this.dismissFloatInfo()
+      return
+    }
     if(event.data?.type === "editor-frame-pointerdown") {
       if(!this.editorOpaque || !this.isEditorMessage(event)) return
+      this.dismissFloatInfo()
       const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
       if(event.data.widgetShadow === true || event.data.appendix === true) return
       this.focusEditor()
@@ -6296,10 +6838,7 @@ export class DomEditor extends LitElement {
     }
     if(isProofreadingStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
-      const state: ProofreadingState = this.settings.disableSpellChecking
-        ? {...event.data.detail, enabled: false, loading: false, ready: false, checking: false,
-          error: null, hoveredIssueId: null, issues: []}
-        : event.data.detail
+      const state = event.data.detail
       const retain = this.proofreadingReloading && state.enabled && (!state.ready || state.loading || state.checking)
       if(!retain) this.proofreadingReloading = false
       this.proofreadingState = {
@@ -6364,7 +6903,7 @@ export class DomEditor extends LitElement {
       this.captionPosition = event.data.detail.captionPosition ?? null
       this.captionAlignment = event.data.detail.captionAlignment ?? null
       this.mediaSelection = event.data.detail.media
-        ? {type: event.data.detail.media.type, attributes: {...event.data.detail.media.attributes}}
+        ? {...event.data.detail.media, attributes: {...event.data.detail.media.attributes}}
         : null
       this.dialogSelection = event.data.detail.dialog ? {
         ...event.data.detail.dialog,
@@ -6401,7 +6940,6 @@ export class DomEditor extends LitElement {
         || this.figure !== null
         || path.at(-1)?.icon === "Packages"
       if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
-      this.documentTree = this.buildDocumentTree()
       if(this.stylesVisible()) this.queueElementStyleRefresh()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
@@ -6443,6 +6981,7 @@ export class DomEditor extends LitElement {
     if(isPresenceChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.presenceUsers = event.data.detail.users.map(user => ({...user}))
+      this.collaborationStatus = event.data.detail.connectionStatus ?? (this.presenceUsers.length ? "connected" : "disconnected")
       return
     }
     if(isDocumentHeadStateChangeMessage(event.data)) {
@@ -6454,6 +6993,11 @@ export class DomEditor extends LitElement {
           attributes: element.attributes.map(attribute => ({...attribute})),
         })),
       }
+      return
+    }
+    if(isUndoStateChangeMessage(event.data)) {
+      if(!this.isEditorMessage(event)) return
+      this.undoState = {...event.data.detail}
       return
     }
     if(isHistoryStateChangeMessage(event.data)) {
@@ -6485,6 +7029,9 @@ export class DomEditor extends LitElement {
   }
 
   private waitForEditorWindow() {
+    if(this.editorFrameStartupError?.revision === this.frameRevision) {
+      return Promise.reject(new Error(this.editorFrameStartupError.message))
+    }
     if(this.editorWindow) {
       const editorWindow = this.editorWindow
       return this.packageLoadPromise
@@ -6585,6 +7132,12 @@ export class DomEditor extends LitElement {
     }
   }
 
+  private handleUIContextMenu = (event: Event) => {
+    if(!isTextFieldInteraction(event)) {
+      event.preventDefault()
+    }
+  }
+
   connectedCallback() {
     super.connectedCallback()
     this.recentDocumentsReady = this.restoreRecentDocuments()
@@ -6598,17 +7151,20 @@ export class DomEditor extends LitElement {
     window.addEventListener("focus", this.handleHostWindowFocus)
     this.addEventListener("dragstart", this.handleRibbonDragStart)
     this.addEventListener("dragend", this.handleRibbonDragEnd)
+    this.addEventListener("contextmenu", this.handleUIContextMenu, true)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     const liveSessionId = this.liveSessionIdFromURL()
     const open = new URL(location.href).searchParams.get("open")
     const reference = open === null ? null : parseDocumentOpenReference(open)
     const openingLinkedDocument = !liveSessionId && open !== null
-    if(!liveSessionId && reference?.kind !== "backend" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
+    const exampleId = new URL(location.href).searchParams.get("example")
+    const openingExample = !liveSessionId && !openingLinkedDocument && exampleId !== null
+    if(!liveSessionId && reference?.kind !== "backend" && reference?.kind !== "shared" && import.meta.env.MODE !== "test") void this.loginToBackend(undefined, true)
     if(liveSessionId) void this.joinLiveSession(liveSessionId)
     this.restoreInstalledPackages()
     const catalog = this.loadPackageCatalog()
     const restoration = this.restoreLocalPackages()
-    const timer = this.frameStarted || openingLinkedDocument ? undefined : setTimeout(() => startFrame(), 250)
+    const timer = this.frameStarted || openingLinkedDocument || openingExample ? undefined : setTimeout(() => startFrame(), 250)
     this.frameStartTimer = timer
     const startFrame = () => {
       if(!this.isConnected || this.frameStartTimer !== timer) return
@@ -6620,7 +7176,7 @@ export class DomEditor extends LitElement {
       if(restored.status === "rejected") {
         this.localPackageError = restored.reason instanceof Error ? restored.reason.message : String(restored.reason)
       }
-      if(!openingLinkedDocument) startFrame()
+      if(!openingLinkedDocument && !openingExample) startFrame()
     })
     this.localPackageManager.connect()
     // Fetch linked content alongside package restoration, then mount the first
@@ -6632,10 +7188,25 @@ export class DomEditor extends LitElement {
         startFrame()
       })
     }
+    else if(openingExample) {
+      const startupReady = Promise.allSettled([restoration]).then(() => {})
+      void this.restoreExampleDocument(exampleId!, startupReady).finally(async () => {
+        await startupReady
+        startFrame()
+      })
+    }
     if(this.settings.pinDeveloperConsole) this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
   }
 
   disconnectedCallback() {
+    this.clearHTMLSourceRanges()
+    this.htmlSourceTokens = null
+    if(this.htmlSourceScrollFrame) cancelAnimationFrame(this.htmlSourceScrollFrame)
+    this.htmlSourceScrollFrame = 0
+    this.htmlSourceResizeObserver?.disconnect()
+    this.htmlSourceResizeObserver = null
+    this.htmlSourceObservedInput = null
+    this.frameTouchPointer = null
     this.cancelFileInput?.()
     this.recentRefreshGeneration++
     clearTimeout(this.frameStartTimer)
@@ -6657,6 +7228,7 @@ export class DomEditor extends LitElement {
     window.removeEventListener("focus", this.handleHostWindowFocus)
     this.removeEventListener("dragstart", this.handleRibbonDragStart)
     this.removeEventListener("dragend", this.handleRibbonDragEnd)
+    this.removeEventListener("contextmenu", this.handleUIContextMenu, true)
     this.ribbonDrag = null
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     this.localPackageManager.disconnect()
@@ -6664,6 +7236,7 @@ export class DomEditor extends LitElement {
     this.dirtyTrackingTimer = undefined
     this.dirtyTrackingReady = false
     this.dirtyTrackingMutationPending = false
+    this.guidedTourReady = false
     this.documentTreeObserver?.disconnect()
     this.documentTreeObserver = null
     if(!this.editorOpaque) this.editorWindow?.removeEventListener(aiEditReviewEvent, this.handleInlineAIEditReview)
@@ -6672,11 +7245,14 @@ export class DomEditor extends LitElement {
     if(!this.editorOpaque) this.editorWindow?.removeEventListener("pointerdown", this.handleEditorPointerDown, true)
     this.editorDocument?.removeEventListener("focusin", this.handleEditorFocus)
     this.editorDocument?.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    this.editorDocument?.removeEventListener("wheel", this.dismissFloatInfo, true)
     const iframe = this.editorIframe()
-    iframe?.classList.remove("window-inactive")
+    this.handleHostWindowFocus()
     iframe?.removeEventListener("focus", this.handleEditorFrameFocus)
     iframe?.removeEventListener("blur", this.handleEditorFrameBlur)
     this.editorDocument = null
+    this.frameSnapshot = null
+    this.authoredSnapshotCache = null
     this.editorWindow = null
     this.savedEditorSelection = null
     this.previewActive = false
@@ -6729,9 +7305,10 @@ export class DomEditor extends LitElement {
       text: "",
       activeCount: 0,
       count: 0,
-      highlighting: true,
+      highlighting: this.documentSettings.commentHighlighting ?? true,
     }
-    this.proofreadingState = emptyProofreadingState()
+    this.proofreadingState = {...emptyProofreadingState(), allowed: this.settings.proofreadingEnabledByDefault, enabled: this.settings.proofreadingEnabledByDefault && this.documentProofreadingEnabled,
+      documentEnabled: this.documentProofreadingEnabled}
     this.proofreadingReloading = false
     this.mediaSelection = null
     this.dialogSelection = null
@@ -6744,6 +7321,7 @@ export class DomEditor extends LitElement {
     this.htmlSourceRefreshQueued = false
     this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
     this.consoleOpen = false
+    this.reviewOpen = false
     this.consoleTab = "Packages"
     this.htmlMode = false
     this.htmlSource = ""
@@ -6760,6 +7338,7 @@ export class DomEditor extends LitElement {
     }
     this.documentHead = emptyDocumentHeadState()
     this.historyState = emptyVersionHistoryState()
+    this.undoState = {canUndo: false, canRedo: false}
     this.historyLoading = false
     this.historyOperationCount = 0
     this.historyDocumentTransitionCount = 0
@@ -6830,8 +7409,16 @@ export class DomEditor extends LitElement {
       "mark-attribute-change": this.handleMarkAttributeChange.bind(this),
       "ruby-action": this.handleRubyAction.bind(this),
       "list-attribute-change": this.handleListAttributeChange.bind(this),
+      "list-type-change": this.handleListTypeChange.bind(this),
+      "heading-level-change": this.handleHeadingLevelChange.bind(this),
       "heading-group-level-change": this.handleHeadingGroupLevelChange.bind(this),
       "comment-action": this.handleCommentAction.bind(this),
+      "media-file-drop": (event: Event) => {
+        const detail = (event as CustomEvent).detail
+        if(!isMediaType(detail?.type) || !(detail.file instanceof Blob)
+          || detail.attribute !== undefined && detail.attribute !== "poster") return
+        void this.execute({type: "setMediaFile", file: detail.file, attribute: detail.attribute})
+      },
       "media-attribute-change": this.handleMediaAttributeChange.bind(this),
       "media-resource-action": this.handleMediaResourceAction.bind(this),
       "image-map-action": this.handleImageMapAction.bind(this),
@@ -6839,6 +7426,8 @@ export class DomEditor extends LitElement {
       "widget-option-change": this.handleWidgetOptionChange.bind(this),
       "widget-action": this.handleWidgetAction.bind(this),
       "widget-sharing-change": this.handleWidgetSharingChange,
+      "link-sharing-change": this.handleLinkSharingChange,
+      "collaboration-menu-open": () => {if(!this.linkSharingBusy) void this.refreshDocumentSharing()},
       "widget-grouping-change": this.handleWidgetGroupingChange,
       "widget-grouping-context": this.handleWidgetGroupingContext,
       "media-type-change": this.handleMediaTypeChange.bind(this),
@@ -6866,19 +7455,32 @@ export class DomEditor extends LitElement {
 
   render() {
     const documentLoading = this.documentLoading || this.linkedDocumentLoading
+    const recentDocumentsDependencies = [this.recentDocuments, this.accessibleRecentDocumentIds,
+      this.savedDocuments, this.backendClient, this.backendClient?.session]
     return html`
       <header class="app-bar">
+        <div class="ribbon-header">
+          ${this.sizeWarningDismissed ? "" : html`<div class="size-warning" role="alert">
+            <button type="button" aria-label="Dismiss size warning" title="Dismiss" @click=${() => {this.sizeWarningDismissed = true}}>×</button>
+            <span>WebWriter may not work correctly at this size.</span>
+          </div>`}
         <app-ribbon
           ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
           ?inert=${this.htmlPending}
           logo-url=${appIconUrl}
           .breadcrumbVisible=${this.breadcrumbVisible}
           .presenceUsers=${this.presenceUsers}
+          .undoState=${this.undoState}
+          .collaborationLink=${this.collaborationLink}
+          .linkSharingEnabled=${this.linkSharingEnabled}
+          .linkSharingBusy=${this.linkSharingBusy || Boolean(this.sharedDocumentToken)}
+          .collaborationStatus=${this.collaborationStatus}
+          .collaborationError=${this.collaborationError}
           .packages=${this.packages}
           .localPackages=${this.localPackages}
           .installedPackages=${this.installedPackages}
           .consoleOpen=${this.consoleOpen}
-          .recentDocuments=${this.visibleRecentDocuments.map(({id, title}) => ({id, title}))}
+          .recentDocuments=${guard(recentDocumentsDependencies, () => this.visibleRecentDocuments.map(({id, title}) => ({id, title})))}
           @recent-documents-refresh=${this.handleRecentDocumentsRefresh}
           @ribbon-submenu-open=${(event: CustomEvent<{label: string}>) => {if(event.detail.label === "Open") this.handleRecentDocumentsRefresh()}}
           @ribbon-dropdown-open=${(event: Event) => {if(event.composedPath().some(target => target instanceof HTMLElement && target.matches('ribbon-button[label="Open"]'))) this.handleRecentDocumentsRefresh()}}
@@ -6914,6 +7516,7 @@ export class DomEditor extends LitElement {
           @package-catalog-request=${this.loadPackageCatalog}
           @app-settings-change=${this.handleAppSettingsChange}
         ></app-ribbon>
+        </div>
         ${this.previewActive ? html`
           <live-session-controls
             .playing=${this.liveStreamPlaying}
@@ -6956,6 +7559,9 @@ export class DomEditor extends LitElement {
         @documents-retry=${this.loadSavedDocuments}
       ></open-document-menu>
       <div class="document-stage" aria-busy=${documentLoading || this.previewFramePending ? "true" : "false"}>
+        ${this.settings.showGuidedTour && this.guidedTourReady && !documentLoading && !this.previewActive && !this.liveSessionActive ? html`
+          <guided-tour .anchor=${this.guidedTourAnchor} @tour-dismiss=${this.dismissGuidedTour}></guided-tour>
+        ` : nothing}
         ${documentLoading ? html`
           <div class="document-loading" role="status" aria-label="Loading document">
             <div class="document-loading-spinner" aria-hidden="true"></div>
@@ -6982,13 +7588,16 @@ export class DomEditor extends LitElement {
         ${this.frameStarted ? html`<iframe
           class="editor-frame"
           title="DOM editor"
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("editor", this.frameRevision)}
           srcdoc=${import.meta.env.MODE === "test" ? this.editorSrcdoc : nothing}
           ?hidden=${this.previewActive && !this.previewFramePending}
           ?inert=${this.previewActive}
           @load=${this.handleEditorFrameLoad}
+          @pointerdown=${this.relayFrameTouch} @pointermove=${this.relayFrameTouch}
+          @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}
+          @lostpointercapture=${this.relayFrameTouch} @touchstart=${this.handleFrameTouchStart}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
         ></iframe>` : ""}
         ${this.ribbonDrag && !this.previewActive ? html`<div class="ribbon-drag-shield"
@@ -7007,8 +7616,10 @@ export class DomEditor extends LitElement {
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
             @click=${() => { this.shapeKeyboardHidden = false; this.focusEditor() }}>${ribbonIcon("Graphic")}</button>` : nothing}
           <section class="shape-keyboard-area" aria-label="Shape input" ?hidden=${this.shapeKeyboardHidden}>
-            <dom-editor-shape-keyboard .paint=${this.shapePaint}
+            <dom-editor-shape-keyboard .paint=${this.shapePaint} .mode=${this.graphicSelection.mode ?? "select"}
               @shape-keyboard-command=${this.handleShapeKeyboardCommand}
+              @ribbon-button-click=${this.handleRibbonButtonClick}
+              @shape-paint-change=${this.handleShapePaintChange}
               @shape-keyboard-close=${() => { this.shapeKeyboardHidden = true; this.focusEditor() }}
             ></dom-editor-shape-keyboard>
           </section>
@@ -7017,7 +7628,7 @@ export class DomEditor extends LitElement {
           ${this.linkKeyboardHidden ? html`<button class="math-keyboard-open" type="button"
             title="Show link keyboard" aria-label="Show link keyboard"
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
-            @click=${() => { this.linkKeyboardHidden = false }}>${ribbonIcon("MarkLink")}</button>` : nothing}
+            @click=${() => { void this.focusLinkKeyboard() }}>${ribbonIcon("MarkLink")}</button>` : nothing}
           <section class="link-keyboard-area" aria-label="Link input" ?hidden=${this.linkKeyboardHidden}>
             <dom-editor-link-keyboard .state=${this.linkSelection} .error=${this.linkKeyboardError}
               @link-keyboard-command=${this.handleLinkKeyboardCommand}
@@ -7025,16 +7636,16 @@ export class DomEditor extends LitElement {
             ></dom-editor-link-keyboard>
           </section>
         ` : nothing}
-        ${this.mathSelection?.active && this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
+        ${this.isMathEditing && this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
           <button class="math-keyboard-open" type="button" title="Show formula keyboard" aria-label="Show formula keyboard"
             @pointerdown=${(event: PointerEvent) => event.preventDefault()}
             @click=${() => { this.mathKeyboardHidden = false; this.focusEditor() }}
           >${ribbonIcon("Shortcuts")}</button>
         ` : ""}
-        ${this.mathSelection?.active && !this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
+        ${this.isMathEditing && !this.mathKeyboardHidden && !this.previewActive && !this.liveSessionActive ? html`
           <section class="math-keyboard-area" aria-label="Formula input">
             <dom-editor-math-keyboard
-              .display=${this.mathSelection.display}
+              .display=${this.mathSelection!.display}
               @math-keyboard-command=${this.handleMathKeyboardCommand}
               @math-keyboard-close=${() => { this.mathKeyboardHidden = true; this.focusEditor() }}
             ></dom-editor-math-keyboard>
@@ -7042,40 +7653,51 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
-        .shapePaint=${this.shapePaint}
-        @shape-paint-change=${(event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
-          if(this.graphicSelection?.capture && !this.previewActive && !this.liveSessionActive) this.shapePaint = {...event.detail.paint}
+        .preview=${this.previewActive}
+        .feedbackActive=${this.liveSessionActive}
+        .feedbackRole=${this.liveSessionRole}
+        .feedbackParticipants=${this.liveLearners}
+        .feedbackMessages=${this.liveFeedback}
+        @live-feedback-send=${(event: CustomEvent<{participant: string, text: string}>) => {
+          if(!this.previewActive || !this.liveSession?.sendFeedback(event.detail.participant, event.detail.text)) event.preventDefault()
         }}
+        .shapePaint=${this.shapePaint}
+        @shape-paint-change=${this.handleShapePaintChange}
         .proofreadingState=${this.proofreadingState}
-        .disableSpellChecking=${this.settings.disableSpellChecking}
         .disableAI=${this.settings.disableAI}
         .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
+        .elementSelected=${this.nodeSelection}
         .documentSelected=${this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1}
         .documentLayout=${this.documentLayout}
         .documentLayoutError=${this.documentLayoutError}
         .documentHead=${this.documentHead}
         @document-head-action=${this.handleDocumentHeadAction}
         .consoleOpen=${this.consoleOpen}
+        .versionsOpen=${this.reviewOpen}
         .htmlPending=${this.htmlPending}
         .table=${this.tableSelection}
         .aiSidebar=${!this.breadcrumbVisible && this.aiToolboxOpen}
-        ?hidden=${(!this.breadcrumbVisible && !this.aiToolboxOpen) || this.previewActive || this.liveSessionActive}
+        ?hidden=${!this.previewActive && ((!this.breadcrumbVisible && !this.aiToolboxOpen) || this.liveSessionActive)}
         @toolbox-change=${this.handleToolboxChange}
         @proofreading-action=${this.handleProofreadingAction}
         @document-layout-change=${this.handleDocumentLayoutChange}
         @developer-console-change=${this.handleDeveloperConsoleChange}
+        @versions-console-change=${this.handleVersionsConsoleChange}
         @developer-console-pin-change=${this.handleDeveloperConsolePinChange}
       ></dom-editor-toolbox>
-      ${(this.breadcrumbVisible || this.consoleOpen || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
+      ${(this.breadcrumbVisible || this.consoleOpen || this.reviewOpen || this.settings.pinDeveloperConsole) && (!this.previewActive || this.settings.pinDeveloperConsole) && !this.liveSessionActive ? this.renderHTMLSourceEditor() : ""}
       ${this.previewActive || this.liveSessionActive ? "" : html`
         <div class="document-layouts-panel" ?inert=${this.documentLayoutsDismissed} aria-hidden=${String(this.documentLayoutsDismissed)}>
           <div class="document-layouts-clip">
-            <section class="document-layouts-bar" aria-labelledby="document-layouts-title">
+            ${when(!this.documentLayoutsDismissed && !documentLoading, () => guard([
+              this.documentLayout, this.historyState.preview, this.htmlPending, this.fileOperationActive,
+              this.documentLayoutError, ...recentDocumentsDependencies,
+            ], () => html`<section class="document-layouts-bar" aria-labelledby="document-layouts-title">
               <div class="document-layouts-heading">
-                <h2 id="document-layouts-title">Layouts</h2>
-                <h2 id="recent-documents-title" class="recent-documents-title">Recently opened</h2>
+                <h2 id="document-layouts-title">Layouts<span class="document-layouts-combined-title"> &amp; Recently opened</span></h2>
+                <h2 id="recent-documents-title" class="recent-documents-title"><span class="recent-documents-full-title">Recently opened</span><span class="recent-documents-short-title">Recent</span></h2>
                 <button class="document-layouts-close" type="button" aria-label="Hide layouts" title="Hide layouts"
                   @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
                   @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
@@ -7103,7 +7725,7 @@ export class DomEditor extends LitElement {
                 </nav>
               </div>
               ${this.documentLayoutError ? html`<p class="document-layout-error" role="alert">${this.documentLayoutError}</p>` : ""}
-            </section>
+            </section>`), () => noChange)}
           </div>
         </div>
       `}

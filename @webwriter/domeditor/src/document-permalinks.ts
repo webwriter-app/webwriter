@@ -25,8 +25,10 @@ export function updateDocumentPermalinks(root: HTMLElement) {
   const claimed = new Set<HTMLMetaElement>()
   const used = new Map<string, number>()
   document.querySelectorAll("[id]").forEach(element => used.set(element.id, (used.get(element.id) ?? 0) + 1))
+  const originalCounts = new Map(used)
   for(const target of targets) {
     const previous = target.id
+    const previousCount = originalCounts.get(previous) ?? 0
     let meta = owners.get(previous)
     if(previous && !meta) continue
     if(meta && claimed.has(meta)) meta = undefined
@@ -44,7 +46,26 @@ export function updateDocumentPermalinks(root: HTMLElement) {
       && !used.get(previous)) id = previous
     else while(used.get(id)) id = `${slug}-${suffix++}`
     used.set(id, (used.get(id) ?? 0) + 1)
-    if(target.id !== id) target.id = id
+    if(target.id !== id) {
+      target.id = id
+      // A fragment reference is safe to retarget only when its old ID was
+      // unique. Duplicate IDs can arise during concurrent edits, and their
+      // references do not identify one particular element.
+      if(previous && previousCount === 1) {
+        root.querySelectorAll<HTMLAnchorElement>("a[href]").forEach(anchor => {
+          const href = anchor.getAttribute("href")
+          if(!href?.startsWith("#")) return
+          let fragment: string
+          try { fragment = decodeURIComponent(href.slice(1)) }
+          catch { return }
+          if(fragment !== previous) return
+          for(let node: Element | null = anchor; node && node !== root; node = node.parentElement) {
+            if(node.namespaceURI !== "http://www.w3.org/1999/xhtml" || node.localName.includes("-") || node.hasAttribute("is")) return
+          }
+          anchor.setAttribute("href", `#${encodeURIComponent(id)}`)
+        })
+      }
+    }
     if(!meta) {
       meta = document.createElement("meta")
       meta.name = generatedIDMetadata

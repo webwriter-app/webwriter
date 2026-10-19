@@ -31,6 +31,8 @@ export type TableSelectionState = {
   hasCaption: boolean
   hasHeader: boolean
   hasFooter: boolean
+  canToggleHeader?: boolean
+  canToggleFooter?: boolean
 }
 
 export function tableForNode(node: Node | null) {

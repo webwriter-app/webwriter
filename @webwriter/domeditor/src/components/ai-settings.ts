@@ -1,4 +1,7 @@
 import {LitElement, css, html, nothing, type PropertyValues} from "lit"
+import {editorInteractionStyles} from "./editing-controls.styles"
+import {repeat} from "lit/directives/repeat.js"
+import {live} from "lit/directives/live.js"
 import {
   AIProviderStore,
   createAIProvider,
@@ -22,6 +25,10 @@ const isAbortError = (error: unknown) => error instanceof DOMException && error.
 export class AISettingsDialog extends LitElement {
   static properties = {
     open: {type: Boolean, reflect: true},
+    embedded: {type: Boolean, reflect: true},
+    providerId: {type: String, attribute: "provider-id", reflect: true},
+    addingProvider: {state: true},
+    expandedProviders: {state: true},
     store: {attribute: false},
     draft: {attribute: false, state: true},
     loading: {type: Boolean, state: true},
@@ -31,6 +38,7 @@ export class AISettingsDialog extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host {
       color: #202833;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -204,6 +212,7 @@ export class AISettingsDialog extends LitElement {
       background: #f1f5f9;
       outline: none;
     }
+    .close svg { display: block; width: 1.1rem; height: 1.1rem; }
 
     form {
       display: grid;
@@ -484,6 +493,54 @@ export class AISettingsDialog extends LitElement {
       cursor: default;
     }
 
+    :host([embedded]) { display: block; color: #2f3742; }
+    :host([embedded]:not([open])) { display: none; }
+    :host([embedded]) .dialog {
+      display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto;
+      gap: .75rem; width: 100%; height: auto; max-height: none; overflow: visible;
+      border: 0; border-radius: 0; background: transparent; box-shadow: none;
+    }
+    :host([embedded]) .sidebar { display: block; padding: 0; max-height: none; overflow: visible; border: 0; background: transparent; }
+    :host([embedded]) h2 { font-size: .85rem; }
+    :host([embedded]) .sidebar h2 { text-transform: uppercase; }
+    :host([embedded]) h3 { margin-top: .8rem; font-size: .72rem; color: inherit; text-transform: none; letter-spacing: normal; }
+    :host([embedded]) .providers { overflow: visible; scrollbar-gutter: auto; gap: .4rem; }
+    :host([embedded]) .providers button { display: flex; align-items: center; gap: .5rem; border: 1px solid #c4ccd6; border-radius: .45rem; padding: .65rem .75rem; }
+    :host([embedded]) .providers button[aria-current="true"] { border-color: #93b9e8; color: inherit; background: #f8fbff; }
+    .provider-icon { display: block; width: 1.1rem; height: 1.1rem; flex: 0 0 auto; }
+    .provider-icon svg { display: block; width: 100%; height: 100%; }
+    :host([embedded]) .presets { display: flex; gap: 0; }
+    :host([embedded]) .preset-button { min-height: 2rem; border: 1px solid #c4ccd6; background: #f7f8fa; font-size: .72rem; font-weight: 600; }
+    :host([embedded]) .preset-button::before { content: none; }
+    :host([embedded]) .preset-button:first-child { border-radius: .35rem 0 0 .35rem; }
+    :host([embedded]) .preset-button:last-child { margin-left: -1px; border-radius: 0 .35rem .35rem 0; }
+    :host([embedded]) .content { overflow: visible; scrollbar-gutter: auto; border: 1px solid #c4ccd6; border-radius: .45rem; background: #f8fbff; }
+    :host([embedded]) .content-header { position: static; padding: .75rem .75rem 0; border: 0; background: transparent; }
+    :host([embedded]) .content-header h2 { font-size: .75rem; }
+    :host([embedded]) form { padding: .75rem; gap: .75rem; }
+    :host([embedded]) label { font-size: .72rem; }
+    :host([embedded]) input, :host([embedded]) select, :host([embedded]) textarea { min-height: 2rem; padding: .4rem; border-color: #c4ccd6; border-radius: .35rem; font-size: .75rem; }
+    :host([embedded]) .dialog-button { min-height: 2rem; padding: .4rem .65rem; border-color: #c4ccd6; border-radius: .35rem; background: #f7f8fa; font-size: .72rem; font-weight: 600; }
+    :host([embedded]) .dialog-button.primary { color: white; border-color: #3977c7; background: #3977c7; }
+    :host([embedded]) .dialog-button.danger { color: #b91c1c; }
+    :host([embedded]) .actions { flex-wrap: wrap; }
+
+    .provider-cards { min-width: 0; }
+    .provider-cards > h2 { font-size: .85rem; text-transform: uppercase; }
+    .provider-card { min-width: 0; max-width: 100%; border: 1px solid #c4ccd6; border-radius: .45rem; }
+    .provider-card[data-active] { border-color: #93b9e8; background: #f8fbff; }
+    .provider-card-header { display: flex; align-items: center; gap: .5rem; margin: 0; padding: .75rem; color: inherit; font-size: .72rem; font-weight: 600; cursor: pointer; list-style: none; }
+    .provider-card-header::-webkit-details-marker { display: none; }
+    .provider-card-header::after { content: ""; flex: 0 0 .4rem; width: .4rem; height: .4rem; margin-left: auto; border-right: 1.5px solid #526b86; border-bottom: 1.5px solid #526b86; transform: rotate(45deg); }
+    .provider-card[open] > .provider-card-header::after { transform: rotate(225deg); }
+    .provider-card-name { min-width: 0; overflow-wrap: anywhere; }
+    :host([embedded]) .provider-card-header input { flex: 0 0 auto; width: auto; min-height: 0; margin: 0; padding: 0; accent-color: #3977c7; }
+    :host([provider-id]:not([provider-id=""])) { margin-top: 0; min-width: 0; max-width: 100%; }
+    :host([embedded]) form, :host([embedded]) .credential-panel, :host([embedded]) .advanced-options { min-width: 0; }
+    :host([embedded]) .hint, :host([embedded]) .credential-status, :host([embedded]) .feedback { overflow-wrap: anywhere; }
+    :host([embedded]) .dialog-button { max-width: 100%; }
+    .new-provider-card { margin-top: .75rem; }
+
     @media (max-width: 42rem) {
       .dialog {
         grid-template-columns: 1fr;
@@ -507,6 +564,11 @@ export class AISettingsDialog extends LitElement {
     }
   `
 
+  providerId = ""
+  private addingProvider = false
+  private expandedProviders = new Set<string>()
+  private storedProvider: AIProviderConfig | undefined
+  embedded = false
   open = false
   store: AIProviderStore | null = null
   private draft: AIProviderConfig | null = null
@@ -523,10 +585,22 @@ export class AISettingsDialog extends LitElement {
   private modelFetchDraftEdits: Partial<Pick<AIProviderConfig, "name" | "keyMode">> = {}
   private subscribedStore: AIProviderStore | null = null
   private readonly handleStoreChange = () => {
-    if(this.draft && this.store?.provider(this.draft.id)) {
-      this.draft = cloneProvider(this.store.provider(this.draft.id)!)
-    }
+    const provider = this.draft ? this.store?.provider(this.draft.id) : undefined
+    if(provider && provider !== this.storedProvider) this.draft = cloneProvider(provider)
+    this.storedProvider = provider
     this.requestUpdate()
+  }
+
+  protected willUpdate(changed: PropertyValues<this>) {
+    if(!this.embedded || !changed.has("open") && !changed.has("providerId")) return
+    if(this.open) {
+      if(!this.draft) this.initializeDraft()
+      else this.scheduleAutoFetchModels()
+    }
+    else {
+      this.resetAutoFetch()
+      this.cancelModelFetch()
+    }
   }
 
   protected updated(changed: PropertyValues<this>) {
@@ -535,7 +609,7 @@ export class AISettingsDialog extends LitElement {
       this.subscribedStore = this.store
       this.subscribedStore?.addEventListener("change", this.handleStoreChange)
     }
-    if(changed.has("open") && this.open) {
+    if(!this.embedded && changed.has("open") && this.open) {
       const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
       if(this.isConnected && dialog && !dialog.open) dialog.showModal()
       queueMicrotask(() => {
@@ -553,18 +627,24 @@ export class AISettingsDialog extends LitElement {
     super.disconnectedCallback()
   }
 
-  show() {
+  private initializeDraft() {
     this.cancelModelFetch()
     this.resetAutoFetch()
-    const active = this.store?.activeProvider
+    const active = this.providerId ? this.store?.provider(this.providerId) : this.embedded ? undefined : this.store?.activeProvider
+    this.storedProvider = active
     this.draft = active ? cloneProvider(active) : this.store?.prepare(createAIProvider("openai")) ?? createAIProvider("openai")
     this.apiKey = ""
     this.passphrase = ""
     this.error = ""
     this.notice = ""
     this.pendingDelete = false
-    this.open = true
+    if(this.providerId && this.draft.models.length) this.autoFetchSignature = this.modelFetchSignature()
     this.scheduleAutoFetchModels()
+  }
+
+  show() {
+    this.initializeDraft()
+    this.open = true
   }
 
   close() {
@@ -584,6 +664,7 @@ export class AISettingsDialog extends LitElement {
     this.resetAutoFetch()
     this.cancelModelFetch()
     this.draft = cloneProvider(provider)
+    this.storedProvider = provider
     this.apiKey = ""
     this.passphrase = ""
     this.error = ""
@@ -593,6 +674,8 @@ export class AISettingsDialog extends LitElement {
   }
 
   private startProvider(preset: AIProviderPreset) {
+    this.addingProvider = true
+    this.storedProvider = undefined
     this.resetAutoFetch()
     this.cancelModelFetch()
     this.draft = this.store?.prepare(createAIProvider(preset)) ?? createAIProvider(preset)
@@ -653,6 +736,7 @@ export class AISettingsDialog extends LitElement {
   private scheduleAutoFetchModels() {
     this.clearAutoFetchTimer()
     if(this.loading) return
+    if(this.embedded && !this.providerId && !this.addingProvider && this.store?.providers.length) return
     const signature = this.modelFetchSignature()
     if(!signature || signature === this.autoFetchSignature) return
     this.autoFetchTimer = setTimeout(() => {
@@ -780,11 +864,16 @@ export class AISettingsDialog extends LitElement {
       const provider = normalizeAIProvider(this.draft)
       const previous = this.store.provider(provider.id)
       if(provider.managed !== "backend") await this.persistCredential(provider, previous)
-      const saved = await this.store.save(provider, this.apiKey.trim() || undefined)
+      const saved = await this.store.save(provider, this.apiKey.trim() || undefined, !this.providerId)
       this.draft = cloneProvider(saved)
       this.apiKey = ""
       this.passphrase = ""
       this.notice = "Provider saved."
+      if(this.embedded && !this.providerId) {
+        this.addingProvider = false
+        this.initializeDraft()
+        this.notice = "Provider saved."
+      }
     }
     catch(error) {
       this.error = error instanceof Error ? error.message : String(error)
@@ -829,7 +918,7 @@ export class AISettingsDialog extends LitElement {
       let source = provider
       let key = this.apiKey.trim() || this.store.keyFor(provider)
       if(provider.managed === "backend") {
-        source = await this.store.save(provider, this.apiKey.trim() || undefined)
+        source = await this.store.save(provider, this.apiKey.trim() || undefined, !this.providerId)
         key = ""
       }
       const models = await listAIModels(source, key, controller.signal)
@@ -842,7 +931,7 @@ export class AISettingsDialog extends LitElement {
         models,
         defaultModel: models.includes(source.defaultModel) ? source.defaultModel : models[0] ?? "",
       }
-      const saved = provider.managed === "backend" ? await this.store.save(next) : next
+      const saved = provider.managed === "backend" ? await this.store.save(next, undefined, !this.providerId) : next
       if(sequence !== this.modelFetchSequence || controller.signal.aborted || !this.open) return
       const latestDraft = this.draft?.id === draftAtStart.id ? this.draft : draftAtStart
       this.draft = {
@@ -851,6 +940,11 @@ export class AISettingsDialog extends LitElement {
         keyMode: this.modelFetchDraftEdits.keyMode ?? latestDraft.keyMode,
       }
       this.notice = `${models.length} model${models.length === 1 ? "" : "s"} loaded.${provider.managed === "backend" ? " Provider saved." : " Save to keep this list."}`
+      if(this.embedded && !this.providerId && this.store.provider(saved.id)) {
+        this.addingProvider = false
+        this.initializeDraft()
+        this.notice = "Provider saved."
+      }
     }
     catch(error) {
       if(sequence === this.modelFetchSequence && !isAbortError(error)) this.error = error instanceof Error ? error.message : String(error)
@@ -893,42 +987,26 @@ export class AISettingsDialog extends LitElement {
     if(event.target === event.currentTarget) this.close()
   }
 
-  render() {
-    if(!this.open || !this.draft) return nothing
-    const providers = this.store?.providers ?? []
+  private cancelProviderDraft = () => {
+    this.addingProvider = false
+    this.show()
+  }
+
+  private activateProvider = async (providerId: string) => {
+    if(!this.store || this.loading) return
+    this.loading = true
+    this.error = ""
+    try { await this.store.activate(providerId) }
+    catch(error) { this.error = error instanceof Error ? error.message : String(error) }
+    finally { this.loading = false }
+  }
+
+  private renderProviderForm() {
+    if(!this.draft) return nothing
     const existing = Boolean(this.store?.provider(this.draft.id))
     const encryptedStored = this.draft.managed !== "backend" && Boolean(this.store?.vault.hasEncrypted(this.draft.id))
     const modelFetchReady = this.canFetchModels()
     return html`
-      <dialog class="backdrop" aria-labelledby="ai-settings-title"
-        @click=${this.handleBackdropClick}
-        @cancel=${(event: Event) => { event.preventDefault(); this.close() }}
-        @close=${(event: Event) => { if(this.open && !(event.currentTarget as HTMLDialogElement).open) this.close() }}
-      >
-        <section class="dialog" tabindex="-1" @click=${(event: Event) => event.stopPropagation()}>
-          <aside class="sidebar">
-            <h2 id="ai-settings-title">AI providers</h2>
-            <div class="providers" aria-label="Configured providers">
-              ${providers.length ? providers.map(provider => html`
-                <button
-                  type="button"
-                  aria-current=${provider.id === this.draft!.id}
-                  ?disabled=${this.loading}
-                  @click=${() => this.selectProvider(provider.id)}
-                >${provider.name}</button>
-              `) : html`<p class="hint">No providers configured yet.</p>`}
-            </div>
-            <h3>Add provider</h3>
-            <div class="presets">
-              <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("openai")}>OpenAI</button>
-              <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("custom")}>Custom</button>
-            </div>
-          </aside>
-          <main class="content">
-            <header class="content-header">
-              <h2>${existing ? `Edit ${this.draft.name}` : `Add ${this.draft.name}`}</h2>
-              <button class="close" type="button" aria-label="Close AI settings" @click=${this.close}>×</button>
-            </header>
             <form @submit=${this.save}>
               <label>
                 Name
@@ -937,7 +1015,7 @@ export class AISettingsDialog extends LitElement {
               <label>
                 OpenAI-compatible base URL
                 <input required inputmode="url" spellcheck="false" ?disabled=${this.loading} .value=${this.draft.baseUrl} @input=${this.updateBaseUrl}>
-                <span class="hint">${this.draft.managed === "backend"
+                <span class="hint">${this.embedded ? "Enter the provider’s OpenAI-compatible API endpoint." : this.draft.managed === "backend"
                   ? "Requests use the localhost Inference API; credentials are not sent to the browser."
                   : html`The app calls <code>/models</code> and <code>/chat/completions</code> directly from this browser.`}</span>
               </label>
@@ -1030,13 +1108,92 @@ export class AISettingsDialog extends LitElement {
                     ${this.pendingDelete ? "Confirm delete" : "Delete provider"}
                   </button>
                 ` : nothing}
-                <button class="dialog-button" type="button" @click=${this.close}>Cancel</button>
+                <button class="dialog-button" type="button" @click=${this.embedded ? this.cancelProviderDraft : this.close}>Cancel</button>
                 <button class="dialog-button primary" type="submit" ?disabled=${this.loading}>${this.loading ? "Saving…" : "Save provider"}</button>
               </div>
             </form>
+    `
+  }
+
+  private renderProviderCards() {
+    const providers = this.store?.providers ?? []
+    return html`<section class="provider-cards" aria-labelledby="ai-settings-title">
+      <h2 id="ai-settings-title">AI providers</h2>
+      <div class="providers" aria-label="Configured providers">
+        ${repeat(providers.filter(provider => !(this.loading && provider.id === this.draft?.id)), provider => provider.id, provider => html`
+          <details class="provider-card" ?data-active=${this.store?.activeProviderId === provider.id}
+            .open=${this.expandedProviders.has(provider.id)} @toggle=${(event: Event) => {
+              const open = (event.currentTarget as HTMLDetailsElement).open
+              if(open === this.expandedProviders.has(provider.id)) return
+              const expanded = new Set(this.expandedProviders)
+              if(open) expanded.add(provider.id)
+              else expanded.delete(provider.id)
+              this.expandedProviders = expanded
+            }}>
+            <summary class="provider-card-header">
+              <input type="radio" name="active-ai-provider" aria-label=${`Use ${provider.name}`}
+                .checked=${live(this.store?.activeProviderId === provider.id)} ?disabled=${this.loading}
+                @click=${(event: Event) => event.stopPropagation()}
+                @change=${() => this.activateProvider(provider.id)}>
+              <span class="provider-icon" aria-hidden="true">${ribbonIcon("AI")}</span><span class="provider-card-name">${provider.name}</span>
+            </summary>
+            <ai-settings-dialog embedded .providerId=${provider.id} .store=${this.store} .open=${this.open && this.expandedProviders.has(provider.id)}></ai-settings-dialog>
+          </details>
+        `)}
+      </div>
+      <h3>Add an AI provider</h3>
+      <div class="presets">
+        <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("openai")}>OpenAI</button>
+        <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("custom")}>Custom</button>
+      </div>
+      ${this.addingProvider || !providers.length ? html`<div class="content new-provider-card">
+        <header class="content-header"><h2>Add ${this.draft?.name}</h2></header>${this.renderProviderForm()}
+      </div>` : nothing}
+      ${!this.addingProvider && providers.length && this.error ? html`<p class="feedback error" role="alert">${this.error}</p>` : nothing}
+      ${!this.addingProvider && providers.length && this.notice ? html`<p class="feedback notice" role="status">${this.notice}</p>` : nothing}
+    </section>`
+  }
+
+  render() {
+    if(!this.open || !this.draft) return nothing
+    if(this.embedded) return this.providerId ? this.renderProviderForm() : this.renderProviderCards()
+    const providers = this.store?.providers ?? []
+    const existing = Boolean(this.store?.provider(this.draft.id))
+    const content = html`
+        <section class="dialog" tabindex="-1" @click=${(event: Event) => event.stopPropagation()}>
+          <aside class="sidebar">
+            <h2 id="ai-settings-title">AI providers</h2>
+            <div class="providers" aria-label="Configured providers">
+              ${providers.length ? providers.map(provider => html`
+                <button
+                  type="button"
+                  aria-current=${provider.id === this.draft!.id}
+                  ?disabled=${this.loading}
+                  @click=${() => this.selectProvider(provider.id)}
+                >${this.embedded ? html`<span class="provider-icon" aria-hidden="true">${ribbonIcon("AI")}</span>` : nothing}${provider.name}</button>
+              `) : html`<p class="hint">No providers configured yet.</p>`}
+            </div>
+            <h3>Add provider</h3>
+            <div class="presets">
+              <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("openai")}>OpenAI</button>
+              <button class="preset-button" type="button" ?disabled=${this.loading} @click=${() => this.startProvider("custom")}>Custom</button>
+            </div>
+          </aside>
+          <main class="content">
+            <header class="content-header">
+              <h2>${existing ? `Edit ${this.draft.name}` : `Add ${this.draft.name}`}</h2>
+              ${this.embedded ? nothing : html`<button class="close" type="button" aria-label="Close AI settings" title="Close AI settings" @click=${this.close}>${ribbonIcon("Reject")}</button>`}
+            </header>
+            ${this.renderProviderForm()}
           </main>
         </section>
-      </dialog>
+    `
+    return this.embedded ? content : html`
+      <dialog class="backdrop" aria-labelledby="ai-settings-title"
+        @click=${this.handleBackdropClick}
+        @cancel=${(event: Event) => { event.preventDefault(); this.close() }}
+        @close=${(event: Event) => { if(this.open && !(event.currentTarget as HTMLDialogElement).open) this.close() }}
+      >${content}</dialog>
     `
   }
 }

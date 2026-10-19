@@ -5,10 +5,26 @@ import "@testing-library/jest-dom/vitest"
 import {DOMEditor} from "../domeditor"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
+import {createImageMapPopoverController, imageMapHotspotBounds} from "../media"
 
 let editor: DOMEditor
 const fetchSettings = (window as unknown as TestWindow).happyDOM.settings.fetch
 const originalFetchInterceptor = fetchSettings.interceptor
+
+// Happy DOM does not carry DragEventInit.dataTransfer through its constructor.
+function mediaDragEvent(type: string, dataTransfer: DataTransfer) {
+  const event = new DragEvent(type, {bubbles: true, composed: true, cancelable: true})
+  Object.defineProperty(event, "dataTransfer", {value: dataTransfer})
+  return event
+}
+
+function fileTransfer(file: File) {
+  const transfer = new DataTransfer()
+  transfer.items.add(file)
+  // Happy DOM omits Files when a File has an empty MIME type.
+  Object.defineProperty(transfer, "types", {configurable: true, value: ["Files"]})
+  return transfer
+}
 
 beforeEach(() => {
   // Source-attribute tests should not request real iframe pages.
@@ -24,6 +40,295 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each(['<video></video>', '<video src=" "></video>', '<video><source src=" "></video>'])("does not crop an empty video: %s", html => {
+    document.body.innerHTML = html
+    const video = document.querySelector("video")!
+    video.style.cssText = "width:320px;height:180px"
+    editor.features.selection.captureElement(video)
+    const authored = editor.toHTML(true)
+    expect(editor.features.media.cropTargetFor(video)).toBeNull()
+    expect(editor.features.media.canCrop(video)).toBe(false)
+    expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(true)
+    expect(editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(10%)"})).toBe(false)
+    expect(editor.toHTML(true)).toBe(authored)
+    video.innerHTML = '<source src="movie.mp4">'
+    editor.features.selection.processSelection()
+    expect(editor.features.media.canCrop(video)).toBe(true)
+    expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(false)
+    video.querySelector("source")!.remove()
+    editor.features.selection.processSelection()
+    expect(editor.features.media.canCrop(video)).toBe(false)
+  })
+
+  const mockImageGeometry = (image: HTMLImageElement, width: number, height: number, naturalWidth: number, naturalHeight: number) => {
+    image.style.width = `${width}px`
+    image.style.height = `${height}px`
+    Object.defineProperties(image, {
+      naturalWidth: {configurable: true, value: naturalWidth},
+      naturalHeight: {configurable: true, value: naturalHeight},
+    })
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, width, height))
+  }
+
+  it("applies a default aspect ratio only to empty media placeholders", () => {
+    document.body.innerHTML = '<picture><source srcset="photo.webp"><img srcset="photo.png"></picture><video><source src="movie.mp4"></video><picture></picture><video></video>'
+    editor.features.media["refresh"]()
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(editorStyleString)
+    const aspectRules = Array.from(sheet.cssRules).filter((rule): rule is CSSStyleRule => rule instanceof CSSStyleRule && !!rule.style.getPropertyValue("aspect-ratio"))
+    const [image, video, emptyImage, emptyVideo] = document.body.querySelectorAll("picture, video")
+    for(const actual of [image, video]) {
+      expect(actual).not.toHaveClass("◆media-empty")
+      expect(aspectRules.filter(rule => actual.matches(rule.selectorText))).toHaveLength(0)
+    }
+    for(const placeholder of [emptyImage, emptyVideo]) {
+      expect(placeholder).toHaveClass("◆media-empty")
+      expect(aspectRules.some(rule => placeholder.matches(rule.selectorText) && rule.style.getPropertyValue("aspect-ratio") === "16 / 9")).toBe(true)
+    }
+  })
+
+  it("sizes the source and figure together and restores the full viewport on clear", () => {
+    document.body.innerHTML = '<figure style="width: 360px"><picture style="width: 360px; height: 200px"><img style="width: 360px; height: 200px"></picture><figcaption>Caption</figcaption></figure>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const figure = document.querySelector("figure")!
+    const image = document.querySelector("img")!
+    const picture = document.querySelector("picture")!
+    $.selectElement(figure)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    expect(parseFloat(figure.style.maxWidth)).toBeCloseTo(252)
+    expect(figure.style.maxHeight).toBe("120px")
+    expect(figure.style.width).toBe("360px")
+    expect(figure.style.height).toBe("")
+    expect(picture.style.width).toBe("360px")
+    expect(picture.style.height).toBe("200px")
+    expect(image.style.width).toBe("252px")
+    expect(image.style.height).toBe("120px")
+    expect(image.style.maxWidth).toBe("252px")
+    expect(image.style.maxHeight).toBe("120px")
+    expect(image.style.objectFit).toBe("fill")
+    expect(image.style.getPropertyValue("object-view-box")).toBe("inset(15% 20% 25% 10%)")
+    expect(picture.style.maxWidth).toBe("252px")
+    expect(picture.style.maxHeight).toBe("120px")
+    expect(figure.outerHTML).not.toContain("--ww-crop")
+    // Reapplying the same crop must not shrink the frame again.
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    expect(parseFloat(figure.style.maxWidth)).toBeCloseTo(252)
+    const cropped = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: null})
+    expect(image.style.getPropertyValue("object-view-box")).toBe("")
+    expect(image.style.width).toBe("360px")
+    expect(image.style.height).toBe("200px")
+    expect(image.style.maxWidth).toBe("360px")
+    expect(image.style.maxHeight).toBe("200px")
+    expect(image.style.objectFit).toBe("fill")
+    expect(picture.style.maxWidth).toBe("360px")
+    expect(picture.style.maxHeight).toBe("200px")
+    expect(figure.style.maxWidth).toBe("360px")
+    expect(figure.style.maxHeight).toBe("200px")
+    const cleared = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(cropped)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(cleared)
+  })
+
+  it("sizes a standalone media crop without changing authored margins", () => {
+    document.body.innerHTML = '<video src="movie.mp4" style="width: 360px; height: 200px; margin-top: 12px !important; margin-left: 8px"></video>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(15% 20% 25% 10%)"})
+    expect(parseFloat(video.style.maxWidth)).toBeCloseTo(252)
+    expect(video.style.maxHeight).toBe("120px")
+    expect(video.style.width).toBe("252px")
+    expect(video.style.height).toBe("120px")
+    expect(video.style.objectFit).toBe("fill")
+    expect(video.style.getPropertyValue("object-view-box")).toBe("inset(15% 20% 25% 10%)")
+    expect(video.style.getPropertyValue("margin-top")).toBe("12px")
+    expect(video.style.getPropertyPriority("margin-top")).toBe("important")
+    expect(video.style.marginLeft).toBe("8px")
+    expect(video.getAttribute("style")).not.toContain("--ww-crop")
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: null})
+    expect(video.style.getPropertyValue("object-view-box")).toBe("")
+    expect(video.style.maxWidth).toBe("360px")
+    expect(video.style.maxHeight).toBe("200px")
+    expect(video.style.width).toBe("360px")
+    expect(video.style.height).toBe("200px")
+    expect(video.style.getPropertyValue("margin-top")).toBe("12px")
+    expect(video.style.getPropertyPriority("margin-top")).toBe("important")
+    expect(video.style.marginLeft).toBe("8px")
+    expect(video.getAttribute("style")).not.toContain("--ww-crop")
+  })
+
+  it("maps a local crop to the natural image viewport and resizes the displayed source", () => {
+    const image = document.createElement("img")
+    document.body.append(image)
+    mockImageGeometry(image, 500, 200, 1000, 400)
+
+    expect(editor.features.media.cropValueFor(image, [10, 25, 20, 15])).toBe("inset(10% 25% 20% 15%)")
+    const styles = editor.features.media.cropLayoutStyles(image, "inset(10% 25% 20% 15%)").get(image)!
+    expect(styles["width"]).toBe("300px")
+    expect(styles["height"]).toBe("140px")
+    expect(styles["max-width"]).toBe("300px")
+    expect(styles["max-height"]).toBe("140px")
+    expect(styles["object-fit"]).toBe("fill")
+  })
+
+  it.each([
+    ["cover", [10, 25, 20, 15], "inset(10% 33.333333% 20% 26.666667%)", "300px", "210px"],
+    ["contain", [25, 10, 25, 10], "inset(12.5% 10% 12.5% 10%)", "400px", "150px"],
+    ["contain", [10, 10, 10, 10], "xywh(100px -40px 800px 480px)", "400px", "240px"],
+  ] as const)("maps local crop edges through object-fit %s", (fit, edges, expectedCrop, expectedWidth, expectedHeight) => {
+    const image = document.createElement("img")
+    image.style.objectFit = fit
+    document.body.append(image)
+    mockImageGeometry(image, 500, 300, 1000, 400)
+
+    const crop = editor.features.media.cropValueFor(image, [...edges])
+    expect(crop).toBe(expectedCrop)
+    const styles = editor.features.media.cropLayoutStyles(image, crop).get(image)!
+    expect(styles.width).toBe(expectedWidth)
+    expect(styles.height).toBe(expectedHeight)
+    expect(styles["object-fit"]).toBe("fill")
+  })
+
+  it("preserves an explicit object position when mapping a crop and aligns the new viewport", () => {
+    const image = document.createElement("img")
+    document.body.append(image)
+    mockImageGeometry(image, 500, 200, 1000, 400)
+    image.style.objectPosition = "10px 20px"
+    const value = editor.features.media.cropValueFor(image, [10, 25, 20, 15])!
+    expect(value).toBe("inset(0% 27% 30% 13%)")
+    const styles = editor.features.media.cropLayoutStyles(image, value).get(image)!
+    expect(styles.width).toBe("300px")
+    expect(styles.height).toBe("140px")
+    expect(styles["object-position"]).toBe("0% 0%")
+  })
+
+  it("allows a crop smaller than the editor's default media minimum", () => {
+    document.body.innerHTML = '<video src="movie.mp4" style="width:500px;height:200px"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(0% 0% 0% 80%)"})
+    expect(video.style.width).toBe("100px")
+    expect(video.style.maxWidth).toBe("100px")
+    expect(video.style.minWidth).toBe("0px")
+    expect(video.style.minHeight).toBe("0px")
+  })
+
+  it("replaces the previous percentage clip crop with a source viewport", () => {
+    document.body.innerHTML = '<video src="movie.mp4" style="width: 360px; height: 200px; clip-path: inset(10%)"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(10%)"})
+    expect(video.style.clipPath).toBe("")
+    expect(video.style.getPropertyValue("object-view-box")).toBe("inset(10%)")
+  })
+
+  it("crops nested picture and video surfaces without disturbing their surrounding markup", async () => {
+    document.body.innerHTML = `
+      <p class="lead"><picture><source media="(max-width: 20rem)" srcset="small.png"><img src="large.png" alt="Photo"></picture> after</p>
+      <figure><video controls><source src="movie.mp4" type="video/mp4"></video><figcaption>Caption</figcaption></figure>
+    `
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const picture = document.querySelector("picture")!
+    const figure = document.querySelector("figure")!
+    const crop = {value: "inset(10% 20% 30% 40%)", priority: ""} as const
+
+    $.selectElement(picture)
+    expect(editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop})).toBe(true)
+    await Promise.resolve()
+    const croppedImage = picture.querySelector("img")!
+    expect(croppedImage.style.getPropertyValue("object-view-box")).toBe(crop.value)
+    expect(picture.querySelector("source")?.getAttribute("srcset")).toBe("small.png")
+    expect(picture.parentElement?.outerHTML).toContain("class=\"lead\"")
+
+    $.selectElement(figure)
+    expect(editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop})).toBe(true)
+    await Promise.resolve()
+    expect(figure.querySelector("video")?.style.getPropertyValue("object-view-box")).toBe(crop.value)
+    expect(figure.querySelector("source")?.getAttribute("src")).toBe("movie.mp4")
+    expect(figure.querySelector("figcaption")?.textContent).toBe("Caption")
+
+    const after = editor.toHTML(true)
+    const serialized = new DOMParser().parseFromString(after, "text/html")
+    expect(serialized.querySelector("picture img")?.getAttribute("style")).toContain("object-view-box: inset(10% 20% 30% 40%);")
+    expect(serialized.querySelector("picture source")?.getAttribute("srcset")).toBe("small.png")
+    expect(serialized.querySelector("video")?.getAttribute("style")).toContain("object-view-box: inset(10% 20% 30% 40%);")
+    expect(serialized.querySelector("figure figcaption")?.textContent).toBe("Caption")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("resolves the current image after a selected picture's image is replaced", () => {
+    document.body.innerHTML = "<picture><img src=\"old.png\"></picture>"
+    const picture = document.querySelector("picture")!
+    const oldImage = picture.querySelector("img")!
+    $.selectElement(picture)
+    oldImage.remove()
+    picture.innerHTML = '<img src="new.png">'
+
+    expect(editor.features.media.actions.setMediaCrop({
+      type: "setMediaCrop", crop: {value: "inset(10%)", priority: ""},
+    })).toBe(true)
+    expect(oldImage.style.getPropertyValue("object-view-box")).toBe("")
+    expect(picture.querySelector("img")?.style.getPropertyValue("object-view-box")).toBe("inset(10%)")
+
+    picture.remove()
+    expect(editor.features.media.actions.setMediaCrop({
+      type: "setMediaCrop", crop: {value: "inset(20%)", priority: ""},
+    })).toBe(false)
+  })
+
+  it.each([
+    "inset(20px calc(100% - 700px) calc(100% - 440px) -100px)",
+    "inset(20px -60px 40px -100px)",
+  ])("keeps a video crop editable when its computed viewport is %s", computed => {
+    document.body.innerHTML = '<video src="movie.mp4" style="width: 300px; height: 180px; object-fit: fill; object-position: 0% 0%; object-view-box: xywh(-100px 20px 800px 420px)"></video>'
+    const video = document.querySelector("video")!
+    Object.defineProperties(video, {videoWidth: {value: 640}, videoHeight: {value: 480}})
+    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 180))
+    const nativeStyle = getComputedStyle
+    vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element, pseudo) => {
+      const style = nativeStyle(element, pseudo)
+      return element !== video ? style : new Proxy(style, {get(style, property) {
+        if(property === "getPropertyValue") return (name: string) => name === "object-view-box" ? computed : style.getPropertyValue(name)
+        const value = Reflect.get(style, property, style)
+        return typeof value === "function" ? value.bind(style) : value
+      }})
+    })
+    try {
+      editor.features.selection.captureElement(video)
+      expect(editor.features.media.canCrop(video)).toBe(true)
+      expect(editor.features.transformation.overlay.querySelector<HTMLElement>('.◆transform-overlay-crop-frame')!.hidden).toBe(false)
+      expect(editor.features.media.cropValueFor(video, [10, 0, 0, 10])).toBe("xywh(-20px 62px 720px 378px)")
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it("does not crop media owned by an atomic widget", () => {
+    document.body.innerHTML = '<media-widget><img src="widget.png"></media-widget>'
+    const widget = document.querySelector("media-widget")!
+    const image = widget.querySelector("img")!
+    $.selectElement(image)
+
+    expect(editor.features.media.actions.setMediaCrop({
+      type: "setMediaCrop", crop: {value: "inset(10%)", priority: ""},
+    })).toBe(false)
+    expect(image.style.getPropertyValue("object-view-box")).toBe("")
+  })
+
   it("does not construct widgets while serializing timed-media fallback HTML", () => {
     let constructions = 0
     const tag = "media-serialization-probe"
@@ -51,12 +356,12 @@ describe("media editing", () => {
     expect(frame).not.toBeNull()
     expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
     expect(frame.getAttribute("src")).toBe("https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html")
-    expect(frame.style.float).toBe("right")
+    expect(frame.parentElement).toBe(document.body)
     expect(editor.toHTML(true)).toContain('sandbox="allow-scripts"')
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
-    "node-selects the %s surface and capture-selects its placeholder controls", async media => {
+    "capture-selects the %s surface and its placeholder controls", async media => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media})
       const target = document.querySelector(media === "img" ? "picture" : ["embed", "object"].includes(media) ? "iframe" : media)!
       const placeholder = editor.features.media.placeholder
@@ -64,9 +369,9 @@ describe("media editing", () => {
       for(const selector of [".file", ".file svg", ".url", ".apply"]) {
         target.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
         expect($.selectedElement).toBe(target)
-        expect(editor.features.selection.captureSelectedElement).toBeNull()
+        expect(editor.features.selection.captureSelectedElement).toBe(target)
         expect(target).toHaveClass("◆element-selected")
-        expect(target).not.toHaveClass("◆element-capture-selected")
+        expect(target).toHaveClass("◆element-capture-selected")
 
         placeholder.root.querySelector(selector)!.dispatchEvent(new PointerEvent("pointerdown", {
           bubbles: true, composed: true, cancelable: true, button: 0,
@@ -82,15 +387,15 @@ describe("media editing", () => {
     '<audio src="audio.mp3"></audio>', '<video src="video.mp4"></video>',
     '<iframe src="about:blank"></iframe>', '<embed src="about:blank">',
     '<object data="about:blank"></object>',
-  ])("node-selects populated media on repeated surface clicks: %s", html => {
+  ])("capture-selects populated media on repeated surface clicks: %s", html => {
     document.body.innerHTML = html
     const target = document.body.firstElementChild!
     for(let click = 0; click < 2; click++) {
       const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
       target.dispatchEvent(down)
-      expect(down.defaultPrevented).toBe(true)
+      expect(down.defaultPrevented).toBe(false)
       expect($.selectedElement).toBe(target)
-      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(editor.features.selection.captureSelectedElement).toBe(target)
     }
   })
 
@@ -107,6 +412,41 @@ describe("media editing", () => {
     populated.removeAttribute("controls")
     await vi.waitFor(() => expect(populated).toHaveAttribute("controls"))
     expect(editor.toHTML(true)).toContain('<audio src="sound.mp3" controls=""></audio>')
+  })
+
+  it.each(["picture", "audio", "video", "iframe"] as const)("initially captures inserted %s", media => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media})
+    expect(editor.features.selection.captureSelectedElement).toBe(document.querySelector(media))
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["audio", "video"])("switches %s between its outline and native controls", tag => {
+    document.body.innerHTML = `<figure><!--keep--><${tag} src="movie.mp4" controls></${tag}><figcaption>Caption</figcaption></figure><p>After</p>`
+    const media = document.querySelector(tag)!
+    const selection = editor.features.selection
+    const authored = editor.toHTML(true)
+    for(let attempt = 0; attempt < 2; attempt++) {
+      const down = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0})
+      media.dispatchEvent(down)
+      expect(down.defaultPrevented).toBe(false)
+      expect(selection.captureSelectedElement).toBe(media)
+      expect(selection.isInDragSelection).toBe(false)
+      const key = new KeyboardEvent("keydown", {key: " ", bubbles: true, cancelable: true})
+      media.dispatchEvent(key)
+      expect(key.defaultPrevented).toBe(false)
+      const click = new MouseEvent("click", {bubbles: true, cancelable: true, detail: 2})
+      media.dispatchEvent(click)
+      expect(click.defaultPrevented).toBe(false)
+      expect(selection.captureSelectedElement).toBe(media)
+      selection.selectionCaret!.querySelector(".◆capture-edge")!.dispatchEvent(new PointerEvent("pointerdown", {
+        bubbles: true, composed: true, cancelable: true, button: 0,
+      }))
+      expect(selection.captureSelectedElement).toBeNull()
+      expect($.selectedElement).toBe(media.closest("figure"))
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+    selection.selectElement(document.querySelector("p")!)
+    expect(media).not.toHaveClass("◆element-capture-selected", "◆element-selected")
   })
 
   it("promotes clicks and interior selections to the outer media node", () => {
@@ -161,7 +501,12 @@ describe("media editing", () => {
     expect(placeholder).toHaveAttribute("data-media", "audio")
     expect(getComputedStyle(placeholder).backgroundColor).toBe("rgba(31, 41, 55, 0.5)")
     const selectionZIndex = editorStyleString.match(/body::part\(selection-caret\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
-    expect(Number(getComputedStyle(placeholder).zIndex)).toBeGreaterThan(Number(selectionZIndex))
+    const dragZIndex = editorStyleString.match(/body::part\(node-drag-surface\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
+    const transformZIndex = editorStyleString.match(/body::part\(transform-overlay\)\s*\{[^}]*z-index:\s*(\d+)/)![1]
+    const placeholderZIndex = Number(getComputedStyle(placeholder).zIndex)
+    expect(placeholderZIndex).toBeGreaterThanOrEqual(Number(selectionZIndex))
+    expect(placeholderZIndex).toBeGreaterThan(Number(dragZIndex))
+    expect(placeholderZIndex).toBeLessThan(Number(transformZIndex))
     expect(placeholderController.root.querySelector(".hint")).toBeNull()
     expect(Array.from(placeholderController.root.querySelector(".content")!.children)).toContain(
       placeholderController.root.querySelector(".url-row"),
@@ -629,30 +974,45 @@ describe("media editing", () => {
     expect(audio).toHaveClass("◆element-selected", "◆element-capture-selected")
   })
 
-  it("reads uploaded files as data URLs", async () => {
+  it("keeps uploaded files as object URLs and embeds them only on saving", async () => {
     editor.features.media.actions.insertMedia({type: "insertMedia", media: "img"})
     const image = document.querySelector("img")!
     const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
     Object.defineProperty(picker, "files", {configurable: true, value: [new File(["image"], "photo.png", {type: "image/png"})]})
     picker.dispatchEvent(new Event("change"))
     await vi.waitFor(() => {
-      expect(image.getAttribute("src")).toMatch(/^data:image\/png;base64,/)
+      expect(image.getAttribute("src")).toMatch(/^blob:/)
     }, {timeout: 5_000})
+    const source = image.getAttribute("src")!
+    expect(editor.toHTML(true)).toContain(source)
+    expect(editor.features.media.getState()).toMatchObject({sourceSize: 5, sourceLabel: "photo.png"})
+    expect(await editor.serializeHTML()).toContain(`data:image/png;base64,${btoa("image")}`)
+    expect(image.getAttribute("src")).toBe(source)
+  })
+
+  it("retains object URLs while disabled and revokes them at destruction", async () => {
+    const revoke = vi.spyOn(URL, "revokeObjectURL")
+    const source = editor.createMediaURL(new Blob(["audio"], {type: "audio/mpeg"}))
+    document.body.innerHTML = `<audio src="${source}"></audio><template><object data="${source}"></object></template><svg><image href="${source}"></image></svg><picture><source srcset="${source} 2x"><img src="${source}" alt="${source}"></picture>`
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    const data = `data:audio/mpeg;base64,${btoa("audio")}`
+    expect(saved.querySelector("audio")!.getAttribute("src")).toBe(data)
+    expect(saved.querySelector("template")!.content.querySelector("object")!.getAttribute("data")).toBe(data)
+    expect(saved.querySelector("svg image")!.getAttribute("href")).toBe(data)
+    expect(saved.querySelector("source")!.getAttribute("srcset")).toBe(`${data} 2x`)
+    expect(saved.querySelector("img")!.getAttribute("alt")).toBe(source)
+    editor.features.media.disable()
+    expect(revoke).not.toHaveBeenCalledWith(source)
+    editor.destroy()
+    expect(revoke).toHaveBeenCalledWith(source)
   })
 
   it.each(["populated", "moved into a widget", "feature disabled", "editor destroyed"])(
-    "ignores a delayed file read after its target is %s", state => {
-      let reader: FileReader | undefined
-      vi.spyOn(FileReader.prototype, "readAsDataURL").mockImplementation(function(this: FileReader) {
-        reader = this
-      })
+    "ignores a file selection after its target is %s", state => {
       editor.features.media.actions.insertMedia({type: "insertMedia", media: "img"})
       const image = document.querySelector("img")!
       const picker = editor.features.media.placeholder.root.querySelector<HTMLInputElement>(".picker")!
       Object.defineProperty(picker, "files", {configurable: true, value: [new File(["image"], "photo.png", {type: "image/png"})]})
-      picker.dispatchEvent(new Event("change"))
-      expect(reader).toBeDefined()
-
       if(state === "populated") image.setAttribute("src", "remote.png")
       else if(state === "moved into a widget") {
         const widget = document.createElement("media-widget")
@@ -661,10 +1021,7 @@ describe("media editing", () => {
       }
       else if(state === "feature disabled") editor.features.media.disable()
       else editor.destroy()
-
-      Object.defineProperty(reader!, "result", {configurable: true, value: "data:image/png;base64,bG9jYWw="})
-      reader!.dispatchEvent(new Event("load"))
-
+      picker.dispatchEvent(new Event("change"))
       expect(image.getAttribute("src")).toBe(state === "populated" ? "remote.png" : null)
     },
   )
@@ -890,8 +1247,10 @@ describe("media editing", () => {
       path: areaState.path,
       expected: areaState.attributes,
     })).toBe(true)
-    expect(map.querySelector("area")).toBeNull()
-    expect(map.querySelector("span")).toBe(wrapper)
+    expect(map.isConnected).toBe(false)
+    expect(wrapper.isConnected).toBe(true)
+    expect(wrapper.firstChild).toBeInstanceOf(Comment)
+    expect(image).not.toHaveAttribute("usemap")
   })
 
   it("unlinks a shared image map without deleting it for other images", () => {
@@ -948,6 +1307,221 @@ describe("media editing", () => {
     expect(editor.toHTML(true)).not.toContain("image-map-overlay")
   })
 
+  it("moves captured hotspots, resizes their vertices, and ignores concurrent replacements", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay
+    const svg = overlay.root.querySelector("svg")!
+    const area = document.querySelector("area")!
+    const down = (element: Element, x: number, y: number) => element.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: x, clientY: y}))
+    const up = (x: number, y: number) => svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: x, clientY: y}))
+    down(overlay.root.querySelector(".hotspot")!, 20, 20)
+    up(30, 25)
+    expect(area.getAttribute("coords")).toBe("20,15,50,45")
+    expect(overlay.root.querySelectorAll(".handle")).toHaveLength(4)
+    down(overlay.root.querySelectorAll(".handle")[1], 50, 45)
+    up(70, 60)
+    expect(area.getAttribute("coords")).toBe("20,15,70,60")
+    down(overlay.root.querySelector(".hotspot")!, 30, 30)
+    area.setAttribute("coords", "1,2,3,4")
+    up(40, 40)
+    expect(area.getAttribute("coords")).toBe("1,2,3,4")
+    expect(editor.toHTML(true)).not.toContain("image-map-overlay")
+  })
+
+  it("creates editable authored popovers and switches their trigger without rebuilding content", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="circle" coords="20,20,10"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    const state = () => editor.features.media.getState()!.imageMap!.areas[0]
+    let area = state()
+    expect(editor.features.media.actions.addImageMapPopover({type: "addImageMapPopover", path: area.path, expected: area.attributes})).toBe(true)
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    const paragraph = content.querySelector("p")!
+    paragraph.innerHTML = '<strong>Arbitrary</strong> content'
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    area = state()
+    expect(editor.features.media.actions.setImageMapPopoverTrigger({type: "setImageMapPopoverTrigger", path: area.path, expected: area.attributes, value: "hover"})).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("interestfor", content.id)
+    expect(document.querySelector("area")).not.toHaveAttribute("popovertarget")
+    expect(content.querySelector("p")).toBe(paragraph)
+    const show = vi.fn()
+    content.showPopover = show
+    document.querySelector("area")!.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
+    expect(show).toHaveBeenCalled()
+    expect(editor.toHTML(true)).toContain('<strong>Arbitrary</strong> content')
+    expect(editor.toHTML()).toContain('document.addEventListener("pointerover", handle)')
+    expect(editor.toHTML(false, false)).not.toContain('document.addEventListener("pointerover", handle)')
+  })
+
+  it("undoes and redoes hotspot popover creation as authored DOM", async () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.addImageMapPopover({type: "addImageMapPopover", path: area.path, expected: area.attributes})).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.querySelector("[popover]")).toBeNull()
+    expect(document.querySelector("area")).not.toHaveAttribute("popovertarget")
+    editor.doc.redo()
+    await Promise.resolve()
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    expect(content.querySelector("p")!.textContent).toBe("Popover content")
+    expect(document.querySelector("area")).toHaveAttribute("popovertarget", content.id)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["Backspace", "Delete"])("removes the selected hotspot with %s without removing the image", key => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay
+    overlay.root.querySelector(".hotspot")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 20, clientY: 20}))
+    overlay.root.querySelector("svg")!.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 20, clientY: 20}))
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true})
+    overlay.element.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(image.isConnected).toBe(true)
+    expect(document.querySelector("area, map")).toBeNull()
+    expect(image).not.toHaveAttribute("usemap")
+  })
+
+  it("edits hotspot URLs in the appendix and switches back to the same popover content", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,80,80"></map>'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay
+    const control = overlay.root.querySelector<HTMLDivElement>(".actions")!
+    expect(control.getRootNode()).toBe(overlay.root)
+    const input = control.querySelector<HTMLInputElement>("input")!
+    control.querySelector<HTMLButtonElement>(".link")!.click()
+    expect(control.querySelector("form")).not.toHaveAttribute("hidden")
+    input.value = "https://example.org/library"
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(control.querySelector("form")).toHaveAttribute("hidden")
+    const area = document.querySelector("area")!
+    expect(area).toHaveAttribute("href", "https://example.org/library")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true}))
+    expect(area.isConnected).toBe(true)
+    control.querySelector<HTMLButtonElement>(".popover")!.click()
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    content.querySelector("p")!.innerHTML = '<em>Keep this content</em>'
+    const id = content.id
+    control.querySelector<HTMLButtonElement>(".link")!.click()
+    expect(area).not.toHaveAttribute("popovertarget")
+    expect(area).toHaveAttribute("href", "https://example.org/library")
+    expect(area).toHaveAttribute("aria-details", id)
+    control.querySelector<HTMLButtonElement>(".popover")!.click()
+    expect(document.querySelectorAll("[popover]")).toHaveLength(1)
+    expect(area).toHaveAttribute("popovertarget", id)
+    expect(content.querySelector("em")!.textContent).toBe("Keep this content")
+    expect(editor.toHTML(true)).not.toMatch(/url-editor|action-buttons|Hotspot URL/)
+  })
+
+  it("positions popovers beside hotspots, flips at viewport edges, and cleans up presentation styles", () => {
+    document.body.innerHTML = '<img src="plan.png" width="100" height="100" usemap="#plan"><map name="plan"><area shape="rect" coords="60,20,80,40" popovertarget="details"></map><div id="details" popover="auto"><p>Content</p></div>'
+    const image = document.querySelector<HTMLImageElement>("img")!, area = document.querySelector("area")!, content = document.querySelector<HTMLElement>("#details")!
+    let imageLeft = 10
+    vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(imageLeft, 10, 100, 100))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 120, 80))
+    let opened = false
+    content.showPopover = () => { opened = true }
+    content.hidePopover = () => { opened = false }
+    const matches = content.matches.bind(content)
+    vi.spyOn(content, "matches").mockImplementation(selector => selector === ":popover-open" ? opened : matches(selector))
+    const original = document.adoptedStyleSheets
+    const authored = content.outerHTML
+    const controller = createImageMapPopoverController(document)
+    expect(imageMapHotspotBounds(area, image)).toMatchObject({left:70, right:90, top:30, bottom:50})
+    expect(controller.open(area, image)).toBe(true)
+    const sheet = document.adoptedStyleSheets.at(-1)!
+    const style = () => (sheet.cssRules[0] as CSSStyleRule).style
+    expect(style().left).toBe("98px")
+    expect(style().top).toBe("8px")
+    expect(style().borderRadius).toBe("0.5rem")
+    imageLeft = window.innerWidth - 100
+    controller.refresh()
+    expect(parseFloat(style().left)).toBe(window.innerWidth - 100 + 60 - 8 - 120)
+    expect(content.outerHTML).toBe(authored)
+    expect(controller.open(area, image, true)).toBe(true)
+    expect(opened).toBe(false)
+    controller.dispose()
+    expect(document.adoptedStyleSheets).toEqual(original)
+  })
+
+  it("cancels a first hotspot without leaving an empty map or editor markers", () => {
+    document.body.innerHTML = '<img src="plan.png">'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    const authored = editor.toHTML(true)
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
+    expect(document.querySelector("map")).toBeNull()
+    const overlay = editor.features.media.imageMapOverlay
+    overlay.root.querySelector<HTMLButtonElement>(".cancel")!.click()
+    expect(overlay.isDrawing).toBe(false)
+    expect(overlay.element).not.toHaveAttribute("data-open")
+    expect(image).not.toHaveAttribute("usemap")
+    expect(editor.toHTML(true)).toBe(authored)
+  })
+
+  it.each([
+    ["circle", "20,20,10", "25,25,10", "25,25,20"],
+    ["poly", "10,10,40,10,20,40", "15,15,45,15,25,45", "15,15,45,15,55,55"],
+  ])("moves and resizes a %s hotspot", (shape, initial, moved, resized) => {
+    document.body.innerHTML = `<img src="plan.png" usemap="#plan"><map name="plan"><area shape="${shape}" coords="${initial}"></map>`
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const overlay = editor.features.media.imageMapOverlay, svg = overlay.root.querySelector("svg")!
+    const down = (element: Element, x: number, y: number) => element.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: x, clientY: y}))
+    const up = (x: number, y: number) => svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: x, clientY: y}))
+    down(overlay.root.querySelector(".hotspot")!, 20, 20)
+    up(25, 25)
+    expect(document.querySelector("area")!.getAttribute("coords")).toBe(moved)
+    down(overlay.root.querySelectorAll(".handle")[shape === "circle" ? 0 : 2], 35, 25)
+    up(shape === "circle" ? 45 : 55, shape === "circle" ? 25 : 55)
+    expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
+    down(overlay.root.querySelector(".hotspot")!, 20, 20)
+    svg.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 35, clientY: 35}))
+    svg.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+    expect(document.querySelector("area")!.getAttribute("coords")).toBe(resized)
+  })
+
+  it("drawing adds a map and deleting the last hotspot unlinks all its images", () => {
+    document.body.innerHTML = '<img src="plan.png">'
+    const image = document.querySelector<HTMLImageElement>("img")!
+    mockImageGeometry(image, 100, 100, 100, 100)
+    $.selectElement(image)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(true)
+    const svg = editor.features.media.imageMapOverlay.root.querySelector("svg")!
+    svg.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 10, clientY: 10}))
+    svg.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, clientX: 40, clientY: 40}))
+    const second = image.cloneNode() as HTMLImageElement
+    image.after(second)
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.removeImageMapArea({type: "removeImageMapArea", path: area.path, expected: area.attributes})).toBe(true)
+    expect(document.querySelector("map")).toBeNull()
+    expect(image).not.toHaveAttribute("usemap")
+    expect(second).not.toHaveAttribute("usemap")
+  })
+
   it("cancels hotspot drawing when the image geometry changes", () => {
     document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"></map>'
     const image = document.querySelector<HTMLImageElement>("img")!
@@ -994,7 +1568,7 @@ describe("media editing", () => {
     }
   })
 
-  it("node-selects interactive media through an appendix shield and blocks same-click activation", async () => {
+  it("capture-selects interactive media through an appendix shield and blocks same-click activation", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
     const [iframe, audio] = Array.from(document.body.children)
     const rect = {x: 0, y: 0, left: 0, top: 0, right: 160, bottom: 80, width: 160, height: 80, toJSON: () => ({})}
@@ -1009,12 +1583,12 @@ describe("media editing", () => {
     shield.dispatchEvent(pointerdown)
     shield.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, cancelable: true, button: 0}))
     shield.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true}))
-    await vi.waitFor(() => expect(shield.isConnected).toBe(true))
+    await vi.waitFor(() => expect(shield.isConnected).toBe(false))
 
     expect(pointerdown.defaultPrevented).toBe(true)
     expect(nativeActivation).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(iframe)
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
     expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3" controls=""></audio>')
   })
 
@@ -1054,11 +1628,11 @@ describe("media editing", () => {
     const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
     shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(contentFrame)
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
   })
 
   it.each(['<iframe></iframe>', '<iframe srcdoc=""></iframe>', '<audio controls=""></audio>', '<video controls=""></video>'])(
-    "node-selects empty native media through its surface and opens the source controls: %s", async html => {
+    "capture-selects empty native media through its surface and opens the source controls: %s", async html => {
       document.body.innerHTML = `<p>text</p>${html}`
       const frame = document.querySelector("iframe, audio, video")!
       vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
@@ -1073,9 +1647,9 @@ describe("media editing", () => {
 
       expect(down.defaultPrevented).toBe(true)
       expect($.selectedElement).toBe(frame)
-      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(editor.features.selection.captureSelectedElement).toBe(frame)
       expect(frame).toHaveClass("◆element-selected", "◆media-empty")
-      expect(frame).not.toHaveClass("◆element-capture-selected")
+      expect(frame).toHaveClass("◆element-capture-selected")
       const placeholder = editor.features.media.placeholder
       expect(placeholder.target).toBe(frame)
       expect(placeholder.element).toHaveAttribute("data-open")
@@ -1110,6 +1684,34 @@ describe("media editing", () => {
     expect(document.querySelector("audio")?.classList.contains("◆media-empty")).toBe(false)
   })
 
+  it.each(["", 'src="data:video/mp4;base64,"'])("removes hidden disclosure media shields and restores them on expansion: %s", async source => {
+    document.body.innerHTML = `<details><summary>Heading</summary><!--keep--><div><video controls ${source}></video></div></details>`
+    const details = document.querySelector("details")!, video = document.querySelector("video")!
+    // Happy DOM has no rendering or checkVisibility; model the browser's
+    // retained hidden box separately from its native visibility result.
+    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 320, 180))
+    const visibility = vi.fn(() => details.open)
+    Object.defineProperty(video, "checkVisibility", {configurable: true, value: visibility})
+    await vi.waitFor(() => expect(visibility).toHaveBeenCalled())
+    expect(editor.appendix.querySelector(".◆media-interaction-shield")).toBeNull()
+    const authored = editor.toHTML(true)
+    details.open = true
+    await vi.waitFor(() => expect(editor.appendix.querySelector(".◆media-interaction-shield")).not.toBeNull())
+    const shield = editor.appendix.querySelector<HTMLElement>(".◆media-interaction-shield")!
+    details.open = false
+    // Revalidate immediately: the observer may not have removed the shield
+    // when authored or remote code closes the disclosure before a click.
+    shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    expect(details.open).toBe(false)
+    expect(editor.features.selection.captureSelectedElement).not.toBe(video)
+    await vi.waitFor(() => expect(shield.isConnected).toBe(false))
+    expect(editor.toHTML(true)).toBe(authored)
+    details.open = true
+    await vi.waitFor(() => expect(editor.appendix.querySelector(".◆media-interaction-shield")).not.toBeNull())
+    editor.features.media.disable()
+    expect(editor.appendix.querySelector(".◆media-interaction-shield")).toBeNull()
+  })
+
   it("removes shields when media is removed or the feature is disabled", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe>'
     const iframe = document.querySelector("iframe")!
@@ -1126,7 +1728,7 @@ describe("media editing", () => {
     expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(0)
   })
 
-  it("repositions shields on layout refresh and keeps surfaces shielded after node selection", async () => {
+  it("repositions shields and restores them when another media owns capture", async () => {
     document.body.innerHTML = '<iframe src="about:blank#frame"></iframe><audio src="sound.mp3"></audio>'
     const [iframe, audio] = Array.from(document.body.children)
     let width = 100
@@ -1151,29 +1753,290 @@ describe("media editing", () => {
       .find(shield => shield !== iframeShield)!
     audioShield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(audio)
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.captureSelectedElement).toBe(audio)
     await vi.waitFor(() => expect(editor.appendix.querySelectorAll(".◆media-interaction-shield")).toHaveLength(2))
   })
 })
 
 describe("canonical media", () => {
-  it("normalizes direct and shared media changes while preserving image identity", async () => {
+  it("preserves direct and shared media structure while enabling native controls", async () => {
     document.body.innerHTML = '<p><img alt="Image"></p><embed src="https://example.com/site"><video></video><media-widget><img><video></video></media-widget>'
     const image = document.querySelector("img")!
     $.selectElement(image)
     editor.features.selection.processSelection()
     await vi.waitFor(() => {
-      expect(image.parentElement?.localName).toBe("picture")
-      expect(document.querySelector("iframe")).toHaveAttribute("src", "https://example.com/site")
+      expect(image.parentElement?.localName).toBe("p")
+      expect(document.querySelector("embed")).toHaveAttribute("src", "https://example.com/site")
       expect(document.querySelector("video")).toHaveAttribute("controls")
     })
-    expect($.selectedElement).toBe(image.parentElement)
+    expect($.selectedElement).toBe(image)
     expect(document.querySelector("media-widget")!.innerHTML).toBe('<img><video></video>')
     const video = document.querySelector("video")!
     video.removeAttribute("controls")
     await vi.waitFor(() => expect(video).toHaveAttribute("controls"))
     editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).toContain('<picture><img alt="Image"></img></picture>')
+    expect(editor.doc.body.toString()).toContain('<p><img alt="Image"></img></p>')
     expect(editor.toHTML(true)).not.toContain('◆')
+  })
+})
+
+
+describe("selected media source", () => {
+  it("removes timed sources without rebuilding fallback, tracks, or resource elements", () => {
+    document.body.innerHTML = '<video src="old.mp4"><!--keep--><source src="alternative.mp4" type="video/mp4"><track src="captions.vtt"><span>Fallback</span></video>'
+    const video = document.querySelector("video")!
+    const children = Array.from(video.childNodes)
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.removeMediaSource({type: "removeMediaSource"})).toBe(true)
+    expect(video.hasAttribute("src")).toBe(false)
+    expect(video.querySelector("source")!.hasAttribute("src")).toBe(false)
+    expect(Array.from(video.childNodes)).toEqual(children)
+    expect(video.querySelector("track")!.getAttribute("src")).toBe("captions.vtt")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("removes picture sources while preserving unfamiliar siblings", () => {
+    document.body.innerHTML = '<picture><source srcset="wide.png"><!--keep--><img src="image.png" srcset="large.png 2x" alt="Description"></picture>'
+    const picture = document.querySelector("picture")!
+    const children = Array.from(picture.childNodes)
+    $.selectElement(picture)
+    editor.features.selection.processSelection()
+    editor.features.media.actions.removeMediaSource({type: "removeMediaSource"})
+    expect(Array.from(picture.childNodes)).toEqual(children)
+    expect(picture.querySelector("img")!.getAttribute("alt")).toBe("Description")
+    expect(picture.querySelectorAll('[src], [srcset]')).toHaveLength(0)
+  })
+
+  it("opens a replacement picker in the appendix and cleans it up on cancellation", () => {
+    document.body.innerHTML = '<audio src="existing.mp3"></audio>'
+    const audio = document.querySelector("audio")!
+    $.selectElement(audio)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile"})).toBe(true)
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker).not.toBeNull()
+    expect(document.body.querySelector('input[type="file"]')).toBeNull()
+    picker.dispatchEvent(new Event("cancel"))
+    expect(picker.isConnected).toBe(false)
+    expect(audio.getAttribute("src")).toBe("existing.mp3")
+  })
+
+  it("replaces a video poster from an image picker without changing its source or children", () => {
+    document.body.innerHTML = '<video src="movie.mp4" poster="old.jpg"><source src="alternate.mp4"><track src="captions.vtt"></video>'
+    const video = document.querySelector("video")!
+    const children = Array.from(video.childNodes)
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", attribute: "poster"})).toBe(true)
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(picker.accept).toBe("image/*")
+    Object.defineProperty(picker, "files", {value: [new File(["poster"], "cover.png", {type: "image/png"})]})
+    picker.dispatchEvent(new Event("change"))
+
+    expect(video.getAttribute("poster")).toMatch(/^blob:/)
+    expect(editor.features.media.getState()?.cover).toMatchObject({label: "cover.png", kind: "file"})
+    expect(video.getAttribute("src")).toBe("movie.mp4")
+    expect(Array.from(video.childNodes)).toEqual(children)
+    expect(video.querySelector("source")?.getAttribute("src")).toBe("alternate.mp4")
+    expect(video.querySelector("track")?.getAttribute("src")).toBe("captions.vtt")
+    expect(picker.isConnected).toBe(false)
+  })
+
+  it.each(["poster changed", "disconnected"])("cleans up a poster picker after a concurrent %s", condition => {
+    document.body.innerHTML = '<video src="movie.mp4" poster="old.jpg"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    editor.features.media.actions.selectMediaFile({type: "selectMediaFile", attribute: "poster"})
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(picker, "files", {value: [new File(["poster"], "cover.png", {type: "image/png"})]})
+    if(condition === "poster changed") video.setAttribute("poster", "remote.jpg")
+    else video.remove()
+    picker.dispatchEvent(new Event("change"))
+
+    expect(picker.isConnected).toBe(false)
+    expect(video.getAttribute("poster")).toBe(condition === "poster changed" ? "remote.jpg" : "old.jpg")
+    expect(video.getAttribute("src")).toBe("movie.mp4")
+  })
+
+  it("rejects a poster picker for non-video media", () => {
+    document.body.innerHTML = '<audio src="sound.mp3"></audio>'
+    $.selectElement(document.querySelector("audio")!)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", attribute: "poster"})).toBe(false)
+    expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it.each([
+    ["screen-image", "Capture screenshot"],
+    ["camera-image", "Take photo"],
+  ] as const)("opens %s capture for the selected video's poster", (mode, label) => {
+    document.body.innerHTML = '<video src="movie.mp4" poster="old.jpg"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.actions.captureSelectedMedia({type: "captureSelectedMedia", mode, attribute: "poster"})).toBe(true)
+    const capture = editor.appendix.querySelector<HTMLElement>(".◆media-capture")!
+    expect(capture.getRootNode()).toBe(editor.appendix)
+    expect(capture.shadowRoot?.querySelector("h2")?.textContent).toBe(label)
+    editor.features.media.actions.cancelMediaCapture({type: "cancelMediaCapture"})
+    expect(capture.isConnected).toBe(false)
+    expect(video.getAttribute("src")).toBe("movie.mp4")
+    expect(video.getAttribute("poster")).toBe("old.jpg")
+  })
+})
+
+
+it.each(["unchanged", "remote change", "disconnected", "disabled"])("guards replacement file selections when %s", async condition => {
+  document.body.innerHTML = '<audio src="existing.mp3"></audio>'
+  const audio = document.querySelector("audio")!
+  $.selectElement(audio)
+  editor.features.selection.processSelection()
+  editor.features.media.actions.selectMediaFile({type: "selectMediaFile"})
+  const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+  Object.defineProperty(picker, "files", {value: [new File(["audio"], "song.mp3", {type: "audio/mpeg"})]})
+  if(condition === "remote change") audio.setAttribute("src", "remote.mp3")
+  if(condition === "disconnected") audio.remove()
+  if(condition === "disabled") editor.features.media.disable()
+  picker.dispatchEvent(new Event("change"))
+  if(condition === "unchanged") expect(audio.getAttribute("src")).toMatch(/^blob:/)
+  else expect(audio.getAttribute("src")).toBe(condition === "remote change" ? "remote.mp3" : "existing.mp3")
+  expect(picker.isConnected).toBe(false)
+  if(condition === "unchanged") {
+    expect(editor.features.media.getState()).toMatchObject({sourceLabel: "song.mp3", sourceKind: "file"})
+    expect(editor.toHTML(true)).not.toContain("song.mp3")
+  }
+})
+
+describe("media file drag and drop", () => {
+  const mediaCases = [
+    ["picture", '<picture><source media="(min-width: 20rem)" srcset="old-large.webp"><img src="old-small.png" alt="Keep me"></picture>', "img", "src"],
+    ["img", '<img src="old.png" alt="Keep me">', "img", "src"],
+    ["audio", '<audio controls><source src="old.mp3" type="audio/mpeg"><track kind="captions" src="captions.vtt"></audio>', "audio", "src"],
+    ["video", '<video controls poster="cover.jpg"><source src="old.mp4" type="video/mp4"><track kind="captions" src="captions.vtt"></video>', "video", "src"],
+    ["iframe", '<iframe title="Keep me" src="about:blank"></iframe>', "iframe", "src"],
+    ["embed", '<embed type="text/html" src="about:blank">', "embed", "src"],
+    ["object", '<object type="text/html" data="about:blank"><param name="view" value="full">Fallback</object>', "object", "data"],
+  ] as const
+
+  it.each(mediaCases)("replaces the source of a populated %s in place", async (_name, html, selector, attribute) => {
+    document.body.innerHTML = html
+    const surface = document.querySelector(selector)!
+    const file = new File(["replacement"], "replacement.bin", {type: ""})
+    const transfer = fileTransfer(file)
+    const source = "blob:media-drop-test"
+    vi.spyOn(editor, "createMediaURL").mockReturnValue(source)
+    const beforeChildren = Array.from(surface.childNodes)
+    const over = mediaDragEvent("dragover", transfer)
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = mediaDragEvent("drop", transfer)
+    surface.dispatchEvent(drop)
+
+    expect(drop.defaultPrevented).toBe(true)
+    expect(editor.createMediaURL).toHaveBeenCalledOnce()
+    expect(editor.createMediaURL).toHaveBeenCalledWith(file)
+    expect(surface.getAttribute(attribute)).toBe(source)
+    expect(Array.from(surface.childNodes)).toEqual(beforeChildren)
+    if(selector === "img") expect(surface).toHaveAttribute("alt", "Keep me")
+    if(selector === "iframe") expect(surface).toHaveAttribute("title", "Keep me")
+    if(selector === "audio" || selector === "video") {
+      expect(surface.querySelector("source")?.getAttribute("type")).toMatch(/audio|video/)
+      expect(surface.querySelector("source")?.getAttribute("src")).toMatch(/old\.(mp3|mp4)/)
+      expect(surface.querySelector("track")?.getAttribute("src")).toBe("captions.vtt")
+    }
+    if(_name === "picture") expect(document.querySelector("picture source")).not.toHaveAttribute("srcset")
+    if(selector === "object") expect(surface.querySelector("param")?.getAttribute("value")).toBe("full")
+  })
+
+  it("fills an empty placeholder from the first file and supports the poster action", async () => {
+    document.body.innerHTML = "<video controls></video>"
+    const video = document.querySelector("video")!
+    const file = new File(["poster"], "poster.png", {type: "image/png"})
+    const transfer = fileTransfer(file)
+    vi.spyOn(editor, "createMediaURL").mockReturnValue("blob:poster-drop")
+    editor.features.media["refresh"]()
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    const placeholder = editor.features.media.placeholder.element
+    const drop = mediaDragEvent("drop", transfer)
+    placeholder.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(video).toHaveAttribute("src", "blob:poster-drop")
+
+    $.selectElement(video)
+    expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file, attribute: "poster"})).toBe(true)
+    expect(video).toHaveAttribute("poster", "blob:poster-drop")
+    expect(video).toHaveAttribute("src", "blob:poster-drop")
+  })
+
+  it("recognizes file items with an empty MIME type and leaves text drags alone", () => {
+    document.body.innerHTML = "<img alt=\"empty\">"
+    const image = document.querySelector("img")!
+    const transfer = fileTransfer(new File(["file"], "unknown", {type: ""}))
+    const over = mediaDragEvent("dragover", transfer)
+    image.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const drop = mediaDragEvent("drop", transfer)
+    image.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(image.getAttribute("src")).toMatch(/^blob:/)
+
+    const text = new DataTransfer()
+    text.setData("text/plain", "ordinary text")
+    const textOver = mediaDragEvent("dragover", text)
+    editor.features.media.captureListeners.dragover(textOver)
+    const textDrop = mediaDragEvent("drop", text)
+    editor.features.media.captureListeners.drop(textDrop)
+    expect(textOver.defaultPrevented).toBe(false)
+    expect(textDrop.defaultPrevented).toBe(false)
+    expect(image.getAttribute("src")).toMatch(/^blob:/)
+  })
+
+  it.each(["locked", "disabled", "inside widget"])("ignores file drops when media is %s", state => {
+    document.body.innerHTML = "<img alt=\"keep\">"
+    const image = document.querySelector("img")!
+    if(state === "locked") vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    if(state === "disabled") editor.features.media.disable()
+    if(state === "inside widget") {
+      const widget = document.createElement("media-widget")
+      image.replaceWith(widget)
+      widget.append(image)
+    }
+    const transfer = fileTransfer(new File(["file"], "photo.png", {type: "image/png"}))
+    const createURL = vi.spyOn(editor, "createMediaURL")
+    const over = mediaDragEvent("dragover", transfer)
+    image.dispatchEvent(over)
+    const drop = mediaDragEvent("drop", transfer)
+    image.dispatchEvent(drop)
+    expect(over.defaultPrevented).toBe(false)
+    expect(drop.defaultPrevented).toBe(false)
+    expect(createURL).not.toHaveBeenCalled()
+    expect(image).not.toHaveAttribute("src")
+  })
+
+  it("sets the selected media file source in one undoable edit", async () => {
+    document.body.innerHTML = '<picture><source media="(min-width: 20rem)" srcset="large.webp"><img src="old.png" alt="Diagram"></picture>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const picture = document.querySelector("picture")!
+    const image = picture.querySelector("img")!
+    $.selectElement(picture)
+    const file = new File(["new"], "new.png", {type: "image/png"})
+    vi.spyOn(editor, "createMediaURL").mockReturnValue("blob:action-file")
+    expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file})).toBe(true)
+    expect(image).toHaveAttribute("src", "blob:action-file")
+    expect(image).toHaveAttribute("alt", "Diagram")
+    expect(picture.querySelector("source")).not.toHaveAttribute("srcset")
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toContain('<img src="old.png" alt="Diagram">')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(editor.toHTML(true)).toContain('src="blob:action-file"')
   })
 })

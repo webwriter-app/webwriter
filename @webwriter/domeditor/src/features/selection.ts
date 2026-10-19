@@ -1,11 +1,13 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
 import {boardLayoutRole, isSlide, slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
+import {isAuthoredMutation} from "../editor-artifacts"
+import {isTextFieldInteraction} from "../utility"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -55,11 +57,12 @@ export class SelectionFeature extends EditorFeature {
   #sharedRefreshQueued = false
   #capturedElement: Element | null = null
   #modifierClick = false
+  #touchSelection = false
   #selectedSection: Element | null = null
   #atomicExtension: {range: Range, backwards: boolean} | null = null
-  #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number} | null = null
+  #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string} | null = null
   #settingBoxSelection = false
-  #boxDrag: {x: number, y: number, pointerId?: number, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
+  #boxDrag: {x: number, y: number, pointerId?: number, pointerType: string, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
   #selectionMarkers = new Set<Element>()
   #atomicOverlays = new Map<Element, HTMLElement>()
   #atomicOverlayFrame: number | null = null
@@ -68,6 +71,26 @@ export class SelectionFeature extends EditorFeature {
   #hoverFrame: number | null = null
   #nativeHoverTarget: Element | null = null
   #hoverOwner: Element | null = null
+  #floatObserver: MutationObserver | null = null
+  #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
+  readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null }
+
+  #currentFloatCandidates() {
+    if(this.#floatObserver?.takeRecords().some(isAuthoredMutation)) this.#invalidateFloatCandidates()
+    const root = getDocumentRoot()
+    // CSSOM edits have no mutation event. Periodically rediscover candidates;
+    // running authored animations can change float membership every frame.
+    const animating = document.getAnimations?.().some(animation =>
+      animation.playState === "running" && (animation.effect as KeyframeEffect | null)?.target?.getRootNode() === document)
+    const now = performance.now()
+    if(!this.#floatCandidates || this.#floatCandidates.root !== root || this.#floatCandidates.expires <= now || animating) {
+      const elements = Array.from(root.querySelectorAll("*")).filter(element =>
+        !atomicEditingContainer(element.parentElement, this.editor.schema)
+        && ["left", "right"].includes(getComputedStyle(element).float))
+      this.#floatCandidates = {root, elements, expires: now + 250}
+    }
+    return this.#floatCandidates.elements
+  }
 
   #clearAtomicOverlays() {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
@@ -87,8 +110,9 @@ export class SelectionFeature extends EditorFeature {
         overlays.delete(element)
         return
       }
-      const rect = element.getBoundingClientRect()
-      overlay.style.left = `${rect.left}px`
+      const rect = this.editor.features.media.cropTargetFor(element) && element instanceof HTMLElement
+        ? this.editor.features.transformation.boxGeometry(element).rect : element.getBoundingClientRect()
+      overlay.style.left = `${fixedClientX(rect.left)}px`
       overlay.style.top = `${rect.top}px`
       overlay.style.width = `${rect.width}px`
       overlay.style.height = `${rect.height}px`
@@ -343,7 +367,7 @@ export class SelectionFeature extends EditorFeature {
    * or collapses a node selection into the requested boundary. */
   #navigateAtomicSelection(direction: "backward" | "forward", vertical = false, extend = false) {
     const navigable = (element: Node | null): element is Element => element instanceof Element
-      && (Boolean(isAtomicEditingElement(element, this.editor.schema)) || element.matches("figure, table:has(> caption)"))
+      && (Boolean(isAtomicEditingElement(element, this.editor.schema)) || element.matches('figure, table:has(> caption), math[display="block"]'))
     const container = $.anchor ? getContainer($.anchor) : null
     const owner = container?.closest("figure, table:has(> caption)")
     const caption = container?.closest("figcaption, caption")
@@ -404,7 +428,7 @@ export class SelectionFeature extends EditorFeature {
   #navigateMathBoundary(direction: "backward" | "forward") {
     if(!$.isEmpty || mathRoot($.anchor)) return false
     const adjacent = this.#adjacentNavigationElement(direction)
-    if(!adjacent || mathRoot(adjacent) !== adjacent) return false
+    if(!adjacent || mathRoot(adjacent) !== adjacent || adjacent.getAttribute("display") === "block") return false
     const point = mathOutsidePoint(adjacent, direction === "backward")!
     const index = Array.from(adjacent.parentNode!.childNodes).indexOf(adjacent)
     if($.anchor === point.node && $.anchorOffset === point.offset
@@ -421,7 +445,7 @@ export class SelectionFeature extends EditorFeature {
   #disclosureEdge(node: Node, direction: "backward" | "forward"): Node | null {
     if(node instanceof Text) return node.textContent?.trim() ? node : null
     if(!isElement(node) || isOutOfFlow(node) || node.matches("br, [hidden], .◆editor-only") || getComputedStyle(node).display === "none") return null
-    if(Boolean(isAtomicEditingElement(node, this.editor.schema))) return node
+    if(Boolean(isAtomicEditingElement(node, this.editor.schema)) || node.matches('math[display="block"]')) return node
     if(node.matches("details:not([open])")) {
       const summary = node.querySelector(":scope > summary")
       return summary ? this.#disclosureEdge(summary, direction) : node
@@ -596,6 +620,14 @@ export class SelectionFeature extends EditorFeature {
       && document.body.childNodes.length === 1 && !first.childNodes.length) $.move(first)
     else $.selectDocumentStart()
     super.enable()
+    this.#floatObserver = new MutationObserver(records => {
+      if(records.some(isAuthoredMutation)) this.#invalidateFloatCandidates()
+    })
+    this.#floatObserver.observe(document.documentElement, {
+      subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true,
+    })
+    window.addEventListener("resize", this.#invalidateFloatCandidates)
+    document.addEventListener("load", this.#invalidateFloatCandidates, true)
     this.#ensureHoverCaret()
     window.addEventListener("focus", this.#handleWindowFocus)
     window.addEventListener("blur", this.#handleWindowBlur)
@@ -605,11 +637,17 @@ export class SelectionFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.#floatObserver?.disconnect()
+    this.#floatObserver = null
+    this.#invalidateFloatCandidates()
+    window.removeEventListener("resize", this.#invalidateFloatCandidates)
+    document.removeEventListener("load", this.#invalidateFloatCandidates, true)
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
     this.#endDrag()
     this.#modifierClick = false
+    this.#touchSelection = false
     this.#atomicExtension = null
     $.clearLayoutRanges()
     this.#releaseCaptureSelection()
@@ -739,7 +777,7 @@ export class SelectionFeature extends EditorFeature {
     focus.collapse(true)
     const target = document.body
     this.#drag = {anchor, focus, lastFocus: focus.cloneRange(), scope, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
-      nativeClick, moved: false, target, pointerId: event.pointerId}
+      nativeClick, moved: false, target, pointerId: event.pointerId, pointerType: event.pointerType}
     this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
     this.isInDragSelection = true
     // BODY capture suppresses descendant :hover; retain the native hover path
@@ -816,7 +854,7 @@ export class SelectionFeature extends EditorFeature {
     // It remains inside the document iframe, below the surrounding editor UI.
     overlay.showPopover?.()
     this.#boxDrag = {x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
-      pointerId: event.pointerId, overlay, elements: [], previews: new Map()}
+      pointerId: event.pointerId, pointerType: event.pointerType, overlay, elements: [], previews: new Map()}
     this.isInDragSelection = true
     document.body.classList.add("◆", "◆selection-dragging")
     if(event.pointerId !== undefined) {
@@ -888,6 +926,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   #handlePointerDown(ev: PointerEvent, fromCanvasSlot = false) {
+    if(ev.pointerType === "touch" && ev.isPrimary === false) return
     if(this.#handleModifierClick(ev)) return
     if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
       || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) return
@@ -899,16 +938,23 @@ export class SelectionFeature extends EditorFeature {
     }
     this.#endDrag()
     this.clearSelectedSection()
+    this.#touchSelection = ev.pointerType === "touch"
+    if(ev.pointerType === "touch") document.body.focus({preventScroll: true})
     const graphic = graphicContainerForNode(ev.target instanceof Node ? ev.target : null)
     // The graphic feature enters capture on a selected canvas/shape. Native
     // caret hit testing must not replace that node selection with an outer gap.
     if(graphic && $.selectedElement === graphic && !modifierKeyDown(ev)) return
     const media = ev.target instanceof Node ? mediaContainerForNode(ev.target) : null
     const divider = ev.target instanceof Element && ev.target.localName === "hr" ? ev.target : null
-    if(media || divider) {
+    if(media) {
+      if(this.captureSelectedElement !== media) this.captureElement(media)
+      this.editor.postSelectionPath()
+      return
+    }
+    if(divider) {
       ev.preventDefault()
       this.#releaseCaptureSelection()
-      const target = figureSelectionTarget((media ?? divider)!)
+      const target = figureSelectionTarget(divider)
       const rect = target.getBoundingClientRect()
       if(target.localName === "figure" && !isOutOfFlow(target) && rect.height > 0 && (ev.clientY < rect.top || ev.clientY > rect.bottom)) {
         $.selectGap(target, ev.clientY < rect.top ? "before" : "after")
@@ -936,7 +982,7 @@ export class SelectionFeature extends EditorFeature {
     const extend = ev.shiftKey && (!clickedItem || clickedItem === this.#layoutSelectionItem($.anchor, $.anchor))
     const point = $.selectCoords(ev.clientX, ev.clientY, extend, ev.target, this.editor.schema)
     const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
-    const nativeClick = !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
+    const nativeClick = ev.pointerType !== "touch" && !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
       && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
     if(!nativeClick) ev.preventDefault()
     this.#beginDrag(ev, nativeClick)
@@ -944,6 +990,14 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    contextmenu: event => {
+      if(isAppendixInteraction(event) && !isTextFieldInteraction(event)) event.preventDefault()
+    },
+    // Preserve the pointer stream for editor selection instead of browser
+    // panning/long-press selection. Widget controls and appendix UI stay native.
+    touchstart: event => {
+      if(event.touches.length === 1 && (this.#drag?.pointerType === "touch" || this.#boxDrag?.pointerType === "touch")) event.preventDefault()
+    },
     pointerdown: event => {
       this.#handleKeyState(event)
       if(this.#handleModifierClick(event)) return
@@ -975,11 +1029,13 @@ export class SelectionFeature extends EditorFeature {
       if(widgetHostForShadowInteraction(event, this.editor.schema) || isAppendixInteraction(event)) this.#extendDrag(event)
     },
     pointerover: event => {
+      this.#invalidateFloatCandidates()
       if(this.#drag && this.#drag.pointerId === event.pointerId) return
       this.#nativeHoverTarget = event.target instanceof Element ? event.target : null
       this.#refreshHoverGeometry()
     },
     pointerout: event => {
+      this.#invalidateFloatCandidates()
       if(this.#drag && this.#drag.pointerId === event.pointerId) return
       this.#nativeHoverTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null
       this.#refreshHoverGeometry()
@@ -1019,6 +1075,7 @@ export class SelectionFeature extends EditorFeature {
     mouseup: event => { this.#handleModifierClick(event) },
     dblclick: event => { this.#handleModifierClick(event) },
     focusin: event => {
+      this.#invalidateFloatCandidates()
       this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
         this.processSelection(undefined, {scrollIntoView: false})
@@ -1026,6 +1083,8 @@ export class SelectionFeature extends EditorFeature {
     },
     keydown: event => {
       this.#handleKeyState(event)
+      const isPrintable = event.key?.length === 1 && !event.metaKey && (!event.ctrlKey || event.getModifierState("AltGraph"))
+      if(isPrintable || ["Enter", "Backspace", "Delete"].includes(event.key)) this.#preventCapturedDocumentInput(event)
       if(event.key === "Escape" && this.#boxDrag) {
         event.preventDefault()
         this.#endDrag()
@@ -1034,11 +1093,26 @@ export class SelectionFeature extends EditorFeature {
       this.#handleWidgetShadowInteraction(event)
     },
     keyup: event => this.#handleKeyState(event),
-    beforeinput: event => this.#handleWidgetShadowInteraction(event),
+    beforeinput: event => {
+      if(event.inputType.startsWith("insert") || event.inputType.startsWith("delete")) this.#preventCapturedDocumentInput(event)
+      this.#handleWidgetShadowInteraction(event)
+    },
     input: event => this.#handleWidgetShadowInteraction(event),
     change: event => this.#handleWidgetShadowInteraction(event),
     wheel: event => this.#handleWidgetWheel(event),
     scroll: event => this.#handleWidgetScroll(event),
+  }
+
+  /** Capture owns editing input, including native editing defaults. Only an
+   * internal selection or a control may edit while the outer document is captured. */
+  #preventCapturedDocumentInput(event: Event) {
+    const captured = this.captureSelectedElement
+    if(!captured || isAppendixInteraction(event) || isFormControlInteraction(event)
+      || isWidgetShadowInteraction(event, this.editor.schema)) return
+    const selection = document.getSelection()
+    if(selection?.anchorNode && selection.focusNode
+      && captured.contains(selection.anchorNode) && captured.contains(selection.focusNode)) return
+    event.preventDefault()
   }
 
   /** Mirrors the physical modifier state onto BODY without depending on the
@@ -1071,6 +1145,8 @@ export class SelectionFeature extends EditorFeature {
       this.#endDrag()
       this.clearSelectedSection()
       this.#releaseCaptureSelection()
+      this.editor.features.table.finishResize()
+      this.editor.features.table.clearCellSelection(false)
       const target = this.#modifierSelectionTarget(widget ?? event.target)
       if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
         const elements = $.selectedElements
@@ -1291,6 +1367,7 @@ export class SelectionFeature extends EditorFeature {
     setPart(caret, "hover-caret-floats", false)
     setPart(caret, "hover-caret-transformed", false)
     setPart(caret, "hover-caret-selected-root", false)
+    setPart(caret, "hover-caret-board", false)
   }
 
   /** Resolve native and explicit hover against the live DOM. Freeform items
@@ -1309,6 +1386,11 @@ export class SelectionFeature extends EditorFeature {
       this.#clearHoverGeometry()
       return
     }
+    if(boardLayoutRole(target)) {
+      this.#clearHoverGeometry()
+      setPart(this.#ensureHoverCaret(), "hover-caret-board", true)
+      return
+    }
     if(this.#hoverOwner && this.#hoverOwner !== target && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
     this.#hoverOwner = target
     const caret = this.#ensureHoverCaret()
@@ -1321,14 +1403,14 @@ export class SelectionFeature extends EditorFeature {
         this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
         return
       }
-      for(const [property, value] of Object.entries({left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transform: "none"})) caret.style.setProperty(property, value, "important")
+      for(const [property, value] of Object.entries({left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transform: "none"})) caret.style.setProperty(property, value, "important")
       this.#floatOutline(caret, rect, floats, "hover")
     }
     else {
       caret.replaceChildren()
       setPart(caret, "hover-caret-floats", false)
       const {styles} = this.editor.features.transformation.boxGeometry(target)
-      for(const [property, value] of Object.entries(styles)) caret.style.setProperty(property, value, "important")
+      for(const [property, value] of Object.entries({...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})) caret.style.setProperty(property, value, "important")
     }
     caret.style.setProperty("position-anchor", "auto", "important")
     caret.style.setProperty("position-area", "none", "important")
@@ -1344,8 +1426,7 @@ export class SelectionFeature extends EditorFeature {
    * Optional geometry expresses viewport exclusions in the overlay's axes. */
   floatExclusions(target: Element, rect = target.getBoundingClientRect(), geometry?: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">) {
     if(this.editor.features.canvas.active || this.editor.features.slides.active || ["left", "right"].includes(getComputedStyle(target).float)) return []
-    const floats = Array.from(getDocumentRoot().querySelectorAll("*")).filter(element => element !== target && !element.contains(target) && !target.contains(element)
-      && !atomicEditingContainer(element.parentElement, this.editor.schema)
+    const floats = this.#currentFloatCandidates().filter(element => element.isConnected && element !== target && !element.contains(target) && !target.contains(element)
       && ["left", "right"].includes(getComputedStyle(element).float)).flatMap(element => {
       const box = element.getBoundingClientRect(), style = getComputedStyle(element)
       return box.width > 0 && box.height > 0 ? [{left: box.left - Math.max(0, parseFloat(style.marginLeft) || 0), right: box.right + Math.max(0, parseFloat(style.marginRight) || 0),
@@ -1418,7 +1499,7 @@ export class SelectionFeature extends EditorFeature {
     return node
   }
 
-  /** The shared node, capture, gap, and drag text caret, or null before first use. */
+  /** The shared node, capture, gap, and text caret, or null before first use. */
   get selectionCaret() {
     return this.editor.appendix.querySelector<HTMLElement>(".◆selection-caret")
   }
@@ -1433,25 +1514,27 @@ export class SelectionFeature extends EditorFeature {
     const caret = this.selectionCaret
     if(!caret) return
     this.#clearSelectionFloatOutline()
-    caret.setAttribute("visibility", "hidden")
+    if(caret.getAttribute("visibility") !== "hidden") caret.setAttribute("visibility", "hidden")
     setPart(caret, "selection-caret-hidden")
     caret.style.removeProperty("left")
     caret.style.removeProperty("top")
     caret.style.removeProperty("height")
     caret.style.removeProperty("font-size")
+    caret.style.removeProperty("--gap-caret-block-offset")
     caret.style.removeProperty("--math-caret-top")
     caret.style.removeProperty("--math-caret-height")
     for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
     ;["node", "capture", "gap", "text"].forEach(state => {
-      caret.classList.remove(`◆selection-caret-${state}`)
+      if(caret.classList.contains(`◆selection-caret-${state}`)) caret.classList.remove(`◆selection-caret-${state}`)
       setPart(caret, `selection-caret-${state}`, false)
     })
-    caret.classList.remove(
+    const removed = [
       "◆gap-before-selected",
       "◆gap-after-selected",
       "◆drop-caret-before",
       "◆drop-caret-after",
-    )
+    ].filter(marker => caret.classList.contains(marker))
+    if(removed.length) caret.classList.remove(...removed)
     setPart(caret, "gap-caret", false)
     ;["gap-before-selected", "gap-after-selected", "drop-caret-before", "drop-caret-after"]
       .forEach(state => setPart(caret, `gap-caret-${state}`, false))
@@ -1510,7 +1593,7 @@ export class SelectionFeature extends EditorFeature {
   /** Places a collapsed document selection, even if a widget or a table
    * previously owned editing focus. Existing caret rendering follows it. */
   selectDropRange(range: Range, {scrollIntoView = true} = {}) {
-    if(focusedWidgetHost() && document.activeElement instanceof HTMLElement) document.activeElement.blur()
+    if(focusedWidgetHost()) focusEditorWindow()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
     this.#endDrag()
@@ -1578,10 +1661,10 @@ export class SelectionFeature extends EditorFeature {
     this.#refreshHoverGeometry()
   }
 
-  /** Creates the virtual caret used only for a completely empty document.
+  /** Creates the virtual caret for a document with no in-flow content.
    * Chromium keeps a valid BODY@0 selection in that state but does not paint
    * its native caret consistently. The visual element stays in the shadow
-   * appendix and is positioned from the BODY selection marker. */
+   * appendix and is positioned at the selected root’s content edge. */
   #createEmptyDocumentCaret() {
     const node = document.createElement("div")
     node.classList.add("◆", "◆editor-only", "◆empty-document-caret")
@@ -1594,28 +1677,31 @@ export class SelectionFeature extends EditorFeature {
 
   /** The shadow-DOM visual caret for an empty document, if created. */
   get emptyDocumentCaret() {
-    return this.editor.appendix.querySelector(".◆empty-document-caret")
+    return this.editor.appendix.querySelector<HTMLElement>(".◆empty-document-caret")
   }
 
   /** Retains marker owners so removal also cleans disconnected content. */
   #markSelection(element: Element, ...markers: string[]) {
-    element.classList.add("◆", ...markers)
+    const added = ["◆", ...markers].filter(marker => !element.classList.contains(marker))
+    if(added.length) element.classList.add(...added)
     this.#selectionMarkers.add(element)
   }
 
   /** Clears the previous presentation, including markers on removed nodes. */
-  #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture") {
+  #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture" | "text" | "empty") {
     this.#clearAtomicOverlays()
     const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
       "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
-      "◆gap-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
+      "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
       "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
     const elements = new Set([...this.#selectionMarkers,
       ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
+    const retainedMarker = retainedKind === "text" ? "◆text-selected"
+      : retainedKind === "empty" ? "◆empty-selected" : "◆element-selected"
     elements.forEach(element => {
       const removed = markers.filter(marker => !(
-        element === retainedElement && (marker === "◆element-selected" || marker === "◆element-capture-selected" && retainedKind === "capture")
-        || element === document.body && retainedElement && marker === "◆node-selection-active"
+        element === retainedElement && (marker === retainedMarker || marker === "◆element-capture-selected" && retainedKind === "capture")
+        || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "◆node-selection-active"
       ))
       removeEditorMarker(element, ...removed)
     })
@@ -1836,6 +1922,7 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.list.clearSelectionPresentation()
       this.editor.features.canvas.syncSelection(null)
       this.editor.features.transformation.syncSelection(null)
+      this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
       document.body.classList.add("◆", "◆node-selection-active")
       for(const element of $.selectedElements) {
@@ -1892,16 +1979,23 @@ export class SelectionFeature extends EditorFeature {
         : kind === "element" ? $.selectedElement ?? null : null
     // Geometry refreshes read layout below. Keep an unchanged node's anchor
     // and outline installed while those reads flush styles during a gesture.
-    const retained = selectedElement && this.#selectionMarkers.has(selectedElement)
-      && selectedElement.classList.contains("◆element-selected") ? selectedElement : null
-    this.#clearSelections(retained, retained ? kind === "capture" ? "capture" : "node" : undefined)
+    const textElement = (kind === "text" || kind === "empty") && sel?.rangeCount
+      ? getContainer(sel.getRangeAt(0).commonAncestorContainer) : null
+    const presentationElement = selectedElement ?? (isElement(textElement) ? textElement : null)
+    const retainedKind = kind === "text" || kind === "empty" ? kind : kind === "capture" ? "capture" : "node"
+    const marker = kind === "text" ? "◆text-selected" : kind === "empty" ? "◆empty-selected" : "◆element-selected"
+    const retained = presentationElement && this.#selectionMarkers.has(presentationElement)
+      && presentationElement.isConnected && presentationElement.classList.contains(marker) ? presentationElement : null
+    this.#clearSelections(retained, retained ? retainedKind : undefined)
     if(sel?.rangeCount && !sel.isCollapsed) {
       $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
     }
     const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
     if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)
-    this.editor.features.transformation.syncSelection(layoutItem ?? selectedElement, Boolean(layoutItem && layoutItem !== selectedElement))
+    const transformTarget = layoutItem ?? selectedElement
+    this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
+    this.editor.features.board.refresh()
     this.editor.features.manipulation.refreshNodeDragTarget(this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
     this.editor.features.graphic.refresh()
     this.editor.features.layout.refresh()
@@ -1967,7 +2061,11 @@ export class SelectionFeature extends EditorFeature {
           return
         }
         const gapCaret = this.#showSelectionCaret("gap")
-        if(element) this.#markSelection(element, `◆gap-${placement}-selected`)
+        this.#markSelection(element, `◆gap-${placement}-selected`)
+        // Include the trailing margin in the insertion position. The gap
+        // marker previews the theme's spacing even on its current last block.
+        gapCaret.style.setProperty("--gap-caret-block-offset", placement === "after"
+          ? `${parseFloat(getComputedStyle(element).marginBottom) || 0}px` : "0px")
         gapCaret.classList.add(`◆gap-${placement}-selected`)
         setPart(gapCaret, `gap-caret-gap-${placement}-selected`)
         document.body.classList.add("◆gap-caret-visible")
@@ -1990,8 +2088,15 @@ export class SelectionFeature extends EditorFeature {
       const element = getContainer($.commonAncestor)
       if(!element) return
       this.#markSelection(element, "◆empty-selected")
-      if(element === getDocumentRoot() && !this.emptyDocumentCaret) {
-        this.#createEmptyDocumentCaret()
+      if(element === getDocumentRoot()) {
+        const caret = this.emptyDocumentCaret ?? this.#createEmptyDocumentCaret()
+        const style = getComputedStyle(element)
+        const rtl = style.direction === "rtl"
+        const inlineOffset = (parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) || 0)
+          + (parseFloat(rtl ? style.paddingRight : style.paddingLeft) || 0)
+        const topOffset = (parseFloat(style.borderTopWidth) || 0) + (parseFloat(style.paddingTop) || 0)
+        caret.style.setProperty("--empty-caret-left", rtl ? `calc(anchor(right) - ${inlineOffset}px)` : `calc(anchor(left) + ${inlineOffset}px)`)
+        caret.style.setProperty("--empty-caret-top", `calc(anchor(top) + ${topOffset}px)`)
       }
     }
     if(kind === "text" && sel.isCollapsed) {
@@ -2014,13 +2119,17 @@ export class SelectionFeature extends EditorFeature {
         }
       }
     }
-    // Native text carets can disappear while another app owns the drag.
+    // Native text carets can disappear after prevented touch gestures or
+    // while another app owns the drag.
     // Reuse the shared appendix caret at the collapsed selection's geometry.
-    if(document.body.classList.contains("◆drop-selection-active")
+    const touchCaret = this.#touchSelection && sel.isCollapsed && Boolean(document.activeElement?.contains(sel.focusNode))
+      && !document.body.classList.contains("◆math-boundary-caret")
+    if((document.body.classList.contains("◆drop-selection-active") || touchCaret)
       && (kind === "text" || kind === "empty") && !$.isEmptyDocumentSelection) {
+      if(touchCaret) this.#markSelection(document.body, "◆touch-caret-visible")
       const rect = caretRect(sel.focusNode, sel.focusOffset)
       const caret = this.#showSelectionCaret("text")
-      caret.style.left = `${rect.left}px`
+      caret.style.left = `${fixedClientX(rect.left)}px`
       caret.style.top = `${rect.top}px`
       caret.style.height = `${rect.height}px`
     }
@@ -2080,6 +2189,7 @@ export class SelectionFeature extends EditorFeature {
     "beforeinput": event => this.#scheduleSelectionReveal(event),
     "input": event => this.#scheduleSelectionReveal(event),
     "mousedown": ev => {
+      if(this.captureSelectedElement && ev.target instanceof Node && this.captureSelectedElement.contains(ev.target)) return
       if(ev.detail >= 2 && !this.#hitsText(ev)) ev.preventDefault()
     },
     "keydown": ev => {
@@ -2161,6 +2271,7 @@ export class SelectionFeature extends EditorFeature {
     "pointerdown": ev => this.#handlePointerDown(ev),
     "click": ev => {
       this.hasDoubleClicked = false
+      if(this.captureSelectedElement && ev.target instanceof Node && this.captureSelectedElement.contains(ev.target)) return
       if(ev.detail >= 2 && !this.#hitsText(ev)) return
       if(this.editor.features.list.isDetailsToggleInteraction(ev) || ev.button === 2 || $.isElementSelection || $.isMultiElementSelection) {
         return
@@ -2176,7 +2287,8 @@ export class SelectionFeature extends EditorFeature {
         $.extendBy("line")
       }
     },
-    "pointerup": () => {
+    "pointerup": event => {
+      if(event.pointerType === "touch" && event.isPrimary === false) return
       this.isInDragSelection = false
       if(getDocumentRoot().childNodes.length === 0) {
         $.selectDocumentStart()

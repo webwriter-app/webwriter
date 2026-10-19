@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it} from "vitest"
 import type {ElementStyleState} from "../editor-bridge"
-import {elementStyleCategories} from "../element-styles"
+import {elementStyleCategories, specializedStyleDefinitions} from "../element-styles"
 import {ElementStyleEditor, type ElementStyleChangeDetail} from "./element-style-editor"
 
 const state = (inline: ElementStyleState["inline"] = {}): ElementStyleState => ({
@@ -17,6 +17,90 @@ const state = (inline: ElementStyleState["inline"] = {}): ElementStyleState => (
 })
 
 afterEach(() => document.body.replaceChildren())
+
+describe("media cropping", () => {
+  const definitions = specializedStyleDefinitions.filter(definition => definition.name === "object-view-box")
+  async function mountCrop(style: ElementStyleState) {
+    const editor = await mount(definitions, style, "compact")
+    editor.propertyNames = ["object-view-box"]
+    await editor.updateComplete
+    return editor
+  }
+  it.each([
+    ["inset(10%)", [10, 10, 10, 10]],
+    ["inset(10% 20%)", [10, 20, 10, 20]],
+    ["inset(10% 20% 30%)", [10, 20, 30, 20]],
+    ["inset(0 20% 30% 5.5%)", [0, 20, 30, 5.5]],
+  ] as const)("edits %s as four percentage edges and preserves priority", async (value, edges) => {
+    const editor = await mountCrop(state({"object-view-box": {value, priority: "important"}}))
+    const inputs = Array.from(editor.shadowRoot!.querySelectorAll<HTMLInputElement>('.crop-edges input'))
+    expect(inputs.map(input => input.valueAsNumber)).toEqual(edges)
+    let change: ElementStyleChangeDetail | undefined
+    editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
+    inputs[0].value = "12.5"
+    inputs[0].dispatchEvent(new Event("change"))
+    expect(change).toEqual({property: "object-view-box", mutation: {value: `inset(12.5% ${edges[1]}% ${edges[2]}% ${edges[3]}%)`, priority: "important"}})
+    editor.state = state({"object-view-box": {value: "inset(5%)", priority: ""}})
+    await editor.updateComplete
+    expect(inputs.map(input => input.valueAsNumber)).toEqual([5, 5, 5, 5])
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Crop"]')!.click()
+    expect(change).toEqual({property: "object-view-box", mutation: null})
+  })
+
+  it.each(["", "-1", "100", "101"])("rejects an empty or invisible crop edge: %s", async value => {
+    const editor = await mountCrop(state())
+    let change: unknown
+    editor.addEventListener("element-style-change", event => {change = (event as CustomEvent).detail})
+    const input = editor.shadowRoot!.querySelector<HTMLInputElement>('.crop-edges input')!
+    input.value = value
+    input.dispatchEvent(new Event("change"))
+    expect(change).toBeUndefined()
+    expect(input.value).toBe("0")
+  })
+
+  it.each(["circle(40%)", "inset(10px)", "inset(10% round 5px)", "inherit"])("preserves other authored clipping: %s", async value => {
+    const editor = await mountCrop(state({"object-view-box": {value, priority: ""}}))
+    expect(editor.shadowRoot!.querySelector('.crop-edges')).toBeNull()
+    expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input')!.value).toBe(value === "inherit" ? "" : value)
+  })
+})
+
+it.each(["border-width", "border-style", "border-color", "border-top-color"])("shows Border clear for an authored %s and clears all three parts", async property => {
+  const editor = await mount([], state({[property]: {value: property === "border-width" ? "2px" : property === "border-style" ? "dashed" : "#123456", priority: ""}}), "compact")
+  let change: ElementStyleChangeDetail | undefined
+  editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
+  const clear = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Border"]')!
+  expect(clear.style.visibility).not.toBe("hidden")
+  clear.click()
+  expect(change).toEqual({styles: {"border-width": null, "border-style": null, "border-color": null}})
+  editor.state = state()
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Border"]')!.style.visibility).toBe("hidden")
+})
+
+it("distinguishes computed defaults from explicit choices of the same value", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const initial = state()
+  initial.computed["text-align"] = "start"
+  const editor = await mount(definitions, initial, "compact")
+  editor.propertyNames = ["text-align"]
+  await editor.updateComplete
+  const group = () => editor.shadowRoot!.querySelector<HTMLElement>(".specialized-choice-group")!
+  expect(group().hasAttribute("data-default")).toBe(true)
+  const left = group().querySelector<HTMLButtonElement>('button[aria-label="Left"]')!
+  expect(left.getAttribute("aria-pressed")).toBe("true")
+  let change: ElementStyleChangeDetail | undefined
+  editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
+  left.click()
+  expect(change).toEqual({property: "text-align", mutation: {value: "left", priority: ""}})
+  editor.state = {...initial, inline: {"text-align": {value: "left", priority: ""}}}
+  await editor.updateComplete
+  expect(group().hasAttribute("data-default")).toBe(false)
+  expect(group().querySelector('button[aria-label="Left"]')!.getAttribute("aria-pressed")).toBe("true")
+  editor.state = initial
+  await editor.updateComplete
+  expect(group().hasAttribute("data-default")).toBe(true)
+})
 
 async function mount(
   definitions = elementStyleCategories[0].basic,
@@ -483,34 +567,25 @@ describe("compact preset menus", () => {
 })
 
 
-it.each(["0.625", "62.5%"])("displays opacity %s as a percentage and supports editing and clearing", async value => {
+it.each(["0.625", "62.5%"])("displays opacity %s in a slider and preserves priority", async value => {
   const editor = await mount([], state({opacity: {value, priority: "important"}}), "compact")
   editor.propertyNames = ["opacity"]
   await editor.updateComplete
-  const input = comboInput(editor, "opacity")
-  expect(input.value).toBe("62.5")
-  expect(combo(editor, "opacity").unit).toBe("%")
+  const input = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="range"]')!
+  expect(input.value).toBe("0.625")
+  expect([input.min, input.max, input.step]).toEqual(["0", "1", "0.01"])
   const changes: ElementStyleChangeDetail[] = []
   editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent<ElementStyleChangeDetail>).detail))
-  for(const [percentage, css] of [["0", "0"], ["100", "1"], ["25.5", "0.255"]]) {
-    input.value = percentage
-    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
-    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    expect(changes.at(-1)).toEqual({property: "opacity", mutation: {value: css, priority: "important"}})
+  for(const value of ["0", "1", "0.25"]) {
+    input.value = value
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(changes.at(-1)).toEqual({property: "opacity", mutation: {value, priority: "important"}})
   }
-  const count = changes.length
-  for(const invalid of ["-1", "101", "invalid"]) {
-    input.value = invalid
-    input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
-    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
-    await combo(editor, "opacity").updateComplete
-    expect(input.value).toBe("62.5")
-    expect(changes).toHaveLength(count)
-  }
-  input.value = ""
-  input.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
-  input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Clear Opacity"]')!.click()
   expect(changes.at(-1)).toEqual({property: "opacity", mutation: null})
+  editor.state = state()
+  await editor.updateComplete
+  expect(input.value).toBe("1")
 })
 
 it("displays authored scale as a percentage and preserves priority when editing or clearing", async () => {
@@ -599,7 +674,12 @@ it("offers fixed border colors, Automatic, and the custom picker", async () => {
   picker.open = true
   expect(custom.hidden).toBe(false)
   expect(custom.parentElement!.classList.contains("palette-custom")).toBe(true)
-  picker.querySelector<HTMLButtonElement>(".palette-custom button")!.click()
+  const customButton = picker.querySelector<HTMLButtonElement>(".palette-custom button")!
+  Object.defineProperty(picker.querySelector(".border-color-palette"), "getBoundingClientRect", {value: () => new DOMRect(20, 30, 160, 100)})
+  Object.defineProperty(customButton, "getBoundingClientRect", {value: () => new DOMRect(24, 100, 152, 26)})
+  customButton.click()
+  expect(custom.style.left).toBe("184px")
+  expect(custom.style.top).toBe("99px")
   expect(picker.open).toBe(true)
   expect(opened).toBe(1)
   custom.value = "#123456"
@@ -780,6 +860,125 @@ it("edits and clears corner rounding using pixels and presets", async () => {
   expect(changes.at(-1)).toEqual({property: "border-radius", mutation: null})
 })
 
+it.each([
+  ["margin", "Margin", "margin-top", "7px"],
+  ["padding", "Padding", "padding-left", "8px"],
+  ["border-width", "Border", "border-right-width", "3px"],
+  ["border-radius", "Rounding", "border-top-left-radius", "9px"],
+])("opens spatial %s controls and edits only the chosen direction", async (property, label, direction, value) => {
+  const editor = await mount([], state({[direction]: {value, priority: "important"}}), "compact")
+  editor.propertyNames = [property]
+  editor.selectionKey = "first"
+  await editor.updateComplete
+  const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".directional-label")!
+  expect(trigger.textContent).toBe(label)
+  expect(trigger.hasAttribute("data-set")).toBe(true)
+  expect(trigger.getAttribute("aria-haspopup")).toBe("dialog")
+  trigger.click()
+  await editor.updateComplete
+  await editor.updateComplete
+  const dialog = editor.shadowRoot!.querySelector<HTMLDialogElement>(".directional-dialog")!
+  expect(dialog.open).toBe(true)
+  const parts = Array.from(dialog.querySelectorAll<HTMLElement>(".directional-part"))
+  expect(parts.map(part => part.style.gridArea)).toEqual(["top", "right", "left", "bottom"])
+  expect(dialog.querySelectorAll("style-combobox")).toHaveLength(16)
+  expect(parts.every(part => part.querySelectorAll("style-combobox").length === 4)).toBe(true)
+  const changes: unknown[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  const name = property === "border-width" ? "border-top-width" : property === "border-radius" ? "border-top-left-radius" : `${property}-top`
+  await combo(editor, name).updateComplete
+  const input = comboInput(editor, name)
+  changeComboInput(editor, name, "12")
+  expect(changes.at(-1)).toEqual({property: name, mutation: {value: "12px", priority: name === direction ? "important" : ""}})
+  editor.state = {...editor.state, inline: {...editor.state.inline, [name]: {value: "12px", priority: name === direction ? "important" : ""}}}
+  await editor.updateComplete
+  await combo(editor, name).updateComplete
+  changeComboInput(editor, name, "invalid")
+  await combo(editor, name).updateComplete
+  expect(changes).toHaveLength(1)
+  changeComboInput(editor, name, "")
+  expect(changes.at(-1)).toEqual({property: name, mutation: null})
+  if(property === "border-width") {
+    dialog.querySelector<HTMLButtonElement>('[aria-label="Top border: dashed"]')!.click()
+    expect(changes.at(-1)).toEqual({property: "border-top-style", mutation: {value: "dashed", priority: ""}})
+    dialog.querySelector<HTMLButtonElement>('[aria-label="Color #5b9bd5"]')!.click()
+    expect(changes.at(-1)).toEqual({property: "border-top-color", mutation: {value: "#5b9bd5", priority: ""}})
+  }
+  editor.selectionKey = "second"
+  await editor.updateComplete
+  expect(dialog.open).toBe(false)
+  editor.state = state()
+  await editor.updateComplete
+  expect(trigger.hasAttribute("data-set")).toBe(false)
+})
+
+it("distinguishes directional declarations from shorthand-expanded values", async () => {
+  const current = state({margin: {value: "8px", priority: ""}, "margin-top": {value: "8px", priority: ""}})
+  current.authoredProperties = ["margin"]
+  const editor = await mount([], current, "compact")
+  editor.propertyNames = ["margin"]
+  await editor.updateComplete
+  const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".directional-label")!
+  expect(trigger.hasAttribute("data-set")).toBe(false)
+  trigger.click()
+  await editor.updateComplete
+  await editor.updateComplete
+  await combo(editor, "margin-top").updateComplete
+  expect(comboInput(editor, "margin-top").value).toBe("")
+  editor.state = {...current, authoredProperties: ["margin", "margin-top"]}
+  await editor.updateComplete
+  expect(trigger.hasAttribute("data-set")).toBe(true)
+  await combo(editor, "margin-top").updateComplete
+  expect(comboInput(editor, "margin-top").value).toBe("8")
+  editor.remove()
+  expect(editor.shadowRoot!.querySelector<HTMLDialogElement>(".directional-dialog")!.open).toBe(false)
+})
+
+it("closes the directional dialog with its heading close button", async () => {
+  const editor = await mount([], state(), "compact")
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".directional-label")!.click()
+  await editor.updateComplete
+  await editor.updateComplete
+  const dialog = editor.shadowRoot!.querySelector<HTMLDialogElement>(".directional-dialog")!
+  expect(dialog.open).toBe(true)
+  dialog.querySelector<HTMLButtonElement>('.directional-heading [aria-label="Close directional styles"]')!.click()
+  expect(dialog.open).toBe(false)
+  await editor.updateComplete
+  expect(editor.shadowRoot!.querySelector(".directional-dialog")).toBeNull()
+})
+
+it.each([["background-color", "color"], ["color", "background-color"]])("combines %s and %s into one Color field with independent palettes", async (first, second) => {
+  const editor = await mount([], state({
+    color: {value: "#5b9bd5", priority: "important"},
+    "background-color": {value: "#ffffff", priority: ""},
+  }), "compact")
+  editor.propertyNames = [first, second]
+  await editor.updateComplete
+  const rows = editor.shadowRoot!.querySelectorAll(".compact-row")
+  expect(rows).toHaveLength(1)
+  expect(rows[0].querySelector(".field-label > span")!.textContent).toBe("Color")
+  const parts = Array.from(rows[0].querySelectorAll<HTMLElement>(".color-fields > [data-property]"))
+  expect(parts.map(part => part.dataset.property)).toEqual(["color", "background-color"])
+  expect(parts.map(part => part.querySelector("summary")!.getAttribute("aria-label"))).toEqual(["Text color", "Background color"])
+  const changes: unknown[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  for(const [index, property] of ["color", "background-color"].entries()) {
+    parts[index].querySelector<HTMLButtonElement>('[aria-label="Color #ed7d31"]')!.click()
+    expect(changes.at(-1)).toEqual({property, mutation: {value: "#ed7d31", priority: index === 0 ? "important" : ""}})
+    parts[index].querySelector<HTMLButtonElement>(".palette-automatic")!.click()
+    expect(changes.at(-1)).toEqual({property, mutation: null})
+  }
+  const clear = rows[0].querySelector<HTMLButtonElement>('[aria-label="Clear Color"]')!
+  clear.click()
+  expect(changes.at(-1)).toEqual({styles: {color: null, "background-color": null}})
+  editor.state = state({"background-color": {value: "red", priority: ""}})
+  await editor.updateComplete
+  expect(clear.style.visibility).not.toBe("hidden")
+  editor.state = state()
+  await editor.updateComplete
+  expect(clear.style.visibility).toBe("hidden")
+})
+
 it("shows text color as an Abc preview and changes or resets it through the palette", async () => {
   const editor = await mount([], state({color: {value: "#5b9bd5", priority: "important"}}), "compact")
   editor.propertyNames = ["color"]
@@ -870,7 +1069,7 @@ it("groups shadow and filter preview fields and reflects their current effects",
 })
 
 it.each([
-  ["rotate", "Straight", "0deg"], ["scale", "Original", "1"], ["opacity", "Half", "0.5"],
+  ["rotate", "Straight", "0deg"], ["scale", "Original", "1"],
 ])("offers named numerical %s presets and preserves priority", async (property, label, value) => {
   const editor = await mount([], state({[property]: {value: "0", priority: "important"}}), "compact")
   editor.propertyNames = [property]

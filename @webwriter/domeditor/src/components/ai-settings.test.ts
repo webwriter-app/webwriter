@@ -13,6 +13,73 @@ afterEach(() => {
 })
 
 describe("AI provider settings", () => {
+  it("shows collapsed provider cards, activates by radio, and preserves other cards' edits when saving or deleting", async () => {
+    const store = new AIProviderStore(null)
+    const first = store.upsert({...createAIProvider("custom"), name: "First provider", auth: "none", models: ["first-model"]})
+    const second = store.upsert({...createAIProvider("custom"), name: "Second provider", auth: "none", models: ["second-model"]})
+    await store.activate(first.id)
+    const settings = new AISettingsDialog()
+    settings.embedded = true
+    settings.store = store
+    settings.open = true
+    document.body.append(settings)
+    await settings.updateComplete
+    const cards = [...settings.shadowRoot!.querySelectorAll<HTMLDetailsElement>(".provider-card")]
+    expect(cards).toHaveLength(2)
+    expect(cards.every(card => !card.open)).toBe(true)
+    expect(cards[0].querySelector<HTMLInputElement>('input[type="radio"]')!.checked).toBe(true)
+    const editors = cards.map(card => card.querySelector("ai-settings-dialog")!)
+    for(const [index, card] of cards.entries()) {
+      card.open = true
+      card.dispatchEvent(new Event("toggle"))
+      await settings.updateComplete
+      await editors[index].updateComplete
+      expect(editors[index].shadowRoot!.querySelector("form")).not.toBeNull()
+    }
+    const nameInput = (editor: AISettingsDialog) => editor.shadowRoot!.querySelector<HTMLInputElement>('input:not([inputmode="url"])')!
+    nameInput(editors[1]).value = "Unsaved second name"
+    nameInput(editors[1]).dispatchEvent(new InputEvent("input", {bubbles: true}))
+    cards[1].querySelector<HTMLInputElement>('input[type="radio"]')!.click()
+    await vi.waitFor(() => expect(store.activeProviderId).toBe(second.id))
+    expect(nameInput(editors[1]).value).toBe("Unsaved second name")
+    nameInput(editors[0]).value = "Saved first name"
+    nameInput(editors[0]).dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await (editors[0] as any).save({preventDefault() {}})
+    await settings.updateComplete
+    expect(store.provider(first.id)!.name).toBe("Saved first name")
+    expect(store.activeProviderId).toBe(second.id)
+    expect(nameInput(editors[1]).value).toBe("Unsaved second name")
+    vi.mocked(listAIModels).mockResolvedValue(["refreshed-model"])
+    await (editors[0] as any).fetchModels()
+    expect(store.activeProviderId).toBe(second.id)
+    await (editors[0] as any).removeProvider()
+    await (editors[0] as any).removeProvider()
+    await settings.updateComplete
+    expect(settings.shadowRoot!.querySelectorAll(".provider-card")).toHaveLength(1)
+    expect(settings.shadowRoot!.querySelector(".provider-card ai-settings-dialog")).toBe(editors[1])
+    expect(nameInput(editors[1]).value).toBe("Unsaved second name")
+  })
+
+  it("restores the active radio when provider activation fails", async () => {
+    const store = new AIProviderStore(null)
+    const first = store.upsert({...createAIProvider("custom"), name: "First"})
+    store.upsert({...createAIProvider("custom"), name: "Second"})
+    await store.activate(first.id)
+    const settings = new AISettingsDialog()
+    settings.embedded = true
+    settings.store = store
+    settings.open = true
+    document.body.append(settings)
+    await settings.updateComplete
+    vi.spyOn(store, "activate").mockRejectedValue(new Error("Could not activate provider"))
+    const radios = [...settings.shadowRoot!.querySelectorAll<HTMLInputElement>('input[type="radio"]')]
+    radios[1].click()
+    await vi.waitFor(() => expect(settings.shadowRoot!.textContent).toContain("Could not activate provider"))
+    expect(radios[0].checked).toBe(true)
+    expect(radios[1].checked).toBe(false)
+    expect(settings.shadowRoot!.querySelectorAll<HTMLDetailsElement>(".provider-card[open]")).toHaveLength(0)
+  })
+
   it("preserves Name and key storage edits made while model discovery is pending", async () => {
     vi.useFakeTimers()
     let resolveModels!: (models: string[]) => void
@@ -25,6 +92,9 @@ describe("AI provider settings", () => {
     document.body.append(settings)
     settings.show()
     await settings.updateComplete
+    const close = settings.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close AI settings"]')!
+    expect(close.textContent?.trim()).toBe("")
+    expect(close.querySelector("svg")).not.toBeNull()
 
     const fetch = (settings as unknown as {fetchModels: () => Promise<void>}).fetchModels()
     await Promise.resolve()

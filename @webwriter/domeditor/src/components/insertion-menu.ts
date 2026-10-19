@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
-import {uiMotionDisabled} from "../utility"
+import {fixedClientX, uiMotionDisabled} from "../utility"
 import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
 import {packageNameLabel, type PackageInsertionItem} from "../packages"
@@ -238,7 +238,7 @@ export class InsertionMenu extends LitElement {
   }
 
   setPosition(x: number, y: number) {
-    this.style.left = `${Math.max(8, x)}px`
+    this.style.left = `${fixedClientX(Math.max(8, x), this.ownerDocument)}px`
     this.style.top = `${Math.max(8, y)}px`
   }
 

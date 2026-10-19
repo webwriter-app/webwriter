@@ -17,6 +17,38 @@ const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
 const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
+describe("collaborative minimum flow content", () => {
+  it("keeps one default paragraph when a remote deletion and its later repair arrive separately", async () => {
+    document.body.innerHTML = "<p>Last paragraph</p>"
+    const first = new DOMEditor()
+    first.doc.syncFromDOM()
+    const initial = Y.encodeStateAsUpdate(first.doc.doc)
+    const vector = Y.encodeStateVector(first.doc.doc)
+    document.body.firstElementChild!.remove()
+    first.doc.syncFromDOM()
+    const deletion = Y.encodeStateAsUpdate(first.doc.doc, vector)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    first.doc.syncFromDOM()
+    const repaired = Y.encodeStateAsUpdate(first.doc.doc, vector)
+    expect(document.body.querySelectorAll("p")).toHaveLength(1)
+    first.destroy()
+    document.body.replaceChildren()
+    const second = new DOMEditor({initialState: {update: Array.from(initial)}})
+    try {
+      Y.applyUpdate(second.doc.doc, deletion, "remote")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      second.doc.syncFromDOM()
+      expect(document.body.querySelectorAll("p")).toHaveLength(1)
+      Y.applyUpdate(second.doc.doc, repaired, "remote")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      second.doc.syncFromDOM()
+      expect(document.body.querySelectorAll("p")).toHaveLength(1)
+      expect(second.toHTML()).not.toContain("__domeditor_minimum_repair")
+    }
+    finally { second.destroy(); document.body.replaceChildren() }
+  })
+})
+
 describe("collaborative disclosure structure", () => {
   it("preserves missing summaries through remote updates, unrelated local input, and shared snapshot startup", async () => {
     document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details><p>Other</p>'
@@ -100,6 +132,15 @@ describe("DOMEditor stylesheets", () => {
     expect(fixture.querySelectorAll(rule.selectorText.replace(/::after$/, ""))).toHaveLength(count)
   })
 
+  it("uses a text cursor for figure labels", () => {
+    const stylesheet = new CSSStyleSheet()
+    stylesheet.replaceSync(editorStyleString)
+    const rule = Array.from(stylesheet.cssRules).find(rule =>
+      (rule as CSSStyleRule).selectorText === "summary, figcaption"
+    ) as CSSStyleRule
+    expect(rule.style.cursor).toBe("text")
+  })
+
   it("uses the main-DOM stylesheet to style exposed shadow parts", () => {
     const appendix = editor.appendix
     const overlay = editor.features.transformation.overlay
@@ -147,7 +188,10 @@ describe("DOMEditor stylesheets", () => {
     }
     const body = rules.find(rule => rule.selectorText === "body")!
     expect(body.style.minHeight).toBe("calc(100% - 2.5rem)")
-    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)\s*\{[^}]*left:\s*anchor\(left\);/)
+    // Happy DOM omits ::part rules from CSSOM, so inspect this rule's source.
+    const caret = editorStyleString.match(/body::part\(empty-document-caret\)\s*\{([^}]*)\}/)?.[1]
+    expect(caret).toMatch(/left:\s*var\(--empty-caret-left,\s*anchor\(left\)\);/)
+    expect(caret).toMatch(/top:\s*var\(--empty-caret-top,\s*anchor\(top\)\);/)
   })
 
   it.each([
@@ -197,7 +241,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editor.features.selection.emptyDocumentCaret).toBeNull()
     expect(editor.features.selection.hoverCaret?.getRootNode()).toBe(editor.appendix)
     expect(editorStyleString).toContain("body::part(empty-document-caret)")
-    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)[\s\S]*?left:\s*anchor\(left\);/)
+    expect(editorStyleString).toMatch(/body::part\(empty-document-caret\)\s*\{[^}]*left:\s*var\(--empty-caret-left,\s*anchor\(left\)\);/)
     expect(editorStyleString).toContain("body::part(presence-caret)")
     expect(editorStyleString).toContain("body::part(presence-element-selection)")
     expect(editorStyleString).toContain("body::part(presence-element-selection-label)")
@@ -252,7 +296,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toContain("body.◆element-selected::after")
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
-    expect(editorStyleString).toMatch(/summary\s*\{\s*cursor:\s*text;/)
+    expect(editorStyleString).toMatch(/summary,\s*figcaption\s*\{\s*cursor:\s*text;/)
     expect(editorStyleString).toMatch(/body:has\(:is\(summary, figcaption\):is\(:hover, \.◆pointer-hovered, \.◆element-hovered, \.◆style-target-hovered\)\)::part\(hover-caret\)\s*\{\s*display:\s*none;/)
     expect(editorStyleString).toMatch(/summary::after\s*\{\s*cursor:\s*pointer;\s*\}/)
     expect(editorStyleString).not.toMatch(/summary:is\([^{}]*\)::after\s*\{[^}]*content:/)
@@ -270,7 +314,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/dl > dt:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Term";/)
     expect(editorStyleString).toMatch(/dl > dd:is\(:empty, :has\(br:only-child\)\)::after[\s\S]*?content:\s*"Description";/)
     expect(editorStyleString).not.toMatch(/:is\(ul, ol, menu\):empty[\s\S]*?display:\s*list-item;/)
-    expect(editorStyleString).toMatch(/\.◆media-empty\s*\{[\s\S]*?border:\s*1px dashed #6b7280;/)
+    expect(editorStyleString).toMatch(/:is\(picture, img, video, iframe, embed, object\)\.◆media-empty,\s*body::part\(graphic-image-placeholder\)\s*\{[^}]*border:\s*1px dashed #6b7280;/)
     expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
     expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?width:\s*100%;/)
     expect(editorStyleString).not.toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?(?:height|aspect-ratio):/)
@@ -335,7 +379,9 @@ describe("DOMEditor stylesheets", () => {
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(3)
     editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).toBe("<body><p>typed</p><p></p></body>")
+    // The mirror also carries transient repair provenance; its authored
+    // projection must contain only the original content and restored block.
+    expect((editor.doc.yxmlToDomNode(editor.doc.body) as unknown as Element).outerHTML).toBe("<body><p>typed</p><p></p></body>")
   })
 
   it("repairs only native body text runs while retaining comments, widgets and whitespace", () => {
@@ -732,6 +778,15 @@ describe("breadcrumb positioning", () => {
       $.selectElement(document.querySelector("img")!)
       const image = readPath()
       expect(image.map(item => item.name)).toContain("Image")
+      expect(image.at(-1)?.imageMap).toBeUndefined()
+      const authoredImage = document.querySelector("img")!
+      authoredImage.setAttribute("usemap", "#plan")
+      const map = document.createElement("map")
+      map.name = "plan"
+      document.body.append(map)
+      expect(readPath().at(-1)?.imageMap).toBe(true)
+      map.remove()
+      expect(readPath().at(-1)?.imageMap).toBeUndefined()
       expect(image.flatMap(item => [item.name, ...(item.sections ?? []).map(section => section.name)])).not.toContain("Figure")
       $.selectElement(document.querySelectorAll("figure")[1])
       const empty = readPath()
@@ -815,6 +870,33 @@ describe("breadcrumb positioning", () => {
     withSelection(`<style>.responsive { float: none !important }</style><p id="target" class="responsive" style="float: left">Text</p>`, (_editor, readPath) => {
       expect(getComputedStyle(document.getElementById("target")!).float).toBe("none")
       expect(readPath().at(-1)?.float).toBe("far-left")
+    })
+  })
+
+  it("reports a left float forced right by the responsive lane without changing authored HTML", () => {
+    withSelection('<style>.responsive {float: right !important; --ww-responsive-float: right}</style><p id="target" class="responsive" style="float: left">Text</p>', (editor, readPath) => {
+      const target = document.getElementById("target")!
+      const before = editor.toHTML(true)
+      expect(readPath().at(-1)).toMatchObject({float: "far-left", floatForcedRight: true})
+      expect(editor.features.manipulation.getStyleState(["float"], target).context.floatLeftForcedRight).toBe(true)
+      target.classList.remove("responsive")
+      expect(readPath().at(-1)?.floatForcedRight).toBeUndefined()
+      target.classList.add("responsive")
+      expect(editor.toHTML(true)).toBe(before)
+    })
+  })
+
+  it.each(["p", "custom-widget"])("reports a responsive right float in normal flow for %s without changing authored HTML", tag => {
+    withSelection(`<style>.responsive {float: none !important; --ww-responsive-float: none}</style><${tag} id="target" class="responsive" style="float: right">Text</${tag}>`, (editor, readPath) => {
+      const target = document.getElementById("target")!
+      const before = editor.toHTML(true)
+      expect(readPath().at(-1)).toMatchObject({float: "far-right", floatRightInFlow: true})
+      expect(editor.features.manipulation.getStyleState(["float"], target).context.floatRightInFlow).toBe(true)
+      target.classList.remove("responsive")
+      expect(readPath().at(-1)?.floatRightInFlow).toBeUndefined()
+      expect(editor.features.manipulation.getStyleState(["float"], target).context.floatRightInFlow).toBe(false)
+      target.classList.add("responsive")
+      expect(editor.toHTML(true)).toBe(before)
     })
   })
 
@@ -1054,6 +1136,23 @@ describe("command normalization boundaries", () => {
     }
     finally { editor.destroy() }
   })
+
+  it("keeps an already normalized native caret without resetting its range", () => {
+    document.body.innerHTML = '<section><!--keep--><p>Native typing</p></section>'
+    const editor = new DOMEditor()
+    try {
+      const paragraph = document.querySelector("p")!, text = paragraph.firstChild!
+      const selection = document.getSelection()!
+      selection.setBaseAndExtent(text, 3, text, 3)
+      const restore = vi.spyOn(selection, "setBaseAndExtent")
+      editor.normalizeSurroundingElements(paragraph)
+      expect(restore).not.toHaveBeenCalled()
+      expect(selection.anchorNode).toBe(text)
+      expect(selection.anchorOffset).toBe(3)
+      restore.mockRestore()
+    }
+    finally { editor.destroy() }
+  })
 })
 
 describe("registered editor commands", () => {
@@ -1123,4 +1222,15 @@ describe("independent disclosure elements", () => {
     }
     finally {editor.destroy()}
   })
+})
+
+it("passes a shared editing capability to the document WebSocket", () => {
+  document.body.innerHTML = "<p>Shared content</p>"
+  const editor = new DOMEditor({syncUrl: "ws://localhost:1234?session=document-saved&share=editing-token"})
+  try {
+    expect(editor.doc.sessionId).toBe("document-saved")
+    expect(new URL(editor.doc.provider!.url).searchParams.get("share")).toBe("editing-token")
+    expect(new URL(editor.doc.provider!.url).searchParams.has("session")).toBe(false)
+  }
+  finally {editor.destroy(); document.body.replaceChildren()}
 })

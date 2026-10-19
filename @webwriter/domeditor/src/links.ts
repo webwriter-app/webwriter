@@ -1,5 +1,29 @@
 import {isMarkAttributeName} from "./marks"
 
+/** Interpret web addresses independently of the editor frame's URL. */
+export function normalizeLinkHref(input: string): string | null {
+  let href = input.trim()
+  if(!href) return null
+  if(href.startsWith("#")) return href.length > 1 ? href : null
+  const scheme = /^[a-z][a-z\d+.-]*:/i.exec(href)?.[0].toLowerCase()
+  if(scheme === "http:" || scheme === "https:") href = href.replace(/^https?:\/*/i, `${scheme}//`)
+  else if(scheme && !/^[^/?#:\s]+:\d+(?:[/?#]|$)/.test(href)) {
+    if(!["mailto:", "tel:", "ftp:", "file:"].includes(scheme)) return null
+  }
+  else {
+    href = href.replace(/^\/\//, "")
+    if(/^[./?]/.test(href)) return null
+    href = `https://${href}`
+  }
+  try {
+    const url = new URL(href)
+    if(url.protocol === "https:" && !url.hostname) return null
+    // Keep valid address spelling; use the platform to encode spaces in paths.
+    return /\s/.test(href) ? url.href : href
+  }
+  catch { return null }
+}
+
 /** A disposable view of the current DOM selection for the link keyboard. */
 export type LinkSelectionState = {
   active: boolean

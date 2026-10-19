@@ -19,3 +19,13 @@ describe("app settings layout persistence", () => {
     expect(defaultAppSettings().defaultLayout).toBe("document")
   })
 })
+
+describe("guided tour setting", () => {
+  it("defaults on and accepts only a saved boolean", () => {
+    expect(defaultAppSettings().showGuidedTour).toBe(true)
+    for(const value of [undefined, "yes", true, false]) {
+      localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({showGuidedTour: value}))
+      expect(loadAppSettings().showGuidedTour).toBe(typeof value === "boolean" ? value : true)
+    }
+  })
+})

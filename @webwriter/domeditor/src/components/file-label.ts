@@ -11,7 +11,7 @@ export class FileLabel extends LitElement {
     :host {
       display: block;
       width: fit-content;
-      min-width: 100px;
+      min-width: var(--file-label-min-width, 100px);
       max-width: 500px;
     }
 
@@ -36,6 +36,13 @@ export class FileLabel extends LitElement {
       font-weight: 700;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .file-menu-label {display: none; font-size: .74rem; font-weight: 700}
+
+    @container ribbon (max-width: 42rem) {
+      .file-name {display: none}
+      .file-menu-label {display: inline}
     }
 
     .dirty-indicator {
@@ -67,6 +74,7 @@ export class FileLabel extends LitElement {
         @mousedown=${this.stopLabelPointer}
       >
         <strong class="file-name" title=${name}>${name}</strong>
+        <strong class="file-menu-label" title=${name}>File</strong>
         <span
           class="dirty-indicator"
           aria-hidden="true"

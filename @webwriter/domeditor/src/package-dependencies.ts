@@ -49,7 +49,7 @@ export function packageModuleEntries(packages: WebWriterPackage[]) {
 /** Whether an npm file host answers at all, probed with a small published file. */
 async function npmHostAvailable(base: string) {
   try {
-    const response = await fetchWithin(globalThis.fetch.bind(globalThis), `${base}/@webcomponents/scoped-custom-element-registry@0.0.10/package.json`, {}, NPM_FILE_TIMEOUT_MS)
+    const response = await fetchWithin(globalThis.fetch.bind(globalThis), `${base}/lit@3.3.2/package.json`, {}, NPM_FILE_TIMEOUT_MS)
     return response.ok
   }
   catch { return false }

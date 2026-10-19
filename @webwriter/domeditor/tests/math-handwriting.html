@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Formula handwriting</title>
+<style>body { margin: 24px; font: 16px system-ui; } math { font-size: 28px; }</style></head>
+<body>
+<p>Formula: <math xmlns="http://www.w3.org/1998/Math/MathML"><mi>a</mi><mo>+</mo><mi>b</mi></math></p>
+<script class="◆editor-only" type="module">
+import {DOMEditor} from '../src/domeditor.ts'
+import {MathKeyboard} from '../src/components/math-keyboard.ts'
+import {$} from '../src/utility.ts'
+const editor = new DOMEditor()
+const keyboard = new MathKeyboard()
+keyboard.style.cssText = 'position:fixed;bottom:0;left:0;right:0'
+keyboard.contentEditable = 'false'
+editor.addAppendix(keyboard)
+const narrow = document.createElement('button')
+narrow.textContent = 'Toggle narrow keyboard'
+narrow.style.cssText = 'position:fixed;top:80px;left:24px'
+narrow.addEventListener('pointerdown', event => event.preventDefault())
+narrow.addEventListener('click', () => { keyboard.style.width = keyboard.style.width ? '' : '320px' })
+editor.addAppendix(narrow)
+const preview = document.createElement('button')
+preview.textContent = 'Preview tall recognized formula'
+preview.style.cssText = 'position:fixed;top:112px;left:24px'
+preview.addEventListener('pointerdown', event => event.preventDefault())
+preview.addEventListener('click', () => {
+  keyboard.handwritingBusy = false
+  keyboard.handwritingFragment = '<math xmlns="http://www.w3.org/1998/Math/MathML"><mfrac><msqrt><mi>x</mi></msqrt><msup><mi>y</mi><mn>2</mn></msup></mfrac></math>'
+})
+editor.addAppendix(preview)
+keyboard.addEventListener('math-keyboard-command', event => editor.features.math.execute(`keyboard:${event.detail.command}`))
+const math = document.querySelector('math')
+$.move(math.lastElementChild.firstChild, 1)
+editor.features.selection.processSelection(undefined, {scrollIntoView:false})
+editor.features.math.refresh()
+</script>
+</body></html>

@@ -10,6 +10,8 @@
   "scripts": {
     "start": "node dev-server/server.mjs",
     "start:frontend": "vite",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
     "test:native-browser": "node scripts/native-browser.mjs",
     "test:native-browser:smoke": "node scripts/native-browser.mjs --smoke",
     "test:native-browser:smoke:chromium": "node scripts/native-browser.mjs --smoke --browser=chromium",
@@ -18,10 +20,12 @@
     "test:native-browser:smoke:webkit": "node scripts/native-browser.mjs --smoke --browser=webkit",
     "test:math-visual": "node scripts/native-browser.mjs --math-visual",
     "test": "vitest watch --reporter=minimal",
+    "test:coverage": "vitest run --coverage",
     "vitest": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.worker.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.native-browser.json"
   },
   "dependencies": {
+    "axe-core": "^4.14.0",
     "@citation-js/core": "^0.8.2",
     "@citation-js/plugin-csl": "^0.8.2",
     "@citation-js/plugin-bibtex": "^0.8.2",
@@ -36,15 +40,30 @@
     "qrcodejs": "^1.0.0",
     "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",
-    "yjs": "^13.6.31"
+    "yjs": "^13.6.31",
+    "onnxruntime-web": "1.29.0",
+    "temml": "^0.11.11"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.11",
     "esbuild": "^0.25.12",
+    "marked": "^14.1.4",
+    "shiki": "^3.22.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@y/websocket-server": "^0.1.1",
     "openai": "^4.104.0",
     "ws": "^8.21.0",
     "vite": "^8.0.16",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "@angular/common": "^22.2.2",
+    "@angular/compiler": "^22.2.2",
+    "@angular/core": "^22.2.2",
+    "@angular/elements": "^22.2.2",
+    "@angular/platform-browser": "^22.2.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "rxjs": "^7.8.2",
+    "svelte": "^5.57.2",
+    "vue": "^3.5.44"
   }
 }

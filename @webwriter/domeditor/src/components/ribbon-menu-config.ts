@@ -26,8 +26,6 @@ export const storageLocations = [
 ] as const
 export type StorageLocation = typeof storageLocations[number]["value"]
 
-export const placeholderSharingLink = "https://webwriter.app/share/placeholder"
-
 type InsertionSection = "Text" | "Lists" | "Media"
 
 const groupedGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
@@ -190,14 +188,15 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
             {label: "Document", action: "new:document", icon: "Document"},
             {label: "Canvas", action: "new:canvas", icon: "Canvas"},
             {label: "Slides", action: "new:slides", icon: "KeywordPresentation"},
+            {label: "Board", action: "new:board", icon: "BoardColumn"},
           ],
         },
         "Open",
         {label: "Save", submenu: fileFormatButtons("save")},
         {label: "Save as", submenu: fileFormatButtons("save-as")},
+        "Print",
       ],
     },
-    {label: "Sharing", buttons: ["Share", "Print", {label: "Download", submenu: fileFormatButtons("download")}]},
   ],
   Start: [
     {label: "Marks", buttons: []},
@@ -207,9 +206,7 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
     {label: "Marks", buttons: []},
     {
       label: "Document",
-      buttons: [
-        {label: "Default", action: "set-document-template:body", icon: "Document"},
-      ],
+      buttons: [],
     },
     {label: "Section", buttons: []},
     {label: "Heading group", buttons: []},
@@ -292,7 +289,7 @@ const toolboxContextPriority = [
 export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGroup[] {
   if(context.surface === "toolbox" && context.activeTool === "Style") return menuGroups.Style
   if(context.surface === "toolbox" && context.activeTool === "Review") {
-    return [...menuGroups.Edit.filter(group => group.label === "Comments"), ...menuGroups.History]
+    return menuGroups.Edit.filter(group => group.label === "Comments")
   }
   if(context.surface === "toolbox" && context.activeTool !== "Edit") return []
   if(context.surface === "toolbox" && context.developMode) return menuGroups.Develop

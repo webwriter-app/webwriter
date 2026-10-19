@@ -1,4 +1,5 @@
-import {dropdownContentStyles} from "./dropdown-content.styles"
+import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
 import type {PackageKeywordPresentation} from "../package-keywords"
@@ -52,6 +53,7 @@ export class RibbonButton extends LitElement {
     muted: {type: Boolean, reflect: true},
     details: {attribute: false},
     detailsOpen: {type: Boolean, attribute: "details-open", reflect: true},
+    detailsPosition: {attribute: false, state: true},
     selectionCount: {type: Number, attribute: "selection-count"},
     toggle: {type: Boolean, reflect: true},
     variant: {type: String, reflect: true},
@@ -60,6 +62,7 @@ export class RibbonButton extends LitElement {
   }
 
   static styles = css`
+    ${editorInteractionStyles}
     :host([variant="package"][developer-package]) .button-label-text { font-style: italic; }
     :host([icon-only]) .button-label { display: none; }
     :host([icon-only]) .main-button { padding: 0.3rem; justify-content: center; }
@@ -70,6 +73,10 @@ export class RibbonButton extends LitElement {
       flex: 1 1 3rem;
       min-width: 3rem;
     }
+
+    :host([variant="table-structure"]) .button-row {height: 100%;}
+    :host([variant="table-structure"]) .button-label,
+    :host([variant="table-structure"]) .button-label-text {white-space: normal; line-height: .65rem;}
 
     :host([compact]) {
       flex: 0 0 1.75rem;
@@ -264,6 +271,8 @@ export class RibbonButton extends LitElement {
     .submenu-toggle[aria-expanded="true"] .submenu-chevron {
       transform: rotate(225deg);
     }
+
+    :host([custom-icon]) .button-icon { width: auto; height: auto; }
 
     .button-icon {
       display: block;
@@ -570,6 +579,47 @@ export class RibbonButton extends LitElement {
       text-align: center;
     }
 
+    .sharing-reader-hint { display: flex; justify-content: flex-end; align-items: center; gap: 0.5rem; margin: 0.5rem 0 0; padding-top: 0.75rem; border-top: 1px solid #d8dee6; color: #6b7280; font-size: 0.65rem; text-align: right; }
+    .sharing-preview-button { display: flex; flex-direction: row; align-items: center; gap: 0.7rem; flex: 0 0 auto; width: auto; height: 1.2rem; min-height: 0; padding: 0.2rem 0.2rem 0.2rem 0; font-size: 0.65rem; white-space: nowrap; color: #6b7280; background: transparent; border: 0; border-radius: 0.35rem; cursor: pointer; }
+    .sharing-preview-button:hover { color: #4b5563; background: #f3f4f6; }
+    .sharing-preview-button:focus-visible { outline: 2px solid #3977c7; }
+    .sharing-preview-button:disabled { opacity: 0.5; cursor: default; }
+    .sharing-preview-icon { box-sizing: border-box; display: grid; place-items: center; flex: 0 0 auto; width: 0.8rem; height: 0.8rem; padding: 0.064rem; border: 1.2px solid currentColor; border-radius: 50%; }
+    .sharing-preview-icon svg { display: block; width: 100%; height: 100%; }
+    ${switchInputStyles}
+    .sharing-toggle {
+      --switch-width: 2.75rem;
+      --switch-height: 1.5rem;
+      --switch-knob-size: 1.14rem;
+      --switch-travel: 1.23rem;
+      display: flex;
+      flex-direction: row;
+      justify-content: flex-start;
+      align-items: center;
+      gap: 0.5rem;
+      padding-block: 0.35rem;
+      font-size: 0.85rem;
+      text-align: left;
+      border-radius: 0.35rem;
+    }
+    .sharing-toggle strong { flex: 1; font-weight: 700; text-align: left; }
+    .sharing-invite-icon { display: grid; place-items: center; flex: 0 0 auto; padding: 0.25rem; color: #526b86; }
+    .sharing-invite-icon svg { display: block; width: 1.2em; height: 1.2em; }
+    .sharing-toggle[aria-checked="true"] { background: #eef5ff; }
+    .sharing-toggle:hover:not(:disabled) { background: #e8eef5; }
+    .sharing-toggle:active:not(:disabled) { background: #dcecff; }
+    .sharing-toggle:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
+    .sharing-toggle:disabled { opacity: 0.5; cursor: default; }
+    .collaboration-status { margin-block: 0.5rem 0; }
+    .collaboration-empty { color: #6b7280; text-align: center; }
+    .collaboration-authors { list-style: none; padding: 0; margin: 0; }
+    .collaboration-authors li { display: flex; align-items: center; gap: 0.5rem; margin-block: 0.5rem; }
+    .collaboration-authors .presence-user {
+      display: grid; place-items: center; flex: 0 0 1.5rem; width: 1.5rem; height: 1.5rem;
+      border-radius: 50%; background: var(--presence-color); color: white; font-size: 0.55rem; font-weight: 700;
+    }
+    .author-status, .author-change { display: block; font-size: 0.7rem; color: #526b86; }
+
     .sharing-dropdown {
       display: flex;
       flex-direction: column;
@@ -577,170 +627,98 @@ export class RibbonButton extends LitElement {
       min-width: 0;
     }
 
-    .sharing-dropdown webwriter-qr-code[hidden] {
-      display: none;
-    }
+    ${sharingLinkStyles}
 
-    .sharing-document-actions,
-    .sharing-qr-group {
-      border: 1px solid #c8d2df;
-      border-radius: 0.25rem;
-      overflow: hidden;
-    }
-
-    .sharing-document-actions {
-      display: flex;
-      padding: 0.15rem;
-    }
-
-    .sharing-document-actions ribbon-button {
-      flex: 1;
-    }
-
-    .sharing-document-actions ribbon-button + ribbon-button {
-      border-left: 1px solid #c8d2df;
-    }
-
-    .sharing-link-field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.2rem;
-      position: relative;
-    }
-
-    .sharing-link-label {
-      color: #526b86;
-      font-size: 0.62rem;
-    }
-
-    .sharing-link-input {
-      box-sizing: border-box;
-      width: 100%;
+    :host([variant="reader-sharing"]) {
+      flex: 1 1 0;
+      width: auto;
       min-width: 0;
-      height: 1.55rem;
-      padding: 0 2rem 0 0.3rem;
-      border: 1px solid #c8d2df;
-      border-radius: 0.2rem;
-      color: #2f3742;
-      background: transparent;
-      font: inherit;
-      font-size: 0.66rem;
+      max-width: 22rem;
     }
 
-    .sharing-link-input:focus {
-      border-color: #3977c7;
-      outline: 1px solid #3977c7;
+    :host([variant="reader-sharing"]) .main-button {
+      flex: 0 0 1.75rem;
+      width: 1.75rem;
     }
 
-    .sharing-link-input-row {
-      display: block;
-      position: relative;
-      width: 100%;
+    :host([variant="reader-sharing"]) ::slotted(.sharing-link-field) {
+      flex: 1 1 0;
+      min-width: 0;
+      align-self: center;
+      margin-inline: 0.2rem;
     }
 
-    .sharing-link-copy {
+    :host([variant="reader-sharing"]) .button-row[data-connected] {
+      --sharing-link-copy-background: #ffffff;
+      --reader-link-border-color: transparent;
+    }
+
+    :host([variant="reader-sharing"]) .button-notification {
+      position: fixed;
+      inset: auto;
+      width: max-content;
+      max-width: calc(100vw - 1rem);
+      overflow: visible;
+      margin: 0;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.45rem;
+      background: #ffffff;
+      box-shadow: 0 0.25rem 0.6rem rgb(0 0 0 / 18%);
+    }
+
+    :host([variant="reader-sharing"]) .button-notification::before {
+      content: "";
       position: absolute;
-      top: 50%;
-      right: 0.28rem;
-      transform: translateY(-50%);
-      display: inline-grid;
-      place-items: center;
-      width: 1.15rem;
-      min-height: 0;
-      height: 1.15rem;
-      padding: 0;
-      border: 0;
-      color: #526b86;
-      background: rgba(255, 255, 255, 0.5);
-      cursor: pointer;
+      top: -0.3rem;
+      right: 1rem;
+      width: 0.5rem;
+      height: 0.5rem;
+      border-top: 1px solid #8eb6df;
+      border-left: 1px solid #8eb6df;
+      background: #ffffff;
+      transform: rotate(45deg);
     }
 
-    .sharing-link-copy svg {
-      width: 0.72rem;
-      height: 0.72rem;
+    :host([variant="reader-sharing"]) ribbon-menu {
+      width: min(22rem, calc(100vw - 1rem));
     }
 
-    .sharing-link-copy:hover {
-      color: #1e5d9d;
-    }
-
-    .sharing-link-copy.is-active,
-    .sharing-link-copy[aria-pressed="true"] {
-      color: #174f8b;
-      background: #dbeafe;
-    }
-
-    .sharing-link-copy.is-success {
-      color: #0f7a43;
-      background: #e2f4ea;
-    }
-
-    .sharing-link-copy:focus:not(:focus-visible) {
-      outline: none;
-    }
-
-    .sharing-link-copy:focus-visible {
-      outline: 2px solid #3977c7;
-      outline-offset: -1px;
-    }
-
-    .sharing-dropdown-qr {
-      box-sizing: border-box;
-      width: 100%;
-      min-height: 0;
+    .sharing-qr-group {
       display: flex;
-      justify-content: center;
-      padding: 0.35rem;
+      align-items: flex-start;
+      gap: 0.75rem;
+      min-width: 0;
     }
 
-    .sharing-dropdown-qr-code {
-      width: 100%;
-      aspect-ratio: 1 / 1;
+    .sharing-qr-code {
+      flex: 0 1 14rem;
+      width: 14rem;
       height: auto;
-      max-width: 100%;
-      display: block;
-      object-fit: contain;
+      aspect-ratio: 1;
+      background: white;
     }
 
     .sharing-dropdown-actions {
       display: flex;
-      border-top: 1px solid #c8d2df;
+      flex-direction: column;
+      gap: 0.35rem;
+      flex: 0 0 auto;
     }
 
     .sharing-dropdown-action {
-      width: 50%;
-      min-height: 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
       padding: 0.35rem;
-      display: inline-grid;
-      place-items: center;
-      border: 0;
-      border-radius: 0;
-    }
-
-    .sharing-dropdown-action + .sharing-dropdown-action {
-      border-left: 1px solid #c8d2df;
+      border: 1px solid #c8d2df;
+      border-radius: 0.25rem;
+      font: inherit;
+      font-size: 0.66rem;
     }
 
     .sharing-dropdown-action svg {
-      width: 1.25rem;
-      height: 1.25rem;
-    }
-
-    .sharing-dropdown-action.is-active,
-    .sharing-dropdown-action[aria-pressed="true"] {
-      color: #174f8b;
-      border-color: #8eb6df;
-      background: #eef4fb;
-    }
-
-    .sharing-dropdown-action.is-success {
-      color: #0f7a43;
-      border-color: #66ad78;
-      background: #e2f4ea;
-    }
-
-    .sharing-dropdown-action:focus:not(:focus-visible) {
-      outline: none;
+      width: 1rem;
+      height: 1rem;
     }
 
     .form-attribute-boolean input {
@@ -1086,6 +1064,7 @@ export class RibbonButton extends LitElement {
   private notificationVisible = false
   private notificationTimer: ReturnType<typeof setTimeout> | undefined
   private detailsOpen = false
+  private detailsHideTimer: ReturnType<typeof setTimeout> | undefined
   private detailsPosition = {left: 8, top: 8}
   private submenuTrigger: HTMLButtonElement | null = null
   private insertionHoverPointer = false
@@ -1149,6 +1128,7 @@ export class RibbonButton extends LitElement {
     document.removeEventListener("keydown", this.handleDocumentKeydown)
     this.closeSubmenuPopover()
     this.hideDetails()
+    this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".button-notification"))
     if(this.notificationTimer !== undefined) clearTimeout(this.notificationTimer)
     super.disconnectedCallback()
   }
@@ -1164,8 +1144,20 @@ export class RibbonButton extends LitElement {
     if(this.notificationTimer !== undefined) clearTimeout(this.notificationTimer)
     this.notification = message
     this.notificationVisible = true
+    if(this.variant === "reader-sharing") void this.updateComplete.then(() => {
+      if(!this.isConnected || !this.notificationVisible) return
+      const bubble = this.renderRoot.querySelector<HTMLElement>(".button-notification")
+      const row = this.renderRoot.querySelector<HTMLElement>(".button-row")
+      if(!bubble || !row) return
+      this.showPopoverElement(bubble)
+      const anchor = row.getBoundingClientRect()
+      const bounds = bubble.getBoundingClientRect()
+      bubble.style.left = `${Math.max(8, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 8))}px`
+      bubble.style.top = `${Math.min(anchor.bottom + 8, window.innerHeight - bounds.height - 8)}px`
+    })
     this.notificationTimer = setTimeout(() => {
       this.notificationVisible = false
+      this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".button-notification"))
       this.notificationTimer = undefined
     }, duration)
   }
@@ -1307,8 +1299,8 @@ export class RibbonButton extends LitElement {
       <svg viewBox="-10 -10 120 120" focusable="false"><path d=${this.iconPath} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
     </span>`
     return html`<span class=${`button-icon${this.iconUrl ? " image-icon" : ""}`} aria-hidden="true">
-      ${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
-      ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}
+      <slot name="icon">${this.hoverIcon ? html`<span class="button-icon-default">${ribbonIcon(icon)}</span>` : ribbonIcon(icon)}
+      ${this.hoverIcon ? html`<span class="button-icon-hover">${ribbonIcon(this.hoverIcon)}</span>` : nothing}</slot>
       ${this.iconUrl ? html`<img
         src=${this.iconUrl}
         alt=""
@@ -1323,33 +1315,57 @@ export class RibbonButton extends LitElement {
   }
 
   private showDetails = () => {
+    this.cancelDetailsHide()
+    if(this.detailsOpen) return
     if(!this.details) return
     const rect = this.getBoundingClientRect()
     const viewportWidth = Math.max(1, window.innerWidth)
-    const width = Math.min(272, Math.max(1, viewportWidth - 16))
+    const viewportHeight = Math.max(1, window.innerHeight)
     const margin = 8
     const gap = 6
     const buttonRight = Number.isFinite(rect.right) ? rect.right : rect.left + rect.width
-    const leftPosition = rect.left - width - gap
-    const rightPosition = buttonRight + gap
-    const leftSpace = rect.left - margin - gap
-    const rightSpace = viewportWidth - buttonRight - margin - gap
-    const fitsLeft = leftPosition >= margin
-    const fitsRight = rightPosition + width <= viewportWidth - margin
-    let left = leftPosition
-    if(!fitsLeft && fitsRight) left = rightPosition
-    else if(!fitsLeft && !fitsRight && leftSpace < rightSpace) {
-      left = rightPosition
-    }
-    const top = Math.max(8, rect.top)
-    this.detailsPosition = {left, top}
+    this.detailsPosition = {left: margin, top: margin}
     this.detailsOpen = true
     void this.updateComplete.then(() => {
-      this.showPopoverElement(this.renderRoot.querySelector<HTMLElement>(".details"))
+      if(!this.detailsOpen || !this.isConnected) return
+      const details = this.renderRoot.querySelector<HTMLElement>(".details")
+      if(!details) return
+      this.showPopoverElement(details)
+      const bounds = details.getBoundingClientRect()
+      const width = bounds.width > 0 ? bounds.width : Math.min(272, Math.max(1, viewportWidth - margin * 2))
+      const height = bounds.height > 0 ? bounds.height : Math.min(288, Math.max(1, viewportHeight - margin * 2))
+      const leftPosition = rect.left - width - gap
+      const rightPosition = buttonRight + gap
+      const leftSpace = rect.left - margin - gap
+      const rightSpace = viewportWidth - buttonRight - margin - gap
+      const fitsLeft = leftPosition >= margin
+      const fitsRight = rightPosition + width <= viewportWidth - margin
+      let left = leftPosition
+      if(!fitsLeft && fitsRight) left = rightPosition
+      else if(!fitsLeft && !fitsRight && leftSpace < rightSpace) {
+        left = rightPosition
+      }
+      left = Math.min(Math.max(margin, left), Math.max(margin, viewportWidth - width - margin))
+      const top = Math.min(Math.max(margin, rect.top), Math.max(margin, viewportHeight - height - margin))
+      this.detailsPosition = {left, top}
     })
   }
 
+  private cancelDetailsHide = () => {
+    if(this.detailsHideTimer !== undefined) clearTimeout(this.detailsHideTimer)
+    this.detailsHideTimer = undefined
+  }
+
+  private leaveDetails = (event: MouseEvent) => {
+    if(!this.detailsOpen) return
+    const next = event.relatedTarget
+    if(next instanceof Node && [".button-row", ".details"].some(selector => this.renderRoot.querySelector(selector)?.contains(next))) return
+    this.cancelDetailsHide()
+    this.detailsHideTimer = setTimeout(this.hideDetails, 120)
+  }
+
   private hideDetails = () => {
+    this.cancelDetailsHide()
     this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".details"))
     this.detailsOpen = false
   }
@@ -1366,7 +1382,7 @@ export class RibbonButton extends LitElement {
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.hideDetails}>
+      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.leaveDetails}>
         ${this.iconAction ? html`
           <button
             class="icon-action-trigger"
@@ -1410,6 +1426,7 @@ export class RibbonButton extends LitElement {
             ${this.selectionCount > 0 ? html`<small class="selection-count">+${this.selectionCount}</small>`: ""}
           </span>
         </button>
+        <slot name="trailing"></slot>
         ${this.corner === "close" ? html`
           <button
             class="submenu-toggle corner-trigger"
@@ -1438,6 +1455,7 @@ export class RibbonButton extends LitElement {
         ${this.notification ? html`
           <span
             class=${`button-notification${this.notificationVisible ? " visible" : ""}`}
+            popover=${this.variant === "reader-sharing" ? "manual" : nothing}
             role="status"
             aria-live="polite"
             aria-hidden=${this.notificationVisible ? "false" : "true"}
@@ -1467,6 +1485,8 @@ export class RibbonButton extends LitElement {
           role="tooltip"
           popover="manual"
           style=${`left:${this.detailsPosition.left}px;top:${this.detailsPosition.top}px`}
+          @mouseenter=${this.cancelDetailsHide}
+          @mouseleave=${this.leaveDetails}
         >
           <h3>${this.details.heading}</h3>
           ${this.details.subheading ? html`<div class="details-subheading">${this.details.subheading}</div>` : ""}

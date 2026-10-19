@@ -1,12 +1,15 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
-import {isSlide} from "../document-layout"
+import {boardLayoutRole, isSlide} from "../document-layout"
 import {floatSideFromStyles, type FloatSide} from "../element-styles"
+import {mediaCropInsets} from "../media"
+import {captionIconSource} from "../ribbon-icons"
 
 type TransformElement = HTMLElement | SVGSVGElement
-type Mode = "move" | "scale" | "rotate" | "anchor"
+type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
+const cropDirections = ["up-left", "down-right"] as const
 type StyleValue = {value: string, priority: string}
 type Gesture = {
   target: TransformElement
@@ -30,6 +33,7 @@ type Gesture = {
   moved: boolean
   captured: boolean
   canvas?: {initial: string | null, written: string | null, x: number, y: number, width: number, height: number}
+  crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
   endUndoGroup: () => void
 }
 
@@ -47,6 +51,7 @@ type Gesture = {
  * Ctrl/Cmd resizes about the center;
  * Shift stretches with CSS scale instead of reflowing content; Alt unsnaps.
  * SVG canvases crop their viewport by default; Alt resizes their contents.
+ * Native images and videos expose opposite crop corners that adjust CSS insets.
  * Rotate (absolute targets): drag about the center, snapping to 5 degrees
  * (Shift: 45 degrees; Alt: no snapping).
  *
@@ -70,16 +75,61 @@ export class TransformationFeature extends EditorFeature {
   #suppressClick = false
   readonly #cancelGesture = () => this.#finish(true)
 
-  #createScaler(direction: string, edge = false) {
+  #createScaler(direction: string, edge = false, prefix = "◆transform-overlay") {
     const point = document.createElement(edge ? "div" : "button")
     const part = edge ? "transform-overlay-edge" : "transform-overlay-scale"
-    point.id = `◆transform-overlay-scale-${direction}`
+    point.id = `${prefix}-scale-${direction}`
     point.classList.add(`◆${part}`)
     point.setAttribute("part", `${part} ${part}-${direction}`)
     point.dataset.transformMode = "scale"
+    point.dataset.resizeDirection = direction
     point.title = `Resize ${direction}`
     if(edge) point.setAttribute("aria-hidden", "true")
     return point
+  }
+
+  #createControl(name: string, title: string, mode?: Mode, prefix = "◆transform-overlay") {
+    const button = document.createElement("button")
+    button.id = `${prefix}-${name}`
+    button.type = "button"
+    button.classList.add("◆transform-overlay-button")
+    button.setAttribute("part", `transform-overlay-button transform-overlay-${name}`)
+    button.title = title
+    button.setAttribute("aria-label", title)
+    if(mode) button.dataset.transformMode = mode
+    return button
+  }
+
+  /** Board context controls share document affordances and resize gestures. */
+  createFlowOverlay(prefix: string, role: "card" | "column") {
+    const overlay = document.createElement("div")
+    overlay.id = prefix
+    overlay.setAttribute("part", "transform-overlay transform-overlay-board")
+    overlay.contentEditable = "false"
+    const edges = ["up", "right", "down", "left"].map(direction => {
+      const edge = this.#createScaler(direction, true, prefix)
+      edge.dataset.transformMode = "move"
+      edge.draggable = true
+      setPart(edge, "transform-overlay-edge-move", true)
+      return edge
+    })
+    const scaler = this.#createScaler(role === "card" ? "down-down" : "right-right", false, prefix)
+    setPart(scaler, `transform-overlay-board-resize-${role}`, true)
+    overlay.append(...edges, scaler,
+      this.#createControl("mover", "Move", "move", prefix), this.#createControl("delete", "Delete", undefined, prefix))
+    overlay.querySelectorAll("button").forEach(button => setPart(button, "transform-overlay-board-control", true))
+    overlay.querySelector<HTMLButtonElement>("[data-transform-mode=scale]")!.type = "button"
+    return overlay
+  }
+
+  startFlowScale(event: MouseEvent, target: HTMLElement) {
+    if(!this.isEnabled || this.#gesture || event.button !== 0 || this.editor.isEditingLocked || !this.#canTransform(target)) return
+    this.startTransform(target)
+    // The board owns its persistent context controls; the shared gesture
+    // machinery only needs its target and the originating resize handle.
+    this.overlay.setAttribute("visibility", "hidden")
+    this.handleScaleStart(event)
+    this.#syncControlParts()
   }
 
   /** Creates the arranger control: opens the float menu, or (when the
@@ -241,16 +291,15 @@ export class TransformationFeature extends EditorFeature {
     overlay.setAttribute("part", "transform-overlay transform-overlay-hidden")
     overlay.setAttribute("visibility", "hidden")
     overlay.contentEditable = "false"
-    const control = (name: string, title: string, mode?: Mode) => {
-      const button = document.createElement("button")
-      button.id = `◆transform-overlay-${name}`
-      button.classList.add("◆transform-overlay-button")
-      button.setAttribute("part", `transform-overlay-button transform-overlay-${name}`)
-      button.title = title
-      if(mode) button.dataset.transformMode = mode
-      return button
-    }
+    const control = (name: string, title: string, mode?: Mode) => this.#createControl(name, title, mode)
     const mover = control("mover", "Move", "move")
+    const caption = control("caption", "Add caption or cycle caption position")
+    caption.addEventListener("click", event => {
+      event.stopPropagation()
+      const target = this.target
+      if(!target || this.editor.isEditingLocked || caption.hidden) return
+      this.editor.features.manipulation.cycleCaption()
+    })
     const deleter = control("delete", "Delete")
     const rotator = control("rotator", "Rotate", "rotate")
     const anchor = control("anchor", "Position anchor: drag to relocate; Ctrl/Cmd-click to cycle position; Shift-click for fixed", "anchor")
@@ -274,8 +323,29 @@ export class TransformationFeature extends EditorFeature {
         point.title = `Resize ${dir}`
         return point
       }),
-      mover, deleter, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
+      mover, caption, deleter, rotator, anchor, sticky, this.#createArranger(), this.#createOrderer(),
     )
+    const cropFrame = document.createElement("div")
+    cropFrame.setAttribute("part", "transform-overlay-crop-frame")
+    cropFrame.classList.add("◆transform-overlay-crop-frame")
+    const preview = document.createElement("canvas")
+    preview.setAttribute("part", "transform-overlay-crop-preview")
+    preview.hidden = true
+    cropFrame.append(preview)
+    for(const side of ["top", "right", "bottom", "left"]) {
+      const mask = document.createElement("div")
+      mask.setAttribute("part", "transform-overlay-crop-mask")
+      mask.dataset.cropMask = side
+      mask.hidden = true
+      cropFrame.append(mask)
+    }
+    for(const direction of cropDirections) {
+      const handle = control(`crop-${direction}`, `Crop ${direction}`, "crop")
+      handle.dataset.cropDirection = direction
+      handle.setAttribute("part", `transform-overlay-crop transform-overlay-crop-${direction}`)
+      cropFrame.append(handle)
+    }
+    overlay.append(cropFrame)
     overlay.querySelectorAll("button").forEach(button => {
       button.type = "button"
       const label = button.title || ({
@@ -371,6 +441,13 @@ export class TransformationFeature extends EditorFeature {
     hidden("rotator", !freeform || position !== "absolute")
     hidden("orderer", true)
     hidden("mover", freeform)
+    const captionPosition = this.editor.features.manipulation.getCaptionPosition()
+    const captionAlignment = this.editor.features.manipulation.getCaptionAlignment() ?? "left"
+    const caption = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
+    hidden("caption", freeform || !this.target || captionPosition === null)
+    caption.style.setProperty("--icon", `url("data:image/svg+xml,${encodeURIComponent(captionIconSource(captionPosition ?? "none", captionAlignment, true))}")`)
+    caption.title = captionPosition === "none" ? "Add caption" : `Caption ${captionPosition}, align ${captionAlignment}: cycle position`
+    caption.setAttribute("aria-label", caption.title)
     overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
       !this.editor.features.canvas.active && !this.editor.features.slides.active
     hidden("delete", freeform)
@@ -400,7 +477,8 @@ export class TransformationFeature extends EditorFeature {
     const style = getComputedStyle(element)
     const angle = this.#angle(style.getPropertyValue("rotate"))
     const scale = this.#scale(style.getPropertyValue("scale"))
-    const own = new DOMMatrix().rotate(angle).scale(scale[0], scale[1])
+    const zoom = parseFloat(style.getPropertyValue("zoom")) || 1
+    const own = new DOMMatrix().scale(zoom).rotate(angle).scale(scale[0], scale[1])
       .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
     own.e = own.f = 0
     return this.#matrix(renderedParentElement(element)).multiply(own)
@@ -465,11 +543,46 @@ export class TransformationFeature extends EditorFeature {
     return new DOMRect(rect.left + element.clientLeft - element.scrollLeft, rect.top + element.clientTop - element.scrollTop, element.clientWidth, element.clientHeight)
   }
 
+  #mediaCropInsets(media: HTMLImageElement | HTMLVideoElement) {
+    const crop = this.#gesture?.crop
+    return crop?.target === media ? crop.edges : null
+  }
+
   /** Border-box geometry shared by transform, selection and hover overlays. */
-  boxGeometry(element: TransformElement) {
-    const rect = element.getBoundingClientRect()
-    const {width, height} = this.#size(element)
-    const matrix = this.#matrix(element)
+  boxGeometry(element: TransformElement, cropped = true) {
+    let rect = element.getBoundingClientRect()
+    let {width, height} = this.#size(element)
+    let matrix = this.#matrix(element)
+    const media = cropped ? this.editor.features.media.cropTargetFor(element) : null
+    const insets = media && this.#mediaCropInsets(media)
+    if(media && insets?.some(value => value)) {
+      const source = this.boxGeometry(media, false)
+      if(element.localName === "figure") {
+        const visible = this.boxGeometry(media)
+        const caption = element.querySelector<HTMLElement>(":scope > figcaption")
+        const inverse = matrix.inverse()
+        const local = (point: {x: number, y: number}) => this.#vector(inverse, point.x - rect.left - rect.width / 2, point.y - rect.top - rect.height / 2)
+        const mediaPoints = visible.corners.map(local)
+        const points = [...mediaPoints, ...(caption ? this.boxGeometry(caption, false).corners.map(local) : [])]
+        const left = Math.min(...mediaPoints.map(point => point.x)), right = Math.max(...mediaPoints.map(point => point.x))
+        const top = Math.min(...points.map(point => point.y)), bottom = Math.max(...points.map(point => point.y))
+        width = right - left
+        height = bottom - top
+        const shift = this.#vector(matrix, (left + right) / 2, (top + bottom) / 2)
+        const w = Math.abs(matrix.a) * width + Math.abs(matrix.c) * height, h = Math.abs(matrix.b) * width + Math.abs(matrix.d) * height
+        rect = new DOMRect(rect.left + rect.width / 2 + shift.x - w / 2, rect.top + rect.height / 2 + shift.y - h / 2, w, h)
+      }
+      else {
+        matrix = source.matrix
+        width = source.width * (1 - (insets[1] + insets[3]) / 100)
+        height = source.height * (1 - (insets[0] + insets[2]) / 100)
+        const shift = this.#vector(source.matrix, source.width * (insets[3] - insets[1]) / 200, source.height * (insets[0] - insets[2]) / 200)
+        const cx = source.rect.left + source.rect.width / 2 + shift.x, cy = source.rect.top + source.rect.height / 2 + shift.y
+        const w = Math.abs(source.matrix.a) * width + Math.abs(source.matrix.c) * height
+        const h = Math.abs(source.matrix.b) * width + Math.abs(source.matrix.d) * height
+        rect = new DOMRect(cx - w / 2, cy - h / 2, w, h)
+      }
+    }
     const corners = [[-width / 2, -height / 2], [width / 2, -height / 2], [width / 2, height / 2], [-width / 2, height / 2]].map(([x, y]) => {
       const point = this.#vector(matrix, x, y)
       return {x: rect.left + rect.width / 2 + point.x, y: rect.top + rect.height / 2 + point.y}
@@ -488,7 +601,8 @@ export class TransformationFeature extends EditorFeature {
     if(!target) { if(this.#target) this.clearTransform(); return }
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
-    Object.assign(overlay.style, styles)
+    Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
+    this.#positionCropControls(target, width, height, rect, matrix)
     const floats = this.editor.features.selection.floatExclusions(target, rect, styles)
     this.#positionFlowControls(width, height, floats)
     this.editor.features.selection.positionTransformCaret(target, overlay.style, floats)
@@ -520,6 +634,67 @@ export class TransformationFeature extends EditorFeature {
     this.orderer.setAttribute("data-z-order", style.zIndex === "auto" ? "0" : style.zIndex || "0")
     this.#syncControlParts()
     this.#updateContextMarkers()
+  }
+
+  #positionCropControls(target: TransformElement, width: number, height: number, rect: DOMRect, matrix: DOMMatrix) {
+    const frame = this.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!
+    const preview = frame.querySelector("canvas")!
+    const media = this.editor.features.media.cropTargetFor(target)
+    const cropping = this.#gesture?.crop?.target === media
+    preview.hidden = !cropping
+    if(!cropping && preview.width) { preview.width = 0; preview.height = 0 }
+    const insets = media && (this.#mediaCropInsets(media) ?? [0, 0, 0, 0])
+    frame.hidden = !media || !insets || !this.editor.features.media.canCrop(media)
+    if(!media || !insets || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) return
+    const box = this.boxGeometry(media, false)
+    if(box.width <= 0 || box.height <= 0) { frame.hidden = true; return }
+    const inverse = matrix.inverse()
+    const center = this.#vector(inverse, box.rect.left + box.rect.width / 2 - rect.left - rect.width / 2,
+      box.rect.top + box.rect.height / 2 - rect.top - rect.height / 2)
+    const relative = inverse.multiply(box.matrix)
+    Object.assign(frame.style, {width: `${box.width}px`, height: `${box.height}px`,
+      left: `${width / 2 + center.x - box.width / 2}px`, top: `${height / 2 + center.y - box.height / 2}px`,
+      transform: `matrix(${relative.a}, ${relative.b}, ${relative.c}, ${relative.d}, 0, 0)`})
+    const [top, right, bottom, left] = insets
+    const viewport = cropping && media ? this.editor.features.media.cropViewport(media) : null
+    const sourceLeft = viewport ? (viewport.x - viewport.left * viewport.sx) / box.width * 100 : 0
+    const sourceTop = viewport ? (viewport.y - viewport.top * viewport.sy) / box.height * 100 : 0
+    const sourceWidth = viewport ? viewport.width * viewport.sx / box.width * 100 : 100
+    const sourceHeight = viewport ? viewport.height * viewport.sy / box.height * 100 : 100
+    const minLeft = Math.min(0, sourceLeft), minTop = Math.min(0, sourceTop)
+    const maxRight = Math.max(100, sourceLeft + sourceWidth), maxBottom = Math.max(100, sourceTop + sourceHeight)
+    if(viewport && media) {
+      Object.assign(preview.style, {left: `${sourceLeft}%`, top: `${sourceTop}%`, width: `${sourceWidth}%`, height: `${sourceHeight}%`})
+      const pixelWidth = Math.max(1, Math.ceil(viewport.width * viewport.sx * devicePixelRatio))
+      const pixelHeight = Math.max(1, Math.ceil(viewport.height * viewport.sy * devicePixelRatio))
+      if(preview.width !== pixelWidth || preview.height !== pixelHeight) { preview.width = pixelWidth; preview.height = pixelHeight }
+      const context = preview.getContext("2d")
+      if(context) {
+        context.clearRect(0, 0, preview.width, preview.height)
+        // A video may not have a decoded frame yet. Keep the live authored
+        // surface visible until drawing the full source becomes possible.
+        if(media instanceof HTMLImageElement ? media.complete && media.naturalWidth > 0
+          : media.readyState >= 2 && media.videoWidth > 0 && media.videoHeight > 0) {
+          context.drawImage(media, 0, 0, preview.width, preview.height)
+        }
+      }
+    }
+    const masks = {
+      top: {left: `${minLeft}%`, top: `${minTop}%`, width: `${maxRight - minLeft}%`, height: `${top - minTop}%`},
+      bottom: {left: `${minLeft}%`, top: `${100 - bottom}%`, width: `${maxRight - minLeft}%`, height: `${maxBottom - 100 + bottom}%`},
+      left: {left: `${minLeft}%`, top: `${top}%`, width: `${left - minLeft}%`, height: `${100 - top - bottom}%`},
+      right: {left: `${100 - right}%`, top: `${top}%`, width: `${maxRight - 100 + right}%`, height: `${100 - top - bottom}%`},
+    }
+    for(const mask of frame.querySelectorAll<HTMLElement>("[data-crop-mask]")) {
+      mask.hidden = this.#gesture?.crop?.target !== media
+      Object.assign(mask.style, masks[mask.dataset.cropMask as keyof typeof masks])
+    }
+    for(const handle of frame.querySelectorAll<HTMLElement>("[data-crop-direction]")) {
+      const direction = handle.dataset.cropDirection!
+      const left = insets[3], right = 100 - insets[1], top = insets[0], bottom = 100 - insets[2]
+      handle.style.left = `${direction.includes("left") ? left : direction.includes("right") ? right : (left + right) / 2}%`
+      handle.style.top = `${direction.includes("up") ? top : direction.includes("down") ? bottom : (top + bottom) / 2}%`
+    }
   }
 
   /** Place controls on the text spans at the contour's top and bottom. The
@@ -581,9 +756,17 @@ export class TransformationFeature extends EditorFeature {
   #begin(event: MouseEvent, mode: Mode, handle: HTMLElement) {
     const target = this.target
     if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
+    if(mode === "crop" && !cropDirections.some(direction => direction === handle.dataset.cropDirection)) return false
     if(mode === "rotate" && (!this.#isFreeformItem(target) || getComputedStyle(target).position !== "absolute")) return false
     const matrix = this.#matrix(target)
     if(!matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) return false
+    const media = mode === "crop" ? this.editor.features.media.cropTargetFor(target) : null
+    const insets = media && this.editor.features.media.canCrop(media) ? [0, 0, 0, 0] : null
+    const sourceStyle = document.createElement("div").style
+    sourceStyle.cssText = media?.style.cssText ?? ""
+    const cropBox = media ? this.boxGeometry(media, false) : null
+    if(mode === "crop" && (!media || !insets || !cropBox || cropBox.width <= 0 || cropBox.height <= 0
+      || !cropBox.matrix.is2D || Math.abs(cropBox.matrix.a * cropBox.matrix.d - cropBox.matrix.b * cropBox.matrix.c) < 1e-8)) return false
     if(this.#isFreeformItem(target)) {
       document.body.focus({preventScroll: true})
       this.editor.features.selection.selectElement(target)
@@ -599,14 +782,24 @@ export class TransformationFeature extends EditorFeature {
       matrix, parentMatrix: this.#matrix(renderedParentElement(target)), rotate: this.#angle(style.getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
       initial, written: new Map(), moved: false,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
+      crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
+        matrix: cropBox.matrix, insets, edges: [...insets], sourceStyle} : undefined,
       captured: this.editor.features.selection.captureSelectedElement === target,
       endUndoGroup: this.editor.doc.beginUndoGroup(),
     }
     this.#suppressClick = false
+    if(mode === "crop") {
+      document.body.classList.add(`◆transform-cropping-${handle.dataset.cropDirection}`)
+      this.updateInfo()
+    }
     event.preventDefault()
     if(event instanceof PointerEvent) {
       try { handle.setPointerCapture?.(event.pointerId) }
       catch { this.#finish(true); return false }
+    }
+    // Activating a canvas move raises the item even without displacement.
+    if(mode === "move" && this.editor.features.canvas.active && target.parentElement === document.body) {
+      this.moveZ(target, true, true)
     }
     return true
   }
@@ -641,7 +834,14 @@ export class TransformationFeature extends EditorFeature {
   #validGesture() {
     const gesture = this.#gesture
     if(!gesture) return false
-    if(gesture.canvas && gesture.target.getAttribute("viewBox") !== gesture.canvas.written
+    if(gesture.crop && (this.editor.features.media.cropTargetFor(gesture.target) !== gesture.crop.target || gesture.crop.parent !== gesture.crop.target.parentElement
+      || gesture.crop.target.style.getPropertyValue("object-view-box") !== gesture.crop.sourceStyle.getPropertyValue("object-view-box")
+      || gesture.crop.target.style.getPropertyPriority("object-view-box") !== gesture.crop.sourceStyle.getPropertyPriority("object-view-box")
+      || ([[gesture.crop.target, gesture.crop.sourceStyle], [gesture.target, gesture.initial]] as const).some(([element, initial]) =>
+        ["width", "height", "max-width", "max-height", "object-fit", "object-position", "clip-path"].some(property =>
+          element.style.getPropertyValue(property) !== initial.getPropertyValue(property)
+          || element.style.getPropertyPriority(property) !== initial.getPropertyPriority(property))))
+      || gesture.canvas && gesture.target.getAttribute("viewBox") !== gesture.canvas.written
       || this.editor.isEditingLocked || gesture.target !== this.target || gesture.parent !== gesture.target.parentElement
       || [...gesture.written].some(([key, last]) => gesture.target.style.getPropertyValue(key) !== last.value
         || gesture.target.style.getPropertyPriority(key) !== last.priority)) {
@@ -769,7 +969,7 @@ export class TransformationFeature extends EditorFeature {
       this.#panFrame = requestAnimationFrame(() => {
         this.#panFrame = null
         const pointer = this.#panEvent
-        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY}, this.targetRect)) this.handleMoveDrag(pointer)
+        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
       })
     }
   }
@@ -781,7 +981,7 @@ export class TransformationFeature extends EditorFeature {
     if(!gesture.moved && Math.hypot(delta.x, delta.y) < 1) return
     gesture.moved = true
     this.#resetWritten()
-    const direction = gesture.handle.id.replace("◆transform-overlay-scale-", "")
+    const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
     const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
     const y = direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
     document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
@@ -807,6 +1007,11 @@ export class TransformationFeature extends EditorFeature {
         if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
+      else if(boardLayoutRole(target) === "column" && x) {
+        this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
+        this.#write("flex-basis", `${Math.max(1, gesture.cssWidth + dw)}px`)
+      }
+      else if(boardLayoutRole(target) === "card" && y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       if(x) {
         const width = Math.max(0, gesture.cssWidth + dw)
         if(floatSideFromStyles(getComputedStyle(target).float, target.style, target.classList) !== "none") {
@@ -840,6 +1045,34 @@ export class TransformationFeature extends EditorFeature {
       this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
         gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))
     }
+    this.updateInfo()
+  }
+
+  handleCropDrag(event: MouseEvent) {
+    if(!this.#validGesture() || this.#gesture!.mode !== "crop") return
+    const gesture = this.#gesture!, crop = gesture.crop!
+    const delta = this.#vector(crop.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
+    if(!gesture.moved && Math.hypot(delta.x, delta.y) < 1) return
+    gesture.moved = true
+    const direction = gesture.handle.dataset.cropDirection!
+    const edges = [...crop.insets]
+    const viewport = this.editor.features.media.cropViewport(crop.target)
+    if(!viewport) { this.#finish(true); return }
+    const limits = [
+      (viewport.y - viewport.top * viewport.sy) / crop.height * 100,
+      (crop.width - viewport.x - (viewport.width - viewport.left) * viewport.sx) / crop.width * 100,
+      (crop.height - viewport.y - (viewport.height - viewport.top) * viewport.sy) / crop.height * 100,
+      (viewport.x - viewport.left * viewport.sx) / crop.width * 100,
+    ]
+    const change = (index: number, delta: number) => {
+      const value = Math.round((crop.insets[index] + delta) * 100) / 100
+      edges[index] = Math.max(Math.min(0, limits[index]), Math.min(99.9 - edges[(index + 2) % 4], value))
+    }
+    if(direction.includes("up")) change(0, delta.y / crop.height * 100)
+    if(direction.includes("right")) change(1, -delta.x / crop.width * 100)
+    if(direction.includes("down")) change(2, -delta.y / crop.height * 100)
+    if(direction.includes("left")) change(3, delta.x / crop.width * 100)
+    crop.edges = edges
     this.updateInfo()
   }
 
@@ -930,6 +1163,11 @@ export class TransformationFeature extends EditorFeature {
         }
       }
     }
+    else if(gesture.moved && gesture.crop) {
+      const crop = gesture.crop
+      const value = this.editor.features.media.cropValueFor(crop.target, crop.edges)
+      if(value) this.editor.features.manipulation.setElementStyles(crop.target, {"object-view-box": {value, priority: crop.sourceStyle.getPropertyPriority("object-view-box") as "" | "important"}})
+    }
     else if(gesture.moved && this.#drop) {
       const {element, placement, parent, float} = this.#drop
       if(getDocumentRoot().contains(element) && editingFlowRoot(element) === getDocumentRoot() && element.parentNode === parent && !target.contains(element) && !element.contains(target)
@@ -958,10 +1196,18 @@ export class TransformationFeature extends EditorFeature {
       if(gesture.mode !== "move") this.editor.features.manipulation.clearDropFloat(target)
     }
     this.#gesture = null
+    if(gesture.crop) {
+      const preview = this.overlay.querySelector<HTMLCanvasElement>("[part='transform-overlay-crop-preview']")!
+      preview.hidden = true
+      preview.width = 0
+      preview.height = 0
+    }
     this.#suppressClick = gesture.moved
     if(!target.style.length) target.removeAttribute("style")
+    if(gesture.crop && !gesture.crop.target.style.length) gesture.crop.target.removeAttribute("style")
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
     document.body.classList.remove("◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nwse", "◆transform-scaling-nesw")
+    document.body.classList.remove(...cropDirections.map(direction => `◆transform-cropping-${direction}`))
     this.#clearDrop()
     this.editor.features.manipulation.clearFloatDropTargets()
     gesture.endUndoGroup()
@@ -1037,7 +1283,7 @@ export class TransformationFeature extends EditorFeature {
     this.#updateContextMarkers()
     const overlay = document.body.shadowRoot?.querySelector<HTMLElement>("#◆transform-overlay")
     if(overlay) {
-      overlay.setAttribute("visibility", "hidden")
+      if(overlay.getAttribute("visibility") !== "hidden") overlay.setAttribute("visibility", "hidden")
       setPart(overlay, "transform-overlay-content-selected", false)
       overlay.querySelectorAll("[data-open]").forEach(control => control.removeAttribute("data-open"))
       this.#syncControlParts()
@@ -1108,6 +1354,7 @@ export class TransformationFeature extends EditorFeature {
       if(!this.#gesture || this.#gesture.pointerId !== event.pointerId) return
       event.preventDefault()
       if(this.#gesture.mode === "scale") this.handleScaleDrag(event)
+      else if(this.#gesture.mode === "crop") this.handleCropDrag(event)
       else if(this.#gesture.mode === "rotate") this.handleRotateDrag(event)
       else this.handleMoveDrag(event)
     },

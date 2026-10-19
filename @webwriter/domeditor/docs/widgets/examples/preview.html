@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Quiz widget tutorial</title>
+    <link rel="stylesheet" href="./preview.css">
+  </head>
+  <body>
+    <div class="participants">
+      <section>
+        <h1>Your widget</h1>
+        <main>
+          <ww-quiz id="quiz-example" answer="false" shared>
+            <p>The Moon is a star.</p>
+            <script type="application/json" slot="data">{"choice":""}</script>
+          </ww-quiz>
+        </main>
+      </section>
+    </div>
+    <script type="module" src="./preview.js"></script>
+  </body>
+</html>

@@ -73,6 +73,30 @@ describe("DOM MathML editing", () => {
     expect(clean()).not.toContain("math-caret")
     editor.features.math.disable()
     expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+  })
+
+  it("keeps the body caret marker transient when its formula is removed", () => {
+    document.body.classList.add("authored")
+    const math = load("<mrow></mrow>")
+    $.move(math.firstElementChild!, 0)
+    editor.features.math.refresh()
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(true)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.getAttribute("class")).toBe("authored")
+    expect(clean()).not.toContain("◆math-structural-caret")
+
+    math.remove()
+    editor.features.math.refresh()
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(document.body.classList.contains("authored")).toBe(true)
+    document.body.classList.remove("authored")
+  })
+
+  it("leaves an authored empty body class alone without a math caret", () => {
+    document.body.setAttribute("class", "")
+    editor.features.math.refresh()
+    expect(document.body.getAttribute("class")).toBe("")
   })
 
   it("owns the empty radicand caret and releases it at formula and prose boundaries", () => {
@@ -82,12 +106,14 @@ describe("DOM MathML editing", () => {
     $.move(slot, 0)
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-structural-caret")).toBe(true)
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(true)
     expect(Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆math-overlay > span"))
       .filter(element => element.style.background)).toHaveLength(1)
     expect(clean()).toBe(original)
     $.move(math, math.childNodes.length)
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-structural-caret")).toBe(false)
+    expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
     $.move(math.nextSibling!, 1)
     editor.features.math.refresh()
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
@@ -456,7 +482,7 @@ describe("DOM MathML editing", () => {
     expect($.anchorOffset).toBe(outsideBefore[1])
   })
 
-  it.each(["inline", "block"])("omits a %s formula and its internals from the breadcrumb", display => {
+  it.each(["inline", "block"])("includes only block formula roots in the breadcrumb (%s)", display => {
     const math = load("<mrow><mi>x</mi></mrow>")
     math.setAttribute("display", display)
     const messages: SelectionChangeDetail[] = []
@@ -467,7 +493,8 @@ describe("DOM MathML editing", () => {
         $.move(node, 0)
         editor.features.selection.processSelection()
         editor.postSelectionPath()
-        expect(messages.at(-1)!.path.map(item => item.path)).toEqual([[], [0]])
+        expect(messages.at(-1)!.path.map(item => item.path)).toEqual(display === "block" ? [[], [0], [0, 1]] : [[], [0]])
+        if(display === "block") expect(messages.at(-1)!.path.at(-1)).toMatchObject({name: "Formula", icon: "Formula"})
       }
     }
     finally { window.removeEventListener(selectionChangeEvent, listener) }
@@ -555,6 +582,109 @@ describe("DOM MathML editing", () => {
     expect($.isGapSelection).toBe(true)
   })
 
+  it("element-selects a block formula through its breadcrumb path and captures an interior click", () => {
+    const math = load("<mi>x</mi>")
+    math.setAttribute("display", "block")
+    editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 1]})
+    editor.features.math.refresh()
+    expect($.selectedElement).toBe(math)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(math.classList.contains("◆element-selected")).toBe(true)
+    expect(math.classList.contains("◆element-capture-selected")).toBe(false)
+    expect(math.classList.contains("◆math-editing")).toBe(false)
+    math.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 8}))
+    expect(editor.features.selection.captureSelectedElement).toBe(math)
+    expect(math.contains($.anchor)).toBe(true)
+    expect(command("text:y")).toBe(true)
+    expect(math.textContent).toContain("y")
+    editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 1]})
+    editor.features.math.refresh()
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect($.selectedElement).toBe(math)
+  })
+
+  it.each(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"])("leaves a whole block formula selection with %s", arrow => {
+    const math = load("<mi>x</mi>")
+    math.setAttribute("display", "block")
+    editor.features.selection.selectElement(math)
+    expect(key(arrow).defaultPrevented).toBe(true)
+    expect($.anchor).toBe(math.parentNode)
+    expect($.anchorOffset).toBe(arrow === "ArrowLeft" || arrow === "ArrowUp" ? 1 : 2)
+    expect($.isEmpty).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+  })
+
+  it.each(["ArrowLeft", "ArrowRight"])("extends a range across a whole block formula with Shift+%s", arrow => {
+    const math = load("<mfrac><mi>x</mi><mi>y</mi></mfrac>")
+    math.setAttribute("display", "block")
+    const text = arrow === "ArrowRight" ? math.previousSibling! : math.nextSibling!
+    $.move(text, arrow === "ArrowRight" ? text.textContent!.length : 0)
+    expect(key(arrow, {shiftKey: true}).defaultPrevented).toBe(true)
+    expect($.focus).toBe(math.parentNode)
+    expect($.focusOffset).toBe(arrow === "ArrowRight" ? 2 : 1)
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(math.classList.contains("◆atomic-range-selected")).toBe(true)
+  })
+
+  it.each(["", "<mrow></mrow>", "<mstyle><mrow> </mrow></mstyle>"])("shows an appendix placeholder for an empty block formula: %s", html => {
+    const math = load(html)
+    math.setAttribute("display", "block")
+    const original = clean()
+    editor.features.math.refresh()
+    expect(math.classList.contains("◆math-empty")).toBe(true)
+    expect(editor.appendix.querySelector('[part="math-placeholder"] svg')).not.toBeNull()
+    expect(clean()).toBe(original)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆math-empty")
+    math.replaceChildren(document.createElementNS(MATH_NAMESPACE, "mi"))
+    math.firstElementChild!.textContent = "x"
+    editor.features.math.refresh()
+    expect(math.classList.contains("◆math-empty")).toBe(false)
+    expect(editor.appendix.querySelector('[part="math-placeholder"]')).toBeNull()
+    math.replaceChildren()
+    editor.features.math.refresh()
+    expect(math.classList.contains("◆math-empty")).toBe(true)
+    editor.features.math.disable()
+    expect(math.classList.contains("◆math-empty")).toBe(false)
+    expect(editor.appendix.querySelector('[part="math-placeholder"]')).toBeNull()
+  })
+
+  it("cleans up placeholders after remote removal and excludes widget-owned formulas", () => {
+    const math = load()
+    math.setAttribute("display", "block")
+    editor.features.math.refresh()
+    math.remove()
+    const widget = document.createElement("opaque-widget")
+    widget.append(math)
+    document.body.append(widget)
+    editor.features.math.refresh()
+    expect(math.classList.contains("◆math-empty")).toBe(false)
+    expect(editor.appendix.querySelector('[part="math-placeholder"]')).toBeNull()
+  })
+
+  it("shows the empty block symbol outside editing and hides it during capture", () => {
+    const math = load()
+    math.setAttribute("display", "block")
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 200, 24))
+    editor.features.selection.selectElement(math)
+    editor.features.math.refresh()
+    const placeholder = editor.appendix.querySelector<HTMLDivElement>('[part="math-placeholder"]')!
+    expect(placeholder.hidden).toBe(false)
+    expect(placeholder.style.display).toBe("")
+    expect(placeholder.style.height).toBe("24px")
+    $.move(math.firstChild!, 0)
+    editor.features.selection.processSelection()
+    editor.features.math.refresh()
+    expect(placeholder.hidden).toBe(true)
+    expect(placeholder.style.display).toBe("none")
+    expect(placeholder.style.getPropertyPriority("display")).toBe("important")
+    expect(placeholder.style.height).toBe("24px")
+    editor.features.selection.selectElement(math)
+    editor.features.math.refresh()
+    expect(placeholder.hidden).toBe(false)
+  })
+
   it("uses capture presentation for a whole block formula and releases it on disable", () => {
     const math = load("<mi>x</mi>")
     math.setAttribute("display", "block")
@@ -597,37 +727,37 @@ describe("DOM MathML editing", () => {
     }
   })
 
-  it.each(["p", "section", "td", "body"])("keeps inline text boundaries and block gaps in %s", tag => {
-    for(const display of ["inline", "block"]) {
-      for(const surroundings of ["only", "first", "last", "middle", "adjacent", "whitespace"]) {
-        const math = load("<mi>x</mi>")
-        math.setAttribute("display", display)
-        const parent = tag === "body" ? document.body : document.createElement(tag)
-        const nodes: Node[] = [math]
-        if(["last", "middle"].includes(surroundings)) nodes.unshift(document.createTextNode("before"))
-        if(["first", "middle"].includes(surroundings)) nodes.push(document.createTextNode("after"))
-        if(surroundings === "adjacent") nodes.push(math.cloneNode(true))
-        if(surroundings === "whitespace") nodes.push(document.createTextNode("  "))
-        parent.replaceChildren(...nodes)
-        if(tag !== "body") {
-          if(tag === "td") {
-            document.body.innerHTML = "<table><tbody><tr></tr></tbody></table>"
-            document.querySelector("tr")!.append(parent)
-          }
-          else document.body.replaceChildren(parent)
-        }
-        const index = Array.from(parent.childNodes).indexOf(math)
-        for(const offset of [index, index + 1]) {
-          $.move(parent, offset)
-          editor.features.selection.processSelection()
-          expect($.anchor).toBe(parent)
-          expect($.anchorOffset).toBe(offset)
-          expect($.isGapSelection).toBe(display === "block")
-          expect($.isTextSelection).toBe(display === "inline")
-          expect(editor.features.selection.captureSelectedElement).toBeNull()
-          expect(document.body.classList.contains("◆gap-caret-visible")).toBe(display === "block")
-        }
+  it.each(["p", "section", "td", "body"].flatMap(tag =>
+    ["inline", "block"].flatMap(display =>
+      ["only", "first", "last", "middle", "adjacent", "whitespace"].map(surroundings => ({tag, display, surroundings}))
+    )
+  ))("keeps $display math boundaries in $tag with $surroundings surroundings", ({tag, display, surroundings}) => {
+    const math = load("<mi>x</mi>")
+    math.setAttribute("display", display)
+    const parent = tag === "body" ? document.body : document.createElement(tag)
+    const nodes: Node[] = [math]
+    if(["last", "middle"].includes(surroundings)) nodes.unshift(document.createTextNode("before"))
+    if(["first", "middle"].includes(surroundings)) nodes.push(document.createTextNode("after"))
+    if(surroundings === "adjacent") nodes.push(math.cloneNode(true))
+    if(surroundings === "whitespace") nodes.push(document.createTextNode("  "))
+    parent.replaceChildren(...nodes)
+    if(tag !== "body") {
+      if(tag === "td") {
+        document.body.innerHTML = "<table><tbody><tr></tr></tbody></table>"
+        document.querySelector("tr")!.append(parent)
       }
+      else document.body.replaceChildren(parent)
+    }
+    const index = Array.from(parent.childNodes).indexOf(math)
+    for(const offset of [index, index + 1]) {
+      $.move(parent, offset)
+      editor.features.selection.processSelection()
+      expect($.anchor).toBe(parent)
+      expect($.anchorOffset).toBe(offset)
+      expect($.isGapSelection).toBe(display === "block")
+      expect($.isTextSelection).toBe(display === "inline")
+      expect(editor.features.selection.captureSelectedElement).toBeNull()
+      expect(document.body.classList.contains("◆gap-caret-visible")).toBe(display === "block")
     }
   })
 
@@ -635,6 +765,21 @@ describe("DOM MathML editing", () => {
     const math = load("<mi>x</mi>")
     math.setAttribute("display", display)
     const parent = math.parentNode!
+    if(display === "block") {
+      for(const [from, approach, leave, offset] of [
+        [parent.firstChild!, "ArrowRight", "ArrowLeft", 1],
+        [parent.lastChild!, "ArrowLeft", "ArrowRight", 2],
+      ] as const) {
+        $.move(from, approach === "ArrowRight" ? from.textContent!.length : 0)
+        expect(key(approach).defaultPrevented).toBe(true)
+        expect($.selectedElement).toBe(math)
+        expect(editor.features.selection.captureSelectedElement).toBeNull()
+        expect(key(leave).defaultPrevented).toBe(true)
+        expect($.anchor).toBe(parent)
+        expect($.anchorOffset).toBe(offset)
+      }
+      return
+    }
     $.move(parent.firstChild!, parent.firstChild!.textContent!.length)
     expect(key("ArrowRight").defaultPrevented).toBe(true)
     expect($.anchor).toBe(display === "block" ? parent : math)
@@ -850,6 +995,75 @@ describe("DOM MathML editing", () => {
     const inserted = clean()
     editor.doc.undo()
     expect(clean()).toBe("<p>beforeafter</p>")
+    editor.doc.redo()
+    expect(clean()).toBe(inserted)
+  })
+
+  it.each(["element", "capture"] as const)("replaces a %s-selected element with an editable block formula", selection => {
+    for(const tag of ["p", "img", "opaque-widget"]) {
+      const html = tag === "img" ? '<img src="original.png">' : `<${tag}>original</${tag}>`
+      document.body.innerHTML = `<section><p>before</p><!--keep-->${html}<p>after</p></section>`
+      const section = document.querySelector("section")!
+      const target = section.children[1]
+      const before = section.firstChild, comment = before!.nextSibling, after = section.lastChild
+      if(selection === "capture") editor.features.selection.captureElement(target)
+      else editor.features.selection.selectElement(target)
+      expect(editor.features.math.actions.insertMath({type: "insertMath"})).toBe(true)
+      const math = section.children[1]
+      expect(math.localName).toBe("math")
+      expect(math.namespaceURI).toBe(MATH_NAMESPACE)
+      expect(math.getAttribute("display")).toBe("block")
+      expect(target.isConnected).toBe(false)
+      expect(section.firstChild).toBe(before)
+      expect(before!.nextSibling).toBe(comment)
+      expect(section.lastChild).toBe(after)
+      expect(target.className).not.toContain("◆")
+      expect(editor.features.selection.captureSelectedElement).toBe(math)
+      expect(command("text:x")).toBe(true)
+      expect(math.textContent).toBe("x")
+      editor.doc.syncFromDOM()
+      expect(clean()).not.toContain("◆")
+      expect(editor.doc.body.toString()).not.toContain("◆")
+    }
+  })
+
+  it("uses capture ownership even when the native caret is in unrelated prose", () => {
+    document.body.innerHTML = "<p>unchanged</p>"
+    const existing = document.querySelector("p")!
+    const widget = document.createElement("opaque-widget")
+    document.body.append(widget)
+    $.move(existing.firstChild!, 1)
+    editor.features.selection.captureElement(widget, {preserveNativeSelection: true})
+    expect(editor.features.math.insert()).toBe(true)
+    expect(existing.textContent).toBe("unchanged")
+    expect(document.body.lastElementChild?.matches('math[display="block"]')).toBe(true)
+    expect(widget.isConnected).toBe(false)
+  })
+
+  it("fails safely if the selected element is replaced during focus", () => {
+    document.body.innerHTML = "<p>original</p>"
+    const target = document.querySelector("p")!
+    editor.features.selection.selectElement(target)
+    vi.spyOn(document.body, "focus").mockImplementation(() => target.replaceWith(document.createElement("hr")))
+    expect(editor.features.math.insert()).toBe(false)
+    expect(clean()).toBe("<hr>")
+  })
+
+  it.each(["element", "capture"] as const)("undoes and redoes a prefilled formula replacing a %s selection", selection => {
+    document.body.innerHTML = "<p>before</p><opaque-widget>fallback</opaque-widget><p>after</p>"
+    const original = clean()
+    const target = document.querySelector("opaque-widget")!
+    if(selection === "capture") editor.features.selection.captureElement(target)
+    else editor.features.selection.selectElement(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(editor.features.math.actions.insertMath({type: "insertMath", structure: "frac"})).toBe(true)
+    expect(document.querySelector('math[display="block"] mfrac')).not.toBeNull()
+    expect(document.getSelection()!.anchorNode?.textContent).toBe("")
+    editor.doc.syncFromDOM()
+    const inserted = clean()
+    editor.doc.undo()
+    expect(clean()).toBe(original)
     editor.doc.redo()
     expect(clean()).toBe(inserted)
   })
@@ -1229,6 +1443,67 @@ describe("DOM MathML editing", () => {
     expect(document.querySelector("mfrac")).toBeNull()
     editor.doc.redo()
     expect(clean()).toBe(edited)
+  })
+
+  it("inserts a confirmed handwriting fragment at the current caret and round-trips history", () => {
+    const math = load('<mrow><!--keep--><mi>abc</mi><mfrac><mi>p</mi><mi>q</mi></mfrac></mrow>')
+    const originalFraction = math.querySelector("mfrac")!
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = clean()
+    expect(command('keyboard:mathml:<math xmlns="http://www.w3.org/1998/Math/MathML"><msup><mi>x</mi><mn>2</mn></msup></math>')).toBe(true)
+    expect(math.querySelector("mrow")!.textContent).toBe("ax2bcpq")
+    expect(math.querySelector("mfrac")).toBe(originalFraction)
+    expect(math.querySelector("mrow")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    editor.doc.syncFromDOM()
+    const edited = clean()
+    expect(edited).not.toContain("◆")
+    expect(edited).not.toContain("drawing-surface")
+    editor.doc.undo()
+    expect(clean()).toBe(before)
+    editor.doc.redo()
+    expect(clean()).toBe(edited)
+  })
+
+  it("replaces only the selected formula fragment, including inside an existing argument", () => {
+    const math = load('<mfrac><mrow><mi>abc</mi></mrow><mi>denominator</mi></mfrac>')
+    const denominator = math.querySelector("mfrac")!.lastElementChild
+    const text = math.querySelector("mi")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 1, text, 2)
+    expect(command('keyboard:mathml:<math xmlns="http://www.w3.org/1998/Math/MathML"><msqrt><mi>y</mi></msqrt></math>')).toBe(true)
+    expect(math.querySelector("mfrac")!.firstElementChild!.textContent).toBe("ayc")
+    expect(math.querySelector("mfrac")!.lastElementChild).toBe(denominator)
+  })
+
+  it.each([
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi onclick="bad()">x</mi></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mtext><script xmlns="http://www.w3.org/1999/xhtml">bad()</script></mtext></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi href="javascript:bad()">x</mi></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"><mi style="background:url(https://example.com)">x</mi></math>',
+    '<math xmlns="http://www.w3.org/1998/Math/MathML"/>',
+  ])("rejects invalid recognized content without changing the selection: %s", fragment => {
+    const math = load('<mi>abc</mi>')
+    const text = math.querySelector("mi")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 1, text, 2)
+    const before = clean()
+    expect(command(`mathml:${fragment}`)).toBe(false)
+    expect(clean()).toBe(before)
+    expect(document.getSelection()!.toString()).toBe("b")
+  })
+
+  it("does not insert a delayed handwriting fragment into a removed formula or widget", () => {
+    const math = load('<mi>x</mi>')
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    math.remove()
+    const fragment = 'keyboard:mathml:<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>y</mi></math>'
+    expect(command(fragment)).toBe(false)
+    const widget = document.createElement("test-formula-widget")
+    widget.append(math)
+    document.body.append(widget)
+    $.move(math.querySelector("mi")!.firstChild!, 1)
+    expect(command(fragment)).toBe(false)
+    expect(math.textContent).toBe("x")
   })
 
   it("validates formula presentation state at the bridge", () => {

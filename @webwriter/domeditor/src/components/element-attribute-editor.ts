@@ -2,7 +2,9 @@ import {LitElement, css, html, nothing} from "lit"
 import "./style-combobox"
 import {isMediaType, mediaAttributeOptions} from "../media"
 import {groupedLanguageOptions} from "../language-suggestions"
-import {ribbonOptionIcon} from "../ribbon-icons"
+import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {choiceGroupStyles} from "./choice-group.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 import {
   elementAttributeEditability,
   elementAttributeOptions,
@@ -13,6 +15,7 @@ import {
 
 type AttributeChangeDetail = {
   path: number[] | null
+  targetId?: string
   localName: string
   namespaceURI: string | null
   name: string
@@ -54,9 +57,13 @@ export class ElementAttributeEditor extends LitElement {
     disabled: {type: Boolean, reflect: true},
     expanded: {type: Boolean, reflect: true},
     mediaOwned: {type: Boolean, attribute: false},
+    showOtherAttributes: {type: Boolean, attribute: false},
   }
 
   static styles = css`
+    ${editorInteractionStyles}
+    ${choiceGroupStyles}
+
     :host {
       display: block;
       min-width: 0;
@@ -68,16 +75,8 @@ export class ElementAttributeEditor extends LitElement {
     :host([expanded]) .field {grid-template-columns: 4.4rem minmax(0, 1fr);}
     :host([expanded]) input, :host([expanded]) select {border-color: #c5ccd5; border-radius: 4px;}
 
-    .choice-group {display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); gap: 0; padding: 0 .5px .5px 0; background: transparent; min-width: 0; border: 0; border-radius: 0; overflow: visible;}
-    .choice-group button {box-sizing: border-box; margin: 0 -.5px -.5px 0; display: grid; place-items: center; min-width: 0; min-height: 1.7rem; padding: .15rem; border: var(--editor-control-border-width, .5px) solid #c5ccd5; background: #f2f2f2; color: inherit; cursor: pointer;}
+    .choice-group button {display: grid; place-items: center; min-height: 1.7rem; padding: .15rem;}
     .choice-group svg {display: block; width: 1rem; height: 1rem;}
-    .choice-group button:first-child {border-top-left-radius: 4px;}
-    .choice-group button:last-child {border-bottom-right-radius: 4px;}
-    .choice-group button[data-top-right] {border-top-right-radius: 4px;}
-    .choice-group button[data-bottom-left] {border-bottom-left-radius: 4px;}
-    .choice-group button[aria-pressed="true"] {background: #e2edf8; color: #375d84;}
-    .choice-group button:hover {background: #edf3f9;}
-    .choice-group button:focus-visible {outline: 2px solid #8eb6df; outline-offset: -2px;}
 
     :host([disabled]) {
       opacity: 0.55;
@@ -178,7 +177,9 @@ export class ElementAttributeEditor extends LitElement {
     .dialog-heading {display: flex; align-items: center; justify-content: space-between; gap: .5rem; margin-bottom: .75rem;}
     h2, h3 {margin: 0; font-size: 1em;}
     h3 {margin-top: .75rem;}
-    .dialog-heading button {padding: .2rem .5rem; cursor: pointer;}
+    .dialog-heading button {display: grid; flex: 0 0 auto; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: .35rem; color: inherit; background: transparent; cursor: pointer;}
+    .dialog-heading button svg {display: block; width: 1.1rem; height: 1.1rem;}
+    .dialog-heading button:hover {background: #f1f5f9;}
 
     .attribute-list {
       margin-top: 0.45rem;
@@ -236,9 +237,10 @@ export class ElementAttributeEditor extends LitElement {
   disabled = false
   expanded = false
   mediaOwned = true
+  showOtherAttributes = false
 
   protected updated() {
-    if(this.disabled || !this.state) this.closeDialog()
+    if(this.disabled || !this.state || !this.showOtherAttributes) this.closeDialog()
   }
 
   disconnectedCallback() {
@@ -258,6 +260,7 @@ export class ElementAttributeEditor extends LitElement {
     this.dispatchEvent(new CustomEvent<AttributeChangeDetail>("element-attribute-change", {
       detail: {
         path: state.path ? [...state.path] : null,
+        ...(state.targetId ? {targetId: state.targetId} : {}),
         localName: state.localName,
         namespaceURI: state.namespaceURI,
         name,
@@ -356,7 +359,7 @@ export class ElementAttributeEditor extends LitElement {
       const columns = Math.min(4, Math.ceil(option.options.length / (option.options.length > 4 ? 2 : 1)))
       return html`<div class="field">
         ${this.renderFieldLabel(option, state)}
-        <div class="choice-group" style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`attribute-label-${option.name}`}>
+        <div class="choice-group" ?data-default=${!Object.hasOwn(state.attributes, option.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`attribute-label-${option.name}`}>
           ${option.options.map((item, index) => html`<button type="button"
             ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((option.options!.length - 1) / columns) * columns}
             aria-label=${item.label} title=${item.label} aria-pressed=${value === item.value}
@@ -423,17 +426,17 @@ export class ElementAttributeEditor extends LitElement {
     return html`
       <div class="language-row">
         ${options.filter(option => option.name === "lang").map(option => this.renderPrimary(option, state))}
-        <button type="button" class="more-attributes" aria-label="Other attributes" title="Other attributes"
+        ${this.showOtherAttributes ? html`<button type="button" class="more-attributes" aria-label="Other attributes" title="Other attributes"
           aria-haspopup="dialog" aria-controls="attributes-dialog" ?disabled=${this.disabled}
           @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.showModal()}>
           <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
-        </button>
+        </button>` : nothing}
       </div>
-      <dialog id="attributes-dialog" aria-labelledby="attributes-heading">
+      ${this.showOtherAttributes ? html`<dialog id="attributes-dialog" aria-labelledby="attributes-heading">
         <div class="dialog-heading">
           <h2 id="attributes-heading">${state.name} attributes</h2>
-          <button type="button" aria-label="Close attributes" ?disabled=${this.disabled}
-            @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.close()}>Close</button>
+          <button type="button" aria-label="Close attributes" title="Close attributes" ?disabled=${this.disabled}
+            @click=${() => this.shadowRoot!.querySelector<HTMLDialogElement>("dialog")!.close()}>${ribbonIcon("Reject")}</button>
         </div>
         ${limitation ? html`
           <aside class="limitation" aria-label=${`${state.name} editing limitation`}>
@@ -484,7 +487,7 @@ export class ElementAttributeEditor extends LitElement {
             <button type="submit" ?disabled=${this.disabled}>Add</button>
           </form>
         `}
-      </dialog>
+      </dialog>` : nothing}
     `
   }
 }

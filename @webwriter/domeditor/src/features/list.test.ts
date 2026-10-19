@@ -32,6 +32,117 @@ beforeEach(() => {
 })
 
 describe("semantic list editing", () => {
+  it("mirrors aligned image markers into empty-list affordances and cleans them up", () => {
+    document.body.innerHTML = '<ul style="--ww-list-marker-image: url(data:image/png;base64,AQID); list-style-image: var(--ww-list-marker-image)"></ul><p>Elsewhere</p>'
+    $.move(document.querySelector("ul")!, 0)
+    editor.features.list.refreshSelectionPresentation()
+    const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
+    expect(marker.style.getPropertyValue("--ww-list-marker-image")).toContain("data:image/png;base64,AQID")
+    expect(marker.getAttribute("part")).toContain("virtual-list-item-image-marker")
+    expect(document.querySelector("ul")!.childNodes).toHaveLength(0)
+    $.move(document.querySelector("p")!.firstChild!, 0)
+    editor.features.list.refreshSelectionPresentation()
+    expect(marker.style.getPropertyValue("--ww-list-marker-image")).toBe("")
+    expect(marker.getAttribute("part")).not.toContain("virtual-list-item-image-marker")
+  })
+
+  it("shares aligned image formatting and supports undo without changing list structure", async () => {
+    document.body.innerHTML = '<ul><!--keep--><li><my-widget></my-widget>Item</li></ul>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const list = document.querySelector("ul")!
+    const children = Array.from(list.childNodes)
+    editor.features.manipulation.setElementStyles(list, {
+      "list-style-image": "var(--ww-list-marker-image)",
+      "--ww-list-marker-image": 'url("data:image/png;base64,AQID")',
+    })
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(Array.from(list.childNodes)).toEqual(children)
+    expect(editor.doc.body.toString()).toContain("--ww-list-marker-image")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.querySelector("ul")!.getAttribute("style")).toBeNull()
+    expect(document.querySelector("ul")!.innerHTML).toBe('<!--keep--><li><my-widget></my-widget>Item</li>')
+    editor.doc.redo()
+    await Promise.resolve()
+    // Happy DOM's style parser drops custom properties containing quoted data
+    // URLs when restored through setAttribute; the authored attribute is intact.
+    expect(document.querySelector("ul")!.getAttribute("style")).toContain('--ww-list-marker-image: url("data:image/png;base64,AQID")')
+  })
+
+  it.each(["ul", "ol"] as const)("sets %s without unwrapping an already matching list", type => {
+    document.body.innerHTML = `<${type}><li>A</li></${type}>`
+    const list = document.body.firstElementChild!
+    $.selectElement(list)
+    expect(editor.features.list.setListType(type, [{localName: type, namespaceURI: list.namespaceURI}])).toBe(0)
+    expect(document.body.firstElementChild).toBe(list)
+    expect(cleanHTML()).toBe(`<${type}><li>A</li></${type}>`)
+  })
+
+  it("changes list type while preserving irregular DOM, widgets, attributes, and selection", () => {
+    document.body.innerHTML = '<ul id="items" class="authored" style="list-style-type: square; color: red"><!--keep--><li>A<my-widget></my-widget></li><div>unfamiliar</div><li><ul><li>nested</li></ul></li></ul>'
+    const list = document.body.firstElementChild!
+    const text = list.querySelector("li")!.firstChild!
+    const children = Array.from(list.childNodes)
+    $.move(text, 1)
+    expect(editor.features.list.setListType("ol", [{localName: "ul", namespaceURI: list.namespaceURI}])).toBe(1)
+    const replacement = document.body.firstElementChild as HTMLElement
+    expect(replacement.localName).toBe("ol")
+    expect(Array.from(replacement.childNodes)).toEqual(children)
+    expect(replacement.id).toBe("items")
+    expect(replacement.classList.contains("authored")).toBe(true)
+    expect(replacement.style.color).toBe("red")
+    expect(replacement.style.listStyleType).toBe("")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it("rejects stale and non-list scopes without changing the current DOM", () => {
+    document.body.innerHTML = "<ol><li>A</li></ol>"
+    $.selectElement(document.body.firstElementChild!)
+    expect(editor.features.list.setListType("ul", [{localName: "ul", namespaceURI: "http://www.w3.org/1999/xhtml"}])).toBe(0)
+    expect(editor.features.list.setListType("ul", [{localName: "ol", namespaceURI: "http://www.w3.org/2000/svg"}])).toBe(0)
+    expect(cleanHTML()).toBe("<ol><li>A</li></ol>")
+  })
+
+  it("converts mixed list selections together while retaining unrelated selected elements", () => {
+    document.body.innerHTML = '<ul><li>A<ul><li>nested</li></ul></li></ul><ol><li>B</li></ol><p>keep</p>'
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    try {
+      const selected = Array.from(document.body.children)
+      $.selectElements(selected)
+      const scopes = ["ul", "ol"].map(localName => ({localName, namespaceURI: "http://www.w3.org/1999/xhtml"}))
+      expect(editor.features.list.setListType("ol", scopes)).toBe(1)
+      expect(Array.from(document.body.children, element => element.localName)).toEqual(["ol", "ol", "p"])
+      expect(document.body.firstElementChild!.querySelector("ul")).not.toBeNull()
+      expect(document.body.lastElementChild).toBe(selected[2])
+      expect($.selectedElements).toEqual(Array.from(document.body.children))
+      expect(editor.features.list.setListType("ul", scopes)).toBe(2)
+      expect($.selectedElements).toEqual(Array.from(document.body.children))
+    }
+    finally { editor.setDocumentLayout("document", "canvas") }
+  })
+
+  it("shares list type changes and supports undo and redo without editor artifacts", async () => {
+    document.body.innerHTML = '<ul class="authored"><li>A</li></ul>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.selectElement(document.body.firstElementChild!)
+    editor.features.list.setListType("ol", [{localName: "ul", namespaceURI: "http://www.w3.org/1999/xhtml"}])
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(editor.doc.body.toString()).toContain('<ol class="authored"><li>A</li></ol>')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ul class="authored"><li>A</li></ul>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ol class="authored"><li>A</li></ol>')
+  })
+
   it("supports menu as a bulleted list type", () => {
     editor.features.list.toggleList("menu")
 
@@ -1142,6 +1253,23 @@ it("excludes positioned blocks and their text descendants from list wrapping", (
   expect(floating.parentElement).toBe(document.body)
   expect(floating.innerHTML).toBe("<p>floating</p>")
   expect(Array.from(document.querySelectorAll("li"), node => node.textContent)).toEqual(["before", "after"])
+})
+
+it("wraps text blocks selected entirely inside a positioned editing flow", () => {
+  document.body.innerHTML = '<p>before</p><aside style="position: fixed"><p>floating</p></aside><p>after</p>'
+  const floating = document.querySelector("aside")!
+  const before = document.body.firstElementChild
+  const paragraph = floating.querySelector("p")!
+  const after = document.body.lastElementChild
+  $.selectRange(floating, 0, floating, 1)
+  editor.features.list.toggleList("ul")
+
+  expect(floating.parentElement).toBe(document.body)
+  expect(floating.querySelector("ul > li > p")).toBe(paragraph)
+  expect(before?.parentElement).toBe(document.body)
+  expect(after?.parentElement).toBe(document.body)
+  expect(before?.textContent).toBe("before")
+  expect(after?.textContent).toBe("after")
 })
 
 it.each(["ul", "ol"] as const)("converts headings to paragraphs when wrapping in %s", type => {

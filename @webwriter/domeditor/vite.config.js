@@ -2,6 +2,8 @@ import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
+import {documentationPlugin} from './scripts/documentation-plugin.mjs'
+import {siteHeaderPlugin} from './scripts/site-header.mjs'
 
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
 
@@ -36,13 +38,32 @@ function localPackageServiceWorkerPlugin() {
 }
 
 export default defineConfig({
-    plugins: [localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+    plugins: [siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
       referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url)))],
+    appType: "mpa",
     publicDir: "../../static",
     resolve: {
       dedupe: ["yjs"],
     },
+    optimizeDeps: {
+      // The lazy worker is outside the initial dependency crawl. Discovering
+      // these on first use would re-optimize dependencies and reload the page.
+      include: ["onnxruntime-web/wasm"],
+    },
     test: {
+      coverage: {
+        provider: "v8",
+        include: ["src/**/*.ts"],
+        exclude: ["src/**/*.test.ts", "src/**/*.d.ts"],
+        reporter: ["text", "html", "json", "json-summary"],
+        reportsDirectory: "./coverage",
+        thresholds: {
+          statements: 87.18,
+          branches: 81.75,
+          functions: 89.5,
+          lines: 90.85,
+        },
+      },
       execArgv: ["--max-old-space-size=8192"],
       // Vitest 4 restores spies without clearing their retained DOM call history.
       clearMocks: true,
@@ -74,6 +95,14 @@ export default defineConfig({
         rollupOptions: {
           input: {
             index: fileURLToPath(new URL("./index.html", import.meta.url)),
+            gallery: fileURLToPath(new URL("./gallery/index.html", import.meta.url)),
+            examples: fileURLToPath(new URL("./examples/index.html", import.meta.url)),
+            "legal-notice": fileURLToPath(new URL("./legal_notice/index.html", import.meta.url)),
+            "site-entry": fileURLToPath(new URL("./src/site-entry.ts", import.meta.url)),
+            "gallery-preview-entry": fileURLToPath(new URL("./src/gallery-preview-entry.ts", import.meta.url)),
+            editor: fileURLToPath(new URL("./editor/index.html", import.meta.url)),
+            "docs-preview": fileURLToPath(new URL("./docs/widgets/examples/preview.html", import.meta.url)),
+            "docs-hello": fileURLToPath(new URL("./docs/widgets/examples/hello.html", import.meta.url)),
             "frame-shell": fileURLToPath(new URL("./frame-shell.html", import.meta.url)),
             "editor-entry": fileURLToPath(new URL("./src/editor-entry.ts", import.meta.url)),
             "preview-entry": fileURLToPath(new URL("./src/preview-entry.ts", import.meta.url)),

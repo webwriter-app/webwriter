@@ -3,15 +3,19 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {createProofreader, type ProofreadingIssue} from "../proofreading"
+import {createAccessibilityReviewer, type AccessibilityFinding} from "../accessibility"
 import {proofreadingRuns} from "./proofreading"
 import {proofreadingStateChangeEvent} from "../editor-bridge"
 
 vi.mock("../proofreading", async importOriginal => ({...await importOriginal<typeof import("../proofreading")>(), createProofreader: vi.fn()}))
+vi.mock("../accessibility", () => ({createAccessibilityReviewer: vi.fn()}))
 
 let editor: DOMEditor
 let highlights: Map<string, unknown>
 let check: ReturnType<typeof vi.fn<(text: string, language: string) => Promise<ProofreadingIssue[]>>>
 let dispose: ReturnType<typeof vi.fn<() => Promise<void>>>
+let review: ReturnType<typeof vi.fn<() => Promise<AccessibilityFinding[]>>>
+let disposeReview: ReturnType<typeof vi.fn<() => void>>
 
 const spelling = (start = 0, end = 3, text = "the"): ProofreadingIssue => ({
   start, end, kind: "spelling", message: "Check this spelling.", suggestions: [{kind: "replace", text}],
@@ -27,7 +31,10 @@ beforeEach(() => {
   check = vi.fn(async () => [spelling()])
   dispose = vi.fn(async () => {})
   vi.mocked(createProofreader).mockResolvedValue({check, dispose})
-  editor = new DOMEditor()
+  review = vi.fn(async () => [])
+  disposeReview = vi.fn()
+  vi.mocked(createAccessibilityReviewer).mockResolvedValue({check: review, dispose: disposeReview})
+  editor = new DOMEditor({accessibilityReviewEnabled: true})
   highlights = new Map()
   vi.stubGlobal("CSS", {highlights, supports: CSS.supports, escape: CSS.escape})
   vi.stubGlobal("Highlight", class extends Set<Range> {
@@ -97,6 +104,65 @@ describe("proofreading prose extraction", () => {
 })
 
 describe("proofreading feature", () => {
+  it("batches current prose and reuses only unchanged runs for automatic checks", async () => {
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [] as ProofreadingIssue[]))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    content('<p>First paragraph.</p><aside><p>Second paragraph.</p></aside>')
+    await start()
+    expect(batch.mock.calls[0][0].map(run => run.text)).toEqual(["First paragraph.", "Second paragraph."])
+    expect(check).not.toHaveBeenCalled()
+    batch.mockClear()
+    const first = document.querySelector("p")!.firstChild as Text
+    first.data = "Changed paragraph."
+    await editor.features.proofreading.checkNow(true)
+    expect(batch.mock.calls[0][0].map(run => run.text)).toEqual(["Changed paragraph."])
+    batch.mockClear()
+    await editor.features.proofreading.checkNow(true)
+    expect(batch).not.toHaveBeenCalled()
+    await editor.features.proofreading.checkNow()
+    expect(batch.mock.calls[0][0]).toHaveLength(2)
+  })
+
+  it("rechecks identical prose after its text nodes or inherited language are replaced", async () => {
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [] as ProofreadingIssue[]))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    content('<section><p>English prose.</p></section>')
+    await start()
+    batch.mockClear()
+    const paragraph = document.querySelector("p")!
+    paragraph.replaceWith(paragraph.cloneNode(true))
+    await editor.features.proofreading.checkNow(true)
+    expect(batch.mock.calls[0][0]).toEqual([expect.objectContaining({text: "English prose.", language: "en-US"})])
+    batch.mockClear()
+    document.querySelector("section")!.setAttribute("lang", "en-GB")
+    await editor.features.proofreading.checkNow(true)
+    expect(batch.mock.calls[0][0]).toEqual([expect.objectContaining({text: "English prose.", language: "en-GB"})])
+    batch.mockClear()
+    document.querySelector("section")!.setAttribute("hidden", "")
+    await editor.features.proofreading.checkNow(true)
+    expect(batch).not.toHaveBeenCalled()
+  })
+
+  it("supersedes unchecked batches when the live document changes", async () => {
+    let finish!: (issues: ProofreadingIssue[][]) => void
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [] as ProofreadingIssue[]))
+    batch.mockImplementationOnce(() => new Promise(resolve => {finish = resolve}))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    content(Array.from({length: 100}, (_, index) => `<p>Paragraph ${index}.</p>`).join(""))
+    const initial = start()
+    await vi.waitFor(() => expect(batch).toHaveBeenCalledOnce())
+    expect(batch.mock.calls[0][0]).toHaveLength(64)
+    document.querySelector("p")!.firstChild!.textContent = "Current paragraph."
+    const replacement = editor.features.proofreading.checkNow(true)
+    finish(Array.from({length: 64}, () => []))
+    await initial
+    await replacement
+    expect(batch.mock.calls).toHaveLength(3)
+    expect(batch.mock.calls[1][0][0].text).toBe("Current paragraph.")
+    expect(batch.mock.calls[2][0]).toHaveLength(36)
+    expect(editor.features.proofreading.state()).toMatchObject({ready: true, error: null, issues: []})
+  })
+
   it("checks manually with automatic checking off without changing the preference or scheduling later checks", async () => {
     editor.features.proofreading.setDocumentChecking(false)
     const before = editor.toHTML()
@@ -142,21 +208,239 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
   })
 
-  it("does not load the checker for globally disabled initialization, even with dictionary words", async () => {
-    editor.features.proofreading.setChecking(false)
+  it("does not load the checker for a disabled document default, even with dictionary words", async () => {
+    editor.features.proofreading.setDocumentChecking(false)
     editor.features.proofreading.setDictionary(["Teh"])
     await editor.features.proofreading.checkNow()
     expect(createProofreader).not.toHaveBeenCalled()
+    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
     expect(document.documentElement.hasAttribute("spellcheck")).toBe(false)
-    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: true, issues: []})
-    editor.features.proofreading.setChecking(true)
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false, issues: []})
+    editor.features.proofreading.setDocumentChecking(true)
     await editor.features.proofreading.checkNow()
     expect(createProofreader).toHaveBeenCalledOnce()
+    expect(createAccessibilityReviewer).toHaveBeenCalledOnce()
     expect(check).toHaveBeenCalledWith("teh example.", "en-US", ["Teh"])
     expect(editor.features.proofreading.state().issues).toEqual([])
   })
 
-  it("stores the document preference without changing its content, with undo and redo", async () => {
+  it("disables both checkers globally and prevents document or manual checks from bypassing Settings", async () => {
+    const image = document.createElement("img")
+    document.body.append(image)
+    review.mockResolvedValue([{element: image, rule: "image-alt", message: "Needs alt text", text: "<img>", helpUrl: "https://example.com/rule"}])
+    await start()
+    expect(editor.features.proofreading.state().issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
+    editor.features.proofreading.setChecking(false)
+    expect(editor.features.proofreading.state()).toMatchObject({allowed: false, enabled: false, issues: []})
+    const proseCalls = check.mock.calls.length, accessibilityCalls = review.mock.calls.length
+    editor.features.proofreading.setDocumentChecking(true)
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    await editor.features.proofreading.checkNow()
+    expect(check).toHaveBeenCalledTimes(proseCalls)
+    expect(review).toHaveBeenCalledTimes(accessibilityCalls)
+    expect(disposeReview).toHaveBeenCalled()
+    editor.features.proofreading.setChecking(true)
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state()).toMatchObject({allowed: true, enabled: true})
+    expect(editor.features.proofreading.state().issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
+  })
+
+  it("keeps automatic accessibility unloaded until the document is saved once", async () => {
+    editor.destroy()
+    editor = new DOMEditor()
+    await start()
+    expect(check).toHaveBeenCalled()
+    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
+    expect(editor.features.proofreading.state().issues.map(issue => issue.kind)).toEqual(["spelling"])
+
+    document.querySelector("p")!.textContent = "teh draft."
+    await editor.features.proofreading.checkNow(true)
+    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
+    editor.features.proofreading.actions.setAccessibilityReviewEnabled({type: "setAccessibilityReviewEnabled", enabled: true})
+    await vi.waitFor(() => expect(review).toHaveBeenCalledOnce())
+    expect(createAccessibilityReviewer).toHaveBeenCalledOnce()
+    document.querySelector("p")!.textContent = "teh saved edit."
+    await editor.features.proofreading.checkNow(true)
+    expect(review).toHaveBeenCalledTimes(2)
+  })
+
+  it("allows a manual accessibility check before saving without enabling automatic review", async () => {
+    editor.features.proofreading.setAccessibilityReviewEnabled(false)
+    editor.features.proofreading.actions.checkProofreading({type: "checkProofreading"})
+    await editor.features.proofreading.checkNow()
+    expect(review).toHaveBeenCalledOnce()
+    document.querySelector("p")!.textContent = "teh changed draft."
+    await editor.features.proofreading.checkNow(true)
+    expect(review).toHaveBeenCalledOnce()
+    expect(editor.features.proofreading.state().issues[0].kind).toBe("spelling")
+  })
+
+  it("does not load accessibility after saving while Issues is disabled", async () => {
+    editor.features.proofreading.setAccessibilityReviewEnabled(false)
+    editor.features.proofreading.setDocumentChecking(false)
+    editor.features.proofreading.setAccessibilityReviewEnabled(true)
+    await editor.features.proofreading.checkNow()
+    expect(createAccessibilityReviewer).not.toHaveBeenCalled()
+    editor.features.proofreading.setDocumentChecking(true)
+    await editor.features.proofreading.checkNow()
+    expect(review).toHaveBeenCalledOnce()
+  })
+
+  it("combines prose and accessibility findings without per-element pills", async () => {
+    content('<p>teh example.</p><img alt="">')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}])
+
+    const issues = await start()
+    expect(issues.map(issue => issue.kind)).toEqual(["spelling", "accessibility"])
+    expect(issues[1]).toMatchObject({kind: "accessibility", text: "<img>", helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt", suggestions: []})
+    expect(editor.appendix.querySelectorAll('[part~="accessibility-issue-pill"]')).toHaveLength(0)
+    expect(document.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(document.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.toHTML(true)).toContain('<img alt="">')
+  })
+
+  it("highlights an issue on element hover and opens its shared popup and outline from the context menu", async () => {
+    content('<img alt="">')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}])
+    const [issue] = await start()
+
+    hover(image)
+    expect(editor.features.proofreading.state().hoveredIssueId).toBe(issue.id)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(contextMenu(image).defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).not.toBeNull()
+    const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    const learnMore = popup.querySelector<HTMLAnchorElement>('a[href="https://dequeuniversity.com/rules/axe/4.10/image-alt"]')!
+    expect(learnMore).not.toBeNull()
+    expect(learnMore.getAttribute("role")).toBe("menuitem")
+    expect(learnMore.rel).toContain("noopener")
+    popup.querySelector<HTMLButtonElement>(".proofreading-ignore")!.focus()
+    popup.querySelector<HTMLButtonElement>(".proofreading-ignore")!.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "ArrowDown", bubbles: true, composed: true, cancelable: true,
+    }))
+    expect(editor.appendix.activeElement).toBe(learnMore)
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(true)
+    expect(document.getSelection()?.getRangeAt(0).intersectsNode(image)).toBe(true)
+    popup.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+  })
+
+  it("reviews form controls and prefers their finding over a containing page finding", async () => {
+    content('<input>')
+    const input = document.querySelector("input")!
+    const rect = new DOMRect(20, 30, 40, 20)
+    vi.spyOn(input, "getClientRects").mockReturnValue([rect] as unknown as DOMRectList)
+    vi.spyOn(document.body, "getClientRects").mockReturnValue([new DOMRect(0, 0, 400, 300)] as unknown as DOMRectList)
+    review.mockResolvedValue([
+      {element: document.body, rule: "landmark-one-main", message: "Add a main landmark", text: "<body>", helpUrl: "https://example.com/main"},
+      {element: input, rule: "label", message: "Form elements must have labels", text: "<input>", helpUrl: "https://example.com/label"},
+    ])
+    const issues = await start()
+    hover(input)
+    expect(editor.features.proofreading.state().hoveredIssueId).toBe(issues[1].id)
+    expect(contextMenu(input).defaultPrevented).toBe(true)
+    expect(editor.appendix.querySelector(".proofreading-message")?.textContent).toBe("Form elements must have labels")
+  })
+
+  it("keeps an ignored accessibility finding suppressed until its target context changes", async () => {
+    content('<img alt="">')
+    const image = document.querySelector("img")!
+    const finding = (element: Element) => ({element, rule: "image-alt", message: "Image needs alternative text", text: element.getAttribute("alt") || "<img>",
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"})
+    review.mockImplementation(async () => [finding(image)])
+    let [issue] = await start()
+    const ignoredId = issue.id
+    expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toEqual([])
+
+    // A related element can resolve a rule without changing the target itself.
+    review.mockResolvedValueOnce([])
+    await editor.features.proofreading.checkNow()
+    await editor.features.proofreading.checkNow()
+    const restored = editor.features.proofreading.state().issues[0]
+    expect(restored.kind).toBe("accessibility")
+    expect(editor.features.proofreading.ignore(restored.id)).toBe(true)
+
+    image.setAttribute("alt", "A chart")
+    await editor.features.proofreading.checkNow()
+    ;[issue] = editor.features.proofreading.state().issues
+    expect(issue).toMatchObject({kind: "accessibility", text: "A chart"})
+    expect(issue.id).not.toBe(ignoredId)
+
+    const replacement = document.createElement("img")
+    replacement.alt = ""
+    image.replaceWith(replacement)
+    review.mockImplementation(async () => [finding(replacement)])
+    await editor.features.proofreading.checkNow()
+    const [replacementIssue] = editor.features.proofreading.state().issues
+    expect(replacementIssue).toMatchObject({kind: "accessibility", text: "<img>"})
+    expect(replacementIssue.id).not.toBe(issue.id)
+  })
+
+  it("invalidates accessibility actions and outlines after label mutations and cancels pending reviews when disabled", async () => {
+    content('<img alt="">')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
+    const finding = {element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>", helpUrl: "https://example.com/rule"}
+    review.mockResolvedValue([finding])
+    const [issue] = await start()
+    contextMenu(image)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).not.toBeNull()
+
+    image.setAttribute("aria-label", "Chart of results")
+    expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+
+    let finish!: (findings: AccessibilityFinding[]) => void
+    review.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const pending = editor.features.proofreading.checkNow()
+    await vi.waitFor(() => expect(finish).toBeDefined())
+    expect(editor.features.proofreading.setDocumentChecking(false)).not.toBe(false)
+    finish([finding])
+    await pending
+    expect(editor.features.proofreading.state()).toMatchObject({documentEnabled: false, issues: [], checking: false})
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(disposeReview).toHaveBeenCalled()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+  })
+
+  it("keeps multiple findings without pills and dismisses popups for disconnected targets", async () => {
+    content('<img>')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
+    review.mockResolvedValue(["first", "second"].map(rule => ({element: image, rule, message: rule,
+      text: "<img>", helpUrl: "https://example.com/rule"})))
+    const issues = await start()
+    expect(issues).toHaveLength(2)
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    contextMenu(image)
+    expect(editor.appendix.querySelector(".proofreading-message")?.textContent).toBe("first")
+    expect(editor.appendix.querySelectorAll('[part="accessibility-issue-outline"]')).toHaveLength(1)
+    image.remove()
+    expect(editor.features.proofreading.selectIssue(issues[1].id)).toBe(false)
+    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
+    expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+  })
+
+  it("keeps the proofreading preference in session state without changing content or history", async () => {
     const [issue] = await start()
     issueRects()
     contextMenu()
@@ -164,8 +448,7 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.actions.setDocumentProofreadingEnabled({type: "setDocumentProofreadingEnabled", enabled: false}))
       .toMatchObject({enabled: false, documentEnabled: false, loading: false, checking: false, issues: []})
     expect(document.body.innerHTML).toBe(before)
-    expect(editor.toHTML()).toContain('spellcheck="false"')
-    expect(editor.doc.documentAttributes!.getAttribute("spellcheck")).toBe("false")
+    expect(editor.toHTML()).not.toContain('spellcheck="false"')
     expect(highlights.has("webwriter-spelling")).toBe(false)
     expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
     expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
@@ -174,34 +457,33 @@ describe("proofreading feature", () => {
     await editor.features.proofreading.checkNow()
     expect(check).toHaveBeenCalledTimes(calls)
     editor.doc.undo()
-    await editor.features.proofreading.checkNow()
-    expect(editor.features.proofreading.state()).toMatchObject({enabled: true, documentEnabled: true})
-    expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
     editor.doc.redo()
-    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false, issues: []})
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
     expect(editor.features.proofreading.setDocumentChecking(true)).toMatchObject({enabled: true, documentEnabled: true})
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
   })
 
-  it("honours saved and remote document preferences, including while globally disabled", async () => {
+  it("keeps its session preference across native and remote spellcheck changes", async () => {
     editor.destroy()
     document.documentElement.setAttribute("spellcheck", "false")
     editor = new DOMEditor()
     await start()
-    expect(createProofreader).not.toHaveBeenCalled()
-    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
-    editor.doc.doc.transact(() => editor.doc.documentAttributes!.removeAttribute("spellcheck"), "remote-peer")
-    await editor.features.proofreading.checkNow()
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: true, documentEnabled: true})
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
+    editor.features.proofreading.setDocumentChecking(false)
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
+    document.documentElement.removeAttribute("spellcheck")
+    editor.doc.doc.transact(() => editor.doc.documentAttributes!.removeAttribute("spellcheck"), "remote-peer")
+    expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
     editor.features.proofreading.setChecking(false)
-    expect(document.documentElement.hasAttribute("spellcheck")).toBe(false)
     editor.doc.doc.transact(() => editor.doc.documentAttributes!.setAttribute("spellcheck", "false"), "remote-peer")
     expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false})
     editor.features.proofreading.setChecking(true)
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state()).toMatchObject({enabled: false, documentEnabled: false, issues: []})
-    editor.doc.doc.transact(() => editor.doc.documentAttributes!.removeAttribute("spellcheck"), "remote-peer")
+    editor.features.proofreading.setDocumentChecking(true)
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
   })
@@ -348,7 +630,8 @@ describe("proofreading feature", () => {
     expect(contextMenu(button).defaultPrevented).toBe(false)
     const overlay = document.createElement("button")
     editor.addAppendix(overlay)
-    expect(contextMenu(overlay).defaultPrevented).toBe(false)
+    // General appendix menu suppression belongs to SelectionFeature.
+    expect(contextMenu(overlay).defaultPrevented).toBe(true)
     expect(contextMenu(document.querySelector("p")!, 200, 200).defaultPrevented).toBe(false)
     expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
   })
@@ -535,6 +818,23 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.state()).toMatchObject({checking: false, issues: [issue]})
     expect(highlights.get("webwriter-spelling")).toBe(painted)
     expect([...painted][0]).toBe(range)
+  })
+
+  it("matches many repeated issues by text node and signature while keeping equal prose occurrences distinct", async () => {
+    const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [spelling()]))
+    vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
+    const count = 240
+    content(Array.from({length: count}, () => "<p>teh example.</p>").join(""))
+    const first = await start()
+    expect(first).toHaveLength(count)
+    expect(new Set(first.map(issue => issue.id)).size).toBe(count)
+    expect(first.every(issue => issue.text === "teh")).toBe(true)
+
+    await editor.features.proofreading.checkNow()
+    const second = editor.features.proofreading.state().issues
+    expect(second.map(issue => issue.id)).toEqual(first.map(issue => issue.id))
+    expect(second.map(issue => issue.text)).toEqual(first.map(issue => issue.text))
+    expect(batch).toHaveBeenCalledTimes(Math.ceil(count / 64) * 2)
   })
 
   it("keeps all cards until replacement results are ready while removing stale underlines", async () => {

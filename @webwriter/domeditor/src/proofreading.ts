@@ -1,3 +1,5 @@
+import workerModuleURL from "./proofreading-worker.ts?worker&url"
+
 export type ProofreadingIssue = {
   start: number
   end: number
@@ -6,10 +8,18 @@ export type ProofreadingIssue = {
   suggestions: { kind: "replace" | "remove" | "insertAfter"; text: string }[]
 }
 
+export type ProofreadingText = {text: string, language: string}
+
 export interface Proofreader {
   check(text: string, language: string, dictionary?: readonly string[]): Promise<ProofreadingIssue[]>
+  checkBatch?(runs: readonly ProofreadingText[], dictionary?: readonly string[]): Promise<ProofreadingIssue[][]>
   dispose(): Promise<void>
 }
+
+export type ProofreadingWorkerOperation = {type: "setup"}
+  | {type: "check", runs: readonly ProofreadingText[], dictionary: readonly string[]}
+export type ProofreadingWorkerRequest = ProofreadingWorkerOperation & {id: number}
+export type ProofreadingWorkerResponse = {id: number, result?: ProofreadingIssue[][], error?: string}
 
 export function normalizeProofreadingDictionary(value: unknown): string[] {
   if(!Array.isArray(value)) return []
@@ -22,185 +32,71 @@ export function normalizeProofreadingDictionary(value: unknown): string[] {
   return [...words.values()]
 }
 
-type HarperApi = typeof import("harper.js")
-const REQUEST_TIMEOUT_MS = 30_000
-
-function dialectForLanguage(language: string, Dialect: HarperApi["Dialect"]) {
-  if (!/^en(?:-|$)/i.test(language)) return Dialect.American
-  const region = language.replaceAll("_", "-").split("-")[1]?.toUpperCase()
-
-  switch (region) {
-    case "GB":
-      return Dialect.British
-    case "AU":
-      return Dialect.Australian
-    case "CA":
-      return Dialect.Canadian
-    case "IN":
-      return Dialect.Indian
-    default:
-      return Dialect.American
-  }
-}
-
+/** Keep Harper and its WASM wrappers in one worker; only plain results cross. */
 export async function createProofreader(signal?: AbortSignal): Promise<Proofreader> {
-  const [{ WorkerLinter, Dialect, SuggestionKind }, { binary }] = await Promise.all([
-    import("harper.js"),
-    import("harper.js/binary"),
-  ])
   signal?.throwIfAborted()
-  const linter = new WorkerLinter({ binary })
-  let disposed = false
-  let queue: Promise<void> = Promise.resolve()
-  let currentDialect: number | undefined
-  let dictionaryKey = "[]"
-  let resolveStopped: () => void = () => undefined
-  const stopped = new Promise<void>((resolve) => {
-    resolveStopped = resolve
-  })
-  const worker = (linter as unknown as { worker: Worker }).worker
-  let rejectWorkerFailure: (error: Error) => void = () => undefined
-  const workerFailure = new Promise<never>((_, reject) => { rejectWorkerFailure = reject })
-  // A worker can fail between requests; the next request still sees the error.
-  void workerFailure.catch(() => {})
-  const onWorkerError = (event: Event) => {
-    event.preventDefault()
-    rejectWorkerFailure(new Error("Could not start or communicate with the Harper worker"))
-  }
-  const terminateWorker = () => {
-    // WorkerLinter 2.10.0 leaves RPCs pending after a worker error. Its dispose
-    // method is also an RPC, so terminate the pinned-version worker directly.
-    worker.removeEventListener("error", onWorkerError)
-    worker.removeEventListener("messageerror", onWorkerError)
+  const moduleURL = new URL(workerModuleURL, import.meta.url).href
+  const worker = new Worker(moduleURL, {type: "module"})
+  const pending = new Map<number, {resolve: (value: ProofreadingIssue[][]) => void, reject: (error: Error) => void, timer: ReturnType<typeof setTimeout>}>()
+  let sequence = 0
+  let stopped: Error | null = null
+  const stop = (error: Error) => {
+    if(stopped) return
+    stopped = error
+    worker.removeEventListener("message", onMessage)
+    worker.removeEventListener("error", onError)
+    worker.removeEventListener("messageerror", onError)
     signal?.removeEventListener("abort", onAbort)
     worker.terminate()
+    for(const request of pending.values()) {clearTimeout(request.timer); request.reject(error)}
+    pending.clear()
   }
-  const onAbort = () => {
-    if (disposed) return
-    disposed = true
-    terminateWorker()
-    resolveStopped()
+  const onMessage = (event: MessageEvent<ProofreadingWorkerResponse>) => {
+    const data = event.data
+    const request = pending.get(data?.id)
+    if(!request) return
+    pending.delete(data.id)
+    clearTimeout(request.timer)
+    if(data.error) {
+      const error = new Error(data.error)
+      request.reject(error)
+      stop(error)
+    }
+    else request.resolve(data.result ?? [])
   }
-  worker.addEventListener("error", onWorkerError)
-  worker.addEventListener("messageerror", onWorkerError)
+  const onError = (event: Event) => {
+    event.preventDefault()
+    stop(new Error("Could not start or communicate with the Harper worker"))
+  }
+  const onAbort = () => stop(new Error("Proofreader has been disposed"))
+  worker.addEventListener("message", onMessage)
+  worker.addEventListener("error", onError)
+  worker.addEventListener("messageerror", onError)
   signal?.addEventListener("abort", onAbort, {once: true})
-  const withTimeout = async <T>(operation: Promise<T>): Promise<T> => {
-    let timeout: ReturnType<typeof setTimeout> | undefined
-    try {
-      return await Promise.race([
-        operation,
-        workerFailure,
-        stopped.then(() => { throw new Error("Proofreader has been disposed") }),
-        new Promise<T>((_, reject) => {
-          timeout = setTimeout(() => reject(new Error("Harper request timed out")), REQUEST_TIMEOUT_MS)
-        }),
-      ])
-    } catch (error) {
-      if (!disposed) {
-        disposed = true
-        terminateWorker()
-        resolveStopped()
-      }
-      throw error
-    } finally {
-      if (timeout !== undefined) clearTimeout(timeout)
+  const request = (operation: ProofreadingWorkerOperation) => new Promise<ProofreadingIssue[][]>((resolve, reject) => {
+    if(stopped) {reject(stopped); return}
+    const id = ++sequence
+    const timer = setTimeout(() => stop(new Error("Harper request timed out")), 30_000)
+    pending.set(id, {resolve, reject, timer})
+    try { worker.postMessage({...operation, id} satisfies ProofreadingWorkerRequest) }
+    catch(error) {stop(error instanceof Error ? error : new Error(String(error)))}
+  })
+  try { await request({type: "setup"}) }
+  catch(error) {stop(error instanceof Error ? error : new Error(String(error))); throw error}
+  const checkBatch = async (runs: readonly ProofreadingText[], dictionary: readonly string[] = []) => {
+    if(stopped) throw stopped
+    const words = normalizeProofreadingDictionary(dictionary)
+    const results: ProofreadingIssue[][] = []
+    // Bound each RPC's work and payload while avoiding one round trip per run.
+    for(let index = 0; index < runs.length; index += 256) {
+      const texts = runs.slice(index, index + 256).map(({text, language}) => ({text, language}))
+      results.push(...await request({type: "check", runs: texts, dictionary: words}))
     }
+    return results
   }
-
-  try {
-    // Resolve only once the bundled WASM and the worker are ready to check.
-    await withTimeout(linter.setup())
-  } catch (error) {
-    if (!disposed) {
-      disposed = true
-      terminateWorker()
-      resolveStopped()
-    }
-    throw error
-  }
-
   return {
-    check(text, language, dictionary = []) {
-      if (disposed) return Promise.reject(new Error("Proofreader has been disposed"))
-      // Pasted HTML often uses NBSP between words. Harper's phrase rules
-      // require ordinary spaces; this one-to-one projection keeps DOM offsets.
-      const source = text.replaceAll("\u00a0", " ")
-      const words = normalizeProofreadingDictionary(dictionary)
-      const wordSet = new Set(words.map(word => word.toLowerCase()))
-      const nextDictionaryKey = JSON.stringify(words)
-
-      const check = queue.then(() => {
-        if (disposed) throw new Error("Proofreader has been disposed")
-        return withTimeout((async () => {
-          const dialect = dialectForLanguage(language, Dialect)
-          await linter.setDialect(dialect)
-          // Harper rebuilds its dictionary when the dialect changes.
-          if(currentDialect !== dialect || dictionaryKey !== nextDictionaryKey) {
-            await linter.clearWords()
-            if(words.length) await linter.importWords(words)
-            currentDialect = dialect
-            dictionaryKey = nextDictionaryKey
-          }
-          const lints = await linter.lint(source, { language: "plaintext" })
-          const issues: ProofreadingIssue[] = []
-          let lintIndex = 0
-          try {
-            for (; lintIndex < lints.length; lintIndex++) {
-              const lint = lints[lintIndex]
-              let span: ReturnType<typeof lint.span> | undefined
-              let suggestions: ReturnType<typeof lint.suggestions> = []
-              try {
-                span = lint.span()
-                const problemText = lint.get_problem_text()
-                const { start, end } = span
-                if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > source.length || source.slice(start, end) !== problemText) continue
-                const lintKind = lint.lint_kind().toLowerCase()
-                const kind = ["spelling", "typo"].includes(lintKind)
-                  ? "spelling"
-                  : ["style", "wordchoice", "miscellaneous"].includes(lintKind)
-                    ? "style"
-                    : "grammar"
-                // Named typo rules can still flag an explicitly accepted word.
-                if(kind === "spelling" && wordSet.has(problemText.toLowerCase())) continue
-
-                suggestions = lint.suggestions()
-                issues.push({
-                  start,
-                  end,
-                  kind,
-                  message: lint.message(),
-                  suggestions: suggestions.map((suggestion) => ({
-                    kind: suggestion.kind() === SuggestionKind.Remove
-                      ? "remove"
-                      : suggestion.kind() === SuggestionKind.InsertAfter
-                        ? "insertAfter"
-                        : "replace",
-                    text: suggestion.get_replacement_text(),
-                  })),
-                })
-              } finally {
-                for (const suggestion of suggestions) suggestion.free()
-                span?.free()
-                lint.free()
-              }
-            }
-          } catch (error) {
-            // Lints after the failing item still own WASM allocations.
-            for (const remaining of lints.slice(lintIndex + 1)) remaining.free()
-            throw error
-          }
-          return issues
-        })())
-      })
-      queue = check.then(() => undefined, () => undefined)
-      return check
-    },
-    async dispose() {
-      if (disposed) return
-      disposed = true
-      terminateWorker()
-      resolveStopped()
-      await queue
-    },
+    async check(text, language, dictionary = []) {return (await checkBatch([{text, language}], dictionary))[0]},
+    checkBatch,
+    async dispose() {stop(new Error("Proofreader has been disposed"))},
   }
 }

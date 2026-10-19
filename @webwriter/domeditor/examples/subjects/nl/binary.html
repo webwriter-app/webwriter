@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="webwriter@0.0.1">
+<title>Tel als een computer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"></script>
+</head>
+<body>
+<p><small>Informatica · ongeveer 15 minuten</small></p>
+<h1>Tel als een computer</h1>
+<p>Een computer kan twee symbolen gebruiken, <code>0</code> en <code>1</code>, om een getal weer te geven. We lezen vier symbolen met behulp van plaatswaarden.</p>
+<h2>Twee symbolen zijn genoeg</h2>
+<p>We tellen meestal met tien cijfers, van 0 tot 9. Een computer kan informatie weergeven met twee toestanden, zoals een signaal dat uit of aan staat. Een enkele 0 of 1 heet een <em>bit</em>. Groepen bits kunnen getallen en andere informatie voorstellen.</p>
+<p>In het decimale stelsel zijn de plaatswaarden 1, 10, 100 enzovoort. In het binaire stelsel verdubbelt elke plaats naar links: 1, 2, 4, 8. Lees voor deze opdracht het getal van 4 bits van links naar rechts met de plaatswaarden hieronder. Een 1 betekent “tel deze waarde mee”; een 0 betekent “laat deze weg”.</p>
+<p>Deze symbolen beschrijven de twee toestanden op een begrijpelijke manier. In een echte computer slaan circuits patronen van toestanden op en verwerken ze die.</p>
+
+<table>
+<caption>Vier binaire posities</caption>
+<thead><tr><th scope="col">Plaatswaarde</th><th scope="col">8</th><th scope="col">4</th><th scope="col">2</th><th scope="col">1</th></tr></thead>
+<tbody>
+<tr><th scope="row">Bitpatroon</th><td>0 of 1</td><td>0 of 1</td><td>0 of 1</td><td>0 of 1</td></tr>
+<tr><th scope="row">Voorbeeld: 1010</th><td>1 → 8</td><td>0 → 0</td><td>1 → 2</td><td>0 → 0</td></tr>
+</tbody>
+</table>
+
+<h2>Tel de ingeschakelde plaatsen op</h2>
+<p>Voor <code>1010</code> zijn de plaatsen 8 en 2 ingeschakeld. Tel ze op: 8 + 2 = 10. Het binaire getal van vier bits <code>1010</code> betekent dus tien in ons vertrouwde decimale stelsel. Het bitpatroon is geen rij van vier losse decimale cijfers, maar één getal met plaatswaarden.</p>
+<p>Probeer dezelfde methode met <code>0111</code>: tel 4, 2 en 1 mee. De nul vooraan houdt elk voorbeeld vier bits lang. Met vier bits zijn zestien patronen mogelijk, van <code>0000</code> (nul) tot en met <code>1111</code> (vijftien).</p>
+
+<h2>Bouw en controleer een getal</h2>
+<p>Voer dit programma uit. Verander daarna een bit van <code>0</code> tot <code>1</code> en voer het opnieuw uit. Voorspel het nieuwe totaal voordat je op Run klikt. Je kunt het programma aanpassen: het is jouw experiment, geen afbeelding van code.</p>
+<webwriter-code-javascript code="const bits = [1, 0, 1, 0];
+const places = [8, 4, 2, 1];
+const total = bits.reduce((sum, bit, i) =&gt; sum + bit * places[i], 0);
+console.log(bits.join('') + ' = ' + total);"></webwriter-code-javascript>
+<p>Kun je het programma 7 laten afdrukken? En het grootste getal met vier bits? Voeg een vijfde plaats met waarde 16 toe en leg uit welke andere regel moet veranderen.</p>
+<details><summary>Een tip als je vastloopt</summary><p>Zet voor zeven de plaatsen 4, 2 en 1 aan: <code>[0, 1, 1, 1]</code>. Voeg voor een vijfde plaats een bit vooraan toe aan <code>bits</code> en zet <code>16</code> vooraan in <code>places</code>.</p></details>
+<p>Schrijf vóór het optellen de plaatswaarden boven het patroon. Zo voorkom je een veelgemaakte fout: van de verkeerde kant lezen. De meest rechtse plaats is altijd 1; links daarvan staan 2, dan 4 en 8.</p>
+<ol>
+<li>Ontcijfer <code>0101</code> door de ingeschakelde plaatsen op te tellen.</li>
+<li>Schrijf het vierbits patroon voor zes. Controleer of de plaatsen 4 en 2 aan staan.</li>
+<li>Vergelijk je methode met die van een klasgenoot: bij welke plaats begon je?</li>
+</ol>
+
+
+
+<h2>Reflecteren</h2>
+<p><label for="binary-reflection">Hoe leg je de 8/4/2/1-methode uit aan iemand die nog nooit binair heeft gezien?</label></p>
+<textarea id="binary-reflection" name="binary-reflection" rows="4" placeholder="Schrijf je uitleg hier."></textarea>
+
+<h2>Bronnen</h2>
+<ul>
+<li><a href="https://www.computerhistory.org/blog/generative-music-with-the-muse/">Computer History Museum, “Generative Music with the Muse”</a> (voorbeeld van een vierbits-teller).</li>
+</ul>
+</body>
+</html>

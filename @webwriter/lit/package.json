@@ -9,11 +9,9 @@
   "browser": "index.js",
   "author": "Frederic Salmen <frederic@fsalmen.de>",
   "license": "MIT",
-  "dependencies": {
-    "@open-wc/scoped-elements": "^3.0.5"
-  },
   "scripts": {
-    "prepublishOnly": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js"
+    "prepublishOnly": "esbuild ./index.ts --bundle --target=es2022 --format=esm --outfile=index.js --external:lit",
+    "test": "node --test index.test.js"
   },
   "gitHead": "0fd0c30304aba6738f14ee1ec687b3d4614f7c60",
   "peerDependencies": {
@@ -21,5 +19,6 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.4"
-  }
+  },
+  "type": "module"
 }

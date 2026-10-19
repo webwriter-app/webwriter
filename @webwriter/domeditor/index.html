@@ -1,26 +1,52 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DOMEditor</title>
-    <style>
-      html,
-      body {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        /* Keep rubber-band scrolling inside the document iframe. */
-        overscroll-behavior: none;
-      }
-    </style>
-    <script>
-      globalThis.litIssuedWarnings ??= new Set();
-      globalThis.litIssuedWarnings.add("dev-mode");
-    </script>
-    <script type="module" src="/src/components/dom-editor.ts"></script>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Create interactive learning materials with WebWriter, a collaborative editor built on the web.">
+    <title>WebWriter · Make it interactive.</title>
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/src/landing.css">
+    <script type="module" blocking="render" src="/src/site-entry.ts"></script>
+    <script type="module" src="/src/landing.js"></script>
   </head>
-  <body>
-    <dom-editor></dom-editor>
+  <body class="site-layout">
+    <a class="skip-link" href="#content">Skip to content</a>
+    <!-- site-header -->
+    <div class="site-content" tabindex="0" role="region" aria-label="Page content">
+    <main id="content" tabindex="-1">
+      <section class="hero" aria-labelledby="headline">
+        <div class="intro">
+          <h1 id="headline">Make it interactive.</h1>
+          <p class="lead">Bring text, media, formulas, and interactive widgets together. Make learning materials that invite people to take part.</p>
+          <div class="actions"><a class="button" href="/editor/">Open WebWriter <span aria-hidden="true">↗</span></a><a href="/gallery/">Explore the widgets <span aria-hidden="true">→</span></a></div>
+          <p class="note">Free and <a href="https://github.com/webwriter-app/webwriter">open source</a><span>, no registration.</span></p>
+        </div>
+        <example-showcase><!-- example-showcase --></example-showcase>
+      </section>
+      <section class="possibilities" aria-labelledby="possibilities-title">
+        <div class="section-intro"><h2 id="possibilities-title">From an idea<br> to an experience</h2></div>
+        <div class="capabilities">
+          <article><h3>Compose your materials</h3><p>Combine writing, images, video, tables, and mathematical notation in a single document. Work alone or together.</p></article>
+          <article><h3>Make room for interaction</h3><p>Add widgets that turn a lesson into something learners can explore, answer, and experiment with.</p></article>
+          <article><h3>Learn together</h3><p>Use live sessions to have learners participate and observe their progress in real time.</p></article>
+        </div>
+      </section>
+      <section class="tools" aria-labelledby="tools-title">
+        <div class="section-intro"><h2 id="tools-title">All tools in one</h2></div>
+        <layout-showcase></layout-showcase>
+      </section>
+      <section class="widget-showcase" aria-labelledby="widgets-title">
+        <div class="section-intro"><h2 id="widgets-title">More than multiple choice</h2><p>Explore a growing collection of widgets for science, mathematics, languages, history, and more. Bring different subjects to life with simulations, maps, coding, timelines, and creative tools.</p></div>
+        <widget-gallery wall></widget-gallery>
+      </section>
+      <section class="developer-invitation" aria-labelledby="developer-title"><div><p class="eyebrow">For developers</p><h2 id="developer-title">Bring your own ideas to the page.</h2><p>Build with web components and your preferred library. Start with a hello widget, then follow the quiz tutorial through rendering, state, and collaboration.</p></div><a class="button secondary" href="/docs/">Build your first widget <span aria-hidden="true">→</span></a></section>
+      <aside class="research-background" aria-label="Research background">
+        <a class="research-logo" href="https://learntech.rwth-aachen.de/"><img src="/src/assets/rwth-learntech.svg" alt="RWTH Aachen University · Learning Technologies" width="272" height="91" loading="lazy"></a>
+        <p>WebWriter was first developed as a research project for the <a href="https://publications.rwth-aachen.de/record/1033892">dissertation</a> of <a href="https://learntech.rwth-aachen.de/cms/learntech/Das-Lehr-und-Forschungsgebiet/Mitarbeiter/Wissenschaftliche-Mitarbeiterinnen-und-M/~sezpi/Frederic-Salmen/lidx/1/" translate="no">Dr.-Ing. Frederic Salmen</a>. The project was conducted at the research group for <a href="https://learntech.rwth-aachen.de/">Learning Technologies at RWTH Aachen University</a>, led by <a href="https://learntech.rwth-aachen.de/cms/learntech/Das-Lehr-und-Forschungsgebiet/Mitarbeiter/Institutsleitung/~jxqe/Ulrik-Schroeder/lidx/1/" translate="no">Prof. Ulrik Schroeder</a>.</p>
+      </aside>
+    </main>
+    <!-- site-footer -->
+    </div>
   </body>
 </html>

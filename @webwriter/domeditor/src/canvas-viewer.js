@@ -126,16 +126,12 @@ export class CanvasViewer {
     if(dx || dy) { this.camera.x += dx; this.camera.y += dy; this.applyCamera() }
   }
 
-  panAtEdge(point, rect) {
+  panAtEdge(point) {
     if(!this.active) return false
-    // Follow the item's visible edges, even when grabbed far from that edge.
-    // For an item spanning both edges, let the pointer choose the direction.
-    const edge = (position, start, end, size) =>
-      start < 32 && end > size - 32 ? position : start < 32 ? Math.min(position, start) : end > size - 32 ? Math.max(position, end) : position
     const delta = (position, end) => position < 32 ? Math.min(16, (32 - position) / 3)
       : position > end - 32 ? -Math.min(16, (position - end + 32) / 3) : 0
-    const x = delta(rect ? edge(point.x, rect.left, rect.right, window.innerWidth) : point.x, window.innerWidth)
-    const y = delta(rect ? edge(point.y, rect.top, rect.bottom, window.innerHeight) : point.y, window.innerHeight)
+    const x = delta(point.x, window.innerWidth)
+    const y = delta(point.y, window.innerHeight)
     if(!x && !y) return false
     this.camera.x += x; this.camera.y += y
     this.applyCamera()

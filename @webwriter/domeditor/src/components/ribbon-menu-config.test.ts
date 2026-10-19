@@ -29,9 +29,9 @@ describe("context drawer policy", () => {
     expect(labels("ribbon", {attributes: true})).toEqual(["Attributes"])
   })
 
-  it("keeps Comments and Versions in Review without the old Review button group", () => {
+  it("keeps Comments in Review while Versions use the bottom pane", () => {
     expect(contextDrawerPolicy({menu: "Edit", surface: "toolbox", activeTool: "Review"}).map(group => group.label))
-      .toEqual(["Comments", "Versions"])
+      .toEqual(["Comments"])
   })
 
   it("shows widget options with the widget's attributes", () => {

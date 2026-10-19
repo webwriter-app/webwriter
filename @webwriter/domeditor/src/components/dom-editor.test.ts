@@ -7,6 +7,8 @@ import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import {elementDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
+import type {ShapeKeyboard} from "./shape-keyboard"
+import type {LinkKeyboard} from "./link-keyboard"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
 import type {RibbonMenu} from "./ribbon-menu"
@@ -23,6 +25,7 @@ import {
   markStateChangeEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
+  undoStateChangeEvent,
   selectionChangeEvent,
   type VersionHistoryState,
 } from "../editor-bridge"
@@ -39,7 +42,7 @@ import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
-import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings} from "../app-settings"
+import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings, loadDocumentSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
 
 const configureCloudStorage = (host: any) => {
@@ -210,6 +213,199 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
   return {editor, iframe, editorWindow: iframe.contentWindow!}
 }
 
+describe("filtered frame snapshots", () => {
+  it("updates text without rebuilding the tree or canonical snapshots, and ignores duplicate snapshots", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    host.fileHandle = {} // Saved documents do not need fresh-layout comparison.
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const tree = vi.spyOn(host, "buildDocumentTree")
+    const canonical = vi.spyOn(host, "authoredDocumentSnapshot")
+    const publish = (html: string, treeChanged: boolean) => window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow, data: {type: "editor-frame-snapshot", html, treeChanged},
+    }))
+    const html = '<html><head></head><body><p arbitrary="keep">Changed<!--keep--></p></body></html>'
+    const initialTree = host.documentTree
+    publish(html, false)
+    expect(host.editorDocument.body.textContent).toBe("Changed")
+    expect(host.editorDocument.body.innerHTML).toBe('<p arbitrary="keep">Changed<!--keep--></p>')
+    expect(host.documentTree).toBe(initialTree)
+    expect(tree).not.toHaveBeenCalled()
+    expect(canonical).not.toHaveBeenCalled()
+    const sequence = host.documentChangeSequence
+    const currentDocument = host.editorDocument
+    publish(html, false)
+    expect(host.documentChangeSequence).toBe(sequence)
+    expect(host.editorDocument).toBe(currentDocument)
+    publish(html.replace("</body>", "<custom-widget></custom-widget></body>"), true)
+    expect(tree).toHaveBeenCalledTimes(1)
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
+    }))
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(tree).toHaveBeenCalledTimes(1)
+  })
+
+  it("rebuilds the live document tree for authored structure and presentation changes, not selection", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const tree = vi.spyOn(host, "buildDocumentTree")
+    const select = () => window.dispatchEvent(new MessageEvent("message", {
+      source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
+    }))
+    const flushMutations = () => new Promise(resolve => setTimeout(resolve, 0))
+    await flushMutations()
+    tree.mockClear()
+
+    select()
+    expect(tree).not.toHaveBeenCalled()
+
+    iframe.contentDocument!.body.classList.add("ww-canvas")
+    await flushMutations()
+    expect(tree).toHaveBeenCalled()
+    expect(host.documentTree.name).toBe("Canvas")
+
+    const presentations = tree.mock.calls.length
+    iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("custom-widget"))
+    await flushMutations()
+    expect(tree.mock.calls.length).toBeGreaterThan(presentations)
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    const structuralChange = tree.mock.calls.length
+    select()
+    expect(tree).toHaveBeenCalledTimes(structuralChange)
+  })
+
+  it("reuses canonical comparisons only for an immutable opaque snapshot", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const first = host.authoredDocumentSnapshot(true)
+    const clone = vi.spyOn(host.editorDocument.documentElement, "cloneNode")
+    expect(host.authoredDocumentSnapshot(true)).toBe(first)
+    expect(clone).not.toHaveBeenCalled()
+    host.editorDocument = new DOMParser().parseFromString('<p>New</p>', "text/html")
+    expect(host.authoredDocumentSnapshot(true)).not.toBe(first)
+    // Ordinary live-DOM callers never use a cached comparison.
+    host.editorDocument.body.querySelector("p").textContent = "Direct edit"
+    expect(host.authoredDocumentSnapshot()).toContain("Direct edit")
+  })
+})
+
+describe("guided tour", () => {
+  const flushTour = async(editor: DomEditor) => {
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+  }
+  const tour = (editor: DomEditor) => editor.shadowRoot!.querySelector<HTMLElement>("guided-tour")
+  const reenable = async(editor: DomEditor) => {
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("app-settings-change", {
+      detail: {...(editor as any).settings, showGuidedTour: true}, bubbles: true, composed: true,
+    }))
+    await editor.updateComplete
+  }
+  const flushMutations = () => new Promise(resolve => setTimeout(resolve, 0))
+
+  it("shows after the initial frame is ready, and dismissal persists across reload", async() => {
+    const {editor} = await mountEditor()
+    await flushTour(editor)
+    expect(tour(editor)).not.toBeNull()
+
+    tour(editor)!.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Dismiss tour"]')!.click()
+    await editor.updateComplete
+    expect(tour(editor)).toBeNull()
+    expect(loadAppSettings().showGuidedTour).toBe(false)
+
+    const reloaded = await mountEditor()
+    await flushTour(reloaded.editor)
+    expect(tour(reloaded.editor)).toBeNull()
+  })
+
+  it("can be reenabled from app settings", async() => {
+    const {editor} = await mountEditor(editor => {
+      Object.assign(editor, {settings: {...(editor as any).settings, showGuidedTour: false}})
+    })
+    await flushTour(editor)
+    expect(tour(editor)).toBeNull()
+    await reenable(editor)
+    expect(tour(editor)).not.toBeNull()
+    expect(loadAppSettings().showGuidedTour).toBe(true)
+  })
+
+  it("dismisses on authored text, attribute, custom element, head, and template edits", async() => {
+    const {editor, iframe} = await mountEditor()
+    await flushTour(editor)
+    const doc = iframe.contentDocument!
+    doc.querySelector("p")!.textContent = "Initial text"
+    await flushMutations()
+    const mutate = async(change: () => void) => {
+      await reenable(editor)
+      expect(tour(editor)).not.toBeNull()
+      change()
+      await flushMutations()
+      await editor.updateComplete
+      expect(tour(editor)).toBeNull()
+    }
+
+    await mutate(() => { doc.querySelector("p")!.firstChild!.textContent = "Edited" })
+    await mutate(() => { doc.querySelector("p")!.setAttribute("title", "Authored") })
+    await mutate(() => { doc.body.append(doc.createElement("custom-element")) })
+    await mutate(() => { doc.head.append(doc.createElement("meta")) })
+    const template = doc.createElement("template")
+    doc.body.append(template)
+    await flushMutations()
+    // The template itself is authored content, so reenable after inserting it.
+    await mutate(() => { template.content.append(doc.createTextNode("Template content")) })
+  })
+
+  it("stays open for editor markers and widget shadow mutations", async() => {
+    const {editor, iframe} = await mountEditor()
+    const doc = iframe.contentDocument!
+    const widget = doc.createElement("custom-widget")
+    const shadow = widget.attachShadow({mode: "open"})
+    doc.body.append(widget)
+    await flushMutations()
+    await reenable(editor)
+    expect(tour(editor)).not.toBeNull()
+
+    doc.querySelector("p")!.classList.add("◆selection")
+    await flushMutations()
+    await editor.updateComplete
+    expect(tour(editor)).not.toBeNull()
+
+    shadow.append(doc.createElement("span"))
+    await flushMutations()
+    await editor.updateComplete
+    expect(tour(editor)).not.toBeNull()
+  })
+
+  it("dismisses when an opaque frame publishes an authored snapshot change", async() => {
+    const {editor, iframe} = await mountEditor()
+    await flushTour(editor)
+    const host = editor as any
+    host.editorOpaque = true
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: "editor-frame-snapshot", html: host.editorDocument.documentElement.outerHTML},
+    }))
+    await editor.updateComplete
+    expect(tour(editor)).not.toBeNull()
+
+    const html = '<html><head></head><body><p>Authored snapshot edit</p></body></html>'
+    window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: "editor-frame-snapshot", html},
+    }))
+    await editor.updateComplete
+    expect(tour(editor)).toBeNull()
+    expect(loadAppSettings().showGuidedTour).toBe(false)
+  })
+})
+
 function dispatchMarkState(editor: DomEditor, editorWindow: Window, detail: Record<string, unknown>) {
   window.dispatchEvent(new MessageEvent("message", {
     data: {type: markStateChangeEvent, detail, bridgeNonce: (editor as any).bridgeNonce},
@@ -243,6 +439,8 @@ afterEach(async() => {
   mountedEditors.clear()
   const url = new URL(location.href)
   url.searchParams.delete("open")
+  url.searchParams.delete("example")
+  url.searchParams.delete("layout")
   history.replaceState(history.state, "", url.href)
   localStorage.removeItem(INSTALLED_PACKAGES_STORAGE_KEY)
   localStorage.removeItem(APP_SETTINGS_STORAGE_KEY)
@@ -272,6 +470,66 @@ beforeEach(() => {
 })
 
 describe("DomEditor document loading", () => {
+  it("opens a curated example as an editable local copy and rejects unknown examples", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState(null, "", "/editor/?example=binary")
+    vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockImplementation(async ({name, version}) => {
+      const tagName = name === "@webwriter/code" ? "webwriter-code-javascript" : "webwriter-quiz"
+      const script = `https://cdn.jsdelivr.net/npm/${name}@${version}/dist/widgets/${name === "@webwriter/code" ? "ww-code-javascript" : tagName}.js`
+      return {...demoPackage, name, version, scripts: [script], members: [{...demoPackage.members[0], tagName, scriptUrl: script}]}
+    })
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    await host.restoreExampleDocument("binary", Promise.resolve())
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<webwriter-code-javascript"), false, null, false)
+    expect(reload.mock.calls[0][0]).toContain('data-ww-theme="base"')
+    expect(reload.mock.calls[0][0]).not.toContain('src="https://cdn.jsdelivr.net/npm/@webwriter/code@3.0.5/dist/widgets/ww-code-javascript.js"')
+    expect(host.installedPackages.map((pkg: WebWriterPackage) => pkg.name)).toEqual(["@webwriter/code"])
+    expect(host.fileName).toBe("Count like a computer")
+    expect(host.fileHandle).toBeNull()
+    expect(host.backendDocumentId).toBeNull()
+    const error = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    await host.restoreExampleDocument("../other.html", Promise.resolve())
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({message: "This example could not be found."}))
+    expect(reload).toHaveBeenCalledOnce()
+    host.updateDocumentURL(null)
+    expect(new URL(location.href).searchParams.has("example")).toBe(false)
+  })
+
+  it("discards a curated example when the user leaves its link during startup", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState(null, "", "/editor/?example=binary")
+    vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    let ready!: () => void
+    const startup = new Promise<void>(resolve => {ready = resolve})
+    const opening = host.restoreExampleDocument("binary", startup)
+    history.replaceState(null, "", "/editor/")
+    ready()
+    await opening
+    expect(reload).not.toHaveBeenCalled()
+    expect(host.linkedDocumentLoading).toBe(false)
+  })
+
+  it.each(["canvas", "slides", "board"])("opens a curated example in its linked %s layout", async layout => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    history.replaceState(null, "", `/editor/?example=binary&layout=${layout}`)
+    vi.spyOn(WebWriterPackageRegistry.prototype, "getPackage").mockResolvedValue(demoPackage)
+    const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    await host.restoreExampleDocument("binary", Promise.resolve())
+    expect(reload).toHaveBeenCalledOnce()
+    const source = new DOMParser().parseFromString(reload.mock.calls[0][0] as string, "text/html")
+    expect(source.body.className).toBe(`ww-${layout}`)
+    expect(source.querySelector("webwriter-code-javascript")).not.toBeNull()
+    expect(host.downloadedFileName).toBe(`binary-${layout}.html`)
+    host.updateDocumentURL(null)
+    expect(new URL(location.href).searchParams.has("layout")).toBe(false)
+  })
+
   it("does not show a spinner while the initial empty preset is loading", async () => {
     const editor = new DomEditor()
     mountedEditors.add(editor)
@@ -307,6 +565,7 @@ describe("DomEditor document loading", () => {
     })
     vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "stored", kind: "local"})
     const initializeFrame = host.initializeEditorFrame.bind(host)
+    const postToEditor = vi.spyOn(host, "postToEditor")
     const initialize = vi.spyOn(host as {initializeEditorFrame(iframe: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(iframe => {
       vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => {})
       initializeFrame(iframe)
@@ -337,6 +596,7 @@ describe("DomEditor document loading", () => {
     expect(host.installedPackages).toEqual([pkg])
     expect(host.frameRevision).toBe(0)
     await vi.waitFor(() => expect(initialize).toHaveBeenCalledOnce())
+    expect(postToEditor).toHaveBeenCalledWith(expect.objectContaining({type: initializeEditorMessage, accessibilityReviewEnabled: true}))
     expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
     completePendingPackageLoad(editor)
     await host.packageLoadPromise
@@ -508,6 +768,94 @@ describe("DomEditor document loading", () => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("suppresses UI context menus while preserving text fields, editable content and document menus", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const search = ribbon.shadowRoot!.querySelector("package-search")!
+    await (search as any).updateComplete
+    const targets = [editor, editor.shadowRoot!.querySelector(".document-layouts-heading")!,
+      ribbon.shadowRoot!.querySelector('[aria-label="Preview"]')!,
+    ]
+    for(const target of targets) {
+      const menu = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+      expect(target.dispatchEvent(menu)).toBe(false)
+      expect(menu.defaultPrevented).toBe(true)
+    }
+    const textarea = document.createElement("textarea")
+    search.shadowRoot!.append(textarea)
+    for(const field of [search.shadowRoot!.querySelector("input")!, textarea]) {
+      for(const readOnly of [false, true]) {
+        field.readOnly = readOnly
+        const menu = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+        expect(field.dispatchEvent(menu)).toBe(true)
+        expect(menu.defaultPrevented).toBe(false)
+      }
+    }
+    for(const value of ["", "true", "plaintext-only"]) {
+      const rich = document.createElement("div")
+      rich.setAttribute("contenteditable", value)
+      rich.innerHTML = '<span>Editable</span><span contenteditable="false">Read only UI</span>'
+      search.shadowRoot!.append(rich)
+      for(const target of [rich, rich.firstElementChild!]) {
+        expect(target.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true}))).toBe(true)
+      }
+      expect(rich.lastElementChild!.dispatchEvent(new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true}))).toBe(false)
+    }
+    const menu = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+    expect(iframe.contentDocument!.body.dispatchEvent(menu)).toBe(true)
+    expect(menu.defaultPrevented).toBe(false)
+
+    editor.remove()
+    const detached = new MouseEvent("contextmenu", {bubbles: true, composed: true, cancelable: true})
+    expect(editor.dispatchEvent(detached)).toBe(true)
+  })
+
+  it("restores iframe hit testing after one paint while DevTools retains focus", async () => {
+    const {iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    const callbacks: FrameRequestCallback[] = []
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => callbacks.push(callback))
+    const cancel = vi.spyOn(window, "cancelAnimationFrame")
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    callbacks.shift()!(0)
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    callbacks.shift()!(16)
+    expect(document.hasFocus()).toBe(false)
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it("restores iframe hit testing if background animation frames are suspended", async () => {
+    const {iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(1)
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).toBe("none")
+    await new Promise(resolve => setTimeout(resolve, 120))
+    expect(document.hasFocus()).toBe(false)
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+  })
+
+  it("cancels the pending cursor refresh when focus returns or the editor disconnects", async () => {
+    const {editor, iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    vi.spyOn(window, "requestAnimationFrame").mockReturnValue(42)
+    const cancel = vi.spyOn(window, "cancelAnimationFrame")
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    window.dispatchEvent(new Event("focus"))
+    expect(cancel).toHaveBeenCalledWith(42)
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    editor.remove()
+    expect(cancel).toHaveBeenCalledTimes(2)
+    expect(iframe.classList.contains("window-inactive")).toBe(false)
+  })
+
   it.each(["host", "frame", "bridge"])("refreshes iframe hit testing on %s window reactivation without changing its selection", async source => {
     const {editor, iframe} = await mountEditor()
     const doc = iframe.contentDocument!
@@ -583,6 +931,48 @@ describe("DomEditor iframe setup", () => {
     window.dispatchEvent(new Event("focus"))
     editorWindow.dispatchEvent(new Event("focus"))
     expect(iframe.classList.contains("window-inactive")).toBe(true)
+  })
+
+  it("keeps touch input reachable while the host window lacks focus", async () => {
+    const {iframe} = await mountEditor()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    const matchMedia = window.matchMedia.bind(window)
+    vi.spyOn(window, "matchMedia").mockImplementation(query => query === "(pointer: coarse)"
+      ? {...matchMedia(query), matches: true} as MediaQueryList : matchMedia(query))
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+    iframe.contentWindow!.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
+  })
+
+  it("relays touch targeted at the iframe without duplicating native frame input", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const post = vi.spyOn(host, "postFrameControl")
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
+    const touch = (type: string, target: EventTarget = iframe, pointerId = 7) => {
+      const event = new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
+        pointerType: "touch", pointerId, isPrimary: pointerId === 7, clientX: 30, clientY: 50, buttons: 1})
+      target.dispatchEvent(event)
+      return event
+    }
+    expect(touch("pointerdown").defaultPrevented).toBe(true)
+    expect(post).toHaveBeenLastCalledWith("pointer", expect.objectContaining({event: "pointerdown", x: 20, y: 30, pointerId: 7}))
+    touch("pointerdown", iframe, 8)
+    touch("pointerup", iframe, 8)
+    touch("pointermove")
+    expect(post).toHaveBeenLastCalledWith("pointer", expect.objectContaining({event: "pointermove", pointerId: 7}))
+    touch("pointercancel")
+    const count = post.mock.calls.length
+    touch("pointermove")
+    touch("pointerdown", iframe.contentDocument!.body)
+    expect(post.mock.calls.length).toBe(count)
+    const mouse = new PointerEvent("pointerdown", {bubbles: true, pointerType: "mouse"})
+    iframe.dispatchEvent(mouse)
+    expect(mouse.defaultPrevented).toBe(false)
+    expect(post.mock.calls.length).toBe(count)
   })
 
   it.each([false, true])("lets the opaque frame preserve selection before focusing (restore: %s)", async restoreSelection => {
@@ -878,13 +1268,13 @@ describe("DomEditor iframe setup", () => {
     editor.addEventListener("file-error", listener)
     ;(editor as any).reportFileError(new Error("The disk is full"))
     await editor.updateComplete
-    const alert = editor.shadowRoot!.querySelector('[role="alert"]')!
+    const alert = editor.shadowRoot!.querySelector<HTMLElement>(".file-error")!
     expect(alert.textContent).toContain("The disk is full")
     expect(listener).toHaveBeenCalledOnce()
-    expect(iframe.contentDocument!.querySelector('[role="alert"]')).toBeNull()
+    expect(iframe.contentDocument!.querySelector(".file-error")).toBeNull()
     alert.querySelector("button")!.click()
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector('[role="alert"]')).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".file-error")).toBeNull()
   })
 
 
@@ -911,7 +1301,8 @@ describe("DomEditor iframe setup", () => {
     const preview = new DOMParser().parseFromString(html, "text/html")
     expect(preview.querySelector("[onclick], [onerror], [srcdoc]")).toBeNull()
     expect(preview.querySelector("template")!.content.querySelector("[onerror]")).toBeNull()
-    expect([...preview.querySelectorAll("script")].every(script => script.src && !script.textContent)).toBe(true)
+    expect([...preview.querySelectorAll("script")].every(script =>
+      script.src && !script.textContent || script.type === "application/json")).toBe(true)
     expect(preview.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).toContain("strict-dynamic")
     expect(preview.querySelector("p")!.textContent).toBe("Keep")
   })
@@ -931,6 +1322,29 @@ describe("DomEditor iframe setup", () => {
     const detached = new Event("beforeunload", {cancelable: true})
     window.dispatchEvent(detached)
     expect(detached.defaultPrevented).toBe(false)
+  })
+
+  it("warns before unloading while AI is thinking or has queued messages, and releases the guard after cancellation", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const host = ribbon as any
+    const unloadPrevented = () => {
+      const event = new Event("beforeunload", {cancelable: true})
+      window.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    expect(unloadPrevented()).toBe(false)
+    host.aiBusy = true
+    expect(unloadPrevented()).toBe(true)
+    host.aiBusy = false
+    expect(unloadPrevented()).toBe(false)
+    host.queuedAIPrompts = [{prompt: "Next", chatId: "chat-1", messageId: "queued", attachments: []}]
+    expect(unloadPrevented()).toBe(true)
+    await ribbon.cancelAIWork()
+    expect(unloadPrevented()).toBe(false)
+    host.aiBusy = true
+    editor.remove()
+    expect(unloadPrevented()).toBe(false)
   })
 
   it("rebootstraps a new same-revision shell from the latest authored snapshot and rejects replays", async () => {
@@ -1104,6 +1518,23 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
+  it("passes the saved-once accessibility gate into initial and restarted editor frames", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const checkInitialization = async (enabled: boolean) => {
+      host.accessibilityReviewEnabled = enabled
+      const post = vi.spyOn(host, "postToEditor")
+      host.initializeEditorFrame(iframe)
+      await vi.waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({
+        type: initializeEditorMessage, accessibilityReviewEnabled: enabled,
+      })))
+      await host.packageLoadPromise
+      post.mockRestore()
+    }
+    await checkInitialization(false)
+    await checkInitialization(true)
+  })
+
   it("includes the preferred language in fresh document HTML before initialization", async () => {
     const {editor, iframe} = await mountEditor(editor => {
       Object.assign(editor, {settings: {...defaultAppSettings(), language: "de"}})
@@ -1118,6 +1549,41 @@ describe("DomEditor iframe setup", () => {
     const loaded = new DOMParser().parseFromString(host.editorSrcdocFromHTML('<html lang="fr"><head></head><body><p>Bonjour</p></body></html>'), "text/html")
     expect(loaded.documentElement.lang).toBe("fr")
     expect(loaded.body.textContent).toBe("Bonjour")
+  })
+
+  it("preserves authored meta refresh metadata in the editor frame HTML", async () => {
+    const {editor} = await mountEditor()
+    const source = new DOMParser().parseFromString((editor as any).editorSrcdocFromHTML(
+      '<!doctype html><html><head><meta http-equiv="refresh" content="5; URL=/next" data-authored="yes"></head><body>Keep editing</body></html>',
+    ), "text/html")
+    const refresh = source.head.querySelector('meta[http-equiv="refresh"]')
+
+    expect(refresh?.getAttribute("http-equiv")).toBe("refresh")
+    expect(refresh?.getAttribute("content")).toBe("5; URL=/next")
+    expect(refresh?.getAttribute("data-authored")).toBe("yes")
+    expect(source.body.textContent).toBe("Keep editing")
+  })
+
+  it("shows a startup error from the current editor frame and rejects readiness", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const frameOrigin = host.frameShellURL("editor", host.frameRevision).split("/frame-shell.html")[0]
+    const rejectReady = vi.fn()
+    host.editorWindow = null
+    host.editorReadyPromise = new Promise(() => {})
+    host.editorReadyReject = rejectReady
+
+    host.handleEditorMessage(new MessageEvent("message", {
+      origin: frameOrigin,
+      source: iframe.contentWindow,
+      data: {type: "webwriter-frame-error", kind: "editor", revision: String(host.frameRevision),
+        bridgeNonce: host.bridgeNonce, message: "Unsupported refresh"},
+    }))
+
+    expect(host.fileError).toBe("Unsupported refresh")
+    expect(host.documentLoading).toBe(false)
+    expect(rejectReady).toHaveBeenCalledWith(expect.objectContaining({message: "Unsupported refresh"}))
+    await expect(host.waitForEditorWindow()).rejects.toThrow("Unsupported refresh")
   })
 
   it.each(["canvas", "slides"] as const)("uses the selected %s layout for File → New and keeps its fresh state clean", async mode => {
@@ -1176,7 +1642,7 @@ describe("DomEditor iframe setup", () => {
     expect(host.confirmDiscardChanges()).toBe(false)
   })
 
-  it.each(["document", "canvas", "slides"] as const)("creates an explicit %s layout from the New submenu without changing the default", async mode => {
+  it.each(["document", "canvas", "slides", "board"] as const)("creates an explicit %s layout from the New submenu without changing the default", async mode => {
     const {editor} = await mountEditor()
     const host = editor as any
     host.settings = {...host.settings, defaultLayout: "slides"}
@@ -1300,6 +1766,53 @@ describe("DomEditor iframe setup", () => {
     iframe.contentDocument!.dispatchEvent(replaced)
     expect(replaced.defaultPrevented).toBe(true)
     expect(execute).not.toHaveBeenCalled()
+  })
+
+  it.each(["Ctrl", "Meta"])("preserves native undo in UI fields and widget controls (%s)", async modifier => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, shortcuts: {...host.settings.shortcuts, "editor.undo": `${modifier}+Z`}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    dispatchMarkState(editor, iframe.contentWindow!, {canMark: true, marks: ["a"], attributes: {a: {href: "#intro"}}, link: {
+      active: true, identity: "shortcut-link", href: "#intro", attributes: {href: "#intro"}, text: "Intro", targets: [],
+    }})
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<LinkKeyboard>("dom-editor-link-keyboard")!
+    await keyboard.updateComplete
+    const fields = [ribbon.shadowRoot!.querySelector(".ai-prompt-input")!, keyboard.shadowRoot!.querySelector("#link-search")!]
+    const frameDocument = iframe.contentDocument!
+    frameDocument.body.setAttribute("contenteditable", "")
+    const widget = frameDocument.createElement("test-widget")
+    frameDocument.body.append(widget)
+    const root = widget.attachShadow({mode: "open"})
+    const input = frameDocument.createElement("input")
+    root.append(input)
+    fields.push(input)
+    const nativeHandler = vi.fn()
+    for(const field of fields) {
+      expect(field).not.toBeNull()
+      field.addEventListener("keydown", nativeHandler)
+      const event = new KeyboardEvent("keydown", {key: "z", code: "KeyZ", ctrlKey: modifier === "Ctrl", metaKey: modifier === "Meta",
+        bubbles: true, composed: true, cancelable: true})
+      field.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    expect(nativeHandler).toHaveBeenCalledTimes(fields.length)
+    expect(execute).not.toHaveBeenCalled()
+
+    const event = new KeyboardEvent("keydown", {key: "z", code: "KeyZ", ctrlKey: modifier === "Ctrl", metaKey: modifier === "Meta",
+      bubbles: true, cancelable: true})
+    frameDocument.querySelector("p")!.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "undo"})
+    execute.mockClear()
+    const shellEvent = new KeyboardEvent("keydown", {key: "z", code: "KeyZ", ctrlKey: modifier === "Ctrl", metaKey: modifier === "Meta",
+      bubbles: true, composed: true, cancelable: true})
+    ribbon.dispatchEvent(shellEvent)
+    expect(shellEvent.defaultPrevented).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "undo"})
   })
 
   it("dispatches insertion shortcuts after loading legacy saved settings", async () => {
@@ -1574,7 +2087,7 @@ describe("DomEditor iframe setup", () => {
     const {editor, iframe} = await mountEditor()
     const srcdoc = (editor as unknown as {readonly editorSrcdoc: string}).editorSrcdoc
 
-    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox")
     expect(srcdoc).toMatch(/script-src 'nonce-[^']+' 'strict-dynamic'/)
     expect(srcdoc).toMatch(/style-src 'none'/)
     expect(srcdoc).toMatch(/style-src-elem 'nonce-[^']+'/)
@@ -1643,7 +2156,7 @@ describe("DomEditor iframe setup", () => {
     }
   })
 
-  it("loads the scoped custom element registry polyfill before widgets", async () => {
+  it("loads the inline scoped registry adapter before widgets", async () => {
     const editor = new DomEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
     Object.assign(editor, {frameStarted: true})
@@ -1661,9 +2174,11 @@ describe("DomEditor iframe setup", () => {
       packages: [demoPackage],
       requestId: expect.any(String),
     }), window.location.origin))
-    const polyfillUrl = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
-    expect(srcdoc).toMatch(new RegExp(`<script class="◆ ◆editor-only" nonce="[^"]+" type="application/json" src="${polyfillUrl.replaceAll(".", "\\.")}"></script>`))
-    expect(srcdoc.indexOf(polyfillUrl)).toBeLessThan(srcdoc.indexOf("editor-entry"))
+    const registryAdapter = new DOMParser().parseFromString(srcdoc, "text/html").querySelector<HTMLScriptElement>("#webwriter-scoped-registry")
+    expect(registryAdapter?.textContent).toBeTruthy()
+    expect(registryAdapter?.classList.contains("◆editor-only")).toBe(true)
+    expect(registryAdapter?.getAttribute("nonce")).toBeTruthy()
+    expect(srcdoc.indexOf("webwriter-scoped-registry")).toBeLessThan(srcdoc.indexOf("editor-entry"))
     expect(srcdoc).not.toContain("Demo Widget")
   })
 
@@ -1721,6 +2236,24 @@ describe("DomEditor ribbon drag relay", () => {
     return data
   }
 
+  it("relays shape keyboard payloads into the graphic frame", async () => {
+    const {graphicShapeDragType} = await import("../graphic")
+    const {editor, iframe} = await mountEditor()
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
+    const payload = JSON.stringify({shape: "ellipse", paint: {fill: "red"}})
+    const data = await startDrag(editor, {[graphicShapeDragType]: payload})
+    const shield = editor.shadowRoot!.querySelector(".ribbon-drag-shield")!
+    expect(shield).toBeTruthy()
+    shield.dispatchEvent(dragEvent("drop", data, {clientX: 60, clientY: 70}))
+    expect(post.mock.calls.map(([message]) => message)).toContainEqual(expect.objectContaining({
+      type: editorFrameControlMessage, command: "drag", event: "drop", x: 50, y: 50,
+      data: {[graphicShapeDragType]: payload},
+    }))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeNull()
+  })
+
   it("relays ribbon drags over the cross-site editor frame and removes the shield afterwards", async () => {
     const {editor, iframe} = await mountEditor()
     vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
@@ -1774,7 +2307,7 @@ describe("DomEditor ribbon drag relay", () => {
 })
 
 describe("DomEditor breadcrumb visibility", () => {
-  it("toggles the breadcrumb and toolbox together and restores them when the ribbon expands", async () => {
+  it("hides the breadcrumb and toolbox when collapsed and restores them when the ribbon expands", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const breadcrumb = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-breadcrumb")!
@@ -1794,26 +2327,17 @@ describe("DomEditor breadcrumb visibility", () => {
 
     const fileMenu = ribbon.shadowRoot!.querySelector("ribbon-menu")!
     await fileMenu.updateComplete
-    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Show breadcrumb"]')!.click()
-    await editor.updateComplete
-    await ribbon.updateComplete
-    await fileMenu.updateComplete
-    expect(breadcrumb.hidden).toBe(false)
-    expect(getComputedStyle(breadcrumb).display).not.toBe("none")
-    expect(toolbox.hidden).toBe(false)
-    expect(ribbon.expanded).toBe(false)
-
-    fileMenu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Hide breadcrumb"]')!.click()
-    await editor.updateComplete
-    expect(breadcrumb.hidden).toBe(true)
-    expect(getComputedStyle(breadcrumb).display).toBe("none")
-    expect(toolbox.hidden).toBe(true)
+    expect(fileMenu.shadowRoot!.querySelector('[title="Show breadcrumb"]')).toBeNull()
+    expect(fileMenu.shadowRoot!.querySelector('[title="Hide breadcrumb"]')).toBeNull()
 
     ribbon.expanded = true
     await ribbon.updateComplete
     await editor.updateComplete
     expect(breadcrumb.hidden).toBe(false)
     expect(toolbox.hidden).toBe(false)
+    await ribbon.updateComplete
+    await fileMenu.updateComplete
+    expect(fileMenu.shadowRoot!.querySelector('[title="Hide breadcrumb"]')).toBeNull()
   })
 })
 
@@ -1831,6 +2355,7 @@ describe("Develop local packages", () => {
     host.installedPackages = [local, other]
     host.localPackageRuntimeWarnings = {[local.name]: [{message: "Old warning"}], [other.name]: []}
     host.localPackageTestResults = {[`${local.name}/test`]: "running", [`${other.name}/test`]: "running"}
+    host.consoleOpen = true
     const unregister = vi.spyOn(LocalPackageWorkerClient.prototype, "unregister").mockResolvedValue(undefined)
     const reload = vi.spyOn(host, "reloadEditor").mockImplementation(async (packages: any) => { host.installedPackages = packages })
     await editor.updateComplete
@@ -1910,6 +2435,8 @@ describe("Develop local packages", () => {
     const host = editor as any
     const source = {repository: "https://github.com/example/demo.git", ref: "v1.0.0", path: ""}
     const load = vi.spyOn(host.localPackageManager, "loadGit").mockResolvedValue(undefined)
+    host.consoleOpen = true
+    await editor.updateComplete
     editor.shadowRoot!.querySelector("developer-console")!.dispatchEvent(new CustomEvent("git-package-load", {detail: source, bubbles: true, composed: true}))
     await vi.waitFor(() => expect(load).toHaveBeenCalledWith(source))
     expect(host.localPackagesLoading).toBe(false)
@@ -2623,7 +3150,7 @@ describe("Develop local packages", () => {
   })
 
   it("restores persisted directory handles and reloads their packages", async() => {
-    const queryPermission = vi.fn().mockResolvedValue("prompt")
+    const queryPermission = vi.fn().mockResolvedValue("granted")
     const requestPermission = vi.fn().mockResolvedValue("granted")
     const directory = Object.assign(localPackageDirectory(), {queryPermission, requestPermission})
     vi.spyOn(LocalPackageWorkerClient.prototype, "storedDirectories").mockResolvedValue([{id: "persisted", handle: directory as any}])
@@ -2640,7 +3167,7 @@ describe("Develop local packages", () => {
     expect((editor as any).selectedLocalPackageName).toBe("@local/demo")
     expect(reload).toHaveBeenCalledWith([expect.objectContaining({name: "@local/demo"})])
     expect(queryPermission).toHaveBeenCalledWith({mode: "readwrite"})
-    expect(requestPermission).toHaveBeenCalledWith({mode: "readwrite"})
+    expect(requestPermission).not.toHaveBeenCalled()
   })
 
   it("keeps inaccessible restored folders visible with a recovery error", async() => {
@@ -2660,10 +3187,10 @@ describe("Develop local packages", () => {
 
     expect((editor as any).localPackages[0].label).toBe("private-package")
     expect((editor as any).selectedLocalPackageName).toBe("@local/private-package")
-    expect((editor as any).localPackageError).toContain("Select the folder again")
+    expect((editor as any).localPackageError).toContain("Click Refresh")
   })
 
-  it("keeps a restored folder visible when renewed permission is denied", async() => {
+  it("keeps a restored folder visible without prompting when permission needs renewal", async() => {
     const directory = Object.assign(localPackageDirectory(), {
       queryPermission: vi.fn().mockResolvedValue("prompt"),
       requestPermission: vi.fn().mockResolvedValue("denied"),
@@ -2678,8 +3205,9 @@ describe("Develop local packages", () => {
     await (editor as any).restoreLocalPackages()
 
     expect(getFileHandle).not.toHaveBeenCalled()
+    expect(directory.requestPermission).not.toHaveBeenCalled()
     expect((editor as any).localPackages[0].label).toBe("demo-package")
-    expect((editor as any).localPackageError).toContain("Grant access")
+    expect((editor as any).localPackageError).toContain("Click Refresh")
   })
 
   it("keeps a package without a bundle visible and ready for its first build", async () => {
@@ -3033,7 +3561,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Imported</p>"], "import.html")]})
     input.dispatchEvent(new Event("change"))
     await opening
-    expect(reload).toHaveBeenCalledWith("<p>Imported</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Imported</p>", false, null, true)
     expect(host.backendClient.listDocuments).not.toHaveBeenCalled()
     expect(host.fileHandle).toBeNull()
     expect(host.fileName).toBe("import")
@@ -3114,10 +3642,65 @@ describe("DomEditor file actions", () => {
     host.fileName = "Renamed in editor"
     const picker = vi.fn()
     vi.stubGlobal("showSaveFilePicker", picker)
+    host.updateDocumentSettings({proofreadingEnabled: false, commentHighlighting: false})
     mockSaveSnapshot(editor, "<p>Saved</p>")
     await host.saveDocument()
     expect(write).toHaveBeenCalledOnce()
     expect(picker).not.toHaveBeenCalled()
+    expect(host.documentSettingsId).toMatch(/^local:/)
+    expect(loadDocumentSettings(host.documentSettingsId)).toEqual({proofreadingEnabled: false, commentHighlighting: false})
+    const id = host.documentSettingsId
+    await host.saveDocument()
+    expect(host.documentSettingsId).toBe(id)
+  })
+
+  it("enables automatic accessibility review only after a successful save", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileName = "Lesson"
+    const actions: string[] = []
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      actions.push(action.type)
+      if(action.type === "prepareVersionSave") return {checkpointId: "saved-checkpoint", source: "<p>Saved</p>"}
+      if(action.type === "recordVersionSave") return emptyVersionHistoryState()
+      return true
+    })
+    vi.spyOn(host, "triggerFileDownload").mockImplementation(() => {})
+    const picker = vi.fn().mockRejectedValue(new DOMException("canceled", "AbortError"))
+    vi.spyOn(host, "filePickerWindow").mockReturnValue({showSaveFilePicker: picker})
+    await host.performSaveDocument()
+    expect(host.accessibilityReviewEnabled).toBe(false)
+    expect(actions).toEqual([])
+
+    picker.mockResolvedValue({name: "Lesson.html", createWritable: async () => ({write: vi.fn(), close: vi.fn()})})
+    await host.performSaveDocument()
+    expect(host.accessibilityReviewEnabled).toBe(true)
+    expect(actions).toContain("setAccessibilityReviewEnabled")
+    expect(execute).toHaveBeenCalledWith({type: "setAccessibilityReviewEnabled", enabled: true})
+  })
+
+  it("does not enable automatic accessibility review when saving the file fails", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileHandle = {name: "Lesson.html", createWritable: async () => {throw new Error("write failed")}}
+    const execute = mockSaveSnapshot(editor, "<p>Saved</p>")
+    vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    await host.performSaveDocument()
+    expect(host.accessibilityReviewEnabled).toBe(false)
+    expect(execute).not.toHaveBeenCalledWith({type: "setAccessibilityReviewEnabled", enabled: true})
+  })
+
+  it("resets the saved-once accessibility gate for new documents and restores it for opened documents", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(iframe.contentWindow)
+    host.accessibilityReviewEnabled = true
+    await host.reloadDocument("<!doctype html><html><body></body></html>", true)
+    expect(host.accessibilityReviewEnabled).toBe(false)
+    await host.reloadDocument("<!doctype html><html><body><p>Opened</p></body></html>", false, null, true)
+    expect(host.accessibilityReviewEnabled).toBe(true)
+    await host.reloadDocument("<!doctype html><html><body></body></html>", true)
+    expect(host.accessibilityReviewEnabled).toBe(false)
   })
 
   it("keeps the cloud endpoint and dirty state when downloading a local copy", async () => {
@@ -3140,6 +3723,7 @@ describe("DomEditor file actions", () => {
     expect(host.backendDocumentId).toBe("cloud-file")
     expect(host.fileName).toBe("Cloud lesson")
     expect(host.fileDirty).toBe(true)
+    expect(host.accessibilityReviewEnabled).toBe(true)
     await host.saveDocument()
     expect(host.backendClient.updateDocument).toHaveBeenCalledWith("cloud-file", expect.objectContaining({title: "Cloud lesson"}))
     expect(host.fileHandle).toBe(handle)
@@ -3151,6 +3735,7 @@ describe("DomEditor file actions", () => {
     configureCloudStorage(host)
     const existing = {id: "existing", title: "Lesson", format: "html", updatedAt: "2026-09-10T12:00:00Z"}
     host.backendClient = {listDocuments: vi.fn().mockResolvedValue([{...existing, id: "earlier"}, existing]), updateDocument: vi.fn().mockRejectedValue(new Error("Save failed")), createDocument: vi.fn()}
+    host.accessibilityReviewEnabled = false
     const report = vi.spyOn(host, "reportFileError").mockImplementation((error: unknown) => {host.fileError = (error as Error).message})
     vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
     mockSaveSnapshot(editor, "<p>Saved</p>")
@@ -3158,6 +3743,7 @@ describe("DomEditor file actions", () => {
     const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
     menu.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Lesson.html", id: "existing"}}))
     await vi.waitFor(() => expect(report).toHaveBeenCalledOnce())
+    expect(host.accessibilityReviewEnabled).toBe(false)
     expect(host.backendClient.updateDocument).toHaveBeenCalledWith("existing", expect.objectContaining({title: "Lesson"}))
     expect(host.backendClient.createDocument).not.toHaveBeenCalled()
     expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(true)
@@ -3166,6 +3752,7 @@ describe("DomEditor file actions", () => {
     menu.dispatchEvent(new CustomEvent("document-save", {detail: {name: "Lesson", id: "existing"}}))
     await vi.waitFor(() => expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false))
     expect(host.backendDocumentId).toBe("existing")
+    expect(host.accessibilityReviewEnabled).toBe(true)
     await host.saveDocument(true)
     menu.fileName = "Discarded draft"
     menu.close()
@@ -3194,14 +3781,17 @@ describe("DomEditor file actions", () => {
     const host = editor as any
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
     expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.label)).not.toContain("Upload")
     configureCloudStorage(host)
     await editor.updateComplete
     await ribbon.updateComplete
-    expect(menu.groups[0].buttons.slice(-2)).toEqual([{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: [
+    expect(menu.groups[0].buttons.slice(-3)).toEqual([{label: "Upload", icon: "Upload"}, {label: "Download", icon: "Download", submenu: [
       {label: "HTML (.html)", action: "download:html", icon: "HTML"}, {label: "Offline HTML (.offline.html)", action: "download:offline", icon: "OfflineHTML"},
-    ]}])
+    ]}, "Print"])
     const labels = menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.label)
     expect(labels.indexOf("Save as")).toBe(labels.indexOf("Save") + 1)
     const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
@@ -3212,7 +3802,7 @@ describe("DomEditor file actions", () => {
     Object.defineProperty(input, "files", {value: [new File(["<p>Upload</p>"], "Uploaded.html")]})
     input.dispatchEvent(new Event("change"))
     await vi.waitFor(() => expect(host.fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Upload</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Upload</p>", false, null, true)
     expect(host.settings.activeCloudServiceId).toBe("test-cloud")
     expect(host.backendDocumentId).toBeNull()
   })
@@ -3226,7 +3816,7 @@ describe("DomEditor file actions", () => {
 
     await (editor as any).openDocument()
 
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"))
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("<p>Opened</p>"), false, expect.stringMatching(/^local:/), true)
     expect((editor as any).fileHandle).toBe(handle)
     expect((editor as any).fileName).toBe("opened")
     expect((editor as any).fileDirty).toBe(false)
@@ -3279,7 +3869,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileName).toBe("Server lesson"))
     expect(menu.shadowRoot!.querySelector("dialog")!.open).toBe(false)
     expect(backend.getDocument).toHaveBeenCalledWith("doc-1")
-    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"))
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining("From server"), false, null, true)
     expect((editor as any).backendDocumentId).toBe("doc-1")
     expect((editor as any).fileName).toBe("Server lesson")
   })
@@ -3328,7 +3918,7 @@ describe("DomEditor file actions", () => {
     })
     await vi.waitFor(() => expect((editor as any).fileHandle).toBe(handle))
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
-    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Linked local document</p>", false, "local:stored", true)
     expect(picker).not.toHaveBeenCalled()
     expect(new URL(location.href).searchParams.get("open")).toBe("local:stored")
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
@@ -3386,7 +3976,7 @@ describe("DomEditor file actions", () => {
     await vi.waitFor(() => expect((editor as any).fileOperationActive).toBe(false))
     expect(login).toHaveBeenCalledWith(base)
     expect(getDocument).toHaveBeenCalledWith("folder/lesson")
-    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>")
+    expect(reload).toHaveBeenCalledWith("<p>Cloud document</p>", false, reference, true)
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
   })
 
@@ -3399,6 +3989,7 @@ describe("DomEditor file actions", () => {
     host.storageLocation = "development-server"
     configureCloudStorage(host)
     host.backendDocumentId = "previous"
+    host.updateDocumentSettings({proofreadingEnabled: true, commentHighlighting: false})
     mockSaveSnapshot(editor, "<p>Saved content</p>")
     history.replaceState({}, "", "/?other=keep&open=local%3Aprevious")
     await host.saveDocument(true)
@@ -3407,6 +3998,7 @@ describe("DomEditor file actions", () => {
     const reference = "http://localhost:1234/api/documents/folder%2Fnew%20document"
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
     expect(client.createDocument).toHaveBeenCalledOnce()
+    expect(loadDocumentSettings(reference)).toEqual({proofreadingEnabled: true, commentHighlighting: false})
     await host.saveDocument()
     expect(client.updateDocument).toHaveBeenCalledWith(saved.id, expect.objectContaining({content: "<p>Saved content</p>"}))
     expect(new URL(location.href).searchParams.get("open")).toBe(reference)
@@ -3447,6 +4039,20 @@ describe("DomEditor file actions", () => {
     expect(new URL(location.href).searchParams.get("other")).toBe("keep")
   })
 
+  it("keeps the size warning dismissed until a new editor is loaded", async () => {
+    const {editor} = await mountEditor()
+    const warning = editor.shadowRoot!.querySelector<HTMLElement>(".size-warning")!
+    expect(warning.textContent).toContain("WebWriter may not work correctly at this size.")
+    warning.querySelector<HTMLButtonElement>("button")!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".size-warning")).toBeNull()
+    editor.requestUpdate()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".size-warning")).toBeNull()
+    const {editor: reloaded} = await mountEditor()
+    expect(reloaded.shadowRoot!.querySelector(".size-warning")).not.toBeNull()
+  })
+
   it("shows only accessible recently opened documents beside Layouts and in the Open submenu", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
@@ -3462,8 +4068,11 @@ describe("DomEditor file actions", () => {
     const entries = [...nav.querySelectorAll<HTMLButtonElement>(".document-layout-document")]
     expect(entries.map(button => button.title)).toEqual(documents.slice(0, 10).map(document => document.title))
     expect(nav.previousElementSibling?.classList.contains("document-layout-cards")).toBe(true)
-    expect(editor.shadowRoot!.querySelector(".document-layouts-heading #recent-documents-title")?.textContent).toBe("Recently opened")
+    expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-full-title")?.textContent).toBe("Recently opened")
+    expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-short-title")?.textContent).toBe("Recent")
     expect(nav.querySelector("h2")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-combined-title")?.textContent).toBe(" & Recently opened")
+    expect(editor.shadowRoot!.querySelectorAll(".document-layout-cards .layout-preset-icon svg")).toHaveLength(4)
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
     expect(ribbon.recentDocuments.map(document => document.title)).toEqual(entries.map(button => button.title))
@@ -3724,13 +4333,30 @@ describe("DomEditor file actions", () => {
   })
 
   it("prints only the iframe document", async () => {
-    const {editor, editorWindow} = await mountEditor()
+    const {editor, editorWindow, iframe} = await mountEditor()
     const print = vi.fn()
     Object.defineProperty(editorWindow, "print", {configurable: true, value: print})
 
     ;(editor as any).printDocument()
 
     expect(print).toHaveBeenCalledTimes(1)
+    expect(iframe.sandbox.contains("allow-modals")).toBe(true)
+  })
+
+  it("prints the active preview document", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const editorPrint = vi.fn()
+    const previewPrint = vi.fn()
+    Object.defineProperty(editorWindow, "print", {configurable: true, value: editorPrint})
+    vi.spyOn(editor as any, "postToPreview").mockImplementation((message: any) => {
+      if(message.type === "preview-frame-print") previewPrint()
+    })
+    ;(editor as any).previewActive = true
+
+    ;(editor as any).printDocument()
+
+    expect(previewPrint).toHaveBeenCalledTimes(1)
+    expect(editorPrint).not.toHaveBeenCalled()
   })
 
   it("downloads the serialized document with the current file name", async () => {
@@ -3935,6 +4561,32 @@ describe("DomEditor.execute()", () => {
     expect(layoutsPanel.getAttribute("aria-hidden")).toBe("true")
   })
 
+  it("mounts the developer console on demand, retains it for collapse, and refreshes on reopen", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-panel")!
+    expect(panel.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBeNull()
+    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector("developer-console")!
+    await console.updateComplete
+    expect(console.tab).toBe("Packages")
+    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
+    expect(panel.inert).toBe(true)
+    host.localPackageError = "Updated while closed"
+    await editor.updateComplete
+    expect(console.localPackageError).toBe("Updated while closed")
+    expect(console.shadowRoot!.textContent).not.toContain("Updated while closed")
+    await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+    await editor.updateComplete
+    await console.updateComplete
+    expect(console.localPackageError).toBe("Updated while closed")
+    expect(editor.shadowRoot!.querySelector(".html-source-panel")).toBe(panel)
+  })
+
   it("keeps package tools and checks in the bottom console and protects pending HTML across tabs", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
@@ -3976,6 +4628,40 @@ describe("DomEditor.execute()", () => {
     toolbox.selectTool("Review")
     await editor.updateComplete
     expect(panel.inert).toBe(true)
+  })
+
+  it("reuses unchanged HTML highlighting on reopen and refreshes changed source", async () => {
+    const {editor} = await mountEditor()
+    let source = "<p>Hello</p>"
+    let holdSource = false
+    let resolveSource: ((value: any) => void) | undefined
+    vi.spyOn(editor, "execute").mockImplementation(async action => action.type === "beginHTMLSelectionEdit"
+      ? holdSource ? new Promise(resolve => {resolveSource = resolve}) : {html: source} as any
+      : true)
+    const host = editor as any
+    await host.setHTMLMode(true)
+    await editor.updateComplete
+    const highlight = editor.shadowRoot!.querySelector(".html-source-highlight")!
+    const token = highlight.querySelector(".tag")!
+    expect(token.textContent).toBe("<p")
+    await host.setHTMLMode(false)
+    await editor.updateComplete
+    holdSource = true
+    const reopening = host.setHTMLMode(true)
+    await editor.updateComplete
+    expect(highlight.querySelector(".tag")).toBeNull()
+    resolveSource!({html: source})
+    await reopening
+    holdSource = false
+    await editor.updateComplete
+    expect(highlight.querySelector(".tag")).toBe(token)
+    expect(highlight.textContent).toBe(source + "\n")
+    await host.setHTMLMode(false)
+    source = "<section>Changed</section>"
+    await host.setHTMLMode(true)
+    await editor.updateComplete
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!.value).toBe(source)
   })
 
   it("highlights HTML only while its source is hovered or focused, without restoring editor selection", async () => {
@@ -4082,6 +4768,7 @@ describe("DomEditor.execute()", () => {
     input.scrollTop = 24
     input.scrollLeft = 40
     input.dispatchEvent(new Event("scroll"))
+    await new Promise(resolve => requestAnimationFrame(resolve))
     expect(highlight.scrollTop).toBe(24)
     expect(highlight.scrollLeft).toBe(40)
     ;(editor as any).htmlSource = '<img src=x onerror="alert(1)">\n'
@@ -4090,6 +4777,60 @@ describe("DomEditor.execute()", () => {
     expect(highlight.textContent).toBe((editor as any).htmlSource + "\n")
     expect(highlight.querySelector("img")).toBeNull()
     expect(highlight.getAttribute("aria-hidden")).toBe("true")
+  })
+
+  it("colors large source with bounded native ranges while retaining exact text, input identity and selection", async () => {
+    const highlights = new Map<string, Set<Range>>()
+    vi.stubGlobal("CSS", Object.assign(Object.create(CSS), {highlights}))
+    vi.stubGlobal("Highlight", class extends Set<Range> {})
+    const {editor} = await mountEditor()
+    const source = Array.from({length: 1000}, (_, index) => `<p title="${index}">Line ${index} &amp; text</p>`).join("\n")
+    vi.spyOn(editor, "execute").mockResolvedValue({html: source} as any)
+    const host = editor as any
+    await host.setHTMLMode(true)
+    await editor.updateComplete
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    const input = editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
+    const highlight = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-highlight")!
+    input.setSelectionRange(30000, 30010)
+    expect(input.value).toBe(source)
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(highlight.querySelectorAll("span")).toHaveLength(0)
+    const ranges = Array.from(highlights.values()).flatMap(ranges => Array.from(ranges))
+    expect(ranges.length).toBeGreaterThan(0)
+    expect(ranges.length).toBeLessThan(2000)
+    expect(ranges.every(range => highlight.contains(range.startContainer) && range.toString().length > 0)).toBe(true)
+    const text = ranges[0].startContainer
+    input.scrollTop = 40
+    input.dispatchEvent(new Event("scroll"))
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(highlight.contains(text)).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".html-source-input")).toBe(input)
+    expect([input.selectionStart, input.selectionEnd]).toEqual([30000, 30010])
+    const colors = highlights.get("webwriter-html-tag")
+    input.value = source.slice(0, 30000) + "x" + source.slice(30010)
+    input.setSelectionRange(30001, 30001)
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await editor.updateComplete
+    await new Promise(resolve => requestAnimationFrame(resolve))
+    expect(highlight.textContent).toBe(input.value + "\n")
+    expect(highlights.get("webwriter-html-tag")).toBe(colors)
+    expect(input.selectionStart).toBe(30001)
+    editor.remove()
+    expect(highlights.size).toBe(0)
+  })
+
+  it("retains large-source syntax colors when native highlights are unavailable", async () => {
+    vi.stubGlobal("Highlight", undefined)
+    const {editor} = await mountEditor()
+    const source = Array.from({length: 700}, () => '<p title="plain">Text &amp; more</p>').join("\n")
+    vi.spyOn(editor, "execute").mockResolvedValue({html: source} as any)
+    await (editor as any).setHTMLMode(true)
+    await editor.updateComplete
+    const highlight = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-highlight")!
+    expect(highlight.textContent).toBe(source + "\n")
+    expect(highlight.querySelector(".attribute")?.textContent).toBe("title")
   })
 
   it("posts an action and resolves with the completion result", async () => {
@@ -4175,7 +4916,7 @@ describe("DomEditor.execute()", () => {
     await expect(execution).resolves.toBe("done")
   })
 
-  it("propagates package loading failures to actions waiting for the frame", async () => {
+  it("reports a failed package load but allows subsequent snapshots for saving and refresh", async () => {
     const editor = new DomEditor()
     Object.assign(editor, {frameStarted: true})
     document.body.append(editor)
@@ -4205,6 +4946,16 @@ describe("DomEditor.execute()", () => {
       name: "NetworkError",
       message: "widget script failed to load",
     })
+    expect((editor as any).packageError).toBe("widget script failed to load")
+    const snapshot = editor.execute({type: "snapshotState"})
+    await vi.waitFor(() => expect(postMessage.mock.calls.some(([message]) => message.type === "snapshotState")).toBe(true))
+    const snapshotCall = postMessage.mock.calls.find(([message]) => message.type === "snapshotState")![0]
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: executeCompleteEvent, detail: {requestId: snapshotCall.requestId, result: {update: []}}, bridgeNonce: snapshotCall.bridgeNonce},
+      source: editorWindow,
+      origin: window.location.origin,
+    }))
+    await expect(snapshot).resolves.toEqual({update: []})
   })
 
   it("does not post an action aborted while the editor frame is initializing", async () => {
@@ -4339,25 +5090,31 @@ describe("DomEditor.execute()", () => {
       if(action.type === "getStyleState") return {
         target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
         inline: width ? {width: {value: width, priority: ""}} : {},
-        computed: {width: "300px"}, context: {display: "block", parentDisplay: "block"},
+        authoredProperties: width ? ["width", "margin", "margin-top", 1] : [],
+        computed: {width: "300px"}, context: {display: "block", parentDisplay: "block", floatLeftForcedRight: width === "120px", floatRightInFlow: width === "240px"},
       }
     })
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool(null)
     toolbox.selectTool("Edit")
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width?.value).toBe("120px"))
+    expect(toolbox.elementStyle.context.floatLeftForcedRight).toBe(true)
+    expect(toolbox.elementStyle.authoredProperties).toEqual(["width", "margin", "margin-top"])
     width = "240px"
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [1], name: "Paragraph"}]}},
       source: editorWindow,
     }))
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width?.value).toBe("240px"))
+    expect(toolbox.elementStyle.context.floatLeftForcedRight).toBe(false)
+    expect(toolbox.elementStyle.context.floatRightInFlow).toBe(true)
     width = null
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}, {path: [2], name: "Paragraph"}]}},
       source: editorWindow,
     }))
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width).toBeUndefined())
+    expect(toolbox.elementStyle.authoredProperties).toEqual([])
     expect(execute.mock.calls.filter(([action]) => action.type === "getStyleState").length).toBeGreaterThanOrEqual(3)
   })
 
@@ -4391,6 +5148,22 @@ describe("DomEditor.execute()", () => {
     }
     await (editor as any).refreshElementStyleState()
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "getStyleState", topLevel: true}))
+  })
+
+  it("routes media crop fields to the selected media instead of its top-level container", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    toolbox.media = {type: "picture", attributes: {style: "object-view-box: inset(10%)"}}
+    toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    await toolbox.updateComplete
+    const field = toolbox.shadowRoot!.querySelector('[data-specialized="picture"] element-style-editor')!
+    field.dispatchEvent(new CustomEvent("element-style-change", {
+      detail: {property: "object-view-box", mutation: {value: "inset(20%)", priority: ""}}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setMediaCrop", crop: {value: "inset(20%)", priority: ""}})
+    expect(execute.mock.calls.some(([action]) => action.type === "setStyle")).toBe(false)
   })
 
   it("loads Style-pane state lazily and routes inline style changes", async () => {
@@ -4790,8 +5563,8 @@ describe("DomEditor.execute()", () => {
     expect(setInstalled).toHaveBeenCalledWith(demoPackage, false)
   })
 
-  it("executes undo and redo from the top ribbon controls", async () => {
-    const {editor} = await mountEditor()
+  it("disables unavailable history actions and executes enabled undo and redo controls", async () => {
+    const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     const historyButtons = Array.from(ribbon.shadowRoot!.querySelectorAll<HTMLButtonElement>(".history-button"))
@@ -4801,15 +5574,104 @@ describe("DomEditor.execute()", () => {
     expect(historyButtons[1].querySelector(".icon-tabler-arrow-forward-up")).not.toBeNull()
     expect(historyButtons[1].parentElement?.nextElementSibling?.getAttribute("aria-label")).toBe("Preview")
 
+    expect(historyButtons.map(button => button.disabled)).toEqual([true, true])
+    historyButtons.forEach(button => button.click())
+    expect(execute).not.toHaveBeenCalled()
+
+    const publish = async (canUndo: boolean, canRedo: boolean) => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: undoStateChangeEvent, detail: {canUndo, canRedo}, bridgeNonce: (editor as any).bridgeNonce},
+        source: editorWindow, origin: window.location.origin,
+      }))
+      await editor.updateComplete
+      await (ribbon as AppRibbon).updateComplete
+    }
+
+    await publish(true, false)
+    expect(historyButtons.map(button => button.disabled)).toEqual([false, true])
+
     historyButtons[0].click()
+    await publish(false, true)
+    expect(historyButtons.map(button => button.disabled)).toEqual([true, false])
     historyButtons[1].click()
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "undo"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "redo"})
+    await publish(false, false)
+    expect(historyButtons.map(button => button.disabled)).toEqual([true, true])
   })
 
-  it("groups newest versions first, expands changes, and routes preview and restore for both tiers", async () => {
+  it("opens Versions only from the Review footer and hides it on close or leaving Review", async () => {
     const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(emptyVersionHistoryState())
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".html-source-panel")!
+    expect(panel.inert).toBe(true)
+    expect(execute).not.toHaveBeenCalledWith({type: "getVersionHistory"})
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(panel.inert).toBe(false)
+    expect(editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!.review).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"})
+    expect(toolbox.versionsOpen).toBe(true)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close versions"]')!.click()
+    await editor.updateComplete
+    expect(panel.inert).toBe(true)
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await editor.updateComplete
+    toolbox.selectTool("Edit")
+    await editor.updateComplete
+    expect(panel.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!.review).toBe(false)
+  })
+
+  it("keeps pending package changes available before switching the bottom pane to Versions", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as unknown as {reviewOpen: boolean, resolvePendingPackageChanges(): Promise<boolean>}
+    vi.spyOn(editor, "execute").mockResolvedValue(emptyVersionHistoryState())
+    Object.assign(editor, {consoleOpen: true, localPackageDraft: {manifest: {}, errors: {}}, settings: {...loadAppSettings(), pinDeveloperConsole: true}})
+    const resolve = vi.spyOn(host, "resolvePendingPackageChanges").mockResolvedValue(false)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await Promise.resolve()
+    expect(resolve).toHaveBeenCalledOnce()
+    expect(host.reviewOpen).toBe(false)
+    expect(editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!.review).toBe(false)
+  })
+
+  it("leaves HTML source mode while viewing Versions and restores a pinned console on close", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as unknown as {htmlMode: boolean, consoleOpen: boolean, refreshHTMLSource(): Promise<void>}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(emptyVersionHistoryState())
+    vi.spyOn(host, "refreshHTMLSource").mockResolvedValue(undefined)
+    Object.assign(editor, {consoleOpen: true, consoleTab: "HTML", htmlMode: true, settings: {...loadAppSettings(), pinDeveloperConsole: true}})
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Review")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
+    await editor.updateComplete
+    await Promise.resolve()
+    expect(host.htmlMode).toBe(false)
+    expect(host.consoleOpen).toBe(true)
+    expect(execute).toHaveBeenCalledWith({type: "discardHTMLSelectionEdit"})
+    await toolbox.updateComplete
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close versions"]')!.click()
+    await editor.updateComplete
+    expect(host.htmlMode).toBe(true)
+    expect(host.consoleOpen).toBe(true)
+  })
+
+  it("lists newest versions first and routes preview and restore for both tiers", async () => {
+    const {editor} = await mountEditor(editor => Object.assign(editor, {undoState: {canUndo: true, canRedo: false}}))
     vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {})
     const user = {clientId: 7, name: "Ada Lovelace", initials: "AL", color: "#e11d48"}
     const checkpoint = (id: string, timestamp: number) => ({id, timestamp, label: "Edited by Ada Lovelace",
@@ -4831,47 +5693,52 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Review")
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
     await toolbox.updateComplete
-    const cards = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.versions-console-toggle')!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "getVersionHistory"}))
+    await editor.updateComplete
+    const console = editor.shadowRoot!.querySelector<import("./developer-console").DeveloperConsole>("developer-console")!
+    await console.updateComplete
+    expect(console.review).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector('.history-timeline')).toBeNull()
+    const cards = Array.from(console.shadowRoot!.querySelectorAll<HTMLElement>(".history-version-card"))
     expect(cards.map(card => card.dataset.checkpointId)).toEqual(["unsaved", "saved"])
     expect(cards[0].querySelector(".history-checkpoint-label")?.textContent).toBe("Unsaved changes")
     expect(cards[1].querySelector(".history-checkpoint-meta")?.textContent).toBe("By you")
-    expect(cards[1].querySelector(".history-checkpoint-counts")?.textContent).toContain("+1")
-    const groups = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLDetailsElement>("details.history-version-changes"))
-    expect(groups).toHaveLength(1)
-    expect(groups.every(group => !group.open)).toBe(true)
-    expect(groups[0].querySelector("summary")!.textContent).toBe("1 change")
-    groups[0].querySelector("summary")!.click()
-    expect(groups[0].open).toBe(true)
-    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
+    expect(cards[1].querySelector(".history-change-count")?.textContent?.trim()).toBe(String(saved.changes.added + saved.changes.removed + saved.changes.modified))
+    expect(console.shadowRoot!.querySelector("details")).toBeNull()
+    console.shadowRoot!.querySelector<HTMLButtonElement>('.version-sidebar .history-checkpoint[data-checkpoint-id="saved"]')!.click()
+    await console.updateComplete
+    expect(Array.from(console.shadowRoot!.querySelectorAll<HTMLElement>(".history-change-card"))
       .map(card => card.dataset.checkpointId)).toEqual(["first"])
 
     for(const id of ["saved", "first", "unsaved"]) {
-      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-checkpoint[data-checkpoint-id="${id}"]`)!.click()
+      console.shadowRoot!.querySelector<HTMLButtonElement>(`.history-checkpoint[data-checkpoint-id="${id}"]`)!.click()
       await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "previewVersionCheckpoint", checkpointId: id}))
       await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true))
       await toolbox.updateComplete
-      expect(groups[0].open).toBe(true)
+      expect(console.shadowRoot!.querySelector(".version-sidebar")).not.toBeNull()
     }
+    console.shadowRoot!.querySelector<HTMLButtonElement>('.version-sidebar .history-checkpoint[data-checkpoint-id="saved"]')!.click()
+    await console.updateComplete
     for(const id of ["saved", "first"]) {
-      await vi.waitFor(() => expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.disabled).toBe(false))
-      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.click()
+      await vi.waitFor(() => expect(console.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.disabled).toBe(false))
+      console.shadowRoot!.querySelector<HTMLButtonElement>(`.history-card-restore-button[data-checkpoint-id="${id}"]`)!.click()
       await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "revertVersionCheckpoint", checkpointId: id}))
       await toolbox.updateComplete
     }
-    await vi.waitFor(() => expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.disabled).toBe(false))
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.click()
+    await vi.waitFor(() => expect(console.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.disabled).toBe(false))
+    console.shadowRoot!.querySelector<HTMLButtonElement>('.history-checkpoint[data-checkpoint-id="saved"]')!.click()
     await vi.waitFor(() => expect(toolbox.historyState.preview).not.toBeNull())
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".history-preview-clear")!.click()
+    console.shadowRoot!.querySelector<HTMLButtonElement>(".history-preview-clear")!.click()
     await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "clearVersionPreview"}))
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(false))
 
-    toolbox.historyState = {...state, versions: [{...saved, id: "newest", checkpointIds: []}, ...state.versions]}
-    await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".history-version-card")!.dataset.checkpointId).toBe("newest")
-    expect(groups[0].open).toBe(true)
+    console.historyState = {...state, versions: [{...saved, id: "newest", timestamp: unsaved.timestamp + 1, checkpointIds: []}, ...state.versions]}
+    await console.updateComplete
+    expect(console.shadowRoot!.querySelector<HTMLElement>(".history-version-card")!.dataset.checkpointId).toBe("newest")
+    expect(console.shadowRoot!.querySelector(".version-sidebar")).not.toBeNull()
   })
 
   it("routes media ribbon commands through the iframe bridge", async () => {
@@ -4887,7 +5754,7 @@ describe("DomEditor.execute()", () => {
       composed: true,
     }))
 
-    expect(execute).toHaveBeenCalledWith({type: "insertMedia", media: "picture"})
+    expect(execute).toHaveBeenCalledWith({type: "insertElement", tag: "picture"})
     await Promise.resolve()
     focusEditor.mockClear()
 
@@ -4970,8 +5837,8 @@ describe("DomEditor.execute()", () => {
         action: "set-area-attribute",
         path: [1, 0],
         expected: {shape: "rect", coords: "1,2,3,4"},
-        attribute: "alt",
-        value: "Library",
+        attribute: "href",
+        value: "library.html",
       },
       bubbles: true,
       composed: true,
@@ -4980,8 +5847,8 @@ describe("DomEditor.execute()", () => {
       type: "setImageMapAreaAttribute",
       path: [1, 0],
       expected: {shape: "rect", coords: "1,2,3,4"},
-      name: "alt",
-      value: "Library",
+      name: "href",
+      value: "library.html",
     })
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
@@ -5000,9 +5867,25 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("routes a dropped media source file through the iframe bridge", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
+    const file = new File(["video"], "movie.mp4", {type: "video/mp4"})
+    toolbox.dispatchEvent(new CustomEvent("media-file-drop", {
+      detail: {type: "video", file}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file, attribute: undefined})
+  })
+
   it.each([
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
+    ["selected-media-file", {type: "selectMediaFile"}],
+    ["selected-media-cover-file", {type: "selectMediaFile", attribute: "poster"}],
+    ["selected-media-cover-capture:camera-image", {type: "captureSelectedMedia", mode: "camera-image", attribute: "poster"}],
+    ["selected-media-capture:screen-image", {type: "captureSelectedMedia", mode: "screen-image"}],
+    ["remove-media-source", {type: "removeMediaSource"}],
   ])("routes %s without reclaiming focus", async (label, action) => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -5030,6 +5913,32 @@ describe("DomEditor.execute()", () => {
       detail: {label}, bubbles: true, composed: true,
     }))
     expect(execute).toHaveBeenCalledWith({type})
+  })
+
+  it.each(["nodeSelected", "capture"] as const)("advertises paragraph toolbox availability for %s bridge selections", async kind => {
+    const {editor, editorWindow} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const detail = {
+      path: [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}],
+      element: {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", attributes: {}},
+    }
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail: {...detail, [kind]: true}},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    const edit = toolbox.shadowRoot!.querySelector('[data-tool="Edit"]')!
+    expect(toolbox.elementSelected).toBe(true)
+    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph")
+    expect(edit.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(true)
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
+      data: {type: selectionChangeEvent, detail},
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.elementSelected).toBe(false)
+    expect(edit.getAttribute("aria-label")).toBe("Edit")
+    expect(edit.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(false)
   })
 
   it("binds multi-selection drawers and routes their changes by type through the bridge", async () => {
@@ -5064,7 +5973,7 @@ describe("DomEditor.execute()", () => {
     }))
     toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "setCaption", position: "above"}}))
     expect(execute).toHaveBeenCalledWith({type: "setCaption", position: "above"})
-    expect(execute).toHaveBeenCalledWith({type: "setSelectedElementStyles", selectionType, styles: {"text-align": "right"}})
+    expect(execute).toHaveBeenCalledWith({type: "setStyle", topLevel: true, styles: {"text-align": "right"}})
     expect(execute).toHaveBeenCalledWith({type: "setSelectedElementAttribute", selectionType, name: "lang", value: "de"})
     expect(execute).toHaveBeenCalledWith({type: "setSelectedWidgetOption", selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI}, name: "count", value: 3})
     toolbox.dispatchEvent(new CustomEvent("widget-action", {
@@ -5110,6 +6019,7 @@ describe("DomEditor.execute()", () => {
     toolbox.dispatchEvent(new CustomEvent("element-attribute-change", {
       detail: {
         path: [0, 1],
+        targetId: "element-captured",
         localName: "blockquote",
         namespaceURI: "http://www.w3.org/1999/xhtml",
         name: "data-source",
@@ -5123,6 +6033,7 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({
       type: "setElementAttribute",
       path: [0, 1],
+      targetId: "element-captured",
       localName: "blockquote",
       namespaceURI: "http://www.w3.org/1999/xhtml",
       name: "data-source",
@@ -5286,7 +6197,7 @@ describe("DomEditor.execute()", () => {
     })
   })
 
-  it("renders presence circles before undo and overlaps up to three collaborators", async () => {
+  it("replaces the collaboration icon with up to two initials avatars", async () => {
     const {editor, editorWindow} = await mountEditor()
 
     window.dispatchEvent(new MessageEvent("message", {
@@ -5309,18 +6220,18 @@ describe("DomEditor.execute()", () => {
     const users = ribbon.shadowRoot!.querySelector<HTMLElement>(".presence-users")!
     const circles = Array.from(users.querySelectorAll<HTMLElement>(".presence-user"))
 
-    expect(circles).toHaveLength(3)
-    expect(circles.map(circle => circle.textContent)).toEqual(["AL", "GH", "LI"])
+    expect(circles).toHaveLength(2)
+    expect(circles.map(circle => circle.textContent)).toEqual(["AL", "GH"])
     expect(circles.map(circle => circle.style.getPropertyValue("--presence-color"))).toEqual([
       "#e11d48",
       "#2563eb",
-      "#059669",
     ])
     expect(users.querySelector(".presence-more")).toBeNull()
-    expect(users.nextElementSibling?.querySelector('[aria-label="Undo"]')).not.toBeNull()
+    expect(users.parentElement?.getAttribute("label")).toBe("Collaboration")
+    expect(users.getAttribute("slot")).toBe("icon")
   })
 
-  it("adds a smaller Tabler plus circle with the connected peer count", async () => {
+  it("keeps at most two collaboration avatars when four peers are connected", async () => {
     const {editor, editorWindow} = await mountEditor()
 
     window.dispatchEvent(new MessageEvent("message", {
@@ -5342,12 +6253,8 @@ describe("DomEditor.execute()", () => {
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     await ribbon.updateComplete
     const users = ribbon.shadowRoot!.querySelector<HTMLElement>(".presence-users")!
-    const more = users.querySelector<HTMLElement>(".presence-more")!
-
-    expect(users.querySelectorAll(".presence-user")).toHaveLength(3)
-    expect(more.querySelector(".icon-tabler-plus")).not.toBeNull()
-    expect(more.querySelector(".presence-more-count")?.textContent).toBe("4")
-    expect(more.getAttribute("aria-label")).toBe("+ 4 peers connected")
+    expect(users.querySelectorAll(".presence-user")).toHaveLength(2)
+    expect(users.querySelector(".presence-more")).toBeNull()
     expect(users.dataset.userCount).toBe("4")
   })
 
@@ -5628,7 +6535,7 @@ describe("DomEditor.execute()", () => {
     expect(source.querySelector("script")).not.toBeNull()
   })
 
-  it("includes the scoped registry before widget modules in preview", async () => {
+  it("includes the scoped registry adapter before widget modules in preview", async () => {
     const {editor, iframe} = await mountEditor()
     ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [demoPackage]
     iframe.contentDocument!.body.innerHTML = '<webwriter-demo contenteditable="true"></webwriter-demo>'
@@ -5638,7 +6545,9 @@ describe("DomEditor.execute()", () => {
     const policy = parsed.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
     const nonce = /'nonce-([^']+)'/.exec(policy)![1]
     expect(scripts.every(script => script.getAttribute("nonce") === nonce)).toBe(true)
-    expect(scripts[0].src).toContain("@webcomponents/scoped-custom-element-registry@0.0.10/")
+    expect(scripts[0].id).toBe("webwriter-scoped-registry")
+    expect(scripts[0].textContent).toBeTruthy()
+    expect(scripts[0].hasAttribute("src")).toBe(false)
     expect(scripts.slice(1).filter(script => script.hasAttribute("src")).map(script => script.src)).toEqual(demoPackage.scripts)
     expect(parsed.querySelector("webwriter-demo")?.getAttribute("contenteditable")).toBe("true")
     expect(parsed.body.innerHTML).not.toContain("◆")
@@ -5662,9 +6571,8 @@ describe("DomEditor.execute()", () => {
     source.body.innerHTML = '<section><template><used-widget></used-widget></template><used-widget></used-widget></section>'
     const preview = () => new DOMParser().parseFromString((editor as any).currentPreviewHTML(), "text/html")
     const parsed = preview()
-    expect(Array.from(parsed.querySelectorAll("script[src]")).map(script => script.getAttribute("src"))).toEqual([
-      expect.stringContaining("scoped-custom-element-registry"), usedScript,
-    ])
+    expect(parsed.querySelector("#webwriter-scoped-registry")?.textContent).toBeTruthy()
+    expect(Array.from(parsed.querySelectorAll("script[src]")).map(script => script.getAttribute("src"))).toEqual([usedScript])
     expect(Array.from(parsed.querySelectorAll('link[rel="stylesheet"]')).map(link => link.getAttribute("href"))).toEqual([usedStyle])
     source.body.replaceChildren()
     const empty = preview()
@@ -5768,6 +6676,35 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("opens the preview Feedback toolbox and delivers messages through the live session", async () => {
+    const {editor, iframe} = await mountEditor()
+    const authored = iframe.contentDocument!.body.innerHTML
+    const host = new LiveSession({id: "editor-feedback", role: "host", baseHTML: "<p>Document</p>"})
+    const participant = new LiveSession({id: "editor-feedback", role: "learner", learner: {id: "ada", name: "Ada", color: "#123456"}})
+    try {
+      ;(editor as any).previewActive = true
+      ;(editor as any).connectLiveSession(host, "host")
+      await editor.updateComplete
+      const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+      await toolbox.updateComplete
+      expect(toolbox.hidden).toBe(false)
+      expect(editor.shadowRoot!.querySelector("live-session-controls")).not.toBeNull()
+      expect(toolbox.preview).toBe(true)
+      toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Feedback"]')!.click()
+      await toolbox.updateComplete
+      expect(toolbox.activeTool).toBe("Feedback")
+      const send = new CustomEvent("live-feedback-send", {detail: {participant: "ada", text: "Well done!"}, cancelable: true})
+      expect(toolbox.dispatchEvent(send)).toBe(true)
+      await vi.waitFor(() => expect(toolbox.feedbackMessages).toHaveLength(1))
+      expect(participant.feedback[0].text).toBe("Well done!")
+      expect(iframe.contentDocument!.body.innerHTML).toBe(authored)
+      participant.stop()
+      const stale = new CustomEvent("live-feedback-send", {detail: {participant: "ada", text: "Too late"}, cancelable: true})
+      expect(toolbox.dispatchEvent(stale)).toBe(false)
+    }
+    finally { participant.destroy(); editor.remove() }
+  })
+
   it("keeps serverless recordings local and resets the clock between preview and live", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -5775,8 +6712,8 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await ribbon.updateComplete
     const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
-    const share = () => ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Learners"] ribbon-button[label="Share"]')!
-    const toggle = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="LIVE"]')!
+    const share = () => ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Learners"] ribbon-button[label="QR"]')!
+    const toggle = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="Share"]')!
     expect(share().disabled).toBe(true)
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Download"]')).not.toBeNull()
     expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Sharing"] ribbon-button[label="Print"]')).not.toBeNull()
@@ -5799,7 +6736,7 @@ describe("DomEditor.execute()", () => {
       await ribbon.updateComplete
       expect(share().disabled).toBe(true)
       expect((editor as any).liveSessionLink).toBe("")
-      expect(ribbon.shadowRoot!.querySelector(".learners-summary")?.textContent).toContain("Waiting for learners")
+      expect(ribbon.shadowRoot!.querySelector(".learners-summary")?.textContent).toContain("Waiting for participants")
       expect(controls.live).toBe(true)
       expect(controls.currentTime).toBe(0)
       const session = (editor as unknown as {liveSession: LiveSession}).liveSession
@@ -5885,7 +6822,7 @@ describe("DomEditor.execute()", () => {
       await ribbon.updateComplete
 
       const share = ribbon.shadowRoot!.querySelector<RibbonButton>(
-        'ribbon-drawer[label="Learners"] ribbon-button[label="Share"]',
+        'ribbon-drawer[label="Learners"] ribbon-button[label="QR"]',
       )!
       expect(share.disabled).toBe(true)
       expect(ribbon.liveSessionLink).toBe("")
@@ -6044,7 +6981,7 @@ describe("DomEditor.execute()", () => {
 
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
-    expect(breadcrumb.shadowRoot!.querySelector('.tree-item[data-path="0,0"] sup .icons-tabler-filled')).not.toBeNull()
+    expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
     for(const mode of ["slides", "canvas"] as const) {
       await sendPosition("absolute", mode)
       expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
@@ -6057,15 +6994,42 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.shadowRoot!.querySelector(".position-icons")).toBeNull()
   })
 
+  it("keeps ribbon drawers and navigation menus above the toolbox and its tabs", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    expect(getComputedStyle(toolbox).position).toBe("relative")
+    expect(getComputedStyle(tabs).position).toBe("relative")
+    const toolboxLayer = Number(getComputedStyle(toolbox).zIndex)
+    expect(getComputedStyle(ribbon).position).toBe("relative")
+    expect(Number(getComputedStyle(ribbon).zIndex)).toBeGreaterThan(toolboxLayer)
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[layout="elements"]')!
+    drawer.collapsed = true
+    await drawer.updateComplete
+    drawer.openDrawer()
+    await drawer.updateComplete
+    expect(drawer.hasAttribute("drawer-open")).toBe(true)
+    expect(Number(getComputedStyle(ribbon).zIndex)).toBeGreaterThan(toolboxLayer)
+    drawer.closeDrawer()
+    ribbon.expanded = false
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector("ribbon-menu")).not.toBeNull()
+    expect(Number(getComputedStyle(ribbon).zIndex)).toBeGreaterThan(toolboxLayer)
+  })
+
   it("renders and updates superscript float direction icons", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<p>Text</p>"
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    const sendFloat = async (float?: "far-left" | "far-right") => {
+    const sendFloat = async (float?: "far-left" | "far-right", floatForcedRight = false) => {
       window.dispatchEvent(new MessageEvent("message", {
         data: {type: selectionChangeEvent, detail: {path: [
           {path: [], name: "Document"},
-          {path: [0], name: "Paragraph", ...(float ? {float} : {})},
+          {path: [0], name: "Paragraph", ...(float ? {float} : {}), floatForcedRight},
         ]}},
         source: editorWindow,
       }))
@@ -6077,6 +7041,17 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Left float")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-float-left")).not.toBeNull()
     expect(getComputedStyle(breadcrumb.shadowRoot!.querySelector(".position-float svg")!).width).toBe("16px")
+    await sendFloat("far-left", true)
+    const info = breadcrumb.shadowRoot!.querySelector<import("./float-info").FloatInfo>("float-info")!
+    expect(info).not.toBeNull()
+    info.showBriefly()
+    await info.updateComplete
+    iframe.contentDocument!.dispatchEvent(new KeyboardEvent("keydown", {key: "a", bubbles: true}))
+    expect(info.open).toBe(false)
+    info.showBriefly()
+    await info.updateComplete
+    iframe.contentDocument!.dispatchEvent(new WheelEvent("wheel", {bubbles: true}))
+    expect(info.open).toBe(false)
     await sendFloat("far-right")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float")?.getAttribute("aria-label")).toBe("Right float")
     expect(breadcrumb.shadowRoot!.querySelector(".position-float .icon-tabler-float-right")).not.toBeNull()
@@ -6116,8 +7091,30 @@ describe("DomEditor.execute()", () => {
 
       expect(execute).toHaveBeenCalledWith({type: "selectNode", path: rootPath})
       expect(toolbox.documentSelected).toBe(true)
-      expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Metadata"]')).not.toBeNull()
+      expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="document"]')).not.toBeNull()
     }
+  })
+
+  it("keeps dismissed Layouts lazy and refreshes their controls when showing a fresh document", async () => {
+    const {editor} = await mountEditor(editor => Object.assign(editor, {documentLayoutsDismissed: true}))
+    expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).toBeNull()
+    const host = editor as any
+    host.documentLayoutsDismissed = false
+    await editor.updateComplete
+    const bar = editor.shadowRoot!.querySelector(".document-layouts-bar")!
+    expect(bar).not.toBeNull()
+    host.documentLayoutsDismissed = true
+    await editor.updateComplete
+    host.documentLayout = {mode: "canvas", canConvert: true, zoom: 100}
+    await editor.updateComplete
+    expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("false")
+    host.documentLayoutsDismissed = false
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-layouts-bar")).toBe(bar)
+    expect(bar.querySelector('[data-mode="canvas"]')!.getAttribute("aria-pressed")).toBe("true")
+    host.htmlPending = true
+    await editor.updateComplete
+    expect(Array.from(bar.querySelectorAll<HTMLButtonElement>(".layout-preset"), button => button.disabled)).toEqual([true, true, true, true])
   })
 
   it("keeps the full-width Layouts bar in every layout and reflects live conversion availability", async () => {
@@ -6133,7 +7130,7 @@ describe("DomEditor.execute()", () => {
       }))
       await editor.updateComplete
       const bar = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-bar")!
-      expect(bar.querySelector("h2")!.textContent).toBe("Layouts")
+      expect(bar.querySelector("h2")!.textContent).toBe("Layouts & Recently opened")
       const cards = Array.from(bar.querySelectorAll<HTMLButtonElement>("button[data-mode]"))
       expect(cards.map(card => card.dataset.mode)).toEqual(["document", "canvas", "slides", "board"])
       expect(cards.filter(card => card.getAttribute("aria-pressed") === "true").map(card => card.dataset.mode)).toEqual([mode])
@@ -6260,7 +7257,7 @@ describe("DomEditor.execute()", () => {
       host.documentLayout = {...host.documentLayout, mode: action.mode}
       return true
     })
-    for(const mode of ["canvas", "slides", "board", "document", "board", "canvas"]) {
+    for(const mode of ["canvas", "slides", "board", "slides", "board", "document", "board", "canvas"]) {
       editor.shadowRoot!.querySelector<HTMLButtonElement>(`.document-layouts-bar [data-mode="${mode}"]`)!.click()
       await vi.waitFor(() => expect(host.documentLayoutConversionCount).toBe(0))
       snapshot()
@@ -6571,321 +7568,169 @@ describe("DomEditor.execute()", () => {
     }))
   })
 
-  it("omits summary and its subtree from the expanded outline while keeping body paths", async () => {
+  it("omits summary and formula descendants from outline data while preserving authored paths", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body</p></details>'
+    iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body<math><mi>x</mi></math></p></details><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math>'
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
-
-    expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([
-      {path: [0, 2], name: "Paragraph"},
-    ])
-    expect(breadcrumb.shadowRoot!.textContent).not.toContain("Summary")
-  })
-
-  it("omits inline and block formula subtrees from the expanded outline", async () => {
-    const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = '<p>Before <math><mrow><mi>x</mi></mrow></math> after</p><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math><p>End</p>'
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
     expect(breadcrumb.treeOpen).toBe(true)
-    expect(breadcrumb.tree!.children.map(item => ({path: item.path, name: item.name, children: item.children}))).toEqual([
-      {path: [0], name: "Paragraph", children: []},
-      {path: [2], name: "Paragraph", children: []},
-    ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph", "Paragraph",
-    ])
+    expect(breadcrumb.tree!.children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0], name: "Details"}, {path: [1], name: "Formula"}])
+    expect(breadcrumb.tree!.children[1]).toMatchObject({icon: "Formula", children: []})
+    expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0, 2], name: "Paragraph"}])
+    expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
   })
 
-  it("flattens sections in the document tree and shows their types beside structural items", async () => {
+  it("preserves section, figure, and mark semantics in outline tree data", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<div><p>hello</p><section></section></div>"
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    expect(breadcrumb.treeOpen).toBe(true)
-    expect(breadcrumb.shadowRoot!.querySelector("nav")?.classList.contains("tree-nav")).toBe(true)
-    expect(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item")).toHaveLength(1)
-    expect(breadcrumb.shadowRoot!.querySelector(".breadcrumb-list .item")?.textContent?.trim()).toBe("Document")
-    expect(breadcrumb.shadowRoot!.querySelector(".breadcrumb-list .tree-toggle-separator")
-      ?.previousElementSibling?.querySelector(".item-label")?.textContent?.trim()).toBe("Document")
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph",
+    iframe.contentDocument!.body.innerHTML = "<div><p><b>hello</b><img></p><section></section><figure><img><figcaption>Caption</figcaption></figure></div>"
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children.map(item => ({path: item.path, name: item.name}))).toEqual([
+      {path: [0, 0], name: "Paragraph"}, {path: [0, 2], name: "Image"},
     ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".section-item"))
-      .map(item => item.textContent).sort()).toEqual(["Division", "Section"])
-    const paragraph = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0"]')!
-    expect(paragraph.closest(".tree-row")?.getAttribute("style")).toContain("--tree-depth: 0")
-    paragraph.click()
-
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
   })
 
-  it("omits figure wrappers from the outline while retaining descendants and authored paths", async () => {
-    const {editor, iframe} = await mountEditor()
-    const source = iframe.contentDocument!
-    source.body.innerHTML = '<section><figure><img><figcaption>Caption</figcaption></figure><figure></figure></section>'
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item"), item => item.textContent?.trim())).toEqual(["Image"])
-    expect([...new Set(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".section-item"), item => item.textContent))]).toEqual(["Section"])
-    const image = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0"]')!
-    image.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 0]})
-    expect(source.querySelectorAll("figure")).toHaveLength(2)
-  })
-
-  it("shows Canvas with an artboard icon in the breadcrumb and document tree", async () => {
+  it("keeps canvas and slide layout entries in outline menu data", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body
     body.className = "ww-canvas"
     body.innerHTML = "<p>Canvas content</p>"
-    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(tree).toMatchObject({path: [], name: "Canvas", icon: "Canvas"})
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[0]]}},
-      source: iframe.contentWindow!,
-    }))
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    await vi.waitFor(() => expect(breadcrumb.shadowRoot!.querySelector('.item[data-path=""] .item-label')?.textContent).toBe("Canvas"))
-    const root = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path=""]')!
-    expect(root.getAttribute("aria-label")).toBe("Select Canvas")
-    expect(root.querySelector("svg.icon-tabler-artboard")).not.toBeNull()
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    root.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: []})
-  })
+    const canvasTree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(canvasTree).toMatchObject({path: [], name: "Canvas", icon: "Canvas", children: [
+      {path: [0], name: "Paragraph", children: []},
+    ]})
 
-  it("shows slides as numbered tree items without merging carousel sections into the breadcrumb", async () => {
-    const {editor, iframe} = await mountEditor()
-    const body = iframe.contentDocument!.body
     body.className = "ww-slides"
-    body.innerHTML = '<div class="ww-slides-viewport"><!--keep--><section class="ww-slide"><p>One</p><nav class="ww-slide-directions"><a>Next</a></nav></section><section class="ww-slide"><article><p>Two</p></article><nav class="ww-slide-directions"><a>Previous</a></nav></section><section class="ww-slide"></section></div><nav class="ww-slides-navigation"><a>1</a><a>2</a><a>3</a></nav>'
-    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
-    expect(tree).toEqual({path: [], name: "Slides", icon: "KeywordPresentation", children: [
-      {path: [0, 1], name: "Slide 1", icon: "Rectangle", children: [
-        {path: [0, 1, 0], name: "Paragraph", icon: "Paragraph", children: []},
-      ]},
-      {path: [0, 2], name: "Slide 2", icon: "Rectangle", children: [
-        {path: [0, 2, 0, 0], name: "Paragraph", icon: "Paragraph", children: [], sections: [
-          {path: [0, 2, 0], type: "article", name: "Article", icon: "Article"},
-        ]},
-      ]},
+    body.innerHTML = '<div class="ww-slides-viewport"><!--keep--><section class="ww-slide"><p>One</p></section><section class="ww-slide"><article><p>Two</p></article></section><section class="ww-slide"></section></div><nav class="ww-slides-navigation"><a>1</a><a>2</a><a>3</a></nav>'
+    const slidesTree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(slidesTree).toEqual({path: [], name: "Slides", icon: "KeywordPresentation", children: [
+      {path: [0, 1], name: "Slide 1", icon: "Rectangle", children: [{path: [0, 1, 0], name: "Paragraph", icon: "Paragraph", children: []}]},
+      {path: [0, 2], name: "Slide 2", icon: "Rectangle", children: [{path: [0, 2, 0, 0], name: "Paragraph", icon: "Paragraph", children: [], sections: [
+        {path: [0, 2, 0], type: "article", name: "Article", icon: "Article"},
+      ]}]},
       {path: [0, 3], name: "Slide 3", icon: "Rectangle", children: []},
     ]})
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {path: [tree, tree.children[1], tree.children[1].children[0]]}},
-      source: iframe.contentWindow!,
-    }))
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    await vi.waitFor(() => expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Slides", "Slide 2", "Paragraph"]))
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .section-item"), item => item.textContent)).toEqual(["Article"])
-    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.item[data-path="0,2"]')!.click()
-    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2]})
   })
 
-  it("omits mark wrappers from the document tree while retaining real descendants", async () => {
+  it("keeps board columns, cards, and widget sections in outline menu data", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<p><b>bold</b><span><img></span></p>"
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-expander")!.click()
-    await breadcrumb.updateComplete
-
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph",
-      "Image",
-    ])
-    expect(breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,1,0"]')).not.toBeNull()
+    const body = iframe.contentDocument!.body
+    body.className = "ww-board"
+    body.innerHTML = '<section class="ww-board-column"><h2>Backlog</h2><!--keep--><article class="ww-board-card"><p>First</p><section><custom-widget>Widget</custom-widget></section></article><article class="ww-board-card"><p>Second</p></article></section><section class="ww-board-column"><h2>Done</h2><article class="ww-board-card"><p>Third</p></article></section>'
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree).toEqual({path: [], name: "Board", icon: "Columns", children: [
+      {path: [0], name: "Column 1", icon: "BoardColumn", children: [
+        {path: [0, 0], name: "Column Heading", icon: "Heading", children: []},
+        {path: [0, 2], name: "Card 1", icon: "BoardCard", children: [
+          {path: [0, 2, 0], name: "Paragraph", icon: "Paragraph", children: []},
+          {path: [0, 2, 1, 0], name: "custom-widget", icon: "Packages", children: [], sections: [
+            {path: [0, 2, 1], type: "section", name: "Section", icon: "Section"},
+          ]},
+        ]},
+        {path: [0, 3], name: "Card 2", icon: "BoardCard", children: [
+          {path: [0, 3, 0], name: "Paragraph", icon: "Paragraph", children: []},
+        ]},
+      ]},
+      {path: [1], name: "Column 2", icon: "BoardColumn", children: [
+        {path: [1, 0], name: "Column Heading", icon: "Heading", children: []},
+        {path: [1, 1], name: "Card 1", icon: "BoardCard", children: [
+          {path: [1, 1, 0], name: "Paragraph", icon: "Paragraph", children: []},
+        ]},
+      ]},
+    ]})
   })
 
-  it("hides picture implementation images and media sources from the document tree", async () => {
+  it("hides picture implementation images and media sources from outline data", async () => {
     const {editor, iframe} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = `
-      <picture><source srcset="small.png"><img src="large.png"></picture>
-      <video><source src="movie.mp4"></video>
-    `
-
+    iframe.contentDocument!.body.innerHTML = '<picture><source srcset="small.png"><img src="large.png"></picture><video><source src="movie.mp4"></video>'
     const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
     expect(tree.children.map(child => child.name)).toEqual(["Image", "Video"])
-    expect(tree.children[0].children).toEqual([])
-    expect(tree.children[1].children).toEqual([])
+    expect(tree.children.map(child => child.children)).toEqual([[], []])
   })
 
-  it("opens the subtree represented by another breadcrumb separator", async () => {
+  it("opens the outline from a breadcrumb separator and preserves the full path", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><ul><li><p></p></li></ul><aside></aside></section>"
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {
-              path: [0, 0],
-              name: "List",
-              icon: "List",
-              sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
-            },
-            {path: [0, 0, 0], name: "List Item", icon: "Lists"},
-            {path: [0, 0, 0, 0], name: "Paragraph", icon: "Paragraph"},
-          ],
-        },
-      },
-      source: editorWindow,
-    }))
+    window.dispatchEvent(new MessageEvent("message", {data: {type: selectionChangeEvent, detail: {path: [
+      {path: [], name: "Document", icon: "Document"},
+      {path: [0, 0], name: "List", icon: "List", sections: [{path: [0], type: "section", name: "Section", icon: "Section"}]},
+      {path: [0, 0, 0], name: "List Item", icon: "Lists"},
+      {path: [0, 0, 0, 0], name: "Paragraph", icon: "Paragraph"},
+    ]}}, source: editorWindow}))
     await editor.updateComplete
-
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    const separators = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")
-    expect(separators).toHaveLength(3)
-
-    separators[1].click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    expect(breadcrumb.treeOpen).toBe(true)
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item")).map(item => item.textContent?.trim())).toEqual([
-      "Document",
-      "List",
-    ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "List Item",
-      "Paragraph",
-    ])
-    expect(breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0,0,0"]')?.closest(".tree-row")?.getAttribute("style")).toContain("--tree-depth: 0")
-  })
-
-  it("shows a gap selection between tree items without adding a row", async () => {
-    const {editor, iframe, editorWindow} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<ul><li></li><li></li></ul>"
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {path: [0], name: "List", icon: "List"},
-          ],
-          gap: {parentPath: [0], offset: 1},
-        },
-      },
-      source: editorWindow,
-    }))
-    await editor.updateComplete
-
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    const marker = breadcrumb.shadowRoot!.querySelector<HTMLElement>(".tree-gap-indicator")!
-    expect(marker.classList.contains("tree-gap-indicator-before")).toBe(true)
-    expect(marker.closest(".tree-node")?.querySelector<HTMLButtonElement>('.tree-item[data-path="0,1"]')).not.toBeNull()
-    expect(breadcrumb.shadowRoot!.querySelectorAll(".tree-node")).toHaveLength(3)
-    expect(breadcrumb.shadowRoot!.querySelectorAll(".tree-gap-indicator")).toHaveLength(1)
-  })
-
-  it("moves the open subtree to a higher selected element", async () => {
-    const {editor, iframe, editorWindow} = await mountEditor()
-    iframe.contentDocument!.body.innerHTML = "<section><ul><li><article><p></p></article></li></ul></section>"
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {
-              path: [0, 0], name: "List", icon: "List",
-              sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
-            },
-            {path: [0, 0, 0], name: "List Item", icon: "Lists"},
-          ],
-        },
-      },
-      source: editorWindow,
-    }))
-    await editor.updateComplete
-
-    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
-    await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")[2].click()
+    breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>(".separator-trigger")[1].click()
     await editor.updateComplete
     await breadcrumb.updateComplete
     expect(breadcrumb.treeOpen).toBe(true)
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {
-        type: selectionChangeEvent,
-        detail: {
-          path: [
-            {path: [], name: "Document", icon: "Document"},
-            {
-              path: [0, 0], name: "List", icon: "List",
-              sections: [{path: [0], type: "section", name: "Section", icon: "Section"}],
-            },
-            {path: [0, 0, 0], name: "List Item", icon: "Lists"},
-            {
-              path: [0, 0, 0, 0, 0], name: "Paragraph", icon: "Paragraph",
-              sections: [{path: [0, 0, 0, 0], type: "article", name: "Article", icon: "Article"}],
-            },
-          ],
-        },
-      },
-      source: editorWindow,
-    }))
-    await editor.updateComplete
-    await breadcrumb.updateComplete
-
-    expect(breadcrumb.treeOpen).toBe(true)
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item")).map(item => item.textContent?.trim())).toEqual([
-      "Document",
-      "List",
-      "List Item",
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual([
+      "Document", "List", "List Item", "Paragraph",
     ])
-    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".tree-item")).map(item => item.textContent?.trim())).toEqual([
-      "Paragraph",
-    ])
+    expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
   })
 
-  it("keeps the open tree on editor pointer interaction", async () => {
+  it.each([false, true])("collapses the breadcrumb tree only for authored document changes (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const doc = iframe.contentDocument!
+    doc.body.innerHTML = "<section><custom-widget><p>Original</p></custom-widget><!--comment--></section>"
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await editor.updateComplete
+    if(isolated) {
+      host.documentTreeObserver.disconnect()
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    }
+    const flush = async () => {
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
+        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML}}))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+    }
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    const openTree = async () => {
+      breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
+      await editor.updateComplete
+      await breadcrumb.updateComplete
+      expect(breadcrumb.treeOpen).toBe(true)
+    }
+    await openTree()
+    await flush()
+    expect(breadcrumb.treeOpen).toBe(true)
+    doc.body.classList.add("◆test-marker")
+    await flush()
+    expect(breadcrumb.treeOpen).toBe(true)
+    doc.body.classList.remove("◆test-marker")
+    await flush()
+    expect(breadcrumb.treeOpen).toBe(true)
+
+    for(const change of [
+      () => { doc.querySelector("p")!.firstChild!.textContent = "Edited" },
+      () => { doc.querySelector("custom-widget")!.setAttribute("option", "changed") },
+      () => { doc.querySelector("section")!.append(doc.createElement("aside")) },
+      () => { doc.head.append(doc.createElement("meta")) },
+    ]) {
+      change()
+      await flush()
+      expect(breadcrumb.treeOpen).toBe(false)
+      expect(host.breadcrumbVisible).toBe(true)
+      await openTree()
+    }
+  })
+
+  it("closes the outline popup on editor pointer interaction", async () => {
     const {editor, iframe} = await mountEditor()
     const focus = vi.spyOn(iframe, "focus")
     iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
     expect(breadcrumb.treeOpen).toBe(true)
@@ -6894,7 +7739,8 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await breadcrumb.updateComplete
 
-    expect(breadcrumb.treeOpen).toBe(true)
+    expect(breadcrumb.treeOpen).toBe(false)
+    expect(breadcrumb.shadowRoot!.querySelector("#document-tree")).toBeNull()
     expect(focus).toHaveBeenCalledWith({preventScroll: true})
   })
 
@@ -6913,7 +7759,7 @@ describe("DomEditor.execute()", () => {
     Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"))
       .forEach(expectPointerDownToBePrevented)
 
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
 
     Array.from(breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"))
@@ -6969,14 +7815,10 @@ describe("DomEditor.execute()", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!
       .querySelector(".toolbox-tab-label")?.textContent).toBe("Widget")
 
-    const treeToggle = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")
-    treeToggle?.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
-    const treeItem = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0"]')!
-    expect(treeItem.classList.contains("node-selected")).toBe(true)
-    expect(treeItem.classList.contains("capture-selected")).toBe(true)
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
-    await breadcrumb.updateComplete
+    const outline = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    expect(outline.groups[0].buttons[0]).toMatchObject({label: "Paragraph", action: "outline:0", selected: true})
 
     window.dispatchEvent(new MessageEvent("message", {
       data: {type: selectionChangeEvent, detail: {...detail, capture: false}},
@@ -6987,8 +7829,7 @@ describe("DomEditor.execute()", () => {
     const updatedItems = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
     expect(updatedItems[1].classList.contains("capture-selected")).toBe(false)
     expect(updatedItems[1].classList.contains("node-selected")).toBe(true)
-    expect(treeItem.classList.contains("node-selected")).toBe(true)
-    expect(treeItem.classList.contains("capture-selected")).toBe(false)
+    expect(breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!.groups[0].buttons[0]).toMatchObject({selected: true})
 
     for(const selection of [
       {nodeSelected: false},
@@ -7001,11 +7842,9 @@ describe("DomEditor.execute()", () => {
       await editor.updateComplete
       await breadcrumb.updateComplete
       const unmarkedItems = breadcrumb.shadowRoot!.querySelectorAll<HTMLButtonElement>("button.item")
-      const unmarkedTreeItem = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>('.tree-item[data-path="0"]')!
       expect(unmarkedItems[1].classList.contains("node-selected")).toBe(false)
       expect(unmarkedItems[1].classList.contains("capture-selected")).toBe(false)
-      expect(unmarkedTreeItem.classList.contains("node-selected")).toBe(false)
-      expect(unmarkedTreeItem.classList.contains("capture-selected")).toBe(false)
+      expect(breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!.groups[0].buttons[0]).toMatchObject({selected: true})
     }
   })
 
@@ -7069,6 +7908,9 @@ describe("DomEditor.execute()", () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    await ribbon.updateComplete
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await menu.updateComplete
     menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Settings"]')!.click()
@@ -7163,66 +8005,24 @@ describe("DomEditor.execute()", () => {
     expect(getComputedStyle(breadcrumb).display).toBe("none")
   })
 
-  it("expands the closed toolbox background with the breadcrumb and keeps open panes attached to their tabs", async () => {
+  it("keeps the breadcrumb and toolbox bars at 30px while the outline popup is open", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<div><p></p></div>"
-
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
-    const tabsArea = tabs.parentElement!
-    const stage = editor.shadowRoot!.querySelector<HTMLElement>(".document-stage")!
-    expect(getComputedStyle(breadcrumb).gridColumn).toBe("1")
-    expect(getComputedStyle(toolbox).gridColumn).toBe("2")
-    expect(getComputedStyle(toolbox).gridRow).toBe("2")
-    expect(getComputedStyle(stage).gridColumn).toBe("1 / -1")
-    expect(tabsArea.className).toBe("toolbox-tabs-area")
-    expect(getComputedStyle(tabsArea).gridRow).toBe("1 / -1")
-    expect(getComputedStyle(tabsArea).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
-    expect(getComputedStyle(tabs).alignItems).toBe("flex-end")
-    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
-    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
-    expect(getComputedStyle(toolbox).gridTemplateRows).toBe("30px minmax(0, 1fr)")
-    expect(getComputedStyle(tabs).borderBottomColor).toBe("#a8a8a8")
-    expect(getComputedStyle(tabs).height).toBe("30px")
-
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    expect(getComputedStyle(breadcrumb).height).toBe("30px")
+    expect(getComputedStyle(tabs).height).toBe("30px")
+    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
-
     expect(breadcrumb.treeOpen).toBe(true)
-    expect(getComputedStyle(tabs).borderBottomWidth).toBe("0.5px")
+    expect(getComputedStyle(breadcrumb).height).toBe("30px")
     expect(getComputedStyle(tabs).height).toBe("30px")
-
-    toolbox.selectTool("Edit")
-    await toolbox.updateComplete
-    expect(getComputedStyle(toolbox).gridRow).toBe("2 / 4")
-    expect(getComputedStyle(toolbox).gridTemplateRows).toBe("30px minmax(0, 1fr)")
-    expect(getComputedStyle(tabsArea).gridRow).toBe("1")
-    expect(getComputedStyle(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!).gridRow).toBe("2")
-    expect(getComputedStyle(tabs).backgroundColor).toBe(getComputedStyle(breadcrumb).backgroundColor)
-
-    toolbox.selectTool(null)
-    await toolbox.updateComplete
-    expect(getComputedStyle(tabsArea).gridRow).toBe("1 / -1")
-    expect(getComputedStyle(tabs).height).toBe("30px")
-
-    vi.useFakeTimers()
-    try {
-      breadcrumb.collapseTree()
-      await breadcrumb.updateComplete
-      expect(breadcrumb.hasAttribute("tree-open")).toBe(false)
-      expect(breadcrumb.hasAttribute("tree-animating")).toBe(true)
-
-      await vi.advanceTimersByTimeAsync(179)
-      expect(breadcrumb.hasAttribute("tree-animating")).toBe(true)
-      await vi.advanceTimersByTimeAsync(1)
-      await breadcrumb.updateComplete
-      expect(breadcrumb.hasAttribute("tree-animating")).toBe(false)
-    }
-    finally { vi.useRealTimers() }
-    expect(getComputedStyle(tabs).borderBottomColor).toBe("#a8a8a8")
+    expect(breadcrumb.shadowRoot!.querySelector("#document-tree")).not.toBeNull()
+    expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
   })
 
   it("collapses the breadcrumb tree when the ribbon is collapsed", async () => {
@@ -7231,7 +8031,7 @@ describe("DomEditor.execute()", () => {
 
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
-    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".tree-toggle-separator .separator-trigger")!.click()
+    breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await editor.updateComplete
     await breadcrumb.updateComplete
     expect(breadcrumb.treeOpen).toBe(true)
@@ -7339,6 +8139,80 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
   })
 
+  it.each(["select", "draw", "lines", "curves"] as const)("routes graphic %s mode through the editor action", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+        graphic: {active: true, capture: true, mode: mode === "select" ? "draw" : "select"},
+      }}, source: editorWindow,
+    }))
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    const modeButton = mode === "select"
+      ? keyboard.shadowRoot!.querySelector<HTMLButtonElement>(".tabs button")!
+      : [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>(".drawing-mode")]
+        .find(button => button.textContent?.trim() === (mode === "draw" ? "Freehand" : mode === "lines" ? "Lines" : "Curves"))!
+    modeButton.click()
+    expect(execute).toHaveBeenCalledWith(mode !== "select"
+      ? {type: "setGraphicMode", mode, paint: {fill: "#ffffff", stroke: "#334155", "stroke-width": "4", opacity: "1"}}
+      : {type: "setGraphicMode", mode})
+  })
+
+  it.each(["draw", "lines", "curves"] as const)("updates %s paint from the keyboard presets and opacity control", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+        graphic: {active: true, capture: true, mode},
+      }}, source: editorWindow,
+    }))
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    const paint = {fill: "#ffffff", stroke: "#5b9bd5", "stroke-width": "8", opacity: "1"}
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#5b9bd5, 8 px brush"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "setGraphicDrawPaint", paint})
+    const opacity = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Drawing opacity"]')!
+    opacity.value = "0.5"
+    opacity.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {...paint, opacity: "0.5"}})
+  })
+
+  it("keeps the completed drawing tab idle and rearms it with the newly selected brush", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const updateMode = async (mode: "select" | "curves") => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {
+          path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+          graphic: {active: true, capture: true, mode, selectionCount: mode === "select" ? 1 : 0,
+            ...(mode === "select" ? {shape: "bezier"} : {})},
+        }}, source: editorWindow,
+      }))
+      await editor.updateComplete
+    }
+    await updateMode("curves")
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    await updateMode("select")
+    await keyboard.updateComplete
+    expect(keyboard.shadowRoot!.querySelector(".drawing-panel")!.getAttribute("aria-label")).toBe("Curves drawing")
+    expect(keyboard.shadowRoot!.querySelectorAll('.brush[aria-pressed="true"]')).toHaveLength(0)
+    const opacity = keyboard.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Drawing opacity"]')!
+    opacity.value = "0.5"
+    opacity.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
+    expect(execute).not.toHaveBeenCalled()
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#70ad47, 8 px brush"]')!.click()
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "setGraphicMode", mode: "curves",
+      paint: {fill: "#ffffff", stroke: "#70ad47", "stroke-width": "8", opacity: "0.5"}})
+  })
+
   it("shows shape input for captured graphics and routes styled keys", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -7354,7 +8228,7 @@ describe("DomEditor.execute()", () => {
     await select({active: true, capture: false})
     expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBeNull()
     await select({active: true, capture: true})
-    const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-shape-keyboard")!
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
     expect(keyboard.closest(".document-stage")).not.toBeNull()
     const paint = {fill: "#60a5fa", stroke: "#334155", "stroke-width": "8", opacity: "0.5"}
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
@@ -7379,6 +8253,27 @@ describe("DomEditor.execute()", () => {
     execute.mockClear()
     keyboard.dispatchEvent(new CustomEvent("shape-keyboard-command", {detail: {shape: "heart", paint}, bubbles: true, composed: true}))
     expect(execute).not.toHaveBeenCalled()
+  })
+
+  it.each(["mark:a", "mark-detail:a"])("focuses Web address after adding a link with %s", async label => {
+    const {editor, editorWindow} = await mountEditor()
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async () => {
+      dispatchMarkState(editor, editorWindow, {canMark: true, marks: ["a"], attributes: {a: {}}, link: {
+        active: true, identity: "new-link", href: "", attributes: {}, text: "Text", targets: [],
+      }})
+    })
+    editor.shadowRoot!.querySelector("dom-editor-toolbox")!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label}, bubbles: true, composed: true,
+    }))
+    await editor.updateComplete
+    await Promise.resolve()
+    await vi.waitFor(() => {
+      const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-link-keyboard")!
+      expect(keyboard?.shadowRoot?.activeElement).toBe(keyboard?.shadowRoot?.querySelector('[aria-label="Web address"]'))
+      expect(keyboard).not.toBeNull()
+    })
+    expect(execute).toHaveBeenCalledWith({type: "toggleMark", mark: "a"})
   })
 
   it("shows, closes, reopens, and routes the link keyboard without losing the selection", async () => {
@@ -7417,6 +8312,7 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("dom-editor-link-keyboard")).toBe(keyboard)
     expect(keyboard.closest("section")!.hasAttribute("hidden")).toBe(false)
+    await vi.waitFor(() => expect(keyboard.shadowRoot!.activeElement).toBe(keyboard.shadowRoot!.querySelector('[aria-label="Web address"]')))
     expect(focusEditor).toHaveBeenCalled()
   })
 
@@ -7524,6 +8420,41 @@ describe("DomEditor.execute()", () => {
     expect(focusEditor).toHaveBeenCalled()
   })
 
+  it("shows the block formula keyboard only during capture selection", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
+    const select = async (capture: boolean) => {
+      window.dispatchEvent(new MessageEvent("message", {
+        data: {type: selectionChangeEvent, detail: {
+          path: [{path: [], name: "Document"}, {path: [0], name: "Formula"}],
+          math: {active: true, display: "block"}, nodeSelected: true, capture,
+        }}, source: editorWindow,
+      }))
+      await editor.updateComplete
+    }
+    await select(false)
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Show formula keyboard"]')).toBeNull()
+    await select(true)
+    const keyboard = editor.shadowRoot!.querySelector<HTMLElement>("dom-editor-math-keyboard")!
+    expect(keyboard).not.toBeNull()
+    keyboard.dispatchEvent(new CustomEvent("math-keyboard-close", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector('[aria-label="Show formula keyboard"]')).not.toBeNull()
+    await select(false)
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[aria-label="Show formula keyboard"]')).toBeNull()
+    keyboard.dispatchEvent(new CustomEvent("math-keyboard-command", {
+      detail: {command: "text:x"}, bubbles: true, composed: true,
+    }))
+    expect(execute).not.toHaveBeenCalled()
+    await select(true)
+    editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show formula keyboard"]')!.click()
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).not.toBeNull()
+  })
+
   it("allows ribbon inputs to receive pointer focus", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
@@ -7586,7 +8517,7 @@ describe("DomEditor.execute()", () => {
     await heading.updateComplete
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Heading"]')!.click()
-    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "h1"})
+    expect(execute).toHaveBeenCalledWith({type: "insertElement", tag: "h1"})
 
     heading.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!.click()
     await heading.updateComplete
@@ -7594,7 +8525,7 @@ describe("DomEditor.execute()", () => {
     await submenu.updateComplete
     submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Heading 3"]')!.click()
 
-    expect(execute).toHaveBeenLastCalledWith({type: "setBlockType", tag: "h3"})
+    expect(execute).toHaveBeenLastCalledWith({type: "insertElement", tag: "h3"})
 
     expect(submenu.shadowRoot!.querySelector('button[title="Divider"]')).toBeNull()
   })
@@ -7809,6 +8740,34 @@ describe("cloud service settings integration", () => {
   }
   const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), {status, headers: {"Content-Type": "application/json"}})
 
+  it.each([false, true])("disconnects the document provider when changing services or selecting Local (opaque: %s)", async opaque => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const disconnect = vi.fn()
+    const frameWindow = iframe.contentWindow as any
+    frameWindow.editor = {doc: {disconnectCollaboration: disconnect, doc: {clientID: 1}, setUser: vi.fn()}}
+    host.editorOpaque = opaque
+    const control = vi.spyOn(host, "postFrameControl")
+    vi.spyOn(host, "loginToBackend").mockResolvedValue(undefined)
+    const services = [service, {...service, id: "cloud-b", url: "https://other.example"}]
+    for(const next of ["cloud-b", null]) {
+      host.settings = {...defaultAppSettings(), cloudServices: services, activeCloudServiceId: service.id}
+      host.collaborationRoom = "old-room"
+      host.sharedDocumentToken = "old-token"
+      const body = iframe.contentDocument!.body
+      const content = body.innerHTML
+      host.handleAppSettingsChange(new CustomEvent("app-settings-change", {detail: {...host.settings, activeCloudServiceId: next}}))
+      if(opaque) expect(control).toHaveBeenCalledWith("disconnect-collaboration")
+      else expect(disconnect).toHaveBeenCalledTimes(next === null ? 2 : 1)
+      expect(host.collaborationRoom).toBeNull()
+      expect(host.sharedDocumentToken).toBeNull()
+      expect(host.collaborationStatus).toBe("disconnected")
+      expect(iframe.contentDocument!.body).toBe(body)
+      expect(body.innerHTML).toBe(content)
+      control.mockClear()
+    }
+  })
+
   it("uses the configured provider and saved token, and preserves the document ID after re-sign-in", async () => {
     vi.stubGlobal("fetch", vi.fn(async(url: string) => response(String(url).endsWith("/session") ? session : {documents: []})))
     const {editor} = await mountEditor()
@@ -7844,6 +8803,8 @@ describe("cloud service settings integration", () => {
     const tab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
     await tab.updateComplete
     expect(tab.shadowRoot!.querySelector(".warning-bubble")?.getAttribute("aria-label")).toContain("sign in")
+    tab.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
+    await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await menu.updateComplete
     expect(menu.shadowRoot!.querySelector('[data-action="Settings"] .warning-bubble')?.getAttribute("aria-label")).toContain("expired")
@@ -7969,4 +8930,239 @@ it("updates the dev-server username without reconnecting or losing the saved doc
   expect(host.backendDocumentId).toBe("current-document")
   expect(host.username).toBe("Dev Ada")
   expect(post).toHaveBeenCalledWith("username", {username: "Dev Ada"})
+})
+
+
+describe("list toolbox type changes", () => {
+  it("forwards scoped list commands and rejects invalid types and scopes", async () => {
+    const editor = new DomEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const selectionTypes = [{localName: "ul", namespaceURI: "http://www.w3.org/1999/xhtml"}]
+    const listener = (editor as any).editingUIListeners["list-type-change"]
+    listener(new CustomEvent("list-type-change", {detail: {listType: "ol", selectionTypes}}))
+    expect(execute).toHaveBeenCalledWith({type: "setListType", listType: "ol", selectionTypes})
+    for(const detail of [{listType: "dl", selectionTypes}, {listType: "ol"}, {listType: "ul", selectionTypes: []},
+      {listType: "ol", selectionTypes: [{localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}]},
+      {listType: "ol", selectionTypes: [{localName: "ul", namespaceURI: "http://www.w3.org/2000/svg"}]}]) {
+      listener(new CustomEvent("list-type-change", {detail}))
+    }
+    expect(execute).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+  })
+})
+
+describe("heading toolbox level changes", () => {
+  it("forwards a scoped heading command and rejects invalid levels and scopes", async () => {
+    const editor = new DomEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const selectionType = {localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml"}
+    const listener = (editor as any).editingUIListeners["heading-level-change"]
+    listener(new CustomEvent("heading-level-change", {detail: {level: "h4", selectionType}}))
+    expect(execute).toHaveBeenCalledWith({type: "setBlockType", tag: "h4", selectionType})
+    for(const detail of [{level: "h7", selectionType}, {level: "h1"},
+      {level: "h1", selectionType: {...selectionType, localName: "p"}},
+      {level: "h1", selectionType: {...selectionType, namespaceURI: "http://www.w3.org/2000/svg"}}]) {
+      listener(new CustomEvent("heading-level-change", {detail}))
+    }
+    expect(execute).toHaveBeenCalledTimes(1)
+    await Promise.resolve()
+  })
+})
+
+describe("document collaboration menu", () => {
+  it("keeps the editor path and unrelated URL state when generating an open link", async () => {
+    const {editor} = await mountEditor()
+    history.replaceState({previous: true}, "", "/editor/?other=a+b&open=old#part%20one")
+    ;(editor as any).updateDocumentURL("https://storage.example/api/documents/new%2Flesson")
+    const url = new URL(location.href)
+    expect(url.pathname).toBe("/editor/")
+    expect(url.search).toBe("?other=a+b&open=https%3A%2F%2Fstorage.example%2Fapi%2Fdocuments%2Fnew%252Flesson")
+    expect(url.hash).toBe("#part%20one")
+    expect(history.state).toEqual({previous: true})
+    history.replaceState({}, "", "/")
+  })
+
+  it("keeps the editor path, unrelated query, and hash in live-session learner links", async () => {
+    const {editor} = await mountEditor()
+    history.replaceState({}, "", "/editor/?other=keep&session=collab&source=local&open=old#anchor")
+    const link = new URL((editor as any).liveSessionShareLink("lesson-1", "a".repeat(32)))
+    expect(link.pathname).toBe("/editor/")
+    expect(link.searchParams.get("other")).toBe("keep")
+    expect(link.searchParams.get("liveSession")).toBe("lesson-1")
+    expect(link.searchParams.get("liveToken")).toBe("a".repeat(32))
+    expect(link.searchParams.get("role")).toBe("learner")
+    expect(link.searchParams.has("session")).toBe(false)
+    expect(link.searchParams.has("source")).toBe(false)
+    expect(link.searchParams.has("open")).toBe(false)
+    expect(link.hash).toBe("#anchor")
+    history.replaceState({}, "", "/")
+  })
+
+  it("enables and revokes editing links through the server for a saved document", async () => {
+    const {editor} = await mountEditor()
+    history.replaceState({}, "", "/editor/?other=keep&session=collab&share=old&liveSession=old&liveToken=old&role=host#section")
+    const host = editor as any
+    const setDocumentSharing = vi.fn().mockResolvedValueOnce({enabled: true, token: "editing-token"}).mockResolvedValueOnce({enabled: false})
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
+    host.backendDocumentId = "saved"
+    host.storageLocation = "development-server"
+    host.collaborationRoom = "document-saved"
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(setDocumentSharing).toHaveBeenCalledWith("saved", true)
+    const link = new URL(host.collaborationLink)
+    expect(link.pathname).toBe("/editor/")
+    expect(link.searchParams.get("open")).toBe("http://localhost:1234/api/shared-documents/editing-token")
+    expect(link.searchParams.get("other")).toBe("keep")
+    expect(link.searchParams.has("session")).toBe(false)
+    expect(link.searchParams.has("share")).toBe(false)
+    expect(link.searchParams.has("liveSession")).toBe(false)
+    expect(link.searchParams.has("liveToken")).toBe(false)
+    expect(link.searchParams.has("role")).toBe(false)
+    expect(link.hash).toBe("#section")
+    history.replaceState({}, "", "/")
+    expect(host.linkSharingEnabled).toBe(true)
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: false}}))
+    expect(setDocumentSharing).toHaveBeenLastCalledWith("saved", false)
+    expect(host.collaborationLink).toBe("")
+  })
+
+  it("prompts before moving a local document and does nothing when cancelled", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const save = vi.spyOn(host, "saveBackendDocument").mockResolvedValue(true)
+    const confirm = vi.fn().mockReturnValue(false)
+    vi.stubGlobal("confirm", confirm)
+    const request = host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    expect(dialog.textContent).toContain("Move this document to the server")
+    expect(confirm).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
+    dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+    await request
+    expect(save).not.toHaveBeenCalled()
+    expect(host.linkSharingBusy).toBe(false)
+    expect(host.linkSharingEnabled).toBe(false)
+  })
+
+  it("moves a local document before creating an editing link", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const setDocumentSharing = vi.fn().mockResolvedValue({enabled: true, token: "editing-token"})
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
+    host.fileHandle = {name: "Local.html"}
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    vi.spyOn(host, "saveBackendDocument").mockImplementation(async () => {
+      expect(setDocumentSharing).not.toHaveBeenCalled()
+      host.backendDocumentId = "moved"
+      host.storageLocation = "development-server"
+      return true
+    })
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    const request = host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    expect(setDocumentSharing).not.toHaveBeenCalled()
+    dialog.querySelector<HTMLButtonElement>(".primary")!.click()
+    await request
+    expect(reload).toHaveBeenCalledOnce()
+    expect(host.fileHandle).toBeNull()
+    expect(host.collaborationRoom).toBe("document-moved")
+    expect(new URL(host.syncUrl).searchParams.get("session")).toBe("document-moved")
+    expect(setDocumentSharing).toHaveBeenCalledWith("moved", true)
+  })
+
+  it("does not enable sharing when the move fails or the document is replaced during the request", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const setDocumentSharing = vi.fn()
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", setDocumentSharing}
+    vi.spyOn(editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!, "confirmLinkSharing").mockResolvedValue(true)
+    vi.spyOn(host, "saveBackendDocument").mockResolvedValue(undefined)
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(setDocumentSharing).not.toHaveBeenCalled()
+    expect(host.collaborationError).toContain("Save the document")
+    host.backendDocumentId = "original"
+    host.storageLocation = "development-server"
+    host.collaborationRoom = "document-original"
+    setDocumentSharing.mockImplementation(async () => {
+      host.backendDocumentId = "replacement"
+      return {enabled: true, token: "old-token"}
+    })
+    await host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    expect(host.linkSharingEnabled).toBe(false)
+  })
+
+  it("does not move a replacement document after link sharing was confirmed", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const save = vi.spyOn(host, "saveBackendDocument").mockResolvedValue(true)
+    const request = host.handleLinkSharingChange(new CustomEvent("link-sharing-change", {detail: {enabled: true}}))
+    const dialog = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    host.clearDocumentCollaboration()
+    dialog.querySelector<HTMLButtonElement>(".primary")!.click()
+    await request
+    expect(save).not.toHaveBeenCalled()
+    expect(host.linkSharingBusy).toBe(false)
+  })
+})
+
+
+it("opens a server editing link without an account and passes its token to collaboration", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  const token = "a".repeat(43)
+  const session = {kind: "webwriter-dev-server", version: 1, authentication: "none", user: {id: "local", name: "Local"},
+    apiBaseUrl: "http://localhost:1234/api", collaborationUrl: "ws://localhost:1234", adminUrl: "http://localhost:1234/admin", capabilities: ["documents", "collaboration"]}
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(session), {headers: {"Content-Type": "application/json"}}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({document: {id: "shared", title: "Shared", format: "html", content: "<p>Editable</p>"}}), {headers: {"Content-Type": "application/json"}}))
+  vi.stubGlobal("fetch", fetch)
+  const reload = vi.spyOn(host, "reloadDocument").mockResolvedValue(undefined)
+  await host.restoreLinkedDocument(`http://localhost:1234/api/shared-documents/${token}`)
+  expect(reload).toHaveBeenCalledWith("<p>Editable</p>", false, "http://localhost:1234/api/documents/shared", true)
+  expect(host.backendDocumentId).toBe("shared")
+  expect(new URL(host.syncUrl).searchParams.get("session")).toBe("document-shared")
+  expect(new URL(host.syncUrl).searchParams.get("share")).toBe(token)
+  expect(host.previewActive).toBe(false)
+  expect(fetch.mock.calls.every(([, init]) => !init.headers.Authorization)).toBe(true)
+})
+
+it("moves a server Save As copy into its own collaboration room", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  host.backendDocumentId = "original"
+  host.collaborationRoom = "document-original"
+  host.sharedDocumentToken = "original-token"
+  host.collaborationLink = "original-link"
+  host.linkSharingEnabled = true
+  host.backendClient = {apiBaseUrl: "http://localhost:1234/api", createDocument: vi.fn().mockResolvedValue({id: "copy", title: "Copy", format: "html", content: "<p>Copy</p>"})}
+  mockSaveSnapshot(editor, "<p>Copy</p>")
+  const reconnect = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+  await host.saveBackendDocument(true)
+  expect(reconnect).toHaveBeenCalledOnce()
+  expect(host.collaborationRoom).toBe("document-copy")
+  expect(host.sharedDocumentToken).toBeNull()
+  expect(host.linkSharingEnabled).toBe(false)
+  expect(new URL(location.href).searchParams.get("open")).toBe("http://localhost:1234/api/documents/copy")
+})
+
+it("preserves the editing capability URL when saving a shared document", async () => {
+  const {editor} = await mountEditor()
+  const host = editor as any
+  const reference = `http://localhost:1234/api/shared-documents/${"a".repeat(43)}`
+  const url = new URL(location.href)
+  url.searchParams.set("open", reference)
+  history.replaceState(null, "", url)
+  host.backendDocumentId = "shared"
+  host.collaborationRoom = "document-shared"
+  host.sharedDocumentToken = "a".repeat(43)
+  host.backendClient = {apiBaseUrl: "http://localhost:1234/api", updateDocument: vi.fn().mockResolvedValue({id: "shared", title: "Shared", format: "html"})}
+  mockSaveSnapshot(editor, "<p>Edited</p>")
+  await host.saveBackendDocument()
+  expect(new URL(location.href).searchParams.get("open")).toBe(reference)
+  expect(host.sharedDocumentToken).toBe("a".repeat(43))
 })

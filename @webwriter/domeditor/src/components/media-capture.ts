@@ -2,7 +2,8 @@ import {mediaCaptureModes, type MediaCaptureMode} from "../media"
 import {adoptStylesheet, createStylesheet} from "../utility"
 
 const stylesheet = createStylesheet(`
-  :host { font: 14px/1.4 system-ui, sans-serif; color: #343740; }
+  :host { font: 14px/1.4 system-ui, sans-serif; color: #343740; user-select: none; -webkit-user-select: none; }
+  input, select { user-select: text; -webkit-user-select: text; }
   dialog {
     box-sizing: border-box; width: min(30rem, calc(100vw - 2rem));
     max-height: calc(100vh - 2rem); overflow: auto; padding: 1.1rem;
@@ -65,7 +66,6 @@ export class MediaCapture {
   private readonly permissions = new Map<string, PermissionStatus>()
   private stream: MediaStream | null = null
   private recorder: MediaRecorder | null = null
-  private reader: FileReader | null = null
   private state: CaptureState = "idle"
   private generation = 0
   private devicesGeneration = 0
@@ -75,7 +75,7 @@ export class MediaCapture {
 
   constructor(
     readonly mode: MediaCaptureMode,
-    private readonly onSource: (source: string) => boolean,
+    private readonly onSource: (source: Blob) => boolean,
     private readonly onClose: () => void,
   ) {
     this.element.classList.add("◆", "◆editor-only", "◆media-capture")
@@ -361,23 +361,12 @@ export class MediaCapture {
 
   private save(blob: Blob, generation: number) {
     if(!blob.size) { this.fail("Nothing was captured. Try recording again."); return }
-    const reader = new FileReader()
-    this.reader = reader
-    reader.onload = () => {
-      if(this.closed || generation !== this.generation) return
-      this.reader = null
-      if(typeof reader.result !== "string") { this.fail("The capture could not be read. Try again."); return }
-      try {
-        if(this.onSource(reader.result)) this.close()
-        else this.fail("The media was changed or removed while capturing. Close this panel and select it again.")
-      }
-      catch { this.fail("The capture could not be inserted. Close this panel and try again.") }
+    if(this.closed || generation !== this.generation) return
+    try {
+      if(this.onSource(blob)) this.close()
+      else this.fail("The media was changed or removed while capturing. Close this panel and select it again.")
     }
-    reader.onerror = () => {
-      if(!this.closed && generation === this.generation) this.fail("The capture could not be read. Try again.")
-    }
-    try { reader.readAsDataURL(blob) }
-    catch { this.fail("The capture could not be read. Try again.") }
+    catch { this.fail("The capture could not be inserted. Close this panel and try again.") }
   }
 
   private clearTimer() {
@@ -404,8 +393,6 @@ export class MediaCapture {
       catch { /* Release tracks even if the recorder has already failed. */ }
       this.recorder = null
     }
-    if(this.reader?.readyState === 1) this.reader.abort()
-    this.reader = null
     this.releaseStream()
   }
 

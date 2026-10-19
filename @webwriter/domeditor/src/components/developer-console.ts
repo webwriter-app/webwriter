@@ -1,4 +1,5 @@
-import {css, html} from "lit"
+import {css, html, noChange, nothing} from "lit"
+import {cache} from "lit/directives/cache.js"
 import {keyed} from "lit/directives/keyed.js"
 import {ribbonIcon} from "../ribbon-icons"
 import {DocumentHeadCombobox} from "./document-head-editor"
@@ -14,9 +15,12 @@ const tabs: DeveloperConsoleTab[] = ["Packages", "Tests", "Element", "HTML"]
 export class DeveloperConsole extends EditingControls {
   static properties = {
     ...EditingControls.properties,
+    active: {type: Boolean},
     tab: {type: String},
     htmlPending: {type: Boolean, attribute: "html-pending"},
     pinned: {type: Boolean},
+    review: {type: Boolean, reflect: true},
+    activeVersionId: {state: true},
     autoReload: {type: Boolean},
     packageDraft: {attribute: false},
     packageSaving: {type: Boolean, attribute: false},
@@ -26,6 +30,34 @@ export class DeveloperConsole extends EditingControls {
   static styles = css`
     ${EditingControls.styles}
     :host {box-sizing: border-box; display: grid; position: relative; grid-template-columns: 14rem minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: 300px; min-width: 0; color: #2f3742; background: #e9e9e9; border-top: 1px solid #c8c8c8; font-family: system-ui, sans-serif}
+    :host([review]) {grid-template-columns: 14rem minmax(0, 1fr)}
+    :host([review]) header {padding: .25rem .65rem; font-size: .8rem; font-weight: 600}
+    .version-sidebar {grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid #c8c8c8}
+    .version-list {display: grid; align-content: start; gap: .35rem; margin: 0; padding: .35rem; list-style: none; min-height: 0; overflow: auto; scrollbar-width: thin}
+    .version-list li {min-width: 0}
+    .version-list li[data-active] .history-version-card {border-color: #8cb5e5; background: #dbe7f2}
+    .version-list .history-checkpoint {grid-template-rows: auto auto; padding-right: 1.8rem}
+    .history-version-card {position: relative}
+    .history-change-count {position: absolute; top: .25rem; right: .35rem; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 1rem; height: 1rem; padding: 0 .2rem; border-radius: 999px; color: #fff; background: #526b86; font-size: .55rem; font-weight: 700; line-height: 1}
+    #console-panel-Review {container-type: inline-size; overflow: auto; scrollbar-width: thin}
+    .version-change-list {display: grid; align-content: start; gap: .15rem; margin: 0; padding: .35rem .65rem; list-style: none}
+    .history-change-card {position: relative; display: block; min-width: 0; background: transparent; border-color: transparent; border-radius: .25rem}
+    .history-change-card:hover {background: #dce5ef}
+    .history-change-card[data-selected] {background: transparent; border-color: #8cb5e5}
+    .history-change-card .history-checkpoint {padding: .25rem 1.6rem .25rem .25rem; grid-template-columns: 1.35rem auto auto minmax(0, 1fr); grid-template-rows: auto; align-items: center; gap: .3rem .5rem}
+    .history-change-card .history-checkpoint-counts {grid-column: 4; grid-row: 1; justify-self: start; align-items: center; flex-wrap: wrap; padding-top: 0}
+    .history-change-card .history-checkpoint-avatar {grid-row: 1; grid-column: 1}
+    .history-change-card .history-checkpoint-label, .history-change-card .history-checkpoint-meta {min-width: 0; overflow-wrap: anywhere}
+    .history-change-card .history-card-restore-button {position: absolute; top: .25rem; right: .15rem; width: 1.2rem; height: 1.2rem; padding: .2rem; border: 0; background: transparent}
+    .version-empty {margin: .65rem; font-size: .75rem; color: #667085}
+    :host([review]) .history-preview-clear {margin-left: auto; font-size: .72rem}
+    @container (width < 400px) {
+      .history-change-card .history-checkpoint {grid-template-columns: 1.35rem minmax(0, 1fr); grid-template-rows: auto auto; gap: .15rem .3rem}
+      .history-change-card .history-checkpoint-counts {grid-column: 2; grid-row: 3}
+      .history-change-card .history-checkpoint-avatar {grid-row: 1 / 3}
+      .history-change-card .history-checkpoint-label, .history-change-card .history-checkpoint-meta {grid-column: 2; white-space: normal}
+    }
+    .review-heading {font-size: .8rem; font-weight: 600}
     [role="tabpanel"] {grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; overflow: auto}
     #console-panel-HTML, #console-panel-Packages, #console-panel-Tests {overflow: hidden}
     ::slotted(.html-source-editor) {height: 100%}
@@ -33,12 +65,14 @@ export class DeveloperConsole extends EditingControls {
     [role="tablist"] {display: flex; gap: .25rem; padding: .25rem .65rem}
     button {font: inherit; font-size: .8rem; color: inherit; background: transparent; border: 1px solid transparent; border-radius: .25rem; padding: .3rem .6rem; cursor: pointer}
     button:hover:not(:disabled) {background: #e3e3e3}
-    button:focus-visible {outline: 2px solid #5267df; outline-offset: 1px}
+    button:focus-visible, .documentation-link:focus-visible {outline: 2px solid #5267df; outline-offset: 1px}
     button:disabled {opacity: .5; cursor: default}
     [role="tab"][aria-selected="true"] {color: #155e9b; background: #e0ebf8}
     [role="tab"] {position: relative}
     .issue-count {position: absolute; top: -.2rem; right: -.25rem; min-width: .85rem; padding: .05rem .2rem; border-radius: 1rem; color: white; background: #a34521; font-size: .6rem; line-height: .85rem; text-align: center}
-    .auto-reload {display: inline-flex; align-items: center; justify-content: center; margin-left: auto; margin-right: .4rem}
+    .documentation-link {margin-left: auto; padding: .3rem .6rem; border-radius: .25rem; color: #155e9b; font-size: .8rem; text-underline-offset: .2em; white-space: nowrap}
+    .documentation-link:hover {background: #e3e3e3}
+    .auto-reload {display: inline-flex; align-items: center; justify-content: center; margin-right: .4rem}
     .auto-reload > svg {width: 18px; height: 18px}
     .console-pin {display: inline-flex; align-items: center; justify-content: center; margin-right: .4rem}
     .console-pin > svg {width: 15px; height: 15px}
@@ -99,7 +133,7 @@ export class DeveloperConsole extends EditingControls {
       .develop-fields > .develop-section {position: sticky; top: var(--column-sticky-top, 0px)}
     }
     ribbon-drawer {min-width: 0; width: 100%}
-    .test-content {box-sizing: border-box; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); align-content: start; gap: 1rem; height: 100%; padding: .65rem; user-select: text; overflow: auto; scrollbar-width: thin}
+    .test-content {box-sizing: border-box; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); align-content: start; gap: 1rem; height: 100%; padding: .65rem; overflow: auto; scrollbar-width: thin}
     .test-content > div {min-width: 0}
     .test-content .develop-section {min-width: 0; margin: 0}
     .package-issue {display: flex; gap: .4rem; margin-bottom: .6rem; font-size: .75rem; color: #a34521; overflow-wrap: anywhere}
@@ -111,7 +145,7 @@ export class DeveloperConsole extends EditingControls {
     .develop-checklist [data-status="passed"] .check-icon {color: #287344}
     .develop-checklist [data-status="failed"] {color: #a34521}
     .develop-checklist [data-status="pending"] {color: #667085}
-    .element-content {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: .75rem; padding: .65rem; font-size: .8rem; user-select: text}
+    .element-content {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: .75rem; padding: .65rem; font-size: .8rem}
     .element-content .develop-section {margin: 0; min-width: 0}
     .element-content h3 {font-size: .8rem; margin: .65rem 0}
     .element-content code, .element-option small {display: block; overflow-wrap: anywhere; color: #667085; font-size: .7rem}
@@ -125,8 +159,11 @@ export class DeveloperConsole extends EditingControls {
   `
 
   tab: DeveloperConsoleTab = "Packages"
+  active = true
   autoReload = true
   pinned = false
+  review = false
+  private activeVersionId: string | null = null
   htmlPending = false
   packageDraft: Record<string, unknown> | null = null
   packageSaving = false
@@ -207,6 +244,8 @@ export class DeveloperConsole extends EditingControls {
     resolve?.(choice)
   }
   private columnObserver: ResizeObserver | undefined
+  private inactiveHistoryPreviousState: unknown
+  private inactiveHistoryStatePending = false
   disconnectedCallback() {
     this.pendingChangesResolve?.("cancel")
     this.pendingChangesResolve = undefined
@@ -259,12 +298,31 @@ export class DeveloperConsole extends EditingControls {
   }
 
   protected updated(changed: Map<string, unknown>) {
-    super.updated(changed)
     if(changed.has("packageDraftRevision")) this.dirtyPackageInputs.clear()
+    if(!this.active) {
+      this.columnObserver?.disconnect()
+      this.columnObserver = undefined
+      if(changed.has("historyState") && !this.inactiveHistoryStatePending) {
+        this.inactiveHistoryPreviousState = changed.get("historyState")
+        this.inactiveHistoryStatePending = true
+      }
+      const superclassChanges = new Map(changed)
+      superclassChanges.delete("historyState")
+      super.updated(superclassChanges)
+      return
+    }
+    const superclassChanges = new Map(changed)
+    if(this.inactiveHistoryStatePending) {
+      superclassChanges.set("historyState", this.inactiveHistoryPreviousState)
+      this.inactiveHistoryPreviousState = undefined
+      this.inactiveHistoryStatePending = false
+    }
+    super.updated(superclassChanges)
     this.observePackageColumns()
     this.renderRoot.querySelectorAll<RibbonDrawer>("ribbon-drawer").forEach(drawer => {
       drawer.collapsed = false
       drawer.pane = true
+      drawer.hidePaneLabel = this.review
     })
   }
 
@@ -313,6 +371,37 @@ export class DeveloperConsole extends EditingControls {
   }
 
   protected render() {
+    if(!this.active) return noChange
+    if(this.review) {
+      const versions = [...this.historyState.versions].sort((a, b) => b.timestamp - a.timestamp)
+      const active = versions.find(version => version.id === this.activeVersionId) ?? versions[0]
+      const checkpoints = new Map(this.historyState.checkpoints.map(checkpoint => [checkpoint.id, checkpoint]))
+      const initialId = this.historyState.checkpoints.at(-1)?.id
+      const changes = (active?.checkpointIds.slice(1) ?? []).filter(id => id !== initialId && checkpoints.has(id))
+      return html`
+        <aside class="version-sidebar" aria-label="Document versions">
+          <ul class="version-list" @click=${(event: MouseEvent) => {
+            const button = (event.target as Element).closest<HTMLElement>(".history-checkpoint")
+            if(button) this.activeVersionId = button.dataset.checkpointId ?? null
+          }}>
+            ${versions.map(version => html`<li ?data-active=${version.id === active?.id}>
+              ${this.renderHistoryEntry(version, true, version.isCurrent, version.isUnsaved, version.id === active?.id)}
+            </li>`)}
+          </ul>
+        </aside>
+        <header><span class="review-heading">Changes</span>${this.renderHistoryPreviewClear()}</header>
+        <div role="tabpanel" id="console-panel-Review" aria-label="Version changes">
+          ${this.historyError ? html`<p class="version-empty" role="alert">${this.historyError}</p>` : nothing}
+          ${this.historyLoading && !versions.length ? html`<p class="version-empty">Loading versions…</p>` : nothing}
+          ${changes.length ? html`<ul class="version-change-list" aria-label=${`Changes in ${active.label}`}>
+            ${changes.map(id => {
+              const checkpoint = checkpoints.get(id)!
+              return html`<li>${this.renderHistoryEntry(checkpoint, false, checkpoint.id === this.historyState.currentCheckpointId)}</li>`
+            })}
+          </ul>` : html`<p class="version-empty">${active ? "No changes in this version" : "No versions yet"}</p>`}
+        </div>
+      `
+    }
     const pkg = this.selectedLocalPackage
     return html`
       <div class="package-sidebar" ?inert=${this.tab === "HTML" || this.packageSaving} aria-disabled=${this.tab === "HTML" || this.packageSaving}
@@ -330,6 +419,7 @@ export class DeveloperConsole extends EditingControls {
             tabindex=${this.tab === tab ? 0 : -1} ?disabled=${this.htmlPending && this.tab !== tab}
             @click=${() => this.selectTab(tab)}>${tab === "Packages" ? "Metadata" : tab === "Tests" ? "Tests & Checks" : tab}${tab === "Tests" && this.packageIssueCount ? html`<span class="issue-count" aria-label=${`${this.packageIssueCount} issues`}>${this.packageIssueCount}</span>` : ""}</button>`)}
         </div>
+        <a class="documentation-link" href="/docs/" target="_blank" rel="noopener noreferrer">Documentation ↗</a>
         <button class="auto-reload" type="button" aria-label="Auto-reload" aria-pressed=${this.autoReload}
           title=${this.autoReload ? "Disable auto-reload" : "Enable auto-reload"}
           @click=${() => this.dispatchEvent(new CustomEvent("developer-console-auto-reload-change", {detail: {enabled: !this.autoReload}, bubbles: true, composed: true}))}
@@ -341,10 +431,10 @@ export class DeveloperConsole extends EditingControls {
       </header>
       <div role="tabpanel" id="console-panel-HTML" aria-labelledby="console-tab-HTML" ?hidden=${this.tab !== "HTML"}><slot></slot></div>
       <div role="tabpanel" id="console-panel-Packages" aria-labelledby="console-tab-Packages" ?hidden=${this.tab !== "Packages"}>
-        ${this.tab === "Packages" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
+        ${cache(this.tab === "Packages" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
           ?inert=${this.packageSaving} @input=${this.handlePackageInput} @combobox-input=${this.handlePackageInput}
           @change=${(event: Event) => {const input = event.composedPath()[0] as HTMLInputElement; if(input.checkValidity?.()) this.dirtyPackageInputs.delete(input)}}
-          @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>${keyed(this.packageDraftRevision, this.renderMetadataDrawer())}</div>` : ""}
+          @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>${keyed(this.packageDraftRevision, this.renderMetadataDrawer())}</div>` : nothing)}
         ${this.packageDraft ? html`<div class="package-pending-bar" role="group" aria-label="Pending package changes">
           <span>${this.packageSaving ? "Saving changes…" : "Pending changes"}</span>
           <button type="button" ?disabled=${this.packageSaving} @click=${() => this.dispatchEvent(new Event("local-package-changes-discard", {bubbles: true, composed: true}))}>Discard</button>
@@ -353,7 +443,7 @@ export class DeveloperConsole extends EditingControls {
       </div>
       <div role="tabpanel" id="console-panel-Element" aria-labelledby="console-tab-Element" ?hidden=${this.tab !== "Element"}
         @mousedown=${this.handleRibbonPointerDown} @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>
-        ${this.tab === "Element" ? this.renderWidgetElement() : ""}
+        ${cache(this.tab === "Element" ? this.renderWidgetElement() : nothing)}
       </div>
       <widget-grouping-dialog></widget-grouping-dialog>
       <dialog class="package-changes-dialog" aria-labelledby="package-changes-title"
@@ -368,7 +458,7 @@ export class DeveloperConsole extends EditingControls {
         </div>
       </dialog>
       <div role="tabpanel" id="console-panel-Tests" aria-labelledby="console-tab-Tests" ?hidden=${this.tab !== "Tests"}>
-        ${this.tab === "Tests" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
+        ${cache(this.tab === "Tests" ? html`<div class="package-content" @mousedown=${this.handleRibbonPointerDown}
           @focusin=${this.handleRibbonInputFocusIn} @focusout=${this.handleRibbonInputFocusOut}>
           <div class="test-content">
             <div class="tests-column">${pkg?.tests?.length ? this.renderLocalPackageTests(pkg) : html`<section class="develop-section"><span class="develop-section-title">Tests</span><span class="develop-empty">${pkg ? "No tests defined" : "Select a package to view tests"}</span></section>`}</div>
@@ -377,7 +467,7 @@ export class DeveloperConsole extends EditingControls {
               ${pkg ? this.renderLocalPackageChecks(pkg) : html`<section class="develop-section"><span class="develop-section-title">Checks</span><span class="develop-empty">Select a package to view checks</span></section>`}
             </div>
           </div>
-        </div>` : ""}
+        </div>` : nothing)}
       </div>
     `
   }

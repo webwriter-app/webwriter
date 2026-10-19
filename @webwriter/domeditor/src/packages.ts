@@ -4,7 +4,6 @@ import {fetchNpmFile, JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT} from "./npm-
 
 export {JSDELIVR_NPM_ENDPOINT, NPM_REGISTRY_ENDPOINT}
 export const NPM_SEARCH_ENDPOINT = "https://registry.npmjs.org/-/v1/search"
-export const SCOPED_CUSTOM_ELEMENT_REGISTRY_POLYFILL_URL = `${JSDELIVR_NPM_ENDPOINT}/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js`
 export const JSDELIVR_PACKAGE_FILES_ENDPOINT = "https://data.jsdelivr.com/v1/package"
 export const WEBWRITER_PACKAGE_QUERY = "scope:webwriter keywords:webwriter-widget"
 /** Storage key for the standalone editor's serialized installed packages. */
@@ -74,6 +73,19 @@ export function webWriterPackageExportName(type: WebWriterPackageExportType, nam
   if(type === "snippet") return `./snippets/${exportNameWithoutExtension(trimmed)}.html`
   if(type === "theme") return `./themes/${exportNameWithoutExtension(trimmed)}.html`
   return name.trim().startsWith(".") ? name.trim() : `./${name.trim()}`
+}
+
+/** Source path used when creating a new package export of each toolbox type. */
+export function defaultPackageExportSource(type: WebWriterPackageExportType, name: string) {
+  if(type === "test") return `./tests/${name}.test.ts`
+  if(type === "migration") return "./src/migrate.ts"
+  if(type === "snippet") return `./src/snippets/${name}.html`
+  if(type === "theme") return `./src/themes/${name}.css`
+  if(type === "icon") return "./src/icon.svg"
+  if(type === "editing-config") return "./editing-config.json"
+  if(type === "custom-elements") return "./custom-elements.json"
+  if(type === "other") return `./src/${name}`
+  return `./src/widgets/${name}.ts`
 }
 
 /** Changes the source condition without discarding build/default conditions. */
@@ -323,6 +335,7 @@ type NpmSearchPackage = {
 
 type NpmSearchResponse = {
   objects?: Array<{package?: NpmSearchPackage}>
+  total?: number
 }
 
 const extensionPattern = /\.(?:html?|m?js|css|ts)$/i
@@ -688,18 +701,31 @@ export class WebWriterPackageRegistry {
     private readonly locale = globalThis.document?.documentElement.lang || globalThis.navigator?.language || "en",
   ) {}
 
-  /** Discovers the current public WebWriter package list through npm search. */
+  /** Discovers published WebWriter packages through npm search. */
   async search() {
-    const url = new URL(NPM_SEARCH_ENDPOINT)
-    url.searchParams.set("text", WEBWRITER_PACKAGE_QUERY)
-    url.searchParams.set("size", "250")
-    const response = await this.fetcher(url)
-    if(!response.ok) throw new Error(`npm package search failed (${response.status})`)
-    const result = await response.json() as NpmSearchResponse
-    const summaries = (result.objects ?? [])
-      .flatMap(object => object.package ? [object.package] : [])
-      .filter(pkg => pkg.name.startsWith("@webwriter/") && pkg.keywords?.includes("webwriter-widget"))
-      .map(summaryPackage)
+    const summariesByName = new Map<string, WebWriterPackage>()
+    let from = 0
+    let total: number | undefined
+    while(total === undefined || from < total) {
+      const url = new URL(NPM_SEARCH_ENDPOINT)
+      url.searchParams.set("text", WEBWRITER_PACKAGE_QUERY)
+      url.searchParams.set("size", "250")
+      url.searchParams.set("from", String(from))
+      const response = await this.fetcher(url)
+      if(!response.ok) throw new Error(`npm package search failed (${response.status})`)
+      const result = await response.json() as NpmSearchResponse
+      const objects = result.objects ?? []
+      if(!objects.length) break
+      total = typeof result.total === "number" ? result.total : total
+      for(const pkg of objects.flatMap(object => object.package ? [object.package] : [])) {
+        if(!pkg.keywords?.includes("webwriter-widget")) continue
+        if(!pkg.name.startsWith("@webwriter/")) continue
+        if(!summariesByName.has(pkg.name)) summariesByName.set(pkg.name, summaryPackage(pkg))
+      }
+      from += objects.length
+      if(total === undefined && objects.length < 250) break
+    }
+    const summaries = [...summariesByName.values()]
 
     return Promise.all(summaries.map(async summary => {
       try {

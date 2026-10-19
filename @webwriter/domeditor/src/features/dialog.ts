@@ -3,7 +3,7 @@ import {
   isDialogClosedBy,
   type DialogSelectionState,
 } from "../dialog"
-import {$, getContainer, isElement, removeEditorMarker} from "../utility"
+import {$, authoredClassValue, getContainer, isElement, removeEditorMarker} from "../utility"
 
 const editingMarker = "◆dialog-editing"
 const dialogCommands = new Set(["show-modal", "close", "request-close"])
@@ -75,7 +75,7 @@ export class DialogFeature extends EditorFeature {
     if(!dialog) return
     const attributes = Object.fromEntries(Array.from(dialog.attributes).flatMap(attribute => {
       if(attribute.name !== "class") return [[attribute.name, attribute.value]]
-      const authored = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).join(" ")
+      const authored = authoredClassValue(attribute.value)
       return authored ? [["class", authored]] : []
     }))
     const id = dialog.id

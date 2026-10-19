@@ -61,6 +61,42 @@ function dragData(target: Element) {
 }
 
 describe("package ribbon controls", () => {
+  it("reuses unchanged package details across unrelated ribbon updates and refreshes mutable metadata and locale", async () => {
+    const ribbon = new AppRibbon()
+    const pkg = packageFixture("cached")
+    pkg.keywords = ["widget-lang-de"]
+    const locale = vi.spyOn(navigator, "language", "get").mockReturnValue("en")
+    ribbon.packages = [pkg]
+    document.body.append(ribbon)
+    try {
+      await ribbon.updateComplete
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[variant="package"][label="Cached"]')!
+      await button.updateComplete
+      const details = button.details
+      expect(details!.keywords).toEqual([{label: "German", icon: "KeywordLanguage"}])
+      const updates = vi.spyOn(button as unknown as {performUpdate(): void}, "performUpdate")
+      ribbon.canMark = !ribbon.canMark
+      await ribbon.updateComplete
+      await button.updateComplete
+      expect(button.details).toBe(details)
+      expect(updates).not.toHaveBeenCalled()
+      pkg.authors.push("Grace")
+      pkg.keywords.push("widget-practical")
+      pkg.description = "Changed metadata"
+      ribbon.requestUpdate()
+      await ribbon.updateComplete
+      expect(button.details).not.toBe(details)
+      expect(button.details!.authors).toEqual(["Ada", "Grace"])
+      expect(button.details!.description).toBe("Changed metadata")
+      expect(button.details!.keywords!.map(keyword => keyword.label)).toEqual(["German", "Practice"])
+      locale.mockReturnValue("de")
+      ribbon.requestUpdate()
+      await ribbon.updateComplete
+      expect(button.details!.keywords![0].label).toBe("Deutsch")
+    }
+    finally { locale.mockRestore(); ribbon.remove() }
+  })
+
   it("announces hover and focus for element and package insertions only", async () => {
     const button = new RibbonButton()
     button.variant = "insertion"
@@ -1063,6 +1099,7 @@ describe("package ribbon controls", () => {
     button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
       .dispatchEvent(new MouseEvent("mouseenter"))
     await button.updateComplete
+    await Promise.resolve()
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(details.style.left).toBe("122px")
@@ -1076,6 +1113,45 @@ describe("package ribbon controls", () => {
     expect(details.querySelector(".icon-tabler-backpack")).not.toBeNull()
     expect(details.querySelector(".icon-tabler-flask")).not.toBeNull()
     expect(RibbonButton.styles.toString()).not.toContain("background: #f2f2f2")
+  })
+
+  it("keeps widget details open across the trigger, popup and gap, then cleans up on exit", async () => {
+    vi.useFakeTimers()
+    try {
+      const button = new RibbonButton()
+      button.details = {heading: "Widget information"}
+      document.body.append(button)
+      await button.updateComplete
+      const row = button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+      const popup = button.shadowRoot!.querySelector<HTMLElement>(".details")!
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      await button.updateComplete
+      await Promise.resolve()
+      const position = popup.style.cssText
+      row.dispatchEvent(new MouseEvent("mouseleave", {relatedTarget: popup}))
+      popup.dispatchEvent(new MouseEvent("mouseenter", {relatedTarget: row}))
+      vi.advanceTimersByTime(200)
+      expect(button.hasAttribute("details-open")).toBe(true)
+      popup.dispatchEvent(new MouseEvent("mouseleave", {relatedTarget: row}))
+      row.dispatchEvent(new MouseEvent("mouseenter", {relatedTarget: popup}))
+      await button.updateComplete
+      expect(popup.style.cssText).toBe(position)
+      row.dispatchEvent(new MouseEvent("mouseleave"))
+      vi.advanceTimersByTime(60)
+      popup.dispatchEvent(new MouseEvent("mouseenter"))
+      vi.advanceTimersByTime(200)
+      expect(button.hasAttribute("details-open")).toBe(true)
+      popup.dispatchEvent(new MouseEvent("mouseleave"))
+      vi.advanceTimersByTime(120)
+      await button.updateComplete
+      expect(button.hasAttribute("details-open")).toBe(false)
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      await button.updateComplete
+      row.dispatchEvent(new MouseEvent("mouseleave"))
+      button.remove()
+      expect(vi.getTimerCount()).toBe(0)
+    }
+    finally {vi.useRealTimers()}
   })
 
   it("opens package details to the right when there is no room on the left", async () => {
@@ -1097,9 +1173,55 @@ describe("package ribbon controls", () => {
     button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
       .dispatchEvent(new MouseEvent("mouseenter"))
     await button.updateComplete
+    await Promise.resolve()
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
     expect(Number.parseFloat(details.style.left)).toBeGreaterThanOrEqual(142)
+  })
+
+  it("keeps package details inside a narrow viewport on both axes", async () => {
+    const previousWidth = window.innerWidth
+    const previousHeight = window.innerHeight
+    Object.defineProperty(window, "innerWidth", {value: 320, configurable: true})
+    Object.defineProperty(window, "innerHeight", {value: 300, configurable: true})
+    try {
+      const ribbon = new AppRibbon()
+      ribbon.activeMenu = "Start"
+      const pkg = packageFixture("viewport")
+      ribbon.packages = [pkg]
+      document.body.append(ribbon)
+      await ribbon.updateComplete
+
+      const button = ribbon.shadowRoot!.querySelector<RibbonButton>(
+        'ribbon-drawer[label="Packages"] ribbon-button[label="Viewport"]',
+      )!
+      await button.updateComplete
+      Object.defineProperty(button, "getBoundingClientRect", {
+        value: () => ({left: 150, top: 250, right: 178, bottom: 278, width: 28, height: 28}),
+        configurable: true,
+      })
+      const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
+      Object.defineProperty(details, "getBoundingClientRect", {
+        value: () => ({left: 0, top: 0, right: 272, bottom: 100, width: 272, height: 100}),
+        configurable: true,
+      })
+      button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+        .dispatchEvent(new MouseEvent("mouseenter"))
+      await button.updateComplete
+      await Promise.resolve()
+      await button.updateComplete
+
+      const left = Number.parseFloat(details.style.left)
+      const top = Number.parseFloat(details.style.top)
+      expect(left).toBeGreaterThanOrEqual(8)
+      expect(left + 272).toBeLessThanOrEqual(312)
+      expect(top).toBeGreaterThanOrEqual(8)
+      expect(top + 100).toBeLessThanOrEqual(292)
+    }
+    finally {
+      Object.defineProperty(window, "innerWidth", {value: previousWidth, configurable: true})
+      Object.defineProperty(window, "innerHeight", {value: previousHeight, configurable: true})
+    }
   })
 
   it("keeps installed packages first whether the drawer is open or closed", async () => {
@@ -1146,7 +1268,7 @@ describe("package ribbon controls", () => {
     }))
     await ribbon.updateComplete
     expect(ribbon.hasAttribute("package-drawer-open")).toBe(false)
-    expect(AppRibbon.styles.toString()).toContain(':host([package-drawer-open])')
+    expect(getComputedStyle(ribbon).zIndex).toBe("3")
   })
 
   it.each([

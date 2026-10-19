@@ -24,6 +24,8 @@ import {
   selectionChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
+  undoStateChangeEvent,
+  isUndoStateChangeMessage,
 } from "./editor-bridge"
 import {emptyDocumentHeadState, isDocumentHeadAction} from "./document-head"
 
@@ -36,6 +38,15 @@ function expectAllRejected(guard: MessageGuard, values: unknown[]) {
 }
 
 describe("editor bridge message guards", () => {
+  it("validates undo and redo availability", () => {
+    const message = {type: undoStateChangeEvent, detail: {canUndo: true, canRedo: false}}
+    expect(isUndoStateChangeMessage(message)).toBe(true)
+    expectAllRejected(isUndoStateChangeMessage, [null, {}, {...message, detail: null},
+      {...message, type: historyStateChangeEvent}, {...message, detail: {canUndo: 1, canRedo: false}},
+      {...message, detail: {canUndo: true}}, {...message, detail: {canUndo: true, canRedo: "false"}},
+    ])
+  })
+
   it("accepts Board layout state and conversion reasons while rejecting unknown layouts", () => {
     const documentLayout = {mode: "board", canConvert: true, zoom: 100, conversions: {board: null, document: null, canvas: "Unsupported content"}}
     const message = {type: selectionChangeEvent, detail: {path: [], documentLayout}}
@@ -44,17 +55,20 @@ describe("editor bridge message guards", () => {
     expect(isSelectionChangeMessage({...message, detail: {path: [], documentLayout: {...documentLayout, conversions: {unknown: null}}}})).toBe(false)
   })
 
-  it("validates the optional global spell-checking preference in initialization messages", () => {
+  it("validates the optional document preferences in initialization messages", () => {
     const message = {type: initializeEditorMessage, syncUrl: "ws://localhost/session"}
     expect(isInitializeEditorMessage(message)).toBe(true)
-    for(const disableSpellChecking of [true, false]) expect(isInitializeEditorMessage({...message, disableSpellChecking})).toBe(true)
-    for(const disableSpellChecking of [null, "false", 0]) expect(isInitializeEditorMessage({...message, disableSpellChecking})).toBe(false)
+    for(const property of ["proofreadingEnabled", "proofreadingAllowed", "accessibilityReviewEnabled", "commentHighlighting"]) {
+      for(const value of [true, false]) expect(isInitializeEditorMessage({...message, [property]: value})).toBe(true)
+      for(const value of [null, "false", 0]) expect(isInitializeEditorMessage({...message, [property]: value})).toBe(false)
+    }
   })
 
   it("accepts the style proofreading category and rejects unknown categories", () => {
     const message = {
       type: proofreadingStateChangeEvent,
       detail: {
+        allowed: true,
         enabled: true,
         documentEnabled: true,
         loading: false,
@@ -69,6 +83,13 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isProofreadingStateChangeMessage(message)).toBe(true)
+    const accessibility = {...message.detail.issues[0], kind: "accessibility", suggestions: [],
+      helpUrl: "https://dequeuniversity.com/rules/axe/4.14/image-alt"}
+    expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, issues: [accessibility]}})).toBe(true)
+    expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, allowed: undefined}})).toBe(false)
+    for(const helpUrl of ["javascript:alert(1)", "http://example.com", 1, null]) {
+      expect(isProofreadingStateChangeMessage({...message, detail: {...message.detail, issues: [{...accessibility, helpUrl}]}})).toBe(false)
+    }
     expectAllRejected(isProofreadingStateChangeMessage, [
       {...message, detail: {...message.detail, issues: [{...message.detail.issues[0], kind: "tone"}]}},
       {...message, detail: {...message.detail, issues: [{...message.detail.issues[0], kind: null}]}},
@@ -88,6 +109,16 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isCommentStateChangeMessage(message)).toBe(true)
+    const thread = {id: "thread", target: "text", active: true, comments: [{
+      id: "thread", text: "Review", author: {id: "user", name: "Ada"}, createdAt: 1, editedAt: 1,
+    }]}
+    expect(isCommentStateChangeMessage({...message, detail: {...message.detail, threads: [thread], activeThreadId: "thread"}})).toBe(true)
+    expectAllRejected(isCommentStateChangeMessage, [
+      {...message, detail: {...message.detail, threads: [{...thread, target: "point"}]}},
+      {...message, detail: {...message.detail, threads: [{...thread, comments: []}]}},
+      {...message, detail: {...message.detail, threads: [{...thread, comments: [{...thread.comments[0], text: 5}]}]}},
+      {...message, detail: {...message.detail, activeThreadId: 5}},
+    ])
     expectAllRejected(isCommentStateChangeMessage, [
       {...message, detail: {...message.detail, canComment: "yes"}},
       {...message, detail: {...message.detail, activeCount: -1}},
@@ -390,6 +421,7 @@ describe("editor bridge message guards", () => {
         graphic: {
           active: true,
           capture: true,
+          mode: "draw",
           selectionCount: 1,
           shape: "rectangle",
           parameters: {width: "800", fill: "#60a5fa"},
@@ -408,6 +440,9 @@ describe("editor bridge message guards", () => {
       },
     }
     expect(isSelectionChangeMessage(message)).toBe(true)
+    for(const mode of ["select", "draw", "lines", "curves"] as const) {
+      expect(isSelectionChangeMessage({...message, detail: {...message.detail, graphic: {...message.detail.graphic, mode}}})).toBe(true)
+    }
     expect(isSelectionChangeMessage({...message, detail: {...message.detail, media: {
       type: "img",
       attributes: {src: "plan.png", usemap: "#plan"},
@@ -457,6 +492,7 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, table: {...message.detail.table, hasFooter: null}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, shape: "path"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: "true"}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, mode: "erase"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, parameters: {width: 800}}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: -1}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: 1.5}}},
@@ -563,7 +599,7 @@ describe("editor bridge message guards", () => {
   it("requires complete presence-user records with integer client ids", () => {
     const message = {
       type: presenceChangeEvent,
-      detail: {users: [{clientId: 7, name: "Ada", initials: "AL", color: "#336699"}]},
+      detail: {connectionStatus: "connected", users: [{clientId: 7, name: "Ada", initials: "AL", color: "#336699", lastChange: 123}]},
     }
     expect(isPresenceChangeMessage(message)).toBe(true)
     expect(isPresenceChangeMessage({type: presenceChangeEvent, detail: {users: []}})).toBe(true)
@@ -571,6 +607,9 @@ describe("editor bridge message guards", () => {
     expectAllRejected(isPresenceChangeMessage, [
       {type: presenceChangeEvent, detail: {users: null}},
       {type: presenceChangeEvent, detail: {users: [null]}},
+      {...message, detail: {...message.detail, connectionStatus: "online"}},
+      {...message, detail: {users: [{...message.detail.users[0], lastChange: "now"}]}},
+      {...message, detail: {users: [{...message.detail.users[0], connectionStatus: "connecting"}]}},
       {...message, detail: {users: [{clientId: 7.5, name: "Ada", initials: "AL", color: "#336699"}]}},
       {...message, detail: {users: [{clientId: 7, name: "Ada", initials: "AL"}]}},
     ])

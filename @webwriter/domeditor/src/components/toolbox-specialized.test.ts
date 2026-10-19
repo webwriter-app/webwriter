@@ -39,6 +39,211 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it.each(["ul", "ol"])("uses the shared List toolbox with a type switch for %s", async localName => {
+    const toolbox = await mountElement(localName)
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!
+    expect(drawer.label).toBe("List")
+    const type = drawer.querySelector<HTMLElement>(".list-type")!
+    expect(drawer.querySelector("element-style-editor")!.compareDocumentPosition(type) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy()
+    const group = type.querySelector<HTMLElement>('[role="group"]')!
+    expect(group.style.getPropertyValue("--choice-columns")).toBe("2")
+    expect(getComputedStyle(group).borderTopWidth).toBe("1px")
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["List", "Enumeration"])
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(localName === "ul" ? ["true", "false"] : ["false", "true"])
+    const changes = vi.fn()
+    toolbox.addEventListener("list-type-change", changes)
+    buttons[localName === "ul" ? 1 : 0].click()
+    expect(changes.mock.calls[0][0].detail).toEqual({listType: localName === "ul" ? "ol" : "ul",
+      selectionTypes: [{localName, namespaceURI: "http://www.w3.org/1999/xhtml"}]})
+  })
+
+  it("combines selected lists and enumerations into one scoped toolbox", async () => {
+    const toolbox = await mountElement("ul")
+    toolbox.selectedElementTypes = ["ul", "ol", "p"].map(localName => ({
+      element: selectedElement(localName), style: styleState(localName), count: 1,
+      styleProperties: [], configuredWidgetOptions: [],
+    }))
+    await toolbox.updateComplete
+    const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer[data-specialized]"))
+    expect(drawers.map(drawer => drawer.label)).toEqual(["List", "p"])
+    expect(drawers[0].elementCount).toBe(2)
+    const buttons = Array.from(drawers[0].querySelectorAll<HTMLButtonElement>(".list-type button"))
+    expect(buttons.every(button => button.getAttribute("aria-pressed") === "false")).toBe(true)
+    const changes = vi.fn()
+    toolbox.addEventListener("list-type-change", changes)
+    buttons[1].click()
+    expect(changes.mock.calls[0][0].detail).toEqual({listType: "ol", selectionTypes: [
+      {localName: "ul", namespaceURI: "http://www.w3.org/1999/xhtml"},
+      {localName: "ol", namespaceURI: "http://www.w3.org/1999/xhtml"},
+    ]})
+  })
+
+  it.each(["ul", "ol", "menu"])("offers compact marker icons and moves marker position into Options for %s", async localName => {
+    const toolbox = await mountElement(localName, {}, {"list-style-type": localName === "ol" ? "lower-roman" : "square"})
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!
+    const primary = drawer.querySelector<ElementStyleEditor>('element-style-editor:not([slot="more"])')!
+    const advanced = drawer.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')!
+    expect(primary.propertyNames).toEqual(["list-style-type", "list-style-image"])
+    expect(advanced.propertyNames).not.toContain("list-style-image")
+    expect(primary.shadowRoot!.querySelector('[data-property="list-style-image"]')).toBeNull()
+    expect(advanced.propertyNames).toContain("list-style-position")
+    expect(primary.shadowRoot!.querySelector('[data-property="list-style-position"]')).toBeNull()
+    expect(advanced.shadowRoot!.querySelector('[data-property="list-style-position"]')).not.toBeNull()
+    const root = primary.shadowRoot!
+    expect(root.querySelector('[data-property="list-style-type"] select')).toBeNull()
+    const group = root.querySelector('.marker-control > .specialized-choice-group')!
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(localName === "ol"
+      ? ["Decimal", "Lower alpha", "Upper alpha", "Lower roman", "More markers"]
+      : ["Disc", "Circle", "Square", "More markers"])
+    expect(buttons.every(button => !button.textContent!.trim())).toBe(true)
+    expect(buttons.slice(0, -1).map(button => button.querySelector<HTMLOListElement>("ol")!.style.listStyleType)).toEqual(localName === "ol"
+      ? ["decimal", "lower-alpha", "upper-alpha", "lower-roman"] : ["disc", "circle", "square"])
+    expect(buttons.slice(0, -1).every(button => button.querySelectorAll("li").length === 1)).toBe(true)
+    for(const button of buttons) {
+      expect(getComputedStyle(button).display).toBe("grid")
+      expect(getComputedStyle(button).placeItems).toBe("center")
+    }
+    for(const preview of group.querySelectorAll<HTMLElement>(".marker-preview")) {
+      expect(getComputedStyle(preview).listStylePosition).toBe("inside")
+      expect(getComputedStyle(preview.querySelector("li")!).display).toBe("list-item")
+      expect(preview.style.getPropertyValue("--marker-style")).toBe("")
+      expect(preview.style.getPropertyValue("--marker-suffix")).toBe("")
+    }
+    const more = buttons.at(-1)!
+    const popup = root.querySelector<HTMLElement>("#marker-options")!
+    expect(popup.hidden).toBe(true)
+    expect(more.getAttribute("aria-pressed")).toBe("false")
+    more.click()
+    await primary.updateComplete
+    expect(more.getAttribute("aria-expanded")).toBe("true")
+    expect(popup.hidden).toBe(false)
+    expect(primary.hasAttribute("popup-open")).toBe(true)
+    const extra = Array.from(popup.querySelectorAll<HTMLButtonElement>("button"))
+    expect(extra.map(button => button.getAttribute("aria-label"))).toEqual(localName === "ol"
+      ? ["Decimal leading zero", "Upper roman", "Lower greek", "Armenian", "Georgian", "Hebrew", "Cjk decimal", "Hiragana", "Katakana", "None", "Image marker"]
+      : ["Disclosure closed", "Disclosure open", "Dash", "Diamond", "Checkmark", "Arrow", "Star", "None", "Image marker"])
+    expect(extra.every(button => button.querySelector('[aria-hidden="true"]') && !button.textContent!.trim())).toBe(true)
+    const symbols = Array.from(root.querySelectorAll<HTMLElement>(".marker-preview[data-symbolic]"))
+    expect(symbols.map(preview => preview.style.listStyleType)).toEqual(localName === "ol" ? [] : ["disc", "circle", "square"])
+    for(const symbol of symbols) {
+      expect(getComputedStyle(symbol).fontSize).toBe("20px")
+      expect(getComputedStyle(symbol).transform).toBe("translateX(calc(.5em - 3px))")
+      expect(getComputedStyle(symbol).listStylePosition).toBe("inside")
+    }
+    const decimal = root.querySelector<HTMLElement>('.marker-preview[style="list-style-type: decimal"]')
+    if(localName === "ol") expect(getComputedStyle(decimal!).fontSize).toBe("12px")
+    else expect(decimal).toBeNull()
+    for(const button of extra) {
+      expect(getComputedStyle(button).display).toBe("grid")
+      expect(getComputedStyle(button).placeItems).toBe("center")
+    }
+    expect(buttons[localName === "ol" ? 3 : 2].getAttribute("aria-pressed")).toBe("true")
+    const changes = vi.fn()
+    toolbox.addEventListener("element-style-change", changes)
+    const pointer = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true})
+    const noMarker = extra.find(button => button.getAttribute("aria-label") === "None")!
+    noMarker.dispatchEvent(pointer)
+    expect(pointer.defaultPrevented).toBe(true)
+    expect(popup.hidden).toBe(false)
+    noMarker.click()
+    await primary.updateComplete
+    expect(changes.mock.calls[0][0].detail).toMatchObject({property: "list-style-type", mutation: {value: "none", priority: ""}})
+    expect(popup.hidden).toBe(true)
+    expect(primary.hasAttribute("popup-open")).toBe(false)
+    buttons[2].click()
+    expect(changes.mock.calls[1][0].detail).toMatchObject({property: "list-style-type", mutation: {value: localName === "ol" ? "upper-alpha" : "square", priority: ""}})
+  })
+
+  it("dismisses marker choices with Escape, outside interaction, and focus changes", async () => {
+    const toolbox = await mountElement("ol")
+    const editor = toolbox.shadowRoot!.querySelector<ElementStyleEditor>('[data-specialized="ol"] element-style-editor')!
+    const root = editor.shadowRoot!
+    const more = root.querySelector<HTMLButtonElement>(".marker-more")!
+    const popup = root.querySelector<HTMLElement>("#marker-options")!
+    const option = popup.querySelector<HTMLButtonElement>("button")!
+    more.click()
+    await editor.updateComplete
+    option.focus()
+    option.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
+    await editor.updateComplete
+    expect(popup.hidden).toBe(true)
+    expect(root.activeElement).toBe(more)
+    more.blur()
+    more.click()
+    await editor.updateComplete
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    expect(popup.hidden).toBe(true)
+    more.click()
+    await editor.updateComplete
+    const outside = document.createElement("button")
+    document.body.append(outside)
+    outside.focus()
+    await editor.updateComplete
+    expect(popup.hidden).toBe(true)
+    more.click()
+    await editor.updateComplete
+    option.focus()
+    option.click()
+    await editor.updateComplete
+    expect(popup.hidden).toBe(true)
+    expect(root.activeElement).toBe(more)
+  })
+
+  it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("shows a Heading drawer and matching level button group for %s", async localName => {
+    const toolbox = await mountElement(localName)
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!
+    expect(drawer.label).toBe("Heading")
+    expect(drawer.icon).toBe("Heading")
+    expect(drawer.iconUrl).toBe("")
+    const group = drawer.querySelector<HTMLElement>(".heading-level .specialized-choice-group")!
+    expect(getComputedStyle(group).overflow).toBe("hidden")
+    expect(getComputedStyle(group).gap).toBe("1px")
+    expect(group.getAttribute("role")).toBe("group")
+    expect(group.style.getPropertyValue("--choice-columns")).toBe("3")
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.every(button => getComputedStyle(button).borderTopWidth === "0px" && getComputedStyle(button).margin === "0px")).toBe(true)
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Heading 1", "Heading 2", "Heading 3", "Heading 4", "Heading 5", "Heading 6"])
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(buttons.filter(button => button.getAttribute("aria-pressed") === "true").map(button => button.getAttribute("aria-label"))).toEqual([`Heading ${localName.slice(1)}`])
+    expect(buttons[2].hasAttribute("data-top-right")).toBe(true)
+    expect(buttons[3].hasAttribute("data-bottom-left")).toBe(true)
+    const headingBorder = getComputedStyle(group)
+    for(const side of ["Top", "Right", "Bottom", "Left"] as const) {
+      expect(headingBorder[`border${side}Width`]).toBe("1px")
+    }
+    expect(headingBorder.borderRadius).toBe("4px")
+    const changes = vi.fn()
+    toolbox.addEventListener("heading-level-change", changes)
+    buttons[5].click()
+    expect(changes.mock.calls[0][0].detail).toEqual({level: "h6", selectionType: {
+      localName, namespaceURI: "http://www.w3.org/1999/xhtml",
+    }})
+    toolbox.elementAttributes = selectedElement("h3")
+    toolbox.elementStyle = styleState("h3")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('.heading-level button[aria-pressed="true"]')!.getAttribute("aria-label")).toBe("Heading 3")
+  })
+
+  it("scopes a heading level change to its drawer in a mixed selection", async () => {
+    const toolbox = await mountElement("h1")
+    toolbox.selectedElementTypes = ["h1", "h2", "p"].map(localName => ({
+      element: selectedElement(localName), style: styleState(localName), count: 2,
+      styleProperties: [], configuredWidgetOptions: [],
+    }))
+    await toolbox.updateComplete
+    const changes = vi.fn()
+    toolbox.addEventListener("heading-level-change", changes)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-specialized="h2"] .heading-level button[aria-label="Heading 4"]')!.click()
+    expect(changes.mock.calls[0][0].detail).toEqual({level: "h4", selectionType: {
+      localName: "h2", namespaceURI: "http://www.w3.org/1999/xhtml",
+    }})
+    expect(toolbox.shadowRoot!.querySelector('[data-specialized="p"] .heading-level')).toBeNull()
+  })
+
   it("shows one scoped drawer for each selected type and updates them when the selection changes", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
@@ -143,7 +348,7 @@ describe("specialized element toolbox", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("[data-specialized]"), drawer => drawer.dataset.specialized))
-      .toEqual(["ul", "ol", "table", "td", "th", "details", "math", "svg"])
+      .toEqual(["ul", "table", "td", "th", "details", "math", "svg"])
     toolbox.selectedElementTypes = []
     toolbox.elementAttributes = selectedElement("figcaption")
     toolbox.elementStyle = styleState("figcaption")
@@ -267,6 +472,8 @@ describe("specialized element toolbox", () => {
     expect(lastLineButtons[2].hasAttribute("data-top-right")).toBe(true)
     expect(lastLineButtons[3].hasAttribute("data-bottom-left")).toBe(true)
     expect(lastLine.children).toHaveLength(5)
+    expect(getComputedStyle(lastLine).backgroundColor).toBe(getComputedStyle(lastLineButtons[1]).backgroundColor)
+    expect(getComputedStyle(lastLineButtons[1]).boxShadow).toBe("0 0 0 1px #c5ccd5")
 
     const cell = await mountElement("td")
     const cellPrimary = cell.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="td"]')!
@@ -304,9 +511,9 @@ describe("specialized element toolbox", () => {
     expect(attributeEditor).not.toBeNull()
     expect(attributeEditor.hasAttribute("expanded")).toBe(true)
     expect(attributeEditor.closest("[slot=more]")).toBeNull()
-    expect(attributeEditor.shadowRoot!.querySelector("dialog")?.open).toBe(false)
+    expect(attributeEditor.shadowRoot!.querySelector("dialog")).toBeNull()
     expect(attributeEditor.shadowRoot!.querySelector(".language-row style-combobox")).not.toBeNull()
-    expect(attributeEditor.shadowRoot!.querySelector("h3")?.textContent).toContain("All attributes")
+    expect(attributeEditor.shadowRoot!.querySelector('[aria-label="Other attributes"]')).toBeNull()
     expect(drawer.advancedCount).toBe(1)
     expect(drawer.shadowRoot!.querySelector(".advanced-count")?.textContent).toBe("1")
     expect(drawer.shadowRoot!.querySelector(".drawer-toggle-label")?.textContent).toContain("Options")
@@ -386,6 +593,50 @@ describe("specialized element toolbox", () => {
     const changes = vi.fn()
     toolbox.addEventListener("widget-option-change", changes)
     primary.querySelector<HTMLButtonElement>('[aria-labelledby="widget-label-density"] button[aria-pressed="true"]')!.click()
-    expect(changes.mock.calls[0][0].detail).toEqual({name: "density", value: null})
+    expect(changes.mock.calls[0][0].detail).toEqual({name: "density", value: "comfortable"})
   })
+})
+
+
+it("shows the single-lane explanation when clicking left placement and only badges a selected left float", async () => {
+  const toolbox = await mountElement("img", {}, {float: "right"})
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatLeftForcedRight: true}}
+  await toolbox.updateComplete
+  const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.float-button-group [aria-label="Float left"]')!
+  const info = button.querySelector<import("./float-info").FloatInfo>("float-info")!
+  await info.updateComplete
+  expect(info.badge).toBe(false)
+  button.click()
+  await info.updateComplete
+  expect(info.open).toBe(true)
+  expect(info.shadowRoot!.querySelector('[role="tooltip"]')!.textContent).toBe("Element will be placed left on wider screens.")
+  document.dispatchEvent(new Event("pointerdown"))
+  expect(info.open).toBe(false)
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "far-left"}}
+  await toolbox.updateComplete
+  expect(info.badge).toBe(true)
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatLeftForcedRight: false}}
+  await toolbox.updateComplete
+  expect(button.querySelector("float-info")).toBeNull()
+})
+
+
+it("explains right placement without side lanes and shows it briefly on click", async () => {
+  const toolbox = await mountElement("custom-widget", {}, {float: "right"})
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatRightInFlow: true}}
+  await toolbox.updateComplete
+  const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.float-button-group [aria-label="Float right"]')!
+  const info = button.querySelector<import("./float-info").FloatInfo>("float-info")!
+  await info.updateComplete
+  expect(info.badge).toBe(true)
+  expect(info.side).toBe("right")
+  expect(info.shadowRoot!.querySelector('[role="tooltip"]')!.textContent).toBe("Element will be placed right on wider screens.")
+  button.click()
+  await info.updateComplete
+  expect(info.open).toBe(true)
+  document.dispatchEvent(new Event("keydown"))
+  expect(info.open).toBe(false)
+  toolbox.elementStyle = {...toolbox.elementStyle, context: {...toolbox.elementStyle.context, floatRightInFlow: false}}
+  await toolbox.updateComplete
+  expect(button.querySelector("float-info")).toBeNull()
 })

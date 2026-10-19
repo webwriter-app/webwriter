@@ -54,6 +54,20 @@ describe("acceptLearnerUpdate", () => {
     expect(acceptLearnerUpdate(target, update, "ada")).toBe(true)
   })
 
+  it("accepts named CSS colors in learner identities without a browser CSS parser", () => {
+    const {target, update} = updateFrom(doc => {
+      maps(doc).learners.set("ada", {...learner, color: "rebeccapurple", lastSeen: 2})
+    })
+    expect(acceptLearnerUpdate(target, update, "ada")).toBe(true)
+  })
+
+  it("rejects declaration injection in learner colors", () => {
+    const {target, update} = updateFrom(doc => {
+      maps(doc).learners.set("ada", {...learner, color: "red; background-image:url(https://attacker.test)", lastSeen: 2})
+    })
+    expect(acceptLearnerUpdate(target, update, "ada")).toBe(false)
+  })
+
   it("accepts a concurrent step insertion before an existing step", () => {
     const {target, update} = updateFrom(doc => {
       maps(doc).steps.insert(0, [{...step, id: "step-0", time: 0, learner: "ada", kind: "cursor"}])

@@ -1,6 +1,8 @@
 import {graphicPresetOptions, isGraphicPresetType, readGraphicPreset} from "./graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "./graphic-shape-presets"
 
+export const graphicShapeDragType = "application/x-webwriter-graphic-shape"
+
 export const SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 
 const basicGraphicShapeOptions = [
@@ -35,7 +37,7 @@ export const graphicShapeOptions = [
   .map(option => ({path: undefined as string | undefined, ...option}))
   .sort((a, b) => graphicShapeCategories.indexOf(a.category) - graphicShapeCategories.indexOf(b.category))
 
-export type GraphicShapeType = typeof basicGraphicShapeOptions[number]["type"] | typeof graphicPresetOptions[number]["type"] | typeof lineArrowOptions[number]["type"]
+export type GraphicShapeType = typeof basicGraphicShapeOptions[number]["type"] | typeof graphicPresetOptions[number]["type"] | typeof lineArrowOptions[number]["type"] | "freehand" | "polyline" | "bezier"
 
 export type GraphicShapePaint = Partial<Record<"fill" | "stroke" | "stroke-width" | "opacity", string>>
 
@@ -45,7 +47,7 @@ export const defaultGraphicShapePaint: Required<GraphicShapePaint> = {
 
 /** Open geometry must remain unfilled, including when insertion paint is set. */
 export function graphicShapeIsOpen(type: GraphicShapeType) {
-  return type === "line" || type === "connector" || type.startsWith("line-") && type.endsWith("arrow")
+  return type === "freehand" || type === "polyline" || type === "bezier" || type === "line" || type === "connector" || type.startsWith("line-") && type.endsWith("arrow")
     || isGraphicPresetType(type) && Boolean((graphicShapePresets[type] as GraphicShapePreset).open)
 }
 
@@ -81,9 +83,12 @@ export type GraphicLayerState = {
   locked: boolean
 }
 
+export type GraphicMode = "select" | "draw" | "lines" | "curves"
+
 export type GraphicSelectionState = {
   active: true
   capture: boolean
+  mode?: GraphicMode
   selectionCount?: number
   shape?: GraphicShapeType
   parameters?: Record<string, string>
@@ -99,7 +104,7 @@ export type GraphicSelectionState = {
 }
 
 export function isGraphicShapeType(value: unknown): value is GraphicShapeType {
-  return typeof value === "string" && (basicGraphicShapeOptions.some(option => option.type === value)
+  return typeof value === "string" && (["freehand", "polyline", "bezier"].includes(value) || basicGraphicShapeOptions.some(option => option.type === value)
     || lineArrowOptions.some(option => option.type === value) || isGraphicPresetType(value))
 }
 
@@ -121,9 +126,45 @@ export function graphicContainerForNode(node: Node | null) {
   return graphic?.namespaceURI === SVG_NAMESPACE ? graphic as SVGSVGElement : null
 }
 
+/** The absolute M/Q/L geometry used for freehand strokes. Inspect authored
+ * geometry on every read; no editor metadata or retained point model is needed. */
+export function graphicStrokePoints(element: Element) {
+  if(element.namespaceURI !== SVG_NAMESPACE || element.localName !== "path" || element.getAttribute("fill") !== "none") return null
+  const number = "[-+]?(?:\\d*\\.)?\\d+(?:[eE][-+]?\\d+)?"
+  const pair = `${number}[ ,]+${number}`
+  const path = element.getAttribute("d") ?? ""
+  if(!new RegExp(`^M\\s*${pair}(?:\\s*Q\\s*${pair}[ ,]+${pair})*\\s*L\\s*${pair}\\s*$`).test(path)) return null
+  const values = path.match(new RegExp(number, "g"))!.map(Number)
+  if(!values.every(Number.isFinite) || !path.includes("Q") && (values[0] !== values[2] || values[1] !== values[3])) return null
+  return Array.from({length: values.length / 2}, (_, index) => ({x: values[index * 2], y: values[index * 2 + 1]}))
+}
+
+/** Editable absolute line/cubic paths. Unsupported SVG commands stay untouched. */
+export function graphicPathGeometry(element: Element) {
+  if(element.namespaceURI !== SVG_NAMESPACE || element.localName !== "path") return null
+  const number = "[-+]?(?:\\d*\\.)?\\d+(?:[eE][-+]?\\d+)?"
+  const pair = `${number}[ ,]+${number}`
+  const path = element.getAttribute("d") ?? ""
+  const cubic = new RegExp(`^M\\s*${pair}(?:\\s*C\\s*${pair}[ ,]+${pair}[ ,]+${pair})+\\s*Z?\\s*$`).test(path)
+  if(!cubic && !new RegExp(`^M\\s*${pair}(?:\\s*L\\s*${pair})+\\s*Z?\\s*$`).test(path)) return null
+  const values = path.match(new RegExp(number, "g"))!.map(Number)
+  if(!values.every(Number.isFinite)) return null
+  return {
+    kind: cubic ? "curves" as const : "lines" as const,
+    closed: /Z\s*$/.test(path),
+    points: Array.from({length: values.length / 2}, (_, index) => ({x: values[index * 2], y: values[index * 2 + 1]})),
+  }
+}
+
 function primitiveGraphicShapeType(element: Element | null): GraphicShapeType | null {
   if(!element || element.namespaceURI !== SVG_NAMESPACE) return null
-  if(element.localName === "path") return readGraphicPreset(element)?.type ?? null
+  if(element.localName === "path") {
+    const preset = readGraphicPreset(element)
+    if(preset) return preset.type
+    if(graphicStrokePoints(element)) return "freehand"
+    const path = graphicPathGeometry(element)
+    return path ? path.kind === "curves" ? "bezier" : "polyline" : null
+  }
   if(element.localName === "rect") return "rectangle"
   if(element.localName === "ellipse" || element.localName === "circle") return "ellipse"
   if(element.localName === "line") return "line"

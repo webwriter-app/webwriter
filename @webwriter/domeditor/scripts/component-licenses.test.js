@@ -61,3 +61,13 @@ it("reports missing license text instead of silently omitting a component", () =
   rmSync(join(directory, "node_modules/@test/runtime/LICENSE.md"))
   expect(load).toThrow("Cannot find license text for @test/runtime")
 })
+
+it("includes a checked-in upstream license when a package omits its text", () => {
+  const {manifest, load, watched} = fixture()
+  rmSync(join(directory, "node_modules/tool/COPYING"))
+  const path = join(directory, "app/licenses/tool.txt")
+  mkdirSync(join(directory, "app/licenses"))
+  writeFileSync(path, "Upstream tool license.")
+  expect(load()).toContain("Upstream tool license.")
+  expect(watched).toContain(path)
+})

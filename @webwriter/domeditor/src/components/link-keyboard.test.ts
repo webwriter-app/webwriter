@@ -38,6 +38,66 @@ beforeEach(() => localStorage.clear())
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks() })
 
 describe("link keyboard", () => {
+  it("corrects a scheme-less address in both the field and dispatched command", async () => {
+    const keyboard = await mount(), commands = listen(keyboard)
+    await type(keyboard, " www.example.test/path ")
+    input(keyboard).dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    await keyboard.updateComplete
+    expect(commands[0].href).toBe("https://www.example.test/path")
+    expect(input(keyboard).value).toBe("https://www.example.test/path")
+    await type(keyboard, "javascript:alert(1)")
+    input(keyboard).dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    await keyboard.updateComplete
+    expect(commands).toHaveLength(1)
+    expect(keyboard.validationError).toContain("valid address")
+  })
+
+  it("normalizes URLs entered in the reference dialog", async () => {
+    const keyboard = await mount(), commands = listen(keyboard)
+    await openDialog(keyboard)
+    await type(keyboard, "Source", '[aria-label="Title"]')
+    await type(keyboard, "source.test/book", '[aria-label="Link (optional)"]')
+    submit(keyboard)
+    expect(commands[0].href).toBe("https://source.test/book")
+  })
+
+  it("defaults new links to a new tab and permits opting out for saved documents", async () => {
+    const keyboard = await mount(makeState({href: "", attributes: {}})), commands = listen(keyboard)
+    expect(keyboard.openNewTab).toBe(true)
+    await type(keyboard, "https://new.test")
+    input(keyboard).dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(commands[0].attributes).toMatchObject({target: "_blank", rel: "noopener noreferrer"})
+    keyboard.openNewTab = false
+    input(keyboard).dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(commands[1].attributes.target).toBeNull()
+  })
+
+  it("keeps document focus when a recognized URL activates link state", async () => {
+    const text = document.createElement("textarea")
+    document.body.append(text)
+    text.focus()
+    await mount(makeState({href: "https://example.test", attributes: {href: "https://example.test"}}))
+    expect(document.activeElement).toBe(text)
+  })
+
+  it("focuses Web address when opened and keeps later state updates from stealing focus", async () => {
+    const keyboard = await mount(makeState({href: "", attributes: {}}))
+    await keyboard.updateComplete
+    expect(root(keyboard).activeElement).toBe(input(keyboard))
+    expect(input(keyboard).getAttribute("aria-label")).toBe("Web address")
+    const documentTab = root(keyboard).querySelector<HTMLButtonElement>("#tab-document")!
+    documentTab.focus()
+    documentTab.click()
+    await keyboard.updateComplete
+    keyboard.state = {...keyboard.state!, targets: [{href: "#new", label: "New"}]}
+    await keyboard.updateComplete
+    expect(root(keyboard).activeElement).toBe(documentTab)
+    expect(keyboard.activeTab).toBe("document")
+    await keyboard.focusWebAddress()
+    expect(keyboard.activeTab).toBe("web")
+    expect(root(keyboard).activeElement).toBe(input(keyboard))
+  })
+
   it("defaults to Web with compact heading tabs and a shared search/list layout", async () => {
     const keyboard = await mount()
     expect([...root(keyboard).querySelectorAll("[role=tab]")].map(tab => tab.textContent?.trim())).toEqual(["Web", "Document", "Reference"])

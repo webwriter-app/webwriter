@@ -1,11 +1,14 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
+import * as Y from "yjs"
 
 import { DOMEditor } from "../domeditor"
 import { SelectionFeature } from "./selection"
 import { $ } from "../utility"
-import { selectionChangeEvent } from "../editor-bridge"
+import { replayHostPointer, selectionChangeEvent } from "../editor-bridge"
+import {elementAttributeState} from "../element-attributes"
+import {sharedDOMBody} from "../domdoc"
 
 let editor: DOMEditor
 let feature: SelectionFeature
@@ -39,7 +42,124 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("selection preservation across authored DOM shapes", () => {
+  it("suppresses appendix context menus without suppressing authored or widget menus, and cleans up", () => {
+    const authored = el("p", "Document text")
+    const widget = el("menu-widget")
+    const widgetInput = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(widgetInput)
+    const control = document.createElement("div")
+    const button = document.createElement("button")
+    const input = document.createElement("input")
+    const nested = document.createElement("div")
+    const nestedInput = document.createElement("textarea")
+    nested.attachShadow({mode: "open"}).append(nestedInput)
+    control.append(button, input, nested)
+    editor.addAppendix(control)
+    const menu = (target: Element) => target.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true, composed: true, cancelable: true,
+    }))
+    expect(menu(button)).toBe(false)
+    for(const readOnly of [false, true]) {
+      input.readOnly = nestedInput.readOnly = readOnly
+      expect(menu(input)).toBe(true)
+      expect(menu(nestedInput)).toBe(true)
+    }
+    expect(menu(authored)).toBe(true)
+    for(const value of ["", "true", "plaintext-only"]) {
+      const rich = document.createElement("div")
+      rich.setAttribute("contenteditable", value)
+      rich.innerHTML = '<span>Editable</span><span contenteditable="false">Read only UI</span>'
+      nested.shadowRoot!.append(rich)
+      expect(menu(rich)).toBe(true)
+      expect(menu(rich.firstElementChild!)).toBe(true)
+      expect(menu(rich.lastElementChild!)).toBe(false)
+    }
+    expect(menu(widgetInput)).toBe(true)
+    feature.disable()
+    expect(menu(button)).toBe(true)
+    feature.enable()
+    expect(menu(button)).toBe(false)
+    editor.destroy()
+    expect(menu(button)).toBe(true)
+  })
+
+  it.each([
+    '<p>before <strong>middle</strong> after</p>',
+    '<section><!--keep--><p>before <a href="#target"><em>middle</em></a> after</p></section>',
+    '<ul><li><p>before <span>middle</span> after</p></li></ul>',
+    '<table><tbody><tr><td><p>before <span>middle</span> after</p></td></tr></tbody></table>',
+    '<details open><summary>Title</summary><p>before <span>middle</span> after</p></details>',
+  ])("preserves both range directions and a caret in %s", html => {
+    document.body.innerHTML = html
+    const paragraph = document.querySelector("p")!
+    // Adjacent text nodes and comments must remain distinct authored nodes.
+    paragraph.insertBefore(document.createTextNode(""), paragraph.firstChild)
+    paragraph.append(document.createComment("tail"))
+    const before = paragraph.childNodes[1], after = paragraph.childNodes[3]
+    const nodes = Array.from(paragraph.childNodes)
+    const authored = editor.toHTML(true)
+    const selection = document.getSelection()!
+    for(const [anchor, anchorOffset, focus, focusOffset] of [
+      [before, 2, after, 3], [after, 3, before, 2], [before, 2, before, 2],
+    ] as const) {
+      selection.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset)
+      feature.processSelection(false, {scrollIntoView: false})
+      expect(selection.anchorNode).toBe(anchor)
+      expect(selection.anchorOffset).toBe(anchorOffset)
+      expect(selection.focusNode).toBe(focus)
+      expect(selection.focusOffset).toBe(focusOffset)
+      expect(Array.from(paragraph.childNodes)).toEqual(nodes)
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+  })
+
+  it.each(["img", "svg", "unknown-selection-widget"])("cleans detached %s selection presentation on disable and reactivation", tag => {
+    const target = tag === "svg"
+      ? document.createElementNS("http://www.w3.org/2000/svg", tag)
+      : document.createElement(tag)
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Keep"
+    document.body.replaceChildren(target, document.createComment("keep"), paragraph)
+    const authored = editor.toHTML(true)
+    feature.selectElement(target)
+    expect(target).toHaveClass("◆element-selected")
+    expect(editor.toHTML(true)).toBe(authored)
+    target.remove()
+    feature.disable()
+    for(const marker of ["◆element-selected", "◆atomic-range-selected", "◆element-capture-selected", "◆"]) {
+      expect(target).not.toHaveClass(marker)
+    }
+    expect(editor.appendix.querySelector('[part="atomic-selection-overlay"]')).toBeNull()
+    feature.enable()
+    document.getSelection()!.setPosition(paragraph.firstChild!, 2)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(document.getSelection()!.anchorNode).toBe(paragraph.firstChild)
+    expect(document.getSelection()!.anchorOffset).toBe(2)
+    expect(document.body.lastElementChild).toBe(paragraph)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+})
+
 describe("figure node selection", () => {
+  it.each(["ltr", "rtl"])("aligns the empty flow caret with the %s content edge beside a lone float", direction => {
+    document.body.innerHTML = '<audio controls style="float:right"></audio>'
+    document.body.style.cssText = `direction:${direction};padding:24px 32px 16px 40px;border:2px solid`
+    try {
+      $.move(document.body, 0)
+      feature.processSelection(undefined, {scrollIntoView: false})
+      const caret = feature.emptyDocumentCaret as HTMLElement
+      expect(caret.style.getPropertyValue("--empty-caret-left")).toBe(direction === "rtl" ? "calc(anchor(right) - 34px)" : "calc(anchor(left) + 42px)")
+      expect(caret.style.getPropertyValue("--empty-caret-top")).toBe("calc(anchor(top) + 26px)")
+      expect(caret.getRootNode()).toBe(editor.appendix)
+      expect(editor.toHTML(true)).not.toContain("◆")
+      document.body.style.paddingTop = "48px"
+      feature.processSelection(undefined, {scrollIntoView: false})
+      expect(caret.style.getPropertyValue("--empty-caret-top")).toBe("calc(anchor(top) + 50px)")
+    }
+    finally { document.body.style.cssText = "" }
+  })
+
   it.each(["left", "right"])("clicks outside a lone %s-floated figure to select document start", side => {
     document.body.innerHTML = `<figure style="float:${side}"><img><figcaption>Keep</figcaption></figure>`
     const figure = document.querySelector("figure")!
@@ -210,6 +330,58 @@ describe("document hover outlines around native floats", () => {
     }
     return feature.hoverCaret!
   }
+
+  it("reuses float candidates while reading live boxes and invalidates direct DOM changes before observer delivery", () => {
+    const target = el("p", "text") as HTMLElement
+    const float = el("aside") as HTMLElement
+    rect(target, 0, 0, 100, 80)
+    rect(float, 0, 0, 30, 30)
+    const query = vi.spyOn(document.body, "querySelectorAll")
+    const scans = () => query.mock.calls.filter(([selector]) => selector === "*").length
+    expect(feature.floatExclusions(target)).toHaveLength(0)
+    const initial = scans()
+    for(let i = 0; i < 5; i++) expect(feature.floatExclusions(target)).toHaveLength(0)
+    expect(scans()).toBe(initial)
+    target.classList.add("◆element-hovered")
+    feature.floatExclusions(target)
+    expect(scans()).toBe(initial)
+    float.style.float = "left"
+    expect(feature.floatExclusions(target)).toHaveLength(1)
+    expect(scans()).toBe(initial + 1)
+    float.remove()
+    expect(feature.floatExclusions(target)).toHaveLength(0)
+    document.body.append(float)
+    expect(feature.floatExclusions(target)).toHaveLength(1)
+    feature.disable()
+    expect(target.className).not.toContain("◆")
+  })
+
+  it("rediscovers CSSOM float changes after cache expiry and on resize", () => {
+    const target = el("p", "text") as HTMLElement
+    const float = el("aside") as HTMLElement
+    rect(target, 0, 0, 100, 80)
+    rect(float, 0, 0, 30, 30)
+    const style = document.createElement("style")
+    style.textContent = "aside { float: none }"
+    document.head.append(style)
+    const rule = style.sheet!.cssRules[0] as CSSStyleRule
+    // Happy DOM does not invalidate its style cache for CSSOM writes. Native
+    // Chrome benchmarks cover the actual stylesheet; expose its current value here.
+    const computed = getComputedStyle
+    vi.spyOn(globalThis, "getComputedStyle").mockImplementation((element, pseudo) =>
+      element === float ? {float: rule.style.float} as CSSStyleDeclaration : computed(element, pseudo))
+    const clock = vi.spyOn(performance, "now").mockReturnValue(0)
+    try {
+      expect(feature.floatExclusions(target)).toHaveLength(0)
+      rule.style.float = "left"
+      clock.mockReturnValue(251)
+      expect(feature.floatExclusions(target)).toHaveLength(1)
+      rule.style.float = "none"
+      window.dispatchEvent(new Event("resize"))
+      expect(feature.floatExclusions(target)).toHaveLength(0)
+    }
+    finally { clock.mockRestore(); style.remove() }
+  })
 
   afterEach(() => { vi.restoreAllMocks() })
 
@@ -500,6 +672,165 @@ it.each([false, true])("keeps graphic selection visible during passive geometry 
   feature.selectElement(el("p", "next"))
   expect(graphic).not.toHaveClass("◆element-selected")
   expect(graphic).not.toHaveClass("◆element-capture-selected")
+})
+
+describe.each(["Backward", "Forward"] as const)("captured element deletion (%s)", direction => {
+  const key = direction === "Backward" ? "Backspace" : "Delete"
+  it.each(["img", "picture", "audio", "video", "iframe", "embed", "object", "interactive-widget", "p", "svg"])("blocks deletion of captured %s until node-selected", tag => {
+    const section = el("section")
+    section.innerHTML = `<!--keep--><p>Before</p><${tag}></${tag}><p>After</p>`
+    const media = section.children[1]
+    if(tag === "picture") media.append(document.createElement("img"))
+    const authored = editor.toHTML(true)
+    feature.captureElement(media)
+    const events = [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      ...["deleteContent", "deleteWord", "deleteSoftLine", "deleteHardLine"].map(inputType =>
+        new InputEvent("beforeinput", {inputType: `${inputType}${direction}`, bubbles: true, cancelable: true})),
+      new InputEvent("beforeinput", {inputType: "deleteByCut", bubbles: true, cancelable: true}),
+    ]
+    for(const event of events) {
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(feature.captureSelectedElement).toBe(media)
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+    feature.selectElement(media)
+    document.body.dispatchEvent(new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+    expect(media.isConnected).toBe(false)
+    expect(section.querySelectorAll("p")).toHaveLength(2)
+    expect(section.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it("preserves native deletion in media form controls", () => {
+    const media = el("object")
+    const input = document.createElement("input")
+    media.append(input)
+    feature.captureElement(media)
+    for(const event of [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true}),
+    ]) {
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(media)
+    }
+  })
+
+  it("does not block deletion input after the captured media is replaced", () => {
+    const media = el("img")
+    feature.captureElement(media)
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "text"
+    media.replaceWith(paragraph)
+    $.move(paragraph.firstChild!, 4)
+    const event = new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.captureSelectedElement).toBeNull()
+  })
+
+  it.each(["object", "interactive-widget"])("allows deletion inside captured %s content", tag => {
+    const captured = el(tag)
+    captured.textContent = "editable"
+    feature.captureElement(captured)
+    $.selectRange(captured.firstChild!, 1, captured.firstChild!, 3)
+    for(const event of [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true}),
+    ]) {
+      captured.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it.each(["object", "interactive-widget"])("protects the document when a %s selection extends outside capture", tag => {
+    const captured = el(tag, "inside")
+    const paragraph = el("p", "outside")
+    feature.captureElement(captured)
+    $.selectRange(captured.firstChild!, 1, paragraph.firstChild!, 3)
+    const authored = editor.toHTML(true)
+    for(const event of [
+      new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}),
+      new InputEvent("beforeinput", {inputType: `deleteContent${direction}`, bubbles: true, cancelable: true}),
+    ]) {
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+  })
+})
+
+describe("captured element insertion", () => {
+  const insertionEvents = () => [
+    new KeyboardEvent("keydown", {key: "x", bubbles: true, composed: true, cancelable: true}),
+    new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true}),
+    new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, composed: true, cancelable: true}),
+    ...["insertText", "insertReplacementText", "insertCompositionText", "insertParagraph", "insertLineBreak"].map(inputType =>
+      new InputEvent("beforeinput", {inputType, data: "x", bubbles: true, composed: true, cancelable: true})),
+  ]
+
+  it.each(["img", "picture", "audio", "video", "iframe", "embed", "object", "interactive-widget", "p", "svg"])("protects captured %s from typing and Enter", tag => {
+    const section = el("section")
+    section.innerHTML = `<!--keep--><p>Before</p><${tag}></${tag}><p>After</p>`
+    const captured = section.children[1]
+    if(tag === "picture") captured.append(document.createElement("img"))
+    feature.captureElement(captured)
+    const authored = editor.toHTML(true)
+    for(const event of insertionEvents()) {
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(feature.captureSelectedElement).toBe(captured)
+      expect(editor.toHTML(true)).toBe(authored)
+    }
+  })
+
+  it.each(["object", "interactive-widget"])("preserves typing and Enter inside captured %s content", tag => {
+    const captured = el(tag, "inside")
+    feature.captureElement(captured)
+    $.move(captured.firstChild!, 3)
+    for(const event of insertionEvents()) {
+      captured.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it.each(["object", "interactive-widget"])("preserves typing and Enter in a captured %s form control", tag => {
+    const captured = el(tag)
+    const input = document.createElement("textarea")
+    captured.append(input)
+    feature.captureElement(captured)
+    input.focus()
+    for(const event of insertionEvents()) {
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it.each(["open", "closed"] as const)("preserves typing and Enter in captured %s widget shadow controls", mode => {
+    const captured = el("interactive-widget")
+    const input = document.createElement("textarea")
+    captured.attachShadow({mode}).append(input)
+    feature.captureElement(captured)
+    input.focus()
+    for(const event of insertionEvents()) {
+      input.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedElement).toBe(captured)
+    }
+  })
+
+  it("preserves modified keyboard shortcuts during capture", () => {
+    feature.captureElement(el("img"))
+    for(const modifiers of [{ctrlKey: true}, {metaKey: true}]) {
+      const event = new KeyboardEvent("keydown", {key: "a", ...modifiers, bubbles: true, cancelable: true})
+      document.body.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+  })
 })
 
 describe("capture outline selection", () => {
@@ -1143,6 +1474,23 @@ describe("processSelection()", () => {
     expect(atomicOverlays()).toHaveLength(0)
   })
 
+  it("positions the native media selection overlay on cropped visible bounds", () => {
+    const image = el("img") as HTMLImageElement
+    image.style.setProperty("object-view-box", "inset(10% 20% 30% 40%)")
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(90, 30, 80, 60))
+    $.selectElement(image)
+    feature.processSelection()
+
+    const overlay = atomicOverlays()[0]
+    expect(overlay).toBeDefined()
+    expect(overlay.getRootNode()).toBe(editor.appendix)
+    expect(overlay.style.left).toBe("90px")
+    expect(overlay.style.top).toBe("30px")
+    expect(overlay.style.width).toBe("80px")
+    expect(overlay.style.height).toBe("60px")
+    expect(editor.toHTML(true)).not.toMatch(/atomic-selection-overlay|◆/)
+  })
+
   it.each([false, true])("overlays an element-selected details and clears it on collapse (open: %s)", open => {
     document.body.innerHTML = `<details${open ? " open" : ""}><summary>Title</summary><p>Body<test-widget></test-widget></p></details>`
     const details = document.querySelector("details")!
@@ -1390,6 +1738,28 @@ describe("processSelection()", () => {
     expect(feature.gapCaret!.getAttribute("part")).toContain("gap-caret")
     expect(feature.gapCaret!.hasAttribute("visibility")).toBe(false)
   })
+  it("includes live trailing margins in gap positions and clears their geometry", () => {
+    const paragraph = el("p")
+    paragraph.style.marginBottom = "36px"
+    $.selectGap(paragraph)
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("36px")
+    expect(editor.toHTML(true)).not.toContain("◆")
+
+    paragraph.style.marginBottom = "72px"
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("72px")
+
+    $.selectGap(paragraph, "before")
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("0px")
+    expect(paragraph).not.toHaveClass("◆gap-after-selected")
+
+    $.move(paragraph)
+    feature.processSelection()
+    expect(feature.selectionCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("")
+    expect(paragraph).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+  })
   it("skips positioned siblings when presenting a gap", () => {
     document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute">overlay</interactive-widget><hr style="position: fixed"><p>after</p>'
     const before = document.querySelector("p")!
@@ -1543,6 +1913,35 @@ describe("processSelection()", () => {
     expect(p1.hasAttribute("class")).toBe(false)
     expect(p2.classList.contains("◆element-selected")).toBe(true)
   })
+  it("retains an unchanged text marker while moving and editing the caret", () => {
+    document.body.innerHTML = '<section><!--keep--><p class="authored">Before <em>text</em> after</p></section>'
+    const paragraph = document.querySelector("p")!, text = document.querySelector("em")!.firstChild! as Text
+    $.move(text, 1)
+    feature.processSelection()
+    const owner = paragraph
+    const observer = new MutationObserver(() => {})
+    observer.observe(document.body, {attributes: true, attributeOldValue: true, subtree: true})
+    for(const offset of [2, 3]) {
+      $.move(text, offset)
+      feature.processSelection()
+    }
+    text.insertData(3, "x")
+    feature.processSelection()
+    expect(observer.takeRecords().filter(record => record.attributeName === "class")).toEqual([])
+    observer.disconnect()
+    expect(owner).toHaveClass("◆text-selected")
+    expect(paragraph).toHaveClass("authored")
+    const replaced = document.createElement("p")
+    replaced.textContent = "Concurrent replacement"
+    paragraph.replaceWith(replaced)
+    $.move(replaced.firstChild!, 2)
+    feature.processSelection()
+    expect(owner).not.toHaveClass("◆text-selected", "◆")
+    expect(replaced).toHaveClass("◆text-selected")
+    feature.disable()
+    expect(replaced.hasAttribute("class")).toBe(false)
+    expect(editor.toHTML()).not.toContain("◆text-selected")
+  })
   it("hides the gap caret when leaving a gap selection", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectGap(p1)
@@ -1679,6 +2078,7 @@ describe("processSelection()", () => {
         attributes: expect.objectContaining({lang: "de"}),
       }))
       editor.features.manipulation.actions.setElementAttribute({
+        ...elementAttributeState(document.documentElement, null),
         type: "setElementAttribute",
         path: null,
         localName: "html",
@@ -1727,6 +2127,247 @@ describe("processSelection()", () => {
 
 describe("scrolling selections into view", () => {
   const options = {behavior: "smooth", block: "nearest", inline: "nearest"} as const
+
+  function setDimension(element: Element, name: string, value: number) {
+    Object.defineProperty(element, name, {configurable: true, value})
+  }
+
+  function setCaretRect(rect: DOMRect) {
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(rect)
+  }
+
+  it("scrolls nested containers from the caret outward and reveals its predicted rect", () => {
+    document.body.innerHTML = '<div class="outer"><div class="inner"><p>text</p></div></div>'
+    const outer = document.querySelector<HTMLElement>(".outer")!
+    const inner = document.querySelector<HTMLElement>(".inner")!
+    const text = document.querySelector("p")!.firstChild!
+    const windowHeight = Object.getOwnPropertyDescriptor(window, "innerHeight")
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    const innerScroll = vi.spyOn(inner, "scrollBy").mockImplementation(() => {})
+    const outerScroll = vi.spyOn(outer, "scrollBy").mockImplementation(() => {})
+    Object.defineProperty(window, "innerHeight", {configurable: true, value: 100})
+    outer.style.overflow = "auto"
+    inner.style.overflow = "auto"
+    setDimension(outer, "clientWidth", 80)
+    setDimension(outer, "clientHeight", 80)
+    setDimension(outer, "scrollWidth", 200)
+    setDimension(outer, "scrollHeight", 200)
+    setDimension(outer, "clientLeft", 0)
+    setDimension(outer, "clientTop", 0)
+    setDimension(inner, "clientWidth", 50)
+    setDimension(inner, "clientHeight", 50)
+    setDimension(inner, "scrollWidth", 200)
+    setDimension(inner, "scrollHeight", 200)
+    setDimension(inner, "clientLeft", 0)
+    setDimension(inner, "clientTop", 0)
+    vi.spyOn(outer, "getBoundingClientRect").mockReturnValue(new DOMRect(50, 50, 80, 80))
+    vi.spyOn(inner, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 50, 50))
+    setCaretRect(new DOMRect(180, 180, 0, 20))
+    try {
+      $.move(text, 2)
+      feature.processSelection()
+
+      expect(innerScroll).toHaveBeenCalledExactlyOnceWith({left: 31, top: 70, behavior: "smooth"})
+      expect(outerScroll).toHaveBeenCalledExactlyOnceWith({left: 20, top: 20, behavior: "smooth"})
+      // The viewport reveal uses the caret rect after both container scrolls.
+      expect(windowScroll).toHaveBeenCalledExactlyOnceWith({left: 0, top: 30, behavior: "smooth"})
+      expect(document.getSelection()?.focusNode).toBe(text)
+      expect(document.getSelection()?.focusOffset).toBe(2)
+    }
+    finally {
+      if(windowHeight) Object.defineProperty(window, "innerHeight", windowHeight)
+      else Reflect.deleteProperty(window, "innerHeight")
+      vi.restoreAllMocks()
+    }
+  })
+
+  it("clamps scroll deltas to each container's remaining range", () => {
+    document.body.innerHTML = '<div class="scroller"><p>text</p></div>'
+    const scroller = document.querySelector<HTMLElement>(".scroller")!
+    const text = document.querySelector("p")!.firstChild!
+    const scroll = vi.spyOn(scroller, "scrollBy").mockImplementation(() => {})
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    scroller.style.overflow = "auto"
+    setDimension(scroller, "clientWidth", 100)
+    setDimension(scroller, "clientHeight", 100)
+    setDimension(scroller, "scrollWidth", 200)
+    setDimension(scroller, "scrollHeight", 200)
+    setDimension(scroller, "scrollLeft", 95)
+    setDimension(scroller, "scrollTop", 0)
+    setDimension(scroller, "clientLeft", 0)
+    setDimension(scroller, "clientTop", 0)
+    vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100))
+    setCaretRect(new DOMRect(200, 40, 0, 20))
+    try {
+      $.move(text, 1)
+      feature.processSelection()
+
+      // Horizontal movement would be 101px and is limited to the final 5px.
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({left: 5, top: 0, behavior: "smooth"})
+      expect(windowScroll).not.toHaveBeenCalled()
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it.each([
+    {scrollLeft: -20, caretLeft: -50, expectedLeft: -50, windowLeft: null, edge: "left"},
+    {scrollLeft: -90, caretLeft: -50, expectedLeft: -10, windowLeft: -40, edge: "left limit"},
+    {scrollLeft: -20, caretLeft: 150, expectedLeft: 20, windowLeft: null, edge: "right limit"},
+  ])("uses RTL scrollLeft bounds at the $edge", ({scrollLeft, caretLeft, expectedLeft, windowLeft}) => {
+    document.body.innerHTML = '<div class="scroller" dir="rtl"><p>text</p></div>'
+    const scroller = document.querySelector<HTMLElement>(".scroller")!
+    const text = document.querySelector("p")!.firstChild!
+    const scroll = vi.spyOn(scroller, "scrollBy").mockImplementation(() => {})
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    scroller.style.cssText = "direction: rtl; overflow: auto"
+    setDimension(scroller, "clientWidth", 100)
+    setDimension(scroller, "clientHeight", 100)
+    setDimension(scroller, "scrollWidth", 200)
+    setDimension(scroller, "scrollHeight", 100)
+    setDimension(scroller, "scrollLeft", scrollLeft)
+    setDimension(scroller, "scrollTop", 0)
+    setDimension(scroller, "clientLeft", 0)
+    setDimension(scroller, "clientTop", 0)
+    vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100))
+    setCaretRect(new DOMRect(caretLeft, 40, 0, 20))
+    try {
+      $.move(text, 1)
+      feature.processSelection()
+
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({left: expectedLeft, top: 0, behavior: "smooth"})
+      if(windowLeft === null) expect(windowScroll).not.toHaveBeenCalled()
+      else expect(windowScroll).toHaveBeenCalledExactlyOnceWith({left: windowLeft, top: 0, behavior: "smooth"})
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it("scrolls an oversized caret rect by the nearer edge", () => {
+    document.body.innerHTML = '<div class="scroller"><p>text</p></div>'
+    const scroller = document.querySelector<HTMLElement>(".scroller")!
+    const text = document.querySelector("p")!.firstChild!
+    const scroll = vi.spyOn(scroller, "scrollBy").mockImplementation(() => {})
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    scroller.style.overflow = "auto"
+    setDimension(scroller, "clientWidth", 100)
+    setDimension(scroller, "clientHeight", 100)
+    setDimension(scroller, "scrollWidth", 300)
+    setDimension(scroller, "scrollHeight", 100)
+    setDimension(scroller, "scrollLeft", 100)
+    setDimension(scroller, "scrollTop", 0)
+    setDimension(scroller, "clientLeft", 0)
+    setDimension(scroller, "clientTop", 0)
+    vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100))
+    // The range spans from 40px left of the viewport to 10px past its right edge.
+    setCaretRect(new DOMRect(-40, 40, 150, 20))
+    try {
+      $.move(text, 1)
+      feature.processSelection()
+
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({left: 10, top: 0, behavior: "smooth"})
+      expect(windowScroll).toHaveBeenCalledExactlyOnceWith({left: -50, top: 0, behavior: "smooth"})
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it("chooses the leading edge when an oversized caret is equally far from both edges", () => {
+    document.body.innerHTML = '<div class="scroller"><p>text</p></div>'
+    const scroller = document.querySelector<HTMLElement>(".scroller")!
+    const text = document.querySelector("p")!.firstChild!
+    const scroll = vi.spyOn(scroller, "scrollBy").mockImplementation(() => {})
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    scroller.style.overflow = "auto"
+    setDimension(scroller, "clientWidth", 100)
+    setDimension(scroller, "clientHeight", 100)
+    setDimension(scroller, "scrollWidth", 300)
+    setDimension(scroller, "scrollHeight", 100)
+    setDimension(scroller, "scrollLeft", 100)
+    setDimension(scroller, "scrollTop", 0)
+    setDimension(scroller, "clientLeft", 0)
+    setDimension(scroller, "clientTop", 0)
+    vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100))
+    setCaretRect(new DOMRect(-50, 40, 150, 20))
+    try {
+      $.move(text, 1)
+      feature.processSelection()
+
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({left: -50, top: 0, behavior: "smooth"})
+      expect(windowScroll).not.toHaveBeenCalled()
+      expect(document.getSelection()?.focusNode).toBe(text)
+      expect(document.body.textContent).toBe("text")
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
+  it.each([
+    {scrollTop: 10, caretTop: -50, expectedTop: -10, edge: "top limit"},
+    {scrollTop: 95, caretTop: 350, expectedTop: 5, edge: "bottom limit"},
+  ])("clamps vertical scrolling at the $edge", ({scrollTop, caretTop, expectedTop}) => {
+    document.body.innerHTML = '<div class="scroller"><p>text</p></div>'
+    const scroller = document.querySelector<HTMLElement>(".scroller")!
+    const text = document.querySelector("p")!.firstChild!
+    const scroll = vi.spyOn(scroller, "scrollBy").mockImplementation(() => {})
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    const oldHeight = Object.getOwnPropertyDescriptor(window, "innerHeight")
+    Object.defineProperty(window, "innerHeight", {configurable: true, value: 500})
+    scroller.style.overflow = "auto"
+    setDimension(scroller, "clientWidth", 100)
+    setDimension(scroller, "clientHeight", 100)
+    setDimension(scroller, "scrollWidth", 100)
+    setDimension(scroller, "scrollHeight", 200)
+    setDimension(scroller, "scrollLeft", 0)
+    setDimension(scroller, "scrollTop", scrollTop)
+    setDimension(scroller, "clientLeft", 0)
+    setDimension(scroller, "clientTop", 0)
+    vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100))
+    setCaretRect(new DOMRect(20, caretTop, 0, 20))
+    try {
+      $.move(text, 1)
+      feature.processSelection()
+
+      expect(scroll).toHaveBeenCalledExactlyOnceWith({left: 0, top: expectedTop, behavior: "smooth"})
+      if(expectedTop < 0) expect(windowScroll).toHaveBeenCalledExactlyOnceWith({left: 0, top: -60, behavior: "smooth"})
+      else expect(windowScroll).not.toHaveBeenCalled()
+      expect(document.getSelection()?.focusNode).toBe(text)
+    }
+    finally {
+      if(oldHeight) Object.defineProperty(window, "innerHeight", oldHeight)
+      else Reflect.deleteProperty(window, "innerHeight")
+      vi.restoreAllMocks()
+    }
+  })
+
+  it.each(["visible", "clip"] as const)("skips a horizontally overflowing ancestor with overflowX %s", overflowX => {
+    document.body.innerHTML = '<div class="scroller"><p>text</p></div>'
+    const scroller = document.querySelector<HTMLElement>(".scroller")!
+    const text = document.querySelector("p")!.firstChild!
+    const scroll = vi.spyOn(scroller, "scrollBy").mockImplementation(() => {})
+    const windowScroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    const oldWidth = Object.getOwnPropertyDescriptor(window, "innerWidth")
+    Object.defineProperty(window, "innerWidth", {configurable: true, value: 100})
+    scroller.style.overflowX = overflowX
+    setDimension(scroller, "clientWidth", 100)
+    setDimension(scroller, "clientHeight", 100)
+    setDimension(scroller, "scrollWidth", 300)
+    setDimension(scroller, "scrollHeight", 100)
+    setDimension(scroller, "clientLeft", 0)
+    setDimension(scroller, "clientTop", 0)
+    vi.spyOn(scroller, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100))
+    setCaretRect(new DOMRect(150, 40, 0, 20))
+    try {
+      $.move(text, 1)
+      feature.processSelection()
+
+      expect(scroll).not.toHaveBeenCalled()
+      expect(windowScroll).toHaveBeenCalledExactlyOnceWith({left: 51, top: 0, behavior: "smooth"})
+      expect(document.getSelection()?.focusNode).toBe(text)
+      expect(document.body.textContent).toBe("text")
+    }
+    finally {
+      if(oldWidth) Object.defineProperty(window, "innerWidth", oldWidth)
+      else Reflect.deleteProperty(window, "innerWidth")
+      vi.restoreAllMocks()
+    }
+  })
 
   it.each([16, 24])("leaves 1.25rem above and below the caret with a %spx root font", fontSize => {
     const paragraph = el("p", "text")
@@ -2104,7 +2745,7 @@ describe("document listeners", () => {
         detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
-          documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
+          documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
           path: [
             {path: [], name: "Document", icon: "Document"},
             {path: [0], name: "Paragraph", icon: "Paragraph"},
@@ -2128,7 +2769,7 @@ describe("document listeners", () => {
       detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
-        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
+        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
           {
@@ -2159,11 +2800,13 @@ describe("document listeners", () => {
           document: "A custom document template owns this document's layout.",
           canvas: "A custom document template owns this document's layout.",
           slides: "A custom document template owns this document's layout.",
+          board: "A custom document template owns this document's layout.",
         }},
         path: [{path: [0], name: "demo-widget", icon: "Packages"}],
         nodeSelected: true,
         element: {
           path: [0],
+          targetId: expect.any(String),
           localName: "demo-widget",
           namespaceURI: "http://www.w3.org/1999/xhtml",
           name: "demo-widget",
@@ -2186,6 +2829,7 @@ describe("document listeners", () => {
     const message = postMessage.mock.lastCall?.[0] as {detail: {element?: unknown}}
     expect(message.detail.element).toEqual({
       path: [0],
+      targetId: expect.any(String),
       localName: "blockquote",
       namespaceURI: "http://www.w3.org/1999/xhtml",
       name: "Quote",
@@ -2204,11 +2848,7 @@ describe("document listeners", () => {
     document.body.innerHTML = '<blockquote cite="source.html" class="authored"></blockquote>'
     const quote = document.querySelector("blockquote")!
     quote.classList.add("◆", "◆element-selected")
-    const target = {
-      path: [0],
-      localName: "blockquote",
-      namespaceURI: "http://www.w3.org/1999/xhtml",
-    }
+    const target = elementAttributeState(quote, [0])
 
     editor.features.manipulation.actions.setElementAttribute({...target, type: "setElementAttribute", name: "open", value: ""})
     editor.features.manipulation.actions.setElementAttribute({
@@ -2231,12 +2871,119 @@ describe("document listeners", () => {
     expect(quote).toHaveClass("◆", "◆element-selected")
   })
 
+  it.each(["replacement", "insertion"])("rejects stale same-tag attribute targets after %s", change => {
+    document.body.innerHTML = '<blockquote cite="original"></blockquote>'
+    const original = document.body.firstElementChild!
+    const target = elementAttributeState(original, [0])
+    const other = document.createElement("blockquote")
+    if(change === "replacement") original.replaceWith(other)
+    else document.body.prepend(other)
+
+    expect(() => editor.features.manipulation.actions.setElementAttribute({
+      ...target, type: "setElementAttribute", name: "title", value: "stale",
+    })).toThrow("selected element changed")
+    expect(other.hasAttribute("title")).toBe(false)
+    expect(original.hasAttribute("title")).toBe(false)
+
+    const current = elementAttributeState(other, [0])
+    editor.features.manipulation.actions.setElementAttribute({
+      ...current, type: "setElementAttribute", name: "title", value: "current",
+    })
+    expect(other.getAttribute("title")).toBe("current")
+    expect(editor.toHTML(true)).not.toContain("targetId")
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("targetId")
+  })
+
+  it("rejects path-only attribute edits without a captured identity", () => {
+    document.body.innerHTML = '<p></p>'
+    expect(() => editor.features.manipulation.actions.setElementAttribute({
+      type: "setElementAttribute", path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml",
+      name: "title", value: "unverified",
+    })).toThrow("selected element changed")
+    expect(document.querySelector("p")!.hasAttribute("title")).toBe(false)
+  })
+
+  it("rejects an attribute edit after a remote same-tag replacement", () => {
+    document.body.innerHTML = '<blockquote title="original"></blockquote>'
+    const original = document.body.firstElementChild!
+    $.selectElement(original)
+    editor.doc.syncFromDOM()
+    const target = elementAttributeState(original, [0])
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      remote.transact(() => {
+        const body = sharedDOMBody(remote)
+        body.delete(0, 1)
+        const replacement = new Y.XmlElement("blockquote")
+        replacement.setAttribute("title", "remote")
+        body.insert(0, [replacement])
+      })
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-replacement")
+      const replacement = document.body.firstElementChild!
+      expect(replacement).not.toBe(original)
+      expect(() => editor.features.manipulation.actions.setElementAttribute({
+        ...target, type: "setElementAttribute", name: "title", value: "stale",
+      })).toThrow("selected element changed")
+      expect(replacement.getAttribute("title")).toBe("remote")
+    }
+    finally { remote.destroy() }
+  })
+
+  it("keeps case-only HTML attribute renames through collaboration history", () => {
+    document.body.innerHTML = '<p data-note="original" class="authored"></p>'
+    const paragraph = document.querySelector("p")!
+    paragraph.classList.add("◆element-selected")
+    const target = elementAttributeState(paragraph, [0])
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.manipulation.actions.setElementAttribute({
+      ...target, type: "setElementAttribute", name: "DATA-NOTE", previousName: "data-note", value: "updated",
+    })
+    editor.features.manipulation.actions.setElementAttribute({
+      ...target, type: "setElementAttribute", name: "CLASS", previousName: "class", value: "changed",
+    })
+    expect(paragraph.getAttribute("data-note")).toBe("updated")
+    expect(paragraph.classList.contains("◆element-selected")).toBe(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("p")!.getAttribute("data-note")).toBe("original")
+    editor.doc.redo()
+    expect(document.querySelector("p")!.getAttribute("data-note")).toBe("updated")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("keeps SVG attribute renames case-sensitive", () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    svg.setAttribute("data-note", "original")
+    document.body.replaceChildren(svg)
+    editor.features.manipulation.actions.setElementAttribute({
+      ...elementAttributeState(svg, [0]), type: "setElementAttribute", name: "DATA-NOTE", previousName: "data-note", value: "updated",
+    })
+    expect(svg.hasAttribute("data-note")).toBe(false)
+    expect(svg.getAttribute("DATA-NOTE")).toBe("updated")
+  })
+
+  it("renames case-only namespace prefixes without retaining the old attribute", () => {
+    const paragraph = document.createElement("p")
+    const xmlns = "http://www.w3.org/2000/xmlns/"
+    paragraph.setAttributeNS(xmlns, "xmlns:p", "urn:lower")
+    paragraph.setAttributeNS(xmlns, "xmlns:P", "urn:upper")
+    paragraph.setAttributeNS("urn:lower", "p:note", "original")
+    // Happy DOM lacks the browser's case-sensitive namespace lookup.
+    Object.defineProperty(paragraph, "lookupNamespaceURI", {value: (prefix: string) => prefix === "P" ? "urn:upper" : "urn:lower"})
+    document.body.replaceChildren(paragraph)
+    editor.features.manipulation.actions.setElementAttribute({
+      ...elementAttributeState(paragraph, [0]), type: "setElementAttribute", name: "P:note", previousName: "p:note", value: "updated",
+    })
+    expect(paragraph.getAttributeNS("urn:lower", "note")).toBeNull()
+    expect(paragraph.getAttributeNS("urn:upper", "note")).toBe("updated")
+  })
+
   it("rejects active attributes, unsafe URLs, and stale element paths", () => {
     document.body.innerHTML = "<blockquote></blockquote>"
     const target = {
-      path: [0],
-      localName: "blockquote",
-      namespaceURI: "http://www.w3.org/1999/xhtml",
+      ...elementAttributeState(document.body.firstElementChild!, [0]),
       type: "setElementAttribute" as const,
     }
 
@@ -2253,9 +3000,7 @@ describe("document listeners", () => {
   it.each(["script", "style"])("keeps <%s> and all of its attributes read-only", localName => {
     document.body.replaceChildren(document.createElement(localName))
     const target = {
-      path: [0],
-      localName,
-      namespaceURI: "http://www.w3.org/1999/xhtml",
+      ...elementAttributeState(document.body.firstElementChild!, [0]),
       type: "setElementAttribute" as const,
     }
 
@@ -2279,7 +3024,7 @@ describe("document listeners", () => {
       detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
-        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
+        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
           {
@@ -2351,7 +3096,7 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
-        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null}},
+        documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [{path: [], name: "Document", icon: "Document"}],
         gap: {parentPath: [], offset: 1},
       },
@@ -3269,6 +4014,76 @@ describe("document listeners", () => {
   })
 })
 
+describe("explicit section selection lifecycle", () => {
+  it("rejects non-section breadcrumb paths and layout sections without changing the live selection", () => {
+    document.body.innerHTML = '<img><p>hello</p>'
+    const text = document.querySelector("p")!.firstChild!
+    document.getSelection()!.setPosition(text, 2)
+    const before = document.getSelection()!.getRangeAt(0).cloneRange()
+
+    expect(() => feature.actions.selectSection({type: "selectSection", path: [0]})).toThrow(TypeError)
+    expect(document.getSelection()!.anchorNode).toBe(before.startContainer)
+    expect(document.getSelection()!.anchorOffset).toBe(before.startOffset)
+    expect(feature.selectedSectionElement).toBeNull()
+
+    expect(editor.setDocumentLayout("slides", "document")).toBe(true)
+    document.body.innerHTML = '<div class="ww-slides-viewport"><section class="ww-slide"><p>slide</p></section></div>'
+    const slide = document.querySelector("section")!
+    expect(feature.selectSectionElement(slide)).toBe(false)
+    expect(feature.selectedSectionElement).toBeNull()
+    expect(slide).not.toHaveClass("◆element-selected")
+  })
+
+  it("keeps selection on replacement sections and only clears the expected owner", () => {
+    document.body.innerHTML = "<section><p>hello</p></section><section><p>next</p></section>"
+    const [first, second] = Array.from(document.querySelectorAll("section"))
+    $.move(first.querySelector("p")!.firstChild!, 2)
+    expect(feature.selectSectionElement(first)).toBe(true)
+    feature.clearSelectedSection(second)
+    expect(feature.selectedSectionElement).toBe(first)
+
+    const replacement = document.createElement("section")
+    first.replaceWith(replacement)
+    feature.replaceSelectedSection(first, replacement)
+    expect(feature.selectedSectionElement).toBe(replacement)
+    feature.clearSelectedSection(first)
+    expect(feature.selectedSectionElement).toBe(replacement)
+    feature.clearSelectedSection(replacement)
+    expect(feature.selectedSectionElement).toBeNull()
+    expect(replacement).not.toHaveClass("◆element-selected")
+  })
+
+  it("hovers a section through its path and clears the preview for a null path", () => {
+    document.body.innerHTML = "<section><p>hello</p></section>"
+    const section = document.querySelector("section")!
+    feature.actions.hoverSection({type: "hoverSection", path: [0]})
+    expect(section).toHaveClass("◆element-hovered")
+    expect(editor.toHTML(true)).not.toContain("◆element-hovered")
+    feature.actions.hoverSection({type: "hoverSection", path: null})
+    expect(section).not.toHaveClass("◆element-hovered")
+    expect(feature.hoverCaret?.getAttribute("part")).not.toContain("hover-caret-transformed")
+    expect(feature.hoverCaret?.style.transform).toBe("")
+  })
+})
+
+it("toggles an item in a freeform multi-selection on modifier-click", () => {
+  const first = el("p", "first")
+  const second = el("p", "second")
+  expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+  for(const target of [first, second]) target.dispatchEvent(new MouseEvent("pointerdown", {
+    bubbles: true, cancelable: true, button: 0, ctrlKey: true,
+  }))
+  expect($.selectedElements).toEqual([first, second])
+
+  first.dispatchEvent(new MouseEvent("pointerdown", {
+    bubbles: true, cancelable: true, button: 0, ctrlKey: true,
+  }))
+  expect($.selectedElements).toEqual([second])
+  expect(first).not.toHaveClass("◆element-selected")
+  expect(second).toHaveClass("◆element-selected")
+  expect(editor.toHTML(true)).not.toContain("◆element-selected")
+})
+
 
 describe("divider selection", () => {
   const press = (key: string) => {
@@ -3372,6 +4187,124 @@ describe("selection invariants", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
     return paragraph
   }
+
+  describe("touch uses shared pointer selection", () => {
+    it("routes iframe-targeted touch through the same caret and range selection", () => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      vi.spyOn(document, "elementFromPoint").mockReturnValue(paragraph)
+      const relay = (event: "pointerdown" | "pointermove" | "pointerup" | "pointercancel", x = 20) =>
+        replayHostPointer({event, x, y: 30, pointerId: 7, buttons: event === "pointerup" ? 0 : 1})
+      expect(relay("pointerdown")).toBe(true)
+      relay("pointerup")
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      expect(document.body).toHaveClass("◆touch-caret-visible")
+      relay("pointerdown")
+      relay("pointermove", 40)
+      expect($.anchorOffset).toBe(2)
+      expect($.focusOffset).toBe(4)
+      relay("pointercancel", 40)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(editor.toHTML(true)).not.toContain("◆")
+      expect(replayHostPointer({event: "pointerdown", x: NaN, y: 30, pointerId: 7})).toBe(false)
+    })
+
+    function touch(target: EventTarget, type: string, x = 20, y = 30, pointerId = 7) {
+      const event = new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
+        button: 0, pointerType: "touch", isPrimary: pointerId === 7, pointerId, clientX: x, clientY: y})
+      target.dispatchEvent(event)
+      return event
+    }
+
+    function touchStart(target: EventTarget) {
+      const event = new Event("touchstart", {bubbles: true, composed: true, cancelable: true})
+      Object.defineProperty(event, "touches", {value: [{identifier: 7}]})
+      target.dispatchEvent(event)
+      return event
+    }
+
+    it("places a caret on tap without compatibility mouse events", () => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      expect(touch(paragraph, "pointerdown").defaultPrevented).toBe(true)
+      expect(touchStart(paragraph).defaultPrevented).toBe(true)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      // A browser focus action must not replace the shared hit-test result.
+      $.move(text, 0)
+      touch(paragraph, "pointerup")
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      expect($.isEmpty).toBe(true)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(touchStart(paragraph).defaultPrevented).toBe(false)
+      for(let tap = 0; tap < 2; tap++) {
+        touch(paragraph, "pointerdown", 30 + tap * 10)
+        touch(paragraph, "pointerup", 30 + tap * 10)
+        document.dispatchEvent(new Event("selectionchange"))
+        expect(feature.selectionCaret).toHaveClass("◆selection-caret-text")
+        expect(feature.selectionCaret!.getAttribute("part")).not.toContain("selection-caret-hidden")
+        expect(document.body).toHaveClass("◆touch-caret-visible")
+      }
+      pointer(paragraph, "pointerdown", 20, 30)
+      pointer(paragraph, "pointerup", 20, 30)
+      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      expect(feature.selectionCaret!.getAttribute("part")).toContain("selection-caret-hidden")
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointerup")
+      feature.disable()
+      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      expect(feature.selectionCaret).toBeNull()
+    })
+
+    it.each(["pointerup", "pointercancel", "lostpointercapture"])("extends a range through irregular inline DOM and cleans up on %s", ending => {
+      document.body.innerHTML = '<section><p><b>hello</b><!--keep--><i>world</i></p></section>'
+      const paragraph = document.querySelector("p")!, before = paragraph.querySelector("b")!.firstChild!, after = paragraph.querySelector("i")!.firstChild!
+      vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
+      vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
+      vi.spyOn(document, "caretPositionFromPoint").mockImplementation(x => ({offsetNode: x < 50 ? before : after, offset: 2}) as unknown as CaretPosition)
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointermove", 80)
+      expect($.anchor).toBe(before)
+      expect($.focus).toBe(after)
+      expect(document.getSelection()!.toString()).toBe("llowo")
+      expect(document.body).toHaveClass("◆selection-dragging")
+      expect(document.body).not.toHaveClass("◆touch-caret-visible")
+      touch(paragraph, ending, 80)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(document.body).not.toHaveClass("◆selection-dragging")
+      expect(editor.toHTML(true)).not.toContain("◆")
+    })
+
+    it("ignores a second finger while extending the first finger's range", () => {
+      const paragraph = textDocument(), text = paragraph.firstChild!
+      hitTest()
+      touch(paragraph, "pointerdown")
+      touch(paragraph, "pointerdown", 40, 30, 8)
+      touch(paragraph, "pointerup", 40, 30, 8)
+      touch(paragraph, "pointermove", 40)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(2)
+      expect($.focusOffset).toBe(4)
+    })
+
+    it("leaves widget shadow controls and appendix buttons native", () => {
+      const paragraph = textDocument()
+      hitTest()
+      $.move(paragraph.firstChild!, 1)
+      const widget = document.querySelector("second-widget")!, control = document.createElement("button")
+      widget.attachShadow({mode: "open"}).append(control)
+      expect(touch(control, "pointerdown").defaultPrevented).toBe(false)
+      expect(touchStart(control).defaultPrevented).toBe(false)
+      expect(feature.captureSelectedWidget).toBe(widget)
+      const button = document.createElement("button")
+      editor.addAppendix(button)
+      expect(touch(button, "pointerdown").defaultPrevented).toBe(false)
+      expect(touchStart(button).defaultPrevented).toBe(false)
+      expect(feature.isInDragSelection).toBe(false)
+    })
+  })
 
   describe.each(["canvas", "slides"] as const)("root-bounded text dragging in %s", mode => {
     afterEach(() => { document.body.className = "" })
@@ -3753,6 +4686,33 @@ describe("selection invariants", () => {
     details.dispatchEvent(new KeyboardEvent("keydown", {key: "x", bubbles: true, cancelable: true}))
     expect(details.children).toHaveLength(3)
     expect($.anchor).toBe(details.children[1])
+  })
+
+  it.each(['<video controls></video>', '<figure><video controls></video></figure>', '<test-widget></test-widget>'])("clicks below a closed summary without revealing hidden content: %s", content => {
+    document.body.innerHTML = `<section><p>Before</p><!--keep--><details><summary>Summary</summary>${content}</details></section>`
+    const section = document.querySelector("section")!
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    const hidden = details.lastElementChild!
+    const authored = editor.toHTML(true)
+    vi.spyOn(details, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 200, 60))
+    vi.spyOn(summary, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 110, 180, 20))
+    vi.spyOn(hidden, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 130, 180, 200))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: hidden, offset: 0} as unknown as CaretPosition)
+    expect(pointer(details, "pointerdown", 80, 145).defaultPrevented).toBe(true)
+    // A native focus action must not replace the corrected outer gap.
+    $.move(summary.firstChild!, 0)
+    pointer(details, "pointerup", 80, 145)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect($.anchor).toBe(section)
+    expect($.anchorOffset).toBe(3)
+    expect($.detailsGap).toEqual({element: details, placement: "after"})
+    expect(details.open).toBe(false)
+    expect($.selectedElement).toBeUndefined()
+    expect(details).toHaveClass("◆gap-after-selected")
+    expect(editor.toHTML(true)).toBe(authored)
+    feature.disable()
+    expect(details).not.toHaveClass("◆gap-after-selected")
   })
 
   it("keeps the corrected empty paragraph position when clicking the details indentation", () => {
@@ -4149,4 +5109,78 @@ it("does not consider a caption containing a widget or image empty", () => {
     feature.processSelection(undefined, {scrollIntoView: false})
     expect(caption).not.toHaveClass("◆caption-placeholder")
   }
+})
+
+describe("selectDropRange", () => {
+  it.each([
+    ["SVG text", '<svg><text>graphic</text></svg>', "svg text"],
+    ["media-adjacent text", '<video></video><p>target</p>', "p"],
+    ["widget light-DOM text", '<drop-widget><span>inside</span></drop-widget>', "widget text"],
+  ])("collapses a real range at its %s endpoint", (_label, html, target) => {
+    document.body.innerHTML = html
+    const endpoint = target === "svg text"
+      ? document.querySelector("svg text")!.firstChild!
+      : target === "widget text"
+        ? document.querySelector("drop-widget span")!.firstChild!
+        : document.querySelector("p")!.firstChild!
+    const offset = 2
+    const range = document.createRange()
+    range.setStart(endpoint, offset)
+    range.collapse(true)
+
+    feature.selectDropRange(range, {scrollIntoView: false})
+
+    const selection = document.getSelection()!
+    expect(selection.isCollapsed).toBe(true)
+    expect(selection.anchorNode).toBe(endpoint)
+    expect(selection.anchorOffset).toBe(offset)
+  })
+
+  it.each(["open", "nested open"] as const)("releases %s shadow focus and widget capture before placing the caret", mode => {
+    const widget = document.createElement("focused-drop-widget")
+    const button = document.createElement("button")
+    const shadow = widget.attachShadow({mode: "open"})
+    const nested = mode.startsWith("nested") ? document.createElement("nested-drop-widget") : null
+    const focusRoot = nested ? nested.attachShadow({mode: "open"}) : shadow
+    if(nested) shadow.append(nested)
+    focusRoot.append(button)
+    const paragraph = el("p", "destination")
+    appendToBody(widget)
+    button.focus()
+    feature.captureElement(widget)
+    button.focus()
+    expect(document.activeElement).toBe(widget)
+    expect(focusRoot.activeElement).toBe(button)
+    const text = paragraph.firstChild!
+    const range = document.createRange()
+    range.setStart(text, 4)
+    range.collapse(true)
+
+    feature.selectDropRange(range, {scrollIntoView: false})
+
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect(document.activeElement).not.toBe(widget)
+    expect(focusRoot.activeElement).not.toBe(button)
+    expect(document.getSelection()!.anchorNode).toBe(text)
+    expect(document.getSelection()!.anchorOffset).toBe(4)
+  })
+
+  it("clears table cell selection and selected section state", () => {
+    document.body.innerHTML = '<section><table><tbody><tr><td>one</td><td>two</td></tr></tbody></table><p>destination</p></section>'
+    const section = document.querySelector("section")!
+    const cells = Array.from(document.querySelectorAll("td"))
+    const paragraphText = document.querySelector("p")!.firstChild!
+    expect(editor.features.table.selectCells(cells[0] as HTMLTableCellElement, cells[1] as HTMLTableCellElement)).toBe(true)
+    expect(feature.selectSectionElement(section)).toBe(true)
+    const range = document.createRange()
+    range.setStart(paragraphText, 2)
+    range.collapse(true)
+
+    feature.selectDropRange(range, {scrollIntoView: false})
+
+    expect(editor.features.table.hasCellSelection).toBe(false)
+    expect(feature.selectedSectionElement).toBeNull()
+    expect(document.getSelection()!.anchorNode).toBe(paragraphText)
+    expect(document.getSelection()!.anchorOffset).toBe(2)
+  })
 })

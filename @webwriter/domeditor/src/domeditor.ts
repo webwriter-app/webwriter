@@ -16,7 +16,7 @@ import { TransformationFeature } from "./features/transformation"
 import {CanvasFeature} from "./features/canvas"
 import {SlidesFeature} from "./features/slides"
 import {BoardFeature} from "./features/board"
-import {documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
+import {boardLayoutRole, documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
 import { StateFeature } from "./features/state"
 import { MediaFeature } from "./features/media"
 import { WidgetFeature } from "./features/widget"
@@ -32,7 +32,7 @@ import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
 import { TemplateFeature } from "./features/template"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isEditorOwnedAttribute, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
+import { $, adoptStylesheet, clearEditorArtifacts, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   editorFrameControlMessage,
@@ -47,6 +47,8 @@ import {
   presenceChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
+  undoStateChangeEvent,
+  type UndoState,
   type PresenceUser,
   type SelectionChangeDetail,
   type SelectionGap,
@@ -58,6 +60,7 @@ import {
 import { getElementPresentation, isLineBreakElement } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
+import listMarkerStyleString from "./document-list-markers.css?raw"
 import * as Y from "yjs"
 import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalURLAttribute, serializeDoctype} from "./serialization"
 import type {DocumentHeadState} from "./document-head"
@@ -69,8 +72,19 @@ import {parse as parseModule} from "es-module-lexer/js"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
 import {runtimeDocumentBaseURL} from "./package-dependencies"
 
-const editorStylesheet = createStylesheet(editorStyleString)
+const editorStylesheet = createStylesheet(editorStyleString + "\n" + listMarkerStyleString)
 const appendixStylesheet = createStylesheet(`
+  :where(:host > :not(slot)) {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  input, textarea, select,
+  [contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
   @keyframes blink {
     50% { opacity: 0; }
   }
@@ -85,8 +99,6 @@ const appendixStylesheet = createStylesheet(`
     position: fixed;
     z-index: 2147483647;
     pointer-events: auto;
-    user-select: auto;
-    -webkit-user-select: auto;
     right: 1rem;
     bottom: 1rem;
     left: 1rem;
@@ -146,175 +158,6 @@ const appendixStylesheet = createStylesheet(`
     outline-offset: 2px;
   }
 
-  .◆comment-bauble {
-    position: fixed;
-    z-index: 2147483645;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.45rem;
-    border: 1px solid #d5ad32;
-    border-radius: 999px;
-    color: #5c4610;
-    background: #fff8c5;
-    box-shadow: 0 2px 8px rgb(38 49 61 / 22%);
-    font: 600 0.75rem/1 system-ui, sans-serif;
-    cursor: pointer;
-  }
-
-  .◆comment-bauble:hover,
-  .◆comment-bauble:focus-visible {
-    border-color: #a77c00;
-    background: #fff1a3;
-    outline: none;
-  }
-
-  .◆comment-thread-pane {
-    box-sizing: border-box;
-    position: fixed;
-    z-index: 2147483646;
-    top: 1rem;
-    right: 1rem;
-    bottom: 1rem;
-    width: min(24rem, calc(100vw - 2rem));
-    overflow: hidden;
-    border: 1px solid #c8d0da;
-    border-radius: 0.7rem;
-    color: #26313d;
-    background: #f8fafc;
-    box-shadow: 0 12px 38px rgb(15 23 42 / 25%);
-    font: 0.8rem/1.4 system-ui, sans-serif;
-  }
-
-  .◆comment-pane-header {
-    box-sizing: border-box;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 3rem;
-    padding: 0.65rem 0.8rem;
-    border-bottom: 1px solid #dce2e9;
-    background: #ffffff;
-  }
-
-  .◆comment-pane-header h2,
-  .◆comment-new-thread h3 {
-    margin: 0;
-    font: 650 0.9rem/1.3 system-ui, sans-serif;
-  }
-
-  .◆comment-thread-list {
-    box-sizing: border-box;
-    height: calc(100% - 3rem);
-    overflow-y: auto;
-    padding: 0.75rem;
-  }
-
-  .◆comment-thread {
-    box-sizing: border-box;
-    margin: 0 0 0.75rem;
-    padding: 0.6rem;
-    border: 1px solid #d9dfe6;
-    border-radius: 0.55rem;
-    background: #ffffff;
-  }
-
-  .◆comment-card {
-    display: grid;
-    gap: 0.35rem;
-    padding: 0.55rem;
-    border-left: 3px solid #e1bd46;
-    background: #fffdf3;
-  }
-
-  .◆comment-card + .◆comment-card {
-    margin-top: 0.5rem;
-    border-left-color: #c8d0da;
-    background: #f8fafc;
-  }
-
-  .◆comment-card header {
-    display: flex;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .◆comment-card header span,
-  .◆comment-card time {
-    color: #697787;
-    font-size: 0.68rem;
-  }
-
-  .◆comment-card textarea,
-  .◆comment-composer textarea,
-  .◆comment-new-thread textarea {
-    box-sizing: border-box;
-    width: 100%;
-    resize: vertical;
-    padding: 0.45rem 0.5rem;
-    border: 1px solid #c8d0da;
-    border-radius: 0.35rem;
-    color: inherit;
-    background: #ffffff;
-    font: inherit;
-  }
-
-  .◆comment-card textarea:focus,
-  .◆comment-composer textarea:focus,
-  .◆comment-new-thread textarea:focus {
-    border-color: #a77c00;
-    outline: 1px solid #a77c00;
-  }
-
-  .◆comment-composer {
-    display: grid;
-    gap: 0.4rem;
-    margin-top: 0.6rem;
-    padding-top: 0.6rem;
-    border-top: 1px solid #e3e7ec;
-  }
-
-  .◆comment-pane-button {
-    justify-self: end;
-    padding: 0.35rem 0.55rem;
-    border: 1px solid #b7c0ca;
-    border-radius: 0.35rem;
-    color: #26313d;
-    background: #ffffff;
-    font: 600 0.72rem/1.2 system-ui, sans-serif;
-    cursor: pointer;
-  }
-
-  .◆comment-pane-button:hover,
-  .◆comment-pane-button:focus-visible {
-    border-color: #8d99a6;
-    background: #eef2f6;
-    outline: none;
-  }
-
-  .◆comment-pane-close {
-    width: 2rem;
-    height: 2rem;
-    overflow: hidden;
-    padding: 0;
-    border-radius: 999px;
-    font-size: 0;
-  }
-
-  .◆comment-pane-close::after {
-    content: "×";
-    font-size: 1.2rem;
-  }
-
-  .◆comment-remove {
-    color: #9f2727;
-  }
-
-  .◆comment-new-thread {
-    display: grid;
-    gap: 0.5rem;
-    border-style: dashed;
-    background: #fffdf3;
-  }
 `)
 
 /** DOMEditor
@@ -334,6 +177,7 @@ export type DOMEditorOptions = {
   initialState?: EditorStateSnapshot
   bridgeNonce?: string
   bridgeOrigin?: string
+  accessibilityReviewEnabled?: boolean
 }
 
 type HostDocumentState = {
@@ -534,7 +378,8 @@ export class DOMEditor {
     if(selection && savedSelection) {
       const anchor = this.restoreTextPoint(savedSelection.anchor)
       const focus = this.restoreTextPoint(savedSelection.focus)
-      if(anchor && focus) {
+      if(anchor && focus && (selection.anchorNode !== anchor[0] || selection.anchorOffset !== anchor[1]
+        || selection.focusNode !== focus[0] || selection.focusOffset !== focus[1])) {
         selection.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])
       }
     }
@@ -649,6 +494,7 @@ export class DOMEditor {
       throw error
     }
     try {
+      this.features.proofreading.setAccessibilityReviewEnabled(options.accessibilityReviewEnabled === true)
       adoptStylesheet(document, editorStylesheet)
       document.designMode = "on"
       const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
@@ -663,6 +509,7 @@ export class DOMEditor {
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
+          connectionParams: Object.fromEntries([...syncUrl.searchParams].filter(([key]) => key !== "session")),
           documentPermalinks: true,
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
@@ -689,6 +536,7 @@ export class DOMEditor {
       this.postSelectionPath()
       document.addEventListener("copy", this.#onCopy)
       window.addEventListener("message", this.handleMessage)
+      window.addEventListener("resize", this.handleLayoutResize)
     }
     catch(error) {
       try {
@@ -756,8 +604,32 @@ export class DOMEditor {
       || selection.anchorNode === document.body || selection.focusNode === document.body
       || !selection.anchorNode.isConnected || !selection.focusNode.isConnected
     const defaultBlock = this.schema.ensureStaticContent(document.body)
+    if(defaultBlock) this.doc?.markMinimumContentRepair(defaultBlock)
     if(moveSelection && defaultBlock) $.move(defaultBlock)
     return defaultBlock
+  }
+
+  private handleLayoutResize = () => this.postSelectionPath()
+
+  // Retain sources for undo, clipboard copies and previews until teardown.
+  private readonly mediaBlobs = new Map<string, Blob>()
+
+  createMediaURL(blob: Blob) {
+    const url = URL.createObjectURL(blob)
+    this.mediaBlobs.set(url, blob)
+    return url
+  }
+
+  mediaSourceSize(source: string) {
+    const blob = this.mediaBlobs.get(source)
+    if(blob) return blob.size
+    if(source.startsWith("data:")) {
+      const comma = source.indexOf(",")
+      if(comma < 0) return
+      const data = source.slice(comma + 1)
+      if(source.slice(0, comma).endsWith(";base64")) return Math.floor(data.length * 3 / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0)
+      try { return new TextEncoder().encode(decodeURIComponent(data)).length } catch { return }
+    }
   }
 
   destroy() {
@@ -774,10 +646,13 @@ export class DOMEditor {
     }
     for(const owner of Array.from(this.#editingLocks)) attempt(() => this.unlockEditing(owner))
     Object.values(this.features).forEach(feature => attempt(() => feature.disable()))
+    this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
+    this.mediaBlobs.clear()
     document.removeEventListener("input", this.#handleInput)
     document.removeEventListener("selectionchange", this.handleSelectionChange)
     document.removeEventListener("copy", this.#onCopy)
     window.removeEventListener("message", this.handleMessage)
+    window.removeEventListener("resize", this.handleLayoutResize)
     this.#bodySchemaObserver?.disconnect()
     this.#bodySchemaObserver = null
     if(this.doc) attempt(() => this.doc.destroy())
@@ -810,7 +685,7 @@ export class DOMEditor {
 
     // Responses are posted to the parent window. In a non-iframe environment
     // (for example, a unit test), they can arrive back at this listener too.
-    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === proofreadingStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent) {
+    if(ev.data.type === executeCompleteEvent || ev.data.type === executeFailureEvent || ev.data.type === presenceChangeEvent || ev.data.type === markStateChangeEvent || ev.data.type === commentStateChangeEvent || ev.data.type === proofreadingStateChangeEvent || ev.data.type === documentHeadStateChangeEvent || ev.data.type === historyStateChangeEvent || ev.data.type === undoStateChangeEvent) {
       return
     }
     // The frame host handles controls on the same window message target.
@@ -919,8 +794,8 @@ export class DOMEditor {
     this.postBridgeEvent(type, detail)
   }
 
-  postPresence(users: PresenceUser[]) {
-    this.postBridgeEvent(presenceChangeEvent, {users})
+  postPresence(users: PresenceUser[], connectionStatus?: "connected" | "connecting" | "disconnected") {
+    this.postBridgeEvent(presenceChangeEvent, {users, connectionStatus})
   }
 
   postDocumentHeadState(state: DocumentHeadState) {
@@ -931,11 +806,17 @@ export class DOMEditor {
     this.postBridgeEvent(historyStateChangeEvent, state)
   }
 
+  postUndoState(state: UndoState) {
+    this.postBridgeEvent(undoStateChangeEvent, state)
+  }
+
   postProofreadingState(state: ProofreadingState) {
     this.postBridgeEvent(proofreadingStateChangeEvent, state)
   }
 
   private selectedElementForPath() {
+    const dragged = this.features.manipulation.draggedElement
+    if(dragged) return dragged
     const root = getDocumentRoot()
     const target = this.features.manipulation.styleTarget
     const selectedSection = this.features.selection.selectedSectionElement
@@ -1002,14 +883,22 @@ export class DOMEditor {
       }
     }
     const positioning = (element: Element) => ({
+      ...(this.features.media.hasImageMap(element) ? {imageMap: true} : {}),
       ...(positions.has(element) ? {position: positions.get(element)!} : {}),
       ...(anchors.has(element) ? {positionAnchor: true} : {}),
       ...(() => {
         const inline = (element as Element & {style?: CSSStyleDeclaration}).style
-        const side = floatSideFromStyles(getComputedStyle(element).float, {
+        const computed = getComputedStyle(element)
+        const side = floatSideFromStyles(computed.float, {
           getPropertyValue: name => inline?.getPropertyValue(name) ?? "",
         }, element.classList)
-        return side === "none" ? {} : {float: side}
+        return side === "none" ? {} : {float: side,
+          ...(side === "far-left" && computed.float === "right"
+            && computed.getPropertyValue("--ww-responsive-float").trim() === "right"
+            ? {floatForcedRight: true} : {}),
+          ...(side === "far-right" && computed.float === "none"
+            && computed.getPropertyValue("--ww-responsive-float").trim() === "none"
+            ? {floatRightInFlow: true} : {})}
       })(),
     })
     const sectionPathItem = (section: Element): SelectionPathSection => ({
@@ -1022,7 +911,9 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
-      if(mathRoot(currentElement) || currentElement.matches("caption, figcaption, details > summary")) return
+      const formula = mathRoot(currentElement)
+      if(formula && (formula !== currentElement || formula.getAttribute("display") !== "block")
+        || currentElement.matches("caption, figcaption, details > summary")) return
       if(currentElement.localName === "figure") {
         if(currentElement !== element) return
         const content = Array.from(currentElement.children).find(child => child.localName !== "figcaption")
@@ -1033,7 +924,7 @@ export class DOMEditor {
         return
       }
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
-      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && isSectionElement(currentElement)) {
+      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }
@@ -1051,7 +942,7 @@ export class DOMEditor {
       const owner = path.at(-1)
       if(owner) owner.sections = [...(owner.sections ?? []), ...pendingSections]
     }
-    const gap: SelectionGap | undefined = !this.features.selection.isCaptureSelection
+    const gap: SelectionGap | undefined = !this.features.manipulation.draggedElement && !this.features.selection.isCaptureSelection
       && !focusedWidget && $.isGapSelection && isElement($.anchor)
       ? {parentPath: this.pathToElement($.anchor), offset: $.anchorOffset}
       : undefined
@@ -1212,7 +1103,7 @@ export class DOMEditor {
       slides: rootReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
       board: rootReason ?? this.features.board.conversionReason(),
     }
-    return {mode, zoom: canvas.zoom, conversions,
+    return {mode, zoom: mode === "slides" ? Math.round(this.features.slides.zoom * 100) : canvas.zoom, conversions,
       canConvert: Object.entries(conversions).some(([target, reason]) => target !== mode && reason === null)}
   }
 
@@ -1297,12 +1188,40 @@ export class DOMEditor {
   async serializeHTML(offline=false, data: "defaults" | "current" = "defaults") {
     const root = this.cleanDocumentClone(data)
     this.features.dependency.appendSerializedAssets(root)
+    await this.inlineBlobSources(root)
     if(offline) {
       await this.bundleOfflinePackageModules(root)
       await this.inlineExternalResources(root)
     }
     const serialize = prepareWidgetGroupingsForSerialization(root)
     return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
+  }
+
+  /** Embed transient media in a detached save/export copy. */
+  async inlineBlobSources(root: Document | DocumentFragment | Element) {
+    const elements = root.nodeType === Node.ELEMENT_NODE
+      ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
+      : Array.from(root.querySelectorAll("*"))
+    const sources = new Map<string, Promise<string>>()
+    for(const element of elements) {
+      if(element instanceof HTMLTemplateElement) await this.inlineBlobSources(element.content)
+      for(const attribute of Array.from(element.attributes)) {
+        if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
+        const urls = attribute.value.match(/blob:[^\s,"'<>\)]+/g)
+        if(!urls) continue
+        let value = attribute.value
+        for(const url of urls) {
+          let source = sources.get(url)
+          if(!source) {
+            const blob = this.mediaBlobs.get(url)
+            source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
+            sources.set(url, source)
+          }
+          value = value.replaceAll(url, await source)
+        }
+        element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
+      }
+    }
   }
 
   private async bundleOfflinePackageModules(root: Document) {
@@ -1614,21 +1533,7 @@ export class DOMEditor {
   }
   
   clearEditingArtifacts(node: Document | DocumentFragment = document) {
-    const clean = (root: ParentNode) => Array.from(root.childNodes).forEach(child => {
-      if(!(child instanceof Element)) return
-      if(child.hasAttribute("data-webwriter-editor-only") || child.classList.contains("◆editor-only")) {
-        child.remove()
-        return
-      }
-      this.ignoreAttrs.forEach(attribute => child.removeAttribute(attribute))
-      if(isEditorOwnedAttribute(child, "contenteditable")) child.removeAttribute("contenteditable")
-      const markers = Array.from(child.classList).filter(name => name.startsWith("◆"))
-      if(markers.length) child.classList.remove(...markers)
-      if(!child.classList.length) child.removeAttribute("class")
-      if(child instanceof HTMLTemplateElement) clean(child.content)
-      clean(child)
-    })
-    clean(node)
+    clearEditorArtifacts(node, this.ignoreAttrs)
   }
 
   /** Sanitizes detached authored HTML and repairs it with the active schema

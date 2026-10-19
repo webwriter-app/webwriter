@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, removeEditorMarker} from "../utility"
+import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
   normalizeTableStructure,
@@ -38,14 +38,10 @@ function newCellForRow(row: HTMLTableRowElement, source?: HTMLTableCellElement |
       if(attribute.name !== "id" && attribute.name !== "rowspan" && attribute.name !== "colspan"
         && attribute.name !== "class") cell.setAttribute(attribute.name, attribute.value)
     })
-    const authoredClasses = Array.from(source.classList).filter(name => !name.startsWith("◆"))
+    const authoredClasses = authoredClassValue(source.getAttribute("class")).split(" ").filter(Boolean)
     if(authoredClasses.length) cell.classList.add(...authoredClasses)
   }
   return cell as HTMLTableCellElement
-}
-
-function authoredClassValue(value: string | null) {
-  return (value ?? "").split(/\s+/).filter(name => name && !name.startsWith("◆")).sort().join(" ")
 }
 
 function inlineWidthInPixels(element: HTMLElement) {
@@ -114,6 +110,9 @@ export class TableFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    document.body.querySelectorAll<HTMLTableElement>("table").forEach(table => {
+      if(this.editableTable(table)) this.normalizeTable(table)
+    })
     window.addEventListener("blur", this.finishResize)
     window.addEventListener("resize", this.scheduleGaps)
     const FrameResizeObserver = document.defaultView?.ResizeObserver
@@ -122,11 +121,23 @@ export class TableFeature extends EditorFeature {
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(mutations => {
+        const tables = new Set<HTMLTableElement>()
+        for(const mutation of mutations) {
+          if(mutation.type !== "childList" && !["rowspan", "colspan"].includes(mutation.attributeName ?? "")) continue
+          const table = tableForNode(mutation.target)
+          if(table) tables.add(table)
+          mutation.addedNodes.forEach(node => {
+            if(!(node instanceof Element)) return
+            if(node instanceof HTMLTableElement) tables.add(node)
+            node.querySelectorAll<HTMLTableElement>("table").forEach(table => tables.add(table))
+          })
+        }
+        tables.forEach(table => { if(this.editableTable(table)) this.normalizeTable(table) })
         const hasAuthoredMutation = mutations.some(mutation => (
           mutation.type !== "attributes"
           || mutation.attributeName !== "class"
           || !(mutation.target instanceof Element)
-          || authoredClassValue(mutation.oldValue) !== authoredClassValue(mutation.target.getAttribute("class"))
+          || authoredClassValue(mutation.oldValue, true) !== authoredClassValue(mutation.target.getAttribute("class"), true)
         ))
         if(hasAuthoredMutation) this.scheduleRefresh()
       })
@@ -288,7 +299,7 @@ export class TableFeature extends EditorFeature {
         Object.assign(control, {axis, index, map})
         control.button.dataset.axis = axis
         control.button.setAttribute("aria-label", `Insert ${axis} ${index + 1}`)
-        control.button.style.left = `${axis === "column" ? position : rect.left - tableGapOffset}px`
+        control.button.style.left = `${fixedClientX(axis === "column" ? position : rect.left - tableGapOffset)}px`
         control.button.style.top = `${axis === "row" ? position : top - tableGapOffset}px`
         control.button.style.setProperty("--gap-length", `${axis === "column" ? bottom - top + tableGapOffset : rect.width + tableGapOffset}px`)
       }
@@ -417,6 +428,12 @@ export class TableFeature extends EditorFeature {
     return true
   }
 
+  private canToggleRowGroup(map: TableMap, type: "thead" | "tfoot") {
+    if(map.limited || !map.rows.length) return false
+    const boundary = type === "thead" ? 1 : map.rows.length - 1
+    return !map.placements.some(cell => cell.row < boundary && cell.row + cell.rowSpan > boundary)
+  }
+
   getState(): TableSelectionState | undefined {
     const map = this.selectionMap()
     if(!map) return
@@ -428,7 +445,7 @@ export class TableFeature extends EditorFeature {
       rows: map.rows.length,
       columns: map.width,
       selectedCells: selected.length,
-      canMerge: selected.length > 1,
+      canMerge: selected.length > 1 && selected.every(cell => cell.parentElement?.parentElement === selected[0].parentElement?.parentElement),
       canSplit: cells.some(cell => {
         const placement = placementForCell(map, cell)
         return Boolean(placement && (placement.rowSpan > 1 || placement.columnSpan > 1))
@@ -436,6 +453,8 @@ export class TableFeature extends EditorFeature {
       hasCaption: Boolean(map.table.caption),
       hasHeader: Boolean(map.table.querySelector(":scope > thead > tr")),
       hasFooter: Boolean(map.table.querySelector(":scope > tfoot > tr")),
+      canToggleHeader: this.canToggleRowGroup(map, "thead"),
+      canToggleFooter: this.canToggleRowGroup(map, "tfoot"),
     }
   }
 
@@ -450,9 +469,16 @@ export class TableFeature extends EditorFeature {
       map = buildTableMap(table)
     }
     const width = Math.max(1, map.width)
+    const placements = new Map(map.placements.map(placement => [placement.cell, placement]))
     map.rows.forEach((row, rowIndex) => {
+      const originals = Array.from(row.cells).map(cell => placements.get(cell)!)
+      let nextIndex = 0
       for(let column = 0; column < width; column++) {
-        if(!map.matrix[rowIndex]?.[column]) row.append(newCellForRow(row))
+        if(map.matrix[rowIndex]?.[column]) continue
+        while(originals[nextIndex] && originals[nextIndex].column < column) nextIndex++
+        const cell = newCellForRow(row, undefined, row.parentElement?.localName === "thead" ? "th" : undefined)
+        const next = originals[nextIndex]?.cell
+        next ? next.before(cell) : row.append(cell)
       }
     })
     return buildTableMap(table)
@@ -464,7 +490,7 @@ export class TableFeature extends EditorFeature {
     }
     if(this.editor.features.manipulation.convertInsertion("table")) return
     const table = createTable(rows, columns)
-    this.editor.features.manipulation.insert(table)
+    this.editor.features.manipulation.insert(table, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     while(table.isConnected && table.parentElement && !this.editor.schema.isContentValid(table.parentElement)) {
       const parent = table.parentElement
       $.selectElement(table)
@@ -574,6 +600,8 @@ export class TableFeature extends EditorFeature {
   private mergeCells() {
     const table = this.selectedTable
     if(!table || !this.hasCellSelection) return
+    const selected = this.selectedCells
+    if(!selected.every(cell => cell.parentElement?.parentElement === selected[0]?.parentElement?.parentElement)) return
     const map = this.normalizeTable(table)
     const rectangle = this.cellRectangle(map)
     if(!rectangle) return
@@ -615,7 +643,11 @@ export class TableFeature extends EditorFeature {
 
   private splitTable() {
     const table = this.selectedTable
-    if(!table) return
+    if(!this.editableTable(table)) return
+    const current = buildTableMap(table)
+    const boundary = this.selectedPlacement(current, "first")
+    if(!boundary || boundary.row === 0 || current.placements.some(placement =>
+      placement.row < boundary.row && placement.row + placement.rowSpan > boundary.row)) return
     const map = this.normalizeTable(table)
     const first = this.selectedPlacement(map, "first")
     if(!first || first.row === 0) return
@@ -684,8 +716,9 @@ export class TableFeature extends EditorFeature {
   private toggleRowGroup(type: "thead" | "tfoot") {
     const table = this.selectedTable
     if(!table) return false
-    const rows = buildTableMap(table).rows
-    if(!rows.length) return false
+    const map = buildTableMap(table)
+    if(!this.canToggleRowGroup(map, type)) return false
+    const rows = map.rows
     let header = Boolean(table.querySelector(":scope > thead > tr"))
     let footer = Boolean(table.querySelector(":scope > tfoot > tr"))
     if(type === "thead") {
@@ -733,18 +766,39 @@ export class TableFeature extends EditorFeature {
     const table = tableForNode(selected[0])
     if(!selected.length || !table) return false
 
+    const map = buildTableMap(table)
+    const rectangle = this.cellRectangle(map)
+    if(map.limited || !rectangle) return false
+    const wholeRows = rectangle.left === 0 && rectangle.right === map.width - 1
+    const wholeColumns = rectangle.top === 0 && rectangle.bottom === map.rows.length - 1
+    if(!wholeRows && !wholeColumns) {
+      selected.forEach(cell => cell.replaceChildren())
+      this.selectCells(selected[0], selected.at(-1)!)
+      return true
+    }
+
     const selectedSet = new Set(selected)
-    const placements = buildTableMap(table).placements
+    const placements = map.placements
     const selectedIndexes = placements.flatMap(({cell}, index) => selectedSet.has(cell) ? [index] : [])
     const first = selectedIndexes[0]
     const last = selectedIndexes.at(-1)!
     const nextCell = placements.slice(last + 1).find(({cell}) => !selectedSet.has(cell))?.cell
       ?? placements.slice(0, first).reverse().find(({cell}) => !selectedSet.has(cell))?.cell
+    const rows = wholeRows ? map.rows.filter((row, index) => index >= rectangle.top && index <= rectangle.bottom
+      && map.matrix[index]?.some(placement => placement && selectedSet.has(placement.cell))) : []
 
     this.clearCellSelection(false)
     selected.forEach(cell => cell.remove())
+    rows.forEach(row => row.remove())
 
-    if(nextCell?.isConnected) this.selectCells(nextCell)
+    const hasCells = Array.from(table.querySelectorAll(tableCellSelector)).some(cell => tableForNode(cell) === table)
+    if(!hasCells && table.isConnected) {
+      $.selectGap(table, "before")
+      table.remove()
+      this.editor.features.selection.processSelection()
+      this.editor.postSelectionPath()
+    }
+    else if(nextCell?.isConnected) this.selectCells(nextCell)
     else if(table.isConnected) {
       $.selectElement(table)
       this.editor.features.selection.processSelection()
@@ -775,12 +829,18 @@ export class TableFeature extends EditorFeature {
         })
     }
     clearTableMarkers(table)
+    const fragment = table.ownerDocument.createDocumentFragment()
+    fragment.append(table)
+    const {html} = this.editor.serializeClipboardFragment(fragment)
+    const exported = buildTableMap(table)
     const plain = Array.from({length: rectangle.bottom - rectangle.top + 1}, (_, rowOffset) =>
-      Array.from({length: rectangle.right - rectangle.left + 1}, (_, columnOffset) =>
-        map.matrix[rectangle.top + rowOffset]?.[rectangle.left + columnOffset]?.cell.textContent ?? "",
+      Array.from({length: rectangle.right - rectangle.left + 1}, (_, columnOffset) => {
+        const cell = exported.matrix[rowOffset]?.[columnOffset]?.cell
+        return cell ? plainTextFromDOM(cell, element => this.editor.schema.isBlock(element)) : ""
+      },
       ).join("\t"),
     ).join("\n")
-    return {table, html: table.outerHTML, plain}
+    return {table, html, plain}
   }
 
   /** Missing clipboard capabilities return false. Permission and runtime
@@ -796,9 +856,31 @@ export class TableFeature extends EditorFeature {
   }
 
   async cut() {
+    const table = this.selectedTable
+    if(!this.isEnabled || !this.editableTable(table)) return false
+    const anchor = this.anchorCell
+    const focus = this.focusCell
+    const selected = this.selectedCells
+    const snapshot = selected.map(cell => {
+      const range = cell.ownerDocument.createRange()
+      range.selectNodeContents(cell)
+      return {cell, parent: cell.parentNode, html: (cloneWithoutEditorMarkers(cell, true, {inert: true}) as Element).outerHTML,
+        identity: captureRangeIdentity(range)}
+    })
     const copied = await this.copy()
-    if(copied) this.deleteSelection()
-    return copied
+    if(!copied || !this.isEnabled || !this.editableTable(table)
+      || this.anchorCell !== anchor || this.focusCell !== focus) return false
+    const current = this.selectedCells
+    if(current.length !== selected.length || current.some((cell, index) => cell !== selected[index])) return false
+    if(snapshot.some(({cell, parent, html, identity}) => {
+      if(cell.parentNode !== parent || tableForNode(cell) !== table
+        || (cloneWithoutEditorMarkers(cell, true, {inert: true}) as Element).outerHTML !== html) return true
+      const range = cell.ownerDocument.createRange()
+      range.selectNodeContents(cell)
+      const now = captureRangeIdentity(range)
+      return now.size !== identity.size || [...identity].some(node => !now.has(node))
+    })) return false
+    return this.deleteSelection()
   }
 
   private clipboardMatrix(html: string, plain: string) {
@@ -1011,7 +1093,7 @@ export class TableFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
-  private finishResize = () => {
+  finishResize = () => {
     this.stopResize()
     this.pendingCell = null
     this.pointerSelecting = false

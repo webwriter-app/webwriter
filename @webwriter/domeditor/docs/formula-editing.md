@@ -6,9 +6,9 @@ Insert **Formula** from the insertion menu, or click an existing `<math>` formul
 
 Typing a name offers completions at the formula caret, including functions, Greek letters, sets, fences, radicals, annotations, and matrix templates. Up/Down cycle through suggestions, Enter or Tab accepts, and Escape dismisses the popup. Clicking a suggestion preserves the formula caret. A single letter defaults to a variable; arbitrary variable and function names are also available. Space commits a word, and `(` creates a call for a function name. Backslash commands use the same suggestions.
 
-Keyboard and autocomplete code is imported statically alongside the editor. No additional dependency or rendering library is required.
+Keyboard and autocomplete code is imported statically alongside the editor. The separate **Handwriting** tab loads the algebra-term stroke recognizer only when opened. Its model, ONNX/WASM inference, and LaTeX-to-MathML conversion run in a web worker. Write with a mouse, pen, or touch; after a short pause the recognized fragment appears as a button in a double-height row above the drawing. Click the formula to insert it at the current formula selection. Right-click or right-drag over ink to erase touched strokes; pen eraser tips and barrel buttons work the same way. Recognition updates from the remaining ink after release. The trash button in the drawing surface’s top-right corner clears the drawing and its recognized option. Leaving the tab or closing the keyboard discards the drawing, terminates its worker, and ignores pending results. The first use downloads the model; strokes are processed locally.
 
-The formula is the live [MathML Core](https://www.w3.org/TR/mathml-core/) DOM, rendered by the browser. Commands move or edit existing nodes; there is no intermediate expression tree, rendering engine, or additional dependency. Empty arguments are empty MathML rows. Their visual guides live in the shadow appendix. Temporary `◆` classes are excluded from shared and serialized content.
+The formula is the live [MathML Core](https://www.w3.org/TR/mathml-core/) DOM, rendered by the browser. Commands move or edit existing nodes; there is no intermediate expression tree or rendering engine. Handwriting inserts the confirmed MathML fragment through the same editing primitives. Empty arguments are empty MathML rows. Their visual guides live in the shadow appendix. Temporary `◆` classes are excluded from shared and serialized content.
 
 Inline formulas behave like text: they have no capture or hover outline and do not appear in the breadcrumb. While editing, the whole formula has a light grey background and a normal text caret. Empty outer rows have no dashed guide; guides remain available for nested arguments. Block formulas retain capture selection.
 
@@ -42,4 +42,4 @@ Editing supports token text, row-like containers, fractions, radicals, scripts, 
 
 Backslash shortcuts insert individual constructs; they are not a general LaTeX parser. The matrix tool inserts a 2×2 matrix and edits existing cells. It does not yet offer row/column resizing controls.
 
-Handwriting/OCR and direct IME composition are not included. Unicode symbols can be inserted through the virtual keyboard or pasted as text.
+Direct IME composition is not included. Unicode symbols can be inserted through the virtual keyboard or pasted as text.

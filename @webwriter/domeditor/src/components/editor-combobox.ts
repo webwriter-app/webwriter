@@ -1,5 +1,7 @@
 import {LitElement, css, html, nothing, type CSSResultGroup} from "lit"
 import {live} from "lit/directives/live.js"
+import {dropdownChevronStyles} from "./dropdown-chevron.styles"
+import {editorInteractionStyles} from "./editing-controls.styles"
 
 export type ComboboxOption = {
   value: string
@@ -27,6 +29,7 @@ export class EditorCombobox extends LitElement {
   }
 
   static styles: CSSResultGroup = css`
+    ${editorInteractionStyles}
     :host([show-value]) {--metadata-combobox-height: 1.7rem;}
     :host([show-value]) .control {border-color: #c5ccd5;}
     :host([show-value]) .option {font-size: .68rem;}
@@ -41,6 +44,7 @@ export class EditorCombobox extends LitElement {
     }
 
     .control {
+      position: relative;
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -76,7 +80,7 @@ export class EditorCombobox extends LitElement {
       width: 100%;
       min-width: 0;
       height: 100%;
-      padding: 0 0.15rem 0 0.35rem;
+      padding: 0 .2rem;
       border: 0;
       color: inherit;
       background: transparent;
@@ -96,6 +100,8 @@ export class EditorCombobox extends LitElement {
       background: transparent;
       cursor: pointer;
     }
+
+    ${dropdownChevronStyles}
 
     .chevron {
       flex: 0 0 auto;
@@ -411,7 +417,7 @@ export class EditorCombobox extends LitElement {
           @keydown=${this.handleKeydown}
         />
         <button
-          class="toggle"
+          class="toggle dropdown-chevron"
           type="button"
           tabindex="-1"
           ?disabled=${this.disabled}

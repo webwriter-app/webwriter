@@ -1,5 +1,5 @@
 import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
-import { $, cloneInert, getContainer, getIndexBefore, getInertDocument } from "./utility"
+import { $, cloneInert, getContainer, getIndexBefore, getInertDocument, isParagraphContent } from "./utility"
 import {isWidgetDataContainer} from "./active-content"
 import {normalizeTableStructure} from "./table"
 
@@ -204,6 +204,7 @@ class ContentExpressionParser {
     while(this.#peek() !== undefined && this.#peek() !== ")" && this.#peek() !== "|") {
       terms.push(this.#parseRepeat())
     }
+    if(terms.length === 0) this.#error("Expected a node, group or parenthesized expression")
     return sequenceExpression(terms)
   }
 
@@ -339,6 +340,11 @@ export class Schema {
   #repairingContent = false
   #groups: Record<string, string[]> = {}
   #createdTypes = new WeakMap<Node, string>()
+  #namespaceMetadata?: {
+    typeKeys: string[]
+    namespaceEntries: Array<[string, SchemaEntry]>
+    keysByNamespaceAndLocalName: Map<string, Map<string, string>>
+  }
 
   /** Creates a schema from the given entries (defaults to the base schema). */
   constructor(baseSchema: Record<string, SchemaEntry> = Schema.baseSchema) {
@@ -353,6 +359,7 @@ export class Schema {
       })
     })
     this.#schema = {...this.#schema, ...extensionSchema}
+    this.#namespaceMetadata = undefined
     const inertDocument = getInertDocument()
     Object.keys(extensionSchema).forEach(key => {
       if(key === "#unknownelement") delete this.#nodes[key]
@@ -473,32 +480,65 @@ export class Schema {
   /** The entries defining a content namespace for their descendants
    * (in the base schema `svg` and `math`). */
   get namespaceTypes(): Record<string, SchemaEntry & {contentNamespace: string}> {
-    return Object.fromEntries(Object.entries(this.#schema)
-      .filter(([,v]) => v.contentNamespace)) as any
+    const types: Record<string, SchemaEntry & {contentNamespace: string}> = {}
+    this.#getNamespaceMetadata().typeKeys.forEach(key => {
+      const entry = this.#schema[key]
+      if(entry.contentNamespace) types[key] = entry as SchemaEntry & {contentNamespace: string}
+    })
+    return types
+  }
+
+  #getNamespaceMetadata() {
+    if(!this.#namespaceMetadata) {
+      const typeKeys = Object.keys(this.#schema)
+      const namespaceEntries: Array<[string, SchemaEntry]> = []
+      const keysByNamespaceAndLocalName = new Map<string, Map<string, string>>()
+      typeKeys.forEach(key => {
+        const entry = this.#schema[key]
+        if(entry.contentNamespace) namespaceEntries.push([key, entry])
+        const localNames = keysByNamespaceAndLocalName.get(key.split("|")[0]) ?? new Map<string, string>()
+        const localName = key.split("|")[1]
+        if(localName && !localNames.has(localName.toLowerCase())) localNames.set(localName.toLowerCase(), key)
+        keysByNamespaceAndLocalName.set(key.split("|")[0], localNames)
+      })
+      this.#namespaceMetadata = {typeKeys, namespaceEntries, keysByNamespaceAndLocalName}
+    }
+    return this.#namespaceMetadata
+  }
+
+  #getNamespaceKeyForURI(namespaceURI: string) {
+    const metadata = this.#getNamespaceMetadata()
+    const knownNamespace = metadata.namespaceEntries.find(([, entry]) => entry.contentNamespace === namespaceURI)?.[0]
+    if(knownNamespace) return knownNamespace
+    if(namespaceURI === document.documentElement.namespaceURI) return undefined
+    // A previously ordinary schema entry may have become a namespace root via
+    // the mutable entry object returned by get(). Scan the finite cached schema
+    // key list only for an unfamiliar, non-HTML namespace URI.
+    return metadata.typeKeys.find(key => this.#schema[key].contentNamespace === namespaceURI)
   }
 
   /** The namespace URL the given type defines for its content. */
   getNamespaceURL(key: string) {
-    return this.namespaceTypes[key].contentNamespace
+    const namespace = this.#schema[key]?.contentNamespace
+    if(!namespace) throw TypeError(`'${key}' does not define a content namespace`)
+    return namespace
   }
 
   /** Key of the closest ancestor establishing a content namespace (e.g. `svg`), or `undefined`. The element itself is not considered. */
   getNamespaceNameOfElement(node: Element) {
-    const {namespaceTypes} = this
     while(node.parentElement) {
       node = node.parentElement
       const k = node.tagName.toLowerCase()
-      if(k in namespaceTypes) return k
+      if(this.#schema[k]?.contentNamespace) return k
     }
   }
 
   /** Namespace URL established by the closest namespace container ancestor, or `undefined`. */
   getNamespaceOfElement(node: Element) {
-    const {namespaceTypes} = this
     while(node.parentElement) {
       node = node.parentElement
-      const nsType = namespaceTypes[node.tagName.toLowerCase()]
-      if(nsType) return nsType.contentNamespace!
+      const namespace = this.#schema[node.tagName.toLowerCase()]?.contentNamespace
+      if(namespace) return namespace
     }
   }
 
@@ -515,15 +555,18 @@ export class Schema {
     if(node instanceof Element) {
       const localName = node.localName || node.tagName.toLowerCase()
       const ancestorNamespace = this.getNamespaceNameOfElement(node)
+      const {namespaceEntries, keysByNamespaceAndLocalName} = this.#getNamespaceMetadata()
+      const directNamespaceRoot = this.#schema[localName.toLowerCase()]
       const namespaceRoot = !ancestorNamespace
-        ? Object.entries(this.namespaceTypes).find(([key, entry]) =>
-          key.toLowerCase() === localName.toLowerCase()
-          && entry.contentNamespace === node.namespaceURI,
-        )?.[0]
+        ? directNamespaceRoot?.contentNamespace === node.namespaceURI
+          ? localName.toLowerCase()
+          : namespaceEntries.find(([key, entry]) =>
+            key.toLowerCase() === localName.toLowerCase()
+            && entry.contentNamespace === node.namespaceURI,
+          )?.[0]
         : undefined
       if(namespaceRoot) return namespaceRoot
-      const namespaceFromURI = Object.entries(this.namespaceTypes)
-        .find(([, entry]) => entry.contentNamespace === node.namespaceURI)?.[0]
+      const namespaceFromURI = node.namespaceURI ? this.#getNamespaceKeyForURI(node.namespaceURI) : undefined
       const namespace = namespaceFromURI
         ?? (node.namespaceURI ? undefined : this.getNamespaceNameOfElement(node))
       const customizedName = !namespace ? node.getAttribute("is")?.toLowerCase() : undefined
@@ -531,7 +574,7 @@ export class Schema {
         ? customizedName
         : localName
       const key = namespace
-        ? Object.keys(this.#schema).find(key => key.startsWith(`${namespace}|`) && key.split("|")[1].toLowerCase() === resolvedLocalName.toLowerCase()) ?? `${namespace}|${resolvedLocalName}`
+        ? keysByNamespaceAndLocalName.get(namespace)?.get(resolvedLocalName.toLowerCase()) ?? `${namespace}|${resolvedLocalName}`
         : resolvedLocalName
       return key in this.#schema ? key : "#unknownelement"
     }
@@ -682,6 +725,8 @@ export class Schema {
     let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
     
     if(!(nodeToCheck instanceof Element)) return true;
+    if(!this.#repairingContent && nodeToCheck.matches("p:not([is])")
+      && !(content ?? Array.from(nodeToCheck.childNodes)).every(isParagraphContent)) return false
     // A widget's data containers are valid under any content model.
     const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => child.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(child))
     if(!rule && contentToCheck.length) return false
@@ -926,7 +971,7 @@ export class Schema {
     }
     else if(node instanceof Element && selector.includes("|")) {
       const [namespace, localName] = selector.split("|")
-      const namespaceURL = this.namespaceTypes[namespace]?.contentNamespace
+      const namespaceURL = this.#schema[namespace]?.contentNamespace
       const nodeLocalName = node.localName || node.tagName.toLowerCase()
       return (namespace === "*" || namespaceURL === node.namespaceURI)
         && (localName === "*" || localName.toLowerCase() === nodeLocalName.toLowerCase())
@@ -1019,8 +1064,8 @@ export class Schema {
         t.replaceWith(...replacement)
       }
       else if((moveIndex = this.findAlternativeIndex(el, [invalidNode])) !== null) {
-        newChildNodes.splice(moveIndex, 0, invalidNode)
         newChildNodes.splice(i, 1)
+        newChildNodes.splice(moveIndex, 0, invalidNode)
       }
       else {
         newChildNodes[i] = undefined

@@ -1,3 +1,4 @@
+import {authoredClassValue} from "./editor-artifacts"
 export const primaryMarkNames = [
   "b",
   "i",
@@ -304,7 +305,6 @@ export const primaryMarkOptions: readonly MarkOption[] = [
   {name: "sub", label: "Subscript", icon: "MarkSubscript", shortcutKey: "l"},
   {name: "small", label: "Side Comment", icon: "MarkSmall", shortcutKey: "m"},
   {name: "code", label: "Code", icon: "MarkCode", shortcutKey: "c"},
-  {name: "q", label: "Quotation", icon: "MarkQuotation", shortcutKey: "q"},
   {name: "kbd", label: "Keyboard Shortcut", icon: "MarkKeyboard", shortcutKey: "p"},
   {name: "abbr", label: "Abbreviation", icon: "MarkAbbreviation", shortcutKey: "a"},
 ] as const
@@ -361,8 +361,8 @@ export function isMarkElement(node: unknown) {
 function normalizedMarkAttributes(element: Element) {
   return Array.from(element.attributes).flatMap(attribute => {
     if(attribute.name !== "class") return [[attribute.name, attribute.value] as const]
-    const classes = attribute.value.split(/\s+/).filter(name => name && !name.startsWith("◆")).sort()
-    return classes.length? [[attribute.name, classes.join(" ")] as const]: []
+    const classes = authoredClassValue(attribute.value, true)
+    return classes? [[attribute.name, classes] as const]: []
   }).sort(([first], [second]) => first.localeCompare(second))
 }
 
