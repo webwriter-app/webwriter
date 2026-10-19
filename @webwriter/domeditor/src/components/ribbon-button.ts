@@ -1064,6 +1064,7 @@ export class RibbonButton extends LitElement {
   private notificationVisible = false
   private notificationTimer: ReturnType<typeof setTimeout> | undefined
   private detailsOpen = false
+  private detailsShowTimer: ReturnType<typeof setTimeout> | undefined
   private detailsHideTimer: ReturnType<typeof setTimeout> | undefined
   private detailsPosition = {left: 8, top: 8}
   private submenuTrigger: HTMLButtonElement | null = null
@@ -1314,10 +1315,25 @@ export class RibbonButton extends LitElement {
     </span>`
   }
 
+  private scheduleDetailsShow = () => {
+    this.cancelDetailsHide()
+    if(this.detailsOpen || this.detailsShowTimer !== undefined || !this.details) return
+    this.detailsShowTimer = setTimeout(() => {
+      this.detailsShowTimer = undefined
+      this.showDetails()
+    }, 500)
+  }
+
+  private cancelDetailsShow = () => {
+    if(this.detailsShowTimer !== undefined) clearTimeout(this.detailsShowTimer)
+    this.detailsShowTimer = undefined
+  }
+
   private showDetails = () => {
+    this.cancelDetailsShow()
     this.cancelDetailsHide()
     if(this.detailsOpen) return
-    if(!this.details) return
+    if(!this.details || !this.isConnected) return
     const rect = this.getBoundingClientRect()
     const viewportWidth = Math.max(1, window.innerWidth)
     const viewportHeight = Math.max(1, window.innerHeight)
@@ -1357,14 +1373,16 @@ export class RibbonButton extends LitElement {
   }
 
   private leaveDetails = (event: MouseEvent) => {
-    if(!this.detailsOpen) return
     const next = event.relatedTarget
     if(next instanceof Node && [".button-row", ".details"].some(selector => this.renderRoot.querySelector(selector)?.contains(next))) return
+    this.cancelDetailsShow()
+    if(!this.detailsOpen) return
     this.cancelDetailsHide()
     this.detailsHideTimer = setTimeout(this.hideDetails, 120)
   }
 
   private hideDetails = () => {
+    this.cancelDetailsShow()
     this.cancelDetailsHide()
     this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".details"))
     this.detailsOpen = false
@@ -1382,7 +1400,7 @@ export class RibbonButton extends LitElement {
     const shapeGallery = this.submenu.some(item => typeof item !== "string" && item.category)
     const title = `${this.label}${this.selectionCount > 0 ? ` +${this.selectionCount}`: ""}${this.shortcut ? ` (${this.shortcut})`: ""}`
     return html`
-      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.showDetails} @mouseleave=${this.leaveDetails}>
+      <div class=${`button-row${hasDropdown || this.openDrawer ? " has-submenu" : ""}${this.corner ? " has-corner" : ""}${this.iconAction ? " has-icon-action" : ""}`} @mouseenter=${this.scheduleDetailsShow} @mouseleave=${this.leaveDetails}>
         ${this.iconAction ? html`
           <button
             class="icon-action-trigger"
