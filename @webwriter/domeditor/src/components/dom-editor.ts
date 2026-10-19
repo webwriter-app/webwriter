@@ -141,7 +141,7 @@ import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
 import {escapeHTMLAttribute, serializeDoctype} from "../serialization"
-import {editorFrameHTML, previewFrameHTML} from "../frame-document"
+import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../frame-document"
 import {isPackageImportMap, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
@@ -194,6 +194,7 @@ import {
 } from "../document-head"
 import {
   LiveSession,
+  liveSessionHostKey,
   liveSessionLearnerIdentity,
   type LiveSessionChange,
   type LiveSessionFeedback,
@@ -235,6 +236,7 @@ type StorageLocation = "local" | "development-server"
 
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const previewEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/preview-entry.ts" : "assets/preview-entry.js"}`
+const liveLearnerEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/live-learner-entry.ts" : "assets/live-learner-entry.js"}`
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
@@ -635,6 +637,7 @@ export class DomEditor extends LitElement {
   private previewSelection: SelectionBookmark | "remote" | null = null
   private previewGeneration = 0
   private previewTransition = false
+  private liveSessionStarting = false
   private liveSessionActive = false
   private liveSessionRole: "host" | "learner" | "" = ""
   private liveSessionLink = ""
@@ -2629,20 +2632,52 @@ export class DomEditor extends LitElement {
       this.resetLivePlayback()
       return
     }
+    if(this.liveSessionStarting) return
+    this.liveSessionStarting = true
     try {
+      const generation = this.previewGeneration
+      const previewHTML = this.previewDocumentHTML ?? this.currentPreviewHTML()
+      const previewSource = new DOMParser().parseFromString(previewHTML, "text/html")
+      let previewDependencies = {packages: this.installedPackages, importMap: this.packageImportMap}
+      if(this.installedPackages.some(isLocalResourcePackage)) {
+        previewDependencies = await bundleLocalPreviewPackages(previewSource,
+          this.installedPackages, this.packageImportMap, window.location.href)
+        if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
+      }
       const sessionId = randomIdentifier("live")
       const serverUrl = this.backendSession?.collaborationUrl
       const sessionToken = serverUrl ? randomIdentifier("live-token") : undefined
+      const hostKey = sessionToken ? liveSessionHostKey(sessionId, sessionToken) : undefined
+      let link = ""
+      if(serverUrl && sessionToken) {
+        if(!this.backendClient) throw new Error("Connect to a server to share a live document")
+        const backendOrigin = new URL(this.backendClient.apiBaseUrl).origin
+        const documentOrigin = backendOrigin === location.origin ? editorFrameOrigin() : backendOrigin
+        const html = previewFrameHTML(previewSource, {
+          bridgeNonce: "", hostOrigin: location.origin, frameOrigin: documentOrigin,
+          entryURL: "", learnerEntryURL: new URL(liveLearnerEntryUrl, editorFrameOrigin()).href,
+          standalone: true, executeScripts: import.meta.env.MODE !== "test", ...previewDependencies,
+        })
+        const published = await this.backendClient.publishLiveSession(sessionId, sessionToken, hostKey!, html)
+        if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
+        const url = new URL(published.url)
+        if(url.origin === location.origin) {
+          const frame = new URL(editorFrameOrigin())
+          url.protocol = frame.protocol
+          url.host = frame.host
+        }
+        link = url.href
+      }
       const session = new LiveSession({
         id: sessionId,
         role: "host",
-        baseHTML: this.previewDocumentHTML ?? this.currentPreviewHTML(),
-        previewDependencies: {packages: this.installedPackages, importMap: this.packageImportMap},
+        ...(!serverUrl ? {baseHTML: this.preparePreviewDocument(previewSource, previewDependencies), previewDependencies} : {}),
         ...(serverUrl ? {serverUrl} : {}),
         token: sessionToken,
+        hostKey,
       })
       this.resetLivePlayback()
-      this.connectLiveSession(session, "host", sessionToken ? this.liveSessionShareLink(sessionId, sessionToken) : "")
+      this.connectLiveSession(session, "host", link)
       const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
       if(frame?.contentDocument) this.livePreview.observeHost(frame, frame.contentDocument, () => {
         this.updateLiveWidgetAffordances()
@@ -2655,6 +2690,7 @@ export class DomEditor extends LitElement {
       this.resetLivePlayback()
       this.reportFileError(error)
     }
+    finally { this.liveSessionStarting = false }
   }
 
   private handleRibbonInputPointerDown = () => {

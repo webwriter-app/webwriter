@@ -577,6 +577,42 @@ export async function createDevServer(options = {}) {
     const origin = url.origin
 
     try {
+      const liveDocument = /^\/api\/live-sessions\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(path)
+      if(liveDocument && request.method === "PUT") {
+        const {token, hostKey, html} = await readJSON(request)
+        if(!safeSessionToken(token) || !safeSessionToken(hostKey) || typeof html !== "string" || !html.trim()) {
+          return apiError(response, 400, "A live session needs host credentials and an HTML document")
+        }
+        const id = liveDocument[1], room = `live-session-${id}`
+        let session = liveSessionTokens.get(room)
+        if(session && (session.token !== token || session.hostKey !== hostKey)) return apiError(response, 403, "Live session permission denied")
+        const bytes = [...liveSessionTokens.values()].filter(entry => entry !== session)
+          .reduce((sum, entry) => sum + Buffer.byteLength(entry.html ?? ""), Buffer.byteLength(html))
+        if((!session && liveSessionTokens.size >= 32) || bytes > 256 * 1024 * 1024) return apiError(response, 503, "Live session document cache is full")
+        if(!session) {
+          session = {token, hostKey, learners: new Map(), connections: 0}
+          liveSessionTokens.set(room, session)
+          // Failed/cancelled host startup must not retain its document forever.
+          session.timer = setTimeout(() => {
+            if(!session.connections && liveSessionTokens.get(room) === session) liveSessionTokens.delete(room)
+          }, 60_000)
+          session.timer.unref()
+        }
+        session.html = html
+        const documentURL = new URL("/live/", origin)
+        documentURL.search = new URLSearchParams({liveSession: id, liveToken: token, liveServer: origin.replace(/^http/, "ws")}).toString()
+        return json(response, 201, {url: documentURL.href})
+      }
+      if((path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")) {
+        if(request.method !== "GET" && request.method !== "HEAD") return apiError(response, 405, "Live documents are read-only")
+        const session = liveSessionTokens.get(`live-session-${url.searchParams.get("liveSession")}`)
+        const html = session?.token === url.searchParams.get("liveToken") ? session.html : undefined
+        const content = Buffer.from(html ?? '<!doctype html><html><head><title>Live session unavailable</title></head><body><p role="alert">This live session is unavailable or has ended. Ask the host for a new link.</p></body></html>')
+        response.writeHead(html ? 200 : 404, {"Content-Type": "text/html; charset=utf-8", "Content-Length": content.length,
+          "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+        response.end(request.method === "HEAD" ? undefined : content)
+        return
+      }
       if(path === "/api/developer-packages/git" && request.method === "POST") {
         const source = gitPackageSource(await readJSON(request))
         const snapshot = await loadGitPackage(source)
@@ -1096,11 +1132,13 @@ export async function createDevServer(options = {}) {
       if(liveSession) {
         // A rejected WebSocket handshake must not reserve a room or identity.
         liveSessionTokens.set(room, liveSession)
+        clearTimeout(liveSession.timer)
         if(request.liveRole === "learner") liveSession.learners.set(request.liveLearner, learnerKey)
         liveSession.connections++
         webSocket.once("close", () => {
           liveSession.connections--
           if(liveSession.connections === 0 && liveSessionTokens.get(room) === liveSession) {
+            clearTimeout(liveSession.timer)
             liveSessionTokens.delete(room)
             const shared = docs.get(room)
             docs.delete(room)
@@ -1137,8 +1175,10 @@ export async function createDevServer(options = {}) {
     },
     async close() {
       gitSnapshots.clear()
+      for(const session of liveSessionTokens.values()) clearTimeout(session.timer)
       for(const client of websocketServer.clients) client.terminate()
       await new Promise(resolveClose => websocketServer.close(() => resolveClose()))
+      liveSessionTokens.clear()
       await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()))
       await Promise.allSettled(widgetDataWrites.values())
       const widgetDocuments = await Promise.allSettled(widgetDataDocuments.values())

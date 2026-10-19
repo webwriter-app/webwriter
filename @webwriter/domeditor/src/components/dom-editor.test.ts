@@ -32,6 +32,8 @@ import {
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import * as packageDependencies from "../package-dependencies"
+import * as offlineBundler from "../offline-module-bundler"
+import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
 // Linking the installed widget scripts would trace them on the CDN. Tests resolve an empty map at once.
 vi.mock("../package-dependencies", async importOriginal => ({
@@ -6858,6 +6860,87 @@ describe("DomEditor.execute()", () => {
     const afterStop = new Event("beforeunload", {cancelable: true})
     window.dispatchEvent(afterStop)
     expect(afterStop.defaultPrevented).toBe(false)
+  })
+
+  it.each(["local", "git"] as const)("shares embedded %s widget sources with live learners without changing the editor runtime", async kind => {
+    const bundle = vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js: 'customElements.define("webwriter-demo", class extends HTMLElement {})', css: "webwriter-demo {display: block}"})
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const base = kind === "local" ? `${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/` : `${location.origin}/api/developer-packages/git/fixture/`
+    const script = `${base}widget.js?revision=2`
+    const style = `${base}widget.css?revision=2`
+    host.installedPackages = [{...demoPackage, scripts: [script], styles: [style],
+      ...(kind === "git" ? {developerSource: {kind, repository: "https://example.com/widget.git", ref: "main", path: "", commit: "abc"}} : {})}]
+    const authoredHTML = '<section><!--keep--><webwriter-demo></webwriter-demo></section>'
+    iframe.contentDocument!.body.innerHTML = authoredHTML
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const learner = new LiveSession({id: session.id, role: "learner"})
+    try {
+      expect(bundle).toHaveBeenCalledOnce()
+      expect(session.previewDependencies!.packages[0].scripts[0]).toMatch(/^data:text\/javascript/)
+      const source = new DOMParser().parseFromString(learner.baseHTML!, "text/html")
+      const html = host.preparePreviewDocument(source, learner.previewDependencies)
+      expect(html).not.toContain(LOCAL_PACKAGE_ROUTE_PREFIX)
+      expect(html).not.toContain(script)
+      expect(html).not.toContain(style)
+      expect(html).toContain("data:text/javascript")
+      expect(html).toContain("data:text/css")
+      expect(source.body.innerHTML).toBe(authoredHTML)
+      expect(host.installedPackages[0].scripts).toEqual([script])
+      expect(host.previewDocumentHTML).toContain(script)
+    }
+    finally { learner.destroy(); host.disposeLiveSession() }
+  })
+
+  it("publishes one complete participant document over HTTP before exposing its share link", async () => {
+    vi.stubGlobal("WebSocket", class {send() {} close() {}})
+    vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js: 'customElements.define("webwriter-demo", class extends HTMLElement {})', css: "webwriter-demo {display:block}"})
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.installedPackages = [{...demoPackage, scripts: [`${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js`], styles: []}]
+    iframe.contentDocument!.body.innerHTML = '<webwriter-demo></webwriter-demo>'
+    await host.enterPreview()
+    let finish!: (value: {url: string}) => void
+    const publishLiveSession = vi.fn().mockReturnValue(new Promise(resolve => {finish = resolve}))
+    host.backendSession = {collaborationUrl: "ws://localhost:1234", user: {id: "host", name: "Host"}}
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", publishLiveSession}
+    const starting = host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    await vi.waitFor(() => expect(publishLiveSession).toHaveBeenCalledOnce())
+    expect(host.liveSessionLink).toBe("")
+    expect(host.liveSession).toBeNull()
+    const [id, token, key, html] = publishLiveSession.mock.calls[0]
+    expect(key).toMatch(/^[A-Za-z0-9_-]{24,256}$/)
+    expect(html).toContain("data:text/javascript")
+    expect(html).toContain("data:text/css")
+    expect(html).not.toContain(LOCAL_PACKAGE_ROUTE_PREFIX)
+    finish({url: `http://localhost:1234/live/?liveSession=${id}&liveToken=${token}&liveServer=ws%3A%2F%2Flocalhost%3A1234`})
+    await starting
+    const session = host.liveSession as LiveSession
+    expect(session.doc.getMap("live-session-meta").has("baseHTML")).toBe(false)
+    expect(session.doc.getMap("live-session-meta").has("previewDependencies")).toBe(false)
+    expect(host.liveSessionLink).toContain(`/live/?liveSession=${id}`)
+    host.disposeLiveSession()
+  })
+
+  it("cancels live-session startup when preview ends while local widgets are bundling", async () => {
+    let finish!: (value: {js: string, css: undefined}) => void
+    const bundle = vi.spyOn(offlineBundler, "bundleOfflineModules").mockReturnValue(new Promise(resolve => {finish = resolve}))
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.installedPackages = [{...demoPackage, scripts: [`${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js`], styles: []}]
+    iframe.contentDocument!.body.innerHTML = '<webwriter-demo></webwriter-demo>'
+    await host.enterPreview()
+    const starting = host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    await vi.waitFor(() => expect(bundle).toHaveBeenCalledOnce())
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    expect(bundle).toHaveBeenCalledOnce()
+    await host.exitPreview(false)
+    finish({js: "register()", css: undefined})
+    await starting
+    expect(host.liveSessionActive).toBe(false)
+    expect(host.liveSession).toBeNull()
   })
 
   it("loads the host widget runtime in a live learner preview independently of local installations", async () => {

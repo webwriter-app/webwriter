@@ -99,6 +99,16 @@ describe("development backend client", () => {
     ])
   })
 
+  it("publishes the complete live document over HTTP with its host capability", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({url: "http://localhost:1234/live/?liveSession=lesson"}))
+    const client = new BackendClient(session, fetch)
+    const html = '<!doctype html><x-widget></x-widget><script type="module">register()</script>'
+    await expect(client.publishLiveSession("lesson", "token", "host-key", html)).resolves.toEqual({url: "http://localhost:1234/live/?liveSession=lesson"})
+    expect(fetch).toHaveBeenCalledWith("http://localhost:1234/api/live-sessions/lesson", expect.objectContaining({
+      method: "PUT", body: JSON.stringify({token: "token", hostKey: "host-key", html}), credentials: "omit",
+    }))
+  })
+
   it("reports network failures and invalid JSON with backend context", async () => {
     const networkClient = new BackendClient(session, vi.fn().mockRejectedValue(new TypeError("fetch failed")))
     await expect(networkClient.listDocuments()).rejects.toThrow(

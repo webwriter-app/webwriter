@@ -1,6 +1,7 @@
 import {serializeDoctype} from "./serialization"
 import {nodeAtPath, pathFromNode} from "./utility"
 import {stripActiveContent} from "./active-content"
+import {clearEditorArtifacts} from "./editor-artifacts"
 import type {LiveSession, LiveSessionRegion as SessionRegion, LiveSessionWidgetState} from "./live-session"
 import type {LiveWidgetAggregateInput, WidgetDataSnapshot} from "./widget-aggregate"
 import {WidgetAggregateViews} from "./widget-aggregate-view"
@@ -24,7 +25,7 @@ export function previewWidgetElements(previewDocument: Document) {
 
 /** Remove editor-only content and markers from a preview copy, including
  * elements held in inert template contents. */
-export {clearEditorArtifacts as cleanPreviewEditorArtifacts} from "./editor-artifacts"
+export {clearEditorArtifacts as cleanPreviewEditorArtifacts}
 
 /** Apply one learner/base widget snapshot in either preview realm. */
 export function applyPreviewWidgetSnapshot(previewDocument: Document, snapshot: LiveSessionWidgetState) {
@@ -157,7 +158,9 @@ export class LivePreview {
   }
 
   private previewHTML(previewDocument: Document) {
-    return `${serializeDoctype(previewDocument.doctype)}${previewDocument.documentElement.outerHTML}`
+    const source = previewDocument.cloneNode(true) as Document
+    clearEditorArtifacts(source)
+    return `${serializeDoctype(source.doctype)}${source.documentElement.outerHTML}`
   }
 
   private normalizedPreviewPoint(x: number, y: number, previewDocument: Document) {

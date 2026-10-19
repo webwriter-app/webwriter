@@ -844,6 +844,130 @@ describe("development server", () => {
     await expectPayloadClose(host)
   })
 
+  it("stores a reserved live-session document and serves it to GET and HEAD", async () => {
+    const id = "live-http-document"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const html = "<!doctype html><html><body><main>Live lesson</main></body></html>"
+    const created = await fetch(`${baseUrl}/api/live-sessions/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html}),
+    })
+
+    expect(created.status).toBe(201)
+    const {url} = await created.json()
+    const liveUrl = new URL(url)
+    expect(liveUrl.pathname).toBe("/live/")
+    expect(liveUrl.searchParams.get("liveSession")).toBe(id)
+    expect(liveUrl.searchParams.get("liveToken")).toBe(token)
+    expect(liveUrl.searchParams.get("liveServer")).toBe(baseUrl.replace(/^http/, "ws"))
+
+    const query = `?liveSession=${id}&liveToken=${token}`
+    const get = await fetch(`${baseUrl}/live/${query}`)
+    expect(get.status).toBe(200)
+    expect(get.headers.get("Content-Type")).toMatch(/^text\/html\b/i)
+    expect(get.headers.get("Cache-Control")).toBe("no-store")
+    expect(get.headers.get("Referrer-Policy")).toBe("no-referrer")
+    await expect(get.text()).resolves.toBe(html)
+
+    const head = await fetch(`${baseUrl}/live/${query}`, {method: "HEAD"})
+    expect(head.status).toBe(200)
+    expect(head.headers.get("Cache-Control")).toBe("no-store")
+    expect(head.headers.get("Referrer-Policy")).toBe("no-referrer")
+    await expect(head.text()).resolves.toBe("")
+
+    for(const [index, invalidBody] of [
+      {token: "unsafe token", hostKey, html},
+      {token, hostKey: "short", html},
+      {token, hostKey, html: ""},
+    ].entries()) {
+      const invalid = await fetch(`${baseUrl}/api/live-sessions/live-http-invalid-${index}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(invalidBody),
+      })
+      expect(invalid.status).toBe(400)
+    }
+    const unsafeId = await fetch(`${baseUrl}/api/live-sessions/bad%2Fid`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html}),
+    })
+    expect(unsafeId.status).toBe(404)
+  })
+
+  it("protects a reserved live-session document and releases it after its last socket closes", async () => {
+    const id = "live-http-release"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const create = async credentials => fetch(`${baseUrl}/api/live-sessions/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html: "<p>Reserved</p>", ...credentials}),
+    })
+
+    expect((await create({})).status).toBe(201)
+    expect((await create({token: "bbbbbbbbbbbbbbbbbbbbbbbb"})).status).toBe(403)
+    expect((await create({hostKey: "iiiiiiiiiiiiiiiiiiiiiiii"})).status).toBe(403)
+    const query = `?liveSession=${id}&liveToken=${token}`
+    expect((await fetch(`${baseUrl}/live/${query.replace(token, "bbbbbbbbbbbbbbbbbbbbbbbb")}`)).status).toBe(404)
+
+    const room = `live-session-${id}`
+    const host = await openWebSocket(`${baseUrl.replace(/^http/, "ws")}/${room}?role=host&token=${token}&hostKey=${hostKey}`)
+    expect((await fetch(`${baseUrl}/live/${query}`)).status).toBe(200)
+    await closeWebSocket(host)
+    await vi.waitFor(async () => expect((await fetch(`${baseUrl}/live/${query}`)).status).toBe(404))
+  })
+
+  it("accepts an HTTP live document above the WebSocket frame limit and still syncs learner activity", async () => {
+    const id = "live-http-large-document"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const learnerKey = "llllllllllllllllllllllll"
+    const html = `<html><body>${"x".repeat(8 * 1024 * 1024 + 1)}</body></html>`
+    const created = await fetch(`${baseUrl}/api/live-sessions/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html}),
+    })
+    expect(created.status).toBe(201)
+    expect(await (await fetch(`${baseUrl}/live/?liveSession=${id}&liveToken=${token}`)).text()).toBe(html)
+
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const hostDoc = new Y.Doc()
+    hostDoc.getMap("live-session-meta").set("status", "active")
+    const room = `live-session-${id}`
+    const host = new WebsocketProvider(websocketUrl, room, hostDoc, {
+      WebSocketPolyfill: WebSocketPackage, disableBc: true,
+      params: {role: "host", token, hostKey},
+    })
+    const learnerDoc = new Y.Doc()
+    let learner
+    try {
+      await vi.waitFor(() => expect(host.synced).toBe(true))
+      learner = new WebsocketProvider(websocketUrl, room, learnerDoc, {
+        WebSocketPolyfill: WebSocketPackage, disableBc: true,
+        params: {role: "learner", token, learner: "ada", learnerKey},
+      })
+      learner.awareness.setLocalState({liveSession: {role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}}})
+      await vi.waitFor(() => expect(learner.synced).toBe(true))
+      learnerDoc.getArray("live-session-steps").push([{id: "large-doc-step", time: Date.now(), kind: "pointer", learner: "ada", pointer: {x: 0.25, y: 0.5}}])
+      await vi.waitFor(() => expect(hostDoc.getArray("live-session-steps").length).toBe(1))
+      expect(hostDoc.getMap("live-session-meta").get("baseHTML")).toBeUndefined()
+      expect(hostDoc.getMap("live-session-meta").get("previewDependencies")).toBeUndefined()
+      const serverMeta = getYDoc(room).getMap("live-session-meta")
+      expect(serverMeta.get("baseHTML")).toBeUndefined()
+      expect(serverMeta.get("previewDependencies")).toBeUndefined()
+    }
+    finally {
+      learner?.destroy()
+      host.destroy()
+      learnerDoc.destroy()
+      hostDoc.destroy()
+    }
+  })
+
   it("requires the host capability for live-session WebSockets and releases empty rooms", async () => {
     const websocketUrl = baseUrl.replace(/^http/, "ws")
     const room = "live-session-token-test"

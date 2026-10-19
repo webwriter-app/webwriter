@@ -141,6 +141,12 @@ export class BackendClient {
     return (await this.request<{document: BackendDocument}>(`shared-documents/${encodeURIComponent(token)}`)).document
   }
 
+  async publishLiveSession(id: string, token: string, hostKey: string, html: string) {
+    return await this.request<{url: string}>(`live-sessions/${encodeURIComponent(id)}`, {
+      method: "PUT", body: JSON.stringify({token, hostKey, html}),
+    })
+  }
+
   async listAIProviders() {
     return await this.request<ProviderCollection>("providers")
   }

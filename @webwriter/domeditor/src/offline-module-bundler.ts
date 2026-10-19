@@ -112,6 +112,6 @@ export async function bundleOfflineModules(entries: string[], map: IImportMap, b
     }],
   })
   const js = result.outputFiles.find(file => file.path.endsWith(".js"))?.text
-  if(!js) throw new Error("Offline export produced no JavaScript module")
+  if(js === undefined) throw new Error("Offline export produced no JavaScript module")
   return {js, css: result.outputFiles.find(file => file.path.endsWith(".css"))?.text}
 }

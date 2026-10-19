@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import {describe, expect, it, vi} from "vitest"
-import {editorFrameHTML, previewFrameHTML, type EditorFrameOptions, type PreviewFrameOptions} from "./frame-document"
+import {afterEach, describe, expect, it, vi} from "vitest"
+import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML, type EditorFrameOptions, type PreviewFrameOptions} from "./frame-document"
+import * as offlineBundler from "./offline-module-bundler"
 import {defaultDocumentTheme, documentTheme} from "./document-themes"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
 import {packageImportMapId} from "./package-dependencies"
@@ -18,6 +19,78 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
   entryURL: "https://editor.example/assets/preview-entry.js", executeScripts: true, ...changes,
 })
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
+
+describe("local live preview bundles", () => {
+  afterEach(() => vi.restoreAllMocks())
+  const script = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js?revision=2`
+  const style = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.css?revision=2`
+  const unused = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/unused.js`
+  const pkg: WebWriterPackage = {name: "fixture", version: "1", label: "Fixture", authors: [], keywords: [], links: {},
+    scripts: [script, unused], styles: [style], members: [
+      {id: "widget", packageName: "fixture", packageVersion: "1", exportName: "./widget", kind: "widget", label: "Widget", insertable: true, tagName: "demo-widget", scriptUrl: script, styleUrl: style},
+      {id: "unused", packageName: "fixture", packageVersion: "1", exportName: "./unused", kind: "widget", label: "Unused", insertable: true, tagName: "unused-widget", scriptUrl: unused},
+    ]}
+
+  it("embeds only required local entries and reinstalls them after learner sanitization", async () => {
+    const bundle = vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js: 'customElements.define("demo-widget", class extends HTMLElement {})', css: "demo-widget {color: red}"})
+    const body = '<section><!--keep--><demo-widget><script type="application/json">{"value":1}</script></demo-widget><template><demo-widget></demo-widget></template></section>'
+    const authored = parse(body)
+    const source = parse(previewFrameHTML(authored.cloneNode(true) as Document, previewOptions({packages: [pkg]})))
+    const map = {imports: {helper: "https://cdn.example/helper.js"}}
+    const dependencies = await bundleLocalPreviewPackages(source, [pkg], map, hostOrigin)
+    expect(bundle).toHaveBeenCalledExactlyOnceWith([script, style], map, hostOrigin)
+    const portable = dependencies.packages[0]
+    expect(portable.scripts).toHaveLength(1)
+    expect(portable.scripts[0]).toMatch(/^data:text\/javascript/)
+    expect(portable.styles[0]).toMatch(/^data:text\/css/)
+    expect(portable.members[0].scriptUrl).toBe(portable.scripts[0])
+    expect(portable.members[1].scriptUrl).toBeUndefined()
+    const shared = previewFrameHTML(source, previewOptions(dependencies))
+    const learner = parse(previewFrameHTML(parse(shared), previewOptions({...dependencies, standalone: true})))
+    expect([...learner.querySelectorAll<HTMLScriptElement>("script[src]")].map(script => script.getAttribute("src"))).toEqual(portable.scripts)
+    expect([...learner.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].map(link => link.getAttribute("href"))).toEqual(portable.styles)
+    expect(learner.body.innerHTML).toBe(body)
+    expect(authored.body.innerHTML).toBe(body)
+    expect(pkg.scripts).toEqual([script, unused])
+    expect(pkg.styles).toEqual([style])
+    expect(learner.head.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')).toHaveLength(1)
+    const nonce = learner.head.querySelector("script[src]")!.getAttribute("nonce")
+    expect(learner.head.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")).toContain(`'nonce-${nonce}'`)
+  })
+
+  it("keeps published resources and skips unused local widgets", async () => {
+    const bundle = vi.spyOn(offlineBundler, "bundleOfflineModules")
+    const remote = {...pkg, scripts: ["https://cdn.example/widget.js"], styles: [], members: [{...pkg.members[0], scriptUrl: "https://cdn.example/widget.js", styleUrl: undefined}]}
+    const dependencies = await bundleLocalPreviewPackages(parse("<p>No widgets</p>"), [pkg, remote], null, hostOrigin)
+    expect(dependencies).toEqual({packages: [pkg, remote], importMap: null})
+    expect(bundle).not.toHaveBeenCalled()
+  })
+
+  it("includes CSS emitted by widget imports even without a declared stylesheet", async () => {
+    vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js: "register()", css: "demo-widget {display: block}"})
+    const dependencies = await bundleLocalPreviewPackages(parse("<demo-widget></demo-widget>"), [{...pkg, styles: [], members: [{...pkg.members[0], styleUrl: undefined}]}], null, hostOrigin)
+    expect(dependencies.packages[0].styles[0]).toMatch(/^data:text\/css/)
+  })
+
+  it("shares one source for all package and member references to the bundled graph", async () => {
+    const js = 'customElements.define("demo-widget", class extends HTMLElement {})'
+    vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js, css: undefined})
+    const second = {...pkg, name: "second", members: [{...pkg.members[0], tagName: "other-widget"}]}
+    const dependencies = await bundleLocalPreviewPackages(parse("<demo-widget></demo-widget><other-widget></other-widget>"), [pkg, second], null, hostOrigin)
+    const serialized = previewFrameHTML(parse("<demo-widget></demo-widget><other-widget></other-widget>"), previewOptions({...dependencies, standalone: true, entryURL: ""}))
+    expect(serialized.split(encodeURIComponent(js))).toHaveLength(2)
+    expect(dependencies.packages[0].scripts).toEqual(dependencies.packages[1].scripts)
+    expect(dependencies.packages[0].members[0].scriptUrl).toBe(dependencies.packages[1].members[0].scriptUrl)
+  })
+
+  it("fails before changing the preview when a local source cannot be bundled", async () => {
+    vi.spyOn(offlineBundler, "bundleOfflineModules").mockRejectedValue(new Error("Local source unavailable"))
+    const source = parse(`<link rel="stylesheet" href="${style}"><demo-widget></demo-widget>`)
+    const html = source.documentElement.outerHTML
+    await expect(bundleLocalPreviewPackages(source, [pkg], null, hostOrigin)).rejects.toThrow("Local source unavailable")
+    expect(source.documentElement.outerHTML).toBe(html)
+  })
+})
 
 describe("isolated frame documents", () => {
   it("allows the package test shell under the configured application base path", () => {

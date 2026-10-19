@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {applyPreviewWidgetSnapshot, cleanPreviewEditorArtifacts, LivePreview, previewElementAtPath} from "./live-preview"
 import {WidgetDataBindings} from "./widget-data"
 import * as Y from "yjs"
+import {previewFrameHTML} from "./frame-document"
 
 const previews: LivePreview[] = []
 afterEach(() => {
@@ -25,6 +26,38 @@ const mount = () => {
 }
 
 describe("live preview lifecycle", () => {
+  it("publishes authored changes without resending the initial widget runtime", async () => {
+    const {frame, owner, preview} = mount()
+    const script = `data:text/javascript,${"x".repeat(100_000)}`
+    const style = "data:text/css,demo-widget%7Bdisplay%3Ablock%7D"
+    const source = new DOMParser().parseFromString('<style>.authored {color: red}</style><section><!--keep--><demo-widget><script type="application/json" slot="data">{"answer":1}</script></demo-widget></section>', "text/html")
+    const html = previewFrameHTML(source, {bridgeNonce: "", hostOrigin: location.origin, frameOrigin: location.origin,
+      entryURL: "", standalone: true, executeScripts: false, importMap: null,
+      packages: [{name: "demo", version: "1", label: "Demo", authors: [], keywords: [], links: {}, scripts: [script], styles: [style],
+        members: [{id: "widget", packageName: "demo", packageVersion: "1", exportName: "./widget", kind: "widget", label: "Widget", tagName: "demo-widget", insertable: true}]}],
+    })
+    const prepared = new DOMParser().parseFromString(html, "text/html")
+    owner.head.replaceChildren(...Array.from(prepared.head.childNodes, node => owner.importNode(node, true)))
+    owner.body.replaceChildren(...Array.from(prepared.body.childNodes, node => owner.importNode(node, true)))
+    const publish = vi.fn()
+    preview.observeLearner(frame, owner, publish)
+    owner.querySelector("demo-widget")!.setAttribute("answer", "2")
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    await new Promise<void>(resolve => queueMicrotask(resolve))
+    const documents = publish.mock.calls.map(([step]) => step).filter(step => step.kind === "document")
+    expect(documents.length).toBeGreaterThan(1)
+    for(const step of documents) {
+      expect(step.html).not.toContain("data:text/javascript")
+      expect(step.html).not.toContain("data:text/css")
+      expect(step.html).not.toContain("◆")
+      expect(step.html).toContain(".authored {color: red}")
+      expect(step.html).toContain("<!--keep-->")
+      expect(step.html).toContain('{"answer":1}')
+    }
+    expect(owner.head.querySelector("script[src]")!.getAttribute("src")).toBe(script)
+    expect(owner.querySelector("demo-widget")!.getAttribute("answer")).toBe("2")
+  })
+
   it("cleans editor-only artifacts and markers inside nested template contents", () => {
     const template = document.createElement("template")
     template.innerHTML = '<div class="authored ◆widget-editable" contenteditable=""><span class="◆editor-only">remove</span><i data-webwriter-editor-only></i></div>'

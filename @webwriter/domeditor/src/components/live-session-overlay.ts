@@ -83,15 +83,6 @@ export class LiveSessionOverlay extends LitElement {
       pointer-events: none;
     }
 
-    .state-region {
-      position: absolute;
-      box-sizing: border-box;
-      border: 1px solid color-mix(in srgb, var(--learner-color) 58%, transparent);
-      border-radius: 2px;
-      background: color-mix(in srgb, var(--learner-color) 9%, transparent);
-      pointer-events: none;
-    }
-
     .cursor {
       position: absolute;
       width: 0.7rem;
@@ -199,20 +190,6 @@ export class LiveSessionOverlay extends LitElement {
 
   private renderLearner(learner: LiveSessionLearner) {
     return html`
-      ${learner.regions?.map(region => html`
-        <div
-          class="state-region"
-          data-learner-id=${learner.id}
-          style=${styleMap({
-            "--learner-color": safeCssColor(learner.color),
-            left: percentage(region.x),
-            top: percentage(region.y),
-            width: percentage(region.width),
-            height: percentage(region.height),
-          })}
-          aria-hidden="true"
-        ></div>
-      `)}
       ${learner.cursor ? html`
         <div
           class="cursor"

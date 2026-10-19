@@ -54,9 +54,11 @@ await check("bundled document themes always render light colors", async () => {
   finally { frame.remove() }
 })
 
-await check("standalone live learners open the document without editor controls or an iframe", async () => {
-  const {LiveSession} = await import("../src/live-session")
-  const {liveLearnerURL} = await import("../src/page-routing")
+for(const large of [false, true]) await check(large
+  ? "standalone live learners receive large initial documents over HTTP and synchronize activity"
+  : "standalone live learners open the document without editor controls or an iframe", async () => {
+  const {LiveSession, liveSessionHostKey} = await import("../src/live-session")
+  const {previewFrameHTML} = await import("../src/frame-document")
   const serverUrl = new URL(location.href).searchParams.get("liveServer")!
   const script = `data:text/javascript,${encodeURIComponent(`import {label} from "live-label";
     customElements.define("standalone-live-widget", class extends HTMLElement {
@@ -84,13 +86,21 @@ await check("standalone live learners open the document without editor controls 
           button.click();
         });
       }
-    });`)}`
+    });` + (large ? `\n/*${"x".repeat(9 * 1024 * 1024)}*/` : ""))}`
   const dependencies = {packages: [{name: "live-fixture", version: "1", label: "Live fixture", authors: [], keywords: [], links: {}, scripts: [script], styles: [],
     members: [{id: "widget", packageName: "live-fixture", packageVersion: "1", exportName: "./widget", kind: "widget" as const, label: "Widget", insertable: true, tagName: "standalone-live-widget", scriptUrl: script}]}],
     importMap: {imports: {"live-label": `data:text/javascript,${encodeURIComponent('export const label="Answer the question"')}`}}}
   const token = "standalone-live-token-0123456789"
-  const host = new LiveSession({id: `standalone-${crypto.randomUUID()}`, role: "host", serverUrl, token, previewDependencies: dependencies,
-    baseHTML: '<!doctype html><html lang="en"><head><title>Live lesson</title><style>body{margin:24px;font:18px system-ui;background:#f8fafc}article{max-width:640px;margin:auto;padding:24px;background:white}</style></head><body><article><h1>Live lesson</h1><p>Explore the question below.</p><!--keep--><standalone-live-widget></standalone-live-widget></article></body></html>'})
+  const id = `standalone-${crypto.randomUUID()}`
+  const httpOrigin = new URL(serverUrl.replace(/^ws/, "http")).origin
+  const source = new DOMParser().parseFromString('<!doctype html><html lang="en"><head><title>Live lesson</title><style>body{margin:24px;font:18px system-ui;background:#f8fafc}article{max-width:640px;margin:auto;padding:24px;background:white}</style></head><body><article><h1>Live lesson</h1><p>Explore the question below.</p><!--keep--><standalone-live-widget></standalone-live-widget></article></body></html>', "text/html")
+  const html = previewFrameHTML(source, {...dependencies, standalone: true, bridgeNonce: "", hostOrigin: location.origin,
+    frameOrigin: httpOrigin, entryURL: "", learnerEntryURL: new URL("../src/live-learner-entry.ts", import.meta.url).href, executeScripts: true})
+  const publication = await fetch(new URL(`/api/live-sessions/${id}`, httpOrigin), {method: "PUT", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({token, hostKey: liveSessionHostKey(id, token), html})})
+  assert(publication.ok, `initial HTTP document publication failed (${publication.status})`)
+  const {url: learnerURL} = await publication.json()
+  const host = new LiveSession({id, role: "host", serverUrl, token})
   let learnerWindow: Window | null = null
   let receive: ((event: MessageEvent) => void) | undefined
   let receiveEnded: ((event: MessageEvent) => void) | undefined
@@ -99,10 +109,7 @@ await check("standalone live learners open the document without editor controls 
     const deadline = performance.now() + 10000
     while(host.status !== "connected" && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20))
     assert(host.status === "connected", "live host did not connect")
-    const source = new URL(location.href)
-    source.search = new URLSearchParams({liveSession: host.id, liveToken: token, liveServer: serverUrl}).toString()
-    const origin = location.origin.replace("127.0.0.1", "localhost")
-    const learnerURL = liveLearnerURL(source, origin)
+    const origin = new URL(learnerURL).origin
     const report = new Promise<Record<string, unknown>>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error("standalone learner did not render")), 10000)
       receive = event => {
@@ -117,6 +124,7 @@ await check("standalone live learners open the document without editor controls 
     const result = await report
     assert(result.topLevel && result.noEditor, "learner was wrapped in an editor or iframe")
     assert(result.title === "Live lesson" && result.text === "Answer the question" && result.width === 240, "learner document or widget did not render")
+    assert(!host.doc.getMap("live-session-meta").has("baseHTML") && !host.doc.getMap("live-session-meta").has("previewDependencies"), "initial document was sent through Yjs")
     while(!host.states.some(state => state.widgets?.some(widget => widget.html?.includes('answer="42"'))) && performance.now() < deadline + 5000) await new Promise(resolve => setTimeout(resolve, 20))
     assert(host.states.some(state => state.widgets?.some(widget => widget.html?.includes('answer="42"'))), "host did not receive the standalone learner's widget interaction")
     const endedReport = new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -131,7 +139,7 @@ await check("standalone live learners open the document without editor controls 
     host.stop()
     learnerWindow!.postMessage("report-live-ended", origin)
     const ended = await endedReport
-    assert(ended.visible && String(ended.text).includes("Session ended") && String(ended.text).includes("host"), "learner did not see a clear host-stop message")
+    assert(ended.visible && String(ended.text).includes("Session ended") && String(ended.text).includes("host"), `learner did not see a clear host-stop message: ${JSON.stringify(ended)}`)
     assert(ended.retained && !ended.authoredNotice, "ended-session message changed the authored learner document")
   }
   finally {
@@ -178,6 +186,42 @@ await check("live learners render host widgets with shared dependencies and a fr
     assert(widget!.getBoundingClientRect().width === 240 && widget!.getBoundingClientRect().height === 80, "learner widget has no rendered dimensions")
     assert(frame.contentDocument!.querySelectorAll('meta[http-equiv="Content-Security-Policy"]').length === 1, "host preview policy still blocks learner scripts")
     assert(frame.contentDocument!.body.innerHTML === source.body.innerHTML, "preview changed the authored widget structure")
+  }
+  finally { frame.remove(); learner.destroy(); host.destroy() }
+})
+
+await check("live learners initialize bundled local widgets without host resources", async () => {
+  const {LiveSession} = await import("../src/live-session")
+  const {bundleLocalPreviewPackages, previewFrameHTML} = await import("../src/frame-document")
+  const {LOCAL_PACKAGE_ROUTE_PREFIX} = await import("../src/local-package-worker")
+  const base = `${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}live-fixture/`
+  const script = `${base}widget.js?revision=1`
+  const packages = [{name: "local-fixture", version: "1", label: "Local fixture", authors: [], keywords: [], links: {}, scripts: [script], styles: [],
+    members: [{id: "widget", packageName: "local-fixture", packageVersion: "1", exportName: "./widget", kind: "widget" as const, label: "Widget", insertable: true, tagName: "live-local-widget", scriptUrl: script}]}]
+  const source = new DOMParser().parseFromString('<section><!--keep--><live-local-widget><p>Authored content</p></live-local-widget></section>', "text/html")
+  const bodyHTML = source.body.innerHTML
+  const dependencies = await bundleLocalPreviewPackages(source, packages, {imports: {"live-local-label": `${base}label.js`}}, location.href)
+  const options = {bridgeNonce: "", hostOrigin: location.origin, frameOrigin: location.origin,
+    entryURL: "", standalone: true, executeScripts: true, ...dependencies}
+  const host = new LiveSession({id: "native-live-local", role: "host", baseHTML: previewFrameHTML(source, options), previewDependencies: dependencies})
+  const learner = new LiveSession({id: host.id, role: "learner"})
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:640px;height:240px"
+  frame.srcdoc = previewFrameHTML(new DOMParser().parseFromString(learner.baseHTML!, "text/html"), {...options, ...learner.previewDependencies!})
+  fixture.append(frame)
+  try {
+    const deadline = performance.now() + 5000
+    while(!frame.contentDocument?.querySelector("live-local-widget")?.shadowRoot && performance.now() < deadline) await nextFrame()
+    const root = frame.contentDocument!
+    const widget = root.querySelector("live-local-widget")!
+    assert(widget?.shadowRoot?.querySelector("button")?.textContent === "Local learner widget ready", "bundled local custom element did not initialize")
+    await layoutFrame()
+    const style = frame.contentWindow!.getComputedStyle(widget)
+    assert(style.color === "rgb(23, 55, 96)" && style.backgroundImage.includes("data:image/svg+xml"), "imported widget CSS and image were not embedded")
+    assert(widget.getBoundingClientRect().width === 240 && widget.getBoundingClientRect().height === 80, "local widget has no rendered dimensions")
+    assert(!root.querySelector(`script[src*="${LOCAL_PACKAGE_ROUTE_PREFIX}"], link[href*="${LOCAL_PACKAGE_ROUTE_PREFIX}"]`), "learner still loads host-only widget resources")
+    assert(root.body.innerHTML === bodyHTML, "bundling changed the authored DOM")
+    assert(packages[0].scripts[0] === script, "bundling replaced the host development runtime")
   }
   finally { frame.remove(); learner.destroy(); host.destroy() }
 })
