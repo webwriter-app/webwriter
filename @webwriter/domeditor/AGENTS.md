@@ -125,6 +125,6 @@ npx vitest run
 
 ## Development safety
 
-The development server is intentionally loopback-only and has no authentication. Never expose it to a network.
+The default development server is intentionally loopback-only and has no authentication. Never expose it to a network. The explicit `--private-testing` mode is the sole exception: use it only on a dedicated test host behind a VPN-only reverse proxy, following `dev-server/PRIVATE-TESTING.md`. Node must remain bound to loopback; preserve exact host/origin checks and the separate application/content origins. Never make private testing publicly reachable.
 
 Do not commit `.webwriter-dev/`, `.env.local`, API keys, provider credentials, or other local development data.

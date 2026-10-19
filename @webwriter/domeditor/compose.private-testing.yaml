@@ -1,0 +1,84 @@
+name: webwriter-private
+
+x-build: &private-build
+  # The editor imports shared assets from the repository's static/ directory.
+  context: ../..
+  dockerfile: '@webwriter/domeditor/dev-server/private-testing.Dockerfile'
+  args:
+    VITE_APP_ORIGIN: https://${WEBWRITER_APP_HOST:?Set WEBWRITER_APP_HOST}:${WEBWRITER_HTTPS_PORT:-443}
+    VITE_EDITOR_ORIGIN: https://${WEBWRITER_EDITOR_HOST:?Set WEBWRITER_EDITOR_HOST}:${WEBWRITER_HTTPS_PORT:-443}
+
+services:
+  backend:
+    build:
+      <<: *private-build
+      target: backend
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 30s
+    environment:
+      VITE_APP_ORIGIN: https://${WEBWRITER_APP_HOST:?Set WEBWRITER_APP_HOST}:${WEBWRITER_HTTPS_PORT:-443}
+      VITE_EDITOR_ORIGIN: https://${WEBWRITER_EDITOR_HOST:?Set WEBWRITER_EDITOR_HOST}:${WEBWRITER_HTTPS_PORT:-443}
+      WEBWRITER_DEV_HOST: 127.0.0.1
+      WEBWRITER_DEV_PORT: '1234'
+      WEBWRITER_DEV_DATA_DIR: /var/lib/webwriter
+    volumes:
+      - private-data:/var/lib/webwriter
+    tmpfs:
+      - /tmp
+    # nginx joins this namespace; 1234 is deliberately never published.
+    ports:
+      - target: 8443
+        published: '${WEBWRITER_HTTPS_PORT:-443}'
+        host_ip: ${WEBWRITER_VPN_IP:?Set WEBWRITER_VPN_IP to this host's VPN address}
+        protocol: tcp
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          const request = require('node:http').get({host: '127.0.0.1', port: 1234,
+          path: '/api/session', headers: {Host: new URL(process.env.VITE_APP_ORIGIN).host},
+          timeout: 2000}, response => { response.resume(); process.exitCode = response.statusCode === 200 ? 0 : 1 });
+          request.on('timeout', () => request.destroy()); request.on('error', () => { process.exitCode = 1 });
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  nginx:
+    build:
+      <<: *private-build
+      target: proxy
+    # Preserve the backend's loopback-only bind without host networking.
+    network_mode: service:backend
+    depends_on:
+      backend:
+        condition: service_healthy
+        restart: true
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    environment:
+      WEBWRITER_APP_HOST: ${WEBWRITER_APP_HOST:?Set WEBWRITER_APP_HOST}
+      WEBWRITER_EDITOR_HOST: ${WEBWRITER_EDITOR_HOST:?Set WEBWRITER_EDITOR_HOST}
+      NGINX_ENVSUBST_FILTER: '^WEBWRITER_(APP_HOST|EDITOR_HOST)'
+    volumes:
+      - type: bind
+        source: ${WEBWRITER_TLS_DIR:?Set WEBWRITER_TLS_DIR to the absolute TLS directory}
+        target: /etc/webwriter-private
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: [CMD, nginx, -t, -q]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  private-data:

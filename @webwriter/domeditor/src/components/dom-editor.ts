@@ -1547,7 +1547,12 @@ export class DomEditor extends LitElement {
       }
       else {
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)])
-        if(!linkedBase) session = await discoverHostBackend(signal)
+        if(!linkedBase || new URL(linkedBase).origin === location.origin) {
+          session = await discoverHostBackend(signal)
+          // A fresh link recipient can discover this host's no-auth service,
+          // but must never connect the link to a different API on that host.
+          if(linkedBase && session?.apiBaseUrl.replace(/\/$/, "") !== linkedBase.replace(/\/$/, "")) session = null
+        }
         if(!session) session = await probeDevelopmentBackend(signal, undefined, linkedBase)
         if(this.backendProbeController !== controller) return
         if(session) {

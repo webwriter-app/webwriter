@@ -1,0 +1,60 @@
+# Include inside nginx's http {} block after replacing all example values.
+# Both listeners MUST bind to this host's VPN address, never 0.0.0.0 or [::].
+map $http_upgrade $webwriter_connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 100.100.100.10:443 ssl;
+    server_name authors.vpn.example;
+    ssl_certificate /etc/webwriter-private/fullchain.pem;
+    ssl_certificate_key /etc/webwriter-private/privkey.pem;
+    root /srv/webwriter-private/app/dist;
+    index index.html;
+    # Relative directory redirects also work behind Docker port publishing.
+    absolute_redirect off;
+    client_max_body_size 25m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $webwriter_connection_upgrade;
+    proxy_buffering off;
+    proxy_read_timeout 180s;
+
+    location /api/ { proxy_pass http://127.0.0.1:1234; }
+    location = /admin { proxy_pass http://127.0.0.1:1234; }
+    location = /admin/ { proxy_pass http://127.0.0.1:1234; }
+    # Authored live HTML must never execute on the application origin.
+    location /live/ { return 403; }
+
+    location / {
+        # All collaboration rooms use WebSocket upgrades, including paths
+        # that happen to match a static file. Ordinary pages remain static.
+        error_page 418 = @collaboration;
+        if ($http_upgrade ~* "^websocket$") { return 418; }
+        try_files $uri $uri/ =404;
+    }
+    location @collaboration { proxy_pass http://127.0.0.1:1234; }
+}
+
+server {
+    listen 100.100.100.10:443 ssl;
+    server_name content.vpn.example;
+    ssl_certificate /etc/webwriter-private/fullchain.pem;
+    ssl_certificate_key /etc/webwriter-private/privkey.pem;
+    root /srv/webwriter-private/app/dist;
+    index index.html;
+    absolute_redirect off;
+
+    # Live links load authored HTML on this separate content origin.
+    location /live/ {
+        proxy_set_header Host $http_host;
+        proxy_pass http://127.0.0.1:1234;
+    }
+    location /api/ { return 403; }
+    location = /admin { return 403; }
+    location = /admin/ { return 403; }
+    location / { try_files $uri $uri/ =404; }
+}

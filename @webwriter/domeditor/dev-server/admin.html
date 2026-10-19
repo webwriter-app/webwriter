@@ -13,18 +13,19 @@
       header p { color: #5b667a; font-size: .85rem; }
       main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
       section { min-width: 0; }
-      form, .list { display: grid; gap: .65rem; margin-top: 1rem; }
+      form, .list { display: grid; grid-template-columns: minmax(0, 1fr); gap: .65rem; margin-top: 1rem; }
       label { display: grid; gap: .25rem; color: #465167; font-size: .78rem; font-weight: 650; }
       input, select, textarea, button { box-sizing: border-box; min-height: 2.25rem; padding: .45rem .6rem; border: 1px solid #bdc8d8; border-radius: .4rem; background: white; font: inherit; }
+      input, select, textarea { width: 100%; min-width: 0; }
       textarea { min-height: 9rem; resize: vertical; }
       button { cursor: pointer; }
       button.primary { border-color: #2563eb; color: white; background: #2563eb; }
       button.danger { border-color: #fecaca; color: #b91c1c; }
       .row, .actions { display: flex; gap: .5rem; }
-      .row > * { flex: 1; }
-      .actions { justify-content: flex-end; }
-      article { display: flex; align-items: center; gap: .5rem; padding: .55rem; border: 1px solid #e1e6ef; border-radius: .4rem; }
-      article span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .row > * { flex: 1; min-width: 0; }
+      .actions { justify-content: flex-end; flex-wrap: wrap; }
+      article { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding: .55rem; border: 1px solid #e1e6ef; border-radius: .4rem; }
+      article span { flex: 1 1 10rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       article small { color: #68758a; }
       .status { min-height: 1.25rem; margin-top: .75rem; color: #526078; font-size: .8rem; }
       @media (max-width: 48rem) { main { grid-template-columns: 1fr; } header { align-items: flex-start; flex-direction: column; } }

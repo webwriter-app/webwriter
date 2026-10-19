@@ -14,6 +14,20 @@ Editor and preview iframes use the paired `localhost` origin in development. The
 
 Data is stored in the ignored `.webwriter-dev/` directory. Provider files have owner-only permissions, but API keys are still stored as plaintext development secrets. `OPENAI_API_KEY` can instead be set in `.env.local`; it creates an OpenAI provider whose key stays in the environment.
 
+For trusted remote testers, an explicit **VPN-only private-testing mode** reuses
+this backend with a shared identity and no application login. It keeps Node on
+loopback, requires separate HTTPS application/content origins and an isolated
+data directory, and runs without Vite behind a VPN-bound reverse proxy serving
+the built frontend. Start it with `npm run start:private` after following the
+[deployment instructions](dev-server/PRIVATE-TESTING.md). The VPN must enforce
+access; this mode must never be publicly reachable. Ordinary `npm start` keeps
+all existing localhost restrictions.
+
+The guide includes a [Docker Compose setup](compose.private-testing.yaml) with
+nginx, TLS certificate mounts, VPN-specific HTTPS publishing, and persistent
+backend storage. Start from
+[`dev-server/private-testing.env.example`](dev-server/private-testing.env.example).
+
 ## Static multipage build
 
 ```sh

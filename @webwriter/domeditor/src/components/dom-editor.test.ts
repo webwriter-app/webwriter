@@ -9261,6 +9261,30 @@ it("does not apply a cloud save response after the active service is changed", a
   expect(host.fileName).not.toBe("Old response")
 })
 
+it.each(["/api", "/other-api"])("discovers only the exact same-host cloud API for a fresh document link (advertised: %s)", async advertisedPath => {
+  const base = `${location.origin}/api`
+  const session = {kind: "webwriter-cloud-service", version: 1, authentication: "none",
+    apiBaseUrl: `${location.origin}${advertisedPath}`, collaborationUrl: location.origin.replace(/^http/, "ws"),
+    adminUrl: `${location.origin}/admin`, user: {id: "local-development", name: "Private tester"}, capabilities: ["documents"]}
+  vi.stubGlobal("fetch", vi.fn(async(url: string) => new Response(JSON.stringify(
+    String(url).endsWith("/session") ? session : {documents: []},
+  ), {headers: {"Content-Type": "application/json"}})))
+  const {editor} = await mountEditor()
+  const host = editor as any
+  host.settings = {...defaultAppSettings(), cloudServices: [], activeCloudServiceId: null, cloudServicesConfigured: false}
+  await host.loginToBackend(base)
+  if(advertisedPath === "/api") {
+    expect(host.backendState).toBe("connected")
+    expect(host.backendClient.apiBaseUrl).toBe(base)
+    expect(host.settings.cloudServices).toEqual([expect.objectContaining({url: base, authentication: "none"})])
+  }
+  else {
+    expect(host.backendState).toBe("unavailable")
+    expect(host.backendClient).toBeNull()
+    expect(host.settings.cloudServices).toEqual([])
+  }
+})
+
 it("activates a saved inactive cloud service when opening its document link", async () => {
   const first = {id: "first", type: "url" as const, url: "https://first.example", username: "ada", accessToken: "first-token"}
   const second = {...first, id: "second", url: "https://second.example", accessToken: "second-token"}
