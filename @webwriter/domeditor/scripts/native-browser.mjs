@@ -7,6 +7,8 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "standalone live learners open the document without editor controls or an iframe",
+  "live learners render host widgets with shared dependencies and a fresh preview policy",
   "Lit documentation examples render and synchronize with LitElementWw",
   "LitElementWw uses native registries and shared data handlers without the adapter",
   "legacy and native scoped registries coexist without replacing browser globals",
@@ -207,14 +209,23 @@ let browser
 let browserClosed
 let hasClosed = false
 let timeout
+let liveServer
 try {
   await vite.listen()
+  let liveServerURL
+  if(!smoke && !mathVisual && !importMapMode && !performanceMode && !widgetStateMode && !widgetStorageMode
+    && filteredChecks.some(name => name.startsWith("standalone live learners"))) {
+    const {createDevServer} = await import("../dev-server/server.mjs")
+    liveServer = await createDevServer({vite: false, port: 0, dataDirectory: join(profile, "live-session")})
+    const address = await liveServer.listen()
+    liveServerURL = address.url.replace(/^http/, "ws")
+  }
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}`
+  const url = `http://127.0.0.1:${port}/tests/${widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}${liveServerURL ? `&liveServer=${encodeURIComponent(liveServerURL)}` : ""}`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
-    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
+    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
   browser = spawn(command, args, {
     stdio: ["ignore", "ignore", "pipe"],
     ...(browserName === "webkit" && swiftDeveloperDir
@@ -260,5 +271,6 @@ finally {
     finally { clearTimeout(forceKill) }
   }
   await vite.close()
+  await liveServer?.close()
   await rm(profile, {recursive: true, force: true, maxRetries: 4, retryDelay: 300})
 }

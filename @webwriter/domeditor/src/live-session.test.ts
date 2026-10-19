@@ -16,6 +16,22 @@ const create = (options: ConstructorParameters<typeof LiveSession>[0]) => {
 }
 
 describe("LiveSession", () => {
+  it.each([false, true])("shares the host preview dependencies when learner joins first: %s", learnerFirst => {
+    const options = {id: "preview-dependencies", role: "learner" as const,
+      previewDependencies: {packages: [], importMap: {imports: {lit: "https://untrusted.test/lit.js"}}}}
+    const early = learnerFirst ? create(options) : null
+    const dependencies = {packages: [], importMap: {imports: {lit: "https://example.test/lit.js"}}}
+    const host = create({id: options.id, role: "host", baseHTML: "<demo-widget></demo-widget>", previewDependencies: dependencies})
+    const learner = early ?? create(options)
+    expect(learner.previewDependencies).toEqual(dependencies)
+    dependencies.importMap.imports.lit = "https://changed.test/lit.js"
+    learner.previewDependencies!.importMap!.imports!.lit = "https://changed.test/lit.js"
+    expect(host.previewDependencies!.importMap!.imports!.lit).toBe("https://example.test/lit.js")
+    expect(learner.previewDependencies).toEqual(host.previewDependencies)
+    learner.doc.getMap("live-session-meta").set("previewDependencies", options.previewDependencies)
+    expect(host.previewDependencies!.importMap!.imports!.lit).toBe("https://example.test/lit.js")
+  })
+
   it("delivers host feedback to the intended participant and keeps it out of the document timeline", async () => {
     const host = create({id: "feedback", role: "host", baseHTML: "<p>Document</p>"})
     const ada = create({id: "feedback", role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}})

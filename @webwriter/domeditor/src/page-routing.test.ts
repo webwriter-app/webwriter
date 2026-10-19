@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest"
-import {legacyEditorURL} from "./page-routing"
+import {legacyEditorURL, liveLearnerURL} from "./page-routing"
 
 describe("legacy editor URLs", () => {
   it.each(["open", "session", "liveSession", "liveToken", "share", "source"])("routes root URLs containing %s to the editor", parameter => {
@@ -30,5 +30,20 @@ describe("legacy editor URLs", () => {
     const result = legacyEditorURL(input)
     expect(result?.href).toBe("https://example.test/editor/?source=local#top")
     expect(input.pathname).toBe("/")
+  })
+})
+
+describe("liveLearnerURL", () => {
+  it("routes to the dedicated origin and carries only learner parameters", () => {
+    const result = liveLearnerURL("https://app.test/nested/?liveSession=room&liveToken=secret&open=doc&session=other#step-2",
+      "https://editor.test", "/nested/")
+    expect(result.href).toBe("https://editor.test/nested/live/?liveSession=room&liveToken=secret#step-2")
+  })
+
+  it("overrides the server and preserves an existing liveServer otherwise", () => {
+    const source = "https://app.test/?liveSession=room&liveToken=secret&liveServer=wss%3A%2F%2Fold.test&role=learner"
+    expect(liveLearnerURL(source, "https://editor.test", "/", "wss://new.test").searchParams.get("liveServer"))
+      .toBe("wss://new.test")
+    expect(liveLearnerURL(source, "https://editor.test").searchParams.get("liveServer")).toBe("wss://old.test")
   })
 })

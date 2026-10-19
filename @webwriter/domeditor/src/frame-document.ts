@@ -26,6 +26,8 @@ export type EditorFrameOptions = FrameDocumentOptions & {
 export type PreviewFrameOptions = FrameDocumentOptions & {
   frameOrigin: string
   importMap: IImportMap | null
+  /** Render the document directly without the iframe's parent bridge. */
+  standalone?: boolean
 }
 
 const defaultDocumentThemeHTML = () => {
@@ -118,13 +120,23 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
     framePackages(options.packages, options.hostOrigin, frameOrigin),
     frameImportMap(options.importMap, options.hostOrigin, frameOrigin))
   if(source.head) {
+    if(options.standalone) {
+      // Match the preview shell's directory so relative document resources
+      // keep working when the top-level learner page lives under /live/.
+      const base = source.createElement("base")
+      base.href = new URL(import.meta.env.BASE_URL, `${options.frameOrigin}/`).href
+      source.head.prepend(base)
+    }
     const scripts = Array.from(source.head.querySelectorAll("script"))
     const policy = source.createElement("meta")
+    // A live-session learner prepares this preview again with a fresh nonce.
+    // Remove the earlier policy along with the other preview bootstrap nodes.
+    policy.className = "◆ ◆editor-only"
     policy.httpEquiv = "Content-Security-Policy"
     const packageEvaluation = scripts.some(script => script.hasAttribute("src")) ? " 'unsafe-eval'" : ""
-    policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri 'none'; form-action 'none'`
+    policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri ${options.standalone ? "'self'" : "'none'"}; form-action 'none'`
     source.head.prepend(policy)
-    if(options.executeScripts) {
+    if(options.executeScripts && !options.standalone) {
       const bridge = source.createElement("meta")
       bridge.className = "◆ ◆editor-only"
       bridge.name = "webwriter-preview-bridge"

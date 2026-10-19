@@ -192,12 +192,14 @@ import {
 } from "../document-head"
 import {
   LiveSession,
+  liveSessionLearnerIdentity,
   type LiveSessionChange,
   type LiveSessionFeedback,
   type LiveSessionLearner as SessionLearner,
   type LiveSessionLearnerState,
   type LiveSessionStep,
 } from "../live-session"
+import {liveLearnerURL} from "../page-routing"
 import type {
   LiveSessionLearner as OverlayLearner,
   LiveSessionWidget as OverlayWidget,
@@ -290,19 +292,9 @@ type RibbonInputEventDetail = {
 
 const liveSessionParameter = "liveSession"
 const liveSessionTokenParameter = "liveToken"
-const liveSessionIdentityKey = (sessionId: string) => `webwriter_live_session_learner_${sessionId}`
-const liveSessionColors = [
-  "#e11d48", "#db2777", "#9333ea", "#4f46e5", "#2563eb", "#0284c7",
-  "#0891b2", "#0d9488", "#059669", "#65a30d", "#ca8a04", "#ea580c",
-]
 
 const randomIdentifier = (prefix: string) => globalThis.crypto?.randomUUID?.()
   ?? `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
-
-const hashString = (value: string) => Array.from(value).reduce(
-  (hash, character) => (Math.imul(hash, 31) + character.codePointAt(0)!) | 0,
-  0,
-)
 
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
 
@@ -1128,11 +1120,10 @@ export class DomEditor extends LitElement {
     return this.preparePreviewDocument(new DOMParser().parseFromString(response.html, "text/html"))
   }
 
-  private preparePreviewDocument(source: Document) {
+  private preparePreviewDocument(source: Document, dependencies = {packages: this.installedPackages, importMap: this.packageImportMap}) {
     return previewFrameHTML(source, {
       bridgeNonce: this.bridgeNonce,
-      packages: this.installedPackages,
-      importMap: this.packageImportMap,
+      ...dependencies,
       hostOrigin: window.location.origin,
       frameOrigin: import.meta.env.MODE === "test" ? window.location.origin : editorFrameOrigin(),
       entryURL: previewEntryUrl,
@@ -1146,7 +1137,7 @@ export class DomEditor extends LitElement {
     outerUrl.searchParams.forEach((value, key) => {
       // Live-session bearer tokens are for the dedicated live room only; do
       // not forward them to the ordinary document collaboration provider.
-      if(key === liveSessionTokenParameter || key === liveSessionParameter || key === "role" || key === "open") return
+      if(key === liveSessionTokenParameter || key === liveSessionParameter || key === "liveServer" || key === "role" || key === "open") return
       syncUrl.searchParams.set(key, value)
     })
     if(this.collaborationRoom) syncUrl.searchParams.set("session", this.collaborationRoom)
@@ -1211,44 +1202,13 @@ export class DomEditor extends LitElement {
 
   private liveSessionShareLink(sessionId: string, token: string) {
     const url = new URL(location.href)
-    url.searchParams.delete("session")
-    url.searchParams.delete("source")
-    url.searchParams.delete("open")
     url.searchParams.set(liveSessionParameter, sessionId)
     url.searchParams.set(liveSessionTokenParameter, token)
-    url.searchParams.set("role", "learner")
-    return url.href
+    return liveLearnerURL(url, editorFrameOrigin(), import.meta.env.BASE_URL, this.backendSession?.collaborationUrl).href
   }
 
   private learnerIdentity(sessionId: string): LiveSessionIdentity {
-    const storageKey = liveSessionIdentityKey(sessionId)
-    try {
-      const value = globalThis.sessionStorage?.getItem(storageKey)
-      if(value) {
-        const parsed = JSON.parse(value) as Partial<LiveSessionIdentity>
-        if(typeof parsed.id === "string" && typeof parsed.name === "string" && typeof parsed.color === "string") {
-          return {id: parsed.id, name: this.username || parsed.name, color: parsed.color}
-        }
-      }
-    }
-    catch {
-      // Private browsing or an opaque origin may make sessionStorage unavailable.
-    }
-
-    const id = randomIdentifier("learner")
-    const suffix = id.replaceAll(/[^a-zA-Z0-9]/g, "").slice(-4).toLocaleUpperCase()
-    const identity = {
-      id,
-      name: this.username || `Learner ${suffix || "?"}`,
-      color: liveSessionColors[Math.abs(hashString(id)) % liveSessionColors.length],
-    }
-    try {
-      globalThis.sessionStorage?.setItem(storageKey, JSON.stringify(identity))
-    }
-    catch {
-      // Identity persistence is a convenience; the session remains usable without it.
-    }
-    return identity
+    return liveSessionLearnerIdentity(sessionId, this.username)
   }
 
   private connectLiveSession(session: LiveSession, role: "host" | "learner", link = "") {
@@ -1291,7 +1251,7 @@ export class DomEditor extends LitElement {
 
     if(this.liveSessionRole === "learner" && session.baseHTML && session.baseHTML !== this.livePreviewSource) {
       this.livePreviewSource = session.baseHTML
-      this.previewDocumentHTML = this.preparePreviewDocument(new DOMParser().parseFromString(session.baseHTML, "text/html"))
+      this.previewDocumentHTML = this.preparePreviewDocument(new DOMParser().parseFromString(session.baseHTML, "text/html"), session.previewDependencies)
       this.previewFrameRevision++
       this.previewActive = true
     }
@@ -2579,7 +2539,10 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private async exitPreview() {
+  private async exitPreview(focusDocument = true) {
+    if(!this.previewActive || this.previewTransition) return
+    const session = this.liveSession
+    if(session?.role === "host" && session.status !== "stopped" && !await this.confirmLiveSessionStop(session)) return
     if(!this.previewActive || this.previewTransition) return
     const selection = this.previewSelection
     this.previewGeneration++
@@ -2590,13 +2553,22 @@ export class DomEditor extends LitElement {
     this.previewActive = false
     await this.updateComplete
     this.savedEditorSelection = selection
-    this.focusEditor(true)
+    if(focusDocument) this.focusEditor(true)
+    return true
   }
 
-  private toggleLiveSession = (event: Event) => {
+  private async confirmLiveSessionStop(session: LiveSession) {
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    return Boolean(await ribbon?.confirmLiveSessionStop()) && this.isConnected && this.liveSession === session
+  }
+
+  private toggleLiveSession = async (event: Event) => {
     const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
     if(typeof enabled !== "boolean" || !this.previewActive || this.liveSessionRole === "learner" || enabled === this.liveSessionActive) return
     if(!enabled) {
+      const session = this.liveSession
+      if(session && session.status !== "stopped" && !await this.confirmLiveSessionStop(session)) return
+      if(!this.previewActive || this.liveSession !== session) return
       for(const path of this.liveSelectedWidgetLearners.keys()) this.applyLiveWidgetState(path, null)
       this.disposeLiveSession()
       this.resetLivePlayback()
@@ -2610,6 +2582,7 @@ export class DomEditor extends LitElement {
         id: sessionId,
         role: "host",
         baseHTML: this.previewDocumentHTML ?? this.currentPreviewHTML(),
+        previewDependencies: {packages: this.installedPackages, importMap: this.packageImportMap},
         ...(serverUrl ? {serverUrl} : {}),
         token: sessionToken,
       })
@@ -2982,7 +2955,8 @@ export class DomEditor extends LitElement {
 
   private readonly handleBeforeUnload = (event: BeforeUnloadEvent) => {
     const aiWorkActive = this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.aiWorkActive
-    if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft && !aiWorkActive) return
+    const liveSessionActive = this.liveSession && this.liveSession.status !== "stopped"
+    if(!this.fileDirty && !this.fileOperationActive && !this.localPackageDraft && !aiWorkActive && !liveSessionActive) return
     event.preventDefault()
     event.returnValue = ""
   }
@@ -3673,7 +3647,7 @@ export class DomEditor extends LitElement {
   private applyDocumentSharing(sharing: {enabled: boolean, token?: string}, client: BackendClient) {
     this.linkSharingEnabled = sharing.enabled
     const url = new URL(location.href)
-    for(const key of ["session", "share", "role", liveSessionParameter, liveSessionTokenParameter]) url.searchParams.delete(key)
+    for(const key of ["session", "share", "role", "liveServer", liveSessionParameter, liveSessionTokenParameter]) url.searchParams.delete(key)
     url.searchParams.set("open", `${client.apiBaseUrl}/shared-documents/${encodeURIComponent(sharing.token ?? "")}`)
     this.collaborationLink = sharing.enabled && sharing.token ? url.href : ""
   }
@@ -4702,8 +4676,13 @@ export class DomEditor extends LitElement {
     this.localPackageTestResults = {...this.localPackageTestResults, [key]: result}
   }
 
-  private handleRibbonPreviewExit = () => {
-    void this.exitPreview()
+  private handleRibbonPreviewExit = async (event: Event) => {
+    const openFileMenu = (event as CustomEvent<{openFileMenu?: boolean}>).detail?.openFileMenu
+    if(!await this.exitPreview(!openFileMenu)) return
+    if(!openFileMenu) return
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    await ribbon?.updateComplete
+    if(ribbon && this.isConnected && !this.previewActive && !this.liveSessionActive) ribbon.menuOpen = true
   }
 
   private handleLiveLearnerToggle = (event: Event) => {

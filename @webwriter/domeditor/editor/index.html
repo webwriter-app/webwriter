@@ -10,7 +10,7 @@
         width: 100%;
         height: 100%;
         margin: 0;
-        /* Keep rubber-band scrolling inside the document iframe. */
+        /* Keep rubber-band scrolling inside the editor document. */
         overscroll-behavior: none;
       }
     </style>
@@ -18,9 +18,7 @@
       globalThis.litIssuedWarnings ??= new Set();
       globalThis.litIssuedWarnings.add("dev-mode");
     </script>
-    <script type="module" src="/src/components/dom-editor.ts"></script>
+    <script type="module" src="/src/editor-page.ts"></script>
   </head>
-  <body>
-    <dom-editor></dom-editor>
-  </body>
+  <body></body>
 </html>

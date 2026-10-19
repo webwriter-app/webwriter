@@ -10,30 +10,44 @@ afterEach(() => {
 })
 
 describe("dialog ribbon controls", () => {
-  it.each(["confirm", "cancel", "escape", "close", "disconnect"])("settles the link sharing confirmation on %s", async action => {
+  const dialogCases = [
+    ["link sharing", "link-sharing-dialog", "confirmLinkSharing", "Enable link sharing?", "saved on the server", "Move and enable sharing"],
+    ["live session stop", "live-session-stop-dialog", "confirmLiveSessionStop", "Stop live session?", "disconnects all learners", "Stop session"],
+  ] as const
+  const outcomes = ["confirm", "cancel", "escape", "close", "direct close", "disconnect"] as const
+  const cases = dialogCases.flatMap(config => outcomes.map(action => [...config, action] as const))
+
+  it.each(cases)("settles the %s confirmation on %s", async (_name, dialogId, method, title, description, primaryLabel, action) => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
     await ribbon.updateComplete
-    const result = ribbon.confirmLinkSharing()
-    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#link-sharing-dialog")!
+    const confirm = () => method === "confirmLinkSharing" ? ribbon.confirmLinkSharing() : ribbon.confirmLiveSessionStop()
+    const otherConfirm = () => method === "confirmLinkSharing" ? ribbon.confirmLiveSessionStop() : ribbon.confirmLinkSharing()
+    const result = confirm()
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>(`#${dialogId}`)!
     await vi.waitFor(() => expect(dialog.open).toBe(true))
     expect(dialog.classList.contains("document-dialog")).toBe(true)
-    expect(dialog.querySelector(`#${dialog.getAttribute("aria-labelledby")}`)?.textContent).toBe("Enable link sharing?")
-    expect(dialog.querySelector(`#${dialog.getAttribute("aria-describedby")}`)?.textContent).toContain("saved on the server")
-    await expect(ribbon.confirmLinkSharing()).resolves.toBe(false)
+    expect(dialog.querySelector(`#${dialog.getAttribute("aria-labelledby")}`)?.textContent).toBe(title)
+    expect(dialog.querySelector(`#${dialog.getAttribute("aria-describedby")}`)?.textContent).toContain(description)
+    expect(dialog.querySelector<HTMLButtonElement>("footer .primary")?.textContent).toBe(primaryLabel)
+    expect(dialog.querySelector<HTMLButtonElement>("footer button")?.hasAttribute("autofocus")).toBe(true)
+    await expect(confirm()).resolves.toBe(false)
+    await expect(otherConfirm()).resolves.toBe(false)
     if(action === "confirm") dialog.querySelector<HTMLButtonElement>(".primary")!.click()
     else if(action === "cancel") dialog.querySelector<HTMLButtonElement>("footer button")!.click()
     else if(action === "escape") dialog.dispatchEvent(new Event("cancel", {cancelable: true}))
     else if(action === "close") dialog.querySelector<HTMLButtonElement>(".dialog-close")!.click()
+    else if(action === "direct close") dialog.close()
     else ribbon.remove()
     await expect(result).resolves.toBe(action === "confirm")
     expect(dialog.open).toBe(false)
     if(action !== "disconnect") {
-      const reopened = ribbon.confirmLinkSharing()
+      const reopened = confirm()
       await vi.waitFor(() => expect(dialog.open).toBe(true))
       dialog.querySelector<HTMLButtonElement>("footer button")!.click()
       await expect(reopened).resolves.toBe(false)
     }
+    ribbon.remove()
   })
 
   it("opens About WebWriter from the last File menu item without forwarding an editor action", async () => {
@@ -63,6 +77,25 @@ describe("dialog ribbon controls", () => {
     expect(ribbon.menuOpen).toBe(false)
     document.removeEventListener("ribbon-button-click", editorAction)
     history.replaceState(history.state, "", originalURL)
+  })
+
+  it("restores the Share switch while a stop confirmation is pending", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.previewActive = true
+    ribbon.liveSessionActive = true
+    ribbon.liveSessionRole = "host"
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const input = ribbon.shadowRoot!.querySelector<HTMLInputElement>('.live-session-switch input')!
+    const listener = vi.fn()
+    ribbon.addEventListener("live-session-toggle", listener)
+
+    input.checked = false
+    input.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+
+    expect(input.checked).toBe(true)
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {enabled: false}}))
+    expect(ribbon.liveSessionActive).toBe(true)
   })
 
   it("renders dialog state and dispatches authored attribute changes", async () => {

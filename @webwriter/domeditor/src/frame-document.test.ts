@@ -96,6 +96,14 @@ describe("isolated frame documents", () => {
     expect(policy).toContain("media-src * data: blob:")
   })
 
+  it("prepares a standalone learner document without the iframe bridge", () => {
+    const root = parse(previewFrameHTML(parse('<article><!--keep--><demo-widget></demo-widget></article>'), previewOptions({standalone: true})))
+    expect(root.querySelector('meta[name="webwriter-preview-bridge"], script[src*="preview-entry"], dom-editor, iframe')).toBeNull()
+    expect(root.body.innerHTML).toBe('<article><!--keep--><demo-widget></demo-widget></article>')
+    expect(root.querySelector('meta[http-equiv="Content-Security-Policy"]')).not.toBeNull()
+    expect(root.querySelector("base")!.getAttribute("href")).toBe(`${frameOrigin}/`)
+  })
+
   it("cleans a preview copy and installs only the trusted runtime with a separate script nonce", () => {
     const source = parse('<html><head><script>authored()</script><style>.authored {color: red}</style></head><body><p class="authored ◆selected" contenteditable="">text</p><demo-widget class="◆widget-editable" contenteditable=""></demo-widget><aside class="◆editor-only">UI</aside><template><i data-webwriter-editor-only>UI</i><b class="◆caret authored">nested</b></template></body></html>')
     const root = parse(previewFrameHTML(source, previewOptions()))
@@ -126,6 +134,27 @@ describe("isolated frame documents", () => {
     expect(root.querySelectorAll("img")[1].getAttribute("src")).toBe(`${hostOrigin}/authored.png`)
     expect(pkg.scripts).toEqual([script])
     expect(pkg.members[0].scriptUrl).toBe(script)
+  })
+
+  it("replaces the host preview policy when preparing a learner preview with fresh script nonces", () => {
+    const script = "https://cdn.example/widget.js"
+    const options = previewOptions({packages: [{
+      name: "fixture", version: "1", label: "Fixture", authors: [], keywords: [], links: {}, scripts: [script], styles: [],
+      members: [{id: "widget", packageName: "fixture", packageVersion: "1", exportName: "./widget", kind: "widget", label: "Widget", insertable: true, tagName: "demo-widget", scriptUrl: script}],
+    }], importMap: {imports: {lit: "https://cdn.example/lit.js"}}})
+    const host = parse(previewFrameHTML(parse('<demo-widget><script type="application/json">{"answer":1}</script></demo-widget>'), options))
+    const oldNonce = host.querySelector("script[nonce]")!.getAttribute("nonce")
+    const learner = parse(previewFrameHTML(host, {...options, bridgeNonce: "learner-bridge-nonce"}))
+    const policies = learner.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')
+    expect(policies).toHaveLength(1)
+    const nonce = learner.querySelector("script[nonce]")!.getAttribute("nonce")!
+    expect(nonce).not.toBe(oldNonce)
+    expect(policies[0].getAttribute("content")).toContain(`'nonce-${nonce}'`)
+    expect(Array.from(learner.head.querySelectorAll("script")).every(script => script.getAttribute("nonce") === nonce)).toBe(true)
+    expect(learner.querySelector('script[src="https://cdn.example/widget.js"]')).not.toBeNull()
+    expect(JSON.parse(learner.getElementById(packageImportMapId)!.textContent!)).toEqual(options.importMap)
+    expect(learner.querySelector('meta[name="webwriter-preview-bridge"]')!.getAttribute("data-nonce")).toBe("learner-bridge-nonce")
+    expect(learner.querySelector("demo-widget script")!.textContent).toBe('{"answer":1}')
   })
 
   it("retains slide fragment navigation and supports inert test frames", () => {

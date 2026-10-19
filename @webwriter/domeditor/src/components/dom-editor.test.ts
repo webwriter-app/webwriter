@@ -6746,6 +6746,13 @@ describe("DomEditor.execute()", () => {
       toggle().click()
       await editor.updateComplete
       await ribbon.updateComplete
+      const stopDialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#live-session-stop-dialog")!
+      expect(stopDialog.open).toBe(true)
+      expect(session.status).toBe("connected")
+      stopDialog.querySelector<HTMLButtonElement>(".primary")!.click()
+      await vi.advanceTimersByTimeAsync(0)
+      await editor.updateComplete
+      await ribbon.updateComplete
       expect(session.status).toBe("stopped")
       expect(share().disabled).toBe(true)
       expect(controls.live).toBe(false)
@@ -6756,6 +6763,131 @@ describe("DomEditor.execute()", () => {
       expect(vi.getTimerCount()).toBe(0)
     }
     finally { vi.useRealTimers() }
+  })
+
+  it.each(["share", "preview", "return to editing", "file", "compact file"])("requires confirmation to stop a live session through %s", async action => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const focusEditor = vi.spyOn(host, "focusEditor")
+    const learner = new LiveSession({id: session.id, role: "learner"})
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await editor.updateComplete
+    await ribbon.updateComplete
+    if(action === "compact file") {
+      Object.assign(ribbon, {heightConstrained: true})
+      await ribbon.updateComplete
+    }
+    const share = () => ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[role="switch"][aria-label="Share"]')!
+    const requestStop = () => {
+      if(action === "share") share().click()
+      else if(action === "preview") host.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {detail: {label: "Preview"}}))
+      else if(action === "file") ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+        .dispatchEvent(new CustomEvent("ribbon-tab-select", {detail: {label: "File"}, bubbles: true}))
+      else if(action === "compact file") ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+      else ribbon.dispatchEvent(new Event("ribbon-preview-exit", {bubbles: true, composed: true}))
+    }
+    try {
+      requestStop()
+      const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#live-session-stop-dialog")!
+      await vi.waitFor(() => expect(dialog.open).toBe(true))
+      expect(session.status).toBe("connected")
+      expect(learner.status).toBe("connected")
+      expect(host.previewActive).toBe(true)
+      expect(share().checked).toBe(true)
+      expect(ribbon.shadowRoot!.querySelector<HTMLElement>("#ribbon-file-menu")!.hidden).toBe(true)
+      dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+      await Promise.resolve()
+      expect(host.liveSession).toBe(session)
+      expect(host.liveSessionActive).toBe(true)
+      expect(host.previewActive).toBe(true)
+      expect(learner.status).toBe("connected")
+      expect(share().checked).toBe(true)
+
+      requestStop()
+      await vi.waitFor(() => expect(dialog.open).toBe(true))
+      dialog.querySelector<HTMLButtonElement>(".primary")!.click()
+      await vi.waitFor(() => expect(host.liveSession).toBeNull())
+      expect(session.status).toBe("stopped")
+      expect(learner.status).toBe("stopped")
+      expect(host.liveSessionActive).toBe(false)
+      expect(host.previewActive).toBe(action === "share")
+      if(action === "file" || action === "compact file") {
+        await vi.waitFor(() => expect(ribbon.menuOpen).toBe(true))
+        expect(ribbon.shadowRoot!.querySelector<HTMLElement>("#ribbon-file-menu")!.hidden).toBe(false)
+        expect(focusEditor).not.toHaveBeenCalled()
+      }
+    }
+    finally {learner.destroy(); host.disposeLiveSession()}
+  })
+
+  it("does not apply a pending stop confirmation to a replacement live session", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const pendingExit = host.exitPreview()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#live-session-stop-dialog")!
+    await vi.waitFor(() => expect(dialog.open).toBe(true))
+    host.disposeLiveSession()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const replacement = host.liveSession as LiveSession
+    dialog.querySelector<HTMLButtonElement>(".primary")!.click()
+    await pendingExit
+    expect(host.liveSession).toBe(replacement)
+    expect(replacement.status).toBe("connected")
+    expect(host.previewActive).toBe(true)
+    host.disposeLiveSession()
+  })
+
+  it("warns before unloading a clean document during a live session and clears the guard after stopping", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.fileDirty = false
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const beforeUnload = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(beforeUnload)
+    expect(beforeUnload.defaultPrevented).toBe(true)
+    expect(session.status).toBe("connected")
+    host.disposeLiveSession()
+    const afterStop = new Event("beforeunload", {cancelable: true})
+    window.dispatchEvent(afterStop)
+    expect(afterStop.defaultPrevented).toBe(false)
+  })
+
+  it("loads the host widget runtime in a live learner preview independently of local installations", async () => {
+    const {editor: hostEditor, iframe} = await mountEditor()
+    const host = hostEditor as any
+    host.installedPackages = [demoPackage]
+    host.packageImportMap = {imports: {lit: "https://example.test/host-lit.js"}}
+    const authoredHTML = '<section><!--keep--><webwriter-demo><script type="application/json">{"answer":1}</script></webwriter-demo></section>'
+    iframe.contentDocument!.body.innerHTML = authoredHTML
+    await host.enterPreview()
+    host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    expect(session.previewDependencies).toEqual({packages: [demoPackage], importMap: host.packageImportMap})
+    const {editor} = await mountEditor()
+    const learnerEditor = editor as any
+    learnerEditor.installedPackages = [{...demoPackage, scripts: ["https://example.test/learner-widget.js"]}]
+    learnerEditor.packageImportMap = {imports: {lit: "https://example.test/learner-lit.js"}}
+    const learner = new LiveSession({id: session.id, role: "learner"})
+    try {
+      learnerEditor.connectLiveSession(learner, "learner")
+      const preview = new DOMParser().parseFromString(learnerEditor.previewDocumentHTML, "text/html")
+      expect([...preview.querySelectorAll("script[src]")].map(script => script.getAttribute("src"))).toEqual(demoPackage.scripts)
+      expect(preview.querySelector('link[rel="stylesheet"]')!.getAttribute("href")).toBe(demoPackage.styles[0])
+      expect(JSON.parse(preview.getElementById(packageDependencies.packageImportMapId)!.textContent!)).toEqual(host.packageImportMap)
+      expect(preview.querySelectorAll('meta[http-equiv="Content-Security-Policy"]')).toHaveLength(1)
+      expect(preview.querySelector("#webwriter-scoped-registry")).not.toBeNull()
+      expect(preview.body.innerHTML).toBe(authoredHTML)
+      expect(learnerEditor.installedPackages[0].scripts).toEqual(["https://example.test/learner-widget.js"])
+    }
+    finally { learnerEditor.disposeLiveSession(); host.disposeLiveSession() }
   })
 
   it("advances an idle timeline, holds a paused position, and resumes from a rewind", async () => {
@@ -8984,15 +9116,18 @@ describe("document collaboration menu", () => {
     history.replaceState({}, "", "/")
   })
 
-  it("keeps the editor path, unrelated query, and hash in live-session learner links", async () => {
+  it("shares a direct document link on the isolated origin with its collaboration endpoint", async () => {
     const {editor} = await mountEditor()
     history.replaceState({}, "", "/editor/?other=keep&session=collab&source=local&open=old#anchor")
+    ;(editor as any).backendSession = {collaborationUrl: "wss://collaboration.example/live"}
     const link = new URL((editor as any).liveSessionShareLink("lesson-1", "a".repeat(32)))
-    expect(link.pathname).toBe("/editor/")
-    expect(link.searchParams.get("other")).toBe("keep")
+    expect(link.pathname).toBe("/live/")
+    expect(link.origin).not.toBe(location.origin)
+    expect(link.searchParams.has("other")).toBe(false)
     expect(link.searchParams.get("liveSession")).toBe("lesson-1")
     expect(link.searchParams.get("liveToken")).toBe("a".repeat(32))
-    expect(link.searchParams.get("role")).toBe("learner")
+    expect(link.searchParams.get("liveServer")).toBe("wss://collaboration.example/live")
+    expect(link.searchParams.has("role")).toBe(false)
     expect(link.searchParams.has("session")).toBe(false)
     expect(link.searchParams.has("source")).toBe(false)
     expect(link.searchParams.has("open")).toBe(false)

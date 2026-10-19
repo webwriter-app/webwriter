@@ -101,6 +101,7 @@ export default defineConfig({
             "site-entry": fileURLToPath(new URL("./src/site-entry.ts", import.meta.url)),
             "gallery-preview-entry": fileURLToPath(new URL("./src/gallery-preview-entry.ts", import.meta.url)),
             editor: fileURLToPath(new URL("./editor/index.html", import.meta.url)),
+            live: fileURLToPath(new URL("./live/index.html", import.meta.url)),
             "docs-preview": fileURLToPath(new URL("./docs/widgets/examples/preview.html", import.meta.url)),
             "docs-hello": fileURLToPath(new URL("./docs/widgets/examples/hello.html", import.meta.url)),
             "frame-shell": fileURLToPath(new URL("./frame-shell.html", import.meta.url)),
