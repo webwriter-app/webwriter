@@ -470,7 +470,8 @@ describe("settings dialog", () => {
     await panel.updateComplete
     const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     expect(tabs.map(tab => tab.textContent)).toEqual(["Editor", "Cloud", "Commands"])
-    expect(root.querySelector("h2")!.nextElementSibling?.getAttribute("role")).toBe("tablist")
+    const heading = root.querySelector<HTMLElement>("#settings-dialog-title")!
+    expect(heading.nextElementSibling?.getAttribute("role")).toBe("tablist")
     expect(root.querySelector(".reset-settings-button")!.textContent).toBe("Reset")
     expect(panel.shadowRoot!.querySelectorAll('[role="tabpanel"]:not([hidden])')).toHaveLength(1)
     expect(panel.shadowRoot!.querySelector<HTMLElement>("#settings-editor")!.hidden).toBe(false)
@@ -500,16 +501,19 @@ describe("settings dialog", () => {
     expect(ai.shadowRoot!.querySelector<HTMLInputElement>('input:not([inputmode="url"])')!.value).toBe("Unsaved provider")
   })
 
-  it("opens from the last option in the file menu below a separator", async () => {
+  it("opens Settings from its separated file-menu group", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
+    await ribbon.updateComplete
+    ribbon.menuOpen = true
     await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await menu.updateComplete
     const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!
 
-    const items = menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item")
-    const settings = items[items.length - 1]
+    const settings = menu.shadowRoot!.querySelector<HTMLButtonElement>(
+      'section[aria-label="Settings"] .item[title="Settings"]',
+    )!
     expect(settings.title).toBe("Settings")
     const section = settings.closest("section")!
     expect(section.previousElementSibling).not.toBeNull()

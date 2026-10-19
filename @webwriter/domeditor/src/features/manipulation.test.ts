@@ -1086,6 +1086,7 @@ function expectNoFloat(element: HTMLElement) {
 
 beforeEach(async () => {
   vi.restoreAllMocks()
+  document.getSelection()?.removeAllRanges()
   document.documentElement.removeAttribute("class")
   document.documentElement.removeAttribute("style")
   document.body.innerHTML = "<p></p>"
@@ -4822,7 +4823,7 @@ describe("unified content transfer", () => {
     expect(media.style.marginInlineStart).toBe("")
     expect(media.style.marginInlineEnd).toBe("")
     expect(media.style.color).toBe("red")
-    expect(target.textContent).toBe("target")
+    expect([...document.body.querySelectorAll("p")].map(paragraph => paragraph.textContent)).toEqual(["tar", "get"])
   })
 
   it.each([[90, 50], [210, 50], [150, -10], [150, 110]])("does not apply default float styles to external picture media outside the target box at (%i, %i)", (x, y) => {
