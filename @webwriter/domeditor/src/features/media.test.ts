@@ -1077,6 +1077,42 @@ describe("media editing", () => {
     expect(document.querySelector("picture > img")).toHaveAttribute("alt", "A diagram")
   })
 
+  it.each(["audio", "video"] as const)("updates the live %s muted state with its authored attribute", async media => {
+    document.body.innerHTML = `<${media} src="recording.mp3"></${media}>`
+    const player = document.querySelector(media)!
+    $.selectElement(player)
+
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "muted", value: ""})
+    expect(player).toHaveAttribute("muted")
+    expect(player.muted).toBe(true)
+
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "muted", value: null})
+    expect(player).not.toHaveAttribute("muted")
+    expect(player.muted).toBe(false)
+
+    player.setAttribute("muted", "")
+    await vi.waitFor(() => expect(player.muted).toBe(true))
+  })
+
+  it("syncs the muted property for newly added media subtrees", async () => {
+    const section = document.createElement("section")
+    section.innerHTML = '<audio muted></audio>'
+    document.body.append(section)
+    const audio = section.querySelector("audio")!
+    await vi.waitFor(() => expect(audio.muted).toBe(true))
+
+    const widget = document.createElement("media-widget")
+    document.body.append(widget)
+    await Promise.resolve()
+    const widgetAudio = document.createElement("audio")
+    widget.append(widgetAudio)
+    await Promise.resolve()
+    widgetAudio.setAttribute("muted", "")
+    widgetAudio.muted = false
+    await Promise.resolve()
+    expect(widgetAudio.muted).toBe(false)
+  })
+
   it("manages direct sources and tracks without rebuilding fallback content", () => {
     document.body.innerHTML = `<audio controls>
       <source src="first.mp3" type="audio/mpeg">

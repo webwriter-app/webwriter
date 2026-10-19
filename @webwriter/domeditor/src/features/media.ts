@@ -58,6 +58,10 @@ const sourceEditingBlocked = (target: Element, schema: Schema) => {
 const htmlNamespace = "http://www.w3.org/1999/xhtml"
 const maximumMediaFallbackLength = 1_000_000
 
+const syncMutedProperty = (target: Node) => {
+  if(target instanceof HTMLMediaElement) target.muted = target.hasAttribute("muted")
+}
+
 const mediaInteractionShieldStylesheet = createStylesheet(`
   :host {
     position: fixed;
@@ -1483,7 +1487,30 @@ export class MediaFeature extends EditorFeature {
     super.enable()
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
-      this.observer = new FrameMutationObserver(() => this.scheduleRefresh())
+      this.observer = new FrameMutationObserver(records => {
+        for(const record of records) {
+          if(record.type === "attributes" && record.attributeName === "muted"
+            && record.target instanceof Element && !sourceEditingBlocked(record.target, this.editor.schema)) syncMutedProperty(record.target)
+          if(record.type === "childList") {
+            const visit = (node: Node) => {
+              if(node instanceof HTMLMediaElement) {
+                if(!sourceEditingBlocked(node, this.editor.schema)) syncMutedProperty(node)
+              }
+              else if(node instanceof Element) {
+                const descendants = Array.from(node.childNodes)
+                if(node.namespaceURI !== htmlNamespace || node.localName.includes("-") || node.hasAttribute("is")
+                  || isAtomicEditingElement(node, this.editor.schema)) return
+                descendants.forEach(visit)
+              }
+              else node.childNodes.forEach(visit)
+            }
+            if(!(record.target instanceof Element) || !sourceEditingBlocked(record.target, this.editor.schema)) {
+              record.addedNodes.forEach(visit)
+            }
+          }
+        }
+        this.scheduleRefresh()
+      })
       try {
         this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
       }
@@ -1693,6 +1720,7 @@ export class MediaFeature extends EditorFeature {
       }
       const target = mediaSourceTarget(element)
       value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
+      if(name === "muted") syncMutedProperty(target)
       this.refresh()
     },
     addTimedMediaResource: ({resource}: {type: "addTimedMediaResource", resource: TimedMediaResourceType}) => {
