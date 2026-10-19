@@ -31,6 +31,18 @@ afterEach(() => {
 })
 
 describe("CSS-only Slides layout", () => {
+  it("installs a CSP-compatible layout stylesheet and removes it on disable", () => {
+    const layout = document.adoptedStyleSheets.find(sheet => Array.from(sheet.cssRules)
+      .some(rule => (rule as CSSStyleRule).selectorText === "body.ww-slides > .ww-slides-viewport"))
+    expect(layout).toBeDefined()
+    expect(document.head.querySelector("style")).toBeNull()
+    editor.features.slides.disable()
+    expect(document.adoptedStyleSheets).not.toContain(layout)
+    editor.features.slides.enable()
+    expect(document.adoptedStyleSheets.some(sheet => Array.from(sheet.cssRules)
+      .some(rule => (rule as CSSStyleRule).selectorText === "body.ww-slides > .ww-slides-viewport"))).toBe(true)
+  })
+
   it("uses fixed 1280 by 720 slide dimensions", () => {
     convert("slides")
     expect(getComputedStyle(slides()[0]).width).toBe("1280px")

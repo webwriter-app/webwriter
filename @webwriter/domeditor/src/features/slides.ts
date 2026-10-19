@@ -51,6 +51,7 @@ export class SlidesFeature extends EditorFeature {
 
   private controls: HTMLElement | null = null
   private stylesheet: CSSStyleSheet | null = null
+  private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
   private resizeObserver: ResizeObserver | null = null
   private markedNavigation: HTMLElement | null = null
@@ -503,6 +504,11 @@ export class SlidesFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     if(this.active) { this.ensureStyles(); this.updateNavigation() }
+    // Measure older flow decks above before applying the bundled layout.
+    // Its portable <style> element is blocked by the strict editing CSP.
+    // Keep editor rules (including local zoom) later in the cascade.
+    this.layoutStylesheet = createStylesheet(slidesStyles)
+    document.adoptedStyleSheets = [this.layoutStylesheet, ...document.adoptedStyleSheets]
     this.controls = document.createElement("div"); this.controls.setAttribute("part", "slide-navigation-actions"); this.controls.contentEditable = "false"
     this.controls.setAttribute("role", "toolbar"); this.controls.setAttribute("aria-label", "Slide actions")
     this.editor.addAppendix(this.controls)
@@ -551,6 +557,8 @@ export class SlidesFeature extends EditorFeature {
   }
   disable() {
     super.disable(); this.observer?.disconnect(); this.observer = null
+    if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
+    this.layoutStylesheet = null
     this.resizeObserver?.disconnect(); this.resizeObserver = null
     window.removeEventListener("resize", this.fit)
     this.removeZoomStyle?.(); this.removeZoomStyle = null

@@ -91,6 +91,7 @@ const expectedChecks = [
   "ribbon dropdowns join their triggers without gaps at viewport edges",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
+  "bundled layouts render under the strict editor CSP without widgets",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",

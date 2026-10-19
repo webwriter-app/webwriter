@@ -16,6 +16,7 @@ export class CanvasFeature extends EditorFeature {
   private controls: HTMLElement | null = null
   private background: HTMLElement | null = null
   private stylesheet: CSSStyleSheet | null = null
+  private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
   private frame: number | null = null
   private signature = ""
@@ -423,6 +424,9 @@ export class CanvasFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    // Keep the layout working when CSP blocks its portable <style> element.
+    this.layoutStylesheet = createStylesheet(canvasStyles)
+    document.adoptedStyleSheets = [this.layoutStylesheet, ...document.adoptedStyleSheets]
     this.background = document.createElement("div")
     this.background.setAttribute("part", "canvas-background")
     this.background.setAttribute("aria-hidden", "true")
@@ -445,6 +449,8 @@ export class CanvasFeature extends EditorFeature {
 
   disable() {
     super.disable()
+    if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
+    this.layoutStylesheet = null
     this.observer?.disconnect(); this.observer = null
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null
