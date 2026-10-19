@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
   "live learners render host widgets with shared dependencies and a fresh preview policy",
   "Lit documentation examples render and synchronize with LitElementWw",

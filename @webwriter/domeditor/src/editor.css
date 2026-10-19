@@ -23,6 +23,7 @@ body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
 }
 
 html {
+  color-scheme: only light;
   background: transparent;
   overflow-y: scroll;
   overflow-x: auto;

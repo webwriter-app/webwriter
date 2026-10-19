@@ -748,22 +748,9 @@ picture {
     display: unset;
   }
 
-  @media (prefers-color-scheme: dark) {
-    nav {
-      background-image: url('data:image/svg+xml;utf8,<svg height="32px" id="Layer_1" style="enable-background:new 0 0 32 32;" version="1.1" viewBox="0 0 32 32" width="32px" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><path fill="%23fff" d="M4,10h24c1.104,0,2-0.896,2-2s-0.896-2-2-2H4C2.896,6,2,6.896,2,8S2.896,10,4,10z M28,14H4c-1.104,0-2,0.896-2,2  s0.896,2,2,2h24c1.104,0,2-0.896,2-2S29.104,14,28,14z M28,22H4c-1.104,0-2,0.896-2,2s0.896,2,2,2h24c1.104,0,2-0.896,2-2  S29.104,22,28,22z"/></svg>');
-    }
-
-    .holiday-css-light nav {
-      background-image: url('data:image/svg+xml;utf8,<svg height="32px" id="Layer_1" style="enable-background:new 0 0 32 32;" version="1.1" viewBox="0 0 32 32" width="32px" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><path fill="%23363636" d="M4,10h24c1.104,0,2-0.896,2-2s-0.896-2-2-2H4C2.896,6,2,6.896,2,8S2.896,10,4,10z M28,14H4c-1.104,0-2,0.896-2,2  s0.896,2,2,2h24c1.104,0,2-0.896,2-2S29.104,14,28,14z M28,22H4c-1.104,0-2,0.896-2,2s0.896,2,2,2h24c1.104,0,2-0.896,2-2  S29.104,22,28,22z"/></svg>');
-    }
-  }
-
-  .holiday-css-dark nav {
-    background-image: url('data:image/svg+xml;utf8,<svg height="32px" id="Layer_1" style="enable-background:new 0 0 32 32;" version="1.1" viewBox="0 0 32 32" width="32px" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><path fill="%23fff" d="M4,10h24c1.104,0,2-0.896,2-2s-0.896-2-2-2H4C2.896,6,2,6.896,2,8S2.896,10,4,10z M28,14H4c-1.104,0-2,0.896-2,2  s0.896,2,2,2h24c1.104,0,2-0.896,2-2S29.104,14,28,14z M28,22H4c-1.104,0-2,0.896-2,2s0.896,2,2,2h24c1.104,0,2-0.896,2-2  S29.104,22,28,22z"/></svg>');
-  }
 }
 :root {
-  color-scheme: light dark;
+  color-scheme: only light;
 
   /* Sizes */
   --border-radius: 0.25rem;
@@ -790,27 +777,6 @@ picture {
   --light-link-hover-color: #363636;
   --light-link-active-color: #363636;
 
-  /* Public dark mode colors */
-  --dark-border-color: #5f6267;
-  --dark-border-hover-color: #bcbebd;
-  --dark-background-color: #202124;
-  --dark-highlighted-background-color: #292b2e;
-  --dark-text-color: #fff;
-  --dark-danger-color: #770018;
-  --dark-danger-text-color: #fff;
-  --dark-danger-hover-color: #6b0015;
-  --dark-success-color: #006624;
-  --dark-success-text-color: #fff;
-  --dark-success-hover-color: #006122;
-  --dark-danger-text-background-color: #770018;
-  --dark-success-text-background-color: #006624;
-  --dark-code-text-color: #f1a0b0;
-  --dark-code-background-color: #292b2e;
-  --dark-link-color: #90b3ed;
-  --dark-link-visited-color: #cb93ff;
-  --dark-link-hover-color: #fff;
-  --dark-link-active-color: #fff;
-
   /* Internal color variables */
   --border-color: var(--light-border-color);
   --border-hover-color: var(--light-border-hover-color);
@@ -833,32 +799,8 @@ picture {
   --link-active-color: var(--light-link-active-color);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --border-color: var(--dark-border-color);
-    --border-hover-color: var(--dark-border-hover-color);
-    --background-color: var(--dark-background-color);
-    --highlighted-background-color: var(--dark-highlighted-background-color);
-    --text-color: var(--dark-text-color);
-    --danger-color: var(--dark-danger-color);
-    --danger-text-color: var(--dark-danger-text-color);
-    --danger-hover-color: var(--dark-danger-hover-color);
-    --success-color: var(--dark-success-color);
-    --success-text-color: var(--dark-success-text-color);
-    --success-hover-color: var(--dark-success-hover-color);
-    --danger-text-background-color: var(--dark-danger-text-background-color);
-    --success-text-background-color: var(--dark-success-text-background-color);
-    --code-text-color: var(--dark-code-text-color);
-    --code-background-color: var(--dark-code-background-color);
-    --link-color: var(--dark-link-color);
-    --link-visited-color: var(--dark-link-visited-color);
-    --link-hover-color: var(--dark-link-hover-color);
-    --link-active-color: var(--dark-link-active-color);
-  }
-}
-
 .holiday-css-light {
-  color-scheme: light;
+  color-scheme: only light;
 
   /* Same colors as for `:root` */
   --border-color: var(--light-border-color);
@@ -880,31 +822,6 @@ picture {
   --link-visited-color: var(--light-link-visited-color);
   --link-hover-color: var(--light-link-hover-color);
   --link-active-color: var(--light-link-active-color);
-}
-
-.holiday-css-dark {
-  color-scheme: dark;
-
-  /* Same colors as for `@media (prefers-color-scheme: dark)` */
-  --border-color: var(--dark-border-color);
-  --border-hover-color: var(--dark-border-hover-color);
-  --background-color: var(--dark-background-color);
-  --highlighted-background-color: var(--dark-highlighted-background-color);
-  --text-color: var(--dark-text-color);
-  --danger-color: var(--dark-danger-color);
-  --danger-text-color: var(--dark-danger-text-color);
-  --danger-hover-color: var(--dark-danger-hover-color);
-  --success-color: var(--dark-success-color);
-  --success-text-color: var(--dark-success-text-color);
-  --success-hover-color: var(--dark-success-hover-color);
-  --danger-text-background-color: var(--dark-danger-text-background-color);
-  --success-text-background-color: var(--dark-success-text-background-color);
-  --code-text-color: var(--dark-code-text-color);
-  --code-background-color: var(--dark-code-background-color);
-  --link-color: var(--dark-link-color);
-  --link-visited-color: var(--dark-link-visited-color);
-  --link-hover-color: var(--dark-link-hover-color);
-  --link-active-color: var(--dark-link-active-color);
 }
 
 input {

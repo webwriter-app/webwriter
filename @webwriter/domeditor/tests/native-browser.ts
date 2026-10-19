@@ -25,6 +25,35 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("bundled document themes always render light colors", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width: 100%; height: 420px"
+  document.body.append(frame)
+  try {
+    for(const theme of documentThemes) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = `<!doctype html><style>${theme.source}</style><h1>Light document</h1><p>Readable text and native controls.</p><input value="Text"><select><option>Option</option></select><details open><summary>Details</summary>Content</details>`
+      await loaded
+      const doc = frame.contentDocument!, view = frame.contentWindow!
+      const appearance = () => [doc.documentElement, doc.body, ...doc.querySelectorAll("h1, input, select, details")]
+        .map(element => {
+          const style = view.getComputedStyle(element)
+          assert(style.colorScheme === "light only", `${theme.value}: ${element.localName} allows a non-light color scheme: ${style.colorScheme}`)
+          return [style.color, style.backgroundColor, style.borderColor]
+        })
+      const light = appearance()
+      const background = [doc.body, doc.documentElement].map(element => view.getComputedStyle(element).backgroundColor)
+        .find(color => color !== "rgba(0, 0, 0, 0)") ?? ""
+      assert(/^rgb\(/.test(background) && background.match(/\d+/g)!.every(channel => Number(channel) >= 240), `${theme.value}: document background is not light: ${background}`)
+      doc.documentElement.setAttribute("data-theme", "dark")
+      doc.body.classList.add("holiday-css-dark")
+      doc.querySelector("details")!.setAttribute("data-theme", "dark")
+      assert(JSON.stringify(appearance()) === JSON.stringify(light), `${theme.value}: legacy dark theme attributes changed the palette`)
+    }
+  }
+  finally { frame.remove() }
+})
+
 await check("standalone live learners open the document without editor controls or an iframe", async () => {
   const {LiveSession} = await import("../src/live-session")
   const {liveLearnerURL} = await import("../src/page-routing")
