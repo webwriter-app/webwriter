@@ -708,7 +708,7 @@ export class SettingsPanel extends LitElement {
   }
 
   protected updated() {
-    const language = this.renderRoot.querySelector<HTMLSelectElement>('select[aria-label="Interface language"]')
+    const language = this.renderRoot.querySelector<HTMLSelectElement>('select[aria-label="Document language"]')
     if(language && language.value !== this.settings.language) language.value = this.settings.language
     const layout = this.renderRoot.querySelector<HTMLSelectElement>("#default-layout")
     if(layout && layout.value !== this.settings.defaultLayout) layout.value = this.settings.defaultLayout
@@ -751,12 +751,12 @@ export class SettingsPanel extends LitElement {
         ` : ""}
         <section id="settings-editor" role="tabpanel" aria-label="Editor" class="settings-tab-panel" ?hidden=${this.tab !== "Editor"}>
         <section class="setting-card" aria-label="Language">
-          <select aria-label="Interface language" .value=${this.settings.language} @change=${this.changeLanguage}>
+          <select aria-label="Document language" .value=${this.settings.language} @change=${this.changeLanguage}>
             ${languageOptions.map(option => html`
               <option value=${option.value} ?selected=${option.value === this.settings.language}>${option.label}</option>
             `)}
           </select>
-          <p class="setting-description">Language for the WebWriter interface and new documents</p>
+          <p class="setting-description">Language for new documents and widgets. The editor interface is currently available in English.</p>
           <label class="checkbox-setting">
             <input
               type="checkbox"

@@ -1985,7 +1985,7 @@ describe("DomEditor iframe setup", () => {
     }
   })
 
-  it("applies the language setting to the active document when requested", async () => {
+  it("applies document language while retaining the English interface language", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     const settings = {...defaultAppSettings(), language: "de"}
@@ -1995,7 +1995,7 @@ describe("DomEditor iframe setup", () => {
       composed: true,
     }))
 
-    expect(editor.lang).toBe("de")
+    expect(editor.lang).toBe("en")
     expect(execute).toHaveBeenCalledWith({type: "setDocumentHeadField", field: "language", value: "de"})
   })
 

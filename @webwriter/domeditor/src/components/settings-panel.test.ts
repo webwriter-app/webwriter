@@ -310,15 +310,33 @@ describe("settings panel", () => {
     expect(changes[0].shortcuts).toEqual(settings.shortcuts)
   })
 
-  it("shows language settings and every application command", async () => {
+  it("describes and persists document language settings and shows every application command", async () => {
     const panel = await mountPanel()
+    const root = panel.shadowRoot!
+    const language = root.querySelector<HTMLSelectElement>('select[aria-label="Document language"]')!
+    const changes: AppSettings[] = []
+    panel.addEventListener("settings-change", event => {
+      const settings = (event as CustomEvent<AppSettings>).detail
+      changes.push(settings)
+      persistAppSettings(settings)
+    })
 
-    expect(panel.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Interface language"]')!.value)
-      .toBe("en")
-    expect(panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
-    expect(panel.shadowRoot!.querySelectorAll(".command-row")).toHaveLength(appCommands.length)
-    expect(panel.shadowRoot!.textContent).toContain("Save the active document")
-    expect(panel.shadowRoot!.textContent).toContain("Toggle bold formatting")
+    expect(language.value).toBe("en")
+    expect(root.querySelector('[aria-label="Language"]')!.textContent)
+      .toContain("Language for new documents and widgets.")
+    expect(root.querySelector('[aria-label="Language"]')!.textContent)
+      .toContain("The editor interface is currently available in English.")
+    expect(root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
+    expect(root.querySelectorAll(".command-row")).toHaveLength(appCommands.length)
+    expect(root.textContent).toContain("Save the active document")
+    expect(root.textContent).toContain("Toggle bold formatting")
+
+    language.value = "de"
+    language.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(changes.at(-1)?.language).toBe("de")
+    expect(loadAppSettings().language).toBe("de")
+    await panel.updateComplete
+    expect(language.value).toBe("de")
   })
 
   it("places element-specific shortcuts in collapsed categories after general commands", async () => {

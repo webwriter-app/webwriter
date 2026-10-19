@@ -2959,7 +2959,7 @@ export class DomEditor extends LitElement {
     }
     this.updateCloudExpiry()
     this.updateUserIdentity()
-    this.lang = settings.language
+    this.lang = "en"
     this.updateMotionPreference()
     this.localPackageManager.autoReload = settings.autoReloadPackages
     if(settings.pinDeveloperConsole && !previous.pinDeveloperConsole) {
@@ -7258,7 +7258,7 @@ export class DomEditor extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     this.recentDocumentsReady = this.restoreRecentDocuments()
-    this.lang = this.settings.language
+    this.lang = "en"
     this.localPackageManager.autoReload = this.settings.autoReloadPackages
     this.updateMotionPreference()
     this.updateCloudExpiry()
