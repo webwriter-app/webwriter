@@ -493,7 +493,13 @@ class MediaPlaceholder {
     url.placeholder = `Enter ${noun} URL`
     url.setAttribute("aria-label", `${noun[0].toUpperCase()}${noun.slice(1)} URL`)
     const rect = target.getBoundingClientRect()
-    const compact = rect.width > 0 && rect.height > 0 && (rect.width < 120 || rect.height < 28)
+    const left = Math.max(0, rect.left)
+    const top = Math.max(0, rect.top)
+    const right = Math.min(window.innerWidth, rect.right)
+    const bottom = Math.min(window.innerHeight, rect.bottom)
+    const width = Math.max(0, right - left)
+    const height = Math.max(0, bottom - top)
+    const compact = width > 0 && height > 0 && (width < 120 || height < 28)
     if(!compact) this.closePopup()
     this.element.toggleAttribute("data-compact", compact)
     const content = this.root.querySelector<HTMLElement>(".content")!
@@ -506,10 +512,10 @@ class MediaPlaceholder {
     }
     this.root.querySelector(".expand")!.setAttribute("aria-label", `Add ${noun}`)
     Object.assign(this.element.style, {
-      left: `${fixedClientX(rect.left)}px`,
-      top: `${rect.top}px`,
-      width: `${rect.width}px`,
-      height: `${rect.height}px`,
+      left: `${fixedClientX(left)}px`,
+      top: `${top}px`,
+      width: `${width}px`,
+      height: `${height}px`,
     })
     this.element.setAttribute("data-open", "")
     this.element.removeAttribute("aria-hidden")
@@ -1491,7 +1497,7 @@ export class MediaFeature extends EditorFeature {
     }
     const FrameResizeObserver = document.defaultView?.ResizeObserver
     if(FrameResizeObserver) this.resizeObserver = new FrameResizeObserver(this.scheduleRefresh)
-    window.addEventListener("resize", this.scheduleRefresh)
+    window.addEventListener("resize", this.handleViewportResize)
     window.addEventListener("blur", this.cancelPendingShield)
     document.addEventListener("scroll", this.scheduleRefresh, true)
     this.refresh()
@@ -1509,7 +1515,7 @@ export class MediaFeature extends EditorFeature {
     this.observedShieldTargets.clear()
     this.observedGraphicImageTargets.clear()
     this.bodyResizeObserved = false
-    window.removeEventListener("resize", this.scheduleRefresh)
+    window.removeEventListener("resize", this.handleViewportResize)
     window.removeEventListener("blur", this.cancelPendingShield)
     document.removeEventListener("scroll", this.scheduleRefresh, true)
     this.cancelSourceFile()
@@ -1526,6 +1532,14 @@ export class MediaFeature extends EditorFeature {
     this.shieldReleasePending.clear()
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
     super.disable()
+  }
+
+  private handleViewportResize = () => {
+    const target = this.mediaPlaceholder?.target
+    if(target?.isConnected && isEmptyMedia(target) && !sourceEditingBlocked(target, this.editor.schema)) {
+      target.scrollIntoView({block: "nearest", inline: "nearest"})
+    }
+    this.scheduleRefresh()
   }
 
   passiveListeners = {

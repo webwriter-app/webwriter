@@ -560,6 +560,41 @@ describe("media editing", () => {
     expect(input.placeholder).toBe("Enter audio URL")
   })
 
+  it("keeps empty media source entry in view after the editing viewport is resized", () => {
+    document.body.innerHTML = '<audio controls></audio>'
+    const audio = document.querySelector("audio")!
+    editor.features.media.placeholder.showFor(audio)
+    const scroll = vi.spyOn(audio, "scrollIntoView").mockImplementation(() => {})
+    window.dispatchEvent(new Event("resize"))
+    expect(scroll).toHaveBeenCalledWith({block: "nearest", inline: "nearest"})
+    scroll.mockClear()
+    audio.setAttribute("src", "recording.mp3")
+    window.dispatchEvent(new Event("resize"))
+    expect(scroll).not.toHaveBeenCalled()
+  })
+
+  it("keeps the placeholder within the visible viewport portion of a large media target", () => {
+    document.body.innerHTML = "<audio controls></audio>"
+    const audio = document.querySelector("audio")!
+    vi.spyOn(audio, "getBoundingClientRect").mockReturnValue(new DOMRect(-40, 200, 500, 200))
+    const width = Object.getOwnPropertyDescriptor(window, "innerWidth")
+    const height = Object.getOwnPropertyDescriptor(window, "innerHeight")
+    Object.defineProperty(window, "innerWidth", {configurable: true, value: 320})
+    Object.defineProperty(window, "innerHeight", {configurable: true, value: 240})
+    try {
+      editor.features.media.placeholder.showFor(audio)
+      const overlay = editor.features.media.placeholder.element
+      expect(overlay.style.left).toBe("0px")
+      expect(overlay.style.top).toBe("200px")
+      expect(overlay.style.width).toBe("320px")
+      expect(overlay.style.height).toBe("40px")
+    }
+    finally {
+      if(width) Object.defineProperty(window, "innerWidth", width)
+      if(height) Object.defineProperty(window, "innerHeight", height)
+    }
+  })
+
   it("opens tiny image inputs in an appendix popover and cleans up on resize, replacement and hiding", () => {
     document.body.innerHTML = "<picture><img></picture><picture><img></picture>"
     const [image, other] = Array.from(document.querySelectorAll("picture"))
