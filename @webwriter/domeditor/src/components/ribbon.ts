@@ -461,16 +461,16 @@ export class AppRibbon extends EditingControls {
       cursor: pointer;
     }
     .document-dialog header button:hover { background: #eef4fb; }
-    #link-sharing-dialog { width: min(30rem, calc(100vw - 2rem)); }
-    #link-sharing-dialog p { margin: 0 0 1.25rem; font-size: .875rem; line-height: 1.5; }
-    #link-sharing-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
-    #link-sharing-dialog footer button { padding: .45rem .75rem; border: 1px solid #cbd5e1; border-radius: .35rem; color: inherit; background: white; font: inherit; font-size: .8rem; cursor: pointer; }
-    #link-sharing-dialog footer button:hover { background: #eef4fb; }
-    #link-sharing-dialog footer .primary { border-color: #155e9b; color: white; background: #155e9b; }
-    #link-sharing-dialog footer .primary:hover { background: #124f83; }
-    #link-sharing-dialog button:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
-    #link-sharing-dialog .dialog-close { display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; }
-    #link-sharing-dialog .dialog-close svg { width: 1.1rem; height: 1.1rem; }
+    .confirmation-dialog { width: min(30rem, calc(100vw - 2rem)); }
+    .confirmation-dialog p { margin: 0 0 1.25rem; font-size: .875rem; line-height: 1.5; }
+    .confirmation-dialog footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+    .confirmation-dialog footer button { padding: .45rem .75rem; border: 1px solid #cbd5e1; border-radius: .35rem; color: inherit; background: white; font: inherit; font-size: .8rem; cursor: pointer; }
+    .confirmation-dialog footer button:hover { background: #eef4fb; }
+    .confirmation-dialog footer .primary { border-color: #155e9b; color: white; background: #155e9b; }
+    .confirmation-dialog footer .primary:hover { background: #124f83; }
+    .confirmation-dialog button:focus-visible { outline: 2px solid #3977c7; outline-offset: 2px; }
+    .confirmation-dialog .dialog-close { display: grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; }
+    .confirmation-dialog .dialog-close svg { width: 1.1rem; height: 1.1rem; }
     #settings-dialog {
       height: min(45rem, calc(100dvh - 2rem));
       padding: 0;
@@ -1084,7 +1084,7 @@ export class AppRibbon extends EditingControls {
   menuOpen = false
 
   private documentDialog: "settings" | null = null
-  private resolveLinkSharingConfirmation?: (confirmed: boolean) => void
+  private confirmation?: {dialogId: string, resolve: (confirmed: boolean) => void}
   private settingsTab: SettingsTab = "Editor"
 
   logoUrl = ""
@@ -1297,7 +1297,7 @@ export class AppRibbon extends EditingControls {
   }
 
   disconnectedCallback() {
-    this.finishLinkSharingConfirmation(false)
+    this.finishConfirmation(this.confirmation?.dialogId, false)
     this.readerSharingCopyPending = false
     if(this.aiToolboxTarget) render(nothing, this.aiToolboxTarget)
     this.aiProviderStore.removeEventListener("change", this.handleAIProviderChange)
@@ -2048,6 +2048,11 @@ export class AppRibbon extends EditingControls {
   }
 
   private toggleFileMenu() {
+    if(this.liveSessionActive) {
+      this.dismissCollapsedMenu()
+      this.dispatchEvent(new CustomEvent("ribbon-preview-exit", {detail: {openFileMenu: true}, bubbles: true, composed: true}))
+      return
+    }
     this.closeAIChat()
     const open = !this.menuOpen
     this.dismissCollapsedMenu()
@@ -2553,23 +2558,34 @@ export class AppRibbon extends EditingControls {
   }
 
   async confirmLinkSharing(): Promise<boolean> {
-    if(!this.isConnected || this.resolveLinkSharingConfirmation) return false
-    const result = new Promise<boolean>(resolve => { this.resolveLinkSharingConfirmation = resolve })
+    return this.confirmWithDialog("link-sharing-dialog")
+  }
+
+  async confirmLiveSessionStop(): Promise<boolean> {
+    return this.confirmWithDialog("live-session-stop-dialog")
+  }
+
+  private async confirmWithDialog(dialogId: string): Promise<boolean> {
+    if(!this.isConnected || this.confirmation) return false
+    let settle!: (confirmed: boolean) => void
+    const result = new Promise<boolean>(resolve => { settle = resolve })
+    this.confirmation = {dialogId, resolve: settle}
     this.dismissMenus()
     this.closeAIChat()
     await this.updateComplete
-    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#link-sharing-dialog")
-    if(!this.isConnected || !dialog) this.finishLinkSharingConfirmation(false)
-    else if(this.resolveLinkSharingConfirmation && !dialog.open) dialog.showModal()
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>(`#${dialogId}`)
+    if(!this.isConnected || !dialog) this.finishConfirmation(dialogId, false)
+    else if(this.confirmation?.dialogId === dialogId && !dialog.open) dialog.showModal()
     return result
   }
 
-  private finishLinkSharingConfirmation(confirmed: boolean) {
-    const resolve = this.resolveLinkSharingConfirmation
-    this.resolveLinkSharingConfirmation = undefined
-    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#link-sharing-dialog")
+  private finishConfirmation(dialogId: string | undefined, confirmed: boolean) {
+    if(!dialogId || this.confirmation?.dialogId !== dialogId) return
+    const resolve = this.confirmation.resolve
+    this.confirmation = undefined
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>(`#${dialogId}`)
     if(dialog?.open) dialog.close()
-    resolve?.(confirmed)
+    resolve(confirmed)
   }
 
   private collapsedEditingMenuGroups(): RibbonMenuGroup[] {
@@ -2642,6 +2658,11 @@ export class AppRibbon extends EditingControls {
   }
 
   private handleFileMenuAction = (event: CustomEvent<{label: string, keepDrawerOpen?: boolean}>) => {
+    if(this.liveSessionActive) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
     if(event.detail.label !== "pin-snippet" && !event.detail.keepDrawerOpen) this.menuOpen = false
     if(event.detail.label === "toggle-breadcrumb") {
       event.stopPropagation()
@@ -2674,16 +2695,28 @@ export class AppRibbon extends EditingControls {
 
   private renderDocumentDialogs() {
     return html`
-      <dialog id="link-sharing-dialog" class="document-dialog" aria-labelledby="link-sharing-dialog-title" aria-describedby="link-sharing-dialog-description"
-        @cancel=${(event: Event) => { event.preventDefault(); this.finishLinkSharingConfirmation(false) }}
-        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishLinkSharingConfirmation(false) }}>
+      <dialog id="link-sharing-dialog" class="document-dialog confirmation-dialog" aria-labelledby="link-sharing-dialog-title" aria-describedby="link-sharing-dialog-description"
+        @cancel=${(event: Event) => { event.preventDefault(); this.finishConfirmation("link-sharing-dialog", false) }}
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishConfirmation("link-sharing-dialog", false) }}>
         <header><h2 id="link-sharing-dialog-title">Enable link sharing?</h2>
-          <button class="dialog-close" type="button" aria-label="Close link sharing confirmation" @click=${() => this.finishLinkSharingConfirmation(false)}>${ribbonIcon("Reject")}</button>
+          <button class="dialog-close" type="button" aria-label="Close link sharing confirmation" @click=${() => this.finishConfirmation("link-sharing-dialog", false)}>${ribbonIcon("Reject")}</button>
         </header>
         <p id="link-sharing-dialog-description">Link sharing requires a document saved on the server. Move this document to the server and enable sharing?</p>
         <footer>
-          <button type="button" autofocus @click=${() => this.finishLinkSharingConfirmation(false)}>Cancel</button>
-          <button class="primary" type="button" @click=${() => this.finishLinkSharingConfirmation(true)}>Move and enable sharing</button>
+          <button type="button" autofocus @click=${() => this.finishConfirmation("link-sharing-dialog", false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishConfirmation("link-sharing-dialog", true)}>Move and enable sharing</button>
+        </footer>
+      </dialog>
+      <dialog id="live-session-stop-dialog" class="document-dialog confirmation-dialog" aria-labelledby="live-session-stop-dialog-title" aria-describedby="live-session-stop-dialog-description"
+        @cancel=${(event: Event) => { event.preventDefault(); this.finishConfirmation("live-session-stop-dialog", false) }}
+        @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishConfirmation("live-session-stop-dialog", false) }}>
+        <header><h2 id="live-session-stop-dialog-title">Stop live session?</h2>
+          <button class="dialog-close" type="button" aria-label="Close live session confirmation" @click=${() => this.finishConfirmation("live-session-stop-dialog", false)}>${ribbonIcon("Reject")}</button>
+        </header>
+        <p id="live-session-stop-dialog-description">Stopping the live session disconnects all learners and ends the session.</p>
+        <footer>
+          <button type="button" autofocus @click=${() => this.finishConfirmation("live-session-stop-dialog", false)}>Cancel</button>
+          <button class="primary" type="button" @click=${() => this.finishConfirmation("live-session-stop-dialog", true)}>Stop session</button>
         </footer>
       </dialog>
       <dialog id="settings-dialog" class="document-dialog" aria-labelledby="settings-dialog-title"
@@ -2948,9 +2981,11 @@ export class AppRibbon extends EditingControls {
 
   private handleLiveSessionToggle = (event: Event) => {
     const input = event.currentTarget as HTMLInputElement
-    this.readerSharingCopyPending = input.checked
+    const enabled = input.checked
+    this.readerSharingCopyPending = enabled
+    input.checked = this.liveSessionActive
     this.dispatchEvent(new CustomEvent<{enabled: boolean}>("live-session-toggle", {
-      detail: {enabled: input.checked},
+      detail: {enabled},
       bubbles: true,
       composed: true,
     }))
@@ -3493,7 +3528,7 @@ export class AppRibbon extends EditingControls {
         ${this.renderDocumentDialogs()}
         <ribbon-menu
           id="ribbon-file-menu"
-          .groups=${when(this.menuOpen, () => this.fileMenuGroups(), () => noChange)}
+          .groups=${this.liveSessionActive ? [] : when(this.menuOpen, () => this.fileMenuGroups(), () => noChange)}
           @ribbon-button-click=${this.handleFileMenuAction}
           @keydown=${(event: KeyboardEvent) => {
             if(event.key !== "Escape") return
@@ -3501,8 +3536,8 @@ export class AppRibbon extends EditingControls {
             this.dismissCollapsedMenu()
             this.renderRoot.querySelector('ribbon-tab[label="File"]')?.shadowRoot?.querySelector<HTMLButtonElement>("button")?.focus()
           }}
-          ?hidden=${!this.menuOpen}
-          ?inert=${aiReviewPending || historyPreviewPending}
+          ?hidden=${!this.menuOpen || this.liveSessionActive}
+          ?inert=${aiReviewPending || historyPreviewPending || this.liveSessionActive}
         ></ribbon-menu>
         <div
           id="ribbon-content"

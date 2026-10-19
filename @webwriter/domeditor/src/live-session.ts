@@ -3,6 +3,8 @@ import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessS
 import {WebsocketProvider} from "y-websocket"
 import {acceptLearnerUpdate} from "./live-session-permissions.js"
 import {isCssColor} from "./css-color"
+import type {IImportMap} from "@jspm/import-map"
+import type {WebWriterPackage} from "./packages"
 
 export type LiveSessionRole = "host" | "learner"
 export type LiveSessionStepKind = "document" | "cursor" | "pointer" | "click" | "scroll" | "widget"
@@ -80,10 +82,13 @@ export type LiveSessionStepDelta = {
 export type LiveSessionChange = {stepDeltas: LiveSessionStepDelta[]}
 export type LiveSessionChangeListener = (session: LiveSession, change: LiveSessionChange) => void
 
+export type LiveSessionPreviewDependencies = {packages: WebWriterPackage[], importMap: IImportMap | null}
+
 type LiveSessionOptions = {
   id: string
   role: LiveSessionRole
   baseHTML?: string
+  previewDependencies?: LiveSessionPreviewDependencies
   /** WebSocket collaboration endpoint. Cross-tab live sessions require this endpoint. */
   serverUrl?: string
   /** Capability shared only through the host's learner link. */
@@ -122,6 +127,25 @@ const clone = <T>(value: T): T => {
 
 const identifier = (prefix: string) => globalThis.crypto?.randomUUID?.()
   ?? `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
+
+/** Keep a learner's identity stable across reloads of the same session. */
+export function liveSessionLearnerIdentity(sessionId: string, name = "") {
+  const storageKey = `webwriter_live_session_learner_${sessionId}`
+  try {
+    const saved = JSON.parse(globalThis.sessionStorage?.getItem(storageKey) ?? "null") as unknown
+    if(isLearnerIdentity(saved)) return {...saved, name: name || saved.name}
+  }
+  catch { /* Identity storage can be unavailable on document origins. */ }
+  const id = identifier("learner")
+  const colors = ["#e11d48", "#db2777", "#9333ea", "#4f46e5", "#2563eb", "#0284c7",
+    "#0891b2", "#0d9488", "#059669", "#65a30d", "#ca8a04", "#ea580c"]
+  const hash = Array.from(id).reduce((hash, character) => (Math.imul(hash, 31) + character.codePointAt(0)!) | 0, 0)
+  const suffix = id.replaceAll(/[^a-zA-Z0-9]/g, "").slice(-4).toLocaleUpperCase()
+  const learner = {id, name: name || `Learner ${suffix || "?"}`, color: colors[Math.abs(hash) % colors.length]}
+  try { globalThis.sessionStorage?.setItem(storageKey, JSON.stringify(learner)) }
+  catch { /* The identity remains valid for this connection. */ }
+  return learner
+}
 
 const connectionKey = (id: string, role: string, token: string, learner = "") => {
   const storageKey = `webwriter-live-connection:${id}:${role}:${token}:${learner}`
@@ -186,6 +210,9 @@ export class LiveSession {
 
     if(this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
       this.#meta.set("baseHTML", options.baseHTML)
+    }
+    if(this.role === "host" && options.previewDependencies !== undefined) {
+      this.#meta.set("previewDependencies", clone(options.previewDependencies))
     }
     if(this.role === "host" && this.#meta.get("status") === undefined) {
       this.#meta.set("status", "connected")
@@ -254,6 +281,10 @@ export class LiveSession {
   get baseHTML() {
     const html = this.#meta.get("baseHTML")
     return typeof html === "string" ? html : undefined
+  }
+
+  get previewDependencies() {
+    return clone(this.#meta.get("previewDependencies") as LiveSessionPreviewDependencies | undefined)
   }
 
   get learners() {

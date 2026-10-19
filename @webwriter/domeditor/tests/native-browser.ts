@@ -25,6 +25,163 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("bundled document themes always render light colors", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width: 100%; height: 420px"
+  document.body.append(frame)
+  try {
+    for(const theme of documentThemes) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = `<!doctype html><style>${theme.source}</style><h1>Light document</h1><p>Readable text and native controls.</p><input value="Text"><select><option>Option</option></select><details open><summary>Details</summary>Content</details>`
+      await loaded
+      const doc = frame.contentDocument!, view = frame.contentWindow!
+      const appearance = () => [doc.documentElement, doc.body, ...doc.querySelectorAll("h1, input, select, details")]
+        .map(element => {
+          const style = view.getComputedStyle(element)
+          assert(style.colorScheme === "light only", `${theme.value}: ${element.localName} allows a non-light color scheme: ${style.colorScheme}`)
+          return [style.color, style.backgroundColor, style.borderColor]
+        })
+      const light = appearance()
+      const background = [doc.body, doc.documentElement].map(element => view.getComputedStyle(element).backgroundColor)
+        .find(color => color !== "rgba(0, 0, 0, 0)") ?? ""
+      assert(/^rgb\(/.test(background) && background.match(/\d+/g)!.every(channel => Number(channel) >= 240), `${theme.value}: document background is not light: ${background}`)
+      doc.documentElement.setAttribute("data-theme", "dark")
+      doc.body.classList.add("holiday-css-dark")
+      doc.querySelector("details")!.setAttribute("data-theme", "dark")
+      assert(JSON.stringify(appearance()) === JSON.stringify(light), `${theme.value}: legacy dark theme attributes changed the palette`)
+    }
+  }
+  finally { frame.remove() }
+})
+
+await check("standalone live learners open the document without editor controls or an iframe", async () => {
+  const {LiveSession} = await import("../src/live-session")
+  const {liveLearnerURL} = await import("../src/page-routing")
+  const serverUrl = new URL(location.href).searchParams.get("liveServer")!
+  const script = `data:text/javascript,${encodeURIComponent(`import {label} from "live-label";
+    customElements.define("standalone-live-widget", class extends HTMLElement {
+      connectedCallback() {
+        this.attachShadow({mode:"open"}).innerHTML = '<style>:host{display:block;width:240px;height:80px}</style><button>' + label + '</button>';
+        const button = this.shadowRoot.querySelector('button');
+        button.onclick = () => {this.setAttribute('answer','42'); this.dispatchEvent(new Event('input',{bubbles:true}));};
+        window.addEventListener('message', event => {
+          if(event.source !== window.opener || event.data !== 'report-live-ended') return;
+          let attempts = 0;
+          const reportEnded = () => {
+            const notice = document.body.shadowRoot?.querySelector('.◆live-session-ended');
+            if(!notice && ++attempts < 100) {setTimeout(reportEnded, 20); return;}
+            window.opener.postMessage({type:'live-learner-ended', text:notice?.textContent,
+              visible:!!notice && notice.getBoundingClientRect().height > 0,
+              retained:this.isConnected && this.getAttribute('answer') === '42',
+              authoredNotice:document.body.innerHTML.includes('Session ended')}, '*');
+          };
+          reportEnded();
+        });
+        requestAnimationFrame(() => {
+          window.opener.postMessage({type:'live-learner-check', topLevel:window===parent,
+            noEditor:!customElements.get('dom-editor') && !document.querySelector('dom-editor,app-ribbon,iframe'),
+            title:document.title, text:button.textContent, width:this.getBoundingClientRect().width}, '*');
+          button.click();
+        });
+      }
+    });`)}`
+  const dependencies = {packages: [{name: "live-fixture", version: "1", label: "Live fixture", authors: [], keywords: [], links: {}, scripts: [script], styles: [],
+    members: [{id: "widget", packageName: "live-fixture", packageVersion: "1", exportName: "./widget", kind: "widget" as const, label: "Widget", insertable: true, tagName: "standalone-live-widget", scriptUrl: script}]}],
+    importMap: {imports: {"live-label": `data:text/javascript,${encodeURIComponent('export const label="Answer the question"')}`}}}
+  const token = "standalone-live-token-0123456789"
+  const host = new LiveSession({id: `standalone-${crypto.randomUUID()}`, role: "host", serverUrl, token, previewDependencies: dependencies,
+    baseHTML: '<!doctype html><html lang="en"><head><title>Live lesson</title><style>body{margin:24px;font:18px system-ui;background:#f8fafc}article{max-width:640px;margin:auto;padding:24px;background:white}</style></head><body><article><h1>Live lesson</h1><p>Explore the question below.</p><!--keep--><standalone-live-widget></standalone-live-widget></article></body></html>'})
+  let learnerWindow: Window | null = null
+  let receive: ((event: MessageEvent) => void) | undefined
+  let receiveEnded: ((event: MessageEvent) => void) | undefined
+  let endedTimeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    const deadline = performance.now() + 10000
+    while(host.status !== "connected" && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(host.status === "connected", "live host did not connect")
+    const source = new URL(location.href)
+    source.search = new URLSearchParams({liveSession: host.id, liveToken: token, liveServer: serverUrl}).toString()
+    const origin = location.origin.replace("127.0.0.1", "localhost")
+    const learnerURL = liveLearnerURL(source, origin)
+    const report = new Promise<Record<string, unknown>>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("standalone learner did not render")), 10000)
+      receive = event => {
+        if(event.source !== learnerWindow || event.origin !== origin || event.data?.type !== "live-learner-check") return
+        clearTimeout(timeout)
+        resolve(event.data)
+      }
+      window.addEventListener("message", receive)
+    })
+    learnerWindow = window.open(learnerURL, "live-learner-check")
+    assert(learnerWindow, "learner window did not open")
+    const result = await report
+    assert(result.topLevel && result.noEditor, "learner was wrapped in an editor or iframe")
+    assert(result.title === "Live lesson" && result.text === "Answer the question" && result.width === 240, "learner document or widget did not render")
+    while(!host.states.some(state => state.widgets?.some(widget => widget.html?.includes('answer="42"'))) && performance.now() < deadline + 5000) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(host.states.some(state => state.widgets?.some(widget => widget.html?.includes('answer="42"'))), "host did not receive the standalone learner's widget interaction")
+    const endedReport = new Promise<Record<string, unknown>>((resolve, reject) => {
+      endedTimeout = setTimeout(() => reject(new Error("learner did not show the ended-session message")), 5000)
+      receiveEnded = event => {
+        if(event.source !== learnerWindow || event.origin !== origin || event.data?.type !== "live-learner-ended") return
+        clearTimeout(endedTimeout)
+        resolve(event.data)
+      }
+      window.addEventListener("message", receiveEnded)
+    })
+    host.stop()
+    learnerWindow!.postMessage("report-live-ended", origin)
+    const ended = await endedReport
+    assert(ended.visible && String(ended.text).includes("Session ended") && String(ended.text).includes("host"), "learner did not see a clear host-stop message")
+    assert(ended.retained && !ended.authoredNotice, "ended-session message changed the authored learner document")
+  }
+  finally {
+    if(receive) window.removeEventListener("message", receive)
+    if(receiveEnded) window.removeEventListener("message", receiveEnded)
+    clearTimeout(endedTimeout)
+    learnerWindow?.close()
+    host.destroy()
+  }
+})
+
+await check("live learners render host widgets with shared dependencies and a fresh preview policy", async () => {
+  const {LiveSession} = await import("../src/live-session")
+  const {previewFrameHTML} = await import("../src/frame-document")
+  const moduleURL = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`
+  const script = moduleURL(`import {label} from "live-widget-label";
+    customElements.define("live-test-widget", class extends HTMLElement {
+      connectedCallback() {
+        const root = this.attachShadow({mode: "open"});
+        root.innerHTML = '<style>:host {display:block;width:240px;height:80px;background:rgb(240, 248, 255)}</style><button>' + label + '</button>';
+      }
+    });`)
+  const dependencies = {
+    packages: [{name: "live-fixture", version: "1", label: "Live fixture", authors: [], keywords: [], links: {}, scripts: [script], styles: [],
+      members: [{id: "widget", packageName: "live-fixture", packageVersion: "1", exportName: "./widget", kind: "widget" as const, label: "Widget", insertable: true, tagName: "live-test-widget", scriptUrl: script}]}],
+    importMap: {imports: {"live-widget-label": moduleURL('export const label = "Learner widget ready"')}},
+  }
+  const options = {bridgeNonce: "host-preview-nonce", hostOrigin: location.origin, frameOrigin: location.origin,
+    entryURL: new URL("../src/preview-entry.ts", import.meta.url).href, executeScripts: true, ...dependencies}
+  const source = new DOMParser().parseFromString('<section><!--keep--><live-test-widget></live-test-widget></section>', "text/html")
+  const host = new LiveSession({id: "native-live-widgets", role: "host", baseHTML: previewFrameHTML(source, options), previewDependencies: dependencies})
+  const learner = new LiveSession({id: host.id, role: "learner"})
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:640px;height:240px"
+  frame.srcdoc = previewFrameHTML(new DOMParser().parseFromString(learner.baseHTML!, "text/html"),
+    {...options, bridgeNonce: "learner-preview-nonce", ...learner.previewDependencies!})
+  fixture.append(frame)
+  try {
+    const deadline = performance.now() + 5000
+    while(!frame.contentDocument?.querySelector("live-test-widget")?.shadowRoot && performance.now() < deadline) await nextFrame()
+    const widget = frame.contentDocument?.querySelector("live-test-widget")
+    assert(widget?.shadowRoot?.querySelector("button")?.textContent === "Learner widget ready", "learner widget did not load its module and mapped dependency")
+    await layoutFrame()
+    assert(widget!.getBoundingClientRect().width === 240 && widget!.getBoundingClientRect().height === 80, "learner widget has no rendered dimensions")
+    assert(frame.contentDocument!.querySelectorAll('meta[http-equiv="Content-Security-Policy"]').length === 1, "host preview policy still blocks learner scripts")
+    assert(frame.contentDocument!.body.innerHTML === source.body.innerHTML, "preview changed the authored widget structure")
+  }
+  finally { frame.remove(); learner.destroy(); host.destroy() }
+})
+
 await check("LitElementWw uses native registries and shared data handlers without the adapter", async () => {
   assert(!("createElement" in ShadowRoot.prototype), "test must run before the legacy adapter")
   const runtimeURL = new URL("../../lit/index.js", import.meta.url).href

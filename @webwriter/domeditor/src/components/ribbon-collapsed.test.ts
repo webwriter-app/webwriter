@@ -28,6 +28,84 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("collapsed ribbon file menu", () => {
+  it("requests preview exit before opening File during a live session", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.expanded = false
+    ribbon.liveSessionActive = true
+    ribbon.previewActive = true
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const requests = vi.fn()
+    ribbon.addEventListener("ribbon-preview-exit", requests)
+    ribbon.shadowRoot!.querySelector('ribbon-tab[label="File"]')!
+      .dispatchEvent(new CustomEvent("ribbon-tab-select", {detail: {label: "File"}, bubbles: true}))
+    await ribbon.updateComplete
+    expect(requests).toHaveBeenCalledOnce()
+    expect(requests.mock.calls[0][0].detail).toEqual({openFileMenu: true})
+    expect(ribbon.menuOpen).toBe(false)
+  })
+
+  it("requests preview exit from the compact brand button before opening File", async () => {
+    const previousHeight = window.innerHeight
+    try {
+      Object.defineProperty(window, "innerHeight", {configurable: true, value: 500})
+      const ribbon = new AppRibbon()
+      ribbon.expanded = false
+      ribbon.liveSessionActive = true
+      ribbon.previewActive = true
+      document.body.append(ribbon)
+      await ribbon.updateComplete
+      const requests = vi.fn()
+      ribbon.addEventListener("ribbon-preview-exit", requests)
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
+      await ribbon.updateComplete
+      expect(requests).toHaveBeenCalledOnce()
+      expect(requests.mock.calls[0][0].detail).toEqual({openFileMenu: true})
+      expect(ribbon.menuOpen).toBe(false)
+    } finally {
+      Object.defineProperty(window, "innerHeight", {configurable: true, value: previousHeight})
+    }
+  })
+
+  it("makes File actions inaccessible during a live session and restores them afterward", async () => {
+    const {ribbon, menu} = await mount()
+    ribbon.liveSessionActive = true
+    ribbon.previewActive = true
+    await ribbon.updateComplete
+    await menu.updateComplete
+    expect(menu.groups).toEqual([])
+    expect(menu.hidden).toBe(true)
+    expect(menu.inert).toBe(true)
+
+    const commands = vi.fn()
+    const opened = vi.spyOn(window, "open").mockImplementation(() => null)
+    ribbon.addEventListener("ribbon-button-click", commands)
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    await menu.updateComplete
+    expect(menu.groups).toEqual([])
+    expect(menu.hidden).toBe(true)
+    expect(menu.inert).toBe(true)
+    for(const label of ["About", "Settings", "New"]) {
+      menu.dispatchEvent(new CustomEvent("ribbon-button-click", {
+        detail: {label: label === "About" ? "about-webwriter" : label}, bubbles: true, composed: true,
+      }))
+    }
+    expect(commands).not.toHaveBeenCalled()
+    expect(opened).not.toHaveBeenCalled()
+    expect(ribbon.renderRoot.querySelector("dialog[open]")).toBeNull()
+
+    ribbon.liveSessionActive = false
+    await ribbon.updateComplete
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
+    await menu.updateComplete
+    expect(menu.groups).not.toEqual([])
+    expect(menu.hidden).toBe(false)
+    expect(menu.inert).toBe(false)
+    opened.mockRestore()
+  })
+
   it("defers closed menu content and refreshes commands when reopening", async () => {
     const ribbon = new AppRibbon()
     ribbon.expanded = false
@@ -128,7 +206,7 @@ describe("collapsed ribbon file menu", () => {
   it("shows editing menus only while collapsed and outside preview", async () => {
     const {ribbon, menu} = await mount()
     expect(menu.groups.flatMap(group => group.buttons).map(button => typeof button === "string" ? button : button.label))
-      .toEqual(["New", "Open", "Save", "Save as", "Print", "Format", "Insert", "Packages", "Developer console", "Settings"])
+      .toEqual(["New", "Open", "Save", "Save as", "Print", "Format", "Insert", "Packages", "Developer console", "Settings", "About WebWriter..."])
     ribbon.expanded = true
     await ribbon.updateComplete
     await menu.updateComplete

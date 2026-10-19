@@ -14,3 +14,16 @@ export function legacyEditorURL(value: string | URL): URL | null {
   url.pathname = "/editor/"
   return url
 }
+
+/** Build a clean learner entry URL on the dedicated document origin. */
+export function liveLearnerURL(value: string | URL, documentOrigin: string, basePath = "/", serverUrl?: string) {
+  const source = new URL(value)
+  const base = basePath.endsWith("/") ? basePath : `${basePath}/`
+  const target = new URL(`${base}live/`, `${new URL(documentOrigin).origin}/`)
+  for(const key of ["liveSession", "liveToken", "liveServer"]) {
+    const parameter = serverUrl && key === "liveServer" ? serverUrl : source.searchParams.get(key)
+    if(parameter !== null && parameter !== undefined) target.searchParams.set(key, parameter)
+  }
+  target.hash = source.hash
+  return target
+}

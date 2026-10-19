@@ -12,7 +12,26 @@ const ruleHeaders = (source: string) => Array.from(
   match => match[1].trim(),
 ).filter(header => !header.startsWith("@") && !/^(?:from|to|\d+%)$/.test(header))
 
+const layoutExamples = import.meta.glob("../examples/layouts/**/*.html", {query: "?raw", import: "default", eager: true}) as Record<string, string>
+
 describe("document themes", () => {
+  it("uses only light colors regardless of system preferences or theme attributes", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain("color-scheme: only light;")
+      expect(theme.source).not.toMatch(/prefers-color-scheme|data-theme=(?:light|dark)|holiday-css-dark|--dark-/)
+      expect(theme.source).not.toMatch(/color-scheme:\s*(?:dark|light\s+dark)/)
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+    }
+  })
+
+  it("keeps embedded layout example themes light as well", () => {
+    expect(Object.keys(layoutExamples).length).toBeGreaterThan(0)
+    for(const source of Object.values(layoutExamples)) {
+      expect(source).toContain("color-scheme: only light;")
+      expect(source).not.toMatch(/prefers-color-scheme|data-theme=dark|color-scheme:\s*dark/)
+    }
+  })
+
   it("reserves symmetric screen scrollbar gutters for the document layout", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain('html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {\n      scrollbar-gutter: stable both-edges;')
