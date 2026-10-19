@@ -715,6 +715,125 @@ describe("DomEditor document loading", () => {
     expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("false")
   })
 
+  it.each(["local", "cloud"])("installs a %s file's missing widgets before revealing its document", async location => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const retained = {...demoPackage, name: "@webwriter/retained", scripts: [], members: []}
+    host.installedPackages = [retained]
+    const content = `<section data-authored="keep"><!--keep--><webwriter-demo answer="42"><span>Authored content</span></webwriter-demo><unknown-element></unknown-element></section>`
+    const source = `<html><head><script type="module" src="${demoPackage.scripts[0]}"></script></head><body>${content}</body></html>`
+    let resolved!: (pkg: WebWriterPackage) => void
+    const getPackage = vi.spyOn(host.packageRegistry, "getPackage").mockReturnValue(new Promise(resolve => { resolved = resolve }))
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "lesson", kind: "local"})
+    host.backendClient = {getDocument: vi.fn().mockResolvedValue({id: "lesson", title: "Lesson", format: "html", content: source})}
+    const post = vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+
+    const opening = location === "local" ? host.openDocument() : host.openBackendDocument("lesson")
+    await vi.waitFor(() => expect(getPackage).toHaveBeenCalledWith({name: demoPackage.name, version: demoPackage.version}))
+    await editor.updateComplete
+    expect(host.frameRevision).toBe(0)
+    expect(iframe.contentDocument!.querySelector("webwriter-demo")).toBeNull()
+    expect(iframe.classList.contains("loading")).toBe(true)
+    expect(getComputedStyle(iframe).visibility).toBe("hidden")
+    expect(iframe.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+
+    resolved(demoPackage)
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    await editor.updateComplete
+    const loadedFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    loadedFrame.dispatchEvent(new Event("load"))
+    await vi.waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({
+      type: loadWidgetsMessage, packages: [retained, demoPackage], requestId: expect.any(String),
+    })))
+    expect(host.installedPackages).toEqual([retained, demoPackage])
+    expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([retained, demoPackage])
+    expect(host.frameDocumentHTML).toContain(content)
+    expect(loadedFrame.classList.contains("loading")).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+
+    completePendingPackageLoad(editor)
+    await opening
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    expect(loadedFrame.classList.contains("loading")).toBe(false)
+    expect(loadedFrame.inert).toBe(false)
+    expect(host.fileDirty).toBe(false)
+  })
+
+  it("retains the current document when a required widget package cannot be installed", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const body = iframe.contentDocument!.body.innerHTML
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Widget package unavailable"))
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await host.openDocument()
+    await editor.updateComplete
+    expect(host.fileError).toBe("Widget package unavailable")
+    expect(host.frameRevision).toBe(0)
+    expect(iframe.contentDocument!.body.innerHTML).toBe(body)
+    expect(host.installedPackages).toEqual([])
+    expect(iframe.classList.contains("loading")).toBe(false)
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+  })
+
+  it("keeps a newly opened document hidden when its widget modules fail to load", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(demoPackage)
+    vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    const loadedFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    loadedFrame.dispatchEvent(new Event("load"))
+    await vi.waitFor(() => expect(host.packageLoadPromise).not.toBeNull())
+    const requestId = [...host.pendingExecutions.keys()].find((id: string) => id.startsWith("packages-"))
+    window.dispatchEvent(new MessageEvent("message", {source: host.editorWindow, origin: window.location.origin,
+      data: {type: executeFailureEvent, detail: {requestId, error: {name: "NetworkError", message: "Widget module failed"}}}}))
+    await opening
+    await editor.updateComplete
+
+    expect(host.fileError).toBe("Widget module failed")
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    expect(loadedFrame.classList.contains("loading")).toBe(true)
+    expect(loadedFrame.inert).toBe(true)
+    expect(getComputedStyle(loadedFrame).visibility).toBe("hidden")
+  })
+
+  it("keeps edits made during widget installation instead of replacing them with the opened file", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    let resolved!: (pkg: WebWriterPackage) => void
+    const getPackage = vi.spyOn(host.packageRegistry, "getPackage").mockReturnValue(new Promise(resolve => { resolved = resolve }))
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(getPackage).toHaveBeenCalled())
+    iframe.contentDocument!.body.innerHTML = "<p>A concurrent edit</p>"
+    host.documentChangeSequence++
+    resolved(demoPackage)
+    await opening
+    await editor.updateComplete
+    expect(host.frameRevision).toBe(0)
+    expect(host.installedPackages).toEqual([])
+    expect(iframe.contentDocument!.body.innerHTML).toBe("<p>A concurrent edit</p>")
+    expect(host.fileError).toContain("The document changed while loading its widgets")
+  })
+
   it("keeps the spinner visible while a new empty document's preset is applied", async () => {
     const {editor} = await mountEditor()
     const host = editor as any

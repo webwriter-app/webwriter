@@ -142,7 +142,7 @@ import "./live-session-controls"
 import "./live-session-overlay"
 import {escapeHTMLAttribute, serializeDoctype} from "../serialization"
 import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../frame-document"
-import {isPackageImportMap, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
+import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {editorFrameOrigin} from "../frame-origins"
@@ -384,6 +384,7 @@ export class DomEditor extends LitElement {
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     documentLoading: {attribute: false, state: true},
+    documentFramePending: {attribute: false, state: true},
     linkedDocumentLoading: {attribute: false, state: true},
     savedDocuments: {attribute: false, state: true},
     recentDocuments: {attribute: false, state: true},
@@ -607,6 +608,7 @@ export class DomEditor extends LitElement {
   private fileError = ""
   private fileOperationActive = false
   private documentLoading = false
+  private documentFramePending = false
   private linkedDocumentLoading = false
   private downloadedFileName: string | null = null
   private cancelFileInput?: () => void
@@ -804,6 +806,8 @@ export class DomEditor extends LitElement {
       border-radius: 50%;
       animation: var(--ww-ui-animation, document-loading-spin .8s linear infinite);
     }
+
+    .editor-frame.loading { visibility: hidden; }
 
     @keyframes document-loading-spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .document-loading-spinner { animation: none; } }
@@ -2041,6 +2045,7 @@ export class DomEditor extends LitElement {
       })
       void packageLoad.then(
         () => {
+          if(this.editorWindow === editorWindow) this.documentFramePending = false
           void this.inspectLocalPackageWidgets(editorWindow).catch(() => {})
           if(this.editorOpaque && this.editorWindow === editorWindow) {
             const tags = this.installedPackages.flatMap(pkg => pkg.members.flatMap(member => member.tagName ? [member.tagName] : []))
@@ -3081,6 +3086,17 @@ export class DomEditor extends LitElement {
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
     stripExcludedMarks(parsed.body)
+    const revision = this.documentChangeSequence
+    const frameRevision = this.frameRevision
+    const packages = await loadDocumentPackages(parsed, this.packageRegistry, this.installedPackages)
+    if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision) {
+      throw new Error("The document changed while loading its widgets. Open the file again.")
+    }
+    if(packages.length) {
+      const names = new Set(packages.map(pkg => pkg.name))
+      this.installedPackages = [...this.installedPackages.filter(pkg => !names.has(pkg.name)), ...packages]
+      this.persistInstalledPackages()
+    }
     const reloadError = new Error("The editor iframe was reloaded for a document change")
     this.editorReadyPromise?.catch(() => {})
     this.editorReadyReject?.(reloadError)
@@ -3118,6 +3134,8 @@ export class DomEditor extends LitElement {
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
     this.documentLayoutsDismissed = !isNewDocument || this.settings.pinDeveloperConsole
+    // Only successful widget initialization may reveal the incoming document.
+    this.documentFramePending = true
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
@@ -7659,14 +7677,14 @@ export class DomEditor extends LitElement {
           ></iframe>
         ` : ""}
         ${this.frameStarted ? html`<iframe
-          class="editor-frame"
+          class=${documentLoading || this.documentFramePending ? "editor-frame loading" : "editor-frame"}
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("editor", this.frameRevision)}
           srcdoc=${import.meta.env.MODE === "test" ? this.editorSrcdoc : nothing}
           ?hidden=${this.previewActive && !this.previewFramePending}
-          ?inert=${this.previewActive}
+          ?inert=${this.previewActive || documentLoading || this.documentFramePending}
           @load=${this.handleEditorFrameLoad}
           @pointerdown=${this.relayFrameTouch} @pointermove=${this.relayFrameTouch}
           @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}
