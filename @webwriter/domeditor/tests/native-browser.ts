@@ -3235,6 +3235,54 @@ await check("bundled layouts render under the strict editor CSP without widgets"
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("uploaded videos survive installing and removing packages", async () => {
+  const frame = document.createElement("iframe")
+  frame.src = "/editor/"
+  document.body.append(frame)
+  const video = document.createElement("video")
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if((app as any)?.editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "app editor did not initialize")
+    const host = app as any
+    await host.waitForEditorWindow()
+    const file = await (await fetch("/src/assets/layouts/slides.mp4")).blob()
+    await app!.execute({type: "insertMedia", media: "video"})
+    assert(await app!.execute({type: "setMediaFile", file}), "video upload failed")
+    const readSource = async () => {
+      const result = await app!.execute({type: "readAIDocument"}) as {html: string}
+      return new DOMParser().parseFromString(result.html, "text/html").querySelector("video")!.getAttribute("src")!
+    }
+    const original = await readSource()
+    assert(original.startsWith("blob:"), "upload was not stored as an iframe-owned object URL")
+    const packages = [...host.installedPackages]
+    const pkg = {name: "@test/media-reload", version: "1.0.0", label: "Media reload", description: "",
+      authors: [], keywords: [], links: {}, scripts: [], styles: [], members: []}
+    for(const next of [[...packages, pkg], packages]) {
+      const previousRevision = host.frameRevision
+      await host.reloadEditor(next)
+      assert(host.frameRevision === previousRevision + 1, "package change did not reload the editor iframe")
+      const source = await readSource()
+      assert(source.startsWith("data:video/mp4;base64,"), "reloaded video retained an outgoing realm's object URL")
+      const saved = await (await fetch(source)).blob()
+      assert(saved.size === file.size && saved.type === file.type, "package reload lost video bytes or MIME type")
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("reloaded video metadata timed out")), 4000)
+        video.onloadedmetadata = () => {clearTimeout(timer); resolve()}
+        video.onerror = () => {clearTimeout(timer); reject(new Error("reloaded video could not be decoded"))}
+        video.src = source
+        video.load()
+      })
+      assert(video.videoWidth > 0 && video.videoHeight > 0 && video.duration > 0, "reloaded video is not playable")
+    }
+  }
+  finally {video.removeAttribute("src"); video.load(); frame.remove()}
+})
+
 await check("iframe lifecycle reaches load and cleans up", async () => {
   const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")!
   await new Promise<void>((resolve, reject) => {

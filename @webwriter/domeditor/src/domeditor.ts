@@ -1197,29 +1197,41 @@ export class DOMEditor {
     return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
   }
 
-  /** Embed transient media in a detached save/export copy. */
+  /** Embed transient media for saving or replacing the editor realm. */
   async inlineBlobSources(root: Document | DocumentFragment | Element) {
-    const elements = root.nodeType === Node.ELEMENT_NODE
-      ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
-      : Array.from(root.querySelectorAll("*"))
     const sources = new Map<string, Promise<string>>()
-    for(const element of elements) {
-      if(element instanceof HTMLTemplateElement) await this.inlineBlobSources(element.content)
-      for(const attribute of Array.from(element.attributes)) {
-        if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
-        const urls = attribute.value.match(/blob:[^\s,"'<>\)]+/g)
-        if(!urls) continue
-        let value = attribute.value
-        for(const url of urls) {
-          let source = sources.get(url)
-          if(!source) {
-            const blob = this.mediaBlobs.get(url)
-            source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
-            sources.set(url, source)
-          }
-          value = value.replaceAll(url, await source)
+    let pending = true
+    while(pending) {
+      pending = false
+      const elements = root.nodeType === Node.ELEMENT_NODE
+        ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
+        : Array.from(root.querySelectorAll("*"))
+      for(const element of elements) {
+        if(element instanceof HTMLTemplateElement) {
+          for(const child of element.content.querySelectorAll("*")) elements.push(child)
         }
-        element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
+        for(const attribute of Array.from(element.attributes)) {
+          if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
+          const original = attribute.value
+          const urls = original.match(/blob:[^\s,"'<>\)]+/g)
+          if(!urls) continue
+          pending = true
+          let value = original
+          for(const url of urls) {
+            let source = sources.get(url)
+            if(!source) {
+              const blob = this.mediaBlobs.get(url)
+              source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
+              sources.set(url, source)
+            }
+            value = value.replaceAll(url, await source)
+          }
+          // Live DOM sources may be replaced while reading a large upload.
+          // Revisit current sources instead of overwriting concurrent edits.
+          if(element.getAttributeNS(attribute.namespaceURI, attribute.localName) === original) {
+            element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
+          }
+        }
       }
     }
   }

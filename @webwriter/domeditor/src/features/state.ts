@@ -681,7 +681,12 @@ export class StateFeature extends EditorFeature {
       const apply = this.prepareAIOperations(operations, availableWidgets)
       return this.previewAIChange(editId, summary, apply)
     },
-    snapshotState: ({}: {type: "snapshotState"}) => this.editor.doc.snapshot(),
+    snapshotState: async ({}: {type: "snapshotState"}) => {
+      // Object URLs belong to the outgoing iframe. Embed their bytes before
+      // capturing shared state so replacing that realm cannot discard media.
+      await this.editor.inlineBlobSources(document)
+      return this.editor.doc.snapshot()
+    },
     serializeDocument: ({offline = false}: {type: "serializeDocument", offline?: boolean}) =>
       this.editor.serializeHTML(offline),
     readAIDocument: (options: {type: "readAIDocument"} & AIReadDocumentOptions) => this.readAIDocument(options),
