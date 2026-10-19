@@ -7036,6 +7036,62 @@ describe("DomEditor.execute()", () => {
     }
   })
 
+  it("sends live widget aggregates by authored ID and respects filters, replay, and thumbnail selection", async () => {
+    const {editor, iframe} = await mountEditor()
+    const authored = '<live-aggregate-quiz id="quiz"><script type="application/json" slot="data">{"choice":"a"}</script></live-aggregate-quiz>'
+    iframe.contentDocument!.body.innerHTML = authored
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    const frame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")!
+    frame.dispatchEvent(new Event("load"))
+    ribbon.dispatchEvent(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    await editor.updateComplete
+    const host = editor as any
+    const session = host.liveSession as LiveSession
+    // Production previews communicate with an isolated frame. Verify that
+    // boundary here; the native aggregation fixture verifies the renderers.
+    host.previewOpaque = true
+    const post = vi.spyOn(host, "postToPreview").mockImplementation(() => {})
+    vi.spyOn(frame, "contentDocument", "get").mockReturnValue(null)
+    const packet = () => post.mock.calls.filter(([message]: any) => message.type === "preview-frame-aggregate").at(-1)?.[0] as any
+    const learner = new LiveSession({id: session.id, role: "learner", learner: {id: "aggregate-ada", name: "Ada", color: "#2563eb"}})
+    const publish = (choice: string) => learner.publish({kind: "widget", widgets: [{id: "quiz", path: [999], html: `<live-aggregate-quiz id="quiz"><script type="application/json" slot="data">{"choice":"${choice}"}</script></live-aggregate-quiz>`, data: {status: "ready", format: "json", mode: "individual", text: JSON.stringify({choice})}}]})
+    const now = vi.spyOn(Date, "now")
+    try {
+      now.mockReturnValue(host.liveStreamStartedAt + 1000)
+      publish("a")
+      await vi.waitFor(() => expect(packet()?.widgets[0]?.participants[0]?.snapshot?.data.text).toBe('{"choice":"a"}'))
+      expect(packet().widgets[0]).toMatchObject({id: "quiz", path: [0], view: "aggregate"})
+      now.mockReturnValue(host.liveStreamStartedAt + 2000)
+      publish("b")
+      await vi.waitFor(() => expect(host.liveSteps).toHaveLength(2))
+      expect(host.liveSteps.map((step: any) => [step.learner, step.widgets?.[0]?.data?.text])).toEqual([
+        ["aggregate-ada", '{"choice":"a"}'], ["aggregate-ada", '{"choice":"b"}'],
+      ])
+      host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 2}}))
+      await vi.waitFor(() => expect({time: host.liveStreamTime, duration: host.liveStreamDuration, step: host.liveStreamStep,
+        text: packet()?.widgets[0]?.participants[0]?.snapshot?.data.text}).toEqual({time: 2, duration: 2, step: 2, text: '{"choice":"b"}'}))
+      host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      await vi.waitFor(() => expect(packet()?.widgets[0]?.participants[0]?.snapshot?.data.text).toBe('{"choice":"a"}'))
+      host.handleLiveLearnerToggle(new CustomEvent("live-learner-toggle", {detail: {id: "aggregate-ada", enabled: false}}))
+      await vi.waitFor(() => expect(packet()?.widgets[0]?.participants).toHaveLength(0))
+      host.handleLiveLearnerToggle(new CustomEvent("live-learner-toggle", {detail: {id: "aggregate-ada", enabled: true}}))
+      host.handleLiveWidgetStateChange(new CustomEvent("live-widget-state-change", {detail: {path: "[0]", learnerId: null, view: "thumbnails"}}))
+      expect(packet().widgets[0].view).toBe("thumbnails")
+      host.handleLiveWidgetStateChange(new CustomEvent("live-widget-state-change", {detail: {path: "[0]", learnerId: "aggregate-ada"}}))
+      expect(packet().widgets[0].view).toBe("individual")
+      host.handlePreviewMessage(new MessageEvent("message", {source: frame.contentWindow, origin: window.location.origin,
+        data: {bridgeNonce: host.bridgeNonce, type: "preview-frame-aggregate-options", widgets: [{path: [0], options: [{id: "count", title: "State count"}, {id: "text", title: "Explanations"}], selectedId: "count"}]}}))
+      expect(host.liveAggregateOptions.get("[0]")?.options).toHaveLength(2)
+      host.handleLiveWidgetStateChange(new CustomEvent("live-widget-state-change", {detail: {path: "[0]", learnerId: null, view: "aggregate", aggregateId: "text"}}))
+      expect(packet().widgets[0]).toMatchObject({view: "aggregate", aggregateId: "text"})
+      expect(iframe.contentDocument!.body.innerHTML).toBe(authored)
+    }
+    finally { now.mockRestore(); learner.destroy() }
+  })
+
   it("renders the current selection path received from the editor bridge", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><span></span><p></p></section>"

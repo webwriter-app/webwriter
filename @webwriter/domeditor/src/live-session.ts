@@ -5,6 +5,7 @@ import {acceptLearnerUpdate} from "./live-session-permissions.js"
 import {isCssColor} from "./css-color"
 import type {IImportMap} from "@jspm/import-map"
 import type {WebWriterPackage} from "./packages"
+import type {WidgetDataSnapshot} from "./widget-aggregate"
 
 export type LiveSessionRole = "host" | "learner"
 export type LiveSessionStepKind = "document" | "cursor" | "pointer" | "click" | "scroll" | "widget"
@@ -42,6 +43,7 @@ export type LiveSessionWidgetState = {
   path?: number[]
   html?: string
   state?: unknown
+  data?: WidgetDataSnapshot
 }
 
 export type LiveSessionStep = {

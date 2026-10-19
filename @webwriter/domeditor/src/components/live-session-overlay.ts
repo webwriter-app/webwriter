@@ -3,6 +3,7 @@ import {editorInteractionStyles} from "./editing-controls.styles"
 import {keyed} from "lit/directives/keyed.js"
 import {styleMap} from "lit/directives/style-map.js"
 import {safeCssColor} from "../css-color"
+import type {LiveWidgetView} from "../widget-aggregate"
 
 export type LiveSessionPoint = {
   x: number
@@ -39,11 +40,16 @@ export type LiveSessionWidget = LiveSessionPoint & {
   path: string
   learners: LiveSessionLearnerOption[]
   selectedLearnerId?: string | null
+  view?: LiveWidgetView
+  aggregateOptions?: readonly {id: string; title: string}[]
+  selectedAggregateId?: string
 }
 
 export type LiveWidgetStateChangeDetail = {
   path: string
   learnerId: string | null
+  view?: LiveWidgetView
+  aggregateId?: string
 }
 
 const percentage = (value: number) => `${Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0)) * 100}%`
@@ -180,7 +186,9 @@ export class LiveSessionOverlay extends LitElement {
   private dispatchWidgetState(path: string, value: string) {
     const detail: LiveWidgetStateChangeDetail = {
       path,
-      learnerId: value || null,
+      learnerId: value.startsWith("@") ? null : value || null,
+      ...(value.startsWith("@aggregate:") ? {view: "aggregate" as const, aggregateId: value.slice(11)} : {}),
+      ...(value === "@thumbnails" ? {view: "thumbnails" as const} : {}),
     }
     this.dispatchEvent(new CustomEvent<LiveWidgetStateChangeDetail>("live-widget-state-change", {
       detail,
@@ -245,7 +253,7 @@ export class LiveSessionOverlay extends LitElement {
   }
 
   private renderWidget(widget: LiveSessionWidget) {
-    const selected = widget.selectedLearnerId ?? ""
+    const selected = widget.selectedLearnerId ?? (widget.view === "thumbnails" ? "@thumbnails" : widget.selectedAggregateId ? `@aggregate:${widget.selectedAggregateId}` : "")
     return html`
       <select
         class="widget-affordance"
@@ -255,9 +263,12 @@ export class LiveSessionOverlay extends LitElement {
         .value=${selected}
         @change=${(event: Event) => this.dispatchWidgetState(widget.path, (event.currentTarget as HTMLSelectElement).value)}
       >
-        <option value="">Combined state</option>
+        ${widget.aggregateOptions?.length ? html`<optgroup label="Aggregated views">
+          ${widget.aggregateOptions.map(option => html`<option value=${`@aggregate:${option.id}`} ?selected=${selected === `@aggregate:${option.id}`}>${option.title}</option>`)}
+        </optgroup>` : html`<option value="">Aggregate</option>`}
+        <option value="@thumbnails" ?selected=${selected === "@thumbnails"}>Thumbnail wall</option>
         ${widget.learners.map(learner => html`
-          <option value=${learner.id}>${learner.name}</option>
+          <option value=${learner.id} ?selected=${selected === learner.id}>${learner.name}</option>
         `)}
       </select>
     `

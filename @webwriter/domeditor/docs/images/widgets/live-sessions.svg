@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="224" viewBox="0 0 360 224" role="img" aria-labelledby="title desc">
+  <title id="title">Learner responses become an aggregated live view</title>
+  <desc id="desc">Ada chooses A. Grace and Amira choose B. Their responses feed a chart showing one A and two B answers, with the reference answer B highlighted in green.</desc>
+  <g fill="none" stroke="#29a3dd" stroke-width="3" stroke-linejoin="round">
+    <path d="M126 64h27v100h-27M126 114h54"/>
+    <path d="m172 106 8 8-8 8"/>
+  </g>
+  <g fill="#fff" stroke="#0f2f48" stroke-width="3" stroke-linejoin="round">
+    <rect x="20" y="46" width="106" height="36" rx="4"/>
+    <rect x="20" y="96" width="106" height="36" rx="4"/>
+    <rect x="20" y="146" width="106" height="36" rx="4"/>
+    <rect x="188" y="46" width="152" height="136" rx="4"/>
+  </g>
+  <g fill="#0f2f48" font-family="system-ui, sans-serif" font-size="15" text-anchor="middle">
+    <text x="73" y="29">Learners</text>
+    <text x="264" y="29">Live view</text>
+  </g>
+  <g fill="#0f2f48" font-family="system-ui, sans-serif" font-size="13">
+    <text x="32" y="69">Ada</text>
+    <text x="32" y="119">Grace</text>
+    <text x="32" y="169">Amira</text>
+    <text x="104" y="69">A</text>
+    <text x="104" y="119">B</text>
+    <text x="104" y="169">B</text>
+    <text x="202" y="92">A</text>
+    <text x="202" y="130">B</text>
+    <text x="318" y="92">1</text>
+    <text x="318" y="130">2</text>
+  </g>
+  <g fill="#82d0f5" fill-opacity=".35">
+    <rect x="220" y="78" width="88" height="18" rx="3"/>
+    <rect x="220" y="116" width="88" height="18" rx="3"/>
+  </g>
+  <rect x="220" y="78" width="40" height="18" rx="3" fill="#29a3dd"/>
+  <rect x="220" y="116" width="80" height="18" rx="3" fill="#19965f"/>
+  <text x="264" y="164" fill="#0f2f48" font-family="system-ui, sans-serif" font-size="12" text-anchor="middle">3 responses</text>
+  <g fill="#0f2f48" font-family="system-ui, sans-serif" font-size="12" text-anchor="middle">
+    <text x="180" y="211">Responses stay in each widget's data block</text>
+  </g>
+</svg>

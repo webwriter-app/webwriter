@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live widget aggregation browser checks</title>
+  <style>
+    body { margin:0; background:#f4f6fa; color:#25364a; font:14px/1.45 system-ui,sans-serif; }
+    header { padding:24px; }
+    h1 { margin:0 0 8px; font-size:24px; }
+    main { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; padding:0 24px 24px; }
+    main > * { display:block; height:340px; min-width:0; border:1px solid #cbd5e1; border-radius:8px; padding:12px; background:white; }
+    @media(max-width:600px) { main { grid-template-columns:1fr; padding:0 12px 12px; } header { padding:16px 12px; } }
+  </style>
+</head>
+<body>
+  <header><h1>Live widget aggregation</h1><p>Seven widget interfaces and the thumbnail fallback. Resize or scroll to inspect each view.</p><output id="checks">Running browser checks…</output></header>
+  <main></main>
+  <script type="module" src="./widget-aggregation.ts"></script>
+</body>
+</html>

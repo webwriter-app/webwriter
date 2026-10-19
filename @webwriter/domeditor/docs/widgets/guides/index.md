@@ -6,6 +6,7 @@ These guides help you complete a specific task in an existing widget. For a firs
 |---|---|
 | [Manage state](state.md) | Choose properties, attributes, content, or scoped data. |
 | [Share participant data](sharing.md) | Persist answers individually, for everyone, or for groups. |
+| [Support live sessions](live-sessions.md) | Show learner responses together in the editor. |
 | [Make layouts responsive](responsiveness.md) | Fit the space allocated to a widget. |
 | [Nest widgets and editable content](content.md) | Display and edit light-DOM children. |
 | [Handle focus and keyboard input](focus.md) | Keep controls usable with a keyboard. |

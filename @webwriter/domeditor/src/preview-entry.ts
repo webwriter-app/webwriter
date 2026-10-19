@@ -50,6 +50,9 @@ if(nonce && hostOrigin && window.parent !== window) {
     }
     else if(event.data.type === "preview-frame-print") window.print()
     else if(event.data.type === "preview-frame-apply" && event.data.snapshot) applyState(event.data.snapshot)
+    else if(event.data.type === "preview-frame-aggregate" && Array.isArray(event.data.widgets)) {
+      post({type: "preview-frame-aggregate-options", widgets: preview.showAggregates(document, event.data.widgets)})
+    }
   })
   post({type: "preview-frame-ready"})
 }

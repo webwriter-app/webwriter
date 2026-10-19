@@ -13,6 +13,7 @@ A widget script defines the custom element named by its export, for example `./w
 | `focus(options?)` | Optionally delegate focus to an internal control. |
 | `static options` / `options` | [Option declarations](options-actions.md) for the Widget drawer. |
 | `static actions` / `actions` | [Action declarations](options-actions.md); methods have matching names. |
+| `static aggregate` | [Aggregated View](aggregated-view.md) declaration for aggregate views. |
 
 WebWriter gives installed widgets a persistent `id` if missing. It adds temporary marker classes and `contenteditable=""` while editing if no authored `contenteditable` exists. These editor artifacts are not saved or shared. Preserve authored IDs and unfamiliar content.
 

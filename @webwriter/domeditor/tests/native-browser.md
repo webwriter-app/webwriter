@@ -10,6 +10,14 @@ The command serves `tests/native-browser.html` on `127.0.0.1` and runs it in hea
 
 Formula checks verify native inline MathML rendering, preserved operand identity, empty argument dimensions, pointer placement followed by typing, editing-only backgrounds, and shadow appendix cleanup. They also exercise distinct text insertion positions before, at the start, at the end, and after inline formulas in different text-block positions, plus gaps around block formulas.
 
+## Live widget aggregation checks
+
+For focused live widget aggregation checks, run `node scripts/native-browser.mjs --widget-aggregation`.
+This covers all seven shapes, thumbnail fallback, reference markers, learner filtering,
+accepted remote data, appendix cleanup, and viewport bounds. For visual inspection,
+open `/tests/widget-aggregation.html` on the loopback development server and resize
+the browser to inspect the cards at narrow and wide container sizes.
+
 ## Performance checks
 
 Run `node scripts/native-browser.mjs --performance` to measure hover float scans,

@@ -7,6 +7,8 @@ export type WidgetDataMode = "individual" | "all" | "group"
 export type WidgetDataRequest = {document: string, widget: string, mode: WidgetDataMode, format: "json" | "xml", documentRoom?: string, groupingRevision?: string}
 export type WidgetDataConnection = {
   doc: Y.Doc
+  /** Public, opaque response-scope identity; never an authorization token. */
+  scopeId?: string
   ready?: Promise<void>
   observePersistence?: (listener: (state: WidgetDataPersistenceState) => void) => () => void
   /** Release the connection, not necessarily its persisted document. */
@@ -389,7 +391,8 @@ export class WidgetDataBindings {
       binding.sourceText = text
       binding.error = undefined
       const Event = binding.block.ownerDocument.defaultView?.CustomEvent ?? CustomEvent
-      binding.block.dispatchEvent(new Event("datachange", {bubbles: true, detail: {mode: binding.mode}}))
+      binding.block.dispatchEvent(new Event("datachange", {bubbles: true, detail: {mode: binding.mode,
+        ...(binding.connection?.scopeId ? {scopeId: binding.connection.scopeId} : {})}}))
     }
     catch(error) { this.#error(binding.block, error) }
   }
@@ -469,7 +472,7 @@ export class WidgetDataBindings {
       retry = setTimeout(reconnect, 100)
     })
     provider.connect()
-    return {doc, ready, destroy: () => { stopped = true; clearTimeout(retry); provider.destroy(); doc.destroy() }}
+    return {doc, scopeId: room, ready, destroy: () => { stopped = true; clearTimeout(retry); provider.destroy(); doc.destroy() }}
   }
 
   #offline(request: WidgetDataRequest, binding: Binding): WidgetDataConnection {
@@ -485,10 +488,10 @@ export class WidgetDataBindings {
       this.#storage = new WidgetDataStorage(indexedDatabase, storage)
     }
     const defaults = binding.before
-    return this.#storage.connect(`webwriter-widget-data:${key}`, doc => {
+    return {...this.#storage.connect(`webwriter-widget-data:${key}`, doc => {
       const data = doc.getMap("data")
       if(!data.has("value")) data.set("value", mirrorValue(defaults))
-    })
+    }), scopeId: key}
   }
 
   /** Wait for offline restoration before reading or writing participant data. */
