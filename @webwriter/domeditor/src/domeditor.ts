@@ -1533,13 +1533,17 @@ export class DOMEditor {
     container.append(fragment)
     const serialize = prepareWidgetGroupingsForSerialization(container)
     const html = serialize(container.innerHTML)
-    return {html, text}
+    // A clipboard-only format hint preserves authored structure and styling
+    // when reused in WebWriter. It is removed before insertion and never
+    // bypasses active-content sanitization.
+    const clipboardHTML = `<meta name="webwriter-clipboard" content="1">${html}`
+    return {html, text, clipboardHTML}
   }
 
   #onCopy = (ev: ClipboardEvent) => {
     if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev, this.schema) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
     ev.preventDefault()
-    const {html, text} = this.serializeClipboardFragment($.copy(), $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
+    const {clipboardHTML: html, text} = this.serializeClipboardFragment($.copy(), $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
     ev.clipboardData.setData("text/html", html)
     ev.clipboardData.setData("text/plain", text)
   }
@@ -1625,6 +1629,14 @@ export class DOMEditor {
   parseHTMLFragment(html: string, transfer=false, repair=true) {
     const template = document.createElement("template")
     template.innerHTML = html
+    const clipboardHint = Array.from(template.content.children).find(element => element.matches('meta[name="webwriter-clipboard"][content="1"]'))
+    if(clipboardHint) {
+      clipboardHint.remove()
+      if(transfer) {
+        transfer = false
+        repair = false
+      }
+    }
     return this.prepareHTMLFragment(template.content, transfer, repair)
   }
 

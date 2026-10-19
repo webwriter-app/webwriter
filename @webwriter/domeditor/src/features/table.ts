@@ -831,7 +831,7 @@ export class TableFeature extends EditorFeature {
     clearTableMarkers(table)
     const fragment = table.ownerDocument.createDocumentFragment()
     fragment.append(table)
-    const {html} = this.editor.serializeClipboardFragment(fragment)
+    const {clipboardHTML: html} = this.editor.serializeClipboardFragment(fragment)
     const exported = buildTableMap(table)
     const plain = Array.from({length: rectangle.bottom - rectangle.top + 1}, (_, rowOffset) =>
       Array.from({length: rectangle.right - rectangle.left + 1}, (_, columnOffset) => {

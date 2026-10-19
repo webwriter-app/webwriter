@@ -2773,6 +2773,43 @@ describe("lift()", () => {
     expect($.selectedElement).toBe(p)
   })
 })
+describe("internal clipboard fidelity", () => {
+  it.each(["native", "async"])("preserves image crop and attached captions through %s copy/paste with undo and redo", async method => {
+    document.body.innerHTML = '<figure id="image"><picture style="width:340px"><img src="https://example.test/photo.png" style="object-view-box:inset(0% 0% 0% 15%);width:340px"></picture><figcaption style="text-align:center">Caption</figcaption><!--keep--></figure><p>End</p>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.selectElement(document.querySelector("figure")!)
+    const data = new DataTransfer()
+    if(method === "native") document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    else await editor.features.manipulation.copy()
+    $.move(document.body, document.body.childNodes.length)
+    if(method === "native") document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    else await editor.features.manipulation.paste()
+    editor.doc.syncFromDOM()
+    expect(document.querySelectorAll("figure")).toHaveLength(2)
+    expect(document.querySelectorAll("figcaption")).toHaveLength(2)
+    const pasted = document.querySelectorAll("figure")[1]
+    expect(pasted.querySelector("img")!.style.getPropertyValue("object-view-box")).toBe("inset(0% 0% 0% 15%)")
+    expect(pasted.querySelector("picture")!.getAttribute("style")).toContain("width:340px")
+    expect(pasted.querySelector("figcaption")!.style.textAlign).toBe("center")
+    expect(pasted.innerHTML).toContain("<!--keep-->")
+    expect(editor.toHTML(true)).not.toContain("webwriter-clipboard")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelectorAll("figure")).toHaveLength(1)
+    editor.doc.redo()
+    expect(document.querySelectorAll("figcaption")).toHaveLength(2)
+  })
+
+  it.each([true, false])("still sanitizes marked HTML and consumes its clipboard hint (transfer=%s)", transfer => {
+    const {fragment, removedUnsafeItems} = editor.parseHTMLFragment('<meta name="webwriter-clipboard" content="1"><figure style="float:left"><picture><img src="https://example.test/photo.png" onerror="bad()"></picture><figcaption>Caption</figcaption></figure><script>bad()</script>', transfer, false)
+    expect(removedUnsafeItems).toBeGreaterThan(0)
+    expect(fragment.querySelector("meta,script,[onerror]")).toBeNull()
+    expect(fragment.querySelector("figure")!.getAttribute("style")).toBe("float:left")
+    expect(fragment.querySelector("figcaption")!.textContent).toBe("Caption")
+  })
+})
+
 describe("copy()", () => {
   it("fills the clipboard with correct HTML", async () => {
     document.body.innerHTML = "<p>hello world</p>"
@@ -2780,7 +2817,8 @@ describe("copy()", () => {
     editor.features.manipulation.copy()
     const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))
     const html = await (await item?.getType("text/html"))?.text()
-    expectBodyToBe(html!)
+    expect(html).toBe('<meta name="webwriter-clipboard" content="1"><p>hello world</p>')
+    expectBodyToBe('<p>hello world</p>')
   })
   it("leaves the document unchanged", async () => {
     document.body.innerHTML = "<p>hello world</p>"
@@ -2842,7 +2880,7 @@ describe("cut()", () => {
     await editor.features.manipulation.cut()
     const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))
     const html = await (await item?.getType("text/html"))?.text()
-    expect(html).toBe("<p>hello world</p>")
+    expect(html).toBe('<meta name="webwriter-clipboard" content="1"><p>hello world</p>')
   })
   it("removes content from the DOM", async () => {
     document.body.innerHTML = "<p>hello world</p>"
