@@ -553,7 +553,9 @@ export class BoardFeature extends EditorFeature {
       @media print {[part=board-actions], [part=board-drop-indicator] {display:none}}
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
-    this.layoutStylesheet = createStylesheet(`
+    // Authored layout styles remain portable, but the strict editing CSP
+    // blocks their <style> element. Use the bundled CSS for editing too.
+    this.layoutStylesheet = createStylesheet(boardStyles + `
       body.ww-board {padding-right:1.25rem}
       body.ww-board::after {content:"";box-sizing:border-box;flex:0 0 min(450px, calc(100vw - 2.5rem));width:min(450px, calc(100vw - 2.5rem));height:10rem;align-self:flex-start;border-radius:.75rem;pointer-events:none}
       body.ww-board > section.ww-board-column:not([is]) {padding-bottom:1rem}

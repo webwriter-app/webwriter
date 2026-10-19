@@ -47,6 +47,18 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it("installs a CSP-compatible layout stylesheet and removes it on disable", () => {
+    const layout = document.adoptedStyleSheets.find(sheet => Array.from(sheet.cssRules)
+      .some(rule => (rule as CSSStyleRule).selectorText === "body.ww-canvas"))
+    expect(layout).toBeDefined()
+    expect(document.head.querySelector("style")).toBeNull()
+    editor.features.canvas.disable()
+    expect(document.adoptedStyleSheets).not.toContain(layout)
+    editor.features.canvas.enable()
+    expect(document.adoptedStyleSheets.some(sheet => Array.from(sheet.cssRules)
+      .some(rule => (rule as CSSStyleRule).selectorText === "body.ww-canvas"))).toBe(true)
+  })
+
   it("gives native details a white background in editing and saved canvas layouts", () => {
     document.body.innerHTML = '<details><summary>Closed</summary></details><article><details open><summary>Nested</summary><p>Content</p></details></article><details style="background-color: pink"><summary>Authored</summary></details><details is="custom-details"><summary>Widget</summary></details>'
     expect(editor.setDocumentLayout("canvas", "document")).toBe(true)

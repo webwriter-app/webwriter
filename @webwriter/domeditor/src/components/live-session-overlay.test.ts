@@ -5,6 +5,22 @@ import {LiveSessionOverlay, type LiveSessionLearner, type LiveSessionWidget} fro
 afterEach(() => document.body.replaceChildren())
 
 describe("live session overlay", () => {
+  it("exposes named aggregate choices independently of learner selection", async () => {
+    const overlay = new LiveSessionOverlay()
+    overlay.widgets = [{path: "[0]", x: .5, y: .2, learners: [{id: "ada", name: "Ada", color: "blue"}],
+      aggregateOptions: [{id: "count", title: "State count"}, {id: "text", title: "Explanations"}], selectedAggregateId: "text"}]
+    document.body.append(overlay)
+    await overlay.updateComplete
+    const select = overlay.shadowRoot!.querySelector("select")!
+    expect(select.value).toBe("@aggregate:text")
+    expect([...select.options].map(option => option.textContent)).toEqual(["State count", "Explanations", "Thumbnail wall", "Ada"])
+    let detail: unknown
+    overlay.addEventListener("live-widget-state-change", event => { detail = (event as CustomEvent).detail })
+    select.value = "@aggregate:count"
+    select.dispatchEvent(new Event("change"))
+    expect(detail).toEqual({path: "[0]", learnerId: null, view: "aggregate", aggregateId: "count"})
+  })
+
   it("renders combined learner overlays and widget state affordances", async () => {
     const overlay = new LiveSessionOverlay()
     const learners: LiveSessionLearner[] = [{
@@ -75,6 +91,29 @@ describe("live session overlay", () => {
     expect(detail).toEqual({path: "body/2", learnerId: null})
     expect(host.textContent).toBe("Authored content")
     expect(host.querySelector(".state-region")).toBeNull()
+  })
+
+  it("selects the thumbnail wall and reports a null learner ID with its view", async () => {
+    const overlay = new LiveSessionOverlay()
+    overlay.widgets = [{
+      path: "body/3",
+      x: 0.4,
+      y: 0.5,
+      view: "thumbnails",
+      learners: [{id: "ada", name: "Ada", color: "#e11d48"}],
+    }]
+    document.body.append(overlay)
+    await overlay.updateComplete
+
+    const select = overlay.shadowRoot!.querySelector<HTMLSelectElement>("select")!
+    expect(select.value).toBe("@thumbnails")
+    let detail: {path: string; learnerId: string | null; view?: string} | undefined
+    overlay.addEventListener("live-widget-state-change", event => {
+      detail = (event as CustomEvent<{path: string; learnerId: string | null; view?: string}>).detail
+    })
+    select.dispatchEvent(new Event("change", {bubbles: true}))
+
+    expect(detail).toEqual({path: "body/3", learnerId: null, view: "thumbnails"})
   })
 
   it("restarts the click animation for each learner click", async () => {

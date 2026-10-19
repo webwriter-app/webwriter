@@ -3127,6 +3127,70 @@ await check("standalone SVG affordances refit rotated elements and resize beyond
   editor.features.selection.processSelection()
 })
 
+await check("bundled layouts render under the strict editor CSP without widgets", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const {boardStyles, canvasStyles, slidesStyles} = await import("../src/document-layout")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:930px;height:470px"
+  frame.setAttribute("sandbox", "allow-scripts allow-same-origin")
+  document.body.append(frame)
+  const options = {bridgeNonce: crypto.randomUUID(), hostOrigin: location.origin, revision: 0, language: "en", packages: [],
+    entryURL: new URL("./native-browser-frame.ts?proofreading-disabled", import.meta.url).href, executeScripts: true}
+  const load = async (html: string) => {
+    frame.srcdoc = editorFrameHTML(html, options)
+    await new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string, authoredScriptRan?: boolean}
+    for(let attempt = 0; !view.editor && !view.editorError && attempt < 160; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `strict editor did not initialize: ${view.editorError}`)
+    await layoutFrame()
+    return {view, doc: frame.contentDocument!, editor: view.editor!}
+  }
+  try {
+    let current = await load('<!doctype html><html><head><style>body {border-top:37px solid red}</style><script>window.authoredScriptRan = true</script></head><body><h1>Heading</h1><p>Card content</p></body></html>')
+    for(const mode of ["board", "canvas", "slides"] as const) {
+      assert(current.editor.setDocumentLayout(mode, "document"), `${mode}: conversion failed`)
+      const verify = () => {
+        const {view, doc} = current
+        assert(!view.authoredScriptRan, `${mode}: authored script executed`)
+        assert(view.getComputedStyle(doc.body).borderTopWidth === "0px", `${mode}: authored stylesheet was permitted`)
+        if(mode === "board") {
+          const column = doc.querySelector<HTMLElement>("section.ww-board-column")!, card = column.querySelector("article.ww-board-card")!
+          assert(view.getComputedStyle(doc.body).display === "flex", "board did not use its horizontal layout")
+          assert(view.getComputedStyle(column).display === "flex" && Math.abs(column.getBoundingClientRect().width - 450) < 1, "board column size or layout is wrong")
+          assert(view.getComputedStyle(card).backgroundColor === "rgb(255, 255, 255)", "board card background is missing")
+          const add = doc.body.shadowRoot!.querySelector<HTMLElement>('[part=board-add-column]')!.getBoundingClientRect()
+          assert(add.left >= column.getBoundingClientRect().right && Math.abs(add.width - column.getBoundingClientRect().width) < 1,
+            "add-column control overlaps the column or has the wrong width")
+        }
+        else if(mode === "canvas") {
+          assert(view.getComputedStyle(doc.body).position === "relative", "canvas has no positioning context")
+          assert(view.getComputedStyle(doc.querySelector("h1")!).position === "absolute", "canvas content is not positioned")
+          const background = doc.body.shadowRoot!.querySelector<HTMLElement>('[part=canvas-background]')!
+          assert(view.getComputedStyle(background).backgroundImage.includes("radial-gradient"), "canvas background is missing")
+        }
+        else {
+          assert(view.getComputedStyle(doc.body).display === "grid", "slides did not use their viewport layout")
+          const slide = doc.querySelector("section.ww-slide")!
+          assert(view.getComputedStyle(slide).width === "1280px", "slide size is wrong")
+          assert(view.getComputedStyle(doc.querySelector("h1")!).position === "absolute", "slide content is not positioned")
+          current.editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+          assert(Math.abs(slide.getBoundingClientRect().width - 1280) < 1, "slide layout overrides local zoom")
+          current.editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "fit-content"})
+        }
+      }
+      await layoutFrame()
+      verify()
+      const saved = current.editor.toHTML(false, false)
+      assert(saved.includes({board: boardStyles, canvas: canvasStyles, slides: slidesStyles}[mode]), `${mode}: portable layout styles were lost`)
+      current.editor.destroy()
+      current = await load(saved)
+      verify()
+      assert(current.editor.setDocumentLayout("document", mode), `${mode}: return to document failed`)
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("iframe lifecycle reaches load and cleans up", async () => {
   const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")!
   await new Promise<void>((resolve, reject) => {

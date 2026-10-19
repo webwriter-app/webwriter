@@ -1,5 +1,7 @@
 import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
+import type {LiveWidgetAggregateInput} from "../widget-aggregate"
+import type {LiveWidgetAggregateOptions} from "../widget-aggregate-view"
 import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
 import type {GitPackageSource} from "../git-package"
 import {appIconUrl, ribbonIcon} from "../ribbon-icons"
@@ -655,6 +657,9 @@ export class DomEditor extends LitElement {
   private liveStateCache = new Map<string, LiveSessionLearnerState>()
   private liveStateCacheStep = 0
   private liveSelectedWidgetLearners = new Map<string, string>()
+  private liveThumbnailWidgets = new Set<string>()
+  private liveSelectedAggregates = new Map<string, string>()
+  private liveAggregateOptions = new Map<string, LiveWidgetAggregateOptions>()
   private readonly livePreview = new LivePreview()
   private fileFormat: FileFormat = "html"
   private fileHandle: LocalFileHandle | null = null
@@ -1416,6 +1421,7 @@ export class DomEditor extends LitElement {
         this.applyLiveWidgetState(path, null)
       })
       this.syncSelectedLiveWidgetStates()
+      this.syncLiveAggregates()
       this.updateLiveWidgetAffordances()
     })
   }
@@ -1602,11 +1608,12 @@ export class DomEditor extends LitElement {
       this.liveOverlayWidgets = this.previewWidgetPositions.map(widget => {
         const learners = this.liveLearners.flatMap(learner => {
           if(!learner.enabled) return []
-          const hasState = this.liveStatesAtStep.get(learner.id)?.widgets?.some(state =>
-            state.path && JSON.stringify(state.path) === widget.path && typeof state.html === "string")
+          const hasState = this.widgetStateAtStep(widget.path, learner.id)
           return hasState ? [{id: learner.id, name: learner.name, color: learner.color}] : []
         })
-        return {...widget, learners, selectedLearnerId: this.liveSelectedWidgetLearners.get(widget.path) ?? null}
+        return {...widget, learners, aggregateOptions: this.liveAggregateOptions.get(widget.path)?.options,
+          selectedAggregateId: this.liveAggregateOptions.get(widget.path)?.selectedId, selectedLearnerId: this.liveSelectedWidgetLearners.get(widget.path) ?? null,
+          view: this.liveThumbnailWidgets.has(widget.path) ? "thumbnails" : "aggregate"}
       })
       return
     }
@@ -1622,9 +1629,7 @@ export class DomEditor extends LitElement {
       const key = JSON.stringify(path)
       const learners = this.liveLearners.flatMap(learner => {
         if(!learner.enabled) return []
-        const hasState = this.liveStatesAtStep.get(learner.id)?.widgets?.some(state =>
-          state.path && JSON.stringify(state.path) === key && typeof state.html === "string",
-        )
+        const hasState = this.widgetStateAtStep(key, learner.id)
         return hasState ? [{id: learner.id, name: learner.name, color: learner.color}] : []
       })
       const rect = widget.getBoundingClientRect()
@@ -1633,15 +1638,49 @@ export class DomEditor extends LitElement {
         x: clampUnit((rect.left + rect.width / 2) / width),
         y: clampUnit(rect.top / height),
         learners,
+        aggregateOptions: this.liveAggregateOptions.get(key)?.options,
+        selectedAggregateId: this.liveAggregateOptions.get(key)?.selectedId,
         selectedLearnerId: this.liveSelectedWidgetLearners.get(key) ?? null,
+        view: this.liveThumbnailWidgets.has(key) ? "thumbnails" : "aggregate",
       }]
     })
   }
 
   private widgetStateAtStep(pathKey: string, learnerId: string) {
+    const id = this.livePreview.baseWidgetStates.get(pathKey)?.id
     return this.liveStatesAtStep.get(learnerId)?.widgets?.find(widget =>
-      widget.path && JSON.stringify(widget.path) === pathKey,
+      id ? widget.id === id : widget.path && JSON.stringify(widget.path) === pathKey,
     )
+  }
+
+  private syncLiveAggregates() {
+    if(!this.liveSessionActive || this.liveSessionRole !== "host") return
+    const inputs: LiveWidgetAggregateInput[] = [...this.livePreview.baseWidgetStates].flatMap(([pathKey, base]) => {
+      if(!base.path) return []
+      return [{path: base.path, id: base.id, aggregateId: this.liveSelectedAggregates.get(pathKey),
+        view: this.liveSelectedWidgetLearners.has(pathKey) ? "individual" : this.liveThumbnailWidgets.has(pathKey) ? "thumbnails" : "aggregate",
+        participants: this.liveLearners.filter(learner => learner.enabled).map(learner => ({
+          id: learner.id, name: learner.name, snapshot: this.widgetStateAtStep(pathKey, learner.id),
+        })),
+      }]
+    })
+    if(this.previewOpaque) this.postToPreview({type: "preview-frame-aggregate", widgets: inputs})
+    else {
+      const previewDocument = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")?.contentDocument
+      if(previewDocument) this.acceptLiveAggregateOptions(this.livePreview.showAggregates(previewDocument, inputs))
+    }
+  }
+
+  private acceptLiveAggregateOptions(widgets: LiveWidgetAggregateOptions[]) {
+    this.liveAggregateOptions.clear()
+    for(const widget of widgets) {
+      if(!Array.isArray(widget?.path) || !widget.path.every(index => Number.isInteger(index) && index >= 0)
+        || !Array.isArray(widget.options) || widget.options.length > 50
+        || !widget.options.every(option => typeof option?.id === "string" && typeof option.title === "string")) continue
+      const key = JSON.stringify(widget.path)
+      if(this.livePreview.baseWidgetStates.has(key)) this.liveAggregateOptions.set(key, widget)
+    }
+    this.updateLiveWidgetAffordances()
   }
 
   private applyLiveWidgetState(pathKey: string, learnerId: string | null) {
@@ -1676,11 +1715,15 @@ export class DomEditor extends LitElement {
   }
 
   private handleLiveWidgetStateChange = (event: Event) => {
-    const {path, learnerId} = (event as CustomEvent<LiveWidgetStateChangeDetail>).detail
+    const {path, learnerId, view, aggregateId} = (event as CustomEvent<LiveWidgetStateChangeDetail>).detail
     if(typeof path !== "string") return
+    if(typeof aggregateId === "string") this.liveSelectedAggregates.set(path, aggregateId)
     if(learnerId) this.liveSelectedWidgetLearners.set(path, learnerId)
     else this.liveSelectedWidgetLearners.delete(path)
+    if(view === "thumbnails") this.liveThumbnailWidgets.add(path)
+    else this.liveThumbnailWidgets.delete(path)
     this.applyLiveWidgetState(path, learnerId)
+    this.syncLiveAggregates()
     this.updateLiveWidgetAffordances()
   }
 
@@ -1702,7 +1745,10 @@ export class DomEditor extends LitElement {
     if(this.liveSessionRole === "learner") {
       if(this.liveSession?.baseHTML) this.livePreview.observeLearner(frame, previewDocument, step => this.publishLiveLearnerStep(step))
     }
-    else this.livePreview.observeHost(frame, previewDocument, () => this.updateLiveWidgetAffordances())
+    else this.livePreview.observeHost(frame, previewDocument, () => {
+      this.updateLiveWidgetAffordances()
+      this.syncLiveAggregates()
+    })
   }
 
   private postToPreview(message: object) {
@@ -1737,6 +1783,10 @@ export class DomEditor extends LitElement {
       }
       return true
     }
+    if(event.data?.type === "preview-frame-aggregate-options") {
+      if(Array.isArray(event.data.widgets)) this.acceptLiveAggregateOptions(event.data.widgets)
+      return true
+    }
     if(event.data?.type === "preview-frame-base-widgets") {
       this.livePreview.baseWidgetStates.clear()
       for(const widget of Array.isArray(event.data.widgets) ? event.data.widgets : []) {
@@ -1744,6 +1794,7 @@ export class DomEditor extends LitElement {
           this.livePreview.baseWidgetStates.set(JSON.stringify(widget.path), widget)
         }
       }
+      this.syncLiveAggregates()
       return true
     }
     if(event.data?.type === "preview-frame-positions") {
@@ -1751,6 +1802,7 @@ export class DomEditor extends LitElement {
         typeof widget?.path === "string" && Number.isFinite(widget.x) && Number.isFinite(widget.y)
           ? [{path: widget.path, x: widget.x, y: widget.y}] : [])
       this.updateLiveWidgetAffordances()
+      this.syncLiveAggregates()
       return true
     }
     return false
@@ -2485,6 +2537,9 @@ export class DomEditor extends LitElement {
     this.liveStatesAtStep.clear()
     this.resetLiveStateCache()
     this.liveSelectedWidgetLearners.clear()
+    this.liveThumbnailWidgets.clear()
+    this.liveSelectedAggregates.clear()
+    this.liveAggregateOptions.clear()
   }
 
   private async enterPreview() {
@@ -2589,7 +2644,10 @@ export class DomEditor extends LitElement {
       this.resetLivePlayback()
       this.connectLiveSession(session, "host", sessionToken ? this.liveSessionShareLink(sessionId, sessionToken) : "")
       const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
-      if(frame?.contentDocument) this.livePreview.observeHost(frame, frame.contentDocument, () => this.updateLiveWidgetAffordances())
+      if(frame?.contentDocument) this.livePreview.observeHost(frame, frame.contentDocument, () => {
+        this.updateLiveWidgetAffordances()
+        this.syncLiveAggregates()
+      })
       else if(this.previewOpaque) this.configurePreviewFrame()
     }
     catch(error) {

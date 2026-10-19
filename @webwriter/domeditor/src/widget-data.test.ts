@@ -406,6 +406,39 @@ describe("scoped widget data", () => {
     resolve({doc})
   })
 
+  it("exposes only the opaque connection scope on initial, remote, and late datachange events", async () => {
+    const root = document.createElement("main")
+    root.innerHTML = html("shared", '{"choice":"default"}')
+    const block = root.querySelector<HTMLScriptElement>("script")!
+    const doc = new Y.Doc()
+    doc.getMap("data").set("value", {choice: "initial"})
+    const connection = {doc, scopeId: "opaque-scope", accessToken: "private-token", resolverMetadata: {secret: true}}
+    const bindings = new WidgetDataBindings(root, supports, {
+      resolve: () => connection,
+    })
+    cleanups.push(() => { bindings.destroy(); doc.destroy() })
+    const changes: {detail: unknown; value: unknown}[] = []
+    block.addEventListener("datachange", event => {
+      changes.push({detail: (event as CustomEvent).detail, value: JSON.parse(block.textContent!)})
+    })
+    bindings.sync()
+
+    expect(changes).toEqual([{detail: {mode: "all", scopeId: "opaque-scope"}, value: {choice: "initial"}}])
+    doc.transact(() => doc.getMap("data").set("value", {choice: "remote"}), "remote")
+    await tick()
+    expect(changes[1]).toEqual({detail: {mode: "all", scopeId: "opaque-scope"}, value: {choice: "remote"}})
+
+    const request = new CustomEvent("datarequest", {bubbles: true, cancelable: true})
+    block.dispatchEvent(request)
+    expect(request.defaultPrevented).toBe(true)
+    expect(changes[2]).toEqual({detail: {mode: "all", scopeId: "opaque-scope"}, value: {choice: "remote"}})
+    for(const change of changes) {
+      expect(Object.keys(change.detail as object).sort()).toEqual(["mode", "scopeId"])
+      expect(change.detail).not.toHaveProperty("accessToken")
+      expect(change.detail).not.toHaveProperty("resolverMetadata")
+    }
+  })
+
   it("replays a binding error to a late requester and ignores requests from nested non-widgets", async () => {
     const root = document.createElement("main")
     root.innerHTML = `${html()}<section><script type="application/json" slot="data">{}</script></section>`

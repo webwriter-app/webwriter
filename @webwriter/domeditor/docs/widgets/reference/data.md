@@ -19,6 +19,8 @@ Scoped data requires `sharedData: true` in the widget's editing configuration an
 
 Wait for the initial `datachange` before writing. Scope changes retain the old scope and load the destination's existing state or authored defaults, without copying answers.
 
+The [Aggregated View interface](aggregated-view.md) turns ready participant snapshots into independent samples for aggregate views. Shared group samples use the resolver's `scopeId`.
+
 ## Events
 
 These events originate on the data block and bubble through the widget. Filter by the current direct block so nested widget events are not mistaken for your own.
@@ -27,7 +29,7 @@ These events originate on the data block and bubble through the widget. Filter b
 |---|---|---|
 | `datarequest` | — | Dispatch as a bubbling, cancelable event on the current direct data block to receive its current state. The runtime prevents the default when it owns the block. |
 | `datapending` | `{mode: "individual" \| "all" \| "group"}` | A new binding is resolving. Fires before its initial `datachange`, including after a sharing or grouping scope change. |
-| `datachange` | `{mode: "individual" \| "all" \| "group"}` | Initial state or an accepted local/remote snapshot has been installed. Render without writing back. |
+| `datachange` | `{mode: "individual" \| "all" \| "group", scopeId?: string}` | Initial state or an accepted local/remote snapshot has been installed. `scopeId` is present when the connection supplies it. Render without writing back. |
 | `dataerror` | `{message: string}` | Invalid data, mode, or a connection failure. Invalid writes do not replace the accepted persisted state. |
 | `datapersistence` | `{state: "pending" \| "saved" \| "error", message?: string}` | Offline save status. `saved` follows a committed IndexedDB transaction; `datachange` alone does not mean the change has been saved. A late `datarequest` also replays this status. |
 

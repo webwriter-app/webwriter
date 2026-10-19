@@ -2,6 +2,8 @@ import {serializeDoctype} from "./serialization"
 import {nodeAtPath, pathFromNode} from "./utility"
 import {stripActiveContent} from "./active-content"
 import type {LiveSession, LiveSessionRegion as SessionRegion, LiveSessionWidgetState} from "./live-session"
+import type {LiveWidgetAggregateInput, WidgetDataSnapshot} from "./widget-aggregate"
+import {WidgetAggregateViews} from "./widget-aggregate-view"
 
 type PublishPreviewStep = (step: Parameters<LiveSession["publish"]>[0]) => void
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
@@ -27,17 +29,18 @@ export {clearEditorArtifacts as cleanPreviewEditorArtifacts} from "./editor-arti
 /** Apply one learner/base widget snapshot in either preview realm. */
 export function applyPreviewWidgetSnapshot(previewDocument: Document, snapshot: LiveSessionWidgetState) {
   const path = snapshot.path
-  if(!Array.isArray(path) || !path.every(index => Number.isInteger(index) && index >= 0)) return null
-  let current = previewElementAtPath(path, previewDocument)
-  if(!current) return null
+  if(!snapshot.id && (!Array.isArray(path) || !path.every(index => Number.isInteger(index) && index >= 0))) return null
+  let current = snapshot.id ? previewDocument.getElementById(snapshot.id) : previewElementAtPath(path!, previewDocument)
+  if(!current?.localName.includes("-")) return null
   if(typeof snapshot.html === "string" && snapshot.html && current.outerHTML !== snapshot.html) {
     const template = previewDocument.createElement("template")
     template.innerHTML = snapshot.html.trim()
     stripActiveContent(template.content)
     const replacement = template.content.firstElementChild
-    if(!replacement || replacement.localName !== current.localName || replacement.namespaceURI !== current.namespaceURI) return null
+    if(!replacement || replacement.localName !== current.localName || replacement.namespaceURI !== current.namespaceURI
+      || snapshot.id && replacement.id !== snapshot.id) return null
     current.replaceWith(replacement)
-    current = previewElementAtPath(path, previewDocument)
+    current = replacement
   }
   if(current && snapshot.state && typeof snapshot.state === "object" && !Array.isArray(snapshot.state)) {
     const nativePrototype = (previewDocument.defaultView as unknown as {HTMLElement?: typeof HTMLElement} | null)?.HTMLElement?.prototype
@@ -48,6 +51,8 @@ export function applyPreviewWidgetSnapshot(previewDocument: Document, snapshot: 
       catch { /* A read-only widget property is left untouched. */ }
     }
   }
+  const block = current?.querySelector(':scope > script[slot="data"]')
+  if(block && snapshot.data?.status === "ready" && typeof snapshot.data.text === "string") block.textContent = snapshot.data.text
   return current
 }
 
@@ -61,6 +66,57 @@ export class LivePreview {
   private pendingMutations: MutationRecord[] = []
   private documentUpdateQueued = false
   private generation = 0
+  private data = new WeakMap<Element, {signature: string; snapshot: WidgetDataSnapshot}>()
+  private aggregateViews?: WidgetAggregateViews
+
+  showAggregates(previewDocument: Document, inputs: LiveWidgetAggregateInput[]) {
+    this.aggregateViews ??= new WidgetAggregateViews(previewDocument)
+    return this.aggregateViews.update(inputs, input => {
+      const widget = input.id ? previewDocument.getElementById(input.id) : previewElementAtPath(input.path, previewDocument)
+      return widget?.localName.includes("-") ? widget : null
+    })
+  }
+
+  private dataSignature(widget: Element, block: Element) {
+    return JSON.stringify([widget.id, widget.getAttribute("shared"), block.getAttribute("type"),
+      Array.from(widget.childNodes).filter(node => node.nodeType === 7).map(node => node.nodeValue)])
+  }
+
+  private captureWidgetData(widget: Element): WidgetDataSnapshot | undefined {
+    const block = widget.querySelector<HTMLScriptElement>(':scope > script[slot="data"]:not([src])')
+    if(!block || !["application/json", "application/xml"].includes(block.type)) return
+    const format = block.type === "application/json" ? "json" : "xml"
+    const signature = this.dataSignature(widget, block)
+    let current = this.data.get(block)
+    if(current?.signature !== signature) {
+      this.data.delete(block)
+      const Request = widget.ownerDocument.defaultView?.Event ?? Event
+      const request = new Request("datarequest", {bubbles: true, cancelable: true})
+      block.dispatchEvent(request)
+      current = this.data.get(block)
+      if(!current && request.defaultPrevented) {
+        current = {signature, snapshot: {status: "pending", format, mode: "individual"}}
+        this.data.set(block, current)
+      }
+    }
+    if(current && current.snapshot.mode !== "local") return {...current.snapshot}
+    const text = block.textContent ?? ""
+    try {
+      if(format === "json") JSON.parse(text || "{}")
+      else {
+        const Parser = widget.ownerDocument.defaultView?.DOMParser ?? DOMParser
+        if(new Parser().parseFromString(text, "application/xml").querySelector("parsererror")) throw new TypeError("Invalid XML")
+      }
+      const snapshot: WidgetDataSnapshot = {status: "ready", format, mode: "local", text}
+      this.data.set(block, {signature, snapshot})
+      return snapshot
+    }
+    catch {
+      const snapshot: WidgetDataSnapshot = {status: "error", format, mode: "local"}
+      this.data.set(block, {signature, snapshot})
+      return snapshot
+    }
+  }
 
   private seedWidgetPaths(previewDocument: Document) {
     this.widgetPaths = new WeakMap()
@@ -94,7 +150,9 @@ export class LivePreview {
     return previewWidgetElements(previewDocument).flatMap(widget => {
       const path = this.widgetPaths.get(widget) ?? previewElementPath(widget, previewDocument)
       if(path && !this.widgetPaths.has(widget)) this.widgetPaths.set(widget, path)
-      return path ? [{path, html: widget.outerHTML, state: this.captureWidgetPublicState(widget)}] : []
+      const data = this.captureWidgetData(widget)
+      return path ? [{...(widget.id ? {id: widget.id} : {}), path, html: widget.outerHTML,
+        ...(data ? {data} : {state: this.captureWidgetPublicState(widget)})}] : []
     })
   }
 
@@ -154,6 +212,9 @@ export class LivePreview {
     this.cleanup.splice(0).forEach(cleanup => cleanup())
     this.pendingMutations = []
     this.documentUpdateQueued = false
+    this.data = new WeakMap()
+    this.aggregateViews?.destroy()
+    this.aggregateViews = undefined
   }
 
   observeLearner(frame: Pick<HTMLIFrameElement, "contentWindow">, previewDocument: Document, publish: PublishPreviewStep) {
@@ -234,6 +295,33 @@ export class LivePreview {
       widgets: this.captureWidgetStates(previewDocument),
     })
 
+    let dataQueued = false
+    const dataChanged = (event: Event) => {
+      const block = event.target as HTMLScriptElement | null
+      const host = block?.parentElement
+      if(!block || block.nodeType !== 1 || block.localName !== "script" || block.getAttribute("slot") !== "data"
+        || !host?.localName.includes("-") || host.querySelector(':scope > script[slot="data"]') !== block
+        || block.hasAttribute("src") || !["application/json", "application/xml"].includes(block.type)) return
+      const detail = (event as CustomEvent).detail
+      const previous = this.data.get(block)?.snapshot
+      const mode = detail?.mode ?? previous?.mode ?? "individual"
+      if(!["individual", "all", "group", "local"].includes(mode)) return
+      this.data.set(block, {signature: this.dataSignature(host, block), snapshot: {
+        status: event.type === "datachange" ? "ready" : event.type === "datapending" ? "pending" : "error",
+        format: block.type === "application/json" ? "json" : "xml", mode,
+        ...(typeof detail?.scopeId === "string" ? {scopeId: detail.scopeId} : {}),
+        ...(event.type === "datachange" ? {text: block.textContent ?? ""} : {}),
+      }})
+      if(dataQueued) return
+      dataQueued = true
+      queueMicrotask(() => {
+        dataQueued = false
+        if(generation === this.generation) widget()
+      })
+    }
+
+    for(const type of ["datachange", "datapending", "dataerror"]) listen(previewDocument, type, dataChanged)
+
     listen(previewDocument, "pointermove", pointer, {capture: true, passive: true})
     listen(previewDocument, "pointerdown", pointer, {capture: true, passive: true})
     listen(previewDocument, "click", click, true)
@@ -286,10 +374,12 @@ export class LivePreview {
 
   observeHost(frame: Pick<HTMLIFrameElement, "contentWindow">, previewDocument: Document, update: () => void) {
     this.disconnect()
+    const generation = this.generation
     this.seedWidgetPaths(previewDocument)
     previewWidgetElements(previewDocument).forEach(widget => {
       const path = previewElementPath(widget, previewDocument)
       if(path) this.baseWidgetStates.set(JSON.stringify(path), {
+        ...(widget.id ? {id: widget.id} : {}),
         path,
         html: widget.outerHTML,
         state: this.captureWidgetPublicState(widget),
@@ -300,6 +390,10 @@ export class LivePreview {
     view?.addEventListener("resize", update)
     this.cleanup.push(() => view?.removeEventListener("scroll", update))
     this.cleanup.push(() => view?.removeEventListener("resize", update))
+    for(const name of new Set(previewWidgetElements(previewDocument).map(widget => widget.localName))) {
+      if(view?.customElements.get(name)) continue
+      void view?.customElements.whenDefined(name).then(() => { if(generation === this.generation) update() })
+    }
     update()
   }
 }

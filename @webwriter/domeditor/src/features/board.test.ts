@@ -518,6 +518,9 @@ describe("Board layout", () => {
     const sheets = document.adoptedStyleSheets
     const layout = sheets.find(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes("body.ww-board::after")))!
     expect(layout).toBeDefined()
+    // The canonical layout must also work when CSP blocks authored <style>.
+    expect(Array.from(layout.cssRules).some(rule => (rule as CSSStyleRule).selectorText === "body.ww-board"
+      && (rule as CSSStyleRule).style.display === "flex")).toBe(true)
     const controls = editor.appendix.querySelector<HTMLElement>("[part=board-actions]")!
     expect(controls.querySelector('[part=board-add-card]')?.textContent).toBe("+ Add card")
     expect(controls.querySelector('[part=board-add-column]')?.textContent).toBe("+ Add column")

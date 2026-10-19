@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {applyPreviewWidgetSnapshot, cleanPreviewEditorArtifacts, LivePreview, previewElementAtPath} from "./live-preview"
+import {WidgetDataBindings} from "./widget-data"
+import * as Y from "yjs"
 
 const previews: LivePreview[] = []
 afterEach(() => {
@@ -102,5 +104,119 @@ describe("live preview lifecycle", () => {
     preview.disconnect()
     owner.dispatchEvent(new Event("input"))
     expect(publish).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("live widget data snapshots", () => {
+  it("captures actual scoped Yjs updates and undo/redo without changing authored defaults", async () => {
+    const {owner, frame, preview} = mount()
+    owner.body.innerHTML = '<demo-widget id="quiz" shared><script type="application/json" slot="data">{"choice":"a"}</script></demo-widget>'
+    const doc = new Y.Doc()
+    const bindings = new WidgetDataBindings(owner.body, element => element.localName === "demo-widget", {
+      resolve: () => ({doc, scopeId: "public-room"}),
+    })
+    const publish = vi.fn()
+    try {
+      preview.observeLearner(frame, owner, publish)
+      const block = owner.querySelector("script")!
+      const value = doc.getMap("data").get("value") as Y.Map<unknown>
+      doc.transact(() => value.set("remote", true), "remote")
+      await vi.waitFor(() => expect(JSON.parse(preview.captureWidgetStates(owner)[0].data!.text!)).toEqual({choice: "a", remote: true}))
+      block.textContent = '{"choice":"b","remote":true}'
+      bindings.sync()
+      await vi.waitFor(() => expect(publish.mock.calls.at(-1)?.[0].widgets[0].data.text).toContain('"choice":"b"'))
+      bindings.history("undo")!.undo()
+      await vi.waitFor(() => expect(JSON.parse(publish.mock.calls.at(-1)?.[0].widgets[0].data.text)).toEqual({choice: "a", remote: true}))
+      bindings.history("redo")!.redo()
+      await vi.waitFor(() => expect(JSON.parse(publish.mock.calls.at(-1)?.[0].widgets[0].data.text)).toEqual({choice: "b", remote: true}))
+      expect(preview.captureWidgetStates(owner)[0].data).toMatchObject({status: "ready", mode: "all", scopeId: "public-room"})
+      const copy = owner.body.cloneNode(true) as HTMLElement
+      bindings.writeDefaults(copy)
+      expect(copy.querySelector("script")?.textContent).toBe('{"choice":"a"}')
+    }
+    finally { bindings.destroy(); doc.destroy() }
+  })
+
+  it("captures portable local JSON/XML data and authored IDs instead of private fields", () => {
+    const {owner, preview} = mount()
+    owner.body.innerHTML = '<demo-widget id="quiz"><script type="application/json" slot="data">{"choice":"a"}</script></demo-widget><xml-widget id="xml"><script type="application/xml" slot="data"><answer choice="b"/></script></xml-widget>'
+    ;(owner.getElementById("quiz") as unknown as {privateAnswer: number}).privateAnswer = 42
+    const snapshots = preview.captureWidgetStates(owner)
+    expect(snapshots[0]).toMatchObject({id: "quiz", data: {status: "ready", mode: "local", format: "json", text: '{"choice":"a"}'}})
+    expect(snapshots[0].state).toBeUndefined()
+    expect(snapshots[1]).toMatchObject({id: "xml", data: {status: "ready", mode: "local", format: "xml", text: '<answer choice="b"/>'}})
+    owner.querySelector("script")!.textContent = "{"
+    expect(preview.captureWidgetStates(owner)[0].data).toEqual({status: "error", mode: "local", format: "json"})
+  })
+
+  it("requests accepted managed data, tracks scope changes, and never reads pending writes", async () => {
+    const {owner, frame, preview} = mount()
+    owner.body.innerHTML = '<demo-widget id="quiz"><script type="application/json" slot="data">{"choice":"a"}</script></demo-widget>'
+    const block = owner.querySelector("script")!
+    const notify = (type: string, detail: object) => block.dispatchEvent(new CustomEvent(type, {bubbles: true, detail}))
+    const request = vi.fn((event: Event) => {
+      event.preventDefault()
+      notify("datachange", {mode: "group", scopeId: "group-1"})
+    })
+    block.addEventListener("datarequest", request)
+    const publish = vi.fn()
+    preview.observeLearner(frame, owner, publish)
+    expect(preview.captureWidgetStates(owner)[0].data).toMatchObject({status: "ready", mode: "group", scopeId: "group-1", text: '{"choice":"a"}'})
+    expect(request).toHaveBeenCalledTimes(1)
+    block.textContent = '{"choice":"unaccepted"}'
+    expect(preview.captureWidgetStates(owner)[0].data?.text).toBe('{"choice":"a"}')
+    notify("datapending", {mode: "all"})
+    expect(preview.captureWidgetStates(owner)[0].data).toEqual({status: "pending", format: "json", mode: "all"})
+    notify("dataerror", {message: "Not ready"})
+    expect(preview.captureWidgetStates(owner)[0].data?.status).toBe("error")
+    block.textContent = '{"choice":"remote"}'
+    notify("datachange", {mode: "all", scopeId: "everyone"})
+    await Promise.resolve()
+    expect(publish.mock.calls.at(-1)?.[0].widgets[0].data).toMatchObject({status: "ready", mode: "all", scopeId: "everyone", text: '{"choice":"remote"}'})
+    preview.disconnect()
+    const count = publish.mock.calls.length
+    notify("datachange", {mode: "all"})
+    await Promise.resolve()
+    expect(publish).toHaveBeenCalledTimes(count)
+  })
+
+  it("observes accepted remote changes and undo without requiring a click or input", async () => {
+    const {owner, frame, preview} = mount()
+    owner.body.innerHTML = '<demo-widget id="quiz"><script type="application/json" slot="data">{"choice":"a"}</script></demo-widget>'
+    const publish = vi.fn()
+    preview.observeLearner(frame, owner, publish)
+    const block = owner.querySelector("script")!
+    for(const choice of ["remote", "a", "remote"]) {
+      block.textContent = JSON.stringify({choice})
+      block.dispatchEvent(new CustomEvent("datachange", {bubbles: true, detail: {mode: "individual"}}))
+      await Promise.resolve()
+      expect(publish.mock.calls.at(-1)?.[0].widgets[0].data.text).toBe(JSON.stringify({choice}))
+    }
+  })
+
+  it("invalidates data when a block is replaced and ignores incidental shadow events", async () => {
+    const {owner, frame, preview} = mount()
+    owner.body.innerHTML = '<demo-widget id="quiz"><script type="application/json" slot="data">{"choice":"a"}</script></demo-widget>'
+    const publish = vi.fn()
+    preview.observeLearner(frame, owner, publish)
+    const widget = owner.getElementById("quiz")!
+    const shadow = widget.attachShadow({mode: "open"})
+    shadow.innerHTML = '<script slot="data" type="application/json">{"private":true}</script>'
+    shadow.querySelector("script")!.dispatchEvent(new CustomEvent("datachange", {bubbles: true, composed: true, detail: {mode: "all"}}))
+    expect(preview.captureWidgetStates(owner)[0].data?.mode).toBe("local")
+    widget.innerHTML = '<script type="application/json" slot="data">{"choice":"replacement"}</script>'
+    expect(preview.captureWidgetStates(owner)[0].data?.text).toBe('{"choice":"replacement"}')
+  })
+
+  it("applies ID-addressed snapshots after sibling insertion without modifying another widget", () => {
+    const {owner} = mount()
+    owner.body.innerHTML = '<p>Inserted</p><demo-widget id="quiz"><script type="application/json" slot="data">{}</script></demo-widget><demo-widget id="other"></demo-widget>'
+    const result = applyPreviewWidgetSnapshot(owner, {id: "quiz", path: [0], data: {status: "ready", mode: "individual", format: "json", text: '{"choice":"a"}'}})
+    expect(result?.id).toBe("quiz")
+    expect(owner.querySelector("p")?.textContent).toBe("Inserted")
+    expect(owner.getElementById("other")?.innerHTML).toBe("")
+    expect(owner.getElementById("quiz")?.querySelector("script")?.textContent).toBe('{"choice":"a"}')
+    owner.getElementById("quiz")!.remove()
+    expect(applyPreviewWidgetSnapshot(owner, {id: "quiz", path: [0], state: {answer: "bad"}})).toBeNull()
   })
 })

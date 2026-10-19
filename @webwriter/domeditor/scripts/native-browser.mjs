@@ -91,6 +91,7 @@ const expectedChecks = [
   "ribbon dropdowns join their triggers without gaps at viewport edges",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
+  "bundled layouts render under the strict editor CSP without widgets",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
@@ -110,11 +111,12 @@ const performanceMode = process.argv.includes("--performance")
 const widgetStateDiagnostics = process.argv.includes("--widget-state-diagnostics")
 const widgetStateMode = process.argv.includes("--widget-state-benchmark") || widgetStateDiagnostics
 const widgetStorageMode = process.argv.includes("--widget-data-storage")
+const widgetAggregationMode = process.argv.includes("--widget-aggregation")
 const importMapMode = process.argv.includes("--import-map")
 const smoke = process.argv.includes("--smoke")
 const checkFilter = process.argv.find(argument => argument.startsWith("--filter="))?.slice("--filter=".length)
 const filteredChecks = checkFilter ? expectedChecks.filter(name => name.includes(checkFilter)) : expectedChecks
-if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode || performanceMode || widgetStateMode || widgetStorageMode)) throw new Error("The filter must match a native check")
+if(checkFilter && (!filteredChecks.length || smoke || mathVisual || importMapMode || performanceMode || widgetStateMode || widgetStorageMode || widgetAggregationMode)) throw new Error("The filter must match a native check")
 const browserArgument = process.argv.find(argument => argument.startsWith("--browser="))?.slice("--browser=".length)
 const browserName = browserArgument ?? "chromium"
 if(!["chromium", "firefox", "webkit"].includes(browserName)) throw new Error(`Unsupported native browser: ${browserName}`)
@@ -214,7 +216,7 @@ let liveServer
 try {
   await vite.listen()
   let liveServerURL
-  if(!smoke && !mathVisual && !importMapMode && !performanceMode && !widgetStateMode && !widgetStorageMode
+  if(!smoke && !mathVisual && !importMapMode && !performanceMode && !widgetStateMode && !widgetStorageMode && !widgetAggregationMode
     && filteredChecks.some(name => name.startsWith("standalone live learners"))) {
     const {createDevServer} = await import("../dev-server/server.mjs")
     liveServer = await createDevServer({vite: false, port: 0, dataDirectory: join(profile, "live-session")})
@@ -222,7 +224,7 @@ try {
     liveServerURL = address.url.replace(/^http/, "ws")
   }
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}${liveServerURL ? `&liveServer=${encodeURIComponent(liveServerURL)}` : ""}`
+  const url = `http://127.0.0.1:${port}/tests/${widgetAggregationMode ? "widget-aggregation" : widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}${liveServerURL ? `&liveServer=${encodeURIComponent(liveServerURL)}` : ""}`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
@@ -246,7 +248,8 @@ try {
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
   const checks = Array.isArray(result?.checks) ? result.checks : []
-  const valid = !result?.error && (widgetStorageMode ? checks.length === 15 && result.samples?.length === 72 && result.paced?.length === 1
+  const valid = !result?.error && (widgetAggregationMode ? checks.length === 13 && checks.every(check => typeof check?.name === "string")
+    : widgetStorageMode ? checks.length === 15 && result.samples?.length === 72 && result.paced?.length === 1
     : widgetStateMode ? checks.length === 1 && checks[0].name === "widget state benchmark"
     && checks[0].samples?.length === (widgetStateDiagnostics ? 30 : 180) && result.paced?.length === (widgetStateDiagnostics ? 0 : 27)
     : performanceMode ? checks.length === 5 && ["hover float candidates", "local and remote reconciliation", "frame snapshot processing", "unchanged widget data", "catalog rendering and Lit settling"].every(name => checks.some(check => check?.name === name))
