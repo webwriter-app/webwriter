@@ -428,6 +428,36 @@ describe("settings panel", () => {
     expect(save.hasAttribute("data-recording")).toBe(true)
   })
 
+  it("keeps the settings dialog open when Escape cancels shortcut recording", async () => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    await (ribbon as any).showRibbonDialog("settings")
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!
+    const panel = dialog.querySelector<SettingsPanel>("settings-panel")!
+    await panel.updateComplete
+    const save = panel.shadowRoot!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Configure shortcut for Save"]',
+    )!
+    const originalShortcut = panel.settings.shortcuts["document.save"]
+    save.click()
+    await panel.updateComplete
+    save.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    }))
+    const cancel = new Event("cancel", {cancelable: true})
+    dialog.dispatchEvent(cancel)
+    await panel.updateComplete
+
+    expect(cancel.defaultPrevented).toBe(true)
+    expect(dialog.open).toBe(true)
+    expect(panel.settings.shortcuts["document.save"]).toBe(originalShortcut)
+    expect(save.hasAttribute("data-recording")).toBe(false)
+  })
+
   it("resets and persists settings through the ribbon", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "File"
