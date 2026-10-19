@@ -1109,6 +1109,8 @@ export class SelectionFeature extends EditorFeature {
     const captured = this.captureSelectedElement
     if(!captured || isAppendixInteraction(event) || isFormControlInteraction(event)
       || isWidgetShadowInteraction(event, this.editor.schema)) return
+    if(captured instanceof HTMLMediaElement && captured.controls && event instanceof KeyboardEvent
+      && (event.key === " " || event.key === "Enter") && event.composedPath().includes(captured)) return
     const selection = document.getSelection()
     if(selection?.anchorNode && selection.focusNode
       && captured.contains(selection.anchorNode) && captured.contains(selection.focusNode)) return
