@@ -1939,21 +1939,20 @@ await check("tiny images open media inputs in a speech bubble", async () => {
   fixture.append(picture)
   const placeholder = editor.features.media.placeholder
   try {
-    $.selectElement(picture)
-    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    editor.features.selection.captureElement(picture)
     await layoutFrame()
     placeholder.showFor(picture)
     const expand = placeholder.root.querySelector<HTMLButtonElement>(".expand")!
     const content = placeholder.root.querySelector<HTMLElement>(".content")!
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
     const host = placeholder.element.getBoundingClientRect(), button = expand.getBoundingClientRect()
-    assert(getComputedStyle(expand).display === "grid" && getComputedStyle(content).display === "none", "tiny image did not reduce to one button")
+    assert(getComputedStyle(expand).display === "grid", "tiny image did not retain its source button")
+    assert(content.matches(":popover-open") && placeholder.root.activeElement === input, "selecting a tiny image did not open and focus its URL input")
     assert(button.left >= host.left && button.right <= host.right && button.top >= host.top && button.bottom <= host.bottom, "tiny image button escapes its image")
     const icon = expand.querySelector("svg")!.getBoundingClientRect()
     assert(icon.left >= button.left && icon.right <= button.right && icon.top >= button.top && icon.bottom <= button.bottom, "tiny image button clips its icon")
     const passive = getComputedStyle(picture, "::after")
     assert(parseFloat(passive.width) > 0 && parseFloat(passive.width) <= 32 && parseFloat(passive.height) > 0 && parseFloat(passive.height) <= 32 && passive.backgroundSize === "contain", `passive image icon does not fit 32px: ${passive.width}x${passive.height}`)
-    expand.click()
     assert(placeholder.root.activeElement === input, `media bubble lost focus immediately: ${document.activeElement?.localName}, ${editor.appendix.activeElement?.localName}`)
     await layoutFrame()
     assert(content.matches(":popover-open"), "media inputs did not open in the top layer")
@@ -2596,7 +2595,7 @@ await check("leaving an empty inline formula removes it without moving the text 
 
 await check("audio insertion retains element selection at the document start", async () => {
   const frame = document.createElement("iframe")
-  frame.src = "/"
+  frame.src = "/editor/"
   document.body.append(frame)
   try {
     let app: DomEditor | null = null

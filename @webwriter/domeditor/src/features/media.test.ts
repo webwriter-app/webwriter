@@ -40,6 +40,80 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each([
+    '<picture><!--keep--><img></picture>', '<img>', '<audio controls=""></audio>',
+    '<video controls=""></video>', '<iframe></iframe>', '<embed>', '<object></object>',
+  ])("focuses the URL input when selecting empty media: %s", async html => {
+    document.body.innerHTML = `<p>before</p>${html}<p>after</p>`
+    const target = document.querySelector("picture, img, audio, video, iframe, embed, object")!
+    editor.features.selection.captureElement(target)
+    await Promise.resolve()
+
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    expect(placeholder.target).toBe(target)
+    expect(placeholder.root.activeElement).toBe(input)
+    expect(editor.features.selection.captureSelectedElement).toBe(target)
+    expect(editor.toHTML(true)).toBe(`<p>before</p>${html}<p>after</p>`)
+
+    const file = placeholder.root.querySelector<HTMLButtonElement>(".file")!
+    file.focus()
+    editor.features.media.refreshPlaceholder()
+    expect(placeholder.root.activeElement).toBe(file)
+  })
+
+  it("opens a compact media popover and focuses its URL input on selection", () => {
+    document.body.innerHTML = "<picture><img></picture>"
+    const image = document.querySelector("picture")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 32, 32))
+    const placeholder = editor.features.media.placeholder
+    const content = placeholder.root.querySelector<HTMLElement>(".content")!
+    content.showPopover = vi.fn()
+
+    editor.features.selection.captureElement(image)
+    editor.features.media.refreshPlaceholder()
+
+    expect(content.showPopover).toHaveBeenCalledOnce()
+    expect(placeholder.element).toHaveAttribute("data-popup-open")
+    expect(placeholder.root.activeElement).toBe(placeholder.root.querySelector(".url"))
+  })
+
+  it("focuses compact media after the selecting click and cancels pending focus on removal", async () => {
+    document.body.innerHTML = "<picture><img></picture>"
+    const image = document.querySelector("picture")!
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 32, 32))
+    const placeholder = editor.features.media.placeholder
+    const content = placeholder.root.querySelector<HTMLElement>(".content")!
+    content.showPopover = vi.fn()
+
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    expect(content.showPopover).not.toHaveBeenCalled()
+    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    image.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+    await Promise.resolve()
+    expect(content.showPopover).toHaveBeenCalledOnce()
+    expect(placeholder.root.activeElement).toBe(placeholder.root.querySelector(".url"))
+
+    placeholder.hide()
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
+    image.remove()
+    image.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    window.dispatchEvent(new MouseEvent("click"))
+    await Promise.resolve()
+    expect(content.showPopover).toHaveBeenCalledOnce()
+  })
+
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
+    "focuses the URL input after inserting %s", async media => {
+      editor.features.media.actions.insertMedia({type: "insertMedia", media})
+      await Promise.resolve()
+
+      const placeholder = editor.features.media.placeholder
+      expect(placeholder.target).toBe(editor.features.selection.captureSelectedElement)
+      expect(placeholder.root.activeElement).toBe(placeholder.root.querySelector(".url"))
+    },
+  )
+
   it.each(['<video></video>', '<video src=" "></video>', '<video><source src=" "></video>'])("does not crop an empty video: %s", html => {
     document.body.innerHTML = html
     const video = document.querySelector("video")!

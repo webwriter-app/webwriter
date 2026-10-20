@@ -6005,6 +6005,10 @@ describe("DomEditor.execute()", () => {
   })
 
   it.each([
+    ["Audio", {type: "insertElement", tag: "audio"}],
+    ["Video", {type: "insertElement", tag: "video"}],
+    ["element:picture", {type: "insertElement", tag: "picture"}],
+    ["element:iframe", {type: "insertElement", tag: "iframe"}],
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
     ["selected-media-file", {type: "selectMediaFile"}],

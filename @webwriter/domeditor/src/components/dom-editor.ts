@@ -4116,7 +4116,9 @@ export class DomEditor extends LitElement {
     if(label?.startsWith("element:")) {
       const tag = label.slice("element:".length)
       if(insertionMenuItems.some(item => item.tag === tag)) {
-        void this.execute({type: "insertElement", tag}).finally(() => this.focusEditor())
+        void this.execute({type: "insertElement", tag}).finally(() => {
+          if(!isMediaType(tag)) this.focusEditor()
+        })
       }
       else this.focusEditor()
       return
@@ -4355,9 +4357,12 @@ export class DomEditor extends LitElement {
       void this.setHTMLMode(true)
       return
     }
-    if(!item.tag) return
+    const tag = item.tag
+    if(!tag) return
 
-    void this.execute({type: "insertElement", tag: item.tag}).finally(() => this.focusEditor())
+    void this.execute({type: "insertElement", tag}).finally(() => {
+      if(!isMediaType(tag)) this.focusEditor()
+    })
   }
 
   private selectLocalPackage(name: string) {

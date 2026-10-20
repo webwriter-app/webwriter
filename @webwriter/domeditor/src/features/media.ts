@@ -327,14 +327,7 @@ class MediaPlaceholder {
     root.querySelector<HTMLButtonElement>(".expand")!.addEventListener("click", () => {
       if(!this.target?.isConnected || !this.element.hasAttribute("data-compact")) return
       if(this.element.hasAttribute("data-popup-open")) this.closePopup()
-      else {
-        this.element.setAttribute("data-popup-open", "")
-        root.querySelector(".expand")!.setAttribute("aria-expanded", "true")
-        root.querySelector<HTMLElement>(".content")!.showPopover?.()
-        this.positionPopup()
-        this.updateUrlHint()
-        url.focus({preventScroll: true})
-      }
+      else this.focusUrl()
     })
     root.querySelector<HTMLElement>(".content")!.addEventListener("toggle", event => {
       if((event as ToggleEvent).newState === "closed") this.closePopup()
@@ -401,6 +394,19 @@ class MediaPlaceholder {
   private beginInteraction() {
     this.interactionActive = true
     this.onInteractionChange?.()
+  }
+
+  focusUrl() {
+    if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)
+      || sourceEditingBlocked(this.target, this.schema)) return
+    if(this.element.hasAttribute("data-compact") && !this.element.hasAttribute("data-popup-open")) {
+      this.element.setAttribute("data-popup-open", "")
+      this.root.querySelector(".expand")!.setAttribute("aria-expanded", "true")
+      this.root.querySelector<HTMLElement>(".content")!.showPopover?.()
+      this.positionPopup()
+      this.updateUrlHint()
+    }
+    this.root.querySelector<HTMLInputElement>(".url")!.focus({preventScroll: true})
   }
 
   private closePopup() {
@@ -1219,6 +1225,9 @@ class MediaInteractionShield {
 /** Media insertion and editing. Empty media are marked only with editor
  * classes; their interactive UI lives in the BODY shadow appendix. */
 export class MediaFeature extends EditorFeature {
+  protected captureListenerTarget: EventTarget = window
+  private pointerDown = false
+  private pendingUrlFocus: Element | null = null
   private observer: MutationObserver | null = null
   private resizeObserver: ResizeObserver | null = null
   private refreshQueued = false
@@ -1480,6 +1489,8 @@ export class MediaFeature extends EditorFeature {
   }
 
   private cancelPendingShield = () => {
+    this.pointerDown = false
+    this.pendingUrlFocus = null
     if(!this.shieldReleasePending.size) return
     this.shieldReleasePending.clear()
     this.scheduleRefresh()
@@ -1535,6 +1546,8 @@ export class MediaFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.pointerDown = false
+    this.pendingUrlFocus = null
     const capture = this.mediaCapture
     this.mediaCapture = null
     capture?.controller.close()
@@ -1616,6 +1629,24 @@ export class MediaFeature extends EditorFeature {
   }
 
   captureListeners = {
+    pointerdown: (event: PointerEvent) => {
+      this.pointerDown = event.button === 0
+      this.pendingUrlFocus = null
+    },
+    pointerup: () => { this.pointerDown = false },
+    pointercancel: () => {
+      this.pointerDown = false
+      this.pendingUrlFocus = null
+    },
+    click: () => {
+      const target = this.pendingUrlFocus
+      this.pendingUrlFocus = null
+      // Open after the selecting click: native popover dismissal and a newly
+      // exposed expand button must finish before the URL input takes focus.
+      if(target) queueMicrotask(() => {
+        if(this.isEnabled && this.mediaPlaceholder?.target === target) this.mediaPlaceholder.focusUrl()
+      })
+    },
     dragover: (event: DragEvent) => {
       const data = event.dataTransfer
       if(!data || !this.mediaDropTarget(event) || !data.types.includes("Files") && !Array.from(data.items).some(item => item.kind === "file")) return
@@ -2389,8 +2420,16 @@ export class MediaFeature extends EditorFeature {
     const retained = this.mediaPlaceholder?.isInteracting ? this.mediaPlaceholder.target : null
     const shape = this.editor.features.graphic.selectedShapes.length === 1
       ? graphicShapeGeometry(this.editor.features.graphic.selectedShape) : null
-    const selected = retained ?? (shape && isGraphicImage(shape) ? shape : this.selectedMedia())
-    if(!this.mediaCapture && selected?.isConnected && isEmptyMedia(selected)) this.placeholder.showFor(selected)
+    const selected = (shape && isGraphicImage(shape) ? shape : this.selectedMedia())
+      ?? (!document.getSelection()?.rangeCount ? retained : null)
+    if(!this.mediaCapture && selected?.isConnected && isEmptyMedia(selected)) {
+      const changed = this.placeholder.target !== selected
+      this.placeholder.showFor(selected)
+      if(changed && (selected === shape || this.editor.features.selection.captureSelectedElement === selected)) {
+        if(this.pointerDown && this.placeholder.element.hasAttribute("data-compact")) this.pendingUrlFocus = selected
+        else this.placeholder.focusUrl()
+      }
+    }
     else this.placeholder.hide()
 
     return selected
