@@ -889,6 +889,11 @@ describe("DomEditor document loading", () => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("delegates camera, microphone and screen capture to the editing frame", async () => {
+    const {iframe} = await mountEditor()
+    expect(iframe.getAttribute("allow")).toBe("camera; microphone; display-capture")
+  })
+
   it("suppresses UI context menus while preserving text fields, editable content and document menus", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!

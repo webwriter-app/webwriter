@@ -7704,6 +7704,7 @@ export class DomEditor extends LitElement {
         ` : ""}
         ${this.frameStarted ? html`<iframe
           class=${documentLoading || this.documentFramePending ? "editor-frame loading" : "editor-frame"}
+          allow="camera; microphone; display-capture"
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
