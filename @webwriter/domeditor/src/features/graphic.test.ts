@@ -581,6 +581,36 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).toBe('<svg viewBox="0 0 1600 900" width="100%"></svg>')
   })
 
+  it("floats a freshly inserted empty graphic from its Move handle", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const previousStyle = document.body.getAttribute("style")
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+    try {
+      vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+      vi.spyOn(graphic, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 405))
+      const mover = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+      expect(mover.draggable).toBe(true)
+      expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+      const dataTransfer = new DataTransfer()
+      vi.spyOn(dataTransfer, "setDragImage").mockImplementation(() => {})
+      mover.dispatchEvent(imageDragEvent("dragstart", {dataTransfer, bubbles:true, composed:true, cancelable:true}))
+      expect(editor.features.manipulation.draggedElement).toBe(graphic)
+      const point = {dataTransfer, clientX:1395, clientY:695, bubbles:true, composed:true, cancelable:true}
+      document.body.dispatchEvent(imageDragEvent("dragover", point))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
+      document.body.dispatchEvent(imageDragEvent("drop", point))
+      expect(graphic).toHaveClass("ww-float-right")
+      expect(graphic.style.position).toBe("")
+      expect(graphic.children).toHaveLength(0)
+      expect(editor.features.manipulation.draggedElement).toBeNull()
+    }
+    finally {
+      if(previousStyle === null) document.body.removeAttribute("style")
+      else document.body.setAttribute("style", previousStyle)
+    }
+  })
+
   it.each([
     ["line-start-arrow", true, false],
     ["line-end-arrow", false, true],
@@ -604,6 +634,32 @@ describe("graphic editing", () => {
     }
   })
 
+  it("uses document flow when inserting a shape through its command", () => {
+    document.body.innerHTML = '<p>before</p><p></p><p>after</p>'
+    $.move(document.body.children[1])
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    expect(graphic.style.position).toBe("")
+    expect(Array.from(document.body.children).map(element => element.localName)).toEqual(["p", "svg", "p"])
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "120"})
+    expect(graphic.style.position).toBe("")
+  })
+
+  it.each(["canvas", "slides"] as const)("uses the %s placement path for shape commands", layout => {
+    expect(editor.setDocumentLayout(layout, "document")).toBe(true)
+    try {
+      const root = layout === "canvas" ? document.body : document.querySelector(".ww-slide")!
+      $.move(root, root.childNodes.length)
+      editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+      const graphic = root.querySelector("svg")!
+      expect(graphic.style.position).toBe("absolute")
+      expect(graphic.style.left).not.toBe("")
+      expect(graphic.style.top).not.toBe("")
+      expect($.selectedElement).toBe(graphic)
+    }
+    finally { editor.setDocumentLayout("document", layout) }
+  })
+
   it.each(insertionOptions)("inserts a standalone $label graphic", option => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: option.type})
 
@@ -611,10 +667,10 @@ describe("graphic editing", () => {
     const shape = graphicShapeRoots(graphic)[0]!
     expect(Number(graphic.getAttribute("width"))).toBeGreaterThan(0)
     expect(graphic).toHaveStyle({
-      position: "absolute",
       width: `${graphic.getAttribute("width")}px`,
       height: `${graphic.getAttribute("height")}px`,
     })
+    expect(graphic.style.position).toBe("")
     expect(graphic).toHaveAttribute("overflow", "visible")
     expect(graphic.getAttribute("viewBox")).not.toBe("0 0 1600 900")
     expect(shape.namespaceURI).toBe(SVG_NAMESPACE)

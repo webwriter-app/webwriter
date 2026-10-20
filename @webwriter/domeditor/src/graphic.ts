@@ -41,6 +41,14 @@ export type GraphicShapeType = typeof basicGraphicShapeOptions[number]["type"] |
 
 export type GraphicShapePaint = Partial<Record<"fill" | "stroke" | "stroke-width" | "opacity", string>>
 
+export function readGraphicShapeDrag(data: DataTransfer): {shape: GraphicShapeType, paint?: GraphicShapePaint} | null {
+  try {
+    const detail = JSON.parse(data.getData(graphicShapeDragType))
+    return detail && isGraphicShapeType(detail.shape) ? {shape: detail.shape, paint: detail.paint} : null
+  }
+  catch { return null }
+}
+
 export const defaultGraphicShapePaint: Required<GraphicShapePaint> = {
   fill: "#ffffff", stroke: "#334155", "stroke-width": "4", opacity: "1",
 }

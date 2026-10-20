@@ -41,7 +41,7 @@
 
     /* Native media defaults to inline display, where auto margins cannot
      * center it. Keep inline media within prose and widget contracts intact. */
-    :is(&, & > main, & > article, & > section) > :is(picture, img, audio[controls], video, iframe, embed, object):not([is]) {
+    :is(&, & > main, & > article, & > section) > :is(picture, img, audio[controls], video, iframe, embed, object, svg):not([is]) {
       display: block;
     }
 

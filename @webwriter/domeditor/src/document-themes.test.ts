@@ -105,10 +105,10 @@ describe("document themes", () => {
       expect(theme.source).toMatch(/@container \(600px <= width < 1200px\)\s*\{[^@]*::part\(options\)\s*\{\s*left: auto;\s*right: calc\(100% \+ var\(--ww-float-gap\)\);/)
     }
   })
-  it("blockifies ordinary top-level media in document columns across every theme", () => {
+  it("blockifies ordinary top-level media and graphics in document columns across every theme", () => {
     for(const theme of documentThemes) {
-      expect(theme.source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[\s\S]*?:is\(&,\s*& > main,\s*& > article,\s*& > section\) > :is\(picture,\s*img,\s*audio\[controls\],\s*video,\s*iframe,\s*embed,\s*object\):not\(\[is\]\)\s*\{\s*display:\s*block;/)
-      expect(editingDocumentThemeSource(theme)).toContain(":is(&, & > main, & > article, & > section) > :is(picture, img, audio[controls], video, iframe, embed, object):not([is])")
+      expect(theme.source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[\s\S]*?:is\(&,\s*& > main,\s*& > article,\s*& > section\) > :is\(picture,\s*img,\s*audio\[controls\],\s*video,\s*iframe,\s*embed,\s*object,\s*svg\):not\(\[is\]\)\s*\{\s*display:\s*block;/)
+      expect(editingDocumentThemeSource(theme)).toContain(":is(&, & > main, & > article, & > section) > :is(picture, img, audio[controls], video, iframe, embed, object, svg):not([is])")
     }
   })
   it("gives native disclosure summaries a line-height minimum in every document layout", () => {

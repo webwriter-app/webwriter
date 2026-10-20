@@ -11,6 +11,7 @@ import { $, cloneWithoutEditorMarkers, getInertDocument } from "../utility"
 import {excludedMarkNames} from "../marks"
 import {sectionNames} from "../sections"
 import {mathElement} from "../math"
+import {graphicShapeDragType} from "../graphic"
 import {elementAttributeState} from "../element-attributes"
 import {floatSideFromStyles} from "../element-styles"
 import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
@@ -1064,7 +1065,7 @@ function expectBodyToBe(html: string) {
   return expect(editor.toHTML(true)).toEqual(html)
 }
 
-function expectClassFloat(element: HTMLElement, side: "left" | "right") {
+function expectClassFloat(element: HTMLElement | SVGSVGElement, side: "left" | "right") {
   expect(element).toHaveClass(side === "left" ? "ww-float-left" : "ww-float-right")
   expect(element.style.float).toBe("")
 }
@@ -4153,6 +4154,117 @@ describe("unified content transfer", () => {
     return data
   }
 
+  function shapeData(shape = "rectangle") {
+    const data = new DataTransfer()
+    data.setData(graphicShapeDragType, JSON.stringify({shape, paint: {fill: "red", stroke: "blue", "stroke-width": "8"}}))
+    return data
+  }
+
+  it("drops painted shapes inside nested document flow with one undo step", () => {
+    editor.schema.extendWidgets([{tagName: "test-widget"}])
+    document.body.innerHTML = '<section><!--keep--><p class="authored">one <b>abcd</b> end</p><test-widget>keep widget</test-widget></section>'
+    const section = document.querySelector("section")!, widget = section.lastChild
+    const original = section.innerHTML
+    const text = document.querySelector("b")!.firstChild!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 2})
+    const data = shapeData("ellipse")
+    // Native dragover hides data values, while still exposing their types.
+    const read = vi.spyOn(data, "getData").mockReturnValue("")
+    section.dispatchEvent(transferEvent("dragover", data, {clientX: 400, clientY: 200}))
+    read.mockRestore()
+    expect(data.dropEffect).toBe("copy")
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    section.dispatchEvent(transferEvent("drop", data, {clientX: 400, clientY: 200}))
+    const graphic = section.querySelector("svg")!
+    expect(Array.from(section.children).map(node => node.localName)).toEqual(["p", "svg", "p", "test-widget"])
+    expect(section.querySelectorAll("p")[0].innerHTML).toBe('one <b>ab</b>')
+    expect(section.querySelectorAll("p")[1].innerHTML).toBe('<b>cd</b> end')
+    expect(section.lastChild).toBe(widget)
+    expect(graphic.style.position).toBe("")
+    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
+    expect(graphic.querySelector("ellipse")).toHaveAttribute("stroke", "blue")
+    expect($.selectedElement).toBe(graphic)
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.doc.undo()
+    expect(cloneWithoutEditorMarkers(section, true).innerHTML).toBe(original)
+    editor.doc.redo()
+    expect(section.querySelector("svg ellipse")).toHaveAttribute("fill", "red")
+    expect(section.querySelector("svg")!.style.position).toBe("")
+  })
+
+  it.each([[125, "left"], [175, "right"]] as const)("floats shape drops on the %s side through the element insertion path", (x, side) => {
+    editor.schema.extendWidgets([{tagName: "test-widget"}])
+    document.body.innerHTML = '<article><!--keep--><p>target</p><test-widget>keep widget</test-widget></article>'
+    const target = document.querySelector("p")!, article = target.parentElement!, widget = article.lastChild
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 2})
+    const data = shapeData()
+    target.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50}))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+    target.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 50}))
+    const graphic = article.querySelector("svg")!
+    expect(graphic.nextElementSibling).toBe(target)
+    expectClassFloat(graphic, side)
+    expect(graphic.style.position).toBe("")
+    expect(graphic.querySelector("rect")).toHaveAttribute("fill", "red")
+    expect(article.lastChild).toBe(widget)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "100"})
+    expect(graphic.style.position).toBe("")
+  })
+
+  it.each(["{", "null", '{"shape":"unknown"}'])("rejects malformed document shape payload %s and clears previews", payload => {
+    document.body.innerHTML = '<p>keep</p>'
+    const target = document.querySelector("p")!
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 1})
+    const data = shapeData()
+    target.dispatchEvent(transferEvent("dragover", data))
+    data.setData(graphicShapeDragType, payload)
+    target.dispatchEvent(transferEvent("drop", data))
+    expectBodyToBe('<p>keep</p>')
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("clears document previews when a shape drag enters an existing SVG", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!, paragraph = document.createElement("p")
+    paragraph.textContent = "target"
+    document.body.append(paragraph)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 1})
+    const data = shapeData("ellipse")
+    paragraph.dispatchEvent(transferEvent("dragover", data))
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    graphic.dispatchEvent(transferEvent("dragover", data))
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    graphic.dispatchEvent(transferEvent("drop", data))
+    expect(document.querySelectorAll("svg")).toHaveLength(1)
+    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
+    expect(paragraph).toHaveTextContent("target")
+  })
+
+  it("ignores document shape drops while locked and inside widget shadow DOM", () => {
+    editor.schema.extendWidgets([{tagName: "test-widget"}])
+    document.body.innerHTML = '<p>keep</p><test-widget></test-widget>'
+    const paragraph = document.querySelector("p")!, widget = document.querySelector("test-widget")!
+    const shadow = widget.attachShadow({mode: "open"})
+    const internal = shadow.appendChild(document.createElement("p"))
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 1})
+    const data = shapeData()
+    editor.lockEditing("shape-test")
+    paragraph.dispatchEvent(transferEvent("drop", data))
+    editor.unlockEditing("shape-test")
+    internal.dispatchEvent(transferEvent("drop", data))
+    expect(document.querySelector("svg")).toBeNull()
+    expect(shadow.querySelector("svg")).toBeNull()
+    expect(paragraph).toHaveTextContent("keep")
+  })
+
   it("drops a ribbon element at the same text caret as a widget insertion", () => {
     document.body.innerHTML = "<p>before</p><p>after</p>"
     const first = document.body.firstElementChild!
@@ -4534,6 +4646,7 @@ describe("unified content transfer", () => {
       target.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 100}))
       const inserted = target.querySelector(selector)
       expect(inserted, `${action}: ${target.innerHTML}`).not.toBeNull()
+      if(mode === "document" && action.startsWith("insert-graphic")) expect((inserted as SVGSVGElement).style.position).toBe("")
       if(action.startsWith("list-style:")) expect((inserted as HTMLElement).style.listStyleType).toBe("lower-alpha")
       if(mode !== "document") {
         let root = inserted!
@@ -4791,6 +4904,109 @@ describe("unified content transfer", () => {
     editor.features.manipulation.showFloatDropPreview(target, "left", "transfer", source)
     target.remove()
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:120, clientY:70}), source)).toBeNull()
+  })
+
+  it.each([[5, "left"], [1395, "right"]] as const)("floats gutter drops at x=%i below a mostly empty document", (x, side) => {
+    document.body.innerHTML = '<p>Only paragraph</p>'
+    document.body.style.setProperty("--ww-float-width", "280px")
+    Object.defineProperty(document.documentElement, "clientWidth", {configurable: true, value: 1400})
+    try {
+      const paragraph = document.querySelector("p")!
+      vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+      vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 30))
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 1})
+      const data = ribbonData("video")
+      const point = {clientX: x, clientY: 690}
+      document.body.dispatchEvent(transferEvent("dragover", data, point))
+      const preview = editor.appendix.querySelector("#◆float-drop-preview")
+      expect(preview?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+      document.body.dispatchEvent(transferEvent("drop", data, point))
+      const video = document.querySelector("video")!
+      expectClassFloat(video, side)
+      expect(video.nextElementSibling).toBe(paragraph)
+      expect(video.style.position).toBe("")
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+      expect(editor.toHTML(true)).not.toContain("◆")
+      editor.doc.syncFromDOM()
+      const floated = editor.toHTML(true)
+      editor.doc.undo()
+      expect(document.querySelector("video")).toBeNull()
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(floated)
+    }
+    finally { Reflect.deleteProperty(document.documentElement, "clientWidth") }
+  })
+
+  it("chooses the nearest live gutter anchor without remeasuring or floating content-column gaps", () => {
+    document.body.innerHTML = '<p>first</p><p>last</p>'
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    const paragraphs = Array.from(document.querySelectorAll("p"))
+    const firstBox = vi.spyOn(paragraphs[0], "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 30))
+    const lastBox = vi.spyOn(paragraphs[1], "getBoundingClientRect").mockReturnValue(new DOMRect(340, 200, 720, 30))
+    const source = document.createElement("video")
+    source.controls = true
+    editor.features.manipulation.prepareFloatDropTargets(source)
+    firstBox.mockClear(); lastBox.mockClear()
+    const point = new MouseEvent("mousemove", {clientX:1395, clientY:690})
+    expect(editor.features.manipulation.floatDropTarget(point, source)).toBe(paragraphs[1])
+    expect(editor.features.manipulation.floatSide(paragraphs[1], 1395)).toBe("right")
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:700, clientY:690}), source)).toBeNull()
+    paragraphs[1].remove()
+    expect(editor.features.manipulation.floatDropTarget(point, source)).toBe(paragraphs[0])
+    expect(firstBox).not.toHaveBeenCalled()
+    expect(lastBox).not.toHaveBeenCalled()
+  })
+
+  it.each(["video", "svg", "table", "test-widget"])("floats a dragged %s from an empty gutter without rebuilding its contents", tag => {
+    editor.schema.extendWidgets([{tagName: "test-widget"}])
+    document.body.innerHTML = `<p>anchor</p>${tag === "table" ? '<table><tbody><tr><td>keep</td></tr></tbody></table>' : `<${tag}><!--keep--></${tag}>`}`
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    const paragraph = document.querySelector("p")!, source = document.body.lastElementChild!
+    const children = Array.from(source.childNodes)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 30))
+    const {data} = beginDrag(source)
+    const point = {clientX:1395, clientY:690}
+    document.body.dispatchEvent(transferEvent("dragover", data, point))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
+    document.body.dispatchEvent(transferEvent("drop", data, point))
+    expect(source.nextElementSibling).toBe(paragraph)
+    expectClassFloat(source as HTMLElement | SVGSVGElement, "right")
+    expect(Array.from(source.childNodes)).toEqual(children)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+  })
+
+  it("keeps space beside a narrow nested container inside the document column out of gutter targeting", () => {
+    document.body.innerHTML = '<div><p>nested</p></div>'
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    vi.spyOn(document.querySelector("div")!, "getBoundingClientRect").mockReturnValue(new DOMRect(500, 20, 200, 30))
+    vi.spyOn(document.querySelector("p")!, "getBoundingClientRect").mockReturnValue(new DOMRect(500, 20, 200, 30))
+    const source = document.createElement("p")
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1000, clientY:690}), source)).toBeNull()
+    expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:1395, clientY:690}), source)).toBe(document.querySelector("p"))
+  })
+
+  it("floats the document's sole dragged element in a gutter while keeping self-hover inert", () => {
+    document.body.innerHTML = '<video controls style="width:120px;height:60px"></video>'
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    const source = document.querySelector("video")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(640, 20, 120, 60))
+    const {data} = beginDrag(source)
+    source.dispatchEvent(transferEvent("dragover", data, {clientX:700, clientY:50}))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    const point = {clientX:1395, clientY:690}
+    document.body.dispatchEvent(transferEvent("dragover", data, point))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
+    document.body.dispatchEvent(transferEvent("drop", data, point))
+    expectClassFloat(source, "right")
+    expect(source.parentElement).toBe(document.body)
+    expect(source.nextElementSibling?.localName).toBe("p")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
   it.each([false, true])("floats a dragged media element beside the target paragraph in reading order (copy: %s)", copy => {

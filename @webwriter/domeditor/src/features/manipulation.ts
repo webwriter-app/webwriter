@@ -2,7 +2,7 @@ import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
-import {SVG_NAMESPACE, isGraphicShapeType} from "../graphic"
+import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
@@ -37,11 +37,11 @@ import {
 /** Unit by which a collapsed selection is extended before deleting. */
 type Granularity = "character" | "word" | "line" | "block"
 
-type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, allowed?: boolean}
+type FloatDropZone = {container: Element, parent: Element, side: "left" | "right", center: number, rect: DOMRect, column?: {left: number, right: number}, allowed?: boolean}
 type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number}
 
 type FloatPreviewMeasurements = {
-  geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean}>>>
+  geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, column?: {left: number, right: number}}>>>
   clearance: Map<Element, Map<Element, {left: number, right: number}>>
 }
 
@@ -405,7 +405,16 @@ export class ManipulationFeature extends EditorFeature {
   private acceptsDrop(event: DragEvent) {
     return !this.editor.isEditingLocked && !event.defaultPrevented
       && Boolean(event.dataTransfer && Array.from(event.dataTransfer.types)
-        .some(type => ["text/html", "text/plain", this.dragType, elementDragType, ribbonInsertionDragType].includes(type)))
+        .some(type => ["text/html", "text/plain", this.dragType, elementDragType, ribbonInsertionDragType, graphicShapeDragType].includes(type)))
+  }
+
+  private insertDroppedGraphic(graphic: SVGSVGElement) {
+    this.insert(graphic)
+    if(graphic.isConnected) {
+      this.editor.features.selection.selectElement(graphic)
+      this.editor.features.graphic.refresh()
+      this.editor.postSelectionPath(true)
+    }
   }
 
   private ribbonDragTag(data: DataTransfer) {
@@ -413,6 +422,12 @@ export class ManipulationFeature extends EditorFeature {
     const tag = (action.startsWith("element:") ? action.slice("element:".length) : "")
       || data.getData(elementDragType) || Array.from(data.types).find(type => type.startsWith(`${elementDragType}-`))?.slice(elementDragType.length + 1)
     return insertionMenuItems.some(item => item.tag === tag) ? tag : null
+  }
+
+  private ribbonDragShape(data: DataTransfer) {
+    const action = data.getData(ribbonInsertionDragType)
+    const shape = action.startsWith("insert-graphic-shape:") ? action.slice("insert-graphic-shape:".length) : null
+    return isGraphicShapeType(shape) ? shape : null
   }
 
   private ribbonDropTarget(event: DragEvent) {
@@ -462,14 +477,17 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.acceptsDrop(event)) return
     const ribbonTag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
     const ribbonInsertion = event.dataTransfer && Array.from(event.dataTransfer.types).includes(ribbonInsertionDragType)
-    if((ribbonTag || ribbonInsertion) && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
+    const graphicShape = event.dataTransfer?.types.includes(graphicShapeDragType)
+    const ribbonShape = this.ribbonDragShape(event.dataTransfer!)
+    if((ribbonTag || ribbonInsertion || graphicShape) && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
       event.preventDefault()
       event.dataTransfer!.dropEffect = this.ribbonDropTarget(event) ? "copy" : "none"
       this.clearDropSelection(true)
       return
     }
     event.preventDefault()
-    const source = this.nodeDrag?.element ?? (ribbonTag ? this.ribbonElement(ribbonTag) : ribbonInsertion ? this.insertionPreviewSource ?? document.createElement("div") : null)
+    const shapeDetail = graphicShape ? readGraphicShapeDrag(event.dataTransfer!) : null
+    const source = this.nodeDrag?.element ?? (graphicShape || ribbonShape ? this.editor.features.graphic.createGraphic(shapeDetail?.shape ?? ribbonShape ?? "rectangle", shapeDetail?.paint) : ribbonTag ? this.ribbonElement(ribbonTag) : ribbonInsertion ? this.insertionPreviewSource ?? document.createElement("div") : null)
     const floatContainer = source && this.floatDropTarget(event, source)
     const beginSelection = () => {
       if(!document.body.classList.contains("◆drop-selection-active")) {
@@ -482,10 +500,10 @@ export class ManipulationFeature extends EditorFeature {
       beginSelection()
       this.editor.features.selection.clearDropCaret(true)
       this.showFloatDropPreview(floatContainer, this.floatSide(floatContainer, event.clientX), "transfer",
-        this.nodeDrag?.element ?? (ribbonTag ? source! : this.insertionPreviewSource))
+        this.nodeDrag?.element ?? (ribbonTag || graphicShape || ribbonShape ? source! : this.insertionPreviewSource))
     }
     else {
-      const range = this.dropRange(event, ribbonTag || ribbonInsertion ? null : this.nodeDrag?.element ?? null)
+      const range = this.dropRange(event, ribbonTag || ribbonInsertion || graphicShape ? null : this.nodeDrag?.element ?? null)
       if(!range) {
         event.dataTransfer!.dropEffect = "none"
         this.clearDropSelection(true)
@@ -602,7 +620,8 @@ export class ManipulationFeature extends EditorFeature {
     const contains = (rect: DOMRect) => event.clientX >= rect.left && event.clientX < rect.right
       && event.clientY >= rect.top && event.clientY < rect.bottom
     const valid = (container: Element) => root.contains(container) && container.parentElement
-      && this.floatContainer(container, source) === container
+      && (container === source && source.parentElement === root && root.children.length === 1
+        || this.floatContainer(container, source) === container)
       && (source.parentElement === container.parentElement
         || this.editor.schema.canInsert(container.parentElement, source, Array.from(container.parentElement.childNodes).indexOf(container)))
     const preview = this.floatDropPreview
@@ -612,12 +631,18 @@ export class ManipulationFeature extends EditorFeature {
     const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
     // Hover only checks stored rectangles. It never measures a template or
     // changes a measurement element's styles.
-    const hits = targets.zones.filter(zone => event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
+    const hits = targets.zones.filter(zone => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
       && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy)
     const preferred = (zone: FloatDropZone) => preview?.container === zone.container ? preview.side
       : event.clientX < zone.center + dx ? "left" : "right"
     hits.sort((a, b) => b.rect.top - a.rect.top || Number(b.side === preferred(b)) - Number(a.side === preferred(a)))
-    for(const zone of hits) {
+    // Empty space in a document gutter still expresses float placement. Use
+    // the nearest existing anchor, even below the last preview footprint.
+    const gutters = targets.zones.filter(zone => zone.column && event.clientX >= 0 && event.clientY >= 0
+      && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx))
+    gutters.sort((a, b) => Math.abs(a.rect.top + dy - event.clientY) - Math.abs(b.rect.top + dy - event.clientY)
+      || b.rect.top - a.rect.top)
+    for(const zone of [...hits, ...gutters]) {
       if(zone.container.parentElement !== zone.parent || !root.contains(zone.container)) continue
       zone.allowed ??= valid(zone.container) ? true : false
       if(!zone.allowed || event.type === "drop" && !valid(zone.container)) continue
@@ -628,7 +653,7 @@ export class ManipulationFeature extends EditorFeature {
     // An explicitly shown insertion preview can also cover a projected area
     // whose anchor has no current layout box. It is a fallback, never a latch
     // that masks newer anchors while moving down the page.
-    if(preview && contains(preview.rect) && valid(preview.container)) {
+    if(preview && preview.container !== source && contains(preview.rect) && valid(preview.container)) {
       this.floatDropHit = preview
       return preview.container
     }
@@ -650,6 +675,8 @@ export class ManipulationFeature extends EditorFeature {
       const atomic = Boolean(isAtomicEditingElement(element, this.editor.schema))
       if(!atomic) for(let index = element.children.length - 1; index >= 0; index--) pending.push(element.children[index])
     }
+    // A lone authored element can change its float without a sibling anchor.
+    if(!candidates.length && source.parentElement === root && root.children.length === 1) candidates.push(source)
     const measurement = document.createElement("div")
     measurement.style.cssText = "position:fixed;visibility:hidden;pointer-events:none"
     this.editor.addAppendix(measurement)
@@ -669,8 +696,11 @@ export class ManipulationFeature extends EditorFeature {
           const rule = this.editor.schema.get(parent).content
           if(rule && "group" in rule) parentPermissions.set(parent, allowed)
         }
-        for(const side of ["left", "right"] as const) zones.push({container, parent: container.parentElement, side, center: bounds.left + bounds.width / 2,
-          allowed, rect: this.floatPreviewRect(container, side, measurement, source, measurements)})
+        for(const side of ["left", "right"] as const) {
+          const rect = this.floatPreviewRect(container, side, measurement, source, measurements)
+          zones.push({container, parent, side, center: bounds.left + bounds.width / 2, allowed, rect,
+            column: measurements.geometry.get(parent)?.[side]?.column})
+        }
       }
     }
     finally { measurement.remove() }
@@ -730,10 +760,9 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   placeFloat(element: Element, container: Element, side: "left" | "right" | "none", placement: "before" | "after" = "before") {
-    if(this.editor.isEditingLocked || !container.isConnected || this.floatContainer(container, element) !== container) return false
-    container[placement](element)
-    this.setFloat(element, side)
-    return true
+    if(this.editor.isEditingLocked || !container.isConnected || element !== container && this.floatContainer(container, element) !== container) return false
+    if(element !== container) container[placement](element)
+    return this.setFloat(element, side)
   }
 
   /** A fixed appendix overlay shared by native transfer and transformation
@@ -788,8 +817,10 @@ export class ManipulationFeature extends EditorFeature {
       const pageRight = body.right - number(bodyStyle.paddingRight) + currentLane
       let left = parentRect.left + number(parentStyle.borderLeftWidth) + number(parentStyle.paddingLeft)
       let right = parentRect.right - number(parentStyle.borderRightWidth) - number(parentStyle.paddingRight)
+      let column: {left: number, right: number} | undefined
       if(themed && body.width > 0) {
         const columnLeft = pageLeft + (wide ? lane : 0), columnRight = pageRight - (lanes ? lane : 0)
+        column = {left: columnLeft, right: columnRight}
         if(parent === document.body || parent.parentElement === document.body && parent.matches("main, article, section")) {
           left = columnLeft + number(parentStyle.paddingLeft) * Number(parent !== document.body)
           right = columnRight - number(parentStyle.paddingRight) * Number(parent !== document.body)
@@ -845,7 +876,7 @@ export class ManipulationFeature extends EditorFeature {
       // every possible anchor in a long document.
       if(parentRect.width) {
         const geometry = measurements.geometry.get(parent) ?? {}
-        geometry[side] = {rect: result, clears: lanes || !themed}
+        geometry[side] = {rect: result, clears: lanes || !themed, column}
         measurements.geometry.set(parent, geometry)
       }
       return result
@@ -1123,11 +1154,12 @@ export class ManipulationFeature extends EditorFeature {
     return source?.contains(range.startContainer) ? null : range
   }
 
-  private ribbonDropPosition(event: DragEvent): RibbonDropPosition | null {
+  private ribbonDropPosition(event: DragEvent, source?: Element): RibbonDropPosition | null {
     const target = this.ribbonDropTarget(event)
     if(this.editor.features.slides.active && !target) return null
     const tag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
-    const source = tag ? this.ribbonElement(tag) : this.insertionPreviewSource ?? document.createElement("div")
+    const shape = event.dataTransfer && this.ribbonDragShape(event.dataTransfer)
+    source ??= shape ? this.editor.features.graphic.createGraphic(shape) : tag ? this.ribbonElement(tag) : this.insertionPreviewSource ?? document.createElement("div")
     const float = !target && this.floatDropTarget(event, source)
     const range = target ? null : float ? document.createRange() : this.dropRange(event, null)
     if(float && range) { range.setStartBefore(float); range.collapse(true) }
@@ -1515,7 +1547,7 @@ export class ManipulationFeature extends EditorFeature {
       if(action.startsWith("element:")) this.createRibbonElement(action.slice("element:".length))
       else if(action.startsWith("insert-graphic-shape:")) {
         const shape = action.slice("insert-graphic-shape:".length)
-        if(isGraphicShapeType(shape)) this.editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape})
+        if(isGraphicShapeType(shape)) this.insertDroppedGraphic(this.editor.features.graphic.createGraphic(shape))
       }
       else if(action.startsWith("insert-math:")) {
         if(position.layout !== "document" && !this.insertRibbonTextRoot()) return
@@ -1537,6 +1569,14 @@ export class ManipulationFeature extends EditorFeature {
     let dropped = false
     try {
       const data = event.dataTransfer!
+      if(data.types.includes(graphicShapeDragType)) {
+        const detail = readGraphicShapeDrag(data)
+        if(!detail) return
+        const graphic = this.editor.features.graphic.createGraphic(detail.shape, detail.paint)
+        const position = this.ribbonDropPosition(event, graphic)
+        if(position) dropped = this.insertAtRibbonDrop(position, () => this.insertDroppedGraphic(graphic))
+        return
+      }
       if(Array.from(data.types).includes(ribbonInsertionDragType)) {
         const action = data.getData(ribbonInsertionDragType)
         const position = (ribbonInsertionAction(action) || ribbonElementInsertionAction(action))
