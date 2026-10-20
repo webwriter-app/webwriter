@@ -136,8 +136,28 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   // Saved exports carry the standalone adapter. Replace it with the nonce-bearing
   // editor bootstrap copy below so the frame has exactly one runtime instance.
   parsed.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
+  // A CSP-blocked external module poisons the realm's module map for that URL,
+  // including a later nonce-bearing load of the same installed widget. Parse
+  // authored modules without src so the parser marks them already started,
+  // then restore their attributes before the editor module initializes.
+  const authoredModules = (options.executeScripts ? [...parsed.querySelectorAll<HTMLScriptElement>('script[type="module"][src]')] : [])
+    .filter(script => script.namespaceURI === "http://www.w3.org/1999/xhtml")
+  const moduleAttributes = authoredModules.map(script => [script.getAttribute("src"), script.getAttribute("class")])
+  authoredModules.forEach(script => {
+    script.removeAttribute("src")
+    script.classList.add("◆pending-module")
+  })
+  const restoreModules = moduleAttributes.length ? `<script class="◆ ◆editor-only" nonce="${nonce}" type="${editorScriptType}">
+const attributes = ${JSON.stringify(moduleAttributes).replaceAll("<", "\\u003c")};
+document.querySelectorAll("script.◆pending-module").forEach((script, index) => {
+  const [src, className] = attributes[index];
+  script.setAttribute("src", src);
+  if(className === null) script.removeAttribute("class");
+  else script.setAttribute("class", className);
+});
+</script>` : ""
   ensureDefaultDocumentTheme(parsed)
-  parsed.head.insertAdjacentHTML("beforeend", `${bridge}${bootstrapScripts}`)
+  parsed.head.insertAdjacentHTML("beforeend", `${restoreModules}${bridge}${bootstrapScripts}`)
   const cspElement = parsed.createElement("meta")
   cspElement.classList.add("◆", "◆editor-only")
   cspElement.httpEquiv = "Content-Security-Policy"

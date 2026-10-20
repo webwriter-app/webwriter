@@ -60,6 +60,7 @@ const expectedChecks = [
   "Review shares bounded scroll areas and lays out versions beside responsive changes",
   "version previews preserve editing mode and reject native and direct mutations",
   "collaborated scripts remain inert with namespace prefixes, clones and later edits",
+  "saved document module references do not poison trusted widget loading",
   "new paragraphs and line breaks reveal the caret at the document end",
   "native drag floats in preview areas and preserves ordinary gap drops",
   "native MathML editing preserves inline rendering and argument hit targets",

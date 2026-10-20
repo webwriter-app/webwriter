@@ -1522,6 +1522,37 @@ await check("details remain intact after applying style presets", async () => {
   finally { frame.remove(); controls.remove() }
 })
 
+await check("saved document module references do not poison trusted widget loading", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const script = `data:text/javascript,${encodeURIComponent('customElements.define("saved-document-widget", class extends HTMLElement {})')}`
+  const pkg = {name: "saved-document-fixture", version: "1.0.0", label: "Fixture", authors: [], keywords: [], links: {},
+    scripts: [script], styles: [], members: []}
+  const frame = document.createElement("iframe")
+  const authored = `<script type="module" class="authored" src="${script}">window.authoredModuleRan = true</script>`
+  frame.srcdoc = editorFrameHTML(`<html><head>${authored}</head><body><saved-document-widget></saved-document-widget>${authored.replace('class="authored" ', '')}</body></html>`, {
+    bridgeNonce: crypto.randomUUID(), hostOrigin: location.origin, revision: 0, language: "en", packages: [pkg],
+    entryURL: new URL("./native-browser-frame.ts?proofreading-disabled", import.meta.url).href, executeScripts: true,
+  })
+  fixture.append(frame)
+  try {
+    await new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string, authoredModuleRan?: boolean}
+    assert(view.editor, `saved document editor did not initialize: ${view.editorError}`)
+    const doc = frame.contentDocument!
+    assert(doc.head.querySelector("script.authored")?.outerHTML === authored, "authored head module attributes changed")
+    assert(doc.body.querySelector("script")?.outerHTML === authored.replace('class="authored" ', ''), "authored body module attributes changed")
+    assert(!doc.querySelector(".◆pending-module"), "temporary module markers were not cleaned up")
+    assert(!doc.querySelector("saved-document-widget")?.matches(":defined"), "authored module ran before the trusted loader")
+    await view.editor!.getActionHandler("load-widgets")({type: "load-widgets", widgets: [{name: pkg.name, version: pkg.version}], packages: [pkg], importMap: {}})
+    assert(doc.querySelector("saved-document-widget")?.matches(":defined"), "saved document widget was not registered")
+    assert(!view.authoredModuleRan, "authored inline module content executed")
+    const exported = view.editor!.toHTML(false, false)
+    assert(exported.includes(authored), "serialization lost the authored module")
+    assert(!exported.includes("◆pending-module"), "serialization retained module startup artifacts")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("collaborated scripts remain inert with namespace prefixes, clones and later edits", async () => {
   const root = document.createElement("main"), result = document.createElement("output")
   result.id = "native-script-execution"
