@@ -119,6 +119,37 @@ await check("legacy widget options use document gutters and sit beside freeform 
         widget.classList.add("◆element-capture-selected")
         widget.removeAttribute("contenteditable")
         assert(view.getComputedStyle(part).display === "none", `${context}: theme overrode the widget's reader presentation`)
+        if(mode === "document" || mode === "board") {
+          other.remove()
+          widget.setAttribute("contenteditable", "")
+          frame.style.width = `${width}px`
+          for(const placement of [
+            {classes: "ww-float-left", style: "", side: "left"},
+            {classes: "ww-float-right", style: "", side: "right"},
+            {classes: "", style: "float: left", side: "left"},
+            {classes: "", style: "float:right", side: "right"},
+            {classes: "ww-float-left", style: "float: right", side: "left"},
+            {classes: "ww-float-right", style: "float:left", side: "right"},
+          ]) {
+            widget.className = `◆element-selected ◆element-capture-selected ${placement.classes}`
+            widget.setAttribute("style", placement.style)
+            const floatHTML = doc.body.innerHTML
+            await layoutFrame()
+            ;({host, options} = bounds())
+            const side = view.getComputedStyle(widget).float
+            assert(side === (width < 600 ? "none" : width < 1200 ? "right" : placement.side), `${context}: unexpected responsive float for ${JSON.stringify(placement)}`)
+            if(side === "left") assert(options.left > host.right + 1, `${context}: left-floated options did not open to the right`)
+            else if(side === "right") assert(options.right < host.left - 1, `${context}: right-floated options did not open to the left`)
+            else assert(view.getComputedStyle(part).position === "static", `${context}: in-flow options did not retain the narrow layout`)
+            if(side !== "none") {
+              assert(Math.abs(options.height - host.height) <= 2, `${context}: floated options lost their shared height`)
+              assert(options.left >= 0 && options.right <= width, `${context}: floated options extend beyond the page`)
+            }
+            assert(doc.body.innerHTML === floatHTML, `${context}: float options changed authored content`)
+            widget.classList.remove("◆element-capture-selected")
+            assert(view.getComputedStyle(part).display === "none", `${context}: floated options remained visible after capture ended`)
+          }
+        }
       }
     }
   }

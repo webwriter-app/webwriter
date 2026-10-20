@@ -92,6 +92,12 @@ describe("document themes", () => {
       expect(source).not.toMatch(/\[part[~|^$*]?=["']?options/)
     }
   })
+  it("places floated widget options inward in both symmetric and single-gutter layouts", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toMatch(/@container \(width >= 600px\)\s*\{[\s\S]*?::part\(options\)\s*\{[^}]*left: calc\(100% \+ var\(--ww-float-gap\)\);\s*right: auto;/)
+      expect(theme.source).toMatch(/@container \(600px <= width < 1200px\)\s*\{[^@]*::part\(options\)\s*\{\s*left: auto;\s*right: calc\(100% \+ var\(--ww-float-gap\)\);/)
+    }
+  })
   it("blockifies ordinary top-level media in document columns across every theme", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[\s\S]*?:is\(&,\s*& > main,\s*& > article,\s*& > section\) > :is\(picture,\s*img,\s*audio\[controls\],\s*video,\s*iframe,\s*embed,\s*object\):not\(\[is\]\)\s*\{\s*display:\s*block;/)

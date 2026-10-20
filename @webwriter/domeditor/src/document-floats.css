@@ -195,4 +195,34 @@
       }
     }
   }
+
+  /* Floated widgets open their controls toward the document content instead
+   * of the outer page edge. Physical sides follow float: left/right in RTL too. */
+  @container (width >= 600px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      [contenteditable]:not([contenteditable="false"]):is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])::part(options) {
+        position: absolute;
+        inset-block-start: 0;
+        left: calc(100% + var(--ww-float-gap));
+        right: auto;
+        inline-size: min(16rem, var(--ww-float-width));
+        max-inline-size: none;
+        margin: 0;
+      }
+
+      [contenteditable]:not([contenteditable="false"]):is(.ww-float-right, [style*="float: right"]:not(.ww-float-left), [style*="float:right"]:not(.ww-float-left))::part(options) {
+        left: auto;
+        right: calc(100% + var(--ww-float-gap));
+      }
+    }
+  }
+
+  @container (600px <= width < 1200px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      [contenteditable]:not([contenteditable="false"]):is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])::part(options) {
+        left: auto;
+        right: calc(100% + var(--ww-float-gap));
+      }
+    }
+  }
 }
