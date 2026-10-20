@@ -558,6 +558,12 @@ export class ManipulationFeature extends EditorFeature {
     }
     if(!element.classList.length) element.removeAttribute("class")
     if(!style.length) element.removeAttribute("style")
+    const root = getDocumentRoot()
+    if(desired !== "none" && element.parentElement === root && root.children.length === 1) {
+      const paragraph = document.createElement("p")
+      root.append(paragraph)
+      this.setFloat(paragraph, "none")
+    }
     return true
   }
 
