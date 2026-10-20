@@ -104,13 +104,13 @@ export const fontFamilyOptions: readonly StyleMarkOption[] = [
   {label: "Verdana", value: "Verdana, sans-serif"},
   {label: "Tahoma", value: "Tahoma, sans-serif"},
   {label: "Trebuchet MS", value: '"Trebuchet MS", sans-serif'},
-  {label: "Times New Roman", value: '"Times New Roman", serif'},
+  {label: "Times New Rom.", value: '"Times New Roman", serif'},
   {label: "Georgia", value: "Georgia, serif"},
   {label: "Courier New", value: '"Courier New", monospace'},
 ] as const
 
 export const fontSizeOptions: readonly StyleMarkOption[] = [
-  {label: "Default size", value: ""},
+  {label: "Default", value: ""},
   ...[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48, 72]
     .map(size => ({label: `${size} px`, value: `${size}px`})),
 ] as const

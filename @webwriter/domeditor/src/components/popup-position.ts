@@ -13,7 +13,7 @@ export function connectPopup(trigger: HTMLElement, popup: HTMLElement) {
   const placement = below ? "below" : "above"
   trigger.setAttribute("data-connected", placement)
   popup.setAttribute("data-connected", placement)
-  popup.style.setProperty("--popup-join-left", `${button.left - menu.left + 1}px`)
+  popup.style.setProperty("--popup-join-left", `${button.left - menu.left}px`)
   popup.style.setProperty("--popup-join-width", `${Math.max(0, button.width - 2)}px`)
   const left = Math.abs(menu.left - button.left) < .5
   const right = Math.abs(menu.right - button.right) < .5

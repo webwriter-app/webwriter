@@ -12,6 +12,7 @@ import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompl
 import {SharedDOMDoc} from "../src/domdoc"
 import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
+import localFontURL from "temml/dist/Temml.woff2?url"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -3269,11 +3270,12 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
 
 await check("font dropdowns join their white controls at viewport edges", async () => {
   const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
+  const {RibbonDrawer} = await import("../src/components/ribbon-drawer")
   const {fontFamilyOptions, fontSizeOptions} = await import("../src/marks")
   for(const name of ["font-family", "font-size"]) for(const placement of ["below", "above", "right"]) {
     const combo = new RibbonCombobox()
     Object.assign(combo, {name, label: name, options: name === "font-family" ? fontFamilyOptions : fontSizeOptions})
-    Object.assign(combo.style, {position: "fixed", width: "90px",
+    Object.assign(combo.style, {position: "fixed", width: name === "font-size" ? "56px" : "90px",
       left: `${placement === "right" ? window.innerWidth - 98 : 40.25}px`,
       top: `${placement === "above" ? window.innerHeight - 48 : 100.5}px`})
     document.body.append(combo)
@@ -3287,10 +3289,13 @@ await check("font dropdowns join their white controls at viewport edges", async 
       await field.updateComplete
       if(font) {
         // Geometry checks use an empty cached catalog, without network requests.
-        Object.assign(font, {loaded: true})
+        Object.assign(font, {loaded: true, fontAccess: {}})
       }
       const root = field.shadowRoot!
       const trigger = root.querySelector<HTMLInputElement>("input")!
+      const control = root.querySelector<HTMLElement>(".control")!
+      const closed = getComputedStyle(control)
+      const topCorners = [closed.borderTopLeftRadius, closed.borderTopRightRadius]
       const placeholder = getComputedStyle(trigger, "::placeholder")
       assert(placeholder.fontSize === getComputedStyle(trigger).fontSize && placeholder.color === "rgb(107, 119, 135)",
         `${name}: font placeholder does not match the input size and muted color`)
@@ -3300,8 +3305,14 @@ await check("font dropdowns join their white controls at viewport edges", async 
       await combo.updateComplete
       await field.updateComplete
       await layoutFrame()
-      const control = root.querySelector<HTMLElement>(".control")!
       const menu = root.querySelector<HTMLElement>(".listbox")!
+      if(font) {
+        const headings = menu.querySelectorAll<HTMLElement>(".group-label")
+        assert(Math.abs(headings[0].getBoundingClientRect().height - headings[1].getBoundingClientRect().height) < .1,
+          "standard and custom font headings do not align")
+      }
+      assert([...menu.querySelectorAll(".option-group")].every(group => getComputedStyle(group).scrollbarWidth === "thin"),
+        `${name}: font list scrollbars are not thin`)
       const box = control.getBoundingClientRect(), popup = menu.getBoundingClientRect()
       const above = placement === "above"
       assert(control.dataset.connected === (above ? "above" : "below"), `${name}: wrong font popup placement`)
@@ -3314,10 +3325,51 @@ await check("font dropdowns join their white controls at viewport edges", async 
         `${name}: open font control does not match the white dropdown`)
       assert(style.borderLeftColor === surface.borderLeftColor && style.outlineStyle === "none",
         `${name}: open font control does not use the dropdown border`)
-      assert(Math.abs(parseFloat(getComputedStyle(menu, "::before").width) - box.width + 2) < .1,
-        `${name}: font dropdown border mask does not match its control`)
+      assert(style.borderTopLeftRadius === topCorners[0] && style.borderTopRightRadius === topCorners[1],
+        `${name}: opening changes the input's top corner radii`)
+      const join = getComputedStyle(menu, "::before")
+      assert((above ? surface.borderBottomWidth : surface.borderTopWidth) === "0px"
+        && (above ? surface.paddingBottom : surface.paddingTop) === "1px",
+        `${name}: a dividing border remains between the field and its dropdown`)
+      assert((above ? join.bottom : join.top) === "0px" && join.left === "0px"
+        && join.backgroundImage.includes("rgb(255, 255, 255)")
+        && Math.abs(parseFloat(menu.style.getPropertyValue("--popup-join-width")) - box.width + 2) < .1,
+        `${name}: the joining surface is clipped outside the popup or does not match its control`)
+      if(font) {
+        const column = menu.querySelector(".option-group")!.getBoundingClientRect()
+        assert(Math.abs(column.width - box.width + 2) < .1, "the standard font column does not match the input's inner width")
+        if(placement !== "right") assert(Math.abs(column.right - box.right + 1) < .1, "the standard font divider does not align with the input's right border")
+        const times = menu.querySelector<HTMLElement>('[title="Times New Rom."] .option-code')!
+        assert(times && times.scrollHeight <= times.clientHeight && times.scrollWidth <= times.clientWidth,
+          "the shortened Times New Roman label overflows its column")
+        for(const query of ["Georgia", "no font matches this", ""]) {
+          trigger.value = query
+          trigger.dispatchEvent(new InputEvent("input", {bubbles: true}))
+          await field.updateComplete; await layoutFrame()
+          const filtered = menu.getBoundingClientRect()
+          assert(Math.abs(filtered.width - popup.width) < .1 && Math.abs(filtered.height - popup.height) < .1
+            && Math.abs(menu.querySelector(".option-group")!.getBoundingClientRect().width - column.width) < .1,
+            "searching resized the font menu or its standard-font column")
+        }
+        combo.close()
+        await field.updateComplete
+        trigger.value = "Georgia"
+        trigger.dispatchEvent(new InputEvent("input", {bubbles: true}))
+        await field.updateComplete; await layoutFrame()
+        const typedOpen = root.querySelector<HTMLElement>(".listbox")!.getBoundingClientRect()
+        assert(Math.abs(typedOpen.height - popup.height) < .1 && Math.abs(typedOpen.width - popup.width) < .1,
+          "typing into a closed font picker skipped retaining its unfiltered size")
+      }
       const scroller = name === "font-size" ? menu.querySelector<HTMLElement>(".option-group") : null
       if(scroller) {
+        const scrollBox = scroller.getBoundingClientRect()
+        assert(Math.abs(scrollBox.right - popup.right + 1) < .1 && Math.abs(scrollBox.top - popup.top - 1) < .1
+          && Math.abs(scrollBox.bottom - popup.bottom + 1) < .1, "font size scrollbar is inset from the dropdown border")
+        assert(Math.abs(popup.width - box.width) < .1, "font size dropdown does not match its input width")
+        assert(scroller.scrollWidth === scroller.clientWidth, "narrow font size options overflow horizontally")
+        assert([...scroller.querySelectorAll<HTMLElement>(".option-code")].every(label => label.scrollWidth <= label.clientWidth),
+          "narrow font size options truncate their labels")
+        assert(menu.querySelector('[role="option"]')?.getAttribute("title") === "Default", "font size reset option is not labeled Default")
         scroller.scrollTop = scroller.scrollHeight
         await layoutFrame()
         assert(scroller.scrollTop > 0 && menu.scrollTop === 0, "font sizes do not scroll independently of their joined border")
@@ -3339,6 +3391,17 @@ await check("font dropdowns join their white controls at viewport edges", async 
       await combo.updateComplete
       await field.updateComplete
       assert(!control.hasAttribute("data-connected") && !root.querySelector(".listbox"), `${name}: closing retains connected styling`)
+      trigger.focus()
+      await field.updateComplete
+      combo.close()
+      await field.updateComplete
+      const focus = getComputedStyle(control)
+      assert(control.matches(":focus-within") && focus.outlineStyle === "solid" && parseFloat(focus.outlineWidth) > 0
+        && parseFloat(focus.outlineOffset) + parseFloat(focus.outlineWidth) <= 0,
+        `${name}: the focus ring extends outside the input and can be clipped by the ribbon`)
+      trigger.click()
+      await field.updateComplete; await layoutFrame()
+      assert(root.querySelector(".listbox"), `${name}: font control did not reopen before disabling`)
       combo.disabled = true
       await combo.updateComplete
       await field.updateComplete
@@ -3347,11 +3410,229 @@ await check("font dropdowns join their white controls at viewport edges", async 
         `${name}: unavailable font input or toggle remains enabled`)
       assert(disabled.opacity === "0.6" && disabled.color === "rgb(154, 164, 177)"
         && disabled.backgroundColor === "rgb(247, 247, 247)", `${name}: disabled appearance is missing`)
+      assert(!field.hasAttribute("open") && !root.querySelector(".listbox"), `${name}: disabling retains the open dropdown`)
+      // Disabled styling must win even while an open attribute is being removed.
+      field.setAttribute("open", "")
+      assert(getComputedStyle(control).backgroundColor === "rgb(247, 247, 247)", `${name}: an open attribute turns the disabled field white`)
+      field.removeAttribute("open")
       trigger.click()
       await field.updateComplete
       assert(!root.querySelector(".listbox"), `${name}: disabled font control opens its dropdown`)
     }
     finally { combo.remove() }
+  }
+  const drawer = new RibbonDrawer(), combo = new RibbonCombobox()
+  Object.assign(drawer, {layout: "marks"})
+  Object.assign(drawer.style, {position: "fixed", left: "40px", top: "100px", height: "90px", width: "var(--ribbon-drawer-expanded-width)"})
+  Object.assign(combo, {name: "font-family", label: "Font family", options: fontFamilyOptions, className: "font-family"})
+  drawer.append(combo)
+  document.body.append(drawer)
+  try {
+    await drawer.updateComplete; await combo.updateComplete
+    const field = combo.shadowRoot!.querySelector("font-combobox")!
+    Object.assign(field, {loaded: true, fontAccess: {}})
+    await field.updateComplete
+    const input = field.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await field.updateComplete; await layoutFrame()
+    const edge = drawer.shadowRoot!.querySelector(".drawer")!.getBoundingClientRect()
+    for(const query of ["", "Georgia", "no matching fonts"]) {
+      if(query) {
+        input.value = query
+        input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+        await field.updateComplete; await layoutFrame()
+      }
+      const menu = field.shadowRoot!.querySelector(".listbox")!.getBoundingClientRect()
+      assert(Math.abs(menu.left - edge.left - (edge.right - menu.right)) < .1,
+        `the font dropdown does not have equal spacing to the marks drawer's left and right edges (${menu.left - edge.left}, ${edge.right - menu.right}; drawer width ${edge.width}; menu width ${menu.width})`)
+    }
+  }
+  finally { drawer.remove() }
+})
+
+await check("font searches split installed and web results without scrolling", async () => {
+  const {FontCombobox} = await import("../src/components/font-combobox")
+  const combo = new FontCombobox()
+  Object.assign(combo.style, {position: "fixed", left: "80px", top: "100px", width: "90px"})
+  Object.assign(combo, {loaded: true, fontAccess: {}, devicePermissionGranted: true,
+    devices: Array.from({length: 20}, (_, i) => ({family: `Search Installed ${i}`, blob: () => { throw new Error("Unexpected font read") }})),
+    fonts: Array.from({length: 20}, (_, i) => ({familyName: `Search Web ${i}`, category: "sans-serif", weights: [400], styles: ["normal"]})),
+  })
+  document.body.append(combo)
+  try {
+    await combo.updateComplete
+    const root = combo.shadowRoot!, input = root.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await combo.updateComplete; await layoutFrame()
+    const popup = root.querySelector<HTMLElement>(".listbox")!, before = popup.getBoundingClientRect()
+    assert(root.querySelectorAll('[aria-label="Custom fonts"] [role="option"]').length === 40, "unfiltered fonts are missing")
+    const custom = root.querySelector<HTMLElement>('[aria-label="Custom fonts"]')!
+    const sections = [...custom.querySelectorAll<HTMLElement>(".font-section")]
+    const [installedHeading, webHeading] = sections.map(section => section.querySelector<HTMLElement>(".section-label")!)
+    const groupHeading = custom.querySelector<HTMLElement>(".group-label")!
+    const pinnedTop = custom.getBoundingClientRect().top + groupHeading.getBoundingClientRect().height
+    const webStart = sections[1].getBoundingClientRect().top
+    assert([installedHeading, webHeading].every(heading => getComputedStyle(heading).fontWeight === "700"), "font section headings are not bold")
+    custom.scrollTop = 84
+    await layoutFrame()
+    assert(Math.abs(installedHeading.getBoundingClientRect().top - pinnedTop) < .1, "installed heading does not stay below the custom-font heading")
+    custom.scrollTop = webStart - pinnedTop - webHeading.getBoundingClientRect().height / 2
+    await layoutFrame()
+    assert(installedHeading.getBoundingClientRect().top < pinnedTop
+      && installedHeading.getBoundingClientRect().bottom <= webHeading.getBoundingClientRect().top,
+      "the next font section does not push out the previous heading")
+    custom.scrollTop = webStart - pinnedTop + 84
+    await layoutFrame()
+    assert(Math.abs(webHeading.getBoundingClientRect().top - pinnedTop) < .1, "web heading does not stick at its section's top")
+    assert(Math.abs(groupHeading.getBoundingClientRect().top - custom.getBoundingClientRect().top) < .1, "section scrolling covers the custom-font heading")
+    custom.scrollTop = 0
+    for(const query of ["Search", "no matching fonts", "Search Installed", "Search"]) {
+      input.value = query
+      input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+      await combo.updateComplete; await layoutFrame(); await combo.updateComplete
+      const panels = [...root.querySelectorAll<HTMLElement>(".search-section")]
+      assert(panels.length === 2, "search results are not split into two sections")
+      assert(Math.abs(panels[0].getBoundingClientRect().height - panels[1].getBoundingClientRect().height) < .1,
+        "installed and web results do not each use half of the search area")
+      assert(Math.abs(popup.getBoundingClientRect().height - before.height) < .1, "split search changed the popup height")
+      for(const panel of panels) {
+        const options = [...panel.querySelectorAll<HTMLElement>('[role="option"]')]
+        const heading = panel.querySelector<HTMLElement>(".section-label")!
+        const capacity = Math.floor((panel.clientHeight - heading.getBoundingClientRect().height) / 28)
+        assert(options.length === (query === "no matching fonts" || query === "Search Installed" && panel === panels[1] ? 0 : capacity), "result count does not fill the available whole rows")
+        assert(panel.scrollHeight === panel.clientHeight && getComputedStyle(panel).overflowY === "hidden", "search section still scrolls")
+        assert(options.every(option => option.getBoundingClientRect().bottom <= panel.getBoundingClientRect().bottom), "a partial search result is visible")
+      }
+      const visible = [...root.querySelectorAll<HTMLElement>('[role="option"]')]
+      if(query === "Search") {
+        for(let i = 0; i < visible.length; i++) input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}))
+        await combo.updateComplete
+        assert(root.querySelector("[data-active]") === visible[0], "keyboard navigation includes hidden results")
+      }
+    }
+    input.value = ""
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await combo.updateComplete; await layoutFrame()
+    assert(!root.querySelector(".search-results") && root.querySelectorAll('[aria-label="Custom fonts"] [role="option"]').length === 40,
+      "clearing the query does not restore the complete scrollable list")
+  }
+  finally { combo.remove() }
+})
+
+await check("font list previews only load the active web font", async () => {
+  const {FontCombobox} = await import("../src/components/font-combobox")
+  const originalFetch = window.fetch
+  let requests = 0
+  window.fetch = async (input, options) => {
+    if(String(input).startsWith("https://fonts.bunny.net/css?")) {
+      requests++
+      return new Response(`@font-face {font-family: Preview; font-style: normal; font-weight: 400; src: url("${new URL(localFontURL, location.href).href}") format("woff2");}`)
+    }
+    return originalFetch(input, options)
+  }
+  const field = new FontCombobox()
+  Object.assign(field, {loaded: true, fontAccess: {}, fonts: [
+    {familyName: "Web Preview One", category: "serif", weights: [400, 700], styles: ["normal", "italic"]},
+    {familyName: "Web Preview Two", category: "serif", weights: [400], styles: ["normal"]},
+  ], devices: [{family: "Device Preview", blob: () => { throw new Error("List preview must not read installed font bytes") }}]})
+  document.body.append(field)
+  try {
+    await field.updateComplete
+    const input = field.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await layoutFrame()
+    const root = field.shadowRoot!
+    const options = root.querySelectorAll<HTMLButtonElement>('[aria-label="Custom fonts"] [role="option"]')
+    const first = [...options].find(option => option.title === "Web Preview One")!
+    const second = [...options].find(option => option.title === "Web Preview Two")!
+    assert(requests === 0 && first.style.fontFamily === "" && second.style.fontFamily === "", "inactive web fonts load previews")
+    assert(getComputedStyle(root.querySelector('[title="Georgia"]')!).fontFamily === "Georgia, serif", "standard font item does not use its font")
+    assert(getComputedStyle(root.querySelector('[title="Device Preview"]')!).fontFamily.includes("Device Preview"), "installed font item does not use its font")
+    first.dispatchEvent(new PointerEvent("pointerenter"))
+    for(let count = 0; count < 120 && !first.style.fontFamily.includes("webwriter-font-preview-"); count++) await nextFrame()
+    const family = first.style.fontFamily.split(",")[0]
+    const loaded = await document.fonts.load(`12px ${family}`, "Web Preview One")
+    assert(requests === 1 && loaded.length > 0 && loaded.every(face => face.status === "loaded"), "active web preview did not load its font")
+    assert(second.style.fontFamily === "", "preview also styled an inactive web font")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown"}))
+    for(let count = 0; count < 120 && !second.style.fontFamily.includes("webwriter-font-preview-"); count++) await nextFrame()
+    assert(requests === 2 && first.style.fontFamily === "" && second.style.fontFamily.includes("webwriter-font-preview-"),
+      `keyboard navigation did not move the font preview (${requests} requests, first ${first.style.fontFamily}, second ${second.style.fontFamily}, active ${root.querySelector('[data-active]')?.textContent})`)
+    assert(loaded.every(face => !document.fonts.has(face)), "previous preview faces remain registered")
+    const current = [...document.fonts].filter(face => face.family.includes("webwriter-font-preview-"))
+    field.close()
+    await field.updateComplete
+    assert(current.length > 0 && current.every(face => !document.fonts.has(face)), "closing retains preview fonts")
+    assert(!document.head.querySelector('link[href^="https://fonts.bunny.net/css"]'), "list previews added a document stylesheet")
+  }
+  finally { field.remove(); window.fetch = originalFetch }
+})
+
+await check("local fonts embed selected bytes and load under the editor CSP", async () => {
+  const {FontCombobox} = await import("../src/components/font-combobox")
+  const {embedFontFiles} = await import("../src/local-fonts")
+  const {readFontFiles, saveFontFile} = await import("../src/local-font-storage")
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const bytes = await (await fetch(localFontURL)).blob()
+  const font = await embedFontFiles([bytes])
+  const id = crypto.randomUUID()
+  await saveFontFile({id, name: font.family, file: new File([bytes], "Temml.woff2", {type: "font/woff2"})})
+  const stored = (await readFontFiles()).find(record => record.id === id)
+  assert(stored?.file && stored.file.size === bytes.size, "font file input fallback did not survive IndexedDB structured cloning")
+  if(navigator.storage?.getDirectory) {
+    const directory = await navigator.storage.getDirectory()
+    const handle = await directory.getFileHandle(`${id}.woff2`, {create: true})
+    const writer = await handle.createWritable()
+    await writer.write(bytes); await writer.close()
+    await saveFontFile({id: `${id}-handle`, name: font.family, handle})
+    const restored = (await readFontFiles()).find(record => record.id === `${id}-handle`)!.handle!
+    assert((await restored.getFile()).size === bytes.size, "font handle did not survive IndexedDB structured cloning")
+    await directory.removeEntry(handle.name)
+  }
+  let reads = 0, queries = 0
+  const field = new FontCombobox(), frame = document.createElement("iframe")
+  Object.assign(field, {loaded: true, fontAccess: {
+    navigator: {permissions: {query: async () => ({state: "prompt"})}},
+    queryLocalFonts: async () => {
+      queries++
+      return [{family: font.family, fullName: font.family, style: "Regular", postscriptName: font.family, blob: async () => { reads++; return bytes }}]
+    },
+  }})
+  Object.assign(field.style, {position: "fixed", left: "40px", top: "100px", width: "90px"})
+  document.body.append(field)
+  try {
+    await field.updateComplete
+    assert(queries === 0, "installed fonts were queried before opening the picker")
+    field.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!.click()
+    await layoutFrame()
+    const custom = field.shadowRoot!.querySelector('[aria-label="Custom fonts"]')!
+    const load = custom.querySelector<HTMLButtonElement>(".browse-fonts")!
+    assert(queries === 0 && load.textContent?.includes("Load installed fonts") && getComputedStyle(load).fontStyle === "italic"
+      && load.querySelector("svg"), "installed fonts did not wait for the explicit load action")
+    load.click()
+    await layoutFrame()
+    assert(queries === 1 && reads === 0, "enumerating installed fonts read font bytes")
+    assert(custom.querySelector('[aria-label="Import font file"]'), "custom fonts heading has no import button")
+    assert(custom.querySelector('[role="option"]')?.textContent?.includes(font.family), "installed font is not the first custom option")
+    let selected: {value: string, fontStylesheet: string} | undefined
+    field.addEventListener("font-change", event => { selected = (event as CustomEvent).detail })
+    custom.querySelector<HTMLButtonElement>('[role="option"]')!.click()
+    for(let count = 0; count < 120 && !selected; count++) await nextFrame()
+    assert(selected?.fontStylesheet.startsWith("data:text/css;base64,") && reads === 1, "installed font did not embed its selected bytes")
+    const source = `<!doctype html><html><head><link rel="stylesheet" href="${selected!.fontStylesheet}"></head><body><p style='font-family: ${selected!.value}'>Font sample x</p></body></html>`
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = editorFrameHTML(source, {bridgeNonce: "font-csp-test", revision: 0, language: "en", packages: [],
+      hostOrigin: location.origin, entryURL: new URL("../src/editor-entry.ts", location.href).href, executeScripts: false})
+    document.body.append(frame)
+    await loaded
+    const doc = frame.contentDocument!
+    const faces = await doc.fonts.load(`16px ${JSON.stringify(font.family)}`, "x")
+    assert(faces.length > 0 && faces.every(face => face.status === "loaded"), "embedded font was blocked by the editor CSP or failed to decode")
+    assert(getComputedStyle(doc.querySelector("p")!).fontFamily.includes(font.family), "embedded font family was not applied")
+    assert(!field.shadowRoot!.querySelector('[role="option"]'), "closing retains local font options in the DOM")
+  }
+  finally {
+    field.remove(); frame.remove()
   }
 })
 

@@ -26,6 +26,16 @@ function search(input: HTMLInputElement, value: string) {
 }
 
 describe("font search combobox", () => {
+  it("abbreviates Times New Roman while applying its full font family", async () => {
+    const {combo, input} = await mount()
+    const option = combo.shadowRoot!.querySelector<HTMLButtonElement>('[title="Times New Rom."]')!
+    expect(option.textContent).toContain("Times New Rom.")
+    option.click()
+    await combo.updateComplete
+    expect(combo.value).toBe('"Times New Roman", serif')
+    expect(input.value).toBe("Times New Rom.")
+  })
+
   it("shows the default as a placeholder and clears the input when selecting it", async () => {
     const {combo, input} = await mount()
     expect(input.value).toBe("")
@@ -219,7 +229,7 @@ describe("font search combobox", () => {
     expect(groups[0].textContent).toContain("Arial")
     expect(groups[1].querySelectorAll('[role="option"]')).toHaveLength(1)
     expect(groups[1].textContent).toContain("Arimo")
-    groups[1].querySelector<HTMLButtonElement>("button")!.click()
+    groups[1].querySelector<HTMLButtonElement>('[role="option"]')!.click()
     expect(changed.mock.calls[0][0].detail.value).toBe(bunnyFontValue(fonts[1]))
     expect(new URL(changed.mock.calls[0][0].detail.fontStylesheet).hostname).toBe("fonts.bunny.net")
     await combo.updateComplete
@@ -239,7 +249,7 @@ describe("font search combobox", () => {
     expect(changed.mock.calls[0][0].detail.value).toBe(bunnyFontValue(fonts[0]))
     await combo.updateComplete
     search(input, "not-a-font")
-    await combo.updateComplete
+    await settle(combo)
     expect(combo.shadowRoot!.querySelectorAll('[role="group"]')).toHaveLength(2)
     expect(combo.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(0)
     input.dispatchEvent(new Event("change"))

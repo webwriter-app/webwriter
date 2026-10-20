@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {bunnyFonts, bunnyFontStylesheet, bunnyFontValue, fontWithFallback, syncBunnyFonts, type BunnyFont} from "./fonts"
+import {bunnyFonts, bunnyFontStylesheet, bunnyFontValue, fontWithFallback, syncFontResources, type BunnyFont} from "./fonts"
 
 const font: BunnyFont = {familyName: "Alegreya", category: "serif", weights: [400, 700], styles: ["normal", "italic"]}
 const href = bunnyFontStylesheet(font)
@@ -38,21 +38,21 @@ describe("Bunny Fonts", () => {
     document.body.innerHTML = '<test-widget><span style="font-family: Alegreya, serif">Widget</span></test-widget><svg><text font-family="Alegreya">SVG</text></svg><template><p style="font-family: Alegreya">Later</p></template>'
     const widget = document.querySelector("test-widget")!
     const resources = new Map<string, string>()
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     widget.firstElementChild!.remove()
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(2)
     document.querySelector("svg")!.remove()
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(2)
     document.querySelector("template")!.remove()
     const style = document.createElement("style")
     style.textContent = ".custom {font-family: Alegreya, serif}"
     document.head.append(style)
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(2)
     style.remove()
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(1)
     expect(document.head.querySelector("link")!.href).toBe("https://example.com/theme.css")
     expect(widget.outerHTML).toBe("<test-widget></test-widget>")
@@ -62,16 +62,16 @@ describe("Bunny Fonts", () => {
     document.head.innerHTML = '<link rel="stylesheet" href="https://fonts.bunny.net/css?family=open-sans:400,700&display=swap">'
     document.body.innerHTML = '<p style="font-family: &quot;Open Sans&quot;, sans-serif">Text</p>'
     const resources = new Map<string, string>()
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(1)
     resources.set("open sans", bunnyFontStylesheet({...font, familyName: "Open Sans"}))
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(1)
     document.querySelector("p")!.remove()
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(0)
     document.body.innerHTML = '<p style="font-family: &quot;Open Sans&quot;, sans-serif">Restored</p>'
-    syncBunnyFonts(document, resources)
+    syncFontResources(document, resources)
     expect(document.head.querySelectorAll("link")).toHaveLength(1)
   })
 })

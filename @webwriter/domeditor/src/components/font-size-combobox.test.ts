@@ -56,6 +56,15 @@ describe("font size combobox", () => {
     expect(combo.shadowRoot!.querySelector('[role="listbox"]')).toBeNull()
   })
 
+  it("labels the reset option Default and clears the size when selected", async () => {
+    const {combo, input, changes} = await mount()
+    combo.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"][title="Default"]')!.click()
+    await combo.updateComplete
+    expect(combo.value).toBe("")
+    expect(input.value).toBe("")
+    expect(changes.mock.calls[0][0].detail).toEqual({value: ""})
+  })
+
   it.each([
     ["19", "19px"], ["19.5", "19.5px"], [".5", "0.5px"], ["0", "0px"],
     [" 18px ", "18px"], ["2rem", "2px"], ["12 pt", "12px"], ["125%", "125px"],

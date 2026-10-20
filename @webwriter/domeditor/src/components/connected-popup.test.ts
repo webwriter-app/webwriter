@@ -10,7 +10,7 @@ describe("connected font dropdowns", () => {
     connectPopup(trigger, popup)
     expect(trigger.dataset.connected).toBe(placement)
     expect(popup.dataset.connected).toBe(placement)
-    expect(popup.style.getPropertyValue("--popup-join-left")).toBe("1px")
+    expect(popup.style.getPropertyValue("--popup-join-left")).toBe("0px")
     expect(popup.style.getPropertyValue("--popup-join-width")).toBe("88.5px")
     expect(popup.style.getPropertyValue("--popup-border-radius")).toBe(placement === "below"
       ? "0 .35rem .35rem .35rem" : ".35rem .35rem .35rem 0")
@@ -21,7 +21,7 @@ describe("connected font dropdowns", () => {
     trigger.getBoundingClientRect = () => new DOMRect(380, 100, 100, 28)
     popup.getBoundingClientRect = () => new DOMRect(192, 127, 288, 80)
     connectPopup(trigger, popup)
-    expect(popup.style.getPropertyValue("--popup-join-left")).toBe("189px")
+    expect(popup.style.getPropertyValue("--popup-join-left")).toBe("188px")
     expect(popup.style.getPropertyValue("--popup-border-radius")).toBe(".35rem 0 .35rem .35rem")
     popup.getBoundingClientRect = () => new DOMRect(192, 140, 288, 80)
     connectPopup(trigger, popup)

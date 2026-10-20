@@ -401,10 +401,51 @@ export class EditorCombobox extends LitElement {
     return html`<span class="option-name">No matches</span>`
   }
 
+  protected renderGroupHeading(group: string): unknown {
+    return html`<div class="group-label" title=${group} aria-hidden="true">${group}</div>`
+  }
+
+  protected renderBeforeOptions(_group: string): unknown { return nothing }
+  protected renderBeforeOption(_option: ComboboxOption, _previous?: ComboboxOption): unknown { return nothing }
+  protected optionStyle(_option: ComboboxOption, _index: number) { return "" }
+  protected activateOption(_option: ComboboxOption, _index: number) {}
+
+  protected renderGroupOptions(group: string, entries: {option: ComboboxOption, index: number}[]): unknown {
+    return html`
+      ${this.renderBeforeOptions(group)}
+      ${entries.length ? nothing : this.renderEmptyOptions(group)}
+      ${this.renderOptionEntries(entries)}`
+  }
+
+  protected renderOptionEntries(entries: {option: ComboboxOption, index: number}[], sections = true): unknown {
+    const selected = this.selectedOption()
+    return html`${entries.map(({option, index}, groupIndex) => html`
+      ${sections ? this.renderBeforeOption(option, entries[groupIndex - 1]?.option) : nothing}
+      ${option.dividerBefore ? html`<hr class="divider" role="separator" />` : nothing}
+      <button
+        id=${`${this.listboxId}-option-${index}`}
+        class="option"
+        type="button"
+        role="option"
+        title=${option.description ? `${option.label} — ${option.description}` : option.label}
+        style=${this.optionStyle(option, index)}
+        aria-selected=${this.multiple ? this.values.includes(option.value) : selected === option}
+        data-active=${this.activeIndex === index ? "" : nothing}
+        @mousedown=${(event: MouseEvent) => event.preventDefault()}
+        @pointerenter=${() => this.activateOption(option, index)}
+        @focus=${() => this.activateOption(option, index)}
+        @click=${(event: MouseEvent) => this.select(option, event)}
+      >
+        <strong class="option-code">${option.label}</strong>
+        ${this.showValue ? html`<span class="option-name option-value">${option.description ?? option.value}</span>`
+          : option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
+      </button>
+    `)}`
+  }
+
   render() {
     const options = this.open ? this.filteredOptions() : []
     const groups = this.optionGroups(options)
-    const selected = this.selectedOption()
     return html`
       <span class="control" style=${`anchor-name: --${this.listboxId}`}>
         <input
@@ -454,26 +495,8 @@ export class EditorCombobox extends LitElement {
         >
           ${groups.size ? Array.from(groups, ([group, entries]) => html`
             <div class="option-group" role=${group ? "group" : nothing} aria-label=${group || nothing}>
-              ${group ? html`<div class="group-label" title=${group} aria-hidden="true">${group}</div>` : nothing}
-              ${entries.length ? nothing : this.renderEmptyOptions(group)}
-              ${entries.map(({option, index}) => html`
-                ${option.dividerBefore ? html`<hr class="divider" role="separator" />` : nothing}
-                <button
-                  id=${`${this.listboxId}-option-${index}`}
-                  class="option"
-                  type="button"
-                  role="option"
-                  title=${option.description ? `${option.label} — ${option.description}` : option.label}
-                  aria-selected=${this.multiple ? this.values.includes(option.value) : selected === option}
-                  data-active=${this.activeIndex === index ? "" : nothing}
-                  @mousedown=${(event: MouseEvent) => event.preventDefault()}
-                  @click=${(event: MouseEvent) => this.select(option, event)}
-                >
-                  <strong class="option-code">${option.label}</strong>
-                  ${this.showValue ? html`<span class="option-name option-value">${option.description ?? option.value}</span>`
-                    : option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
-                </button>
-              `)}
+              ${group ? this.renderGroupHeading(group) : nothing}
+              ${this.renderGroupOptions(group, entries)}
             </div>
           `) : html`<span class="option-name">Press Enter to use “${this.draft.trim()}”.</span>`}
         </div>

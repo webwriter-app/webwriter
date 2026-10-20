@@ -989,8 +989,8 @@ describe("mark ribbon controls", () => {
 
     sizeInput.focus()
     await sizeCombo.updateComplete
-    expect(sizeCombo.shadowRoot!.querySelector<HTMLButtonElement>('.option[title="Default size"]')!.textContent)
-      .toContain("Default size")
+    expect(sizeCombo.shadowRoot!.querySelector<HTMLButtonElement>('.option[title="Default"]')!.textContent)
+      .toContain("Default")
   })
 
   it("forwards Bunny font resources with the selected font through the editor bridge", async () => {

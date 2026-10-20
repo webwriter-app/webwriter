@@ -1,4 +1,5 @@
 import {fontFamilyOptions} from "./marks"
+import {embeddedFontRules} from "./local-fonts"
 
 export type BunnyFont = {
   familyName: string
@@ -60,11 +61,22 @@ export function bunnyStylesheetFamily(href: string) {
   catch { return null }
 }
 
+export function fontStylesheetFamily(href: string) {
+  return bunnyStylesheetFamily(href) ?? fontFamilies(embeddedFontRules(href)?.[0].style.fontFamily ?? "")[0] ?? null
+}
+
+const linkedFamilies = new WeakMap<HTMLLinkElement, {href: string, family: string | null}>()
+
 /** Resource metadata is cached for undo; all usage is read from the live DOM. */
-export function syncBunnyFonts(document: Document, resources: Map<string, string>, pending = "") {
+export function syncFontResources(document: Document, resources: Map<string, string>, pending = "") {
   const links = [...document.head.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]')]
     .flatMap(link => {
-      const family = bunnyStylesheetFamily(link.href)
+      let cached = linkedFamilies.get(link)
+      if(cached?.href !== link.href) {
+        cached = {href: link.href, family: fontStylesheetFamily(link.href)}
+        linkedFamilies.set(link, cached)
+      }
+      const family = cached.family
       if(!family) return []
       resources.set(family, link.href)
       return [{link, family}]

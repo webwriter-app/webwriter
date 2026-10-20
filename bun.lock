@@ -214,6 +214,7 @@
         "axe-core": "^4.14.0",
         "es-module-lexer": "^1.7.0",
         "esbuild-wasm": "^0.25.12",
+        "fontkitten": "^1.0.2",
         "harper.js": "2.10.0",
         "lit": "^3.3.2",
         "onnxruntime-web": "1.29.0",

@@ -9,16 +9,16 @@ export class FontSizeCombobox extends StyleCombobox {
   static styles = [...StyleCombobox.styles, css`
     :host {height: 1.75rem; --metadata-combobox-height: 1.75rem;}
     .listbox {
-      width: max(9rem, anchor-size(width));
+      width: anchor-size(width);
       max-height: min(18rem, calc(100vh - 1rem));
       margin-block: -1px;
-      padding: .25rem;
+      padding: 0;
       overflow: hidden;
       border: 1px solid #a8a8a8;
       position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
     }
-    .option-group {max-height: min(calc(18rem - .5rem - 2px), calc(100vh - 1.5rem - 2px)); overflow: auto;}
-    .option {min-height: 1.75rem; font-size: .72rem;}
+    .option-group {max-height: min(calc(18rem - 2px), calc(100vh - 1rem - 2px)); overflow: auto;}
+    .option {min-height: 1.75rem; padding: .35rem .1rem; font-size: .72rem;}
     .option-value {display: none;}
   `, connectedComboboxStyles]
 

@@ -4,6 +4,7 @@ import {DOMEditor} from "./domeditor"
 import {restoreOriginalResourceURLs} from "./serialization"
 import {bundleOfflineModules} from "./offline-module-bundler"
 import {bunnyFontStylesheet} from "./fonts"
+import {fontCSSDataURL, embeddedFontRules} from "./local-fonts"
 
 vi.mock("./offline-module-bundler", () => ({bundleOfflineModules: vi.fn()}))
 
@@ -30,6 +31,21 @@ afterEach(() => {
 })
 
 describe("offline HTML resources", () => {
+  it("preserves embedded local fonts online, offline and when reopening without the source file", async () => {
+    const href = fontCSSDataURL('@font-face {font-family: "Local Font"; font-weight: 400; src: url("data:font/woff2;base64,AQID");}')
+    document.head.insertAdjacentHTML("beforeend", `<link rel="stylesheet" href="${href}">`)
+    document.body.innerHTML = '<p style="font-family: &quot;Local Font&quot;, serif">Local text</p>'
+    activeEditor = new DOMEditor()
+    for(const offline of [false, true]) {
+      const exported = new DOMParser().parseFromString(await activeEditor.serializeHTML(offline), "text/html")
+      const link = exported.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')!
+      expect(embeddedFontRules(link.href)![0].style.getPropertyValue("src")).toContain("data:font/woff2;base64,AQID")
+      restoreOriginalResourceURLs(exported)
+      expect(link.href).toBe(href)
+      expect(exported.querySelector("p")!.style.fontFamily).toContain("Local Font")
+    }
+  })
+
   it("keeps Bunny font links online and embeds their font-face files for offline documents", async () => {
     const href = bunnyFontStylesheet({familyName: "Alegreya", category: "serif", weights: [400, 700], styles: ["normal"]})
     document.head.insertAdjacentHTML("beforeend", `<link rel="stylesheet" href="${href}">`)

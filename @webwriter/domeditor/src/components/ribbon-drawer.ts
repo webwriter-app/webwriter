@@ -62,6 +62,7 @@ export class RibbonDrawer extends LitElement {
 
     :host([layout="marks"]) {
       --ribbon-drawer-expanded-width: 18.475rem;
+      --font-dropdown-width: calc(var(--ribbon-drawer-expanded-width) - 1rem - 2px);
       --ribbon-drawer-height: 8.35rem;
       --ribbon-drawer-more-height: 3.9rem;
       --ribbon-drawer-panel-padding-block: 0.375rem;

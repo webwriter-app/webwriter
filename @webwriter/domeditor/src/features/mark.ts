@@ -26,7 +26,8 @@ import {SVG_NAMESPACE} from "../graphic"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
 import {isLinkEdit, normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
-import {bunnyStylesheetFamily, fontFamilies, fontWithFallback, syncBunnyFonts} from "../fonts"
+import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources} from "../fonts"
+import {mergeEmbeddedFonts} from "../local-fonts"
 
 // Bounded domain labels, with separate email matching to avoid linking just its domain.
 const automaticLinkDomain = String.raw`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})(?![a-z0-9_@-])`
@@ -1245,9 +1246,15 @@ export class MarkFeature extends EditorFeature {
     const normalizedValue = property === "font-family" ? fontWithFallback(value) : value
     const changed = this.applyStyleMark(property, normalizedValue)
     if(property === "font-family") {
-      const family = fontStylesheet && bunnyStylesheetFamily(fontStylesheet)
+      const family = fontStylesheet && fontStylesheetFamily(fontStylesheet)
       if(family && fontFamilies(value)[0] === family
-        && (changed || this.getStyleState()[property] === this.normalizeStyleValue(property, normalizedValue))) this.fontResources.set(family, fontStylesheet!)
+        && (changed || this.getStyleState()[property] === this.normalizeStyleValue(property, normalizedValue))) {
+        const stylesheet = mergeEmbeddedFonts(this.fontResources.get(family), fontStylesheet!)
+        this.fontResources.set(family, stylesheet)
+        for(const link of document.head.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"][href]')) {
+          if(fontStylesheetFamily(link.href) === family) link.href = stylesheet
+        }
+      }
       this.syncFonts()
     }
     return changed
@@ -1257,7 +1264,7 @@ export class MarkFeature extends EditorFeature {
     this.clearStoredMarksIfSelectionChanged()
     const pending = this.storedSelection?.anchorNode.isConnected && this.storedSelection.focusNode.isConnected
       ? this.storedStyles?.["font-family"] : ""
-    syncBunnyFonts(document, this.fontResources, pending)
+    syncFontResources(document, this.fontResources, pending)
   }
 
   private applyStyleMark(property: StyleMarkName, value: string): boolean {
