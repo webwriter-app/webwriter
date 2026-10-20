@@ -6,6 +6,7 @@ class WwQuiz extends LitElementWw {
   static options = {
     answer: {
       type: "select",
+      group: "quiz",
       label: {_: "Correct answer"},
       options: [
         {value: "true", label: {_: "True"}},
@@ -13,7 +14,18 @@ class WwQuiz extends LitElementWw {
       ],
     },
   }
-  static actions = {resetAnswer: {label: {_: "Reset correct answer"}}}
+  static optionGroups = {
+    quiz: {label: {_: "Quiz settings"}, collapsible: true, advanced: false},
+  }
+  static actions = {
+    resetAnswer: {
+      label: {_: "Reset correct answer"},
+      group: "quiz",
+      icon: "Restore",
+      intent: "default",
+      confirm: {_: "Reset the correct answer?"},
+    },
+  }
   static styles = css`
     :host {
       display: block;

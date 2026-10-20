@@ -28,6 +28,7 @@ var LitElementWw = class extends LitElement {
   static scopedElements = {};
   static options = {};
   static actions = {};
+  static optionGroups = {};
   static dataType = void 0;
   localize;
   /** One native registry per concrete widget class, shared by its instances. */

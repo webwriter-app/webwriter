@@ -7,6 +7,7 @@ import {Schema} from "../schema"
 import {$, isWidgetShadowInteraction} from "../utility"
 import {isDataBlockType, stripActiveContent} from "../active-content"
 import {isWidgetOptionsState} from "../widget-options"
+import type {ActionDeclaration, OptionDeclaration} from "../../../lit/index"
 
 class OptionsWidget extends HTMLElement {
   static options = {
@@ -537,5 +538,308 @@ describe("widget sharing controls", () => {
     expect(clipboard.html).toContain("<?ww-grouping ")
     expect(clipboard.html).not.toContain("◆")
     expect(editor.schema.isContentValid(widget)).toBe(true)
+  })
+})
+
+describe("dynamic widget inspector declarations", () => {
+  it("supports localized groups and lets empty or failing instance declarations suppress static maps", () => {
+    document.body.innerHTML = '<demo-options count="3"></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    Object.defineProperty(widget, "optionGroups", {value: {main: {label: {_: "General"}, collapsible: true}}})
+    expect(editor.features.widget.getOptionsState([widget])!.groups).toEqual([{name: "main", label: "General", collapsible: true}])
+    Object.defineProperty(widget, "options", {get: () => ({})})
+    Object.defineProperty(widget, "actions", {get: () => { throw Error("Not ready") }})
+    expect(editor.features.widget.getOptionsState([widget])).toMatchObject({options: [], actions: []})
+    expect(() => editor.features.widget.setOption(widget, "count", 7)).toThrow("no option")
+  })
+
+  it.each(["hidden", "disabled", "readOnly"])("rechecks %s options before applying changes, including resets", availability => {
+    document.body.innerHTML = '<demo-options count="3"></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    let locked = false
+    Object.defineProperty(widget, "options", {get: () => ({count: {type: Number, [availability]: locked}})})
+    expect(editor.features.widget.getOptionsState([widget])!.options[0].value).toBe(3)
+    locked = true
+    expect(editor.features.widget.setOption(widget, "count", 7)).toBe(false)
+    expect(editor.features.widget.setOption(widget, "count", null)).toBe(false)
+    expect(widget.getAttribute("count")).toBe("3")
+    locked = false
+    expect(editor.features.widget.setOption(widget, "count", 7)).toBe(true)
+    widget.remove()
+    expect(editor.features.widget.setOption(widget, "count", 8)).toBe(false)
+  })
+
+  it("validates live numeric bounds and choices without changing serialization", () => {
+    document.body.innerHTML = '<demo-options count="3" mode="a"><!--keep--><p>Keep</p></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    Object.defineProperty(widget, "options", {value: {
+      count: {type: Number, control: "range", min: 1, max: 10, steps: [1, 3, 10], unit: "px"},
+      mode: {type: "select", options: [{value: "a"}]},
+    }})
+    expect(editor.features.widget.setOption(widget, "count", 4)).toBe(false)
+    expect(editor.features.widget.setOption(widget, "count", 11)).toBe(false)
+    expect(editor.features.widget.setOption(widget, "mode", "b")).toBe(false)
+    expect(editor.features.widget.setOption(widget, "count", 10)).toBe(true)
+    const html = editor.toHTML(true)
+    expect(html).toContain('count="10"')
+    expect(html).toContain('<!--keep--><p>Keep</p>')
+    expect(html).not.toMatch(/unit=|control=|steps=|◆/)
+    expect(sharedHTML()).not.toMatch(/unit=|control=|steps=|◆/)
+  })
+
+  it("refreshes host notifications once and ignores incidental shadow events and teardown", async () => {
+    document.body.innerHTML = '<demo-options></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    const inner = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(inner)
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const post = vi.spyOn(editor, "postSelectionPath")
+    inner.dispatchEvent(new Event("optionschange", {bubbles: true, composed: true}))
+    document.body.dispatchEvent(new Event("optionschange", {bubbles: true}))
+    await Promise.resolve()
+    expect(post).not.toHaveBeenCalled()
+    widget.dispatchEvent(new Event("optionschange", {bubbles: true}))
+    widget.dispatchEvent(new Event("optionschange", {bubbles: true}))
+    await Promise.resolve()
+    expect(post).toHaveBeenCalledTimes(1)
+    editor.features.widget.disable()
+    await new Promise(resolve => setTimeout(resolve, 20))
+    post.mockClear()
+    widget.dispatchEvent(new Event("optionschange", {bubbles: true}))
+    await Promise.resolve()
+    expect(post).not.toHaveBeenCalled()
+    editor.features.widget.enable()
+    post.mockRestore()
+  })
+
+  it("rechecks action availability and confirmation, and keeps confirmed changes undoable", async () => {
+    document.body.innerHTML = '<demo-options count="3"></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    let disabled = false
+    Object.defineProperty(widget, "actions", {get: () => ({reset: {confirm: "Reset?", disabled}})})
+    const feature = editor.features.widget
+    expect(await feature.runAction(widget, "reset")).toBe(false)
+    disabled = true
+    expect(await feature.runAction(widget, "reset", true)).toBe(false)
+    disabled = false
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(await feature.runAction(widget, "reset", true)).toBe(true)
+    expect(widget.getAttribute("count")).toBe("0")
+    editor.doc.undo()
+    expect(document.querySelector("demo-options")!.getAttribute("count")).toBe("3")
+    editor.doc.redo()
+    expect(document.querySelector("demo-options")!.getAttribute("count")).toBe("0")
+  })
+
+  it("reports async busy state and errors, then clears errors when retried", async () => {
+    document.body.innerHTML = '<demo-options></demo-options>'
+    const widget = document.querySelector("demo-options") as OptionsWidget
+    let reject!: (error: Error) => void
+    widget.reset = () => new Promise<void>((_resolve, fail) => { reject = fail }) as never
+    const feature = editor.features.widget
+    const running = feature.runAction(widget, "reset")
+    expect(feature.getOptionsState([widget])!.actions[0].busy).toBe(true)
+    expect(await feature.runAction(widget, "reset")).toBe(false)
+    const failure = expect(running).rejects.toThrow("Cannot reset")
+    reject(Error("Cannot reset"))
+    await failure
+    expect(feature.getOptionsState([widget])!.actions[0]).toMatchObject({error: "Cannot reset"})
+    expect(feature.getOptionsState([widget])!.actions[0].busy).toBeUndefined()
+    widget.reset = () => {}
+    await feature.runAction(widget, "reset")
+    expect(feature.getOptionsState([widget])!.actions[0].error).toBeUndefined()
+  })
+})
+
+
+class AdvancedOptionsWidget extends HTMLElement {
+  static options = {
+    duration: {type: Number, control: "duration", min: 0, max: 100000, step: 0.25},
+    blocks: {type: "select", multiple: true, control: "tree", options: [
+      {label: "Movement", children: [{value: "move"}, {value: "turn"}]}, {value: "stop"},
+    ]},
+    source: {type: "reference", selector: "demo-options"},
+  } satisfies Record<string, OptionDeclaration>
+  static actions = {
+    importFiles: {input: {type: "file", accept: ".txt,text/plain"}},
+    importMany: {input: {type: "file", multiple: true}},
+  } satisfies Record<string, ActionDeclaration>
+  get duration() { return Number(this.getAttribute("duration") ?? 0) }
+  get blocks() { return JSON.parse(this.getAttribute("blocks") ?? "[]") }
+  get source() { return this.getAttribute("source") }
+  async importFiles(files: File[]) { this.setAttribute("imported", await files[0].text()) }
+  importMany(files: File[]) { this.setAttribute("count", String(files.length)) }
+}
+customElements.define("advanced-options-widget", AdvancedOptionsWidget)
+
+function advancedWidget(html = '<advanced-options-widget id="advanced"></advanced-options-widget>') {
+  document.body.innerHTML = html
+  editor.schema.extendWidgets([{tagName: "advanced-options-widget"}])
+  return document.querySelector("advanced-options-widget") as AdvancedOptionsWidget
+}
+
+const chooseActionFiles = async (picker: HTMLInputElement, files: File[]) => {
+  Object.defineProperty(picker, "files", {configurable: true, value: files})
+  picker.dispatchEvent(new Event("change"))
+  await new Promise(resolve => setTimeout(resolve))
+}
+
+describe("specialized widget options", () => {
+  it("stores durations as seconds and tree values as leaf IDs, preserving existing orphan values", () => {
+    const widget = advancedWidget(`<advanced-options-widget duration="65.25" blocks='["move","unknown"]'></advanced-options-widget>`)
+    const feature = editor.features.widget
+    expect(feature.setOption(widget, "duration", 90061.25)).toBe(true)
+    expect(feature.setOption(widget, "duration", -1)).toBe(false)
+    expect(feature.setOption(widget, "duration", 1.1)).toBe(false)
+    expect(feature.setOption(widget, "blocks", ["move", "unknown", "turn"])).toBe(true)
+    expect(feature.setOption(widget, "blocks", ["move", "injected"])).toBe(false)
+    expect(feature.setOption(widget, "blocks", ["Movement"])).toBe(false)
+    expect(widget.getAttribute("duration")).toBe("90061.25")
+    expect(JSON.parse(widget.getAttribute("blocks")!)).toEqual(["move", "unknown", "turn"])
+    expect(editor.toHTML(true)).not.toMatch(/data-duration|data-tree-|control=/)
+  })
+
+  it("lists current unique authored widget IDs without creating IDs or exposing shadow contents", () => {
+    const widget = advancedWidget('<advanced-options-widget source="gone"></advanced-options-widget><section><demo-options id="source" title="Training"></demo-options><demo-options></demo-options><demo-options id="duplicate"></demo-options><p id="duplicate">Other</p></section>')
+    widget.attachShadow({mode: "open"}).innerHTML = '<demo-options id="shadow"></demo-options>'
+    const anonymous = document.querySelector("section demo-options:not([id])")!
+    const option = editor.features.widget.getOptionsState([widget])!.options.find(option => option.name === "source")!
+    expect(option.choices).toEqual([{value: "source", label: "Training #source"}])
+    expect(option.referenceMissing).toBe(true)
+    expect(widget.getAttribute("source")).toBe("gone")
+    expect(anonymous.hasAttribute("id")).toBe(false)
+    expect(editor.features.widget.setOption(widget, "source", "duplicate")).toBe(false)
+    expect(editor.features.widget.setOption(widget, "source", "shadow")).toBe(false)
+    expect(editor.features.widget.setOption(widget, "source", "source")).toBe(true)
+    document.querySelector("#source")!.remove()
+    expect(editor.features.widget.setOption(widget, "source", "source")).toBe(false)
+    expect(editor.features.widget.getOptionsState([widget])!.options.find(option => option.name === "source")!.referenceMissing).toBe(true)
+    expect(editor.features.widget.setOption(widget, "source", null)).toBe(true)
+  })
+
+  it("fails safely for invalid reference selectors and excludes self unless explicitly allowed", () => {
+    const widget = advancedWidget()
+    Object.defineProperty(widget, "options", {configurable: true, value: {source: {type: "reference", selector: "["}}})
+    expect(editor.features.widget.getOptionsState([widget])!.options[0]).toMatchObject({disabled: true, choices: []})
+    expect(editor.features.widget.setOption(widget, "source", "advanced")).toBe(false)
+    Object.defineProperty(widget, "options", {value: {source: {type: "reference", selector: "advanced-options-widget", excludeSelf: false}}})
+    expect(editor.features.widget.setOption(widget, "source", "advanced")).toBe(true)
+  })
+
+  it("refreshes reference choices for direct and remote DOM replacements and ID changes", async () => {
+    const widget = advancedWidget('<advanced-options-widget source="source"></advanced-options-widget><demo-options id="source"></demo-options>')
+    editor.features.widget.getOptionsState([widget])
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const post = vi.spyOn(editor, "postSelectionPath")
+    try {
+      const source = document.querySelector("#source")!
+      source.id = "renamed"
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(post).toHaveBeenCalled()
+      expect(editor.features.widget.getOptionsState([widget])!.options.find(option => option.name === "source")!.choices)
+        .toEqual([{value: "renamed", label: "demo-options #renamed"}])
+      editor.doc.syncFromDOM()
+      const remote = new Y.Doc()
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const sharedSource = sharedDOMBody(remote).get(1) as Y.XmlElement
+      sharedSource.setAttribute("id", "remote-source")
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote))
+      await new Promise(resolve => setTimeout(resolve, 20))
+      expect(editor.features.widget.getOptionsState([widget])!.options.find(option => option.name === "source")!.choices)
+        .toEqual([{value: "remote-source", label: "demo-options #remote-source"}])
+      remote.destroy()
+    }
+    finally { post.mockRestore() }
+  })
+})
+
+describe("widget file-input actions", () => {
+  const picker = () => editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+
+  it("uses appendix file inputs and invokes single or multiple File[] imports without storing picker artifacts", async () => {
+    const widget = advancedWidget()
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    try {
+      const before = editor.toHTML(true)
+      const feature = editor.features.widget
+      expect(await feature.runAction(widget, "importFiles")).toBe(true)
+      expect(picker().accept).toBe(".txt,text/plain")
+      expect(picker().multiple).toBe(false)
+      expect(editor.toHTML(true)).toBe(before)
+      expect(sharedHTML()).not.toContain('type="file"')
+      editor.doc.stopCapturing()
+      await chooseActionFiles(picker(), [new File(["hello"], "source.txt", {type: "text/plain"})])
+      expect(widget.getAttribute("imported")).toBe("hello")
+      expect(picker()).toBeNull()
+      editor.doc.undo()
+      expect(document.querySelector("advanced-options-widget")!.hasAttribute("imported")).toBe(false)
+      editor.doc.redo()
+      const current = document.querySelector("advanced-options-widget")!
+      expect(current.getAttribute("imported")).toBe("hello")
+      await feature.runAction(current, "importMany")
+      expect(picker().multiple).toBe(true)
+      await chooseActionFiles(picker(), [new File(["a"], "a.txt"), new File(["b"], "b.txt")])
+      expect(current.getAttribute("count")).toBe("2")
+      expect(JSON.stringify(feature.getOptionsState([current]))).not.toContain("source.txt")
+    }
+    finally { click.mockRestore() }
+  })
+
+  it("cleans up cancellation, superseded pickers, detached targets, and destruction", async () => {
+    const widget = advancedWidget()
+    const method = vi.spyOn(widget, "importFiles")
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    try {
+      const feature = editor.features.widget
+      await feature.runAction(widget, "importFiles")
+      const first = picker()
+      first.dispatchEvent(new Event("cancel"))
+      expect(picker()).toBeNull()
+      await feature.runAction(widget, "importFiles")
+      const replaced = picker()
+      await feature.runAction(widget, "importMany")
+      expect(replaced.isConnected).toBe(false)
+      expect(picker().multiple).toBe(true)
+      picker().dispatchEvent(new Event("cancel"))
+      await feature.runAction(widget, "importFiles")
+      const stale = picker()
+      widget.replaceWith(document.createElement("advanced-options-widget"))
+      await chooseActionFiles(stale, [new File(["stale"], "stale.txt")])
+      expect(method).not.toHaveBeenCalled()
+      expect(picker()).toBeNull()
+      const next = document.querySelector("advanced-options-widget")!
+      await feature.runAction(next, "importFiles")
+      feature.disable()
+      expect(picker()).toBeNull()
+      expect(await feature.runAction(next, "importFiles")).toBe(false)
+      expect(picker()).toBeNull()
+      feature.enable()
+    }
+    finally { click.mockRestore() }
+  })
+
+  it("rechecks current file declarations and availability when the chooser completes", async () => {
+    const widget = advancedWidget()
+    const method = vi.spyOn(widget, "importFiles")
+    let disabled = false, accept = ".txt"
+    Object.defineProperty(widget, "actions", {get: () => ({importFiles: {disabled, input: {type: "file", accept}}})})
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    try {
+      const feature = editor.features.widget
+      await feature.runAction(widget, "importFiles")
+      disabled = true
+      await chooseActionFiles(picker(), [new File(["blocked"], "blocked.txt")])
+      expect(method).not.toHaveBeenCalled()
+      disabled = false
+      await feature.runAction(widget, "importFiles")
+      accept = ".json"
+      await chooseActionFiles(picker(), [new File(["stale"], "stale.txt")])
+      expect(method).not.toHaveBeenCalled()
+      expect(picker()).toBeNull()
+      expect(await feature.runAction(widget, "importFiles", false, [])).toBe(false)
+      expect(await feature.runAction(widget, "importFiles", false, [new File([], "a"), new File([], "b")])).toBe(false)
+    }
+    finally { click.mockRestore() }
   })
 })

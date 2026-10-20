@@ -102,6 +102,34 @@ it.each(["color", "background-color"])("shares the toolbox palette for %s, inclu
   expect(changes.mock.calls[1][0].detail).toEqual({name, value: ""})
 })
 
+it("renders valid suggested colors and commits each swatch once unless disabled", async () => {
+  const combo = new RibbonCombobox()
+  combo.name = "accent"
+  combo.label = "Accent color"
+  combo.variant = "color"
+  combo.swatches = ["#123456", "rebeccapurple", "red; background:url(javascript:alert(1))"]
+  document.body.append(combo)
+  await combo.updateComplete
+  combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+  await combo.updateComplete
+
+  const changes = vi.fn()
+  combo.addEventListener("ribbon-combobox-change", changes)
+  expect(combo.shadowRoot!.querySelectorAll(".color-suggested .color-swatch")).toHaveLength(2)
+  const suggested = combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Color rebeccapurple"]')!
+  suggested.click()
+  await combo.updateComplete
+  expect(changes).toHaveBeenCalledTimes(1)
+  expect(changes.mock.calls[0][0].detail).toEqual({name: "accent", value: "rebeccapurple"})
+
+  combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+  await combo.updateComplete
+  combo.disabled = true
+  await combo.updateComplete
+  combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Color #123456"]')!.click()
+  expect(changes).toHaveBeenCalledTimes(1)
+})
+
 it("dismisses the palette on Escape or outside pointerdown without changing the color", async () => {
   const combo = new RibbonCombobox()
   combo.variant = "color"

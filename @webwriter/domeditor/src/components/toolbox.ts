@@ -149,12 +149,6 @@ export class DomEditorToolbox extends EditingControls {
 
     .widget-sharing {padding: .75rem 0; display: grid; gap: .5rem; border-bottom: 1px solid var(--sl-color-neutral-200, #ddd)}
     .share-toggle {display: flex; justify-content: space-between; align-items: center; font-size: .875rem}
-    .share-toggle input {appearance: none; position: relative; width: 2rem; height: 1.125rem; margin: 0; background: var(--sl-color-neutral-300, #ccc); border: 1px solid transparent; border-radius: 1rem; cursor: pointer}
-    .share-toggle input::before {content: ""; position: absolute; width: .875rem; height: .875rem; left: .0625rem; top: .0625rem; border-radius: 50%; background: white; transition: transform .12s}
-    .share-toggle input:checked {background: var(--sl-color-primary-600, #5267df)}
-    .share-toggle input:checked::before {transform: translateX(.875rem)}
-    .share-toggle input:focus-visible {outline: 2px solid var(--sl-color-primary-600, #5267df); outline-offset: 2px}
-    @media (prefers-reduced-motion: reduce) {.share-toggle input::before {transition: none}}
     .grouping-card {position: relative; border: 1px solid var(--sl-color-neutral-200, #ddd); border-radius: .4rem; overflow: hidden}
     .grouping-summary {display: grid; gap: .25rem; padding: .65rem 2rem .65rem .65rem; width: 100%; text-align: left; background: transparent; border: 0; cursor: pointer; color: inherit}
     .grouping-summary span {font-size: .75rem; color: var(--sl-color-neutral-600, #666)}
@@ -637,8 +631,20 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     .specialized-widget-primary {font: .68rem/1.2 system-ui, sans-serif;}
+    .specialized-widget-primary .widget-options {min-width: 0;}
     .specialized-options .develop-field, .specialized-widget-primary .develop-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center;}
-    .specialized-widget-primary input, .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
+    .specialized-widget-primary input:not([type="checkbox"], [type="radio"]), .specialized-widget-primary select {height: 1.7rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; font: inherit;}
+    .specialized-widget-primary .widget-option-group .develop-field,
+    .specialized-widget-primary .develop-field:has(> .widget-option-tree) {
+      display: flex; flex-direction: column; align-items: stretch;
+    }
+    .specialized-widget-primary .develop-field.widget-option-checkbox,
+    .specialized-options .develop-field.widget-option-checkbox {
+      display: flex; flex-direction: row; align-items: center;
+    }
+    .specialized-widget-primary input[type="checkbox"]:not(.editor-switch), .specialized-widget-primary input[type="radio"] {
+      width: 0.9rem; height: 0.9rem; flex: 0 0 auto; margin: 0;
+    }
     .specialized-choice-group {min-height: 1.7rem;}
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: .6rem system-ui, sans-serif;}
     .specialized-choice-group button {display: flex; align-items: center; justify-content: center; gap: .2rem;}
@@ -998,44 +1004,23 @@ export class DomEditorToolbox extends EditingControls {
     </div>`
   }
 
-  protected renderWidgetOptionField(option: WidgetOptionState, dispatch = this.dispatchWidgetOption.bind(this), fieldScope = "") {
-    const fieldLabel = this.renderFieldLabel(option.label,
+  protected renderWidgetOptionLabel(option: WidgetOptionState, dispatch: (name: string, value: WidgetOptionValue) => void, fieldScope: string) {
+    return html`<span class="develop-field-label">${this.renderFieldLabel(option.label,
       option.value !== null && option.value !== "" && (!Array.isArray(option.value) || option.value.length > 0),
-      () => dispatch(option.name, null), `widget-label-${fieldScope}${option.name}`)
-    if(option.type === "number") {
-      const candidates = [option.min ?? 0, option.min === undefined ? 1 : option.min + (option.step ?? 1),
-        option.max ?? (option.min ?? 0) + 10 * (option.step ?? 1)]
-      const presets = [...new Set(candidates)].filter(value => (option.min === undefined || value >= option.min)
-        && (option.max === undefined || value <= option.max))
-      return html`<div class="develop-field">${fieldLabel}
-        <style-combobox .showValue=${true} .label=${option.label} .value=${option.value === null ? "" : String(option.value)}
-          placeholder=${option.placeholder ?? "Default"} .options=${presets.map((value, index) => ({value: String(value), label: ["Low", "Medium", "High"][index]}))}
-          @combobox-change=${(event: CustomEvent<{value: string}>) => {
-            const value = event.detail.value.trim()
-            const number = Number(value)
-            if(!value || Number.isFinite(number) && (option.min === undefined || number >= option.min)
-              && (option.max === undefined || number <= option.max)) dispatch(option.name, value ? number : null)
-            else {
-              const combo = event.currentTarget as import("./style-combobox").StyleCombobox
-              combo.value = option.value === null ? "" : String(option.value)
-              combo.close(true)
-            }
-          }}></style-combobox>
-      </div>`
+      () => { if(!option.disabled && !option.readOnly) dispatch(option.name, null) }, `widget-${fieldScope}${option.name}`,
+      Boolean(option.disabled || option.readOnly))}</span>`
+  }
+
+  protected renderWidgetOptionField(option: WidgetOptionState, dispatch = this.dispatchWidgetOption.bind(this), fieldScope = "") {
+    if(option.control || option.unit || option.hidden || option.disabled || option.readOnly) {
+      return super.renderWidgetOptionField(option, dispatch, fieldScope)
     }
-    if(option.type !== "select") return super.renderWidgetOptionField(option, dispatch, fieldScope)
-    if(option.multiple || !option.choices?.length || option.choices.length > 8 || option.choices.some(choice => choice.label.length > 14)) {
-      const value = option.value === null ? "" : String(option.value)
-      const choices = option.choices ?? []
-      return html`<div class="develop-field">${fieldLabel}
-        <style-combobox .label=${option.label} .editable=${false} .multiple=${Boolean(option.multiple)}
-          .values=${Array.isArray(option.value) ? option.value.map(String) : []} .value=${value}
-          .options=${[...(!option.multiple ? [{value: "", label: "Default"}] : []),
-            ...(!option.multiple && value && !choices.some(choice => choice.value === value) ? [{value, label: value}] : []), ...choices]}
-          @combobox-change=${(event: CustomEvent<{value: string, values?: string[]}>) => dispatch(option.name, option.multiple ? event.detail.values ?? [] : event.detail.value || null)}
-        ></style-combobox>
-      </div>`
+    if(option.type !== "select" || option.multiple || !option.choices?.length
+      || option.choices.length > 8 || option.choices.some(choice => choice.label.length > 14)) {
+      return super.renderWidgetOptionField(option, dispatch, fieldScope)
     }
+    const fieldLabel = this.renderFieldLabel(option.label,
+      option.value !== null && option.value !== "", () => dispatch(option.name, null), `widget-label-${fieldScope}${option.name}`)
     const columns = Math.min(4, Math.ceil(option.choices.length / (option.choices.length > 4 ? 2 : 1)))
     return html`<div class="develop-field" title=${option.description ?? ""}>
       ${fieldLabel}
@@ -1120,16 +1105,17 @@ export class DomEditorToolbox extends EditingControls {
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
     const properties = [...new Set([...primary, ...advanced, ...(list ? [listMarkerImageProperty] : [])])]
     const resetStyles = Object.fromEntries(properties.filter(name => Object.hasOwn(style.inline, name)).map(name => [name, null]))
-    const configuredWidgetOptions = widgetOptions?.options.filter(option => group ? group.configuredWidgetOptions.includes(option.name) : option.value !== null && option.value !== "") ?? []
+    const groupedWidgetOptions = Boolean(widgetOptions?.groups?.length || [...widgetOptions?.options ?? [], ...widgetOptions?.actions ?? []].some(item => item.group))
+    const configuredWidgetOptions = widgetOptions?.options.filter(option => !option.hidden && !option.disabled && !option.readOnly).filter(option => group ? group.configuredWidgetOptions.includes(option.name) : option.value !== null && option.value !== "") ?? []
     const count = advanced.filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
-      + (widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
+      + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
       ?? this.selectedElementTypes.find(item => ["td", "th"].includes(item.element.localName))
     const tableControls = Boolean(this.table?.active && (group ? group === tableGroup : ["table", "td", "th"].includes(localName)))
-    const commands = tableControls ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
+    const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
     const hasOptions = advanced.length > 0 || commands !== nothing
@@ -1178,7 +1164,9 @@ export class DomEditorToolbox extends EditingControls {
           ${mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
         </div>` : nothing}
-      ${widgetOptions ? html`<div class="widget-options specialized-widget-primary">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>` : nothing}
+      ${widgetOptions ? html`<div class="specialized-widget-primary">${groupedWidgetOptions
+        ? this.renderWidgetOptionsControls(widgetOptions.options, dispatchOption, widgetOptions, selectionType)
+        : html`<div class="widget-options">${widgetOptions.options.slice(0, 3).map(option => this.renderWidgetOptionField(option, dispatchOption, group ? `${widgetOptions.path.join("-")}-` : ""))}</div>`}</div>` : nothing}
       <element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${primary}
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
           : [[namespaceURI, localName, attributes?.path, 1]])}

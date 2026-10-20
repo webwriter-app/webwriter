@@ -346,18 +346,15 @@ export class DeveloperConsole extends EditingControls {
           <strong>${member.label}</strong><code>&lt;${state.localName}&gt;</code>
           ${member.description ? html`<p>${member.description}</p>` : ""}
           <h3>Options</h3>
-          ${state.options.length ? state.options.map(option => html`<div class="element-option">
+          ${state.options.length ? state.options.filter(option => !option.hidden).map(option => html`<div class="element-option">
             ${this.renderWidgetOptionField(option)}
             <small>${option.name} · ${option.type} · ${option.attribute === null ? "Property only (not saved)" : `Attribute: ${option.attribute}`}</small>
           </div>`) : html`<p>No options declared</p>`}
         </section>
         <section class="develop-section">
           <h3>Actions</h3>
-          ${state.actions.length ? state.actions.map(action => html`<div class="element-action">
-            <button type="button" class="widget-action"
-              @click=${() => this.dispatchEvent(new CustomEvent("widget-action", {detail: {name: action.name}, bubbles: true, composed: true}))}
-            >${action.label}</button><code>${action.name}()</code>
-            ${action.description ? html`<p>${action.description}</p>` : ""}
+          ${state.actions.length ? state.actions.filter(action => !action.hidden).map(action => html`<div class="element-action">
+            ${this.renderWidgetAction(action)}<code>${action.name}()</code>
           </div>`) : html`<p>No actions declared</p>`}
           <h3>Scoped widget data</h3>
           ${state.sharing ? html`

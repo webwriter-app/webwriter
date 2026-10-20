@@ -24,6 +24,7 @@ export class RibbonCombobox extends LitElement {
     name: {type: String, reflect: true},
     open: {type: Boolean, reflect: true},
     options: {attribute: false},
+    swatches: {attribute: false},
     values: {attribute: false},
     value: {type: String},
     variant: {type: String, reflect: true},
@@ -232,6 +233,7 @@ export class RibbonCombobox extends LitElement {
   multiple = false
   name = ""
   options: readonly StyleMarkOption[] = []
+  swatches: readonly string[] = []
   values: readonly string[] = []
   value = ""
   variant: "text" | "color" = "text"
@@ -470,7 +472,7 @@ export class RibbonCombobox extends LitElement {
             const keyboardFocus = this.shadowRoot?.activeElement === event.currentTarget
             this.select({label: value || "Automatic", value})
             if(keyboardFocus && !this.disabled) this.renderRoot.querySelector<HTMLButtonElement>(".combobox")?.focus()
-          }, {disabled: this.disabled, persistent: true}) : options}
+          }, {disabled: this.disabled, persistent: true, swatches: this.swatches}) : options}
         </div>
       `: ""}
     `

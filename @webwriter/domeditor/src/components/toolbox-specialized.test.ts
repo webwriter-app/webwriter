@@ -6,6 +6,7 @@ import type {ElementStyleState, SelectedElementTypeState} from "../editor-bridge
 import type {ElementStyleEditor} from "./element-style-editor"
 import type {ElementAttributeEditor} from "./element-attribute-editor"
 import type {RibbonDrawer} from "./ribbon-drawer"
+import type {RibbonButton} from "./ribbon-button"
 import type {WidgetOptionsState} from "../widget-options"
 import {markNames} from "../marks"
 
@@ -323,7 +324,9 @@ describe("specialized element toolbox", () => {
     const checkbox = drawers[1].querySelector<HTMLInputElement>('input[type="checkbox"]')!
     checkbox.checked = true
     checkbox.dispatchEvent(new Event("change", {bubbles: true}))
-    drawers[1].querySelector<HTMLButtonElement>(".widget-action")!.click()
+    const button = drawers[1].querySelector<RibbonButton>(".widget-action")!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     drawers[1].querySelector("element-attribute-editor")!.dispatchEvent(new CustomEvent("element-attribute-change", {detail: {name: "lang", value: "de"}, bubbles: true, composed: true}))
     const selectionType = {localName: "course-quiz", namespaceURI: "http://www.w3.org/1999/xhtml", id: "second"}
     expect(options.mock.calls[0][0].detail.selectionType).toEqual(selectionType)

@@ -6274,6 +6274,10 @@ describe("DomEditor.execute()", () => {
       detail: {selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI, id: "second"}, name: "reset"},
     }))
     expect(execute).toHaveBeenCalledWith({type: "runSelectedWidgetAction", selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI, id: "second"}, name: "reset"})
+    toolbox.dispatchEvent(new CustomEvent("widget-action", {
+      detail: {selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI, id: "second"}, name: "reset", confirmed: true},
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "runSelectedWidgetAction", selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI, id: "second"}, name: "reset", confirmed: true})
     window.dispatchEvent(new MessageEvent("message", {source: editorWindow,
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
     }))

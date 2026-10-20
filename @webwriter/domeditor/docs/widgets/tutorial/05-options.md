@@ -7,6 +7,7 @@ Add these declarations to the widget class:
 static options = {
   answer: {
     type: "select",
+    group: "quiz",
     label: {_: "Correct answer"},
     options: [
       {value: "true", label: {_: "True"}},
@@ -15,12 +16,24 @@ static options = {
   },
 }
 
-static actions = {resetAnswer: {label: {_: "Reset correct answer"}}}
+static optionGroups = {
+  quiz: {label: {_: "Quiz settings"}, collapsible: true, advanced: false},
+}
+
+static actions = {
+  resetAnswer: {
+    label: {_: "Reset correct answer"},
+    group: "quiz",
+    icon: "Restore",
+    intent: "default",
+    confirm: {_: "Reset the correct answer?"},
+  },
+}
 
 resetAnswer() { this.setAttribute("answer", "false") }
 ```
 
-Select the widget in WebWriter. The **Widget** drawer now offers a **Correct answer** field and a **Reset correct answer** action. The field writes the `answer` attribute; the getter from the previous step supplies its displayed value.
+Select the widget in WebWriter. The **Widget** drawer now offers a **Quiz settings** group with a **Correct answer** field and a **Reset correct answer** action. The field writes the `answer` attribute; the getter from the previous step supplies its displayed value. The action asks for confirmation before it runs.
 
 Change the correct answer, then try undo and redo. The action is also one undo step. The standalone preview shows the widget; the drawer is provided by WebWriter.
 <!-- /library -->
@@ -32,6 +45,7 @@ Add these declarations to the `LitElementWw` class. The base exposes static `opt
 static options = {
   answer: {
     type: "select",
+    group: "quiz",
     label: {_: "Correct answer"},
     options: [
       {value: "true", label: {_: "True"}},
@@ -40,15 +54,35 @@ static options = {
   },
 }
 
-static actions = {resetAnswer: {label: {_: "Reset correct answer"}}}
+static optionGroups = {
+  quiz: {label: {_: "Quiz settings"}, collapsible: true, advanced: false},
+}
+
+static actions = {
+  resetAnswer: {
+    label: {_: "Reset correct answer"},
+    group: "quiz",
+    icon: "Restore",
+    intent: "default",
+    confirm: {_: "Reset the correct answer?"},
+  },
+}
 
 resetAnswer() { this.answer = "false" }
 ```
 
-Select the widget in WebWriter. The **Widget** drawer now offers a **Correct answer** field and a **Reset correct answer** action. The field writes the `answer` attribute; the reflected property from the previous step supplies its displayed value.
+Select the widget in WebWriter. The **Widget** drawer now offers a **Quiz settings** group with a **Correct answer** field and a **Reset correct answer** action. The field writes the `answer` attribute; the reflected property from the previous step supplies its displayed value. The action asks for confirmation before it runs.
 
 Change the correct answer, then try undo and redo. The action is also one undo step. The standalone preview shows the widget; the drawer is provided by WebWriter.
 <!-- /library -->
+
+Declarations can also be instance properties or getters when they depend on current widget state. If another event changes the state used by a getter, tell the editor to reread it by dispatching a bubbling event from the widget host:
+
+```js
+this.dispatchEvent(new Event("optionschange", {bubbles: true}))
+```
+
+For example, a getter can disable an option and provide a localized `disabledReason`, or show a number `unit` such as `"px"`. The unit is displayed alongside the value and does not convert it. An explicitly supplied empty instance map overrides the static map.
 
 <!-- library:react -->
 <!-- include:../examples/react/05-options.md -->
