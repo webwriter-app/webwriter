@@ -1799,6 +1799,37 @@ await check("document resizing and graphic fitting preserve normal flow", async 
   finally { graphic.remove(); editor.features.transformation.clearTransform() }
 })
 
+await check("cancelled resizing accepts the first delete activation", async () => {
+  const feature = editor.features.transformation
+  for(const tag of ["p", "demo-widget"]) {
+    const target = document.createElement(tag)
+    target.style.cssText = "display:block;width:240px;height:120px"
+    target.innerHTML = 'Content<!--keep--><unfamiliar-node>child</unfamiliar-node>'
+    fixture.append(target)
+    try {
+      editor.features.selection.captureElement(target)
+      const initialStyle = target.style.cssText
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      const rect = target.getBoundingClientRect()
+      // Public mouse handlers avoid synthetic events requiring native pointer capture.
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new MouseEvent("mousedown", {button: 0, clientX: rect.right, clientY: rect.bottom}))
+      feature.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: rect.right - 40, clientY: rect.bottom - 20}))
+      assert(target.style.maxWidth !== "", `${tag}: resize did not start`)
+      document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+      assert(target.style.cssText === initialStyle, `${tag}: cancellation did not restore styles`)
+      assert(editor.features.selection.captureSelectedElement === target, `${tag}: cancellation lost selection`)
+      const deleter = feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!
+      deleter.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 52}))
+      deleter.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, button: 0, pointerId: 52}))
+      deleter.click()
+      assert(!target.isConnected && feature.target === null, `${tag}: first Delete activation was ignored`)
+      assert(!target.className.includes("◆"), `${tag}: deleted target retained editor markers`)
+    }
+    finally { target.remove(); feature.clearTransform() }
+  }
+})
+
 await check("media and graphics enforce minimum editing dimensions", async () => {
   for(const [tag, width, height] of [
     ["audio", 175, 35], ["video", 175, 70], ["img", 32, 32], ["picture", 32, 32],

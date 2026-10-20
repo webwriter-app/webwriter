@@ -72,7 +72,7 @@ export class TransformationFeature extends EditorFeature {
   #panEvent: MouseEvent | null = null
   #drop: {element: Element, placement: "before" | "after", parent: Node, float?: "left" | "right"} | null = null
   #normalDropRange: Range | null = null
-  #suppressClick = false
+  #suppressClick: HTMLElement | null = null
   readonly #cancelGesture = () => this.#finish(true)
 
   #createScaler(direction: string, edge = false, prefix = "◆transform-overlay") {
@@ -306,7 +306,7 @@ export class TransformationFeature extends EditorFeature {
     const sticky = control("anchor-sticky", "Toggle sticky positioning")
     sticky.addEventListener("click", event => { this.toggleSticky(); event.stopPropagation() })
     anchor.addEventListener("click", event => {
-      if(this.#suppressClick) return
+      if(this.#suppressClick === anchor) return
       if(event.shiftKey) this.#setPosition("fixed")
       else if(modifierKeyDown(event) && this.target) {
         const position = getComputedStyle(this.target).position
@@ -791,7 +791,7 @@ export class TransformationFeature extends EditorFeature {
       captured: this.editor.features.selection.captureSelectedElement === target,
       endUndoGroup: this.editor.doc.beginUndoGroup(),
     }
-    this.#suppressClick = false
+    this.#suppressClick = null
     if(mode === "crop") {
       document.body.classList.add(`◆transform-cropping-${handle.dataset.cropDirection}`)
       this.updateInfo()
@@ -1206,7 +1206,7 @@ export class TransformationFeature extends EditorFeature {
       preview.width = 0
       preview.height = 0
     }
-    this.#suppressClick = gesture.moved
+    this.#suppressClick = gesture.moved ? gesture.handle : null
     if(!target.style.length) target.removeAttribute("style")
     if(gesture.crop && !gesture.crop.target.style.length) gesture.crop.target.removeAttribute("style")
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
@@ -1277,6 +1277,7 @@ export class TransformationFeature extends EditorFeature {
 
   clearTransform() {
     this.#finish(true)
+    this.#suppressClick = null
     this.editor.features.selection.clearTransformCaret()
     if(this.#target) removeEditorMarker(this.#target, "◆transform-target")
     this.#target = null
@@ -1325,6 +1326,9 @@ export class TransformationFeature extends EditorFeature {
 
   activeListeners: DocumentListenerMap = {
     pointerdown: event => {
+      // A cancelled gesture may never emit a click. A fresh press starts a
+      // separate interaction, even when it uses the same overlay control.
+      this.#suppressClick = null
       const handle = event.composedPath()[0]
       if(!(handle instanceof HTMLElement) || !this.overlay.contains(handle)) return
       if(this.editor.isEditingLocked) { event.preventDefault(); event.stopImmediatePropagation(); return }
@@ -1369,8 +1373,9 @@ export class TransformationFeature extends EditorFeature {
     pointercancel: event => { if(this.#gesture?.pointerId === event.pointerId) this.#finish(true) },
     lostpointercapture: event => { if(this.#gesture?.pointerId === event.pointerId) this.#finish(true) },
     click: event => {
-      if(this.#suppressClick && event.composedPath().some(node => node === this.overlay)) {
-        this.#suppressClick = false
+      const suppressClick = this.#suppressClick
+      this.#suppressClick = null
+      if(suppressClick && event.composedPath().includes(suppressClick)) {
         event.preventDefault()
         event.stopImmediatePropagation()
         return

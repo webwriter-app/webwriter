@@ -517,6 +517,58 @@ describe("selection-owned transformation", () => {
     expect(sibling.isConnected).toBe(true)
   })
 
+  describe.each(["p", "demo-widget"])("%s resize cancellation", tag => {
+    it.each(["Escape", "pointercancel", "blur"])("accepts the first Delete activation after %s", ending => {
+      const target = targetElement(tag)
+      Object.assign(target.style, {width: "100px", height: "50px"})
+      mockRect(target)
+      captureNode(target)
+      const initialStyle = target.style.cssText
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 220, clientY: 170}))
+      expect(target.style.maxWidth).toBe("120px")
+
+      if(ending === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+      else if(ending === "blur") window.dispatchEvent(new Event("blur"))
+      else document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+
+      expect(target.style.cssText).toBe(initialStyle)
+      expect(editor.features.selection.captureSelectedElement).toBe(target)
+      expect(document.body.className).not.toContain("◆transform-")
+      // Keyboard/programmatic activation has no intervening pointerdown.
+      feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!.click()
+      expect(target.isConnected).toBe(false)
+      expect(feature.target).toBeNull()
+      expect(target.className).not.toContain("◆")
+    })
+  })
+
+  it("suppresses an anchor drag's trailing click but accepts a fresh click on the same handle", () => {
+    document.body.classList.add("ww-canvas")
+    const target = targetElement()
+    target.style.position = "relative"
+    mockRect(target)
+    selectNode(target)
+    vi.spyOn($, "pointFromCoords").mockReturnValue(undefined)
+    const anchor = feature.anchor
+    anchor.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 130, clientY: 100}))
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    anchor.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, shiftKey: true}))
+    expect(target.style.position).toBe("relative")
+
+    // A second cancellation may have no trailing click at all.
+    anchor.dispatchEvent(pointer("pointerdown", {pointerId: 4, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 4, buttons: 1, clientX: 130, clientY: 100}))
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 4}))
+    anchor.dispatchEvent(pointer("pointerdown", {pointerId: 5}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 5}))
+    anchor.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, shiftKey: true}))
+    expect(target.style.position).toBe("fixed")
+  })
+
   it("clears table-cell selection when the Move affordance selects the table", () => {
     const table = append(document.createElement("table"))
     table.innerHTML = "<tbody><tr><td>A</td><td>B</td></tr></tbody>"
