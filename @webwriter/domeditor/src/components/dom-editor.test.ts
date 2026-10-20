@@ -1677,6 +1677,19 @@ describe("DomEditor iframe setup", () => {
     expect(loaded.body.textContent).toBe("Bonjour")
   })
 
+  it.each([undefined, "en", "fr"])("uses browser detection or the saved %s override for initial and new documents", async language => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE", "en-US"])
+    if(language) localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({language, shortcutsVersion: 2}))
+    const {editor, iframe} = await mountEditor()
+    const expected = language ?? "de"
+    expect(iframe.contentDocument!.documentElement.lang).toBe(expected)
+    expect((editor as any).settings.language).toBe(expected)
+
+    const reload = vi.spyOn(editor as any, "reloadDocument").mockResolvedValue(undefined)
+    await (editor as any).newDocument()
+    expect(reload).toHaveBeenCalledWith(expect.stringContaining(`<html lang="${expected}">`), true)
+  })
+
   it("preserves authored meta refresh metadata in the editor frame HTML", async () => {
     const {editor} = await mountEditor()
     const source = new DOMParser().parseFromString((editor as any).editorSrcdocFromHTML(
