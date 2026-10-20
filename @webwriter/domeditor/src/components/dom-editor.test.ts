@@ -5715,15 +5715,18 @@ describe("DomEditor.execute()", () => {
     await Promise.all([search.updateComplete, button.updateComplete])
 
     expect(drawer).not.toBeNull()
-    expect(search.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Search packages"]')).not.toBeNull()
+    expect(search.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Search widgets"]')?.placeholder).toBe("Search widgets")
     expect(search.shadowRoot!.querySelector(".icon-tabler-search")).not.toBeNull()
     expect(button.shadowRoot!.querySelector('button[aria-label="Show more Demo options"]')).toBeNull()
   })
 
-  it("installs an uninstalled package and then inserts its first member", async () => {
+  it("installs an uninstalled package and inserts its first member only on a later click", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
-    const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
+    const install = vi.spyOn(editor as any, "setPackageInstalled").mockImplementation(async () => {
+      ;(editor as any).installedPackages = [demoPackage]
+      return demoPackage
+    })
     const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
@@ -5731,12 +5734,18 @@ describe("DomEditor.execute()", () => {
     await button.updateComplete
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
-    await vi.waitFor(() => expect(insert).toHaveBeenCalled())
     expect(install).toHaveBeenCalledWith(demoPackage, true)
+    expect(insert).not.toHaveBeenCalled()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await vi.waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
+    expect(install).toHaveBeenCalledTimes(1)
     expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
   })
 
-  it("installs and inserts packages while package search is active", async () => {
+  it("installs without inserting while package search is active", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
     const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
@@ -5756,8 +5765,61 @@ describe("DomEditor.execute()", () => {
 
     await vi.waitFor(() => expect(install).toHaveBeenCalled())
     expect(install).toHaveBeenCalledWith(demoPackage, true)
-    expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
+    expect(insert).not.toHaveBeenCalled()
     expect(button.shadowRoot!.querySelector(".corner-icon")).toBeNull()
+  })
+
+  it("cancels an installation by clicking its loading button before metadata resolves", async () => {
+    vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
+    const {editor} = await mountEditor()
+    const host = editor as any
+    let resolvePackage!: (pkg: WebWriterPackage) => void
+    vi.spyOn(host.packageRegistry, "getPackage").mockImplementation(() => new Promise(resolve => {resolvePackage = resolve}))
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    const insert = vi.spyOn(host, "insertPackageMember").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Demo"]')).not.toBeNull())
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.loading).toBe(true)
+    expect(button.disabled).toBe(false)
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await vi.waitFor(() => expect(host.busyPackageNames).toEqual([]))
+    resolvePackage(demoPackage)
+    await Promise.resolve()
+    expect(reload).not.toHaveBeenCalled()
+    expect(insert).not.toHaveBeenCalled()
+    expect(host.installedPackages).toEqual([])
+    expect(host.packageInstallations.size).toBe(0)
+    expect(host.packageError).toBe("")
+  })
+
+  it.each([false, true])("removes an installation cancelled while its frame loads (load fails: %s)", async fails => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const other = {...demoPackage, name: "@webwriter/other"}
+    host.installedPackages = [other]
+    vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(demoPackage)
+    let finishLoading!: () => void
+    const reload = vi.spyOn(host, "reloadEditor").mockImplementationOnce(async (packages: any) => {
+      host.installedPackages = packages
+      await new Promise<void>(resolve => {finishLoading = resolve})
+      if(fails) throw new Error("Widget load failed")
+    }).mockImplementation(async (packages: any) => {host.installedPackages = packages})
+    const installing = host.setPackageInstalled(demoPackage, true)
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+    await host.setPackageInstalled(demoPackage, false)
+    finishLoading()
+    expect(await installing).toBeUndefined()
+    expect(reload).toHaveBeenLastCalledWith([other])
+    expect(host.installedPackages).toEqual([other])
+    expect(host.busyPackageNames).toEqual([])
+    expect(host.packageInstallations.size).toBe(0)
+    expect(host.packageError).toBe("")
   })
 
   it("removes an installed package from a management-mode package action", async () => {

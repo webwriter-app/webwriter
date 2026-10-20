@@ -874,7 +874,7 @@ describe("package ribbon controls", () => {
     expect(button.shadowRoot!.querySelector(".button-icon svg")).toBeNull()
     expect(button.shadowRoot!.querySelector(".button-icon img")).toBeNull()
     expect(button.shadowRoot!.querySelector(".main-button")!.getAttribute("aria-busy")).toBe("true")
-    expect(button.disabled).toBe(true)
+    expect(button.disabled).toBe(false)
     expect(other.shadowRoot!.querySelector(".icon-loading")).toBeNull()
 
     ribbon.busyPackageNames = []
@@ -1518,6 +1518,30 @@ describe("package ribbon controls", () => {
   })
 })
 
+
+it("keeps loading packages clickable in the collapsed menu without offering member insertion", async () => {
+  const ribbon = new AppRibbon()
+  const pkg = packageFixture()
+  ribbon.packages = [pkg]
+  ribbon.busyPackageNames = [pkg.name]
+  ribbon.expanded = false
+  ribbon.menuOpen = true
+  document.body.append(ribbon)
+  await ribbon.updateComplete
+  const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+  await menu.updateComplete
+  menu.shadowRoot!.querySelector<HTMLButtonElement>('[title="Packages"]')!.click()
+  await menu.updateComplete
+  const packages = menu.shadowRoot!.querySelector<RibbonMenu>(".submenu ribbon-menu")!
+  await packages.updateComplete
+  const button = packages.shadowRoot!.querySelector<HTMLButtonElement>('[title="Demo"]')!
+  expect(button.disabled).toBe(false)
+  expect(packages.shadowRoot!.querySelector('[aria-label="Show more Demo options"]')).toBeNull()
+  const commands = vi.fn()
+  ribbon.addEventListener("ribbon-button-click", commands)
+  button.click()
+  expect(commands.mock.calls[0][0].detail.label).toBe("package:@webwriter/demo")
+})
 
 it("keeps package search, refresh, removal and member insertion available in the collapsed menu", async () => {
   const ribbon = new AppRibbon()

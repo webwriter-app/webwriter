@@ -564,6 +564,7 @@ export class DomEditor extends LitElement {
   private packageImportMapPackageSetKey: string | null = null
   private packagesLoading = false
   private busyPackageNames: string[] = []
+  private readonly packageInstallations = new Map<string, AbortController>()
   private packageError = ""
   private localPackages: WebWriterPackage[] = []
   private localPackagesLoading = false
@@ -4119,7 +4120,11 @@ export class DomEditor extends LitElement {
       const name = label.slice("package:".length)
       const pkg = this.installedPackages.find(candidate => candidate.name === name) ??
         this.packages.find(candidate => candidate.name === name)
-      if(pkg) void this.installAndInsertPackage(pkg)
+      if(pkg) {
+        if(this.busyPackageNames.includes(name)) void this.setPackageInstalled(pkg, false)
+        else if(this.installedPackages.some(candidate => candidate.name === name)) void this.installAndInsertPackage(pkg)
+        else void this.setPackageInstalled(pkg, true)
+      }
       else this.focusEditor()
       return
     }
@@ -4977,7 +4982,13 @@ export class DomEditor extends LitElement {
   }
 
   private async setPackageInstalled(pkg: WebWriterPackage, installed: boolean) {
-    if(this.busyPackageNames.includes(pkg.name)) return undefined
+    if(this.busyPackageNames.includes(pkg.name)) {
+      const installation = this.packageInstallations.get(pkg.name)
+      if(installation && !installed) installation.abort()
+      return undefined
+    }
+    const installation = installed ? new AbortController() : undefined
+    if(installation) this.packageInstallations.set(pkg.name, installation)
     this.busyPackageNames = [...this.busyPackageNames, pkg.name]
     this.packageError = ""
     try {
@@ -4986,11 +4997,23 @@ export class DomEditor extends LitElement {
         return undefined
       }
       const localPackage = this.localPackages.find(candidate => candidate.name === pkg.name)
-      const resolvedPackage = installed ? localPackage ?? await this.packageRegistry.getPackage(pkg) : pkg
+      const resolvedPackage = installation ? localPackage ?? await Promise.race([
+        this.packageRegistry.getPackage(pkg),
+        new Promise<undefined>(resolve => installation.signal.addEventListener("abort", () => resolve(undefined), {once: true})),
+      ]) : pkg
+      if(!resolvedPackage || installation?.signal.aborted) return undefined
       const nextPackages = installed
         ? [...this.installedPackages.filter(candidate => candidate.name !== pkg.name), resolvedPackage]
         : this.installedPackages.filter(candidate => candidate.name !== pkg.name)
-      await this.reloadEditor(nextPackages)
+      try { await this.reloadEditor(nextPackages) }
+      catch(error) { if(!installation?.signal.aborted) throw error }
+      finally {
+        // The frame may already have adopted the package while its scripts load.
+        if(installation?.signal.aborted && this.installedPackages.some(candidate => candidate.name === pkg.name)) {
+          await this.reloadEditor(this.installedPackages.filter(candidate => candidate.name !== pkg.name))
+        }
+      }
+      if(installation?.signal.aborted) return undefined
       const localRecord = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === pkg.name)
       if(localRecord) localRecord.enabled = installed
       this.packages = this.packages.map(candidate => candidate.name === resolvedPackage.name ? resolvedPackage : candidate)
@@ -5001,6 +5024,7 @@ export class DomEditor extends LitElement {
       return undefined
     }
     finally {
+      this.packageInstallations.delete(pkg.name)
       this.busyPackageNames = this.busyPackageNames.filter(name => name !== pkg.name)
     }
   }
