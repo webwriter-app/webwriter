@@ -76,6 +76,33 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("collapses to unselected tabs without clearing the current tool or its contents", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Review")
+    await toolbox.updateComplete
+    const content = toolbox.shadowRoot!.querySelector(".review-section")
+    const changes = vi.fn()
+    const clearPreview = vi.fn()
+    toolbox.addEventListener("toolbox-change", changes)
+    toolbox.addEventListener("history-preview-clear", clearPreview)
+    toolbox.collapsed = true
+    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Review")
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector('[aria-selected="true"]')).toBeNull()
+    expect(changes).not.toHaveBeenCalled()
+    expect(clearPreview).not.toHaveBeenCalled()
+    toolbox.selectTool("Review")
+    expect(changes).not.toHaveBeenCalled()
+    toolButton(toolbox, "Review").click()
+    expect(changes.mock.calls.at(-1)![0].detail).toEqual({tool: "Review"})
+    toolbox.collapsed = false
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector(".review-section")).toBe(content)
+    expect(toolButton(toolbox, "Review").getAttribute("aria-selected")).toBe("true")
+  })
+
   it("keeps developer console controls available beside Versions in Review and locks them during pending HTML edits", async () => {
     const toolbox = await mountToolbox()
     toolbox.consoleOpen = true

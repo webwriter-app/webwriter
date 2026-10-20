@@ -5892,6 +5892,68 @@ await check("ribbon collapses when vertical space is constrained", async () => {
   finally {frame.remove()}
 })
 
+await check("narrow toolboxes collapse below bottom panels and restore on tab activation", async () => {
+  const {DomEditor} = await import("../src/components/dom-editor")
+  const app = new DomEditor()
+  app.style.cssText = "position:fixed;inset:0;box-sizing:content-box;width:900px;height:800px;background:white"
+  const host = app as any
+  host.execute = async () => ({versions: [], checkpoints: [], comments: [], preview: null, currentCheckpointId: null, currentUserId: 0})
+  host.settings = {...host.settings, showGuidedTour: false}
+  host.documentLayoutsDismissed = true
+  fixture.append(app)
+  // Exercise host UI state without a live editing frame replacing the selections below.
+  clearTimeout(host.frameStartTimer)
+  host.frameStartTimer = undefined
+  const settle = async () => {
+    await app.updateComplete
+    await layoutFrame()
+    await app.updateComplete
+    await app.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!.updateComplete
+    await layoutFrame()
+  }
+  try {
+    await settle()
+    const toolbox = app.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!
+    const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
+    const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    for(const surface of ["console", "versions", "math", "shape", "link"]) {
+      Object.assign(app, {consoleOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
+        mathKeyboardHidden: false, shapeKeyboardHidden: false, linkKeyboardHidden: false})
+      app.style.width = "900px"
+      await settle()
+      host.breadcrumbVisible = true
+      toolbox.selectTool(surface === "versions" ? "Review" : "Edit")
+      if(surface === "console") host.consoleOpen = true
+      else if(surface === "versions") host.reviewOpen = true
+      else if(surface === "math") host.mathSelection = {active: true, display: "inline"}
+      else if(surface === "shape") host.graphicSelection = {active: true, capture: true}
+      else host.linkSelection = {active: true, identity: "link-1", href: "https://example.com", text: "Example",
+        attributes: {href: "https://example.com"}, targets: [], references: []}
+      await settle()
+      assert(!toolbox.collapsed && pane.getBoundingClientRect().height > 0, `${surface}: wide toolbox collapsed`)
+      for(const width of [600, 599, 380]) {
+        app.style.width = `${width}px`
+        await settle()
+        assert(toolbox.collapsed === (width < 600), `${surface}: collapse does not match container width ${width}`)
+        if(width >= 600) continue
+        const panel = app.shadowRoot!.querySelector<HTMLElement>(surface === "console" || surface === "versions"
+          ? ".html-source-panel" : `.${surface}-keyboard-area`)!
+        const bar = tabs.getBoundingClientRect(), bounds = panel.getBoundingClientRect(), editorBounds = app.getBoundingClientRect()
+        assert(pane.hidden && pane.getBoundingClientRect().height === 0, `${surface}: toolbox pane is still visible`)
+        assert(bar.top >= bounds.bottom - 1 && Math.abs(bar.bottom - editorBounds.bottom + .5) <= 1,
+          `${surface}: tabs are not at the bottom below the open panel`)
+        assert(Math.abs(toolbox.getBoundingClientRect().height - 30) < 1, `${surface}: toolbox reserves more than the tab row`)
+        assert(tabs.scrollWidth <= tabs.clientWidth, `${surface}: tabs overflow horizontally`)
+        assert(!toolbox.shadowRoot!.querySelector('[aria-selected="true"]'), `${surface}: hidden pane has a selected tab`)
+      }
+      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`[data-tool="${toolbox.activeTool}"]`)!.click()
+      await settle()
+      assert(!toolbox.collapsed && !pane.hidden, `${surface}: selecting the remembered tab did not reopen its pane`)
+    }
+  }
+  finally {app.remove()}
+})
+
 await check("AI toolbox adapts its width and short-screen controls", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:900px;height:900px;background:white"

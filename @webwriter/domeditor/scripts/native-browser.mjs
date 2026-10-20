@@ -78,6 +78,7 @@ const expectedChecks = [
   "recent documents fit one layout card when space is limited",
   "narrow ribbons show only the AI sparkles button",
   "AI toolbox adapts its width and short-screen controls",
+  "narrow toolboxes collapse below bottom panels and restore on tab activation",
   "ribbon collapses when vertical space is constrained",
   "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",

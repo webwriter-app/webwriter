@@ -433,6 +433,7 @@ export class DomEditor extends LitElement {
     editingSnippetId: {state: true},
     breadcrumbVisible: {attribute: false, state: true},
     aiToolboxOpen: {state: true},
+    narrowLayout: {state: true},
     guidedTourReady: {state: true},
   }
 
@@ -545,6 +546,8 @@ export class DomEditor extends LitElement {
   private htmlSourceRanges = new Map<string, Range[]>()
   private htmlSourceScrollFrame = 0
   private htmlSourceResizeObserver: ResizeObserver | null = null
+  private layoutResizeObserver: ResizeObserver | null = null
+  private narrowLayout = false
   private htmlSourceObservedInput: HTMLTextAreaElement | null = null
   private presenceUsers: PresenceUser[] = []
   private collaborationLink = ""
@@ -1106,6 +1109,13 @@ export class DomEditor extends LitElement {
       .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {grid-column: 1 / -1}
       .html-source-panel {grid-row: 5}
       .document-layouts-panel {grid-row: 6}
+      dom-editor-toolbox[collapsed]:not([hidden]) {
+        grid-column: 1 / -1;
+        grid-row: 7;
+        justify-self: stretch;
+        width: 100%;
+        height: 30px;
+      }
     }
   `
 
@@ -5919,14 +5929,21 @@ export class DomEditor extends LitElement {
 
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
-    if(tool !== "Review" && this.reviewOpen) {
+    const expandDockedToolbox = this.narrowLayout && this.bottomPanelOpen
+    if(expandDockedToolbox) {
+      this.mathKeyboardHidden = true
+      this.shapeKeyboardHidden = true
+      this.linkKeyboardHidden = true
+    }
+    if((tool !== "Review" || expandDockedToolbox) && this.reviewOpen) {
       this.reviewOpen = false
       void this.setHTMLMode(this.consoleOpen && this.consoleTab === "HTML")
+      if(expandDockedToolbox && tool === "Review") void this.clearHistoryPreview()
     }
     this.aiToolboxOpen = tool === "AI"
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     if(ribbon) ribbon.aiChatOpen = this.aiToolboxOpen
-    if(tool !== "Edit" && !this.htmlPending && !this.settings.pinDeveloperConsole) {
+    if(!this.htmlPending && (expandDockedToolbox || tool !== "Edit" && !this.settings.pinDeveloperConsole)) {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
     }
   }
@@ -6247,6 +6264,15 @@ export class DomEditor extends LitElement {
 
   private get isMathEditing() {
     return this.mathSelection?.active && (this.mathSelection.display === "inline" || this.captureSelection)
+  }
+
+  private get bottomPanelOpen() {
+    if(this.liveSessionActive) return false
+    if((this.consoleOpen || this.reviewOpen) && (!this.previewActive || this.settings.pinDeveloperConsole)) return true
+    if(this.previewActive) return false
+    return Boolean(this.graphicSelection?.capture && !this.shapeKeyboardHidden
+      || this.linkSelection?.active && !this.mathSelection?.active && !this.graphicSelection?.capture && !this.linkKeyboardHidden
+      || this.isMathEditing && !this.mathKeyboardHidden)
   }
 
   private handleMathKeyboardCommand = (event: CustomEvent<{command: string}>) => {
@@ -7262,6 +7288,11 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.layoutResizeObserver = new ResizeObserver(entries => {
+      const entry = entries.find(entry => entry.target === this)
+      if(entry) this.narrowLayout = entry.contentRect.width < 600
+    })
+    this.layoutResizeObserver.observe(this)
     this.recentDocumentsReady = this.restoreRecentDocuments()
     this.lang = "en"
     this.localPackageManager.autoReload = this.settings.autoReloadPackages
@@ -7321,6 +7352,8 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.layoutResizeObserver?.disconnect()
+    this.layoutResizeObserver = null
     this.clearHTMLSourceRanges()
     this.htmlSourceTokens = null
     if(this.htmlSourceScrollFrame) cancelAnimationFrame(this.htmlSourceScrollFrame)
@@ -7776,6 +7809,7 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
+        .collapsed=${this.narrowLayout && this.bottomPanelOpen}
         .preview=${this.previewActive}
         .feedbackActive=${this.liveSessionActive}
         .feedbackRole=${this.liveSessionRole}
