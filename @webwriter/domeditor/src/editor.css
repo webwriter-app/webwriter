@@ -1533,7 +1533,11 @@ body::part(gap-caret-gap-after-selected), body::part(gap-caret-drop-caret-after)
 body::part(gap-caret-gap-after-selected) {
     margin-top: var(--gap-caret-block-offset, 0px);
 }
+body::part(gap-caret-gap-before-selected), body::part(gap-caret-gap-after-selected) {
+    left: calc(anchor(left) + var(--gap-caret-inline-offset, 0px));
+}
 body::part(gap-caret-drop-caret-before), body::part(gap-caret-drop-caret-after) {
+    left: auto;
     margin-top: 0;
 }
 body::part(gap-caret)::after {

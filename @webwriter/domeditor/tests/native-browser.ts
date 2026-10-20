@@ -1554,26 +1554,36 @@ await check("gap carets track their authored boundary", async () => {
     for(const html of ["<p></p>", "<p>Populated</p>", "<p>Before</p><p>After</p>",
       '<p style="margin-bottom:0px"></p>', '<p style="margin-bottom:47px"></p>',
       '<p style="--ww-block-spacing:3em;font-size:24px"></p>', "<h2>Heading</h2>", "<hr>",
-      '<!--keep--><p></p>\n<!--keep too-->']) {
+      '<!--keep--><p></p>\n<!--keep too-->',
+      '<p style="width:240px;height:80px">Resized</p>',
+      '<hr style="width:240px">',
+      '<p style="width:100%;max-width:none">Wide block</p>',
+      '<section><div id="gap-container" style="padding:24px;border:3px solid"><!--keep--><p style="width:200px;margin-inline:auto">Nested resized block</p></div></section>',
+      '<main id="gap-container"><p style="width:240px">Resized in a landmark</p></main>']) {
       doc.body.innerHTML = html
-      for(const offset of html.includes("<h2") || html === "<hr>" ? [1] : Array.from({length: doc.body.childNodes.length + 1}, (_, index) => index)) {
-        selection.setPosition(doc.body, offset)
+      let container = doc.querySelector("#gap-container") ?? doc.body
+      for(const offset of html.includes("<h2") || html.startsWith("<hr") ? [1] : Array.from({length: container.childNodes.length + 1}, (_, index) => index)) {
+        selection.setPosition(container, offset)
         feature.processSelection(undefined, {scrollIntoView: false})
         await layoutFrame()
         const anchor = doc.querySelector<HTMLElement>(".◆gap-before-selected, .◆gap-after-selected")!
+        assert(anchor, `missing gap anchor: html=${html}, offset=${offset}, selection=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
         const box = anchor.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
         const expected = anchor.classList.contains("◆gap-before-selected") ? box.top
           : box.bottom + (parseFloat(view.getComputedStyle(feature.gapCaret!).marginTop) || 0)
-        assert(Math.abs(caret.top - expected) < 1 && Math.abs(caret.left - box.left) < 1,
+        assert(Math.abs(caret.top - expected) < 1,
           `gap caret is detached from its insertion boundary: offset=${offset}, caret=${caret.left},${caret.top}, anchor=${box.left},${expected}`)
         doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Inserted"}))
-        const inserted = Array.from(doc.body.children).find(element => element.textContent === "Inserted")!
+        const inserted = Array.from(container.children).find(element => element.textContent === "Inserted")!
         assert(inserted && Math.abs(inserted.getBoundingClientRect().top - caret.top) < 1,
           `insertion misses the gap caret: html=${html}, offset=${offset}, caret=${caret.top}, inserted=${inserted?.getBoundingClientRect().top}`)
+        assert(Math.abs(inserted.getBoundingClientRect().left - caret.left) < 1,
+          `gap caret misses the content column: html=${html}, offset=${offset}, caret=${caret.left}, inserted=${inserted.getBoundingClientRect().left}`)
         feature.processSelection(undefined, {scrollIntoView: false})
         assert(!doc.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap markers survived typing")
         assert(!view.editor!.toHTML(true).includes("◆"), "gap presentation leaked into serialized HTML")
         doc.body.innerHTML = html
+        container = doc.querySelector("#gap-container") ?? doc.body
       }
     }
   }

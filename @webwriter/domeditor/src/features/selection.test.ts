@@ -1857,6 +1857,52 @@ describe("processSelection()", () => {
     expect(feature.selectionCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("")
     expect(paragraph).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
   })
+  it("keeps resized block and widget gaps in the live content column", async () => {
+    document.body.style.cssText = "--ww-float-width: 100px; --ww-prose-max: 720px; padding: 0 20px; border: 2px solid"
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 0, 1004, 500))
+    for(const tag of ["p", "interactive-widget"]) {
+      document.body.innerHTML = `<${tag} style="width: 200px; margin-inline: auto"></${tag}>`
+      const element = document.body.firstElementChild!
+      const bounds = vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(412, 50, 200, 100))
+      for(const placement of ["before", "after"] as const) {
+        $.selectGap(element, placement)
+        feature.processSelection()
+        expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-offset"))
+          .toBe("calc(-380px + max(0px, (960px - 720px) / 2))")
+      }
+      bounds.mockReturnValue(new DOMRect(312, 50, 400, 100))
+      element.setAttribute("style", "width: 400px; margin-inline: auto")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-offset"))
+        .toBe("calc(-280px + max(0px, (960px - 720px) / 2))")
+
+      vi.mocked(document.body.getBoundingClientRect).mockReturnValue(new DOMRect(10, 0, 804, 500))
+      window.dispatchEvent(new Event("resize"))
+      expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-offset"))
+        .toBe("calc(-280px + max(0px, (760px - 720px) / 2))")
+      vi.mocked(document.body.getBoundingClientRect).mockReturnValue(new DOMRect(10, 0, 1004, 500))
+      expect(editor.toHTML(true)).not.toContain("◆")
+      $.selectElement(element)
+      feature.processSelection()
+      expect(feature.selectionCaret!.style.getPropertyValue("--gap-caret-inline-offset")).toBe("")
+    }
+    document.body.style.cssText = ""
+  })
+  it("uses the padded content area of a nested gap's current parent", () => {
+    document.body.innerHTML = '<section><div style="padding: 0 24px; border: 3px solid"><!--keep--><p style="width: 200px; margin-inline: auto">Text</p></div></section>'
+    const parent = document.querySelector("div")!, paragraph = document.querySelector("p")!
+    vi.spyOn(parent, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 500, 200))
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(250, 30, 200, 50))
+    $.selectGap(paragraph)
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-offset"))
+      .toBe("calc(-123px + max(0px, (446px - 446px) / 2))")
+    paragraph.remove()
+    window.dispatchEvent(new Event("resize"))
+    editor.destroy()
+    expect(paragraph).not.toHaveClass("◆gap-after-selected")
+    expect(editor.appendix.querySelector(".◆selection-caret")).toBeNull()
+  })
   it("skips positioned siblings when presenting a gap", () => {
     document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute">overlay</interactive-widget><hr style="position: fixed"><p>after</p>'
     const before = document.querySelector("p")!
