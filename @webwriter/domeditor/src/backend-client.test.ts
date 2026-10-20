@@ -19,6 +19,20 @@ const response = (value: unknown, status = 200) => new Response(JSON.stringify(v
 })
 
 describe("development backend client", () => {
+  it("discovers and reconnects a private no-auth service without relaxing development URL checks", async () => {
+    const privateSession = {...session, kind: "webwriter-cloud-service" as const,
+      apiBaseUrl: `${location.origin}/api`, collaborationUrl: location.origin.replace(/^http/, "ws"), adminUrl: `${location.origin}/admin`}
+    const fetch = vi.fn().mockImplementation(async () => response(privateSession))
+    await expect(discoverHostBackend(undefined, fetch)).resolves.toEqual(privateSession)
+    const result = await connectCloudService({id: "vpn", type: "url", url: location.origin, username: "", authentication: "none"}, {fetchImplementation: fetch})
+    expect(result.service.authentication).toBe("none")
+    expect(result.service.accessToken).toBeUndefined()
+    fetch.mockResolvedValue(response({documents: []}))
+    await expect(new BackendClient(result.session, fetch).listDocuments()).resolves.toEqual([])
+    expect(fetch.mock.lastCall?.[1].headers).not.toHaveProperty("Authorization")
+    await expect(probeDevelopmentBackend(undefined, vi.fn().mockResolvedValue(response(privateSession)))).resolves.toBeNull()
+  })
+
   it("recognizes the no-auth development server as an automatic login", async () => {
     const fetch = vi.fn().mockResolvedValue(response(session))
 
@@ -97,6 +111,16 @@ describe("development backend client", () => {
       "http://localhost:1234/api/documents/one",
       expect.objectContaining({method: "PATCH", body: JSON.stringify({title: "Updated"})}),
     ])
+  })
+
+  it("publishes the complete live document over HTTP with its host capability", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({url: "http://localhost:1234/live/?liveSession=lesson"}))
+    const client = new BackendClient(session, fetch)
+    const html = '<!doctype html><x-widget></x-widget><script type="module">register()</script>'
+    await expect(client.publishLiveSession("lesson", "token", "host-key", html)).resolves.toEqual({url: "http://localhost:1234/live/?liveSession=lesson"})
+    expect(fetch).toHaveBeenCalledWith("http://localhost:1234/api/live-sessions/lesson", expect.objectContaining({
+      method: "PUT", body: JSON.stringify({token: "token", hostKey: "host-key", html}), credentials: "omit",
+    }))
   })
 
   it("reports network failures and invalid JSON with backend context", async () => {

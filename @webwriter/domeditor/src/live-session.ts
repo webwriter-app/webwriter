@@ -95,6 +95,8 @@ type LiveSessionOptions = {
   serverUrl?: string
   /** Capability shared only through the host's learner link. */
   token?: string
+  /** Reuse the HTTP publisher's host capability even when storage is unavailable. */
+  hostKey?: string
   learner?: Pick<LiveSessionLearner, "id" | "name" | "color">
 }
 
@@ -162,6 +164,8 @@ const connectionKey = (id: string, role: string, token: string, learner = "") =>
   return key
 }
 
+export const liveSessionHostKey = (id: string, token: string) => connectionKey(id, "host", token)
+
 /**
  * Durable session timeline and learner registry. The Y.Doc owned here is a
  * session log, not a second representation of the authored editor DOM.
@@ -200,6 +204,9 @@ export class LiveSession {
     if(options.serverUrl && !options.token) {
       throw new TypeError("A server-backed live session requires a bearer token")
     }
+    if(options.hostKey !== undefined && !/^[A-Za-z0-9_-]{24,256}$/.test(options.hostKey)) {
+      throw new TypeError("A live session host key is invalid")
+    }
     this.#token = options.token
     this.#status = options.serverUrl ? "connecting" : "connected"
     this.doc = new Y.Doc()
@@ -210,10 +217,10 @@ export class LiveSession {
     this.#stateMap = this.doc.getMap(STATES)
     this.#feedbackArray = this.doc.getArray(FEEDBACK)
 
-    if(this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
+    if(!options.serverUrl && this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
       this.#meta.set("baseHTML", options.baseHTML)
     }
-    if(this.role === "host" && options.previewDependencies !== undefined) {
+    if(!options.serverUrl && this.role === "host" && options.previewDependencies !== undefined) {
       this.#meta.set("previewDependencies", clone(options.previewDependencies))
     }
     if(this.role === "host" && this.#meta.get("status") === undefined) {
@@ -248,7 +255,7 @@ export class LiveSession {
         params: {
           token: this.#token!, role: this.role,
           ...(this.role === "host"
-            ? {hostKey: connectionKey(this.id, this.role, this.#token!)}
+            ? {hostKey: options.hostKey ?? liveSessionHostKey(this.id, this.#token!)}
             : {learner: this.#learner!.id, learnerKey: connectionKey(this.id, this.role, this.#token!, this.#learner!.id)}),
         },
       })

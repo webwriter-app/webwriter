@@ -560,6 +560,41 @@ describe("media editing", () => {
     expect(input.placeholder).toBe("Enter audio URL")
   })
 
+  it("keeps empty media source entry in view after the editing viewport is resized", () => {
+    document.body.innerHTML = '<audio controls></audio>'
+    const audio = document.querySelector("audio")!
+    editor.features.media.placeholder.showFor(audio)
+    const scroll = vi.spyOn(audio, "scrollIntoView").mockImplementation(() => {})
+    window.dispatchEvent(new Event("resize"))
+    expect(scroll).toHaveBeenCalledWith({block: "nearest", inline: "nearest"})
+    scroll.mockClear()
+    audio.setAttribute("src", "recording.mp3")
+    window.dispatchEvent(new Event("resize"))
+    expect(scroll).not.toHaveBeenCalled()
+  })
+
+  it("keeps the placeholder within the visible viewport portion of a large media target", () => {
+    document.body.innerHTML = "<audio controls></audio>"
+    const audio = document.querySelector("audio")!
+    vi.spyOn(audio, "getBoundingClientRect").mockReturnValue(new DOMRect(-40, 200, 500, 200))
+    const width = Object.getOwnPropertyDescriptor(window, "innerWidth")
+    const height = Object.getOwnPropertyDescriptor(window, "innerHeight")
+    Object.defineProperty(window, "innerWidth", {configurable: true, value: 320})
+    Object.defineProperty(window, "innerHeight", {configurable: true, value: 240})
+    try {
+      editor.features.media.placeholder.showFor(audio)
+      const overlay = editor.features.media.placeholder.element
+      expect(overlay.style.left).toBe("0px")
+      expect(overlay.style.top).toBe("200px")
+      expect(overlay.style.width).toBe("320px")
+      expect(overlay.style.height).toBe("40px")
+    }
+    finally {
+      if(width) Object.defineProperty(window, "innerWidth", width)
+      if(height) Object.defineProperty(window, "innerHeight", height)
+    }
+  })
+
   it("opens tiny image inputs in an appendix popover and cleans up on resize, replacement and hiding", () => {
     document.body.innerHTML = "<picture><img></picture><picture><img></picture>"
     const [image, other] = Array.from(document.querySelectorAll("picture"))
@@ -807,6 +842,28 @@ describe("media editing", () => {
     expect(document.querySelector("audio")).toHaveAttribute("src", "http://example.com/audio.mp3")
   })
 
+  it("rejects empty and HTTP website URLs before changing a website source", () => {
+    document.body.innerHTML = "<iframe></iframe>"
+    const frame = document.querySelector("iframe")!
+    $.selectElement(frame)
+    const placeholder = editor.features.media.placeholder
+    const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    placeholder.showFor(frame)
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(input).toHaveAttribute("aria-invalid", "true")
+    expect(input.validationMessage).toContain("https://")
+    expect(frame.hasAttribute("src")).toBe(false)
+    input.value = "http://example.com/blocked"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(input).toHaveAttribute("aria-invalid", "true")
+    expect(input.validationMessage).toContain("https://")
+    expect(frame.hasAttribute("src")).toBe(false)
+
+    expect(() => editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "http://example.com/blocked"}))
+      .toThrow("Enter a valid https:// website URL.")
+    expect(frame.hasAttribute("src")).toBe(false)
+  })
+
   it("clears URL errors when switching to another empty media element", async () => {
     document.body.innerHTML = "<audio controls></audio><video controls></video>"
     document.querySelector("audio")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
@@ -1040,6 +1097,42 @@ describe("media editing", () => {
     editor.features.media.actions.switchImageType({type: "switchImageType", image: "picture"})
     expect(document.body.firstElementChild?.localName).toBe("picture")
     expect(document.querySelector("picture > img")).toHaveAttribute("alt", "A diagram")
+  })
+
+  it.each(["audio", "video"] as const)("updates the live %s muted state with its authored attribute", async media => {
+    document.body.innerHTML = `<${media} src="recording.mp3"></${media}>`
+    const player = document.querySelector(media)!
+    $.selectElement(player)
+
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "muted", value: ""})
+    expect(player).toHaveAttribute("muted")
+    expect(player.muted).toBe(true)
+
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "muted", value: null})
+    expect(player).not.toHaveAttribute("muted")
+    expect(player.muted).toBe(false)
+
+    player.setAttribute("muted", "")
+    await vi.waitFor(() => expect(player.muted).toBe(true))
+  })
+
+  it("syncs the muted property for newly added media subtrees", async () => {
+    const section = document.createElement("section")
+    section.innerHTML = '<audio muted></audio>'
+    document.body.append(section)
+    const audio = section.querySelector("audio")!
+    await vi.waitFor(() => expect(audio.muted).toBe(true))
+
+    const widget = document.createElement("media-widget")
+    document.body.append(widget)
+    await Promise.resolve()
+    const widgetAudio = document.createElement("audio")
+    widget.append(widgetAudio)
+    await Promise.resolve()
+    widgetAudio.setAttribute("muted", "")
+    widgetAudio.muted = false
+    await Promise.resolve()
+    expect(widgetAudio.muted).toBe(false)
   })
 
   it("manages direct sources and tracks without rebuilding fallback content", () => {

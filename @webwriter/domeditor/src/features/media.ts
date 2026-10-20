@@ -33,6 +33,7 @@ import {
   mediaSourceAttribute,
   mediaSourceTarget,
   timedMediaResourceAttributeOptions,
+  websiteSourceError,
   websiteTypes,
   type MediaSelectionState,
   type MediaType,
@@ -57,6 +58,10 @@ const sourceEditingBlocked = (target: Element, schema: Schema) => {
 }
 const htmlNamespace = "http://www.w3.org/1999/xhtml"
 const maximumMediaFallbackLength = 1_000_000
+
+const syncMutedProperty = (target: Node) => {
+  if(target instanceof HTMLMediaElement) target.muted = target.hasAttribute("muted")
+}
 
 const mediaInteractionShieldStylesheet = createStylesheet(`
   :host {
@@ -443,8 +448,10 @@ class MediaPlaceholder {
     let url: URL | undefined
     try { url = new URL(source) } catch {}
     this.clearUrlError()
-    if(!url || !["http:", "https:"].includes(url.protocol)) {
-      const message = "Enter a valid http:// or https:// URL."
+    const website = isWebsiteType(placeholderMediaType(this.target))
+    const message = website ? websiteSourceError(source) || (!url ? "Enter a valid https:// website URL." : "")
+      : !url || !["http:", "https:"].includes(url.protocol) ? "Enter a valid http:// or https:// URL." : ""
+    if(!url || message) {
       input.setCustomValidity(message)
       input.setAttribute("aria-invalid", "true")
       input.title = message
@@ -493,7 +500,13 @@ class MediaPlaceholder {
     url.placeholder = `Enter ${noun} URL`
     url.setAttribute("aria-label", `${noun[0].toUpperCase()}${noun.slice(1)} URL`)
     const rect = target.getBoundingClientRect()
-    const compact = rect.width > 0 && rect.height > 0 && (rect.width < 120 || rect.height < 28)
+    const left = Math.max(0, rect.left)
+    const top = Math.max(0, rect.top)
+    const right = Math.min(window.innerWidth, rect.right)
+    const bottom = Math.min(window.innerHeight, rect.bottom)
+    const width = Math.max(0, right - left)
+    const height = Math.max(0, bottom - top)
+    const compact = width > 0 && height > 0 && (width < 120 || height < 28)
     if(!compact) this.closePopup()
     this.element.toggleAttribute("data-compact", compact)
     const content = this.root.querySelector<HTMLElement>(".content")!
@@ -506,10 +519,10 @@ class MediaPlaceholder {
     }
     this.root.querySelector(".expand")!.setAttribute("aria-label", `Add ${noun}`)
     Object.assign(this.element.style, {
-      left: `${fixedClientX(rect.left)}px`,
-      top: `${rect.top}px`,
-      width: `${rect.width}px`,
-      height: `${rect.height}px`,
+      left: `${fixedClientX(left)}px`,
+      top: `${top}px`,
+      width: `${width}px`,
+      height: `${height}px`,
     })
     this.element.setAttribute("data-open", "")
     this.element.removeAttribute("aria-hidden")
@@ -1477,7 +1490,30 @@ export class MediaFeature extends EditorFeature {
     super.enable()
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
-      this.observer = new FrameMutationObserver(() => this.scheduleRefresh())
+      this.observer = new FrameMutationObserver(records => {
+        for(const record of records) {
+          if(record.type === "attributes" && record.attributeName === "muted"
+            && record.target instanceof Element && !sourceEditingBlocked(record.target, this.editor.schema)) syncMutedProperty(record.target)
+          if(record.type === "childList") {
+            const visit = (node: Node) => {
+              if(node instanceof HTMLMediaElement) {
+                if(!sourceEditingBlocked(node, this.editor.schema)) syncMutedProperty(node)
+              }
+              else if(node instanceof Element) {
+                const descendants = Array.from(node.childNodes)
+                if(node.namespaceURI !== htmlNamespace || node.localName.includes("-") || node.hasAttribute("is")
+                  || isAtomicEditingElement(node, this.editor.schema)) return
+                descendants.forEach(visit)
+              }
+              else node.childNodes.forEach(visit)
+            }
+            if(!(record.target instanceof Element) || !sourceEditingBlocked(record.target, this.editor.schema)) {
+              record.addedNodes.forEach(visit)
+            }
+          }
+        }
+        this.scheduleRefresh()
+      })
       try {
         this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
       }
@@ -1491,7 +1527,7 @@ export class MediaFeature extends EditorFeature {
     }
     const FrameResizeObserver = document.defaultView?.ResizeObserver
     if(FrameResizeObserver) this.resizeObserver = new FrameResizeObserver(this.scheduleRefresh)
-    window.addEventListener("resize", this.scheduleRefresh)
+    window.addEventListener("resize", this.handleViewportResize)
     window.addEventListener("blur", this.cancelPendingShield)
     document.addEventListener("scroll", this.scheduleRefresh, true)
     this.refresh()
@@ -1509,7 +1545,7 @@ export class MediaFeature extends EditorFeature {
     this.observedShieldTargets.clear()
     this.observedGraphicImageTargets.clear()
     this.bodyResizeObserved = false
-    window.removeEventListener("resize", this.scheduleRefresh)
+    window.removeEventListener("resize", this.handleViewportResize)
     window.removeEventListener("blur", this.cancelPendingShield)
     document.removeEventListener("scroll", this.scheduleRefresh, true)
     this.cancelSourceFile()
@@ -1526,6 +1562,14 @@ export class MediaFeature extends EditorFeature {
     this.shieldReleasePending.clear()
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
     super.disable()
+  }
+
+  private handleViewportResize = () => {
+    const target = this.mediaPlaceholder?.target
+    if(target?.isConnected && isEmptyMedia(target) && !sourceEditingBlocked(target, this.editor.schema)) {
+      target.scrollIntoView({block: "nearest", inline: "nearest"})
+    }
+    this.scheduleRefresh()
   }
 
   passiveListeners = {
@@ -1677,8 +1721,13 @@ export class MediaFeature extends EditorFeature {
       if(!element || !mediaAttributeOptions[element.localName as MediaType].some(option => option.name === name)) {
         throw new TypeError(`Attribute '${name}' is not editable for the selected media`)
       }
+      if(value && isWebsiteType(element.localName) && name === mediaSourceAttribute(element.localName as WebsiteType)) {
+        const error = websiteSourceError(value)
+        if(error) throw new TypeError(error)
+      }
       const target = mediaSourceTarget(element)
       value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
+      if(name === "muted") syncMutedProperty(target)
       this.refresh()
     },
     addTimedMediaResource: ({resource}: {type: "addTimedMediaResource", resource: TimedMediaResourceType}) => {

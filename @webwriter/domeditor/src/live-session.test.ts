@@ -16,6 +16,19 @@ const create = (options: ConstructorParameters<typeof LiveSession>[0]) => {
 }
 
 describe("LiveSession", () => {
+  it("keeps the HTTP document and widget sources out of server-backed Yjs synchronization", () => {
+    let socketURL = ""
+    vi.stubGlobal("WebSocket", class {constructor(url: string) {socketURL = url} send() {} close() {}})
+    const large = "x".repeat(8 * 1024 * 1024)
+    const host = create({id: "http-document", role: "host", serverUrl: "ws://localhost:1234", token: "live-session-token-0123456789",
+      baseHTML: large, previewDependencies: {packages: [], importMap: {imports: {widget: large}}}, hostKey: "http-host-capability-0123456789",
+    })
+    expect(host.doc.getMap("live-session-meta").has("baseHTML")).toBe(false)
+    expect(host.doc.getMap("live-session-meta").has("previewDependencies")).toBe(false)
+    expect(Y.encodeStateAsUpdate(host.doc).byteLength).toBeLessThan(1024)
+    expect(new URL(socketURL).searchParams.get("hostKey")).toBe("http-host-capability-0123456789")
+  })
+
   it.each([false, true])("shares the host preview dependencies when learner joins first: %s", learnerFirst => {
     const options = {id: "preview-dependencies", role: "learner" as const,
       previewDependencies: {packages: [], importMap: {imports: {lit: "https://untrusted.test/lit.js"}}}}

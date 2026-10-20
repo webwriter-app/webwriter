@@ -107,6 +107,7 @@ export default defineConfig({
             "frame-shell": fileURLToPath(new URL("./frame-shell.html", import.meta.url)),
             "editor-entry": fileURLToPath(new URL("./src/editor-entry.ts", import.meta.url)),
             "preview-entry": fileURLToPath(new URL("./src/preview-entry.ts", import.meta.url)),
+            "live-learner-entry": fileURLToPath(new URL("./src/live-learner-entry.ts", import.meta.url)),
             "local-package-service-worker": localPackageWorkerSource,
           },
           output: {

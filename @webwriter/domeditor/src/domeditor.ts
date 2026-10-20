@@ -1197,29 +1197,41 @@ export class DOMEditor {
     return serialize(`${serializeDoctype(root.doctype)}${root.documentElement.outerHTML}`)
   }
 
-  /** Embed transient media in a detached save/export copy. */
+  /** Embed transient media for saving or replacing the editor realm. */
   async inlineBlobSources(root: Document | DocumentFragment | Element) {
-    const elements = root.nodeType === Node.ELEMENT_NODE
-      ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
-      : Array.from(root.querySelectorAll("*"))
     const sources = new Map<string, Promise<string>>()
-    for(const element of elements) {
-      if(element instanceof HTMLTemplateElement) await this.inlineBlobSources(element.content)
-      for(const attribute of Array.from(element.attributes)) {
-        if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
-        const urls = attribute.value.match(/blob:[^\s,"'<>\)]+/g)
-        if(!urls) continue
-        let value = attribute.value
-        for(const url of urls) {
-          let source = sources.get(url)
-          if(!source) {
-            const blob = this.mediaBlobs.get(url)
-            source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
-            sources.set(url, source)
-          }
-          value = value.replaceAll(url, await source)
+    let pending = true
+    while(pending) {
+      pending = false
+      const elements = root.nodeType === Node.ELEMENT_NODE
+        ? [root as Element, ...Array.from(root.querySelectorAll("*"))]
+        : Array.from(root.querySelectorAll("*"))
+      for(const element of elements) {
+        if(element instanceof HTMLTemplateElement) {
+          for(const child of element.content.querySelectorAll("*")) elements.push(child)
         }
-        element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
+        for(const attribute of Array.from(element.attributes)) {
+          if(!["src", "srcset", "href", "xlink:href", "data", "poster"].includes(attribute.name)) continue
+          const original = attribute.value
+          const urls = original.match(/blob:[^\s,"'<>\)]+/g)
+          if(!urls) continue
+          pending = true
+          let value = original
+          for(const url of urls) {
+            let source = sources.get(url)
+            if(!source) {
+              const blob = this.mediaBlobs.get(url)
+              source = blob ? this.blobDataURL(blob) : this.resourceDataURL(url)
+              sources.set(url, source)
+            }
+            value = value.replaceAll(url, await source)
+          }
+          // Live DOM sources may be replaced while reading a large upload.
+          // Revisit current sources instead of overwriting concurrent edits.
+          if(element.getAttributeNS(attribute.namespaceURI, attribute.localName) === original) {
+            element.setAttributeNS(attribute.namespaceURI, attribute.name, value)
+          }
+        }
       }
     }
   }
@@ -1521,13 +1533,17 @@ export class DOMEditor {
     container.append(fragment)
     const serialize = prepareWidgetGroupingsForSerialization(container)
     const html = serialize(container.innerHTML)
-    return {html, text}
+    // A clipboard-only format hint preserves authored structure and styling
+    // when reused in WebWriter. It is removed before insertion and never
+    // bypasses active-content sanitization.
+    const clipboardHTML = `<meta name="webwriter-clipboard" content="1">${html}`
+    return {html, text, clipboardHTML}
   }
 
   #onCopy = (ev: ClipboardEvent) => {
     if(isAppendixInteraction(ev) || isWidgetShadowInteraction(ev, this.schema) || isFormControlInteraction(ev) || !ev.clipboardData || $.isEmpty) return
     ev.preventDefault()
-    const {html, text} = this.serializeClipboardFragment($.copy(), $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
+    const {clipboardHTML: html, text} = this.serializeClipboardFragment($.copy(), $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
     ev.clipboardData.setData("text/html", html)
     ev.clipboardData.setData("text/plain", text)
   }
@@ -1543,11 +1559,11 @@ export class DOMEditor {
   prepareHTMLFragment(fragment: DocumentFragment, transfer=false, repair=true) {
     hydrateWidgetGroupings(fragment)
     // Convert PRE after transfer sanitization so its whitespace styles survive.
-    this.schema.enforceMedia(fragment, false)
+    if(repair) this.schema.enforceMedia(fragment, false)
     this.clearEditingArtifacts(fragment)
     const removedUnsafeItems = stripActiveContent(fragment, {
       allowIframes: true,
-      unwrapUnsupportedElements: true,
+      unwrapUnsupportedElements: repair,
       ...(transfer ? {removeAttribute: (attribute: Attr) => ["style", "class"].includes(attribute.name.toLowerCase())} : {}),
     })
     if(transfer) {
@@ -1613,6 +1629,14 @@ export class DOMEditor {
   parseHTMLFragment(html: string, transfer=false, repair=true) {
     const template = document.createElement("template")
     template.innerHTML = html
+    const clipboardHint = Array.from(template.content.children).find(element => element.matches('meta[name="webwriter-clipboard"][content="1"]'))
+    if(clipboardHint) {
+      clipboardHint.remove()
+      if(transfer) {
+        transfer = false
+        repair = false
+      }
+    }
     return this.prepareHTMLFragment(template.content, transfer, repair)
   }
 

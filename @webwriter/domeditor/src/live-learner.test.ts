@@ -29,6 +29,28 @@ describe("connectLiveLearner", () => {
     await Promise.resolve()
   }
 
+  it("tracks the HTTP-rendered document without waiting for initial Yjs HTML or replacing widget instances", async () => {
+    const {host, learner} = sessionPair("")
+    document.body.innerHTML = '<article><!--keep--><x-card answer="1"></x-card></article>'
+    const card = document.querySelector("x-card")!
+    const shadow = card.attachShadow({mode: "open"})
+    shadow.innerHTML = "<button>Ready</button>"
+    const disconnect = connectLiveLearner(learner, document, {rendered: true})
+    try {
+      expect(document.querySelector("x-card")).toBe(card)
+      expect(card.shadowRoot).toBe(shadow)
+      card.setAttribute("answer", "2")
+      await flushMicrotasks()
+      await flushMicrotasks()
+      expect(host.states.some(state => state.widgets?.some(widget => widget.html?.includes('answer="2"')))).toBe(true)
+      host.stop()
+      await flushMicrotasks()
+      expect(document.querySelector("x-card")).toBe(card)
+      expect(document.body.shadowRoot?.querySelector('[role="status"]')?.textContent).toContain("Session ended")
+    }
+    finally { disconnect(); host.destroy(); learner.destroy() }
+  })
+
   it("renders authored markup at top level while preserving document structure and inert assets", () => {
     const packageScript = "https://app.test/host-widget.js"
     const hostPackage = {name: "host-package", version: "1.0.0", label: "Host", authors: [], keywords: [], links: {},

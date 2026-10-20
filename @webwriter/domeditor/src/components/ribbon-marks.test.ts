@@ -71,10 +71,12 @@ describe("mark ribbon controls", () => {
     await fileLabel.updateComplete
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.textContent).toBe("lesson")
     expect(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")?.tagName).toBe("STRONG")
+    expect(getComputedStyle(fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-name")!).lineHeight).toBe("1.4")
     const compactLabel = fileLabel.shadowRoot!.querySelector<HTMLElement>(".file-menu-label")!
     expect(compactLabel.textContent).toBe("File")
     expect(compactLabel.title).toBe("lesson")
     expect(getComputedStyle(compactLabel).display).toBe("none")
+    expect(getComputedStyle(compactLabel).lineHeight).toBe("1.4")
     expect(fileLabel.shadowRoot!.querySelector(".location-icon")).toBeNull()
     expect(fileLabel.shadowRoot!.querySelector("button")).toBeNull()
     const fileChevron = fileTab.shadowRoot!.querySelector<HTMLElement>(".file-chevron")!

@@ -52,7 +52,7 @@ describe("live session overlay", () => {
     document.body.append(overlay)
     await overlay.updateComplete
 
-    expect(overlay.shadowRoot!.querySelectorAll(".state-region")).toHaveLength(1)
+    expect(overlay.shadowRoot!.querySelectorAll(".state-region")).toHaveLength(0)
     expect(overlay.shadowRoot!.querySelectorAll(".cursor")).toHaveLength(2)
     expect(overlay.shadowRoot!.querySelectorAll(".click-ring")).toHaveLength(1)
     expect(overlay.shadowRoot!.querySelectorAll(".scroll-marker")).toHaveLength(1)
@@ -91,6 +91,24 @@ describe("live session overlay", () => {
     expect(detail).toEqual({path: "body/2", learnerId: null})
     expect(host.textContent).toBe("Authored content")
     expect(host.querySelector(".state-region")).toBeNull()
+  })
+
+  it("keeps the individual widget view clear when a mode change reports a changed region", async () => {
+    const overlay = new LiveSessionOverlay()
+    const learner = {id: "ada", name: "Ada", color: "#eab308", cursor: {x: .1, y: .2}}
+    overlay.learners = [learner]
+    overlay.widgets = [{path: "[0]", x: .5, y: .1, selectedLearnerId: "ada", view: "individual", learners: [learner]}]
+    document.body.append(overlay)
+    await overlay.updateComplete
+    const select = overlay.shadowRoot!.querySelector<HTMLSelectElement>("select")!
+
+    overlay.learners = [{...learner, regions: [{x: .1, y: .1, width: .8, height: .7}]}]
+    await overlay.updateComplete
+
+    expect(overlay.shadowRoot!.querySelector(".state-region")).toBeNull()
+    expect(overlay.shadowRoot!.querySelectorAll(".cursor")).toHaveLength(1)
+    expect(overlay.shadowRoot!.querySelector("select")).toBe(select)
+    expect(select.querySelector('option[value="ada"][selected]')).not.toBeNull()
   })
 
   it("selects the thumbnail wall and reports a null learner ID with its view", async () => {

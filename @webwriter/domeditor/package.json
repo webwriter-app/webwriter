@@ -9,6 +9,7 @@
   "license": "UNLICENSED",
   "scripts": {
     "start": "node dev-server/server.mjs",
+    "start:private": "node dev-server/server.mjs --private-testing",
     "start:frontend": "vite",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
@@ -41,6 +42,9 @@
     "y-protocols": "^1.0.7",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.31",
+    "@y/websocket-server": "0.1.1",
+    "openai": "^4.104.0",
+    "ws": "^8.21.0",
     "onnxruntime-web": "1.29.0",
     "temml": "^0.11.11"
   },
@@ -50,9 +54,6 @@
     "marked": "^14.1.4",
     "shiki": "^3.22.0",
     "@testing-library/jest-dom": "^6.9.1",
-    "@y/websocket-server": "^0.1.1",
-    "openai": "^4.104.0",
-    "ws": "^8.21.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.11",
     "@angular/common": "^22.2.2",

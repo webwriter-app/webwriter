@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import type {WebWriterPackage} from "./packages"
-import {hasImportMapEntries, npmFileProvider, packageImportMapScript, packageModuleEntries, resolvePackageDependencies} from "./package-dependencies"
+import {hasImportMapEntries, loadDocumentPackages, npmFileProvider, packageImportMapScript, packageModuleEntries, resolvePackageDependencies} from "./package-dependencies"
 import {NPM_FILE_TIMEOUT_MS} from "./npm-files"
 
 type GeneratorOptions = {defaultProvider: string, customProviders: Record<string, ReturnType<typeof npmFileProvider>>, ignore?: string[]}
@@ -44,6 +44,80 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers() })
 
 describe("package dependency resolution", () => {
+  const documentWith = (html: string) => new DOMParser().parseFromString(html, "text/html")
+  const resolvedPackage = (name: string, version: string, scripts: string[]): WebWriterPackage => ({
+    name, version, label: name, authors: [], keywords: [], links: {}, members: [], scripts, styles: [],
+    manifest: {name, version},
+  })
+
+  it("loads unique exact WebWriter package refs and preserves their authored script order", async () => {
+    const source = documentWith(`<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/second.js"></script>
+      <script type="module" src="https://unpkg.com/@webwriter/demo@1.2.3/dist/first.js"></script>
+      <script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/demo@latest/dist/no.js"></script>
+      <script type="module" src="https://cdn.jsdelivr.net/npm/lit@3.3.3/index.js"></script>
+      <script type="module" src="https://example.test/@webwriter/other@2.0.0/index.js"></script>
+      <template><script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/nested@2.0.0/index.js"></script></template>`)
+    const getPackage = vi.fn(async({name, version}: {name: string, version: string}) => resolvedPackage(name, version,
+      name.endsWith("demo") ? [
+        "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/first.js",
+        "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/second.js",
+        "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/unused.js",
+      ] : ["https://cdn.jsdelivr.net/npm/@webwriter/nested@2.0.0/index.js"]))
+
+    const packages = await loadDocumentPackages(source, {getPackage} as never)
+    expect(getPackage.mock.calls.map(([ref]) => ref)).toEqual([
+      {name: "@webwriter/demo", version: "1.2.3"},
+      {name: "@webwriter/nested", version: "2.0.0"},
+    ])
+    expect(packages[0].scripts).toEqual([
+      "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/second.js",
+      "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/first.js",
+      "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/unused.js",
+    ])
+  })
+
+  it("restores offline bundle entries on a clone without changing the source", async () => {
+    const source = documentWith(`<script type="module" src="data:text/javascript;base64,ZXhwb3J0IHt9"></script>`)
+    source.querySelector("script")!.setAttribute("data-webwriter-original-package-entries", JSON.stringify([
+      "https://cdn.jsdelivr.net/npm/@webwriter/offline@4.5.6/index.js",
+    ]))
+    const getPackage = vi.fn(async({name, version}: {name: string, version: string}) => resolvedPackage(name, version, []))
+    await expect(loadDocumentPackages(source, {getPackage} as never)).resolves.toHaveLength(1)
+    expect(getPackage).toHaveBeenCalledWith({name: "@webwriter/offline", version: "4.5.6"})
+    expect(source.querySelector("script")?.getAttribute("src")).toBe("data:text/javascript;base64,ZXhwb3J0IHt9")
+    expect(source.querySelector("script")?.hasAttribute("data-webwriter-original-package-entries")).toBe(true)
+  })
+
+  it("reuses an installed exact version and propagates lookup failures", async () => {
+    const entry = "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/index.js"
+    const source = documentWith(`<script type="module" src="${entry}"></script>`)
+    const installed = resolvedPackage("@webwriter/demo", "1.2.3", [entry])
+    const getPackage = vi.fn()
+    await expect(loadDocumentPackages(source, {getPackage} as never, [installed])).resolves.toEqual([installed])
+    expect(getPackage).not.toHaveBeenCalled()
+    await expect(loadDocumentPackages(source, {getPackage: vi.fn().mockRejectedValue(new Error("missing"))} as never))
+      .rejects.toThrow("missing")
+  })
+
+  it("fetches the full package when an installed preview lacks an authored export", async () => {
+    const referenced = "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/other.js"
+    const source = documentWith(`<script type="module" src="${referenced}"></script>`)
+    const installed = resolvedPackage("@webwriter/demo", "1.2.3", [
+      "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/preview.js",
+    ])
+    const fullPackage = resolvedPackage("@webwriter/demo", "1.2.3", [referenced, "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/preview.js"])
+    const getPackage = vi.fn(async() => fullPackage)
+    await expect(loadDocumentPackages(source, {getPackage} as never, [installed])).resolves.toEqual([fullPackage])
+    expect(getPackage).toHaveBeenCalledWith({name: "@webwriter/demo", version: "1.2.3"})
+  })
+
+  it("rejects conflicting exact versions of the same package", async () => {
+    const source = documentWith(`<script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/index.js"></script>
+      <script type="module" src="https://cdn.jsdelivr.net/npm/@webwriter/demo@2.0.0/index.js"></script>`)
+    await expect(loadDocumentPackages(source, {getPackage: vi.fn()} as never))
+      .rejects.toThrow("conflicting versions of @webwriter/demo")
+  })
+
   it("links every widget script, fully bundled ones included, as one graph with portable absolute mappings", async () => {
     const entries = ["https://cdn.example/a.js", "https://cdn.example/b.js", "https://cdn.example/legacy.js"]
     expect(packageModuleEntries([])).toEqual([])

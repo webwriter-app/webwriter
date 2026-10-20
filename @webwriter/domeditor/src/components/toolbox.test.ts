@@ -617,7 +617,7 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".proofreading-error")).not.toBeNull()
   })
 
-  it("reserves both scrollbar gutters in Edit without extra content side spacing", async () => {
+  it("reserves both scrollbar gutters and matching side padding in Edit", async () => {
     const toolbox = await mountToolbox()
     toolbox.documentSelected = true
     toolbox.elementAttributes = {path: [], localName: "body", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Document", attributes: {}}
@@ -625,6 +625,8 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
     expect(getComputedStyle(content).getPropertyValue("scrollbar-gutter")).toBe("stable both-edges")
+    expect(getComputedStyle(content).paddingLeft).toBe("2px")
+    expect(getComputedStyle(content).paddingRight).toBe("2px")
     const drawers = Array.from(content.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.length).toBeGreaterThan(1)
     for(const drawer of drawers) {

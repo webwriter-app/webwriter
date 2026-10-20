@@ -422,6 +422,9 @@ export class SettingsPanel extends LitElement {
 
   settings: AppSettings = defaultAppSettings()
   private recordingCommandId = ""
+  private suppressSettingsDialogCancel = false
+  private settingsDialogCancelTimer: ReturnType<typeof setTimeout> | undefined
+  private settingsDialog: HTMLDialogElement | null = null
   private message = ""
   private error = ""
   private signingIn = ""
@@ -429,7 +432,17 @@ export class SettingsPanel extends LitElement {
   private providerType: CloudService["type"] | null = null
   private signInController: AbortController | null = null
 
+  connectedCallback() {
+    super.connectedCallback()
+    this.settingsDialog = this.closest("dialog")
+    this.settingsDialog?.addEventListener("cancel", this.handleSettingsDialogCancel, true)
+  }
+
   disconnectedCallback() {
+    this.settingsDialog?.removeEventListener("cancel", this.handleSettingsDialogCancel, true)
+    this.settingsDialog = null
+    clearTimeout(this.settingsDialogCancelTimer)
+    this.suppressSettingsDialogCancel = false
     const licenses = this.renderRoot.querySelector<HTMLDialogElement>("#licenses-dialog")
     if(licenses?.open) licenses.close()
     this.signInController?.abort()
@@ -437,6 +450,14 @@ export class SettingsPanel extends LitElement {
     this.providerType = null
     this.renderRoot.querySelectorAll<HTMLInputElement>('input[type="password"]').forEach(input => {input.value = ""})
     super.disconnectedCallback()
+  }
+
+  private handleSettingsDialogCancel = (event: Event) => {
+    if(!this.recordingCommandId && !this.suppressSettingsDialogCancel) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    this.suppressSettingsDialogCancel = false
+    clearTimeout(this.settingsDialogCancelTimer)
   }
 
   private changeCloudServices(cloudServices: CloudService[], activeCloudServiceId = this.settings.activeCloudServiceId) {
@@ -644,6 +665,11 @@ export class SettingsPanel extends LitElement {
     event.preventDefault()
     event.stopImmediatePropagation()
     if(event.key === "Escape") {
+      this.suppressSettingsDialogCancel = true
+      clearTimeout(this.settingsDialogCancelTimer)
+      this.settingsDialogCancelTimer = setTimeout(() => {
+        this.suppressSettingsDialogCancel = false
+      }, 0)
       this.recordingCommandId = ""
       this.message = "Shortcut change cancelled."
       this.error = ""
@@ -708,7 +734,7 @@ export class SettingsPanel extends LitElement {
   }
 
   protected updated() {
-    const language = this.renderRoot.querySelector<HTMLSelectElement>('select[aria-label="Interface language"]')
+    const language = this.renderRoot.querySelector<HTMLSelectElement>('select[aria-label="Document language"]')
     if(language && language.value !== this.settings.language) language.value = this.settings.language
     const layout = this.renderRoot.querySelector<HTMLSelectElement>("#default-layout")
     if(layout && layout.value !== this.settings.defaultLayout) layout.value = this.settings.defaultLayout
@@ -751,12 +777,12 @@ export class SettingsPanel extends LitElement {
         ` : ""}
         <section id="settings-editor" role="tabpanel" aria-label="Editor" class="settings-tab-panel" ?hidden=${this.tab !== "Editor"}>
         <section class="setting-card" aria-label="Language">
-          <select aria-label="Interface language" .value=${this.settings.language} @change=${this.changeLanguage}>
+          <select aria-label="Document language" .value=${this.settings.language} @change=${this.changeLanguage}>
             ${languageOptions.map(option => html`
               <option value=${option.value} ?selected=${option.value === this.settings.language}>${option.label}</option>
             `)}
           </select>
-          <p class="setting-description">Language for the WebWriter interface and new documents</p>
+          <p class="setting-description">Language for new documents and widgets. The editor interface is currently available in English.</p>
           <label class="checkbox-setting">
             <input
               type="checkbox"

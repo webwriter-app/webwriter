@@ -137,6 +137,59 @@ describe("table grid", () => {
 })
 
 describe("table cell selection", () => {
+  it("moves Tab and Shift+Tab through distinct cells in irregular header and body rows", () => {
+    document.body.innerHTML = '<table><thead><tr><th rowspan="2">A</th><th>B</th></tr></thead><tbody><tr><td>C</td></tr><tr><td colspan="2">D</td></tr></tbody></table>'
+    const [a, b, c, d] = cells()
+    $.move(b.firstChild!, 1)
+    const tab = new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true})
+    document.dispatchEvent(tab)
+    expect(tab.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(c)
+
+    const shiftTab = new KeyboardEvent("keydown", {key: "Tab", shiftKey: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(shiftTab)
+    expect(shiftTab.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(b)
+
+    $.move(d.firstChild!, 0)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", shiftKey: true, bubbles: true, cancelable: true}))
+    expect($.anchor).toBe(c)
+    expect([a, b, c, d].every(cell => !cell.className.includes("◆table-cell-selected"))).toBe(true)
+  })
+
+  it("leaves Tab unhandled at table boundaries and inside nested tables uses the innermost cell", () => {
+    document.body.innerHTML = '<table><tbody><tr><td id="outer">A<table><tbody><tr><td id="inner">X</td></tr></tbody></table></td><td id="last">B</td></tr></tbody></table>'
+    const outer = document.querySelector("#outer") as HTMLTableCellElement
+    const inner = document.querySelector("#inner") as HTMLTableCellElement
+    const last = document.querySelector("#last") as HTMLTableCellElement
+
+    $.move(inner.firstChild!, 0)
+    const tab = new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true})
+    editor.features.table.activeListeners.keydown(tab)
+    expect(tab.defaultPrevented).toBe(false)
+    expect($.anchor).toBe(inner.firstChild)
+
+    $.move(last.firstChild!, 0)
+    const boundary = new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true})
+    editor.features.table.activeListeners.keydown(boundary)
+    expect(boundary.defaultPrevented).toBe(false)
+    expect($.anchor).toBe(last.firstChild)
+    expect(outer.isConnected).toBe(true)
+  })
+
+  it("leaves Tab untouched when the caret's cell has been disconnected", () => {
+    document.body.innerHTML = '<table><tbody><tr><td id="stale">A</td><td>B</td></tr></tbody></table>'
+    const stale = document.querySelector("#stale") as HTMLTableCellElement
+    $.move(stale.firstChild!, 0)
+    stale.remove()
+    const event = new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true})
+
+    editor.features.table.activeListeners.keydown(event)
+
+    expect(event.defaultPrevented).toBe(false)
+    expect(cells().map(cell => cell.textContent)).toEqual(["B"])
+  })
+
   it("clears a partial two-dimensional selection while preserving cell positions and attributes", () => {
     document.body.innerHTML = '<table><tbody><tr><td id="a" headers="one"><b>A</b></td><td>B</td><td>C</td></tr><tr><td>D</td><td id="e" headers="two"><i>E</i></td><td>F</td></tr><tr><td>G</td><td>H</td><td>I</td></tr></tbody></table>'
     const table = document.querySelector("table")!

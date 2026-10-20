@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import type {EditorStateSnapshot} from "../editor-state"
 import {restoreOriginalResourceURLs} from "../serialization"
 import {aiEditReviewEvent, executeFailureEvent} from "../editor-bridge"
@@ -817,7 +818,7 @@ describe("StateFeature", () => {
     {kind: "backward range", anchorPath: [2, 0], anchorOffset: 3, focusPath: [0, 0], focusOffset: 1},
     {kind: "element", anchorPath: [], anchorOffset: 3, focusPath: [], focusOffset: 4},
     {kind: "gap", anchorPath: [], anchorOffset: 3, focusPath: [], focusOffset: 3},
-  ])("round-trips a $kind through a JSON snapshot without normalizing authored DOM", ({anchorPath, anchorOffset, focusPath, focusOffset}) => {
+  ])("round-trips a $kind through a JSON snapshot without normalizing authored DOM", async ({anchorPath, anchorOffset, focusPath, focusOffset}) => {
     document.body.innerHTML = '<p class="authored">Before</p><!--keep--><p>After</p><snapshot-widget value="7"><span>Private</span></snapshot-widget><svg viewBox="0 0 10 10"><path d="M0 0L10 10"></path></svg>'
     const point = (path: number[]) => path.reduce<Node>((node, index) => node.childNodes[index], document.body)
     const editor = new DOMEditor()
@@ -826,7 +827,7 @@ describe("StateFeature", () => {
     try {
       document.getSelection()!.setBaseAndExtent(point(anchorPath), anchorOffset, point(focusPath), focusOffset)
       authored = editor.toHTML(true)
-      snapshot = JSON.parse(JSON.stringify(editor.getActionHandler("snapshotState")({type: "snapshotState"})))
+      snapshot = JSON.parse(JSON.stringify(await editor.getActionHandler("snapshotState")({type: "snapshotState"})))
     }
     finally { editor.destroy() }
     document.body.replaceChildren()
@@ -991,13 +992,88 @@ describe("StateFeature", () => {
     }
   })
 
-  it("reconstructs document HTML and the exact relative selection in a new editor realm", () => {
+  it.each([
+    '<video src="SOURCE" poster="COVER" controls=""></video>',
+    '<video-widget src="SOURCE"><video poster="COVER"><source src="SOURCE"></video></video-widget>',
+    '<template><template><video src="SOURCE" poster="COVER"></video></template></template>',
+  ])("keeps uploaded videos and covers in a portable reload snapshot: %s", async markup => {
+    const editor = new DOMEditor()
+    const source = editor.createMediaURL(new Blob(["local video"], {type: "video/mp4"}))
+    const cover = editor.createMediaURL(new Blob(["cover"], {type: "image/png"}))
+    document.body.innerHTML = `<p>Keep<!--comment--></p>${markup.replaceAll("SOURCE", source).replaceAll("COVER", cover)}`
+    const paragraph = document.querySelector("p")!
+    document.getSelection()!.setPosition(paragraph.firstChild!, 2)
+    let snapshot: EditorStateSnapshot
+    try {
+      snapshot = JSON.parse(JSON.stringify(await editor.getActionHandler("snapshotState")({type: "snapshotState"})))
+      expect(document.querySelector("p")).toBe(paragraph)
+    }
+    finally { editor.destroy() }
+    document.body.replaceChildren()
+    const restored = new DOMEditor({initialState: snapshot})
+    try {
+      expect(restored.toHTML(true)).toBe(`<p>Keep<!--comment--></p>${markup
+        .replaceAll("SOURCE", `data:video/mp4;base64,${btoa("local video")}`)
+        .replaceAll("COVER", `data:image/png;base64,${btoa("cover")}`)}`)
+      expect(document.getSelection()!.anchorNode).toBe(document.querySelector("p")!.firstChild)
+      expect(document.getSelection()!.anchorOffset).toBe(2)
+      expect(restored.toHTML(true)).not.toContain("blob:")
+    }
+    finally { restored.destroy() }
+  })
+
+  it("embeds blob sources created by a widget and rejects unreadable sources before reloading", async () => {
+    document.body.innerHTML = '<video-widget src="blob:https://editor.example/widget-video"></video-widget>'
+    const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("widget video", {headers: {"content-type": "video/webm"}}))
+    const editor = new DOMEditor()
+    try {
+      await editor.getActionHandler("snapshotState")({type: "snapshotState"})
+      expect(fetch).toHaveBeenCalledWith("blob:https://editor.example/widget-video")
+      expect(document.querySelector("video-widget")!.getAttribute("src")).toBe(`data:video/webm;base64,${btoa("widget video")}`)
+      document.querySelector("video-widget")!.setAttribute("src", "blob:https://editor.example/unreadable")
+      fetch.mockRejectedValue(new Error("File not found"))
+      await expect(editor.getActionHandler("snapshotState")({type: "snapshotState"})).rejects.toThrow("File not found")
+      expect(document.querySelector("video-widget")!.getAttribute("src")).toBe("blob:https://editor.example/unreadable")
+    }
+    finally { editor.destroy() }
+  })
+
+  it("captures current media when a source changes or nodes are added during snapshot preparation", async () => {
+    const editor = new DOMEditor()
+    const blob = new Blob(["old"], {type: "video/mp4"})
+    const source = editor.createMediaURL(blob)
+    const replacement = editor.createMediaURL(new Blob(["new"], {type: "video/mp4"}))
+    document.body.innerHTML = `<video src="${source}"></video>`
+    let finish!: (buffer: ArrayBuffer) => void
+    vi.spyOn(blob, "arrayBuffer").mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    try {
+      const pending = editor.getActionHandler("snapshotState")({type: "snapshotState"})
+      await vi.waitFor(() => expect(finish).toBeDefined())
+      document.querySelector("video")!.src = replacement
+      const audio = document.createElement("audio")
+      audio.src = editor.createMediaURL(new Blob(["audio"], {type: "audio/mpeg"}))
+      document.body.append(audio)
+      finish(new TextEncoder().encode("old").buffer)
+      const snapshot = await pending as EditorStateSnapshot
+      const copy = new Y.Doc()
+      try {
+        Y.applyUpdate(copy, Uint8Array.from(snapshot.update))
+        expect(sharedDOMBody(copy).toString()).toContain(`data:video/mp4;base64,${btoa("new")}`)
+        expect(editor.toHTML(true)).toContain(`data:audio/mpeg;base64,${btoa("audio")}`)
+        expect(editor.toHTML(true)).not.toContain("blob:")
+      }
+      finally { copy.destroy() }
+    }
+    finally { editor.destroy() }
+  })
+
+  it("reconstructs document HTML and the exact relative selection in a new editor realm", async () => {
     document.body.innerHTML = "<p>Hello <strong>world</strong></p><webwriter-demo value=\"7\"></webwriter-demo>"
     const editor = new DOMEditor()
     const text = document.querySelector("strong")!.firstChild!
     document.getSelection()!.setBaseAndExtent(text, 1, text, 4)
 
-    const snapshot = editor.getActionHandler("snapshotState")({type: "snapshotState"}) as EditorStateSnapshot
+    const snapshot = await editor.getActionHandler("snapshotState")({type: "snapshotState"}) as EditorStateSnapshot
     editor.destroy()
     document.body.replaceChildren()
 
@@ -1261,7 +1337,7 @@ describe("StateFeature", () => {
     editor.destroy()
   })
 
-  it("holds a sanitized HTML selection change pending until it is applied", () => {
+  it("rejects unsafe HTML before changing the pending selection and allows a corrected retry", () => {
     document.body.innerHTML = "<p>Before</p>"
     const editor = new DOMEditor()
     const paragraph = document.querySelector("p")!
@@ -1294,17 +1370,65 @@ describe("StateFeature", () => {
     }))
     expect(failure?.detail.error.message).toContain("Apply or discard")
 
-    const result = editor.getActionHandler("applyHTMLSelectionEdit")({
+    expect(() => editor.getActionHandler("applyHTMLSelectionEdit")({
       type: "applyHTMLSelectionEdit",
       html: '<section style="color: red" onclick="evil()"><p>After</p><style>body{display:none}</style><script>while(true){}</script></section>',
+    })).toThrow("The document has not been changed")
+    expect(editor.toHTML(true)).toBe("<p>Before</p>")
+    expect(editor.features.state.isHTMLSelectionEditPending).toBe(true)
+    expect(editor.isEditingLocked).toBe(true)
+    const result = editor.getActionHandler("applyHTMLSelectionEdit")({
+      type: "applyHTMLSelectionEdit",
+      html: '<section style="color: red"><p>After</p></section>',
     }) as {status: string, removedUnsafeItems: number}
 
     expect(result.status).toBe("applied")
-    expect(result.removedUnsafeItems).toBeGreaterThan(0)
+    expect(result.removedUnsafeItems).toBe(0)
     expect(editor.toHTML(true)).toBe('<section style="color: red"><p>After</p></section>')
     expect(document.querySelector(".◆html-source-pending")).toBeNull()
     expect(editor.isEditingLocked).toBe(false)
     editor.destroy()
+  })
+
+  it("preserves a cropped captioned figure, HTTPS embed and unfamiliar authored content during a source edit", async () => {
+    const html = '<figure id="photo" style="float:left"><picture><img src="https://example.test/photo.png" style="object-view-box:inset(0% 0% 0% 15%)"></picture><figcaption>Before</figcaption><!--keep--></figure><iframe src="https://example.test/lesson" sandbox="allow-scripts"></iframe><custom-lesson arbitrary="keep"><section><p>Widget content</p></section></custom-lesson>'
+    await withAIEditor(html + '<aside>Unrelated</aside>', editor => {
+      editor.features.selection.disable()
+      const aside = document.querySelector("aside")!
+      const range = document.createRange()
+      range.setStart(document.body, 0)
+      range.setEndBefore(aside)
+      document.getSelection()!.removeAllRanges()
+      document.getSelection()!.addRange(range)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const state = editor.features.state.actions
+      state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
+      state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
+      expect(state.applyHTMLSelectionEdit({type: "applyHTMLSelectionEdit", html: html.replace("Before", "After")})).toMatchObject({status: "applied", removedUnsafeItems: 0})
+      expect(editor.toHTML(true)).toBe(html.replace("Before", "After") + '<aside>Unrelated</aside>')
+      expect(document.querySelector("aside")).toBe(aside)
+      expect(editor.doc.body.toString()).not.toContain("◆")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(html + '<aside>Unrelated</aside>')
+      editor.doc.redo()
+      expect(document.querySelector("figcaption")!.textContent).toBe("After")
+      expect(document.querySelectorAll("img, iframe")).toHaveLength(2)
+    })
+  })
+
+  it.each(['<iframe srcdoc="<p>Embedded</p>"></iframe>', '<iframe src="http://example.test/lesson"></iframe>'])("keeps the original document when a source replacement contains an unsupported website: %s", async html => {
+    await withAIEditor('<p>Keep</p>', editor => {
+      const state = editor.features.state.actions
+      document.getSelection()!.setPosition(document.querySelector("p")!.firstChild!, 1)
+      state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
+      state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
+      expect(() => state.applyHTMLSelectionEdit({type: "applyHTMLSelectionEdit", html})).toThrow("unsupported website sources")
+      expect(editor.toHTML(true)).toBe('<p>Keep</p>')
+      state.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
+      expect(editor.isEditingLocked).toBe(false)
+      expect(editor.toHTML(true)).not.toContain("◆")
+    })
   })
 
   it("discards a pending HTML selection change without touching the document", () => {

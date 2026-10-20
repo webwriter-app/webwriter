@@ -1,5 +1,5 @@
 import type {IImportMap} from "@jspm/import-map"
-import type {WebWriterPackage} from "./packages"
+import type {WebWriterPackage, WebWriterPackageRegistry} from "./packages"
 import {canonicalNpmUrl, fetchWithin, JSDELIVR_DATA_ENDPOINT, JSDELIVR_NPM_ENDPOINT, NPM_FILE_MIRRORS, NPM_FILE_TIMEOUT_MS, NPM_REGISTRY_ENDPOINT} from "./npm-files"
 
 /** Runtime assets and their exact browser resolutions for one installed set. */
@@ -44,6 +44,70 @@ export const hasImportMapEntries = (map: IImportMap | null | undefined): map is 
 /** Every widget script. All are linked into one import map; fully bundled scripts contribute no mappings. */
 export function packageModuleEntries(packages: WebWriterPackage[]) {
   return [...new Set(packages.flatMap(pkg => pkg.scripts))]
+}
+
+const exactVersion = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/
+
+/** Finds pinned published WebWriter packages referenced by an authored document.
+ * Offline exports are restored on a clone so their original bundle metadata stays intact. */
+export async function loadDocumentPackages(
+  source: Document,
+  registry?: WebWriterPackageRegistry,
+  installed: WebWriterPackage[] = [],
+): Promise<WebWriterPackage[]> {
+  const restored = source.cloneNode(true) as Document
+  const packageProvider = npmFileProvider(JSDELIVR_NPM_ENDPOINT)
+  const {restoreOriginalResourceURLs} = await import("./serialization")
+  restoreOriginalResourceURLs(restored)
+
+  const scripts: HTMLScriptElement[] = []
+  const collectScripts = (root: ParentNode) => {
+    root.querySelectorAll<HTMLScriptElement>('script[type="module"][src]').forEach(script => scripts.push(script))
+    root.querySelectorAll<HTMLTemplateElement>("template").forEach(template => collectScripts(template.content))
+  }
+  collectScripts(restored)
+
+  const references = new Map<string, {name: string, version: string}>()
+  const authoredByPackage = new Map<string, Set<string>>()
+  const versionsByName = new Map<string, string>()
+  for(const script of scripts) {
+    const raw = script.getAttribute("src")
+    if(!raw) continue
+    let url: string
+    try { url = canonicalNpmUrl(new URL(raw, restored.baseURI).href) }
+    catch { continue }
+    const ref = packageProvider.parseUrlPkg(url)
+    if(!ref || !ref.name.startsWith("@webwriter/") || !exactVersion.test(ref.version)) continue
+    const previousVersion = versionsByName.get(ref.name)
+    if(previousVersion && previousVersion !== ref.version) {
+      throw new Error(`Document references conflicting versions of ${ref.name}: ${previousVersion} and ${ref.version}`)
+    }
+    versionsByName.set(ref.name, ref.version)
+    const key = `${ref.name}@${ref.version}`
+    references.set(key, {name: ref.name, version: ref.version})
+    const authored = authoredByPackage.get(key) ?? new Set<string>()
+    authored.add(url)
+    authoredByPackage.set(key, authored)
+  }
+
+  if(!references.size) return []
+  const activeRegistry = registry ?? new (await import("./packages")).WebWriterPackageRegistry()
+  const installedByKey = new Map(installed.map(pkg => [`${pkg.name}@${pkg.version}`, pkg]))
+  const packages = await Promise.all([...references].map(async([key, reference]) => {
+    const existing = installedByKey.get(key)
+    const installedScripts = new Set(existing?.scripts.map(url => canonicalNpmUrl(url)) ?? [])
+    const hasAllAuthoredScripts = [...(authoredByPackage.get(key) ?? [])].every(url => installedScripts.has(url))
+    return existing && hasAllAuthoredScripts ? existing : await activeRegistry.getPackage(reference)
+  }))
+  const authoredOrder = scripts.flatMap(script => {
+    try { return [canonicalNpmUrl(new URL(script.getAttribute("src")!, restored.baseURI).href)] }
+    catch { return [] }
+  })
+  return packages.map(pkg => ({...pkg, scripts: [...pkg.scripts].sort((a, b) => {
+    const index = (url: string) => authoredOrder.indexOf(canonicalNpmUrl(url))
+    const order = (url: string) => index(url) === -1 ? Infinity : index(url)
+    return order(a) - order(b)
+  })}))
 }
 
 /** Whether an npm file host answers at all, probed with a small published file. */

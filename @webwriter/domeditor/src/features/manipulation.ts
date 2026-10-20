@@ -388,7 +388,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     const fragment = getInertDocument(element).createDocumentFragment()
     fragment.append(cloneWithoutEditorMarkers(element, true, {inert: true}))
-    const {html, text} = this.editor.serializeClipboardFragment(fragment, element instanceof HTMLElement ? element.innerText : undefined)
+    const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment, element instanceof HTMLElement ? element.innerText : undefined)
     const token = crypto.randomUUID()
     event.dataTransfer.setData("text/html", html)
     event.dataTransfer.setData("text/plain", text)
@@ -3410,7 +3410,7 @@ export class ManipulationFeature extends EditorFeature {
     "copy": ev => {
       if(!ev.clipboardData || !$.excludedFlowElements.length) return
       ev.preventDefault()
-      const {html, text} = this.editor.serializeClipboardFragment($.copy())
+      const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment($.copy())
       ev.clipboardData.setData("text/html", html)
       ev.clipboardData.setData("text/plain", text)
     },
@@ -3418,7 +3418,7 @@ export class ManipulationFeature extends EditorFeature {
       const selected = $.selectedElement
       if(!ev.clipboardData || selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length) return
       ev.preventDefault()
-      const {html, text} = this.editor.serializeClipboardFragment($.copy())
+      const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment($.copy())
       ev.clipboardData.setData("text/html", html)
       ev.clipboardData.setData("text/plain", text)
       $.delete()
@@ -4099,7 +4099,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   #clipboardData(fragment: DocumentFragment) {
-    const {html, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
+    const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
     return {html, text}
   }
 

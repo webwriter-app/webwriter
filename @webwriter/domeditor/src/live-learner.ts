@@ -58,13 +58,19 @@ function showSessionEnded(root: Document) {
 }
 
 /** Mount one session's document directly in the learner's top-level page. */
-export function connectLiveLearner(session: LiveSession, root: Document = document) {
+export function connectLiveLearner(session: LiveSession, root: Document = document, options: {rendered?: boolean} = {}) {
   const view = root.defaultView
   if(!view) throw new Error("A learner document needs a browser window")
   const preview = new LivePreview()
-  let rendered = false
+  let rendered = Boolean(options.rendered)
   let disconnectLinks: (() => void) | undefined
   let removeSessionEnded: (() => void) | undefined
+  const track = () => {
+    disconnectLinks = openFrameLinksInNewTabs(view as Window & typeof globalThis)
+    preview.observeLearner({contentWindow: view}, root, step => {
+      if(session.status !== "stopped") session.publish(step)
+    })
+  }
   const sync = () => {
     if(session.status === "stopped") {
       if(!rendered) {
@@ -110,10 +116,7 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
     root.body.replaceChildren(...Array.from(prepared.body.childNodes, node => root.importNode(node, true)))
     root.designMode = "off"
     rendered = true
-    disconnectLinks = openFrameLinksInNewTabs(view as Window & typeof globalThis)
-    preview.observeLearner({contentWindow: view}, root, step => {
-      if(session.status !== "stopped") session.publish(step)
-    })
+    track()
     // DOMParser scripts remain inert after import. Activate only the trusted
     // assets installed by previewFrameHTML, in import-map/registry/module order.
     for(const inert of Array.from(root.head.querySelectorAll("script"))) {
@@ -146,7 +149,10 @@ export function connectLiveLearner(session: LiveSession, root: Document = docume
   }
   view.addEventListener("pagehide", disconnect)
   view.addEventListener("beforeunload", beforeUnload)
-  try { sync() }
+  try {
+    if(rendered) track()
+    sync()
+  }
   catch(error) {disconnect(); throw error}
   return disconnect
 }

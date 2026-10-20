@@ -24,7 +24,7 @@ export class FileLabel extends LitElement {
       min-width: 0;
       max-width: 100%;
       color: var(--file-label-color, #2f3742);
-      line-height: 1;
+      line-height: 1.4;
       white-space: nowrap;
     }
 

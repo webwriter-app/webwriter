@@ -831,7 +831,7 @@ export class TableFeature extends EditorFeature {
     clearTableMarkers(table)
     const fragment = table.ownerDocument.createDocumentFragment()
     fragment.append(table)
-    const {html} = this.editor.serializeClipboardFragment(fragment)
+    const {clipboardHTML: html} = this.editor.serializeClipboardFragment(fragment)
     const exported = buildTableMap(table)
     const plain = Array.from({length: rectangle.bottom - rectangle.top + 1}, (_, rowOffset) =>
       Array.from({length: rectangle.right - rectangle.left + 1}, (_, columnOffset) => {
@@ -1104,6 +1104,24 @@ export class TableFeature extends EditorFeature {
   }
 
   private navigateCells(event: KeyboardEvent) {
+    if(event.key === "Tab") {
+      const currentCell = this.hasCellSelection ? this.focusCell : cellForNode($.anchor)
+      const table = tableForNode(currentCell)
+      if(!currentCell?.isConnected || !this.editableTable(table)) return false
+      const map = buildTableMap(table)
+      const current = placementForCell(map, currentCell)
+      if(!current || map.limited) return false
+      const placements = map.placements
+      const index = placements.indexOf(current)
+      const target = placements[index + (event.shiftKey ? -1 : 1)]?.cell
+      // At either edge native Tab behavior remains available to the browser.
+      if(!target?.isConnected || tableForNode(target) !== table) return false
+      this.clearCellSelection(false)
+      $.move(target, 0)
+      this.editor.features.selection.processSelection()
+      this.editor.postSelectionPath()
+      return true
+    }
     const keyOffsets: Record<string, [number, number]> = {
       ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1],
     }

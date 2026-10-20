@@ -141,8 +141,8 @@ import "./open-document-menu"
 import "./live-session-controls"
 import "./live-session-overlay"
 import {escapeHTMLAttribute, serializeDoctype} from "../serialization"
-import {editorFrameHTML, previewFrameHTML} from "../frame-document"
-import {isPackageImportMap, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
+import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../frame-document"
+import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
 import {editorFrameOrigin} from "../frame-origins"
@@ -194,6 +194,7 @@ import {
 } from "../document-head"
 import {
   LiveSession,
+  liveSessionHostKey,
   liveSessionLearnerIdentity,
   type LiveSessionChange,
   type LiveSessionFeedback,
@@ -235,6 +236,7 @@ type StorageLocation = "local" | "development-server"
 
 const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
 const previewEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/preview-entry.ts" : "assets/preview-entry.js"}`
+const liveLearnerEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/live-learner-entry.ts" : "assets/live-learner-entry.js"}`
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
@@ -382,6 +384,7 @@ export class DomEditor extends LitElement {
     fileError: {attribute: false, state: true},
     fileOperationActive: {attribute: false, state: true},
     documentLoading: {attribute: false, state: true},
+    documentFramePending: {attribute: false, state: true},
     linkedDocumentLoading: {attribute: false, state: true},
     savedDocuments: {attribute: false, state: true},
     recentDocuments: {attribute: false, state: true},
@@ -605,6 +608,7 @@ export class DomEditor extends LitElement {
   private fileError = ""
   private fileOperationActive = false
   private documentLoading = false
+  private documentFramePending = false
   private linkedDocumentLoading = false
   private downloadedFileName: string | null = null
   private cancelFileInput?: () => void
@@ -635,6 +639,7 @@ export class DomEditor extends LitElement {
   private previewSelection: SelectionBookmark | "remote" | null = null
   private previewGeneration = 0
   private previewTransition = false
+  private liveSessionStarting = false
   private liveSessionActive = false
   private liveSessionRole: "host" | "learner" | "" = ""
   private liveSessionLink = ""
@@ -709,6 +714,7 @@ export class DomEditor extends LitElement {
       height: 100%;
       overflow: clip;
       border: 0.5px solid #a8a8a8;
+      container-type: inline-size;
     }
 
     :host([disable-animations]) {
@@ -802,6 +808,8 @@ export class DomEditor extends LitElement {
       animation: var(--ww-ui-animation, document-loading-spin .8s linear infinite);
     }
 
+    .editor-frame.loading { visibility: hidden; }
+
     @keyframes document-loading-spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .document-loading-spinner { animation: none; } }
 
@@ -854,10 +862,6 @@ export class DomEditor extends LitElement {
       grid-row: 2 / 4;
       grid-column: 2;
       justify-self: end;
-    }
-
-    @media (width < 400px) {
-      dom-editor-toolbox:is([active-tool="AI"], [active-tool="Feedback"]) {grid-column: 1 / -1; justify-self: stretch; width: 100%}
     }
 
     dom-editor-toolbox:not([active-tool]) {
@@ -1078,6 +1082,30 @@ export class DomEditor extends LitElement {
       iframe.window-inactive {
         pointer-events: auto;
       }
+    }
+
+    @container (width < 600px) {
+      .document-stage,
+      .html-source-panel,
+      .document-layouts-panel {grid-column: 1 / -1}
+      dom-editor-toolbox[active-tool]:not([hidden]) {
+        grid-column: 1 / -1;
+        grid-row: 4;
+        justify-self: stretch;
+        width: 100%;
+        min-width: 0;
+        height: clamp(9rem, 36vh, 18rem);
+        max-height: 100%;
+      }
+      dom-editor-toolbox:not([active-tool]) {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: end;
+        width: auto;
+      }
+      .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {grid-column: 1 / -1}
+      .html-source-panel {grid-row: 5}
+      .document-layouts-panel {grid-row: 6}
     }
   `
 
@@ -1540,7 +1568,12 @@ export class DomEditor extends LitElement {
       }
       else {
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)])
-        if(!linkedBase) session = await discoverHostBackend(signal)
+        if(!linkedBase || new URL(linkedBase).origin === location.origin) {
+          session = await discoverHostBackend(signal)
+          // A fresh link recipient can discover this host's no-auth service,
+          // but must never connect the link to a different API on that host.
+          if(linkedBase && session?.apiBaseUrl.replace(/\/$/, "") !== linkedBase.replace(/\/$/, "")) session = null
+        }
         if(!session) session = await probeDevelopmentBackend(signal, undefined, linkedBase)
         if(this.backendProbeController !== controller) return
         if(session) {
@@ -2038,6 +2071,7 @@ export class DomEditor extends LitElement {
       })
       void packageLoad.then(
         () => {
+          if(this.editorWindow === editorWindow) this.documentFramePending = false
           void this.inspectLocalPackageWidgets(editorWindow).catch(() => {})
           if(this.editorOpaque && this.editorWindow === editorWindow) {
             const tags = this.installedPackages.flatMap(pkg => pkg.members.flatMap(member => member.tagName ? [member.tagName] : []))
@@ -2629,20 +2663,52 @@ export class DomEditor extends LitElement {
       this.resetLivePlayback()
       return
     }
+    if(this.liveSessionStarting) return
+    this.liveSessionStarting = true
     try {
+      const generation = this.previewGeneration
+      const previewHTML = this.previewDocumentHTML ?? this.currentPreviewHTML()
+      const previewSource = new DOMParser().parseFromString(previewHTML, "text/html")
+      let previewDependencies = {packages: this.installedPackages, importMap: this.packageImportMap}
+      if(this.installedPackages.some(isLocalResourcePackage)) {
+        previewDependencies = await bundleLocalPreviewPackages(previewSource,
+          this.installedPackages, this.packageImportMap, window.location.href)
+        if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
+      }
       const sessionId = randomIdentifier("live")
       const serverUrl = this.backendSession?.collaborationUrl
       const sessionToken = serverUrl ? randomIdentifier("live-token") : undefined
+      const hostKey = sessionToken ? liveSessionHostKey(sessionId, sessionToken) : undefined
+      let link = ""
+      if(serverUrl && sessionToken) {
+        if(!this.backendClient) throw new Error("Connect to a server to share a live document")
+        const backendOrigin = new URL(this.backendClient.apiBaseUrl).origin
+        const documentOrigin = backendOrigin === location.origin ? editorFrameOrigin() : backendOrigin
+        const html = previewFrameHTML(previewSource, {
+          bridgeNonce: "", hostOrigin: location.origin, frameOrigin: documentOrigin,
+          entryURL: "", learnerEntryURL: new URL(liveLearnerEntryUrl, editorFrameOrigin()).href,
+          standalone: true, executeScripts: import.meta.env.MODE !== "test", ...previewDependencies,
+        })
+        const published = await this.backendClient.publishLiveSession(sessionId, sessionToken, hostKey!, html)
+        if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
+        const url = new URL(published.url)
+        if(url.origin === location.origin) {
+          const frame = new URL(editorFrameOrigin())
+          url.protocol = frame.protocol
+          url.host = frame.host
+        }
+        link = url.href
+      }
       const session = new LiveSession({
         id: sessionId,
         role: "host",
-        baseHTML: this.previewDocumentHTML ?? this.currentPreviewHTML(),
-        previewDependencies: {packages: this.installedPackages, importMap: this.packageImportMap},
+        ...(!serverUrl ? {baseHTML: this.preparePreviewDocument(previewSource, previewDependencies), previewDependencies} : {}),
         ...(serverUrl ? {serverUrl} : {}),
         token: sessionToken,
+        hostKey,
       })
       this.resetLivePlayback()
-      this.connectLiveSession(session, "host", sessionToken ? this.liveSessionShareLink(sessionId, sessionToken) : "")
+      this.connectLiveSession(session, "host", link)
       const frame = this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")
       if(frame?.contentDocument) this.livePreview.observeHost(frame, frame.contentDocument, () => {
         this.updateLiveWidgetAffordances()
@@ -2655,6 +2721,7 @@ export class DomEditor extends LitElement {
       this.resetLivePlayback()
       this.reportFileError(error)
     }
+    finally { this.liveSessionStarting = false }
   }
 
   private handleRibbonInputPointerDown = () => {
@@ -2892,7 +2959,7 @@ export class DomEditor extends LitElement {
     }
     this.updateCloudExpiry()
     this.updateUserIdentity()
-    this.lang = settings.language
+    this.lang = "en"
     this.updateMotionPreference()
     this.localPackageManager.autoReload = settings.autoReloadPackages
     if(settings.pinDeveloperConsole && !previous.pinDeveloperConsole) {
@@ -3045,6 +3112,17 @@ export class DomEditor extends LitElement {
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
     stripExcludedMarks(parsed.body)
+    const revision = this.documentChangeSequence
+    const frameRevision = this.frameRevision
+    const packages = await loadDocumentPackages(parsed, this.packageRegistry, this.installedPackages)
+    if(!this.isConnected || revision !== this.documentChangeSequence || frameRevision !== this.frameRevision) {
+      throw new Error("The document changed while loading its widgets. Open the file again.")
+    }
+    if(packages.length) {
+      const names = new Set(packages.map(pkg => pkg.name))
+      this.installedPackages = [...this.installedPackages.filter(pkg => !names.has(pkg.name)), ...packages]
+      this.persistInstalledPackages()
+    }
     const reloadError = new Error("The editor iframe was reloaded for a document change")
     this.editorReadyPromise?.catch(() => {})
     this.editorReadyReject?.(reloadError)
@@ -3082,6 +3160,8 @@ export class DomEditor extends LitElement {
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
     this.documentLayoutsDismissed = !isNewDocument || this.settings.pinDeveloperConsole
+    // Only successful widget initialization may reveal the incoming document.
+    this.documentFramePending = true
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
     this.pendingExecutions.forEach(({reject, timer, abortCleanup}) => {
       clearTimeout(timer)
@@ -7178,7 +7258,7 @@ export class DomEditor extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     this.recentDocumentsReady = this.restoreRecentDocuments()
-    this.lang = this.settings.language
+    this.lang = "en"
     this.localPackageManager.autoReload = this.settings.autoReloadPackages
     this.updateMotionPreference()
     this.updateCloudExpiry()
@@ -7623,14 +7703,14 @@ export class DomEditor extends LitElement {
           ></iframe>
         ` : ""}
         ${this.frameStarted ? html`<iframe
-          class="editor-frame"
+          class=${documentLoading || this.documentFramePending ? "editor-frame loading" : "editor-frame"}
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
           src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("editor", this.frameRevision)}
           srcdoc=${import.meta.env.MODE === "test" ? this.editorSrcdoc : nothing}
           ?hidden=${this.previewActive && !this.previewFramePending}
-          ?inert=${this.previewActive}
+          ?inert=${this.previewActive || documentLoading || this.documentFramePending}
           @load=${this.handleEditorFrameLoad}
           @pointerdown=${this.relayFrameTouch} @pointermove=${this.relayFrameTouch}
           @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}

@@ -485,6 +485,30 @@ describe("media ribbon drawer", () => {
 
 
 describe("primary media Source control", () => {
+  it("explains unsupported website URLs without dispatching a change and accepts a corrected HTTPS source", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type: "iframe", attributes: {src: "https://example.test/original"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Website: Source"]')!
+    const listener = vi.fn()
+    toolbox.addEventListener("media-attribute-change", listener)
+    input.value = "http://example.test/blocked"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(input.validationMessage).toContain("https://")
+    expect(input.getAttribute("aria-invalid")).toBe("true")
+    expect(listener).not.toHaveBeenCalled()
+    expect(toolbox.media.attributes.src).toBe("https://example.test/original")
+    input.value = "https://example.test/replacement"
+    input.dispatchEvent(new Event("input", {bubbles: true}))
+    expect(input.validationMessage).toBe("")
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(input.validationMessage).toBe("")
+    expect(input.hasAttribute("aria-invalid")).toBe(false)
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "iframe", attribute: "src", value: input.value}}))
+  })
+
   it.each(["picture", "img", "audio", "video"] as const)("joins the %s input buttons and URL above Options", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

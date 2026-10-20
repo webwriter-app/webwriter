@@ -32,6 +32,8 @@ import {
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
 import {INSTALLED_PACKAGES_STORAGE_KEY, WebWriterPackageRegistry, type WebWriterPackage} from "../packages"
 import * as packageDependencies from "../package-dependencies"
+import * as offlineBundler from "../offline-module-bundler"
+import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 
 // Linking the installed widget scripts would trace them on the CDN. Tests resolve an empty map at once.
 vi.mock("../package-dependencies", async importOriginal => ({
@@ -711,6 +713,125 @@ describe("DomEditor document loading", () => {
 
     expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
     expect(editor.shadowRoot!.querySelector(".document-stage")!.getAttribute("aria-busy")).toBe("false")
+  })
+
+  it.each(["local", "cloud"])("installs a %s file's missing widgets before revealing its document", async location => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const retained = {...demoPackage, name: "@webwriter/retained", scripts: [], members: []}
+    host.installedPackages = [retained]
+    const content = `<section data-authored="keep"><!--keep--><webwriter-demo answer="42"><span>Authored content</span></webwriter-demo><unknown-element></unknown-element></section>`
+    const source = `<html><head><script type="module" src="${demoPackage.scripts[0]}"></script></head><body>${content}</body></html>`
+    let resolved!: (pkg: WebWriterPackage) => void
+    const getPackage = vi.spyOn(host.packageRegistry, "getPackage").mockReturnValue(new Promise(resolve => { resolved = resolve }))
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host, "rememberOpenedDocument").mockResolvedValue({id: "lesson", kind: "local"})
+    host.backendClient = {getDocument: vi.fn().mockResolvedValue({id: "lesson", title: "Lesson", format: "html", content: source})}
+    const post = vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+
+    const opening = location === "local" ? host.openDocument() : host.openBackendDocument("lesson")
+    await vi.waitFor(() => expect(getPackage).toHaveBeenCalledWith({name: demoPackage.name, version: demoPackage.version}))
+    await editor.updateComplete
+    expect(host.frameRevision).toBe(0)
+    expect(iframe.contentDocument!.querySelector("webwriter-demo")).toBeNull()
+    expect(iframe.classList.contains("loading")).toBe(true)
+    expect(getComputedStyle(iframe).visibility).toBe("hidden")
+    expect(iframe.inert).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+
+    resolved(demoPackage)
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    await editor.updateComplete
+    const loadedFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    loadedFrame.dispatchEvent(new Event("load"))
+    await vi.waitFor(() => expect(post).toHaveBeenCalledWith(expect.objectContaining({
+      type: loadWidgetsMessage, packages: [retained, demoPackage], requestId: expect.any(String),
+    })))
+    expect(host.installedPackages).toEqual([retained, demoPackage])
+    expect(JSON.parse(localStorage.getItem(INSTALLED_PACKAGES_STORAGE_KEY)!)).toEqual([retained, demoPackage])
+    expect(host.frameDocumentHTML).toContain(content)
+    expect(loadedFrame.classList.contains("loading")).toBe(true)
+    expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
+
+    completePendingPackageLoad(editor)
+    await opening
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    expect(loadedFrame.classList.contains("loading")).toBe(false)
+    expect(loadedFrame.inert).toBe(false)
+    expect(host.fileDirty).toBe(false)
+  })
+
+  it("retains the current document when a required widget package cannot be installed", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const body = iframe.contentDocument!.body.innerHTML
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host.packageRegistry, "getPackage").mockRejectedValue(new Error("Widget package unavailable"))
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    await host.openDocument()
+    await editor.updateComplete
+    expect(host.fileError).toBe("Widget package unavailable")
+    expect(host.frameRevision).toBe(0)
+    expect(iframe.contentDocument!.body.innerHTML).toBe(body)
+    expect(host.installedPackages).toEqual([])
+    expect(iframe.classList.contains("loading")).toBe(false)
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+  })
+
+  it("keeps a newly opened document hidden when its widget modules fail to load", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(demoPackage)
+    vi.spyOn(host, "postToEditor").mockImplementation(() => {})
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(host.frameRevision).toBe(1))
+    const loadedFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    loadedFrame.dispatchEvent(new Event("load"))
+    await vi.waitFor(() => expect(host.packageLoadPromise).not.toBeNull())
+    const requestId = [...host.pendingExecutions.keys()].find((id: string) => id.startsWith("packages-"))
+    window.dispatchEvent(new MessageEvent("message", {source: host.editorWindow, origin: window.location.origin,
+      data: {type: executeFailureEvent, detail: {requestId, error: {name: "NetworkError", message: "Widget module failed"}}}}))
+    await opening
+    await editor.updateComplete
+
+    expect(host.fileError).toBe("Widget module failed")
+    expect(editor.shadowRoot!.querySelector(".document-loading")).toBeNull()
+    expect(loadedFrame.classList.contains("loading")).toBe(true)
+    expect(loadedFrame.inert).toBe(true)
+    expect(getComputedStyle(loadedFrame).visibility).toBe("hidden")
+  })
+
+  it("keeps edits made during widget installation instead of replacing them with the opened file", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const source = `<script type="module" src="${demoPackage.scripts[0]}"></script><webwriter-demo></webwriter-demo>`
+    const file = new File([source], "lesson.html")
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{name: file.name, getFile: async() => file}]))
+    let resolved!: (pkg: WebWriterPackage) => void
+    const getPackage = vi.spyOn(host.packageRegistry, "getPackage").mockReturnValue(new Promise(resolve => { resolved = resolve }))
+    vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const opening = host.openDocument()
+    await vi.waitFor(() => expect(getPackage).toHaveBeenCalled())
+    iframe.contentDocument!.body.innerHTML = "<p>A concurrent edit</p>"
+    host.documentChangeSequence++
+    resolved(demoPackage)
+    await opening
+    await editor.updateComplete
+    expect(host.frameRevision).toBe(0)
+    expect(host.installedPackages).toEqual([])
+    expect(iframe.contentDocument!.body.innerHTML).toBe("<p>A concurrent edit</p>")
+    expect(host.fileError).toContain("The document changed while loading its widgets")
   })
 
   it("keeps the spinner visible while a new empty document's preset is applied", async () => {
@@ -1864,7 +1985,7 @@ describe("DomEditor iframe setup", () => {
     }
   })
 
-  it("applies the language setting to the active document when requested", async () => {
+  it("applies document language while retaining the English interface language", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
     const settings = {...defaultAppSettings(), language: "de"}
@@ -1874,7 +1995,7 @@ describe("DomEditor iframe setup", () => {
       composed: true,
     }))
 
-    expect(editor.lang).toBe("de")
+    expect(editor.lang).toBe("en")
     expect(execute).toHaveBeenCalledWith({type: "setDocumentHeadField", field: "language", value: "de"})
   })
 
@@ -6860,6 +6981,87 @@ describe("DomEditor.execute()", () => {
     expect(afterStop.defaultPrevented).toBe(false)
   })
 
+  it.each(["local", "git"] as const)("shares embedded %s widget sources with live learners without changing the editor runtime", async kind => {
+    const bundle = vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js: 'customElements.define("webwriter-demo", class extends HTMLElement {})', css: "webwriter-demo {display: block}"})
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    const base = kind === "local" ? `${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/` : `${location.origin}/api/developer-packages/git/fixture/`
+    const script = `${base}widget.js?revision=2`
+    const style = `${base}widget.css?revision=2`
+    host.installedPackages = [{...demoPackage, scripts: [script], styles: [style],
+      ...(kind === "git" ? {developerSource: {kind, repository: "https://example.com/widget.git", ref: "main", path: "", commit: "abc"}} : {})}]
+    const authoredHTML = '<section><!--keep--><webwriter-demo></webwriter-demo></section>'
+    iframe.contentDocument!.body.innerHTML = authoredHTML
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const learner = new LiveSession({id: session.id, role: "learner"})
+    try {
+      expect(bundle).toHaveBeenCalledOnce()
+      expect(session.previewDependencies!.packages[0].scripts[0]).toMatch(/^data:text\/javascript/)
+      const source = new DOMParser().parseFromString(learner.baseHTML!, "text/html")
+      const html = host.preparePreviewDocument(source, learner.previewDependencies)
+      expect(html).not.toContain(LOCAL_PACKAGE_ROUTE_PREFIX)
+      expect(html).not.toContain(script)
+      expect(html).not.toContain(style)
+      expect(html).toContain("data:text/javascript")
+      expect(html).toContain("data:text/css")
+      expect(source.body.innerHTML).toBe(authoredHTML)
+      expect(host.installedPackages[0].scripts).toEqual([script])
+      expect(host.previewDocumentHTML).toContain(script)
+    }
+    finally { learner.destroy(); host.disposeLiveSession() }
+  })
+
+  it("publishes one complete participant document over HTTP before exposing its share link", async () => {
+    vi.stubGlobal("WebSocket", class {send() {} close() {}})
+    vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js: 'customElements.define("webwriter-demo", class extends HTMLElement {})', css: "webwriter-demo {display:block}"})
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.installedPackages = [{...demoPackage, scripts: [`${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js`], styles: []}]
+    iframe.contentDocument!.body.innerHTML = '<webwriter-demo></webwriter-demo>'
+    await host.enterPreview()
+    let finish!: (value: {url: string}) => void
+    const publishLiveSession = vi.fn().mockReturnValue(new Promise(resolve => {finish = resolve}))
+    host.backendSession = {collaborationUrl: "ws://localhost:1234", user: {id: "host", name: "Host"}}
+    host.backendClient = {apiBaseUrl: "http://localhost:1234/api", publishLiveSession}
+    const starting = host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    await vi.waitFor(() => expect(publishLiveSession).toHaveBeenCalledOnce())
+    expect(host.liveSessionLink).toBe("")
+    expect(host.liveSession).toBeNull()
+    const [id, token, key, html] = publishLiveSession.mock.calls[0]
+    expect(key).toMatch(/^[A-Za-z0-9_-]{24,256}$/)
+    expect(html).toContain("data:text/javascript")
+    expect(html).toContain("data:text/css")
+    expect(html).not.toContain(LOCAL_PACKAGE_ROUTE_PREFIX)
+    finish({url: `http://localhost:1234/live/?liveSession=${id}&liveToken=${token}&liveServer=ws%3A%2F%2Flocalhost%3A1234`})
+    await starting
+    const session = host.liveSession as LiveSession
+    expect(session.doc.getMap("live-session-meta").has("baseHTML")).toBe(false)
+    expect(session.doc.getMap("live-session-meta").has("previewDependencies")).toBe(false)
+    expect(host.liveSessionLink).toContain(`/live/?liveSession=${id}`)
+    host.disposeLiveSession()
+  })
+
+  it("cancels live-session startup when preview ends while local widgets are bundling", async () => {
+    let finish!: (value: {js: string, css: undefined}) => void
+    const bundle = vi.spyOn(offlineBundler, "bundleOfflineModules").mockReturnValue(new Promise(resolve => {finish = resolve}))
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.installedPackages = [{...demoPackage, scripts: [`${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js`], styles: []}]
+    iframe.contentDocument!.body.innerHTML = '<webwriter-demo></webwriter-demo>'
+    await host.enterPreview()
+    const starting = host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    await vi.waitFor(() => expect(bundle).toHaveBeenCalledOnce())
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    expect(bundle).toHaveBeenCalledOnce()
+    await host.exitPreview(false)
+    finish({js: "register()", css: undefined})
+    await starting
+    expect(host.liveSessionActive).toBe(false)
+    expect(host.liveSession).toBeNull()
+  })
+
   it("loads the host widget runtime in a live learner preview independently of local installations", async () => {
     const {editor: hostEditor, iframe} = await mountEditor()
     const host = hostEditor as any
@@ -9057,6 +9259,30 @@ it("does not apply a cloud save response after the active service is changed", a
   expect(host.backendDocumentId).toBeNull()
   expect(host.fileDirty).toBe(true)
   expect(host.fileName).not.toBe("Old response")
+})
+
+it.each(["/api", "/other-api"])("discovers only the exact same-host cloud API for a fresh document link (advertised: %s)", async advertisedPath => {
+  const base = `${location.origin}/api`
+  const session = {kind: "webwriter-cloud-service", version: 1, authentication: "none",
+    apiBaseUrl: `${location.origin}${advertisedPath}`, collaborationUrl: location.origin.replace(/^http/, "ws"),
+    adminUrl: `${location.origin}/admin`, user: {id: "local-development", name: "Private tester"}, capabilities: ["documents"]}
+  vi.stubGlobal("fetch", vi.fn(async(url: string) => new Response(JSON.stringify(
+    String(url).endsWith("/session") ? session : {documents: []},
+  ), {headers: {"Content-Type": "application/json"}})))
+  const {editor} = await mountEditor()
+  const host = editor as any
+  host.settings = {...defaultAppSettings(), cloudServices: [], activeCloudServiceId: null, cloudServicesConfigured: false}
+  await host.loginToBackend(base)
+  if(advertisedPath === "/api") {
+    expect(host.backendState).toBe("connected")
+    expect(host.backendClient.apiBaseUrl).toBe(base)
+    expect(host.settings.cloudServices).toEqual([expect.objectContaining({url: base, authentication: "none"})])
+  }
+  else {
+    expect(host.backendState).toBe("unavailable")
+    expect(host.backendClient).toBeNull()
+    expect(host.settings.cloudServices).toEqual([])
+  }
 })
 
 it("activates a saved inactive cloud service when opening its document link", async () => {

@@ -1096,8 +1096,8 @@ describe("package ribbon controls", () => {
       value: () => ({left: 400, top: 72, right: 528, bottom: 112, width: 128, height: 40}),
       configurable: true,
     })
-    button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
-      .dispatchEvent(new MouseEvent("mouseenter"))
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+      .dispatchEvent(new FocusEvent("focus"))
     await button.updateComplete
     await Promise.resolve()
 
@@ -1115,6 +1115,75 @@ describe("package ribbon controls", () => {
     expect(RibbonButton.styles.toString()).not.toContain("background: #f2f2f2")
   })
 
+  it("delays widget details and cancels pending tooltips while moving between packages", async () => {
+    vi.useFakeTimers()
+    try {
+      const buttons = [new RibbonButton(), new RibbonButton()]
+      for(const [index, button] of buttons.entries()) {
+        button.details = {heading: `Widget ${index}`}
+        document.body.append(button)
+        await button.updateComplete
+      }
+      const [first, second] = buttons
+      const rows = buttons.map(button => button.shadowRoot!.querySelector<HTMLElement>(".button-row")!)
+      rows[0].dispatchEvent(new MouseEvent("mouseenter"))
+      vi.advanceTimersByTime(300)
+      await first.updateComplete
+      expect(first.hasAttribute("details-open")).toBe(false)
+      rows[0].dispatchEvent(new MouseEvent("mouseleave", {relatedTarget: second}))
+      rows[1].dispatchEvent(new MouseEvent("mouseenter", {relatedTarget: first}))
+      vi.advanceTimersByTime(499)
+      await Promise.all(buttons.map(button => button.updateComplete))
+      expect(buttons.every(button => !button.hasAttribute("details-open"))).toBe(true)
+      vi.advanceTimersByTime(1)
+      await second.updateComplete
+      expect(first.hasAttribute("details-open")).toBe(false)
+      expect(second.hasAttribute("details-open")).toBe(true)
+
+      rows[1].dispatchEvent(new MouseEvent("mouseleave", {relatedTarget: first}))
+      rows[0].dispatchEvent(new MouseEvent("mouseenter", {relatedTarget: second}))
+      vi.advanceTimersByTime(120)
+      await Promise.all(buttons.map(button => button.updateComplete))
+      expect(buttons.every(button => !button.hasAttribute("details-open"))).toBe(true)
+      vi.advanceTimersByTime(380)
+      await first.updateComplete
+      expect(first.hasAttribute("details-open")).toBe(true)
+      expect(second.hasAttribute("details-open")).toBe(false)
+    }
+    finally {vi.useRealTimers()}
+  })
+
+  it("cancels pending widget details on removal and opens immediately on keyboard focus", async () => {
+    vi.useFakeTimers()
+    try {
+      const button = new RibbonButton()
+      button.details = {heading: "Widget information"}
+      document.body.append(button)
+      await button.updateComplete
+      const row = button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
+      const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      vi.advanceTimersByTime(300)
+      button.remove()
+      expect(vi.getTimerCount()).toBe(0)
+      document.body.append(button)
+      vi.advanceTimersByTime(500)
+      await button.updateComplete
+      expect(button.hasAttribute("details-open")).toBe(false)
+
+      row.dispatchEvent(new MouseEvent("mouseenter"))
+      main.dispatchEvent(new FocusEvent("focus"))
+      await button.updateComplete
+      expect(button.hasAttribute("details-open")).toBe(true)
+      expect(vi.getTimerCount()).toBe(0)
+      main.dispatchEvent(new FocusEvent("blur"))
+      vi.advanceTimersByTime(500)
+      await button.updateComplete
+      expect(button.hasAttribute("details-open")).toBe(false)
+    }
+    finally {vi.useRealTimers()}
+  })
+
   it("keeps widget details open across the trigger, popup and gap, then cleans up on exit", async () => {
     vi.useFakeTimers()
     try {
@@ -1125,6 +1194,7 @@ describe("package ribbon controls", () => {
       const row = button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
       const popup = button.shadowRoot!.querySelector<HTMLElement>(".details")!
       row.dispatchEvent(new MouseEvent("mouseenter"))
+      vi.advanceTimersByTime(500)
       await button.updateComplete
       await Promise.resolve()
       const position = popup.style.cssText
@@ -1170,8 +1240,8 @@ describe("package ribbon controls", () => {
       value: () => ({left: 8, top: 72, right: 136, bottom: 112, width: 128, height: 40}),
       configurable: true,
     })
-    button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
-      .dispatchEvent(new MouseEvent("mouseenter"))
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+      .dispatchEvent(new FocusEvent("focus"))
     await button.updateComplete
     await Promise.resolve()
 
@@ -1205,8 +1275,8 @@ describe("package ribbon controls", () => {
         value: () => ({left: 0, top: 0, right: 272, bottom: 100, width: 272, height: 100}),
         configurable: true,
       })
-      button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
-        .dispatchEvent(new MouseEvent("mouseenter"))
+      button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+        .dispatchEvent(new FocusEvent("focus"))
       await button.updateComplete
       await Promise.resolve()
       await button.updateComplete

@@ -38,6 +38,17 @@ export const websiteTypes = ["iframe", "embed", "object"] as const
 
 export type WebsiteType = typeof websiteTypes[number]
 
+/** Website URL entry must agree with the document frame's HTTPS policy. */
+export function websiteSourceError(value: string) {
+  if(!value) return ""
+  try {
+    const url = new URL(value)
+    if(url.protocol === "https:" && !url.username && !url.password) return ""
+  }
+  catch {}
+  return "Enter a valid https:// website URL."
+}
+
 export const mediaElementSelector = mediaTypes.join(", ")
 
 export const timedMediaResourceTypes = ["source", "track"] as const

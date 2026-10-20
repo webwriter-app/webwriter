@@ -61,6 +61,8 @@ import {
   imageMapAreaAttributeOptions,
   isWebsiteType,
   mediaAttributeOptions,
+  mediaSourceAttribute,
+  websiteSourceError,
   timedMediaResourceAttributeOptions,
   type ImageMapAreaState,
   type ImageMapHotspotShape,
@@ -1491,14 +1493,35 @@ export abstract class EditingControls extends LitElement {
           placeholder=${option.placeholder ?? ""}
           .value=${attributes[option.name] ?? ""}
           ?disabled=${disabled}
+          @input=${this.clearMediaSourceError}
           @change=${onChange}
         />
       </label>
     `
   }
 
+  protected clearMediaSourceError(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    if(!input.hasAttribute("aria-invalid")) return
+    input.setCustomValidity("")
+    input.removeAttribute("aria-invalid")
+    input.title = input.value
+  }
+
   protected dispatchMediaAttribute(type: MediaType, option: MediaAttributeOption, event: Event) {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
+    if(input instanceof HTMLInputElement && isWebsiteType(type) && option.name === mediaSourceAttribute(type)) {
+      const error = websiteSourceError(input.value.trim())
+      input.setCustomValidity(error)
+      if(error) {
+        input.setAttribute("aria-invalid", "true")
+        input.title = error
+        input.reportValidity()
+        return
+      }
+      input.removeAttribute("aria-invalid")
+      input.title = input.value
+    }
     const value = option.kind === "boolean"
       ? (input as HTMLInputElement).checked ? "" : null
       : input.value || null

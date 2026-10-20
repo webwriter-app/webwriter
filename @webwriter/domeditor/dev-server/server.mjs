@@ -250,9 +250,9 @@ const isAllowedOrigin = origin => {
   }
 }
 
-const applyCors = (request, response) => {
+const applyCors = (request, response, allowedOrigin = isAllowedOrigin) => {
   const origin = request.headers.origin
-  if(typeof origin === "string" && isAllowedOrigin(origin)) {
+  if(typeof origin === "string" && allowedOrigin(origin)) {
     response.setHeader("Access-Control-Allow-Origin", origin)
     response.setHeader("Access-Control-Allow-Credentials", "true")
     response.setHeader("Vary", "Origin")
@@ -289,10 +289,29 @@ const inferenceError = (response, error) => {
 }
 
 export async function createDevServer(options = {}) {
+  const privateTesting = options.privateTesting === true
+  const privateOrigin = name => {
+    const value = options[name === "VITE_APP_ORIGIN" ? "appOrigin" : "editorOrigin"] ?? process.env[name]
+    try {
+      const url = new URL(value)
+      if(url.protocol === "https:" && !url.username && !url.password && url.href === `${url.origin}/`) return url.origin
+    }
+    catch {}
+    throw new Error(`Private testing requires ${name} to be an exact HTTPS origin without a path`)
+  }
+  const appOrigin = privateTesting ? privateOrigin("VITE_APP_ORIGIN") : undefined
+  const editorOrigin = privateTesting ? privateOrigin("VITE_EDITOR_ORIGIN") : undefined
+  if(privateTesting && appOrigin === editorOrigin) throw new Error("Private testing requires separate application and editor origins")
+  const allowedHosts = privateTesting ? new Set([new URL(appOrigin).host, new URL(editorOrigin).host]) : undefined
+  const allowedHost = value => privateTesting ? typeof value === "string" && allowedHosts.has(value.toLowerCase()) : isAllowedHost(value)
+  const allowedOrigin = value => privateTesting ? value === appOrigin || value === editorOrigin : isAllowedOrigin(value)
   const host = options.host ?? process.env.WEBWRITER_DEV_HOST ?? "127.0.0.1"
   if(!loopbackHosts.has(host)) throw new Error("The development server may only bind to a loopback host")
   const requestedPort = options.port ?? Number.parseInt(process.env.WEBWRITER_DEV_PORT || "1234", 10)
-  const dataDirectory = resolve(options.dataDirectory ?? process.env.WEBWRITER_DEV_DATA_DIR ?? defaultDataDirectory)
+  const configuredDataDirectory = options.dataDirectory ?? process.env.WEBWRITER_DEV_DATA_DIR
+  if(privateTesting && !configuredDataDirectory) throw new Error("Private testing requires a separate WEBWRITER_DEV_DATA_DIR")
+  const dataDirectory = resolve(configuredDataDirectory ?? defaultDataDirectory)
+  if(privateTesting && dataDirectory === defaultDataDirectory) throw new Error("Private testing must not use the default development data directory")
   const documentsDirectory = join(dataDirectory, "documents")
   const providerStatePath = join(dataDirectory, "providers.json")
   const widgetDataDirectory = join(dataDirectory, "widget-data")
@@ -300,7 +319,8 @@ export async function createDevServer(options = {}) {
   const fetchImplementation = options.fetch ?? globalThis.fetch
   const gitSnapshots = new Map()
   const loadGitPackage = options.fetchGitPackage ?? fetchGitPackage
-  const useVite = options.vite !== false
+  // The VPN-facing proxy serves dist; source files and HMR stay local-only.
+  const useVite = !privateTesting && options.vite !== false
   await mkdir(documentsDirectory, {recursive: true})
   await mkdir(widgetDataDirectory, {recursive: true})
   await mkdir(widgetGroupingDirectory, {recursive: true})
@@ -557,13 +577,13 @@ export async function createDevServer(options = {}) {
   })
 
   const requestHandler = async (request, response) => {
-    if(!isAllowedHost(request.headers.host)) {
-      apiError(response, 403, "Only loopback hosts may use this development server")
+    if(!allowedHost(request.headers.host)) {
+      apiError(response, 403, privateTesting ? "Host is not configured for private testing" : "Only loopback hosts may use this development server")
       return
     }
-    applyCors(request, response)
-    if(typeof request.headers.origin === "string" && !isAllowedOrigin(request.headers.origin)) {
-      apiError(response, 403, "Only loopback browser origins may use this development server")
+    applyCors(request, response, allowedOrigin)
+    if(typeof request.headers.origin === "string" && !allowedOrigin(request.headers.origin)) {
+      apiError(response, 403, privateTesting ? "Origin is not configured for private testing" : "Only loopback browser origins may use this development server")
       return
     }
     if(request.method === "OPTIONS") {
@@ -572,11 +592,52 @@ export async function createDevServer(options = {}) {
       return
     }
 
-    const url = new URL(request.url || "/", requestOrigin(request))
+    const url = new URL(request.url || "/", appOrigin ?? requestOrigin(request))
     const path = url.pathname
-    const origin = url.origin
+    const origin = appOrigin ?? url.origin
+    if(privateTesting) {
+      const isLiveDocument = (path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")
+      const isEditorHost = request.headers.host.toLowerCase() === new URL(editorOrigin).host
+      if(isEditorHost !== isLiveDocument) return apiError(response, 403, "Live documents require the editor origin; APIs and administration require the application origin")
+    }
 
     try {
+      const liveDocument = /^\/api\/live-sessions\/([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(path)
+      if(liveDocument && request.method === "PUT") {
+        const {token, hostKey, html} = await readJSON(request)
+        if(!safeSessionToken(token) || !safeSessionToken(hostKey) || typeof html !== "string" || !html.trim()) {
+          return apiError(response, 400, "A live session needs host credentials and an HTML document")
+        }
+        const id = liveDocument[1], room = `live-session-${id}`
+        let session = liveSessionTokens.get(room)
+        if(session && (session.token !== token || session.hostKey !== hostKey)) return apiError(response, 403, "Live session permission denied")
+        const bytes = [...liveSessionTokens.values()].filter(entry => entry !== session)
+          .reduce((sum, entry) => sum + Buffer.byteLength(entry.html ?? ""), Buffer.byteLength(html))
+        if((!session && liveSessionTokens.size >= 32) || bytes > 256 * 1024 * 1024) return apiError(response, 503, "Live session document cache is full")
+        if(!session) {
+          session = {token, hostKey, learners: new Map(), connections: 0}
+          liveSessionTokens.set(room, session)
+          // Failed/cancelled host startup must not retain its document forever.
+          session.timer = setTimeout(() => {
+            if(!session.connections && liveSessionTokens.get(room) === session) liveSessionTokens.delete(room)
+          }, 60_000)
+          session.timer.unref()
+        }
+        session.html = html
+        const documentURL = new URL("/live/", editorOrigin ?? origin)
+        documentURL.search = new URLSearchParams({liveSession: id, liveToken: token, liveServer: origin.replace(/^http/, "ws")}).toString()
+        return json(response, 201, {url: documentURL.href})
+      }
+      if((path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")) {
+        if(request.method !== "GET" && request.method !== "HEAD") return apiError(response, 405, "Live documents are read-only")
+        const session = liveSessionTokens.get(`live-session-${url.searchParams.get("liveSession")}`)
+        const html = session?.token === url.searchParams.get("liveToken") ? session.html : undefined
+        const content = Buffer.from(html ?? '<!doctype html><html><head><title>Live session unavailable</title></head><body><p role="alert">This live session is unavailable or has ended. Ask the host for a new link.</p></body></html>')
+        response.writeHead(html ? 200 : 404, {"Content-Type": "text/html; charset=utf-8", "Content-Length": content.length,
+          "Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
+        response.end(request.method === "HEAD" ? undefined : content)
+        return
+      }
       if(path === "/api/developer-packages/git" && request.method === "POST") {
         const source = gitPackageSource(await readJSON(request))
         const snapshot = await loadGitPackage(source)
@@ -624,10 +685,10 @@ export async function createDevServer(options = {}) {
       }
       if(path === "/api/session" && request.method === "GET") {
         json(response, 200, {
-          kind: "webwriter-dev-server",
+          kind: privateTesting ? "webwriter-cloud-service" : "webwriter-dev-server",
           version: 1,
           authentication: "none",
-          user: {id: "local-development", name: "Local developer"},
+          user: {id: "local-development", name: privateTesting ? "Private tester" : "Local developer"},
           apiBaseUrl: `${origin}/api`,
           collaborationUrl: origin.replace(/^http/, "ws"),
           adminUrl: `${origin}/admin`,
@@ -991,7 +1052,8 @@ export async function createDevServer(options = {}) {
       }
 
       if(path === "/admin" || path === "/admin/") {
-        const content = await readFile(join(serverDirectory, "admin.html"))
+        const template = await readFile(join(serverDirectory, "admin.html"), "utf8")
+        const content = Buffer.from(privateTesting ? template.replace("Localhost only · no authentication", "Private testing · shared identity · no authentication") : template)
         response.writeHead(200, {"Content-Type": "text/html; charset=utf-8", "Content-Length": content.length})
         response.end(content)
         return
@@ -1027,17 +1089,20 @@ export async function createDevServer(options = {}) {
   }
 
   server.on("upgrade", (request, socket, head) => {
-    if(!isAllowedHost(request.headers.host)) {
+    if(!allowedHost(request.headers.host) || privateTesting && request.headers.host.toLowerCase() !== new URL(appOrigin).host) {
       socket.destroy()
       return
     }
-    if(request.headers["sec-websocket-protocol"] === "vite-hmr") return
+    if(request.headers["sec-websocket-protocol"] === "vite-hmr") {
+      if(privateTesting) socket.destroy()
+      return
+    }
     const origin = request.headers.origin
-    if(typeof origin === "string" && !isAllowedOrigin(origin)) {
+    if(privateTesting ? !allowedOrigin(origin) : typeof origin === "string" && !allowedOrigin(origin)) {
       socket.destroy()
       return
     }
-    const requestUrl = new URL(request.url || "/", requestOrigin(request))
+    const requestUrl = new URL(request.url || "/", appOrigin ?? requestOrigin(request))
     const room = requestUrl.pathname.replace(/^\/+/, "")
     let liveSession
     let learnerKey
@@ -1096,11 +1161,13 @@ export async function createDevServer(options = {}) {
       if(liveSession) {
         // A rejected WebSocket handshake must not reserve a room or identity.
         liveSessionTokens.set(room, liveSession)
+        clearTimeout(liveSession.timer)
         if(request.liveRole === "learner") liveSession.learners.set(request.liveLearner, learnerKey)
         liveSession.connections++
         webSocket.once("close", () => {
           liveSession.connections--
           if(liveSession.connections === 0 && liveSessionTokens.get(room) === liveSession) {
+            clearTimeout(liveSession.timer)
             liveSessionTokens.delete(room)
             const shared = docs.get(room)
             docs.delete(room)
@@ -1114,6 +1181,8 @@ export async function createDevServer(options = {}) {
 
   return {
     host,
+    appOrigin,
+    editorOrigin,
     dataDirectory,
     server,
     websocketServer,
@@ -1137,8 +1206,10 @@ export async function createDevServer(options = {}) {
     },
     async close() {
       gitSnapshots.clear()
+      for(const session of liveSessionTokens.values()) clearTimeout(session.timer)
       for(const client of websocketServer.clients) client.terminate()
       await new Promise(resolveClose => websocketServer.close(() => resolveClose()))
+      liveSessionTokens.clear()
       await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()))
       await Promise.allSettled(widgetDataWrites.values())
       const widgetDocuments = await Promise.allSettled(widgetDataDocuments.values())
@@ -1164,10 +1235,27 @@ if(isDirectRun) {
       if(error?.code !== "ENOENT") throw error
     }
   }
-  const developmentServer = await createDevServer()
+  const privateTesting = process.argv.includes("--private-testing")
+  const developmentServer = await createDevServer({privateTesting})
   const address = await developmentServer.listen()
-  console.log(`WebWriter development server: ${address.url}`)
-  console.log(`Editor: ${address.url}/editor/`)
-  console.log(`Admin dashboard: ${address.url}/admin`)
-  console.log(`Widget documentation: ${address.url}/docs/`)
+  const origin = developmentServer.appOrigin ?? address.url
+  console.log(`WebWriter ${privateTesting ? "private-testing backend" : "development server"}: ${address.url}`)
+  if(privateTesting) console.log("No authentication: access must be restricted by a VPN-only reverse proxy. Serve dist separately.")
+  console.log(`Editor: ${origin}/editor/`)
+  console.log(`Admin dashboard: ${origin}/admin`)
+  console.log(`Widget documentation: ${origin}/docs/`)
+  // Docker sends SIGTERM on stop; let queued widget writes finish before exit.
+  let stopping = false
+  const stop = async () => {
+    if(stopping) return
+    stopping = true
+    try {
+      await developmentServer.close()
+      // In-memory Yjs rooms can retain awareness timers after sockets close.
+      process.exit(0)
+    }
+    catch(error) { console.error(error); process.exit(1) }
+  }
+  process.once("SIGTERM", stop)
+  process.once("SIGINT", stop)
 }

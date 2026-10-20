@@ -9,7 +9,9 @@ import {createServer} from "vite"
 const expectedChecks = [
   "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
+  "standalone live learners receive large initial documents over HTTP and synchronize activity",
   "live learners render host widgets with shared dependencies and a fresh preview policy",
+  "live learners initialize bundled local widgets without host resources",
   "Lit documentation examples render and synchronize with LitElementWw",
   "LitElementWw uses native registries and shared data handlers without the adapter",
   "legacy and native scoped registries coexist without replacing browser globals",
@@ -91,6 +93,8 @@ const expectedChecks = [
   "ribbon dropdowns join their triggers without gaps at viewport edges",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
+  "uploaded videos survive installing and removing packages",
+  "canvas and slide delete affordances follow rotation placement",
   "bundled layouts render under the strict editor CSP without widgets",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",
@@ -155,6 +159,15 @@ const resultPlugin = {
   name: "native-result",
   configureServer(server) {
     server.middlewares.use((request, response, next) => {
+      if(request.url?.startsWith("/__webwriter/local-packages/live-fixture/")) {
+        const name = request.url.slice("/__webwriter/local-packages/live-fixture/".length).split("?")[0]
+        if(!["widget.js", "label.js", "widget.css", "icon.svg"].includes(name)) return next()
+        void readFile(new URL(`../tests/local-live-fixture/${name}`, import.meta.url)).then(source => {
+          response.setHeader("Content-Type", name.endsWith(".css") ? "text/css" : name.endsWith(".svg") ? "image/svg+xml" : "text/javascript")
+          response.end(source)
+        }, next)
+        return
+      }
       if(request.url?.startsWith("/tests/import-map-fixture/")) {
         const name = request.url.slice("/tests/import-map-fixture/".length).split("?")[0]
         const fixtures = ["a.js", "b.js", "shared.js", "pure-entry.js", ...["package.json", "index.js", "used.js", "unused.js"].map(file => `pure-fixture@1.0.0/${file}`)]

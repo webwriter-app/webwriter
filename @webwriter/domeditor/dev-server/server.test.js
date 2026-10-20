@@ -3,6 +3,8 @@ import {mkdtemp, readFile, readdir, writeFile} from "node:fs/promises"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
 import {request as httpRequest} from "node:http"
+import {spawn} from "node:child_process"
+import {fileURLToPath} from "node:url"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {WebsocketProvider} from "y-websocket"
@@ -28,8 +30,8 @@ const request = async (path, init) => {
   return {response, value}
 }
 
-const openWebSocket = url => new Promise((resolve, reject) => {
-  const socket = new WebSocketPackage(url)
+const openWebSocket = (url, options) => new Promise((resolve, reject) => {
+  const socket = new WebSocketPackage(url, options)
   const timer = setTimeout(() => {
     socket.terminate()
     reject(new Error("WebSocket connection timed out"))
@@ -121,6 +123,191 @@ beforeEach(async () => {
 afterEach(async () => {
   await developmentServer?.close()
   vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+})
+
+describe("VPN-only private testing", () => {
+  const appOrigin = "https://authors.vpn.example:8443"
+  const editorOrigin = "https://content.vpn.example:8443"
+  const privateOptions = () => ({privateTesting: true, appOrigin, editorOrigin, port: 0,
+    dataDirectory: developmentServer.dataDirectory, fetch: (...args) => upstreamFetch(...args)})
+  const startPrivate = async () => {
+    const options = privateOptions()
+    await developmentServer.close()
+    developmentServer = await createDevServer(options)
+    baseUrl = (await developmentServer.listen()).url
+  }
+  // Connect to loopback while preserving the VPN proxy's Host and browser Origin.
+  const privateRequest = (path, init = {}) => new Promise((resolve, reject) => {
+    const outgoing = httpRequest(`${baseUrl}${path}`, {...init, headers: {
+      Host: new URL(appOrigin).host, Origin: appOrigin, "Content-Type": "application/json", ...init.headers,
+    }}, response => {
+      const chunks = []
+      response.on("data", chunk => chunks.push(chunk))
+      response.on("error", reject)
+      response.on("end", () => resolve(new Response(response.statusCode === 204 || init.method === "HEAD"
+        ? null : Buffer.concat(chunks), {status: response.statusCode, headers: response.headers})))
+    })
+    outgoing.on("error", reject)
+    outgoing.end(init.body)
+  })
+  const socketOptions = (origin = editorOrigin, host = new URL(appOrigin).host) => ({headers: {Host: host, Origin: origin}})
+
+  it("requires explicit HTTPS origins, isolated data, and a loopback bind", async () => {
+    vi.stubEnv("VITE_APP_ORIGIN", "")
+    vi.stubEnv("VITE_EDITOR_ORIGIN", "")
+    vi.stubEnv("WEBWRITER_DEV_DATA_DIR", "")
+    for(const value of [undefined, "http://authors.vpn.example", "https://authors.vpn.example/path", "https://user:pass@authors.vpn.example", "https://authors.vpn.example?query", "*"]) {
+      await expect(createDevServer({...privateOptions(), appOrigin: value})).rejects.toThrow("VITE_APP_ORIGIN")
+      await expect(createDevServer({...privateOptions(), editorOrigin: value})).rejects.toThrow("VITE_EDITOR_ORIGIN")
+    }
+    await expect(createDevServer({...privateOptions(), editorOrigin: appOrigin})).rejects.toThrow("separate")
+    await expect(createDevServer({...privateOptions(), dataDirectory: undefined})).rejects.toThrow("WEBWRITER_DEV_DATA_DIR")
+    await expect(createDevServer({...privateOptions(), dataDirectory: ".webwriter-dev"})).rejects.toThrow("default development data")
+    await expect(createDevServer({...privateOptions(), host: "0.0.0.0"})).rejects.toThrow("loopback")
+  })
+
+  it("advertises canonical no-auth cloud URLs and serves no Vite sources", async () => {
+    await startPrivate()
+    const response = await privateRequest("/api/session", {headers: {"X-Forwarded-Host": "attacker.example", "X-Forwarded-Proto": "http"}})
+    expect(await response.json()).toMatchObject({kind: "webwriter-cloud-service", authentication: "none",
+      user: {id: "local-development", name: "Private tester"}, apiBaseUrl: `${appOrigin}/api`,
+      collaborationUrl: appOrigin.replace(/^https/, "wss"), adminUrl: `${appOrigin}/admin`})
+    for(const path of ["/src/editor-page.ts", "/@vite/client", "/.env.local", "/editor/"]) {
+      expect((await privateRequest(path)).status).toBe(404)
+    }
+    const admin = await privateRequest("/admin")
+    expect(await admin.text()).toContain("Private testing · shared identity · no authentication")
+  })
+
+  it("stops the private CLI cleanly and retains its storage across a restart", async () => {
+    const dataDirectory = await mkdtemp(join(tmpdir(), "webwriter-private-restart-"))
+    const originalBase = baseUrl
+    const child = spawn(process.execPath, [fileURLToPath(new URL("./server.mjs", import.meta.url)), "--private-testing"], {
+      env: {...process.env, VITE_APP_ORIGIN: appOrigin, VITE_EDITOR_ORIGIN: editorOrigin,
+        WEBWRITER_DEV_HOST: "127.0.0.1", WEBWRITER_DEV_PORT: "0", WEBWRITER_DEV_DATA_DIR: dataDirectory,
+        OPENAI_API_KEY: ""},
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    const stopped = new Promise(resolve => child.once("exit", (code, signal) => resolve({code, signal})))
+    let restored
+    try {
+      baseUrl = await new Promise((resolve, reject) => {
+        let output = ""
+        const timeout = setTimeout(() => reject(new Error("Private CLI did not start")), 3000)
+        child.once("error", error => { clearTimeout(timeout); reject(error) })
+        child.once("exit", code => { clearTimeout(timeout); reject(new Error(`Private CLI exited before startup (${code})`)) })
+        child.stdout.on("data", chunk => {
+          output += chunk.toString()
+          const address = /private-testing backend: (http:\/\/127\.0\.0\.1:\d+)/.exec(output)
+          if(address) { clearTimeout(timeout); resolve(address[1]) }
+        })
+        child.stderr.resume()
+      })
+      const created = await privateRequest("/api/documents", {method: "POST", body: JSON.stringify({title: "Persisted", content: "<p>Survives replacement</p>", format: "html"})})
+      const {document} = await created.json()
+      await privateRequest("/api/providers", {method: "POST", body: JSON.stringify({id: "persisted-provider", name: "Persisted AI", baseUrl: "https://ai.example/v1", auth: "none", models: ["test"]})})
+      const socket = await openWebSocket(`${baseUrl.replace(/^http/, "ws")}/cli-shutdown-room`, socketOptions())
+      const disconnected = new Promise(resolve => socket.once("close", resolve))
+      child.kill("SIGTERM")
+      expect(await stopped).toEqual({code: 0, signal: null})
+      await disconnected
+      restored = await createDevServer({...privateOptions(), dataDirectory})
+      baseUrl = (await restored.listen()).url
+      const reloaded = await privateRequest(`/api/documents/${document.id}`)
+      expect((await reloaded.json()).document).toMatchObject(document)
+      const providers = await privateRequest("/api/providers")
+      expect((await providers.json()).providers).toContainEqual(expect.objectContaining({id: "persisted-provider"}))
+    }
+    finally {
+      if(child.exitCode === null && child.signalCode === null) { child.kill("SIGKILL"); await stopped }
+      await restored?.close()
+      baseUrl = originalBase
+    }
+  })
+
+  it("allows only configured hosts and exact browser origins for HTTP and CORS", async () => {
+    await startPrivate()
+    for(const Origin of [appOrigin, editorOrigin]) {
+      const response = await privateRequest("/api/widget-data/resolve", {method: "OPTIONS", headers: {Origin}})
+      expect(response.status).toBe(204)
+      expect(response.headers.get("access-control-allow-origin")).toBe(Origin)
+      expect(response.headers.get("access-control-allow-credentials")).toBe("true")
+    }
+    for(const Origin of ["null", "http://localhost:1234", "https://attacker.example", `${editorOrigin}.attacker.example`, "https://content.vpn.example"]) {
+      const response = await privateRequest("/api/session", {headers: {Origin}})
+      expect(response.status).toBe(403)
+      expect(response.headers.has("access-control-allow-origin")).toBe(false)
+    }
+    for(const Host of ["localhost:1234", "attacker.example", "authors.vpn.example", "authors.vpn.example:8443.attacker.example"]) {
+      expect((await privateRequest("/api/session", {headers: {Host}})).status).toBe(403)
+    }
+    expect((await fetch(`${baseUrl}/api/session`)).status).toBe(403)
+  })
+
+  it("keeps shared documents, server-managed inference, and widget-data capabilities working", async () => {
+    await startPrivate()
+    const created = await privateRequest("/api/documents", {method: "POST", body: JSON.stringify({title: "VPN lesson", content: "<x-lesson><!--preserved--></x-lesson>", format: "html"})})
+    const {document} = await created.json()
+    const saved = await privateRequest(`/api/documents/${document.id}`, {method: "PATCH", body: JSON.stringify({title: "Updated"})})
+    expect((await saved.json()).document).toMatchObject({title: "Updated", content: document.content})
+    const listed = await privateRequest("/api/documents")
+    expect((await listed.json()).documents).toContainEqual(expect.objectContaining({id: document.id, title: "Updated"}))
+
+    await privateRequest("/api/providers", {method: "POST", body: JSON.stringify({id: "vpn-ai", name: "Test AI", baseUrl: "https://ai.example/v1", auth: "bearer", apiKey: "test-secret", models: ["test-model"]})})
+    const providers = await privateRequest("/api/providers")
+    const payload = await providers.text()
+    expect(payload).not.toContain("test-secret")
+    expect(JSON.parse(payload).providers.find(provider => provider.id === "vpn-ai").inferenceUrl).toBe(`${appOrigin}/api/inference/providers/vpn-ai`)
+    upstreamFetch.mockResolvedValue(new Response(JSON.stringify({id: "completion", choices: [{message: {role: "assistant", content: "Hello"}}]}), {headers: {"Content-Type": "application/json"}}))
+    expect((await privateRequest("/api/inference/providers/vpn-ai/chat/completions", {method: "POST", body: JSON.stringify({model: "test-model", messages: []})})).status).toBe(200)
+
+    const scoped = await privateRequest("/api/widget-data/resolve", {method: "POST", headers: {Origin: editorOrigin}, body: JSON.stringify({document: document.id, widget: "poll", mode: "individual", format: "json"})})
+    expect(scoped.status).toBe(200)
+    const {room, token} = await scoped.json()
+    const socket = await openWebSocket(`${baseUrl.replace(/^http/, "ws")}/${room}?token=${token}`, socketOptions())
+    await closeWebSocket(socket)
+  })
+
+  it("accepts collaboration upgrades only on the application host from configured origins", async () => {
+    await startPrivate()
+    const url = `${baseUrl.replace(/^http/, "ws")}/vpn-collaboration`
+    for(const origin of [appOrigin, editorOrigin]) {
+      const socket = await openWebSocket(url, socketOptions(origin))
+      await closeWebSocket(socket)
+    }
+    for(const options of [socketOptions("https://attacker.example"), socketOptions("null"),
+      {headers: {Host: new URL(appOrigin).host}}, socketOptions(editorOrigin, new URL(editorOrigin).host),
+      socketOptions(editorOrigin, "localhost:1234"), {...socketOptions(), headers: {...socketOptions().headers, "Sec-WebSocket-Protocol": "vite-hmr"}}]) {
+      await expect(openWebSocket(url, options)).rejects.toBeInstanceOf(Error)
+    }
+  })
+
+  it("publishes live documents exclusively on the content origin with WSS and existing role protections", async () => {
+    await startPrivate()
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa", hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const html = "<!doctype html><x-lesson>Live VPN lesson</x-lesson>"
+    const published = await privateRequest("/api/live-sessions/vpn-lesson", {method: "PUT", body: JSON.stringify({token, hostKey, html})})
+    const {url} = await published.json()
+    const link = new URL(url)
+    expect(link.origin).toBe(editorOrigin)
+    expect(link.searchParams.get("liveServer")).toBe(appOrigin.replace(/^https/, "wss"))
+    const path = link.pathname + link.search
+    expect((await privateRequest(path)).status).toBe(403)
+    const headers = {Host: new URL(editorOrigin).host}
+    expect(await (await privateRequest(path, {headers})).text()).toBe(html)
+    expect((await privateRequest(path, {headers, method: "HEAD"})).status).toBe(200)
+    expect((await privateRequest(path.replace(token, "bbbbbbbbbbbbbbbbbbbbbbbb"), {headers})).status).toBe(404)
+    expect((await privateRequest("/api/documents", {headers})).status).toBe(403)
+    expect((await privateRequest("/admin", {headers})).status).toBe(403)
+    const socketUrl = `${baseUrl.replace(/^http/, "ws")}/live-session-vpn-lesson?token=${token}`
+    await expect(openWebSocket(`${socketUrl}&role=host&hostKey=iiiiiiiiiiiiiiiiiiiiiiii`, socketOptions())).rejects.toBeInstanceOf(Error)
+    const host = await openWebSocket(`${socketUrl}&role=host&hostKey=${hostKey}`, socketOptions(appOrigin))
+    const learner = await openWebSocket(`${socketUrl}&role=learner&learner=ada&learnerKey=llllllllllllllllllllllll`, socketOptions())
+    await closeWebSocket(learner)
+    await closeWebSocket(host)
+    expect((await privateRequest(path, {headers})).status).toBe(404)
+  })
 })
 
 describe("development server", () => {
@@ -842,6 +1029,130 @@ describe("development server", () => {
 
     const host = await openWebSocket(`${websocketUrl}/live-session-oversized-host?role=host&token=aaaaaaaaaaaaaaaaaaaaaaaa&hostKey=hhhhhhhhhhhhhhhhhhhhhhhh`)
     await expectPayloadClose(host)
+  })
+
+  it("stores a reserved live-session document and serves it to GET and HEAD", async () => {
+    const id = "live-http-document"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const html = "<!doctype html><html><body><main>Live lesson</main></body></html>"
+    const created = await fetch(`${baseUrl}/api/live-sessions/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html}),
+    })
+
+    expect(created.status).toBe(201)
+    const {url} = await created.json()
+    const liveUrl = new URL(url)
+    expect(liveUrl.pathname).toBe("/live/")
+    expect(liveUrl.searchParams.get("liveSession")).toBe(id)
+    expect(liveUrl.searchParams.get("liveToken")).toBe(token)
+    expect(liveUrl.searchParams.get("liveServer")).toBe(baseUrl.replace(/^http/, "ws"))
+
+    const query = `?liveSession=${id}&liveToken=${token}`
+    const get = await fetch(`${baseUrl}/live/${query}`)
+    expect(get.status).toBe(200)
+    expect(get.headers.get("Content-Type")).toMatch(/^text\/html\b/i)
+    expect(get.headers.get("Cache-Control")).toBe("no-store")
+    expect(get.headers.get("Referrer-Policy")).toBe("no-referrer")
+    await expect(get.text()).resolves.toBe(html)
+
+    const head = await fetch(`${baseUrl}/live/${query}`, {method: "HEAD"})
+    expect(head.status).toBe(200)
+    expect(head.headers.get("Cache-Control")).toBe("no-store")
+    expect(head.headers.get("Referrer-Policy")).toBe("no-referrer")
+    await expect(head.text()).resolves.toBe("")
+
+    for(const [index, invalidBody] of [
+      {token: "unsafe token", hostKey, html},
+      {token, hostKey: "short", html},
+      {token, hostKey, html: ""},
+    ].entries()) {
+      const invalid = await fetch(`${baseUrl}/api/live-sessions/live-http-invalid-${index}`, {
+        method: "PUT",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(invalidBody),
+      })
+      expect(invalid.status).toBe(400)
+    }
+    const unsafeId = await fetch(`${baseUrl}/api/live-sessions/bad%2Fid`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html}),
+    })
+    expect(unsafeId.status).toBe(404)
+  })
+
+  it("protects a reserved live-session document and releases it after its last socket closes", async () => {
+    const id = "live-http-release"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const create = async credentials => fetch(`${baseUrl}/api/live-sessions/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html: "<p>Reserved</p>", ...credentials}),
+    })
+
+    expect((await create({})).status).toBe(201)
+    expect((await create({token: "bbbbbbbbbbbbbbbbbbbbbbbb"})).status).toBe(403)
+    expect((await create({hostKey: "iiiiiiiiiiiiiiiiiiiiiiii"})).status).toBe(403)
+    const query = `?liveSession=${id}&liveToken=${token}`
+    expect((await fetch(`${baseUrl}/live/${query.replace(token, "bbbbbbbbbbbbbbbbbbbbbbbb")}`)).status).toBe(404)
+
+    const room = `live-session-${id}`
+    const host = await openWebSocket(`${baseUrl.replace(/^http/, "ws")}/${room}?role=host&token=${token}&hostKey=${hostKey}`)
+    expect((await fetch(`${baseUrl}/live/${query}`)).status).toBe(200)
+    await closeWebSocket(host)
+    await vi.waitFor(async () => expect((await fetch(`${baseUrl}/live/${query}`)).status).toBe(404))
+  })
+
+  it("accepts an HTTP live document above the WebSocket frame limit and still syncs learner activity", async () => {
+    const id = "live-http-large-document"
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa"
+    const hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const learnerKey = "llllllllllllllllllllllll"
+    const html = `<html><body>${"x".repeat(8 * 1024 * 1024 + 1)}</body></html>`
+    const created = await fetch(`${baseUrl}/api/live-sessions/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token, hostKey, html}),
+    })
+    expect(created.status).toBe(201)
+    expect(await (await fetch(`${baseUrl}/live/?liveSession=${id}&liveToken=${token}`)).text()).toBe(html)
+
+    const websocketUrl = baseUrl.replace(/^http/, "ws")
+    const hostDoc = new Y.Doc()
+    hostDoc.getMap("live-session-meta").set("status", "active")
+    const room = `live-session-${id}`
+    const host = new WebsocketProvider(websocketUrl, room, hostDoc, {
+      WebSocketPolyfill: WebSocketPackage, disableBc: true,
+      params: {role: "host", token, hostKey},
+    })
+    const learnerDoc = new Y.Doc()
+    let learner
+    try {
+      await vi.waitFor(() => expect(host.synced).toBe(true))
+      learner = new WebsocketProvider(websocketUrl, room, learnerDoc, {
+        WebSocketPolyfill: WebSocketPackage, disableBc: true,
+        params: {role: "learner", token, learner: "ada", learnerKey},
+      })
+      learner.awareness.setLocalState({liveSession: {role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}}})
+      await vi.waitFor(() => expect(learner.synced).toBe(true))
+      learnerDoc.getArray("live-session-steps").push([{id: "large-doc-step", time: Date.now(), kind: "pointer", learner: "ada", pointer: {x: 0.25, y: 0.5}}])
+      await vi.waitFor(() => expect(hostDoc.getArray("live-session-steps").length).toBe(1))
+      expect(hostDoc.getMap("live-session-meta").get("baseHTML")).toBeUndefined()
+      expect(hostDoc.getMap("live-session-meta").get("previewDependencies")).toBeUndefined()
+      const serverMeta = getYDoc(room).getMap("live-session-meta")
+      expect(serverMeta.get("baseHTML")).toBeUndefined()
+      expect(serverMeta.get("previewDependencies")).toBeUndefined()
+    }
+    finally {
+      learner?.destroy()
+      host.destroy()
+      learnerDoc.destroy()
+      hostDoc.destroy()
+    }
   })
 
   it("requires the host capability for live-session WebSockets and releases empty rooms", async () => {

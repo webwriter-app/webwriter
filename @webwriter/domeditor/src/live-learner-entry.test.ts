@@ -41,6 +41,14 @@ describe("standalone live learner entry", () => {
     expect(document.querySelector("dom-editor")).toBeNull()
   })
 
+  it("tracks a document already rendered by the HTTP response", async () => {
+    locationState.href = "https://editor.test/live/?liveSession=lesson-1&liveToken=abcdefghijklmnopqrstuvwxyz123456&liveServer=wss%3A%2F%2Fcollab.test"
+    document.body.innerHTML = '<article><x-widget></x-widget></article><script id="webwriter-live-learner" type="module"></script>'
+    const {startLiveLearner} = await import("./live-learner-entry")
+    startLiveLearner()
+    expect(mocks.connectLiveLearner).toHaveBeenCalledWith(expect.any(Object), document, {rendered: true})
+  })
+
   it.each([
     ["bad token", "liveSession=lesson&liveToken=short&liveServer=wss%3A%2F%2Fcollab.test"],
     ["bad protocol", "liveSession=lesson&liveToken=abcdefghijklmnopqrstuvwxyz123456&liveServer=https%3A%2F%2Fcollab.test"],

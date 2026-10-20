@@ -310,15 +310,33 @@ describe("settings panel", () => {
     expect(changes[0].shortcuts).toEqual(settings.shortcuts)
   })
 
-  it("shows language settings and every application command", async () => {
+  it("describes and persists document language settings and shows every application command", async () => {
     const panel = await mountPanel()
+    const root = panel.shadowRoot!
+    const language = root.querySelector<HTMLSelectElement>('select[aria-label="Document language"]')!
+    const changes: AppSettings[] = []
+    panel.addEventListener("settings-change", event => {
+      const settings = (event as CustomEvent<AppSettings>).detail
+      changes.push(settings)
+      persistAppSettings(settings)
+    })
 
-    expect(panel.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Interface language"]')!.value)
-      .toBe("en")
-    expect(panel.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
-    expect(panel.shadowRoot!.querySelectorAll(".command-row")).toHaveLength(appCommands.length)
-    expect(panel.shadowRoot!.textContent).toContain("Save the active document")
-    expect(panel.shadowRoot!.textContent).toContain("Toggle bold formatting")
+    expect(language.value).toBe("en")
+    expect(root.querySelector('[aria-label="Language"]')!.textContent)
+      .toContain("Language for new documents and widgets.")
+    expect(root.querySelector('[aria-label="Language"]')!.textContent)
+      .toContain("The editor interface is currently available in English.")
+    expect(root.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true)
+    expect(root.querySelectorAll(".command-row")).toHaveLength(appCommands.length)
+    expect(root.textContent).toContain("Save the active document")
+    expect(root.textContent).toContain("Toggle bold formatting")
+
+    language.value = "de"
+    language.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(changes.at(-1)?.language).toBe("de")
+    expect(loadAppSettings().language).toBe("de")
+    await panel.updateComplete
+    expect(language.value).toBe("de")
   })
 
   it("places element-specific shortcuts in collapsed categories after general commands", async () => {
@@ -410,6 +428,36 @@ describe("settings panel", () => {
     expect(save.hasAttribute("data-recording")).toBe(true)
   })
 
+  it("keeps the settings dialog open when Escape cancels shortcut recording", async () => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    await (ribbon as any).showRibbonDialog("settings")
+    const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!
+    const panel = dialog.querySelector<SettingsPanel>("settings-panel")!
+    await panel.updateComplete
+    const save = panel.shadowRoot!.querySelector<HTMLButtonElement>(
+      'button[aria-label="Configure shortcut for Save"]',
+    )!
+    const originalShortcut = panel.settings.shortcuts["document.save"]
+    save.click()
+    await panel.updateComplete
+    save.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    }))
+    const cancel = new Event("cancel", {cancelable: true})
+    dialog.dispatchEvent(cancel)
+    await panel.updateComplete
+
+    expect(cancel.defaultPrevented).toBe(true)
+    expect(dialog.open).toBe(true)
+    expect(panel.settings.shortcuts["document.save"]).toBe(originalShortcut)
+    expect(save.hasAttribute("data-recording")).toBe(false)
+  })
+
   it("resets and persists settings through the ribbon", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "File"
@@ -470,7 +518,8 @@ describe("settings dialog", () => {
     await panel.updateComplete
     const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
     expect(tabs.map(tab => tab.textContent)).toEqual(["Editor", "Cloud", "Commands"])
-    expect(root.querySelector("h2")!.nextElementSibling?.getAttribute("role")).toBe("tablist")
+    const heading = root.querySelector<HTMLElement>("#settings-dialog-title")!
+    expect(heading.nextElementSibling?.getAttribute("role")).toBe("tablist")
     expect(root.querySelector(".reset-settings-button")!.textContent).toBe("Reset")
     expect(panel.shadowRoot!.querySelectorAll('[role="tabpanel"]:not([hidden])')).toHaveLength(1)
     expect(panel.shadowRoot!.querySelector<HTMLElement>("#settings-editor")!.hidden).toBe(false)
@@ -500,16 +549,19 @@ describe("settings dialog", () => {
     expect(ai.shadowRoot!.querySelector<HTMLInputElement>('input:not([inputmode="url"])')!.value).toBe("Unsaved provider")
   })
 
-  it("opens from the last option in the file menu below a separator", async () => {
+  it("opens Settings from its separated file-menu group", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)
+    await ribbon.updateComplete
+    ribbon.menuOpen = true
     await ribbon.updateComplete
     const menu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await menu.updateComplete
     const dialog = ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!
 
-    const items = menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".item")
-    const settings = items[items.length - 1]
+    const settings = menu.shadowRoot!.querySelector<HTMLButtonElement>(
+      'section[aria-label="Settings"] .item[title="Settings"]',
+    )!
     expect(settings.title).toBe("Settings")
     const section = settings.closest("section")!
     expect(section.previousElementSibling).not.toBeNull()
