@@ -629,6 +629,7 @@ describe("responsive ribbon layout", () => {
       await Promise.all(drawers.map(drawer => drawer.updateComplete))
       expect(drawers.map(drawer => drawer.collapsed)).toEqual(expectedCollapsed)
       expect(drawers.map(drawer => drawer.compact)).toEqual(expectedCompact)
+      expect(ribbon.hasAttribute("drawers-collapsed")).toBe(expectedCollapsed.every(Boolean))
     }
   })
 })

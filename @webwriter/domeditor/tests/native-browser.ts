@@ -6232,13 +6232,32 @@ await check("ribbon collapses when vertical space is constrained", async () => {
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     assert(ribbon?.shadowRoot, "ribbon fixture did not initialize")
-    for(const [width, height, expected] of [[400, 900, 140], [1200, 500, 40], [400, 500, 40], [400, 900, 140], [400, 500, 40]]) {
+    for(const [width, height, expected] of [[400, 900, 90], [1200, 900, 140], [500, 900, 140], [380, 900, 90], [1200, 500, 40], [400, 500, 40], [400, 900, 90], [400, 500, 40]]) {
       frame.style.width = `${width}px`
       frame.style.height = `${height}px`
       await layoutFrame(); await layoutFrame()
       assert(Math.abs(ribbon!.getBoundingClientRect().height - expected) < 1, `ribbon height was not ${expected}px at ${width}x${height}`)
-      assert(ribbon!.expanded === (expected === 140), "ribbon state did not match its visible height")
+      assert(ribbon!.expanded === (expected !== 40), "ribbon state did not match its visible height")
       assert(ribbon!.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!.hidden === (expected === 40), "collapsed ribbon left its drawers visible")
+      if(expected === 90) {
+        const content = ribbon!.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!
+        assert(Math.abs(content.getBoundingClientRect().height - 50) <= 1, "summary-only ribbon did not halve its drawer strip")
+        for(const drawer of content.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>(":scope > ribbon-drawer")) {
+          assert(drawer.collapsed, "short ribbon retained an expanded drawer")
+          const summary = drawer.shadowRoot!.querySelector<HTMLElement>(".summary")!
+          const icon = summary.querySelector<HTMLElement>(".summary-icon")!.getBoundingClientRect()
+          const label = summary.querySelector<HTMLElement>(".summary-label")!
+          const bounds = label.getBoundingClientRect()
+          assert(bounds.left >= icon.right && bounds.height + .1 >= parseFloat(frame.contentWindow!.getComputedStyle(label).lineHeight), "short summary clipped its icon or label")
+          const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+          assert(toggle.getBoundingClientRect().top >= bounds.bottom, "short summary label overlaps its drawer button")
+          toggle.click()
+          await drawer.updateComplete; await layoutFrame()
+          assert(drawer.hasAttribute("drawer-open") && drawer.shadowRoot!.querySelector(".controls")!.getBoundingClientRect().height > 0, "short summary did not open its drawer")
+          drawer.closeDrawer()
+          await drawer.updateComplete
+        }
+      }
     }
     ribbon!.logoUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M0 0h24v24H0z"/></svg>'
     await ribbon!.updateComplete; await layoutFrame()

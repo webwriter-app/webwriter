@@ -767,7 +767,7 @@ export class RibbonDrawer extends LitElement {
     :host([collapsed]) .summary {
       display: flex;
       flex: 1 1 auto;
-      flex-direction: column;
+      flex-direction: var(--ribbon-drawer-summary-direction, column);
       align-items: center;
       justify-content: center;
       gap: 0.25rem;

@@ -209,6 +209,12 @@ export class AppRibbon extends EditingControls {
       max-height: 40px;
     }
 
+    :host([expanded][drawers-collapsed]) {
+      height: 90px;
+      max-height: 90px;
+      --ribbon-drawer-summary-direction: row;
+    }
+
     :host(:not([expanded])) .ribbon {
       background: #f2f2f2;
     }
@@ -1345,7 +1351,10 @@ export class AppRibbon extends EditingControls {
 
   private updateResponsiveLayout(drawers: RibbonDrawer[]) {
     const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
-    if(!content || content.hidden || !drawers.length) return
+    if(!content || content.hidden || !drawers.length) {
+      this.removeAttribute("drawers-collapsed")
+      return
+    }
 
     const contentStyle = getComputedStyle(content)
     const inlinePadding =
@@ -1357,6 +1366,7 @@ export class AppRibbon extends EditingControls {
     // Reader controls fill the remaining ribbon width and adapt inside the
     // drawer instead of being exchanged for a collapsed summary.
     if(this.previewActive && this.liveSessionRole !== "learner") {
+      this.removeAttribute("drawers-collapsed")
       drawers.forEach(drawer => {
         drawer.compact = false
         drawer.collapsed = false
@@ -1402,6 +1412,7 @@ export class AppRibbon extends EditingControls {
       drawer.compact = layouts[index] === "compact"
       drawer.collapsed = layouts[index] === "collapsed"
     })
+    this.toggleAttribute("drawers-collapsed", layouts.every(layout => layout === "collapsed"))
   }
 
   private updatePackageCapacity() {
