@@ -3,6 +3,22 @@ import {describe, expect, it} from "vitest"
 import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
 import type {WebWriterPackage} from "./packages"
 
+it.each(["", "ww-canvas", "ww-slides", "ww-board"])("embeds attribution reading controls once for layout '%s' without authored UI", layout => {
+  const root = new DOMParser().parseFromString(`<body class="${layout}"><div data-ww-attribution-name="Ada" data-ww-license="CC-BY-4.0"><custom-widget></custom-widget></div></body>`, "text/html")
+  const body = root.body.innerHTML
+  appendSerializedAssets(root, [])
+  appendSerializedAssets(root, [])
+  const scripts = root.querySelectorAll("#webwriter-attribution-reader")
+  expect(scripts).toHaveLength(1)
+  expect(scripts[0].textContent).toContain("mountAttributionReader(")
+  expect(scripts[0].textContent).not.toContain("import {")
+  expect(root.body.innerHTML).toBe(body)
+  root.querySelector("div")!.removeAttribute("data-ww-attribution-name")
+  root.querySelector("div")!.removeAttribute("data-ww-license")
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-attribution-reader")).toBeNull()
+})
+
 it("keeps encoding metadata before the adapter and installs it before widget modules", () => {
   const root = new DOMParser().parseFromString('<html><head><meta charset="utf-8"><title>Grüße</title><script type="module" src="https://example.test/widget.js"></script></head><body><demo-widget></demo-widget></body></html>', "text/html")
   const pkg = {scripts: ["https://example.test/widget.js"], styles: [], members: [{kind: "widget", tagName: "demo-widget"}]} as unknown as WebWriterPackage

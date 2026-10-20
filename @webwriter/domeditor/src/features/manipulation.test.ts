@@ -1,4 +1,5 @@
 import {readCaptionEnumeration} from "../caption-enumeration"
+import {attributionAttributes} from "../attribution.js"
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import "happy-dom"
@@ -1985,6 +1986,84 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     editor.features.manipulation.insert()
     expectBodyToBe("<p>hello</p><p> world</p>")
   })
+  it.each(["command", "key", "beforeinput"])("keeps attribution only on the first split block with %s and supports undo and redo", input => {
+    document.body.innerHTML = '<!--keep--><p class="authored" data-other="keep">abcdef</p><aside>Untouched</aside>'
+    const paragraph = document.querySelector("p")!, aside = document.querySelector("aside")!
+    for(const [key, name] of Object.entries(attributionAttributes)) paragraph.setAttribute(name, key === "license" ? "CC-BY-4.0" : key)
+    $.move(paragraph.firstChild!, 3)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = cloneWithoutEditorMarkers(document.body, true).innerHTML
+    if(input === "command") editor.features.manipulation.insert()
+    else {
+      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+        : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+      paragraph.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    const verify = () => {
+      const [left, right] = document.querySelectorAll("p")
+      expect([left.textContent, right.textContent]).toEqual(["abc", "def"])
+      for(const name of Object.values(attributionAttributes)) {
+        expect(left.hasAttribute(name)).toBe(true)
+        expect(right.hasAttribute(name)).toBe(false)
+      }
+      expect(right.getAttribute("data-other")).toBe("keep")
+      expect(right.classList.contains("authored")).toBe(true)
+      expect(document.body.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    }
+    verify()
+    expect(document.querySelector("aside")).toBe(aside)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe(original)
+    editor.doc.redo()
+    verify()
+  })
+
+  it.each([0, 6])("does not copy attribution when splitting at offset %i", offset => {
+    document.body.innerHTML = '<p data-ww-license="MIT" data-ww-attribution-name="Ada">abcdef</p>'
+    $.move(document.querySelector("p")!.firstChild!, offset)
+    editor.features.manipulation.insert()
+    const [left, right] = document.querySelectorAll("p")
+    expect(left.getAttribute(attributionAttributes.license)).toBe("MIT")
+    expect(right.hasAttribute(attributionAttributes.license)).toBe(false)
+    expect(right.hasAttribute(attributionAttributes.name)).toBe(false)
+    expect([left.textContent, right.textContent]).toEqual(["abcdef".slice(0, offset), "abcdef".slice(offset)])
+  })
+
+  it("keeps only the first top-level attribution when splitting ancestors", () => {
+    editor.schema.extendWidgets([{tagName: "custom-widget"}])
+    document.body.innerHTML = '<section data-ww-license="MIT"><p data-ww-license="CC0-1.0"><b data-ww-attribution-name="Inline">abcd</b></p><custom-widget data-ww-license="BSD-3-Clause">Original widget</custom-widget></section>'
+    editor.doc.syncFromDOM()
+    const widget = document.querySelector("custom-widget")!
+    $.move(document.querySelector("b")!.firstChild!, 2)
+    editor.features.manipulation.insert(undefined, 1)
+    const [left, right] = document.querySelectorAll("section")
+    expect(left.getAttribute(attributionAttributes.license)).toBe("MIT")
+    expect(left.querySelector("p")!.hasAttribute(attributionAttributes.license)).toBe(false)
+    expect(left.querySelector("b")!.hasAttribute(attributionAttributes.name)).toBe(false)
+    expect(right.hasAttribute(attributionAttributes.license)).toBe(false)
+    expect(right.querySelector("p")!.hasAttribute(attributionAttributes.license)).toBe(false)
+    expect(right.querySelector("b")!.hasAttribute(attributionAttributes.name)).toBe(false)
+    expect(right.querySelector("custom-widget")).toBe(widget)
+    expect(widget.hasAttribute(attributionAttributes.license)).toBe(false)
+  })
+
+  it.each(["block", "widget", "clipboard"])("does not duplicate attribution when inserting a %s into a block", kind => {
+    document.body.innerHTML = '<p data-ww-license="MIT" data-ww-attribution-contact="mailto:author@example.com" class="authored"><em>abcd</em></p>'
+    $.move(document.querySelector("em")!.firstChild!, 2)
+    if(kind === "clipboard") editor.features.manipulation.insertHTML('<hr><p data-ww-license="CC0-1.0">Pasted</p>')
+    else editor.features.manipulation.insert(document.createElement(kind === "widget" ? "custom-widget" : "hr"))
+    const paragraphs = Array.from(document.querySelectorAll("p"))
+    expect(paragraphs[0].getAttribute(attributionAttributes.license)).toBe("MIT")
+    const right = paragraphs.at(-1)!
+    expect(right.textContent).toBe("cd")
+    expect(right.classList.contains("authored")).toBe(true)
+    for(const name of Object.values(attributionAttributes)) expect(right.hasAttribute(name)).toBe(false)
+    if(kind === "clipboard") expect(paragraphs[1].getAttribute(attributionAttributes.license)).toBe("CC0-1.0")
+  })
+
   it("uses the primary modifier to split the parent", () => {
     document.body.innerHTML = "<section><p>ab</p><p>tail</p></section>"
     $.move(document.querySelector("p")!.firstChild!, 1)
@@ -4852,7 +4931,7 @@ describe("unified content transfer", () => {
     expect(editor.features.manipulation.floatSide(target, x)).toBe(side)
     editor.features.manipulation.showFloatDropPreview(target, side, "transfer", source)
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
-    expect(parseFloat(preview.style.top)).toBe(55)
+    expect(parseFloat(preview.style.top)).toBe(50)
     expect(parseFloat(preview.style.height)).toBe(60)
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:150, clientY:100}), source)).toBeNull()
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:116}), source)).toBeNull()
@@ -4876,9 +4955,18 @@ describe("unified content transfer", () => {
       const target = editor.features.manipulation.floatDropTarget(event, source)
       expect(target).toBe(paragraphs[index])
       editor.features.manipulation.showFloatDropPreview(target!, "right", "transfer", source)
-      expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(index * 40 + 5)
+      expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(index * 40)
     }
     expect(sourceRect).not.toHaveBeenCalled()
+  })
+
+  it("keeps float drop previews at the top when attribution reserves space below", () => {
+    document.body.innerHTML = '<video style="width:40px;height:60px;--ww-float-attribution-before:18px"></video><p>target</p>'
+    const source = document.querySelector("video")!, target = document.querySelector("p")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 30))
+    editor.features.manipulation.showFloatDropPreview(target, "right", "transfer", source)
+    expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(50)
   })
 
   it("measures a standard insertion once per lane across many sibling targets", () => {

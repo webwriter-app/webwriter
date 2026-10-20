@@ -1,4 +1,5 @@
 import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
+import {attributionAttributes} from "../src/attribution.js"
 import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
@@ -904,6 +905,27 @@ await check("Document toolbox combines metadata and layouts with primary and det
     assert(Math.abs(common.getBoundingClientRect().width - primary.width) < 1, "metadata fields do not fill the toolbox")
     const language = common.shadowRoot!.querySelector<HTMLElement>('document-head-combobox[label="Language"]')!
     assert(language.getBoundingClientRect().width > 80, "metadata Language field is clipped")
+    const license = common.shadowRoot!.querySelector<import("../src/components/document-head-editor").DocumentHeadCombobox>('document-head-combobox[label="License"]')!
+    await license.updateComplete
+    license.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await license.updateComplete
+    await layoutFrame()
+    const licenseDescriptions = Array.from(license.shadowRoot!.querySelectorAll<HTMLElement>(".option-description"))
+    assert(licenseDescriptions.length === 7, "license picker is missing definitions")
+    const licensePopup = license.shadowRoot!.querySelector<HTMLElement>(".listbox")!.getBoundingClientRect()
+    const licenseControl = license.getBoundingClientRect()
+    assert(Math.abs(licensePopup.right - Math.max(licenseControl.right, licensePopup.width)) < 1,
+      `license picker is detached from its field: ${JSON.stringify({popup: licensePopup.toJSON(), control: licenseControl.toJSON()})}`)
+    assert(licensePopup.left >= 0 && licensePopup.right <= innerWidth, "license picker overflows the viewport")
+    for(const description of licenseDescriptions) {
+      assert(getComputedStyle(description).whiteSpace === "normal", "license definition cannot wrap")
+      assert(getComputedStyle(description).fontStyle === "italic", "license definition is not italic")
+      assert(description.scrollWidth <= description.clientWidth && description.scrollHeight <= description.clientHeight,
+        "license definition is clipped")
+    }
+    assert(licenseDescriptions[5].clientHeight > parseFloat(getComputedStyle(licenseDescriptions[5]).lineHeight), "long license definition does not wrap in the toolbox")
+    license.close()
+    await license.updateComplete
     const more = drawer.shadowRoot!.querySelector<HTMLSlotElement>('slot[name="more"]')!
     assert(more.hidden, "detailed document options start expanded")
     drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.click()
@@ -2318,6 +2340,198 @@ await check("character deletion preserves adjacent spaces", async () => {
     }
   }
   finally { paragraph.remove() }
+})
+
+await check("attribution is limited to top-level elements and follows nesting", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:600px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "top-level attribution fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const data = {name: "Ada", year: "2026", license: "MIT", contact: "mailto:ada@example.com"}
+    for(const existing of [false, true]) {
+      doc.body.innerHTML = '<section><p>Nested element</p></section><p style="min-height:160px">Licensed element</p>'
+      const top = doc.querySelector("section")!, nested = top.firstElementChild!, source = doc.body.lastElementChild!
+      for(const [key, value] of Object.entries(data)) source.setAttribute(attributionAttributes[key as keyof typeof data], value)
+      if(existing) top.setAttribute(attributionAttributes.license, "CC0-1.0")
+      editor.doc.syncFromDOM()
+      await layoutFrame()
+      const ui = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui")!
+      for(const captured of [false, true]) {
+        if(captured) editor.features.selection.captureElement(nested)
+        else editor.features.selection.selectElement(nested)
+        doc.dispatchEvent(new view.Event("selectionchange"))
+        await layoutFrame()
+        assert(ui.querySelector<HTMLElement>(".bridge")!.hidden, "nested selection offers attribution")
+      }
+      editor.features.selection.selectSectionElement(top)
+      doc.dispatchEvent(new view.Event("selectionchange"))
+      await layoutFrame()
+      if(!existing) {
+        const add = ui.querySelector<HTMLButtonElement>(".copyright")!
+        assert(!ui.querySelector<HTMLElement>(".bridge")!.hidden, "top-level section has no attribution affordance")
+        add.click()
+        assert(!ui.querySelector<HTMLElement>(".popup")!.hidden, "top-level section cannot open attribution")
+        ui.querySelector<HTMLButtonElement>(".close")!.click()
+      }
+      const end = editor.doc.beginUndoGroup()
+      top.append(source)
+      end()
+      for(const name of Object.values(attributionAttributes)) assert(!source.hasAttribute(name), "nested element retained attribution metadata")
+      assert(top.getAttribute(attributionAttributes.license) === (existing ? "CC0-1.0" : "MIT"), "nested attribution did not respect the top-level license")
+      assert(top.getAttribute(attributionAttributes.name) === (existing ? null : "Ada"), "nested attribution was merged with an existing license")
+      await layoutFrame(); await layoutFrame()
+      const notes = ui.querySelectorAll(".attribution-note:not(.attribution-contact-note)")
+      assert(notes.length === 1, "nesting left a duplicate attribution display")
+      editor.doc.undo()
+      assert(doc.body.lastElementChild!.getAttribute(attributionAttributes.license) === "MIT", "undo did not restore the attribution to its original element")
+      editor.doc.redo()
+      assert(doc.querySelector("section")!.getAttribute(attributionAttributes.license) === (existing ? "CC0-1.0" : "MIT"), "redo lost the top-level attribution")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("attribution inputs keep visible carets during element and capture selection", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "Attributed element"
+  paragraph.style.minHeight = "160px"
+  paragraph.setAttribute(attributionAttributes.name, "Ada")
+  document.body.append(paragraph)
+  try {
+    for(const captured of [false, true]) {
+      if(captured) editor.features.selection.captureElement(paragraph)
+      else editor.features.selection.selectElement(paragraph)
+      document.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame()
+      const ui = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui")!
+      ui.querySelector<HTMLElement>(".attribution-note")!.click()
+      const popup = ui.querySelector<HTMLElement>(".popup")!
+      assert(!popup.hidden && document.body.classList.contains("◆node-selection-active"), "opening attribution discarded the element selection")
+      assert(paragraph.classList.contains("◆element-capture-selected") === captured, "opening attribution changed the selection kind")
+      for(const field of popup.querySelectorAll<HTMLInputElement>('input:not([type="hidden"])')) {
+        field.focus()
+        field.setSelectionRange(field.value.length, field.value.length)
+        await layoutFrame()
+        const style = getComputedStyle(field)
+        assert(editor.appendix.activeElement === field, `attribution ${field.name} did not retain focus (capture: ${captured}, popup: ${popup.hidden}, active: ${editor.appendix.activeElement?.outerHTML})`)
+        assert(style.caretColor === "auto" || style.caretColor === style.color, `attribution ${field.name} caret is invisible during ${captured ? "capture" : "element"} selection: ${style.caretColor}`)
+        assert(getComputedStyle(document.body).caretColor === "rgba(0, 0, 0, 0)", "attribution input restored the document's background caret")
+      }
+      const picker = popup.querySelector<import("../src/components/attribution-license-picker").AttributionLicensePicker>("attribution-license-picker")!
+      await picker.updateComplete
+      const controls = [popup.querySelector<HTMLInputElement>('input[name="name"]')!, popup.querySelector<HTMLInputElement>('input[name="year"]')!,
+        picker.shadowRoot!.querySelector<HTMLInputElement>("input")!, popup.querySelector<HTMLInputElement>('input[name="contact"]')!,
+        popup.querySelector<HTMLButtonElement>(".save")!, popup.querySelector<HTMLButtonElement>(".close")!]
+      controls[0].focus()
+      for(const shiftKey of [false, true]) {
+        for(let step = 0; step < controls.length; step++) {
+          const index = shiftKey ? (controls.length - step) % controls.length : step
+          controls[index].dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", shiftKey, bubbles: true, composed: true, cancelable: true}))
+          const next = controls[(index + (shiftKey ? -1 : 1) + controls.length) % controls.length]
+          assert((next.getRootNode() as ShadowRoot).activeElement === next, `attribution Tab order skipped ${next.getAttribute("name") ?? next.className} (capture: ${captured}, reverse: ${shiftKey})`)
+          assert(!popup.hidden, "Tab dismissed the attribution dialog")
+        }
+      }
+      popup.querySelector<HTMLButtonElement>(".close")!.click()
+    }
+    assert(paragraph.getAttribute(attributionAttributes.name) === "Ada", "focusing attribution inputs changed authored metadata")
+  }
+  finally { paragraph.remove() }
+})
+
+await check("attribution license picker wraps definitions on a third line and offers only current CC licenses", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "Licensed element"
+  paragraph.style.minHeight = "160px"
+  paragraph.setAttribute(attributionAttributes.license, "CC-BY-4.0")
+  document.body.append(paragraph)
+  try {
+    editor.features.selection.selectElement(paragraph)
+    document.dispatchEvent(new Event("selectionchange"))
+    await layoutFrame()
+    const ui = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui")!
+    ui.querySelector<HTMLElement>(".attribution-note")!.click()
+    const popup = ui.querySelector<HTMLElement>(".popup")!
+    const picker = popup.querySelector<import("../src/components/attribution-license-picker").AttributionLicensePicker>("attribution-license-picker")!
+    await picker.updateComplete
+    const control = picker.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    assert(control.readOnly, "attribution license picker accepts arbitrary licenses")
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await picker.updateComplete
+    await layoutFrame()
+    const pickerPopup = picker.shadowRoot!.querySelector<HTMLElement>(".listbox")!.getBoundingClientRect()
+    const pickerControl = control.getBoundingClientRect()
+    assert(pickerPopup.bottom <= pickerControl.top || pickerPopup.top >= pickerControl.bottom, "attribution license popup overlaps its control")
+    const choices = Array.from(picker.shadowRoot!.querySelectorAll<HTMLButtonElement>(".option"))
+    assert(choices.length === 8 && choices[7].textContent!.includes("No license"), "attribution picker lost its CC licenses or clear choice")
+    const reserved = choices[7].querySelector<HTMLElement>(".option-description")!
+    assert(reserved?.textContent === "All rights reserved" && getComputedStyle(reserved).fontStyle === "italic", "No license is missing its italic rights description")
+    assert(!choices.some(choice => choice.textContent!.includes("MIT")), "attribution picker still offers MIT")
+    for(const choice of choices.slice(0, -1)) {
+      const name = choice.querySelector<HTMLElement>(".option-name")!
+      const description = choice.querySelector<HTMLElement>(".option-description")!
+      assert(getComputedStyle(description).fontStyle === "italic", "attribution license definition is not italic")
+      assert(!/\byou(?:r)?\b/i.test(description.textContent!), "attribution license definition addresses the user")
+      assert(description.getBoundingClientRect().top >= name.getBoundingClientRect().bottom, "definition does not begin on the third line")
+      assert(getComputedStyle(description).whiteSpace === "normal" && description.scrollWidth <= description.clientWidth
+        && description.scrollHeight <= description.clientHeight, "attribution license definition is clipped")
+    }
+    const longDescription = choices[5].querySelector<HTMLElement>(".option-description")!
+    assert(longDescription.clientHeight > parseFloat(getComputedStyle(longDescription).lineHeight), "long attribution definition does not wrap")
+    control.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, composed: true, cancelable: true}))
+    control.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, composed: true, cancelable: true}))
+    await picker.updateComplete
+    assert(!popup.hidden && popup.matches(":popover-open"), "choosing a license submitted or dismissed the attribution dialog")
+    assert(paragraph.getAttribute(attributionAttributes.license) === "CC-BY-4.0", "choosing a license saved before Save")
+    assert(popup.querySelector<HTMLInputElement>('input[name="license"]')!.value === "CC0-1.0", "keyboard selection did not update the license field")
+    popup.querySelector<HTMLButtonElement>(".save")!.click()
+    assert(popup.hidden && paragraph.getAttribute(attributionAttributes.license) === "CC0-1.0", "Save did not apply the chosen CC license")
+    await picker.updateComplete
+    assert(!picker.shadowRoot!.querySelector(".listbox"), "closing the dialog left its license popup open")
+  }
+  finally { paragraph.remove() }
+})
+
+await check("block splitting retains attribution only on the original part", async () => {
+  const frame = document.createElement("iframe")
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "split fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, section = doc.body
+    const select = (element: Element, offset: number) => doc.getSelection()!.setPosition(element.firstChild!, offset)
+    for(const input of ["key", "beforeinput", "command"]) for(const offset of [0, 3, 6]) {
+      section.innerHTML = '<p class="authored" data-other="keep">abcdef</p>'
+      const paragraph = section.firstElementChild!
+      for(const [key, name] of Object.entries(attributionAttributes)) paragraph.setAttribute(name, key === "license" ? "MIT" : key)
+      select(paragraph, offset)
+      if(input === "command") editor.features.manipulation.insert()
+      else {
+        const event = input === "key" ? new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+          : new view.InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+        paragraph.dispatchEvent(event)
+        assert(event.defaultPrevented, `attributed ${input} split was left to the browser`)
+      }
+      await layoutFrame()
+      const [left, right] = Array.from(section.children)
+      assert(section.children.length === 2 && left === paragraph, "split replaced the original block or created extra blocks")
+      assert(left.textContent === "abcdef".slice(0, offset) && right.textContent === "abcdef".slice(offset), "split changed the content")
+      for(const name of Object.values(attributionAttributes)) assert(left.hasAttribute(name) && !right.hasAttribute(name), "split copied or removed original attribution metadata")
+      assert(right.getAttribute("data-other") === "keep" && right.classList.contains("authored"), "split lost unrelated authored attributes")
+      const marker = Array.from(left.classList).find(name => name.startsWith("◆attribution-"))!
+      assert(marker && !Array.from(right.classList).some(name => name.startsWith("◆attribution-")), "new block inherited an attribution marker")
+      const note = editor.appendix.querySelector<HTMLElement>(`[part="attribution-note-${marker.slice("◆attribution-".length)}"]`)!
+      assert(note && note.textContent!.includes("MIT"), "original block lost its attribution display")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("new paragraphs and line breaks reveal the caret at the document end", async () => {
@@ -5386,10 +5600,238 @@ await check("media stays centered in editing and standalone documents", async ()
   }
 })
 
+await check("wrapped attribution keeps two text columns and moves contact to the opposite side", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1400px;height:900px;border:0;max-width:none"
+  try {
+    for(const editing of [false, true]) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.src = `/tests/attribution-floats.html?long${editing ? "&editing" : ""}`
+      if(!frame.isConnected) document.body.append(frame)
+      await loaded
+      for(let attempt = 0; !frame.contentDocument?.body.shadowRoot && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      await layoutFrame()
+      const doc = frame.contentDocument!, view = frame.contentWindow!
+      const appendix = doc.body.shadowRoot!
+      const elements = Array.from(doc.querySelectorAll<HTMLElement>("aside"))
+      const labels = () => Array.from(appendix.querySelectorAll<HTMLElement>(".attribution-note:not(.attribution-contact-note)"))
+      for(const width of [1400, 900, 360]) {
+        frame.style.width = `${width}px`
+        await layoutFrame()
+        assert(labels().length === 2, "wrapped attribution lost an element's text")
+        for(const [index, element] of elements.entries()) {
+          const label = labels()[index], text = label.querySelector<HTMLElement>(".attribution-text")!
+          const contact = appendix.querySelector<HTMLElement>(`[part="${label.getAttribute("part")}-contact"]`)!
+          assert(label.parentElement === contact.parentElement && label.parentElement!.classList.contains("attribution-group"), "split attribution parts do not share their hover group")
+          assert([label, contact].every(note => view.getComputedStyle(note).userSelect === "none"), "attribution text is selectable")
+          assert(contact?.textContent === element.getAttribute("data-ww-attribution-contact")!.replace(/^mailto:/, ""), "wrapped attribution did not move its complete contact")
+          assert(text.textContent!.includes(element.getAttribute("data-ww-attribution-name")!), "wrapped attribution shortened the author name")
+          const box = element.getBoundingClientRect(), noteBox = label.getBoundingClientRect(), contactBox = contact.getBoundingClientRect()
+          const textBox = text.getBoundingClientRect()
+          assert(view.getComputedStyle(label).writingMode === "horizontal-tb" ? textBox.height <= 16.1 : textBox.width <= 16.1 && textBox.height <= box.height + .1, "metadata exceeds two lines or its element's height")
+          assert(contactBox.width <= 16.1 && contactBox.height <= box.height + .1, "contact exceeds two lines or its element's height")
+          const left = view.getComputedStyle(element).float === "left"
+          const floating = view.getComputedStyle(element).float !== "none"
+          if(floating) {
+            assert(view.getComputedStyle(label).writingMode === "horizontal-tb" && view.getComputedStyle(label).textAlign === "right", "long float credit is not horizontal and right aligned")
+            assert(Math.abs(noteBox.right - box.right) < 1 && Math.abs(noteBox.bottom + 2 - box.top) < 1, "uncaptioned float credit is not at the top right")
+            assert(Math.abs(left ? contactBox.right - box.left : contactBox.left - box.right) < 1, "float URL is not flush with its outer edge")
+          }
+          else {
+            assert(noteBox.width <= 16.1 && noteBox.width > 8, "non-URL fields did not wrap into two columns within the margin")
+            assert(Math.abs(left ? noteBox.right - box.left : noteBox.left - box.right) < 1, "vertical attribution is not flush with the element")
+            assert(Math.abs(left ? contactBox.left - box.right : contactBox.right - box.left) < 1, "opposite contact is not flush with the element")
+            assert(Math.abs(noteBox.bottom - box.bottom) < 1, "vertical attribution lost bottom alignment")
+          }
+          assert(view.getComputedStyle(contact).writingMode === ((floating ? left : !left) ? "sideways-rl" : "sideways-lr"), "contact did not turn to match its side")
+          assert(Math.abs(contactBox.bottom - box.bottom) < 1, "split contact lost bottom alignment")
+          if(editing) assert(contact.getAttribute("role") === "button", "opposite contact cannot open the editing form")
+          const licenseLink = text.querySelector<HTMLElement>(".attribution-link")!, contactLink = contact.querySelector<HTMLElement>(".attribution-link")!
+          if(editing) assert(!label.querySelector("a") && !contact.querySelector("a"), "editing attribution contains a real link")
+          else {
+            assert((licenseLink as HTMLAnchorElement)?.href === `https://spdx.org/licenses/${element.getAttribute("data-ww-license")}.html`, "license does not link to its SPDX page")
+            assert((contactLink as HTMLAnchorElement)?.href === element.getAttribute("data-ww-attribution-contact"), "contact lost its link")
+          }
+          assert(!contact.textContent!.includes("mailto:"), "email contact displays its mailto prefix")
+          assert(view.getComputedStyle(label).color === "rgb(119, 119, 119)" && view.getComputedStyle(contact).color === "rgb(119, 119, 119)", "attribution is not gray by default")
+          for(const link of [licenseLink, contactLink]) {
+            assert(view.getComputedStyle(link).color === "rgb(119, 119, 119)" && view.getComputedStyle(link).textDecorationLine.includes("underline"), "attribution links are not gray and underlined")
+            if(!editing) {
+              const event = new MouseEvent("click", {bubbles: true, cancelable: true})
+              assert(!link.dispatchEvent(event), "inline attribution link did not prevent navigation")
+              const popup = appendix.querySelector<HTMLElement>(".popup")!
+              assert(!popup.hidden, "inline attribution link did not open the reading popup")
+              const popupLinks = popup.querySelectorAll<HTMLAnchorElement>(".details a")
+              assert(popupLinks.length === 2, "reading popup lost its license or contact link")
+              for(const popupLink of popupLinks) {
+                let canceledBeforeTest = true
+                popup.addEventListener("click", event => {
+                  canceledBeforeTest = event.defaultPrevented
+                  event.preventDefault()
+                }, {once: true})
+                popupLink.click()
+                assert(!canceledBeforeTest, "popup attribution link prevented native navigation")
+              }
+              appendix.querySelector<HTMLButtonElement>(".close")!.click()
+            }
+          }
+          if(editing) {
+            assert(view.getComputedStyle(text).cursor === "pointer" && view.getComputedStyle(contact.firstElementChild!).cursor === "pointer", "editing attribution text does not show a pointer cursor")
+          }
+        }
+        if(width === 900) {
+          const gap = elements[1].getBoundingClientRect().top - elements[0].getBoundingClientRect().bottom
+          assert(gap >= 18 - 1, "stacked side floats have less than the minimum page margin between them")
+        }
+      }
+      // Both metadata and URLs must fit at most two lines; neither may spill
+      // out of a short element. The compact trigger still exposes full details.
+      frame.style.width = "900px"
+      const originalName = elements[0].getAttribute("data-ww-attribution-name")!
+      const originalContact = elements[0].getAttribute("data-ww-attribution-contact")!
+      elements[0].setAttribute("data-ww-attribution-contact", `https://example.com/${"path/".repeat(14)}`)
+      await layoutFrame(); await layoutFrame()
+      const wrappedContact = appendix.querySelector<HTMLElement>(`[part="${labels()[0].getAttribute("part")}-contact"]`)!
+      assert(wrappedContact.getBoundingClientRect().width > 8 && wrappedContact.getBoundingClientRect().width <= 16.1, "long URL did not fit two vertical lines")
+      elements[0].style.minHeight = "0"
+      await layoutFrame(); await layoutFrame()
+      assert(labels()[0].classList.contains("compact-attribution"), "resizing a short element did not collapse its attribution")
+      elements[0].style.removeProperty("min-height")
+      await layoutFrame(); await layoutFrame()
+      assert(!labels()[0].classList.contains("compact-attribution"), "resizing an element did not restore its attribution")
+      elements[0].setAttribute("data-ww-attribution-contact", originalContact)
+      for(const field of ["name", "contact"]) {
+        const value = field === "name" ? "Full author and contributors ".repeat(30) : `https://example.com/${"long-contact/".repeat(60)}`
+        elements[0].setAttribute(`data-ww-attribution-${field}`, value)
+        await layoutFrame(); await layoutFrame()
+        const label = labels()[0]
+        assert(label.classList.contains("compact-attribution"), `overlong ${field} did not use compact attribution`)
+        assert(label.innerText === "©", "compact attribution exposes more than the copyright symbol")
+        assert(view.getComputedStyle(label).fontSize === "12px" && view.getComputedStyle(label).color === "rgb(119, 119, 119)", "compact attribution lost its larger gray type")
+        assert(!appendix.querySelector(`[part="${label.getAttribute("part")}-contact"]`), "compact attribution left a URL outside its element")
+        const box = elements[0].getBoundingClientRect(), noteBox = label.getBoundingClientRect()
+        assert(Math.abs(noteBox.bottom - box.bottom) < 1 && Math.abs(noteBox.left - box.right) < 1, "compact attribution is not aligned to its element")
+        label.click()
+        const popup = appendix.querySelector<HTMLElement>(".popup")!
+        assert(!popup.hidden, "attribution click did not open the popup")
+        if(editing) assert((popup.querySelector(`[name="${field}"]`) as HTMLInputElement).value === value, "editing popup lost the full attribution")
+        else {
+          assert(!popup.querySelector<HTMLElement>(".details")!.hidden && popup.querySelector<HTMLElement>("form")!.hidden, "reading popup displays editing controls")
+          assert(popup.querySelector(".details")!.textContent!.includes(value.trim()), "reading popup shortened the attribution")
+        }
+        popup.querySelector<HTMLButtonElement>(".close")!.click()
+        elements[0].setAttribute(`data-ww-attribution-${field}`, field === "name" ? originalName : originalContact)
+        await layoutFrame(); await layoutFrame()
+        assert(!labels()[0].classList.contains("compact-attribution"), "attribution did not expand after it fit again")
+      }
+      if(!editing) {
+        labels()[0].click()
+        assert(!appendix.querySelector<HTMLElement>(".popup")!.hidden, "full reading attribution does not open its details popup")
+        appendix.querySelector<HTMLButtonElement>(".close")!.click()
+      }
+      const column = doc.querySelector<HTMLElement>("body > p")!
+      column.setAttribute("data-ww-attribution-name", "Content column author")
+      column.setAttribute("data-ww-attribution-contact", "mailto:column@example.com")
+      column.style.minHeight = "160px"
+      for(const width of [1400, 900, 360, 900, 1400]) {
+        frame.style.width = `${width}px`
+        await layoutFrame()
+        const label = labels().find(note => note.textContent!.includes("Content column author"))!
+        const left = width === 900
+        const box = column.getBoundingClientRect(), noteBox = label.getBoundingClientRect()
+        assert(Math.abs(left ? noteBox.right - box.left : noteBox.left - box.right) < 1, "content-column attribution is not flush with the active edge")
+        assert(view.getComputedStyle(label).writingMode === (left ? "sideways-rl" : "sideways-lr"), "flipped content-column attribution did not turn")
+        assert(Math.abs(noteBox.bottom - box.bottom) < 1, "content-column attribution lost bottom alignment")
+        assert(label.textContent!.includes("column@example.com"), "flipped content attribution lost its contact")
+        for(const element of elements) {
+          const floatLabel = labels().find(note => note.textContent!.includes(element.getAttribute("data-ww-license")!))!
+          assert(floatLabel.classList.contains("left-attribution") === (view.getComputedStyle(element).float === "left"), "content-column flip changed a float's attribution side")
+        }
+      }
+      frame.style.width = "900px"
+      for(const element of elements) element.classList.remove("ww-float-left", "ww-float-right")
+      await layoutFrame()
+      assert(!labels().find(note => note.textContent!.includes("Content column author"))!.classList.contains("left-attribution"), "content attribution stayed flipped after the last float was cleared")
+      elements[0].classList.add("ww-float-left")
+      elements[1].classList.add("ww-float-right")
+      column.removeAttribute("data-ww-attribution-name")
+      column.removeAttribute("data-ww-attribution-contact")
+      await layoutFrame()
+      elements[0].setAttribute("data-ww-attribution-name", "Ada")
+      await layoutFrame()
+      assert(!appendix.querySelector(`[part="${labels()[0].getAttribute("part")}-contact"]`), "shortened attribution retained a separate contact label")
+      assert(labels()[0].querySelector(".attribution-contact"), "shortened attribution did not bring contact back")
+      // A stylesheet can resize a widget without mutating its authored DOM.
+      const style = doc.createElement("style")
+      style.textContent = "aside { min-height: 1000px !important }"
+      doc.head.append(style)
+      await layoutFrame(); await layoutFrame()
+      assert(!appendix.querySelector(".attribution-contact-note"), "element resizing did not reunite attribution and contact")
+      elements[1].remove()
+      await layoutFrame()
+      assert(labels().length === 1, "removing an element left its attribution behind")
+      style.remove()
+      const figure = doc.createElement("figure")
+      figure.className = "ww-float-right"
+      figure.setAttribute("data-ww-attribution-name", "A long figure attribution naming the original author and illustration team")
+      figure.setAttribute("data-ww-attribution-contact", "https://example.com/figure")
+      const content = doc.createElement("div"), caption = doc.createElement("figcaption")
+      content.style.height = "160px"
+      content.textContent = "Captioned figure"
+      caption.textContent = "Keep this caption"
+      figure.append(content, caption)
+      doc.body.append(figure)
+      const following = doc.createElement("aside")
+      following.className = "ww-float-right"
+      following.style.minHeight = "80px"
+      following.textContent = "Following float"
+      doc.body.append(following)
+      for(const position of ["below", "above", "none", "below"]) {
+        if(position === "above") figure.prepend(caption)
+        else if(position === "below") figure.append(caption)
+        else caption.remove()
+        await layoutFrame(); await layoutFrame()
+        const label = labels().find(note => note.textContent!.includes("A long figure attribution"))!
+        const noteBox = label.getBoundingClientRect(), box = figure.getBoundingClientRect()
+        assert(view.getComputedStyle(label).writingMode === "horizontal-tb" && view.getComputedStyle(label).textAlign === "right", "captioned credit is not right aligned horizontally")
+        assert(Math.abs(noteBox.right - box.right) < 1, "captioned credit is not at the right edge")
+        assert(position === "above" ? Math.abs(noteBox.top - box.bottom - 2) < 1 : Math.abs(noteBox.bottom + 2 - box.top) < 1, "float credit did not move opposite the current caption")
+        const previous = elements[0].getBoundingClientRect()
+        assert(box.top - previous.bottom >= 17, "captioned float lost its minimum vertical clearance")
+        if(position !== "above") assert(noteBox.top >= previous.bottom, "horizontal attribution overlaps the preceding float")
+        const visibleBottom = position === "above" ? noteBox.bottom : box.bottom
+        assert(following.getBoundingClientRect().top - visibleBottom >= 17, "following float lacks the minimum margin after the attribution")
+      }
+      const captionLoaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.style.width = "1400px"
+      frame.src = `/tests/attribution-floats.html?long&captions${editing ? "&editing" : ""}`
+      await captionLoaded
+      for(let attempt = 0; !frame.contentDocument?.body.shadowRoot && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      const captionDoc = frame.contentDocument!, figures = Array.from(captionDoc.querySelectorAll("figure"))
+      for(const swap of [false, true, false]) {
+        for(const [index, figure] of figures.entries()) {
+          const caption = figure.querySelector("figcaption")!
+          if((index === 0) === swap) figure.prepend(caption)
+          else figure.append(caption)
+        }
+        await layoutFrame(); await layoutFrame()
+        assert(Math.abs(figures[0].getBoundingClientRect().top - figures[1].getBoundingClientRect().top) < 1, "opposing floats lost their shared top when credits changed sides")
+        for(const [index, figure] of figures.entries()) {
+          const box = figure.getBoundingClientRect()
+          const contact = captionDoc.body.shadowRoot!.querySelector<HTMLElement>(`[part="attribution-note-${index}-contact"]`)!
+          const contactBox = contact.getBoundingClientRect()
+          assert(Math.abs(index === 0 ? contactBox.right - box.left : contactBox.left - box.right) < 1, "captioned URL is not aligned to its float edge")
+        }
+      }
+    }
+  }
+  finally { frame.remove() }
+})
+
 await check("far floats adapt to column margins and survive standalone export", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;border:0;max-width:none"
-  frame.srcdoc = '<!doctype html><body><aside id="float">Float content</aside><p id="text">Following text remains in the reading column.</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  frame.srcdoc = '<!doctype html><body><aside id="float" data-ww-attribution-name="Float author" data-ww-attribution-year="2026" data-ww-license="CC-BY-4.0" data-ww-attribution-contact="mailto:author@example.com">Float content</aside><p id="text">Following text remains in the reading column.</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
   document.body.append(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -5423,8 +5865,34 @@ await check("far floats adapt to column margins and survive standalone export", 
         const effectiveSide = singleLane ? "right" : physical
         const gap = parseFloat(effectiveSide === "left" ? style.marginRight : style.marginLeft)
         assert(box.left >= -1 && box.right <= doc.documentElement.clientWidth + 1, "far float escaped the viewport")
-        const pageWidth = Math.min(2160, viewportWidth - 2 * Math.min(32, Math.max(16, viewportWidth * .02)))
-        if(!stacked) assert(Math.abs(box.width - (singleLane ? Math.min(256, Math.max(0, pageWidth - 300 - 16)) : Math.max(0, (pageWidth - 720) / 2 - 16))) < 1, `default float did not fill its lane: viewport=${width} box=${box.width} column=${column.width}`)
+        const gutter = Math.min(32, Math.max(16, width * .02))
+        const pageWidth = Math.min(2160, viewportWidth - 2 * gutter)
+        if(!stacked) {
+          assert(Math.abs(box.width - (singleLane ? Math.min(256, Math.max(0, pageWidth - 300 - gutter)) : Math.max(0, (pageWidth - 720) / 2 - gutter))) < 1, `default float did not fill its lane: viewport=${width} box=${box.width} column=${column.width}`)
+          const actualGap = effectiveSide === "left" ? column.left - box.right : box.left - column.right
+          assert(Math.abs(actualGap - gutter) < 1, "float-to-column gap differs from the outer page margin")
+        }
+        const note = editor.appendix.querySelector<HTMLElement>(".attribution-note")!
+        const noteBox = note.getBoundingClientRect()
+        const noteStyle = view.getComputedStyle(note)
+        if(note.classList.contains("compact-attribution")) {
+          assert(note.innerText === "©", "short float does not show only the copyright symbol")
+          assert(Math.abs(noteBox.bottom - box.bottom) < 1, "compact float attribution lost bottom alignment")
+          const left = !stacked && effectiveSide === "left"
+          assert(Math.abs(left ? noteBox.right - box.left : noteBox.left - box.right) < 1, "compact float attribution left its outer edge")
+        }
+        else {
+          if(!stacked) {
+            assert(noteStyle.writingMode === "horizontal-tb" && noteStyle.textAlign === "right", "long float credit is not horizontal and right aligned")
+            assert(Math.abs(noteBox.right - box.right) < 1 && Math.abs(noteBox.bottom + 2 - box.top) < 1, "float credit is not above its uncaptioned element")
+          }
+          else {
+            assert(noteStyle.writingMode === "sideways-lr", "stacked attribution did not return to vertical text")
+            assert(Math.abs(noteBox.bottom - box.bottom) < 1, "stacked attribution lost bottom alignment")
+          }
+          assert(note.textContent === "© 2026 Float author CC-BY-4.0", "floated attribution lost authored values")
+          assert(editor.appendix.querySelector(".attribution-contact-note")?.textContent === "author@example.com", "wrapped attribution did not move contact to the opposite side")
+        }
         if(!stacked && !singleLane) assert(Math.abs(column.width - 720) < 1, "side lanes squeezed the center column")
         if(singleLane) assert(column.width >= 300 - 1, "single lane squeezed the text below 300px")
         if(!stacked) assert(effectiveSide === "left" ? box.right <= column.left - gap + 1 : box.left >= column.right + gap - 1, "wide far float did not leave the column")
@@ -5670,7 +6138,7 @@ await check("lane media fills available width and resizes with native handles", 
         const body = doc.body.getBoundingClientRect(), bodyStyle = view.getComputedStyle(doc.body)
         const pageWidth = body.width - 2 * Math.min(32, Math.max(16, viewport * .02))
         const expectedWidth = viewport < 600 ? body.width - parseFloat(bodyStyle.paddingLeft) - parseFloat(bodyStyle.paddingRight)
-          : viewport < 1200 ? Math.min(256, pageWidth - 300 - 16) : 704
+          : viewport < 1200 ? Math.min(256, pageWidth - 300 - Math.min(32, Math.max(16, viewport * .02))) : 688
         assert(Math.abs(target.getBoundingClientRect().width - expectedWidth) < 1, `${target.localName} did not fill its column at ${viewport}px`)
       }
       editor.features.selection.selectElement(target)
@@ -5687,9 +6155,9 @@ await check("lane media fills available width and resizes with native handles", 
         await layoutFrame()
       }
       await resize(-180)
-      assert(Math.abs(target.getBoundingClientRect().width - 524) < 1, `${target.localName} did not shrink through its resize handle`)
+      assert(Math.abs(target.getBoundingClientRect().width - 508) < 1, `${target.localName} did not shrink through its resize handle`)
       await resize(100)
-      assert(Math.abs(target.getBoundingClientRect().width - 624) < 1, `${target.localName} did not grow through its resize handle`)
+      assert(Math.abs(target.getBoundingClientRect().width - 608) < 1, `${target.localName} did not grow through its resize handle`)
       editor.features.manipulation.setElementStyles(target, {width:"140px", "max-width":null})
       await layoutFrame()
       await resize(180)
@@ -6156,7 +6624,8 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
       assert(firstLine && Math.abs(firstLine.top - pictureRect.top) < 8, "first line is offset below the floated picture: " + JSON.stringify({picture:pictureRect.top, text:firstLine?.top, margin:getComputedStyle(text).marginTop}));
       // cqw uses the root content box, excluding both reserved scrollbar gutters.
       const pageContainerWidth = document.documentElement.getBoundingClientRect().width;
-      assert(pictureRect.width > 256 && Math.abs(pictureRect.width - Math.max(256, (pageContainerWidth - 2 * Math.min(32, Math.max(16, pageContainerWidth * .02)) - 720) / 2 - 16)) < 1, "default picture did not fill its float lane");
+      const pageGutter = Math.min(32, Math.max(16, innerWidth * .02));
+      assert(pictureRect.width > 256 && Math.abs(pictureRect.width - Math.max(256, (pageContainerWidth - 2 * pageGutter - 720) / 2 - pageGutter)) < 1, "default picture did not fill its float lane");
       assert(picture.classList.contains("ww-float-right") && !picture.style.float && !picture.style.margin && !picture.style.maxWidth
         && picture.style.getPropertyValue("--ww-float-size").includes("100%"), "floated picture did not preserve its authored width through theme geometry");
       assert(firstLine && firstLine.bottom > pictureRect.top && firstLine.top < pictureRect.top + 24 && firstLine.right <= pictureRect.left - 5, "paragraph did not wrap beside the floated placeholder: " + JSON.stringify({picture:pictureRect, firstLine, parent:parentRect}));

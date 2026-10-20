@@ -7,6 +7,7 @@ export type ComboboxOption = {
   value: string
   label: string
   description?: string
+  detail?: string
   dividerBefore?: boolean
   group?: string
   disabled?: boolean
@@ -200,6 +201,14 @@ export class EditorCombobox extends LitElement {
       font-size: 0.68rem;
       line-height: 0.95rem;
     }
+
+    .option-description {
+      font-size: 0.68rem;
+      font-style: italic;
+      line-height: 0.95rem;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
   `
 
   value = ""
@@ -277,7 +286,7 @@ export class EditorCombobox extends LitElement {
     if(!query || query === selected?.label.toLocaleLowerCase("en") || query === this.value.toLocaleLowerCase("en")) {
       return this.options
     }
-    return this.options.filter(option => [option.label, option.value, option.description ?? ""]
+    return this.options.filter(option => [option.label, option.value, option.description ?? "", option.detail ?? ""]
       .some(value => value.toLocaleLowerCase("en").includes(query)))
   }
 
@@ -444,6 +453,7 @@ export class EditorCombobox extends LitElement {
         <strong class="option-code">${option.label}</strong>
         ${this.showValue ? html`<span class="option-name option-value">${option.description ?? option.value}</span>`
           : option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
+        ${option.detail ? html`<span class="option-description">${option.detail}</span>` : nothing}
       </button>
     `)}`
   }

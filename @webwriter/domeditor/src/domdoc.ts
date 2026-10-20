@@ -85,6 +85,8 @@ export type DOMChangePreview = {
 }
 
 export type SharedDOMDocOptions = {
+  /** Derives owned DOM metadata before seeding/sync; must be idempotent. */
+  beforeSyncFromDOM?: () => void
   documentPermalinks?: boolean
   widgetData?: WidgetDataOptions
   supportsWidgetData?: (widget: Element) => boolean
@@ -194,6 +196,7 @@ export class SharedDOMDoc {
   readonly #historyStateObservers = new Set<() => void>()
   #historyStateQueued = false
   readonly #documentPermalinks: boolean
+  readonly #beforeSyncFromDOM?: () => void
 
   constructor(
     readonly serverUrl?: string,
@@ -205,6 +208,7 @@ export class SharedDOMDoc {
     previewSource?: SharedDOMDoc,
   ) {
     this.root = options.root ?? document.body
+    this.#beforeSyncFromDOM = options.beforeSyncFromDOM
     this.#documentPermalinks = options.documentPermalinks ?? false
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
@@ -322,6 +326,7 @@ export class SharedDOMDoc {
         this.#selectMirror(mirror)
       }
       if(!hasSharedDOM) {
+        this.#beforeSyncFromDOM?.()
         if(this.#documentPermalinks) updateDocumentPermalinks(this.root)
         this.#metadata.set(INITIALIZED_KEY, true)
         this.#reconcileYElement(this.root, this.#body)
@@ -700,7 +705,9 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
-    let records = mutations ?? (this.#isObserving ? this.#observer.takeRecords() : undefined)
+    this.#beforeSyncFromDOM?.()
+    const pending = this.#isObserving ? this.#observer.takeRecords() : undefined
+    let records = mutations ? [...mutations, ...(pending ?? [])] : pending
     // Explicit synchronization without pending records still discovers upgrades
     // and retries invalid data. Ordinary edits inspect only affected bindings.
     const discover = !mutations && !records?.length

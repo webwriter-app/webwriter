@@ -2170,7 +2170,8 @@ body::part(transform-overlay-z-front)::before {
 }
 body::part(transform-overlay-mover),
 body::part(transform-overlay-caption),
-body::part(transform-overlay-delete) {
+body::part(transform-overlay-delete),
+body::part(transform-overlay-attribution) {
   position: absolute;
   z-index: 2;
   top: -13px;
@@ -2190,11 +2191,17 @@ body::part(transform-overlay-mover) {
 }
 body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-mover),
 body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-caption),
-body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-delete) {
+body:has(.◆transform-target.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-delete),
+body:has(.◆element-selected:not(.◆element-capture-selected))::part(transform-overlay-attribution) {
   border-style: dotted;
 }
 body::part(transform-overlay-board-control) {
   border-style: dotted;
+}
+body::part(transform-overlay-attribution) {
+  top: 0;
+  left: 0;
+  --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M16 8a6 6 0 1 0 0 8"/></svg>');
 }
 body::part(transform-overlay-mover)::before {
   width: 16px;
@@ -2205,7 +2212,8 @@ body::part(transform-overlay-caption) {
   bottom: -10px;
   left: calc((var(--selection-flow-bottom-left, 0px) + var(--selection-flow-bottom-right, 100%)) / 2 - 10px);
 }
-body::part(transform-overlay-caption)::before {
+body::part(transform-overlay-caption)::before,
+body::part(transform-overlay-attribution)::before {
   width: 14px;
   height: 14px;
 }

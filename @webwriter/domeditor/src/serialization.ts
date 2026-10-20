@@ -2,6 +2,8 @@ import {createImageMapPopoverController, imageMapHotspotBounds} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
+import attributionSource from "./attribution.js?raw"
+import {attributionAttributes} from "./attribution.js"
 import listMarkerStyleSource from "./document-list-markers.css?raw"
 import referenceFormatterSource from "virtual:reference-formatter-source"
 import {collectReferences} from "./document-viewer.js"
@@ -91,6 +93,15 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     catch { return url }
   }
   const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
+  root.querySelectorAll('script[id="webwriter-attribution-reader"]').forEach(script => script.remove())
+  if(root.body.querySelector(Object.values(attributionAttributes).map(name => `[${name}]`).join(","))) {
+    const script = root.createElement("script")
+    script.id = "webwriter-attribution-reader"
+    script.type = "module"
+    script.textContent = `${attributionSource}\nmountAttributionReader(${JSON.stringify(creativeCommonsLicenses)})\n`
+      .replace(/<\/script/gi, "<\\/script")
+    head.append(script)
+  }
   root.querySelectorAll('style[id="webwriter-list-marker-styles"]').forEach(style => style.remove())
   if(root.body.querySelector(':is(ul, ol, menu)[style*="--ww-list-marker-image:"]')) {
     const style = root.createElement("style")

@@ -7,6 +7,7 @@ import { HistoryFeature } from "./features/history"
 import { ManipulationFeature } from "./features/manipulation"
 import { MarkFeature } from "./features/mark"
 import { CommentFeature } from "./features/comment"
+import {AttributionFeature} from "./features/attribution"
 import { ProofreadingFeature } from "./features/proofreading"
 import { PlaceholderFeature } from "./features/placeholder"
 import { SelectionFeature } from "./features/selection"
@@ -259,6 +260,7 @@ export class DOMEditor {
     "placeholder": new PlaceholderFeature(this),
     "mark": new MarkFeature(this),
     "comment": new CommentFeature(this),
+    "attribution": new AttributionFeature(this),
     "proofreading": new ProofreadingFeature(this),
     "collaboration": new CollaborationFeature(this),
     "media": new MediaFeature(this),
@@ -511,6 +513,7 @@ export class DOMEditor {
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
           connectionParams: Object.fromEntries([...syncUrl.searchParams].filter(([key]) => key !== "session")),
           documentPermalinks: true,
+          beforeSyncFromDOM: () => this.features.attribution.normalize(),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
@@ -519,6 +522,7 @@ export class DOMEditor {
       else {
         this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
           documentPermalinks: true,
+          beforeSyncFromDOM: () => this.features.attribution.normalize(),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),

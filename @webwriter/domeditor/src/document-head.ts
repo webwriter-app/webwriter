@@ -3,40 +3,56 @@ import packageManifest from "../package.json"
 
 export const WEBWRITER_GENERATOR = `webwriter@${packageManifest.version}`
 
+// Adapted from Creative Commons definitions (CC BY 4.0): https://creativecommons.org/cc-licenses/
+const licenseComponents = {
+  BY: "Credit must be given to the creator.",
+  SA: "Adaptations must be shared under the same terms.",
+  NC: "Only noncommercial use of the work is permitted.",
+  ND: "No derivatives or adaptations of the work are permitted.",
+}
+
 export const creativeCommonsLicenses = [
   {
     code: "CC0-1.0",
     name: "Creative Commons Zero 1.0 Universal",
+    // https://creativecommons.org/publicdomain/zero/1.0/
+    description: "The work can be copied, modified, distributed and performed, even for commercial purposes, all without asking permission.",
     url: "https://creativecommons.org/publicdomain/zero/1.0/",
   },
   {
     code: "CC-BY-4.0",
     name: "Creative Commons Attribution 4.0 International",
+    description: licenseComponents.BY,
     url: "https://creativecommons.org/licenses/by/4.0/",
   },
   {
     code: "CC-BY-SA-4.0",
     name: "Creative Commons Attribution ShareAlike 4.0 International",
+    description: [licenseComponents.BY, licenseComponents.SA].join(" "),
     url: "https://creativecommons.org/licenses/by-sa/4.0/",
   },
   {
     code: "CC-BY-NC-4.0",
     name: "Creative Commons Attribution NonCommercial 4.0 International",
+    description: [licenseComponents.BY, licenseComponents.NC].join(" "),
     url: "https://creativecommons.org/licenses/by-nc/4.0/",
   },
   {
     code: "CC-BY-ND-4.0",
     name: "Creative Commons Attribution NoDerivatives 4.0 International",
+    description: [licenseComponents.BY, licenseComponents.ND].join(" "),
     url: "https://creativecommons.org/licenses/by-nd/4.0/",
   },
   {
     code: "CC-BY-NC-SA-4.0",
     name: "Creative Commons Attribution NonCommercial ShareAlike 4.0 International",
+    description: [licenseComponents.BY, licenseComponents.NC, licenseComponents.SA].join(" "),
     url: "https://creativecommons.org/licenses/by-nc-sa/4.0/",
   },
   {
     code: "CC-BY-NC-ND-4.0",
     name: "Creative Commons Attribution NonCommercial NoDerivatives 4.0 International",
+    description: [licenseComponents.BY, licenseComponents.NC, licenseComponents.ND].join(" "),
     url: "https://creativecommons.org/licenses/by-nc-nd/4.0/",
   },
 ] as const
