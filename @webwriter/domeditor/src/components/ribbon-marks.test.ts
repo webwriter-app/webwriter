@@ -305,7 +305,7 @@ describe("mark ribbon controls", () => {
     expect(ribbon.activeMenu).toBe("Start")
     const fileMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await fileMenu.updateComplete
-    expect(fileMenu.groups.map(group => group.label)).toEqual(["File", "Editing", "Settings"])
+    expect(fileMenu.groups.map(group => group.label)).toEqual(["File", "Editing", "Settings", "About"])
     expect(fileMenu.groups[0]!.buttons.map(button => typeof button === "string" ? button : button.label))
       .toEqual(["New", "Open", "Save", "Save as", "Print"])
 
@@ -580,6 +580,8 @@ describe("mark ribbon controls", () => {
     expect(getComputedStyle(fileDrawer.shadowRoot!.querySelector<HTMLElement>(".controls")!).gridTemplateColumns)
       .toBe("repeat(4, minmax(0, 1fr))")
 
+    ribbon.menuOpen = true
+    await ribbon.updateComplete
     const fileMenu = ribbon.shadowRoot!.querySelector<RibbonMenu>("#ribbon-file-menu")!
     await fileMenu.updateComplete
     const fileMenuLabels = fileMenu.groups.flatMap(group => group.buttons)
@@ -750,6 +752,10 @@ describe("mark ribbon controls", () => {
 
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
     expect(dropdown.hidden).toBe(false)
+    const menu = span.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    expect(getComputedStyle(menu).width).toBe("max-content")
+    expect(getComputedStyle(menu).maxWidth).toBe(`calc(${window.innerWidth}px - 16px)`)
     expect(dropdown.querySelector('[role="listbox"]')?.getAttribute("aria-multiselectable")).toBe("true")
     expect(Array.from(dropdown.querySelectorAll<HTMLElement>(".mark-dropdown-option-name")).map(option => option.textContent))
       .toEqual([
@@ -1005,7 +1011,7 @@ describe("mark ribbon controls", () => {
 })
 
 describe("mark ribbon bridge", () => {
-  it.each(["color", "background-color"])("routes custom %s through the style mark command", async property => {
+  it.each(["color", "background-color"])("routes palette, reset, and custom %s through the style mark command", async property => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     dispatchEditorMessage(editor, editorWindow, {type: markStateChangeEvent, detail: {canMark: true, marks: []}})
@@ -1013,6 +1019,21 @@ describe("mark ribbon bridge", () => {
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     await ribbon.updateComplete
     const combo = ribbon.shadowRoot!.querySelector<RibbonCombobox>(`ribbon-combobox[name="${property}"]`)!
+    await combo.updateComplete
+    // Happy DOM cannot resolve focus across the editor's sibling shadow roots.
+    vi.spyOn(combo.shadowRoot!, "activeElement", "get").mockReturnValue(null)
+    const trigger = combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!
+    trigger.click()
+    await combo.updateComplete
+    combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Color #5b9bd5"]')!.click()
+    expect(execute).toHaveBeenLastCalledWith({type: "setStyleMark", property, value: "#5b9bd5"})
+    await combo.updateComplete
+    trigger.click()
+    await combo.updateComplete
+    combo.shadowRoot!.querySelector<HTMLButtonElement>(".palette-automatic")!.click()
+    expect(execute).toHaveBeenLastCalledWith({type: "setStyleMark", property, value: ""})
+    await combo.updateComplete
+    trigger.click()
     await combo.updateComplete
     const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
     input.value = "#12ab34"

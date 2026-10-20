@@ -5757,10 +5757,10 @@ export class DomEditor extends LitElement {
   }
 
   private handleWidgetAction = (event: Event) => {
-    const detail = (event as CustomEvent<{name?: unknown, selectionType?: unknown}>).detail
+    const detail = (event as CustomEvent<{name?: unknown, selectionType?: unknown, confirmed?: unknown}>).detail
     const name = detail?.name
     if(typeof name === "string" && isElementSelectionType(detail?.selectionType)) {
-      void this.execute({type: "runSelectedWidgetAction", selectionType: detail.selectionType, name})
+      void this.execute({type: "runSelectedWidgetAction", selectionType: detail.selectionType, name, ...(detail.confirmed === true ? {confirmed: true} : {})})
       return
     }
     const widget = this.widgetOptions
@@ -5768,7 +5768,7 @@ export class DomEditor extends LitElement {
       this.focusEditor()
       return
     }
-    void this.execute({type: "runWidgetAction", path: [...widget.path], localName: widget.localName, name})
+    void this.execute({type: "runWidgetAction", path: [...widget.path], localName: widget.localName, name, ...(detail.confirmed === true ? {confirmed: true} : {})})
   }
 
   private handleMediaTypeChange = (event: Event) => {

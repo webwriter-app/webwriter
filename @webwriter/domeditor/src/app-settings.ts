@@ -4,6 +4,7 @@ import {graphicArrangeOperations, graphicShapeOptions, graphicViewportOperations
 import type {DocumentLayoutMode} from "./document-layout"
 import {storedCloudServices, type CloudService} from "./cloud-services"
 import {normalizeProofreadingDictionary} from "./proofreading"
+import {documentLanguages} from "./document-languages"
 
 export const APP_SETTINGS_STORAGE_KEY = "webwriter_app_settings_v1"
 
@@ -201,6 +202,10 @@ export type AppSettings = {
 }
 
 export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
+  // Match regional browser preferences to the languages offered in settings.
+  const language = [...(globalThis.navigator?.languages ?? []), globalThis.navigator?.language]
+    .map(value => value?.toLowerCase().split(/[-_]/)[0])
+    .find(code => documentLanguages.some(language => language.code === code)) ?? "en"
   return {
     localUsername: "",
     cloudServices: [],
@@ -209,7 +214,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     proofreadingDictionary: [],
     proofreadingEnabledByDefault: true,
     userSnippets: [],
-    language: "en",
+    language,
     defaultLayout: "document",
     updateDocumentLanguage: true,
     disableAI: false,

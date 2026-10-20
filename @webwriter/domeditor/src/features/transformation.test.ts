@@ -1629,6 +1629,55 @@ describe("transform controls and geometry", () => {
     expect(target).toHaveClass("◆transform-target")
   })
 
+  it.each([30, -20])("resizes an iframe vertically by %s pixels, preserving its DOM and undo/redo", async dy => {
+    document.body.innerHTML = '<figure><!--keep--><iframe title="Activity" height="180" src="about:blank"></iframe><figcaption>Keep caption</figcaption></figure>'
+    const target = document.querySelector("iframe")!
+    mockRect(target, {width: 320, height: 180})
+    selectNode(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 420, clientY: 280}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 420, clientY: 280 + dy, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+
+    expect(target.getBoundingClientRect().height).toBe(180 + dy)
+    expect(target.style.height).toBe(`${180 + dy}px`)
+    expect(target.style.position).toBe("")
+    expect(target.getAttribute("height")).toBe("180")
+    expect(target.getAttribute("title")).toBe("Activity")
+    expect(target.parentElement!.innerHTML).toContain("<!--keep-->")
+    expect(target.nextElementSibling!.textContent).toBe("Keep caption")
+    const resized = editor.toHTML(true)
+    expect(resized).not.toContain("◆")
+    expect(editor.doc.body.toString()).toContain(`height: ${180 + dy}px`)
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(resized)
+  })
+
+  it("restores iframe height on cancellation while preserving concurrent changes", () => {
+    const target = targetElement("iframe") as HTMLIFrameElement
+    target.style.height = "180px"
+    mockRect(target, {width: 320, height: 180})
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 420, clientY: 280}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 420, clientY: 310, altKey: true}))
+    expect(target.style.height).toBe("210px")
+    target.title = "Updated activity"
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(target.style.height).toBe("180px")
+    expect(target.style.maxHeight).toBe("")
+    expect(target.title).toBe("Updated activity")
+    expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
+  })
+
   describe.each(["p", "demo-widget"])("static %s resizing", tag => {
     it.each(["up-left", "up-right", "down-left", "down-right", "up-up", "right-right", "down-down", "left-left"])("keeps normal flow when dragging %s", direction => {
       const target = targetElement(tag)

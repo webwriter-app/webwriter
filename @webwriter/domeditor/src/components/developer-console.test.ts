@@ -2,6 +2,8 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {DeveloperConsole} from "./developer-console"
 import {emptyVersionHistoryState} from "../editor-bridge"
+import type {StyleCombobox} from "./style-combobox"
+import type {RibbonButton} from "./ribbon-button"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -439,11 +441,12 @@ it("shows live option declarations, actions and sharing with the existing comman
   console.addEventListener("widget-option-change", option)
   console.addEventListener("widget-action", action)
   console.addEventListener("widget-sharing-change", sharing)
-  const input = panel.querySelector<HTMLInputElement>('input[type="number"]')!
-  input.value = "7"
-  input.dispatchEvent(new Event("change"))
+  const input = panel.querySelector<StyleCombobox>('style-combobox')!
+  input.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "7"}}))
   expect(option).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "count", value: 7}}))
-  panel.querySelector<HTMLButtonElement>(".widget-action")!.click()
+  const button = panel.querySelector<RibbonButton>(".widget-action")!
+  await button.updateComplete
+  button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
   expect(action).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "reset"}}))
   panel.querySelector<HTMLInputElement>('[role="switch"]')!.click()
   expect(sharing).toHaveBeenCalledWith(expect.objectContaining({detail: {path: [1], localName: "demo-widget", widgetId: "demo", enabled: true}}))

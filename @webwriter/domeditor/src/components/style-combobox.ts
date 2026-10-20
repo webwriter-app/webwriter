@@ -30,6 +30,7 @@ export class StyleCombobox extends EditorCombobox {
     .option-code {font: inherit; font-size: .68rem; font-weight: normal;}
     .option-name {color: #6b7787; font-variant-numeric: tabular-nums;}
     .option:hover, .option[data-active], .option[aria-selected="true"] {color: inherit; background: #e8eef5;}
+    .option:disabled {opacity: .55; cursor: default;}
   `]
 
   unit = ""
@@ -48,6 +49,7 @@ export class StyleCombobox extends EditorCombobox {
   }
 
   protected select(option: ComboboxOption, event?: Event) {
+    if(this.disabled || option.disabled) return
     if(this.multiple) return super.select(option, event)
     const keyboardFocus = event?.currentTarget instanceof HTMLElement && event.currentTarget.matches(":focus")
     this.emit(option.value)

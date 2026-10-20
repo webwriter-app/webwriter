@@ -46,6 +46,7 @@ type Gesture = {
  * Resize: document mode exposes only the bottom-right corner. Freeform
  * corners set max-inline/block-size; midpoints constrain one logical axis.
  * Existing dimensions and intrinsic content can keep the element smaller.
+ * Iframes also set height so their viewport can grow vertically.
  * Canvas and slide items also set dimensions so they can grow with the handles.
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
@@ -1011,6 +1012,7 @@ export class TransformationFeature extends EditorFeature {
         if(x) this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         if(y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
+      else if(target instanceof HTMLIFrameElement && y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       else if(boardLayoutRole(target) === "column" && x) {
         this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         this.#write("flex-basis", `${Math.max(1, gesture.cssWidth + dw)}px`)

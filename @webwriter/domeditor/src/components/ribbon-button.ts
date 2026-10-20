@@ -396,6 +396,10 @@ export class RibbonButton extends LitElement {
       font-size: 0.7rem;
     }
 
+    ribbon-menu:has(.mark-dropdown-list) {
+      width: max-content;
+    }
+
     .snippet-empty-hint {
       padding: 0.4rem;
       color: #64748b;

@@ -6,7 +6,7 @@ import {colorHex, themeColorColumns as borderColorColumns} from "../css-color"
 import {mediaSourceButtonStyles} from "./media-source.styles"
 import {mediaCropInsets} from "../media"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
-import {anchorColorSubmenu} from "./popup-position"
+import {colorPaletteStyles, renderColorPalette} from "./color-palette"
 import {ref} from "lit/directives/ref.js"
 import "./style-combobox"
 import type {StyleCombobox} from "./style-combobox"
@@ -51,8 +51,6 @@ const boxStylePresets = [
   {name: "Red", background: borderColorColumns[6][1], border: borderColorColumns[6][0]},
   {name: "Purple", background: borderColorColumns[8][1], border: borderColorColumns[8][0]},
 ] as const
-
-const standardBorderColors = ["c00000", "ff0000", "ffc000", "ffff00", "92d050", "00b050", "00b0f0", "0070c0", "002060", "7030a0"]
 
 const sectionGroups = (definitions: readonly ElementStylePropertyDefinition[]) => {
   const groups = new Map<string, ElementStylePropertyDefinition[]>()
@@ -334,37 +332,8 @@ export class ElementStyleEditor extends LitElement {
     .border-color-picker > summary::-webkit-details-marker { display: none; }
     .border-color-chip { width: 100%; height: 100%; box-shadow: inset 0 0 0 1px #0002; }
     .text-color-preview { font-size: 0.65rem; font-weight: 700; line-height: 1; padding-bottom: 2px; border-bottom: 4px solid; }
-    .border-color-palette {
-      position: absolute; z-index: 4; top: 100%; right: 0;
-      width: max(100%, 12rem); max-width: calc(100vw - 2rem);
-      box-sizing: border-box; padding: 0.4rem; border: 1px solid #c5ccd5; border-radius: 4px;
-      background: white; box-shadow: 0 0 0 2px var(--compact-focus-color), 0 3px 6px #0002;
-    }
-    .color-grid { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
-    .color-column { display: grid; gap: 0; }
-    .color-column .color-swatch:first-child { margin-bottom: 0.4rem; }
-    .border-color-palette .color-swatch {
-      width: 100%; height: auto; aspect-ratio: 1; min-width: 0; border: 0; border-radius: 0;
-      padding: 0; cursor: pointer; box-shadow: inset 0 0 0 1px #0001;
-    }
-    .border-color-palette .color-swatch:hover,
-    :host([mode="compact"]) .border-color-palette .color-swatch:focus-visible,
-    .border-color-palette .color-swatch[aria-pressed="true"] { outline: 2px solid #8eb6df; outline-offset: -2px; }
-    .color-standard { border-top: 1px solid #d8dee6; margin-top: 0.4rem; padding-top: 0.4rem; }
-    .palette-action {
-      display: flex; align-items: center; gap: 0.4rem; width: 100%; padding: 0.35rem;
-      background: transparent; border: 0; text-align: left; cursor: pointer;
-    }
-    .palette-action:hover, .palette-action:focus-visible { background: #e8eef5; }
-    .palette-action:focus-visible { box-shadow: inset 0 0 0 2px var(--compact-focus-color); }
-    .palette-action svg { width: 1rem; height: 1rem; }
-    .palette-action .border-color-chip { width: 1rem; height: 1rem; background: currentColor; }
-    .palette-automatic { border-bottom: 1px solid #d8dee6; margin-bottom: 0.4rem; }
-    .palette-custom { position: relative; border-top: 1px solid #d8dee6; margin-top: 0.4rem; }
-    .palette-custom input[type="color"] {
-      position: fixed; box-sizing: border-box; width: 1px; height: 1px; padding: 0; border: 0;
-      opacity: 0; pointer-events: none;
-    }
+    ${colorPaletteStyles}
+    .border-color-palette { position: absolute; z-index: 4; top: 100%; right: 0; }
 
     ${dropdownChevronStyles}
 
@@ -1333,9 +1302,6 @@ export class ElementStyleEditor extends LitElement {
       picker.open = false
       if(keyboardFocus && !(event.currentTarget instanceof HTMLInputElement)) picker.querySelector("summary")!.focus()
     }
-    const swatch = (hex: string) => html`<button type="button" class="color-swatch"
-      style=${`background:#${hex}`} aria-label=${`Color #${hex}`} title=${`#${hex}`}
-      aria-pressed=${selected === `#${hex}`} @click=${(event: Event) => choose(event, `#${hex}`)}></button>`
     return html`<details class="border-color-picker" @toggle=${this.syncCompactPopupState} @keydown=${(event: KeyboardEvent) => {
       if(event.key !== "Escape") return
       event.stopPropagation()
@@ -1347,25 +1313,7 @@ export class ElementStyleEditor extends LitElement {
         ? html`<span class="text-color-preview" style=${`border-color:${current || selected}`}>Abc</span>`
         : html`<span class="border-color-chip" style=${`background:${current || (property === "background-color" ? "transparent" : selected)}`}></span>`}</summary>
       <div class="border-color-palette" role="group" aria-label=${`${label} palette`}>
-        <button type="button" class="palette-action palette-automatic" @click=${(event: Event) => choose(event, property === "border-color" ? "currentColor" : "")}>
-          <span class="border-color-chip"></span>Automatic
-        </button>
-        <div class="color-grid">${borderColorColumns.map(column => html`<div class="color-column">${column.map(swatch)}</div>`)}</div>
-        <div class="color-grid color-standard">${standardBorderColors.map(swatch)}</div>
-        <div class="palette-custom">
-          <button type="button" class="palette-action" @click=${(event: Event) => {
-            const control = (event.currentTarget as HTMLElement).parentElement!
-            const input = control.querySelector<HTMLInputElement>('input[type="color"]')!
-            anchorColorSubmenu(input, control.closest<HTMLElement>(".border-color-palette")!, event.currentTarget as HTMLElement)
-            this.dispatchEvent(new CustomEvent("ribbon-input-pointerdown", {
-              detail: {input}, bubbles: true, composed: true,
-            }))
-            if(typeof input.showPicker === "function") input.showPicker()
-            else input.click()
-          }}>${ribbonIcon("Theme")}Custom…</button>
-          <input type="color" tabindex="-1" aria-label=${`Custom ${label.toLowerCase()}`} .value=${selected}
-            @change=${(event: Event) => choose(event, (event.currentTarget as HTMLInputElement).value)}>
-        </div>
+        ${renderColorPalette(label, current, choose, {automaticValue: property === "border-color" ? "currentColor" : ""})}
       </div>
     </details>`
   }

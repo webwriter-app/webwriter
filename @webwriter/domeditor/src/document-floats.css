@@ -13,6 +13,10 @@
     }
   }
 
+  :where(iframe:not([is])) {
+    aspect-ratio: 16 / 9;
+  }
+
   body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
     --ww-lane: 0px;
     display: flow-root;
@@ -37,7 +41,7 @@
 
     /* Native media defaults to inline display, where auto margins cannot
      * center it. Keep inline media within prose and widget contracts intact. */
-    :is(&, & > main, & > article, & > section) > :is(picture, img, audio[controls], video, iframe, embed, object):not([is]) {
+    :is(&, & > main, & > article, & > section) > :is(picture, img, audio[controls], video, iframe, embed, object, svg):not([is]) {
       display: block;
     }
 

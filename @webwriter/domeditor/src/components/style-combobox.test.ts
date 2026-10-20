@@ -89,4 +89,44 @@ describe("shared Style combobox", () => {
     expect(input.disabled).toBe(true)
     expect(combo.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.disabled).toBe(true)
   })
+
+  it("displays a missing value while skipping its disabled option during keyboard selection", async () => {
+    const combo = await mount(false)
+    combo.value = "missing"
+    combo.options = [{value: "missing", label: "Missing reference", disabled: true}, ...combo.options]
+    await combo.updateComplete
+    const changes = vi.fn()
+    combo.addEventListener("combobox-change", changes)
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    expect(input.value).toBe("Missing reference")
+    input.focus()
+    await combo.updateComplete
+    const missing = combo.shadowRoot!.querySelector<HTMLButtonElement>('[role="option"]')!
+    expect(missing.disabled).toBe(true)
+    missing.click()
+    expect(changes).not.toHaveBeenCalled()
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}))
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    expect(changes.mock.calls[0][0].detail).toEqual({value: "1"})
+  })
+
+  it("does not commit disabled presets through a typed label or an all-disabled list", async () => {
+    const combo = await mount()
+    combo.value = "current"
+    combo.options = [{value: "missing", label: "Missing", disabled: true}]
+    await combo.updateComplete
+    const changes = vi.fn()
+    combo.addEventListener("combobox-change", changes)
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    input.focus()
+    input.value = "Missing"
+    input.dispatchEvent(new Event("change"))
+    expect(changes).not.toHaveBeenCalled()
+    expect(combo.value).toBe("current")
+    combo.editable = false
+    await combo.updateComplete
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}))
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    expect(changes).not.toHaveBeenCalled()
+  })
 })

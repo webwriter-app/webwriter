@@ -1416,7 +1416,9 @@ describe("widget options drawer", () => {
     json.dispatchEvent(new Event("change"))
     json.value = '{"a": 2}'
     json.dispatchEvent(new Event("change"))
-    drawer.querySelector<HTMLButtonElement>(".widget-action")!.click()
+    const button = drawer.querySelector<RibbonButton>(".widget-action")!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
     expect(changes).toEqual([
       {name: "count", value: 7},

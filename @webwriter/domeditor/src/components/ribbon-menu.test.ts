@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {RibbonMenu} from "./ribbon-menu"
+import {insertMathStructureButtons} from "./ribbon-menu-config"
 
 const opened = new Set<HTMLElement>()
 const showPopover = vi.fn(function(this: HTMLElement) {opened.add(this)})
@@ -44,6 +45,22 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("nested ribbon menus", () => {
+  it("lets formula menus use the viewport height instead of the standard menu cap", async () => {
+    const menu = new RibbonMenu()
+    menu.groups = [{label: "Formula options", buttons: insertMathStructureButtons}]
+    document.body.append(menu)
+    await menu.updateComplete
+    const surface = menu.shadowRoot!.querySelector<HTMLElement>(".menu")!
+    expect(getComputedStyle(surface).maxHeight).toBe(`calc(${window.innerHeight}px - 48px)`)
+    expect(getComputedStyle(surface).overflow).toBe("auto")
+
+    menu.groups = [{label: "Elements", buttons: [{label: "Formula", submenu: insertMathStructureButtons}]}]
+    await menu.updateComplete
+    const submenu = await open(menu, "Formula")
+    expect(getComputedStyle(submenu).maxHeight).toBe(`calc(${window.innerHeight}px - 48px)`)
+    expect(getComputedStyle(submenu).overflow).toBe("auto")
+  })
+
   it("promotes every submenu to the top layer and closes only the innermost menu on Escape", async () => {
     const menu = await mount()
     const parent = await open(menu, "List")

@@ -1,13 +1,34 @@
 import {LitElement, adoptStyles, type PropertyDeclaration} from "lit"
 
-interface BaseOptionDeclaration<TypeHint=any> extends PropertyDeclaration<TypeHint> {
-  type?: TypeHint
-  label?: Record<string, string>
-  placeholder?: Record<string, string>
-  description?: Record<string, string>
+export type LocalizedText = string | Record<string, string>
+
+export interface OptionAvailability {
+  hidden?: boolean
+  disabled?: boolean
+  disabledReason?: LocalizedText
 }
 
-export interface BooleanOptionDeclaration extends BaseOptionDeclaration<BooleanConstructor | "boolean"> {}
+export interface OptionGroupDeclaration {
+  label?: LocalizedText
+  description?: LocalizedText
+  collapsible?: boolean
+  collapsed?: boolean
+  advanced?: boolean
+}
+
+interface BaseOptionDeclaration<TypeHint=any> extends PropertyDeclaration<TypeHint>, OptionAvailability {
+  group?: string
+  readOnly?: boolean
+  unit?: string
+  type?: TypeHint
+  label?: LocalizedText
+  placeholder?: LocalizedText
+  description?: LocalizedText
+}
+
+export interface BooleanOptionDeclaration extends BaseOptionDeclaration<BooleanConstructor | "boolean"> {
+  control?: "checkbox" | "switch"
+}
 
 interface InputOptionDeclaration<TypeHint=any> extends BaseOptionDeclaration<TypeHint> {
   pattern?: string
@@ -24,6 +45,8 @@ export interface StringOptionDeclaration extends InputOptionDeclaration<StringCo
 }
 
 export interface NumberOptionDeclaration extends InputOptionDeclaration<NumberConstructor | "number"> {
+  control?: "input" | "range" | "duration"
+  steps?: number[]
   min?: number
   max?: number
   step?: number
@@ -53,9 +76,26 @@ export interface ColorOptionDeclaration extends BaseOptionDeclaration<"color"> {
   swatches?: string[]
 }
 
+export type SelectOptionChoice = {
+  value: string
+  label?: LocalizedText
+  description?: LocalizedText
+  children?: never
+} | {
+  label?: LocalizedText
+  children: SelectOptionChoice[]
+  value?: never
+}
+
+export interface ReferenceOptionDeclaration extends BaseOptionDeclaration<"reference"> {
+  selector?: string
+  excludeSelf?: boolean
+}
+
 export interface SelectOptionDeclaration extends BaseOptionDeclaration<"select"> {
+  control?: "select" | "radio" | "segmented" | "tree"
   multiple?: boolean
-  options?: {value: string, label?: Record<string, string>, description?: Record<string, string>}[]
+  options?: SelectOptionChoice[]
 }
 
 export type OptionDeclaration = 
@@ -72,11 +112,18 @@ export type OptionDeclaration =
 | ObjectOptionDeclaration
 | ColorOptionDeclaration
 | SelectOptionDeclaration
+| ReferenceOptionDeclaration
 
-export interface ActionDeclaration {
-  label?: Record<string, string>
-  placeholder?: Record<string, string>
-  description?: Record<string, string>
+export interface ActionDeclaration extends OptionAvailability {
+  /** Native chooser input; the action method receives transient File[]. */
+  input?: {type: "file", accept?: string, multiple?: boolean}
+  group?: string
+  icon?: string
+  intent?: "default" | "danger"
+  confirm?: LocalizedText
+  label?: LocalizedText
+  placeholder?: LocalizedText
+  description?: LocalizedText
 }
 
 /** MIME type essences browsers execute as classic scripts. */
@@ -106,11 +153,13 @@ export class LitElementWw extends LitElement {
   static scopedElements: Record<string, CustomElementConstructor> = {}
   static readonly options: Record<string, OptionDeclaration> = {}
   static readonly actions: Record<string, ActionDeclaration> = {}
+  static readonly optionGroups: Record<string, OptionGroupDeclaration> = {}
   static readonly dataType: string | undefined = undefined
 
-  /** Optional per-instance editor declarations override nonempty static maps. */
+  /** Per-instance editor declarations, including empty maps, override static maps. */
   declare readonly options?: Record<string, OptionDeclaration>
   declare readonly actions?: Record<string, ActionDeclaration>
+  declare readonly optionGroups?: Record<string, OptionGroupDeclaration>
   protected localize?: {getLocale: () => string, setLocale: (locale: string) => Promise<void>}
 
   /** One native registry per concrete widget class, shared by its instances. */
@@ -294,7 +343,7 @@ export class LitElementWw extends LitElement {
 
   /** Updates a data block in place, preserving its identity and attributes.
    * A managed block cannot be written until its current scope is ready. */
-  setData(type: string, value: string, attrs: Record<string, string> = {}) {
+  setData(type: string, value: string, attrs: LocalizedText = {}) {
     if(!isDataBlockType(type)) throw new TypeError(`'${type}' is not a data block type`)
     if(Object.keys(attrs).some(name => name.toLowerCase() === "src")) throw new TypeError("Data blocks cannot have src")
     this.#syncData()

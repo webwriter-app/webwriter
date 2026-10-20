@@ -974,7 +974,7 @@ await check("Border controls are narrow and dropdown chevrons overlay field valu
   finally {editor.remove(); style.remove(); ribbon.remove()}
 })
 
-await check("Ribbon custom colors show rainbow swatches and commit chosen colors", async () => {
+await check("Ribbon text colors share the toolbox palette and commit chosen colors", async () => {
   const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
   for(const name of ["color", "background-color"]) {
     const combo = new RibbonCombobox()
@@ -988,9 +988,12 @@ await check("Ribbon custom colors show rainbow swatches and commit chosen colors
       await combo.updateComplete
       await layoutFrame()
       const custom = combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Custom"]')!
-      const swatch = custom.querySelector<HTMLElement>(".custom-color-preview")!
-      assert(getComputedStyle(swatch).backgroundImage.includes("linear-gradient"), "Custom lacks a rainbow gradient")
-      assert(swatch.getBoundingClientRect().width > 20 && swatch.getBoundingClientRect().height > 10, "rainbow swatch is not visible")
+      const swatches = combo.shadowRoot!.querySelectorAll<HTMLElement>(".color-swatch")
+      assert(swatches.length === 70, "palette does not match the toolbox colors")
+      const swatch = swatches[0].getBoundingClientRect()
+      assert(swatch.width > 10 && Math.abs(swatch.width - swatch.height) < .1, "palette swatches are not visible squares")
+      const icon = custom.querySelector("svg")!.getBoundingClientRect()
+      assert(icon.width === 16 && icon.height === 16, "Custom icon does not match the toolbox size")
       const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
       let opened = false
       Object.defineProperty(input, "showPicker", {value: () => {opened = true}})
@@ -1519,6 +1522,37 @@ await check("details remain intact after applying style presets", async () => {
   finally { frame.remove(); controls.remove() }
 })
 
+await check("saved document module references do not poison trusted widget loading", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const script = `data:text/javascript,${encodeURIComponent('customElements.define("saved-document-widget", class extends HTMLElement {})')}`
+  const pkg = {name: "saved-document-fixture", version: "1.0.0", label: "Fixture", authors: [], keywords: [], links: {},
+    scripts: [script], styles: [], members: []}
+  const frame = document.createElement("iframe")
+  const authored = `<script type="module" class="authored" src="${script}">window.authoredModuleRan = true</script>`
+  frame.srcdoc = editorFrameHTML(`<html><head>${authored}</head><body><saved-document-widget></saved-document-widget>${authored.replace('class="authored" ', '')}</body></html>`, {
+    bridgeNonce: crypto.randomUUID(), hostOrigin: location.origin, revision: 0, language: "en", packages: [pkg],
+    entryURL: new URL("./native-browser-frame.ts?proofreading-disabled", import.meta.url).href, executeScripts: true,
+  })
+  fixture.append(frame)
+  try {
+    await new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string, authoredModuleRan?: boolean}
+    assert(view.editor, `saved document editor did not initialize: ${view.editorError}`)
+    const doc = frame.contentDocument!
+    assert(doc.head.querySelector("script.authored")?.outerHTML === authored, "authored head module attributes changed")
+    assert(doc.body.querySelector("script")?.outerHTML === authored.replace('class="authored" ', ''), "authored body module attributes changed")
+    assert(!doc.querySelector(".◆pending-module"), "temporary module markers were not cleaned up")
+    assert(!doc.querySelector("saved-document-widget")?.matches(":defined"), "authored module ran before the trusted loader")
+    await view.editor!.getActionHandler("load-widgets")({type: "load-widgets", widgets: [{name: pkg.name, version: pkg.version}], packages: [pkg], importMap: {}})
+    assert(doc.querySelector("saved-document-widget")?.matches(":defined"), "saved document widget was not registered")
+    assert(!view.authoredModuleRan, "authored inline module content executed")
+    const exported = view.editor!.toHTML(false, false)
+    assert(exported.includes(authored), "serialization lost the authored module")
+    assert(!exported.includes("◆pending-module"), "serialization retained module startup artifacts")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("collaborated scripts remain inert with namespace prefixes, clones and later edits", async () => {
   const root = document.createElement("main"), result = document.createElement("output")
   result.id = "native-script-execution"
@@ -1948,6 +1982,65 @@ await check("document resizing and graphic fitting preserve normal flow", async 
     assert(getComputedStyle(graphic).position === "static", "document graphic left normal flow")
   }
   finally { graphic.remove(); editor.features.transformation.clearTransform() }
+})
+
+await check("iframes default to 16:9 and resize vertically in document flow", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:900px;height:1000px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><iframe id="empty"></iframe><iframe id="loaded" src="about:blank"></iframe><iframe id="sized" height="220" style="width:400px"></iframe><iframe id="styled" style="height:240px;width:400px"></iframe><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "iframe resize fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.setAttribute("data-ww-theme", "base")
+    doc.head.append(theme)
+    for(const preset of documentThemes) {
+      theme.textContent = preset.source
+      for(const width of [375, 900]) {
+        frame.style.width = `${width}px`
+        await layoutFrame()
+        for(const id of ["empty", "loaded"]) {
+          const rect = doc.getElementById(id)!.getBoundingClientRect()
+          assert(rect.width > 0 && Math.abs(rect.width * 9 / 16 - rect.height) < 1, `${preset.value}/${width}/${id}: default iframe is not 16:9 (${rect.width} × ${rect.height})`)
+        }
+        assert(Math.abs(doc.getElementById("sized")!.getBoundingClientRect().height - 220) < 1, "16:9 default replaced authored height attribute")
+        assert(Math.abs(doc.getElementById("styled")!.getBoundingClientRect().height - 240) < 1, "16:9 default replaced authored CSS height")
+      }
+    }
+    theme.textContent = defaultDocumentTheme.source
+    const target = doc.querySelector<HTMLIFrameElement>("#empty")!
+    editor.features.selection.selectElement(target)
+    const transform = editor.features.transformation
+    for(const delta of [100, -60]) {
+      const before = target.getBoundingClientRect()
+      const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.bottom}))
+      transform.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: before.right, clientY: before.bottom + delta, altKey: true}))
+      transform.handleScaleEnd()
+      await layoutFrame()
+      const after = target.getBoundingClientRect()
+      assert(Math.abs(after.height - before.height - delta) < 1, `iframe height did not change by ${delta}px`)
+      assert(Math.abs(after.width - before.width) < 1 && Math.abs(after.top - before.top) < 1, "vertical resizing changed iframe width or flow position")
+      assert(!target.style.position && !target.style.top && !target.style.left, "iframe resize left normal flow")
+    }
+    const saved = document.createElement("iframe")
+    saved.style.cssText = frame.style.cssText
+    const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
+    saved.srcdoc = editor.toHTML()
+    document.body.append(saved)
+    try {
+      await loaded
+      assert(Math.abs(saved.contentDocument!.getElementById("empty")!.getBoundingClientRect().height - target.getBoundingClientRect().height) < 1, "standalone export lost resized iframe height")
+      const rect = saved.contentDocument!.getElementById("loaded")!.getBoundingClientRect()
+      assert(Math.abs(rect.width * 9 / 16 - rect.height) < 1, "standalone export lost 16:9 default")
+    }
+    finally { saved.remove() }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("cancelled resizing accepts the first delete activation", async () => {
@@ -5729,6 +5822,189 @@ await check("wide widgets remain centered between symmetric float lanes", async 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("empty document gutters prefer floats throughout the viewport", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;max-width:none;border:0"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "gutter fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, events = view as unknown as typeof globalThis
+    editor.schema.extendWidgets([{tagName: "native-gutter-widget"}])
+    for(const width of [418, 900, 1400]) for(const kind of ["ribbon", "shape", "widget", "sole-widget"]) for(const side of ["left", "right"] as const) for(const edge of ["top", "bottom"]) {
+      frame.style.width = `${width}px`
+      doc.body.innerHTML = kind === "sole-widget" ? "" : '<p id="anchor">Only paragraph</p>'
+      const anchor = doc.querySelector("#anchor")
+      let widget: HTMLElement | null = null
+      const data = new events.DataTransfer()
+      if(kind === "widget" || kind === "sole-widget") {
+        widget = doc.createElement("native-gutter-widget")
+        widget.style.cssText = "display:block;width:120px;height:60px"
+        widget.innerHTML = "<!--keep--><span>Authored widget content</span>"
+        doc.body.append(widget)
+        editor.features.selection.selectElement(widget)
+      }
+      else data.setData(kind === "shape" ? "application/x-webwriter-graphic-shape" : "application/x-webwriter-element-tag", kind === "shape" ? JSON.stringify({shape:"rectangle"}) : "video")
+      await layoutFrame()
+      if(widget) {
+        editor.features.selection.selectElement(widget)
+        const surface = editor.appendix.querySelector('[part="node-drag-surface"]')
+        assert(surface, `${width} ${kind} ${side} ${edge}: widget has no drag surface`)
+        surface!.dispatchEvent(new events.DragEvent("dragstart", {dataTransfer:data, bubbles:true, composed:true, cancelable:true}))
+      }
+      const init = {dataTransfer:data, clientX:side === "left" ? 5 : width - 5, clientY:edge === "top" ? 5 : 695, bubbles:true, composed:true, cancelable:true}
+      doc.body.dispatchEvent(new events.DragEvent("dragover", init))
+      const preview = editor.appendix.querySelector("#◆float-drop-preview")
+      assert(preview?.getAttribute("part")?.includes(`float-drop-preview-${side}`), `${width} ${kind} ${side} ${edge}: no matching gutter float preview`)
+      const previewBox = preview!.getBoundingClientRect()
+      assert(previewBox.width > 0 && previewBox.height > 0, "gutter preview has no visible footprint")
+      doc.body.dispatchEvent(new events.DragEvent("drop", init))
+      await layoutFrame()
+      const inserted = doc.querySelector(kind === "shape" ? "svg" : widget ? "native-gutter-widget" : "video")!
+      assert(inserted?.classList.contains(`ww-float-${side}`), `${width} ${kind} ${side} ${edge}: gutter drop entered ordinary flow`)
+      if(anchor) assert(inserted.nextElementSibling === anchor, "gutter drop did not use the nearest document anchor")
+      else assert(inserted.nextElementSibling?.localName === "p", "sole floated widget left no editable paragraph")
+      assert(!(inserted as HTMLElement).style.position, "gutter drop added spatial positioning to the element")
+      if(widget) assert(inserted === widget && widget.innerHTML.includes("<!--keep-->"), "gutter drop rebuilt the widget")
+      assert(!editor.appendix.querySelector("#◆float-drop-preview") && !doc.body.classList.contains("◆drop-selection-active"), "gutter drop left editing artifacts")
+      assert(!editor.toHTML(true).includes("◆"), "gutter drop serialized editor markers")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("empty graphics drag through their full capture outline into floats", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;max-width:none;border:0"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "empty graphic fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, events = view as unknown as typeof globalThis
+    for(const width of [418, 1400]) for(const edge of ["up", "right", "down", "left"]) for(const side of ["left", "right"] as const) {
+      frame.style.width = `${width}px`
+      doc.body.innerHTML = "<p></p>"
+      doc.getSelection()!.setBaseAndExtent(doc.body.firstChild!, 0, doc.body.firstChild!, 0)
+      editor.features.selection.processSelection()
+      editor.features.graphic.actions.insertGraphic({type:"insertGraphic"})
+      await layoutFrame()
+      const graphic = doc.querySelector("svg")!, box = graphic.getBoundingClientRect()
+      assert(editor.features.selection.captureSelectedElement === graphic, "new empty graphic did not enter capture editing")
+      for(const inset of [-3, 2]) {
+        const x = edge === "left" ? box.left + inset : edge === "right" ? box.right - inset : box.left + box.width / 3
+        const y = edge === "up" ? box.top + inset : edge === "down" ? box.bottom - inset : box.top + box.height / 3
+        // On compact pages, the outside strip can meet the native scrollbar.
+        if(!doc.elementFromPoint(x, y)) continue
+        const hit = editor.appendix.elementFromPoint(x, y) as HTMLElement | null
+        assert(hit?.getAttribute("part")?.split(/\s+/).includes(`transform-overlay-edge-${edge}`) && hit.draggable,
+          `${width} ${edge} inset ${inset}: capture outline blocks the native drag handle`)
+      }
+      const handle = editor.features.transformation.overlay.querySelector<HTMLElement>(`[part~="transform-overlay-edge-${edge}"]`)!
+      const press = new events.PointerEvent("pointerdown", {bubbles:true, composed:true, cancelable:true, button:0})
+      handle.dispatchEvent(press)
+      assert(!press.defaultPrevented, "graphic border prevented native drag initiation")
+      const data = new events.DataTransfer()
+      handle.dispatchEvent(new events.DragEvent("dragstart", {dataTransfer:data, bubbles:true, composed:true, cancelable:true}))
+      assert(editor.features.manipulation.draggedElement === graphic, "graphic border did not start a node drag")
+      const init = {dataTransfer:data, clientX:side === "left" ? 5 : width - 5, clientY:695, bubbles:true, composed:true, cancelable:true}
+      doc.body.dispatchEvent(new events.DragEvent("dragover", init))
+      assert(editor.appendix.querySelector("#◆float-drop-preview"), "empty graphic has no float preview")
+      doc.body.dispatchEvent(new events.DragEvent("drop", init))
+      handle.dispatchEvent(new events.DragEvent("dragend", {dataTransfer:data, bubbles:true, composed:true}))
+      await layoutFrame()
+      assert(graphic.classList.contains(`ww-float-${side}`), `${width} ${edge} ${side}: empty graphic did not retain the pointer's float side`)
+      assert(view.getComputedStyle(graphic).float === (width < 600 ? "none" : side), `${width} ${edge} ${side}: empty graphic did not use the responsive float layout`)
+      assert(view.getComputedStyle(graphic).position === "static" && !graphic.style.left && !graphic.style.top, "empty graphic used spatial positioning")
+      assert(graphic.children.length === 0 && graphic.getAttribute("viewBox") === "0 0 1600 900", "drag changed the drawing area")
+      assert(!editor.features.manipulation.draggedElement && !editor.appendix.querySelector("#◆float-drop-preview"), "empty graphic drag left stale state")
+      assert(!editor.toHTML(true).includes("◆"), "empty graphic serialized editor artifacts")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("document shape drops use float lanes and ordinary content flow", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:700px;border:0"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "shape drop fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    for(const width of [1400, 1900]) for(const container of ["body", "main"]) for(const source of ["keyboard", "ribbon"]) for(const side of ["left", "right", "flow"] as const) {
+      frame.style.width = `${width}px`
+      const content = '<!--keep--><p id="anchor" style="height:160px">Before the shape. The document content remains in its column.</p><p id="after">Following paragraph</p>'
+      doc.body.innerHTML = container === "main" ? `<main>${content}</main>` : content
+      const main = container === "main" ? doc.querySelector("main")! : doc.body
+      const anchor = doc.querySelector("#anchor")!, after = doc.querySelector("#after")!
+      doc.getSelection()!.setBaseAndExtent(anchor.firstChild!, 0, anchor.firstChild!, 0)
+      editor.features.selection.processSelection()
+      await layoutFrame()
+      const data: Record<string, string> = source === "keyboard"
+        ? {"application/x-webwriter-graphic-shape": JSON.stringify({shape: "rectangle", paint: {fill: "#fbbf24", stroke: "#334155"}})}
+        : {"application/x-webwriter-ribbon-insertion": "insert-graphic-shape:rectangle"}
+      const box = anchor.getBoundingClientRect()
+      let x = box.left + box.width / 2, y = box.bottom + 8
+      if(side !== "flow") {
+        const graphic = editor.features.graphic.createGraphic("rectangle")
+        editor.features.manipulation.showFloatDropPreview(anchor, side, "transfer", graphic)
+        const preview = editor.appendix.querySelector("#◆float-drop-preview")!.getBoundingClientRect()
+        x = preview.left + preview.width / 2; y = preview.top + preview.height / 2
+        editor.features.manipulation.clearFloatDropPreview("transfer")
+      }
+      assert(replayHostDrag({event: "dragover", x, y, data}, doc), `${source} ${side}: dragover was rejected`)
+      assert(Boolean(editor.appendix.querySelector("#◆float-drop-preview")) === (side !== "flow"), `${source} ${side}: incorrect placement preview`)
+      assert(replayHostDrag({event: "drop", x, y, data}, doc), `${source} ${side}: drop was rejected`)
+      await layoutFrame()
+      const graphic = main.querySelector("svg")!
+      assert(graphic && graphic.parentElement === main, `${source} ${side}: no shape in the document`)
+      assert(view.getComputedStyle(graphic).position === "static", `${source} ${side}: shape is absolutely positioned`)
+      assert(view.getComputedStyle(graphic).float === (side === "flow" ? "none" : side), `${source} ${side}: wrong float placement`)
+      assert(main.firstChild?.nodeType === Node.COMMENT_NODE && anchor.isConnected && after.isConnected, `${source} ${side}: authored content changed`)
+      if(side === "flow") {
+        const shapeBox = graphic.getBoundingClientRect(), anchorBox = anchor.getBoundingClientRect()
+        assert(shapeBox.top >= anchorBox.bottom, `${source}: flow shape overlaps the preceding paragraph`)
+        assert(Math.abs(shapeBox.left + shapeBox.width / 2 - anchorBox.left - anchorBox.width / 2) < 1, `${source}: flow shape is outside the content column`)
+      }
+      else assert(graphic.nextElementSibling === anchor, `${source} ${side}: float is not beside its anchor`)
+      if(source === "keyboard") assert(graphic.querySelector("rect")?.getAttribute("fill") === "#fbbf24", "shape paint was lost")
+      assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "shape drop left editing artifacts")
+      assert(!editor.toHTML(true).includes("◆"), "serialized shape contains editing artifacts")
+    }
+    frame.style.minWidth = "0"
+    for(const width of [418, 900, 1400]) for(const source of ["command", "ribbon", "keyboard"]) {
+      frame.style.width = `${width}px`
+      doc.body.innerHTML = '<p>Before</p><p id="insertion"></p><p id="after">After</p>'
+      const insertion = doc.querySelector("#insertion")!, after = doc.querySelector("#after")!
+      doc.getSelection()!.setBaseAndExtent(insertion, 0, insertion, 0)
+      editor.features.selection.processSelection()
+      await layoutFrame()
+      if(source === "command") editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+      else {
+        const rect = insertion.getBoundingClientRect()
+        const data: Record<string, string> = source === "keyboard"
+          ? {"application/x-webwriter-graphic-shape": JSON.stringify({shape: "rectangle"})}
+          : {"application/x-webwriter-ribbon-insertion": "insert-graphic-shape:rectangle"}
+        const point = {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, data}
+        replayHostDrag({event: "dragover", ...point}, doc)
+        replayHostDrag({event: "drop", ...point}, doc)
+      }
+      await layoutFrame()
+      const graphic = doc.querySelector("svg")!
+      assert(graphic && view.getComputedStyle(graphic).position === "static", `${source} ${width}: new shape is spatially positioned`)
+      assert(!graphic.style.left && !graphic.style.top && !graphic.style.right && !graphic.style.bottom, `${source} ${width}: new shape has position offsets`)
+      if(source === "command") assert(after.getBoundingClientRect().top >= graphic.getBoundingClientRect().bottom, `${width}: shape command removed the shape from document flow`)
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("native drag floats in preview areas and preserves ordinary gap drops", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;inline-size:1400px;min-inline-size:1400px;max-inline-size:none;height:700px;border:0"
@@ -5878,7 +6154,9 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
       range.selectNodeContents(text);
       const firstLine = range.getClientRects()[0];
       assert(firstLine && Math.abs(firstLine.top - pictureRect.top) < 8, "first line is offset below the floated picture: " + JSON.stringify({picture:pictureRect.top, text:firstLine?.top, margin:getComputedStyle(text).marginTop}));
-      assert(pictureRect.width > 256 && Math.abs(pictureRect.width - Math.max(256, (document.documentElement.clientWidth - 2 * Math.min(32, Math.max(16, document.documentElement.clientWidth * .02)) - 720) / 2 - 16)) < 1, "default picture did not fill its float lane");
+      // cqw uses the root content box, excluding both reserved scrollbar gutters.
+      const pageContainerWidth = document.documentElement.getBoundingClientRect().width;
+      assert(pictureRect.width > 256 && Math.abs(pictureRect.width - Math.max(256, (pageContainerWidth - 2 * Math.min(32, Math.max(16, pageContainerWidth * .02)) - 720) / 2 - 16)) < 1, "default picture did not fill its float lane");
       assert(picture.classList.contains("ww-float-right") && !picture.style.float && !picture.style.margin && !picture.style.maxWidth
         && picture.style.getPropertyValue("--ww-float-size").includes("100%"), "floated picture did not preserve its authored width through theme geometry");
       assert(firstLine && firstLine.bottom > pictureRect.top && firstLine.top < pictureRect.top + 24 && firstLine.right <= pictureRect.left - 5, "paragraph did not wrap beside the floated placeholder: " + JSON.stringify({picture:pictureRect, firstLine, parent:parentRect}));

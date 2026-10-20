@@ -9,6 +9,7 @@ export type ComboboxOption = {
   description?: string
   dividerBefore?: boolean
   group?: string
+  disabled?: boolean
 }
 
 let comboboxInstanceCount = 0
@@ -313,7 +314,7 @@ export class EditorCombobox extends LitElement {
   }
 
   protected select(option: ComboboxOption, _event?: Event) {
-    if(this.disabled) return
+    if(this.disabled || option.disabled) return
     if(this.multiple) {
       this.values = this.values.includes(option.value) ? this.values.filter(value => value !== option.value) : [...this.values, option.value]
       this.draft = this.displayedValue()
@@ -331,6 +332,7 @@ export class EditorCombobox extends LitElement {
     const draft = this.draft.trim()
     const exact = this.options.find(option => option.value.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en")
       || option.label.toLocaleLowerCase("en") === draft.toLocaleLowerCase("en"))
+    if(exact?.disabled) { this.close(true); return }
     const value = exact?.value ?? draft
     if(value !== this.value) this.emit(value)
     else this.close(true)
@@ -362,9 +364,11 @@ export class EditorCombobox extends LitElement {
       event.preventDefault()
       if(!this.open) void this.setOpen(true)
       const offset = event.key === "ArrowDown" ? 1 : -1
-      this.activeIndex = this.activeIndex < 0
-        ? offset > 0 ? 0 : Math.max(0, options.length - 1)
-        : (this.activeIndex + offset + options.length) % Math.max(1, options.length)
+      const indices = options.flatMap((option, index) => option.disabled ? [] : [index])
+      const current = indices.indexOf(this.activeIndex)
+      this.activeIndex = indices.length ? indices[current < 0
+        ? offset > 0 ? 0 : indices.length - 1
+        : (current + offset + indices.length) % indices.length] : -1
       this.requestUpdate()
       return
     }
@@ -427,6 +431,7 @@ export class EditorCombobox extends LitElement {
         class="option"
         type="button"
         role="option"
+        ?disabled=${option.disabled}
         title=${option.description ? `${option.label} — ${option.description}` : option.label}
         style=${this.optionStyle(option, index)}
         aria-selected=${this.multiple ? this.values.includes(option.value) : selected === option}

@@ -98,6 +98,23 @@ describe("local live preview bundles", () => {
 })
 
 describe("isolated frame documents", () => {
+  it("defers authored module URLs until before the trusted editor initializes", () => {
+    const source = '<html><head><script type="module" class="authored" src="https://cdn.example/widget.js"></script><script src="./classic.js"></script></head><body><script type="module" src="./body.js"></script><template><script type="module" src="./inert.js"></script></template></body></html>'
+    const root = parse(editorFrameHTML(source, editorOptions()))
+    const pending = [...root.querySelectorAll<HTMLScriptElement>("script.◆pending-module")]
+    expect(pending).toHaveLength(2)
+    expect(pending.every(script => !script.hasAttribute("src"))).toBe(true)
+    const restore = root.head.querySelector<HTMLScriptElement>('script.◆editor-only[type="module"]:not([src])')!
+    expect(restore.getAttribute("nonce")).toBe("host-bridge-nonce")
+    expect(restore.textContent).toContain('[["https://cdn.example/widget.js","authored"],["./body.js",null]]')
+    expect(restore.compareDocumentPosition(root.head.querySelector('script[src*="editor-entry"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(root.querySelector('script[src="./classic.js"]')).not.toBeNull()
+    expect(root.querySelector("template")!.content.querySelector('script[src="./inert.js"]')).not.toBeNull()
+    const inert = parse(editorFrameHTML(source, editorOptions({executeScripts: false})))
+    expect(inert.querySelector(".◆pending-module")).toBeNull()
+    expect(inert.querySelector('script[src="https://cdn.example/widget.js"]')).not.toBeNull()
+  })
+
   it("allows the package test shell under the configured application base path", () => {
     vi.stubEnv("BASE_URL", "/nested/")
     try {

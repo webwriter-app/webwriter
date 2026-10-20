@@ -3,6 +3,7 @@ class WwQuiz extends HTMLElement {
   static options = {
     answer: {
       type: "select",
+      group: "quiz",
       label: {_: "Correct answer"},
       options: [
         {value: "true", label: {_: "True"}},
@@ -10,7 +11,18 @@ class WwQuiz extends HTMLElement {
       ],
     },
   }
-  static actions = {resetAnswer: {label: {_: "Reset correct answer"}}}
+  static optionGroups = {
+    quiz: {label: {_: "Quiz settings"}, collapsible: true, advanced: false},
+  }
+  static actions = {
+    resetAnswer: {
+      label: {_: "Reset correct answer"},
+      group: "quiz",
+      icon: "Restore",
+      intent: "default",
+      confirm: {_: "Reset the correct answer?"},
+    },
+  }
   choice = ""
 
   constructor() {

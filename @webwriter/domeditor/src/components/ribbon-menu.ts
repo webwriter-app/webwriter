@@ -312,6 +312,11 @@ export class RibbonMenu extends LitElement {
       padding-left: 0.45rem;
     }
 
+    .menu:has([data-action^="insert-math:"]),
+    .submenu:has(> [data-action^="insert-math:"]) {
+      max-height: calc(100vh - 3rem);
+    }
+
     @supports (top: anchor(top)) and (left: anchor(right)) {
       .submenu {
         position: fixed;
@@ -822,6 +827,7 @@ export class RibbonMenu extends LitElement {
               draggable=${String(Boolean(this.dragTag(submenuButton) || this.packageInsertionAction(submenuButton)) && !(typeof submenuButton !== "string" && submenuButton.disabled))}
               role="menuitem"
               aria-label=${this.buttonLabel(submenuButton)}
+              data-action=${this.buttonAction(submenuButton)}
               tabindex=${submenuIndex === 0 ? "0" : "-1"}
               ?disabled=${typeof submenuButton !== "string" && submenuButton.disabled}
               title=${this.buttonLabel(submenuButton)}

@@ -1,7 +1,7 @@
 import {LitElement, css, html, nothing} from "lit"
 import type {StyleMarkOption} from "../marks"
-import {anchorColorSubmenu, fixedPopupPosition} from "./popup-position"
-import {colorHex} from "../css-color"
+import {fixedPopupPosition} from "./popup-position"
+import {colorPaletteStyles, renderColorPalette} from "./color-palette"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import "./font-combobox"
@@ -24,6 +24,7 @@ export class RibbonCombobox extends LitElement {
     name: {type: String, reflect: true},
     open: {type: Boolean, reflect: true},
     options: {attribute: false},
+    swatches: {attribute: false},
     values: {attribute: false},
     value: {type: String},
     variant: {type: String, reflect: true},
@@ -186,25 +187,15 @@ export class RibbonCombobox extends LitElement {
 
     ${dropdownChevronStyles}
 
+    ${colorPaletteStyles}
     :host([variant="color"]) .listbox {
-      grid-template-columns: repeat(5, 1.75rem);
-      gap: 0.15rem;
-      min-width: auto !important;
+      display: block;
+      width: 12rem;
+      min-width: 0;
+      right: auto;
+      font-size: 0.68rem;
     }
-
-    :host([variant="color"]) .option {
-      display: grid;
-      place-items: center;
-      min-width: 1.75rem;
-      width: 1.75rem;
-      height: 1.75rem;
-      min-height: 1.75rem;
-      padding: 0.2rem;
-    }
-
-    :host([variant="color"]) .option-check {
-      display: none;
-    }
+    .palette-action { color: inherit; font: inherit; }
 
     .color-preview {
       box-sizing: border-box;
@@ -234,31 +225,6 @@ export class RibbonCombobox extends LitElement {
     .color-preview.background-color {
       background: var(--preview-color, transparent);
     }
-
-    :host([variant="color"]) .option-custom-color {
-      display: flex;
-      grid-column: 1 / -1;
-      width: auto;
-    }
-
-    .custom-color-preview {
-      flex: 1;
-      height: 1.05rem;
-      border: 1px solid #9aa4b1;
-      border-radius: .15rem;
-      background: linear-gradient(90deg, #f33, #ff0, #3c3, #0cc, #36f, #c3f, #f33);
-    }
-
-    .custom-color-input {
-      position: fixed;
-      box-sizing: border-box;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      border: 0;
-      opacity: 0;
-      pointer-events: none;
-    }
   `
 
   defaultValueLabel = ""
@@ -267,6 +233,7 @@ export class RibbonCombobox extends LitElement {
   multiple = false
   name = ""
   options: readonly StyleMarkOption[] = []
+  swatches: readonly string[] = []
   values: readonly string[] = []
   value = ""
   variant: "text" | "color" = "text"
@@ -361,34 +328,22 @@ export class RibbonCombobox extends LitElement {
     }))
   }
 
-  private pickCustomColor() {
-    if(this.disabled) return
-    const input = this.renderRoot.querySelector<HTMLInputElement>(".custom-color-input")!
-    anchorColorSubmenu(input, this.renderRoot.querySelector<HTMLElement>(".listbox")!,
-      this.renderRoot.querySelector<HTMLElement>(".option-custom-color")!)
-    this.dispatchEvent(new CustomEvent("ribbon-input-pointerdown", {
-      detail: {input}, bubbles: true, composed: true,
-    }))
-    if(typeof input.showPicker === "function") input.showPicker()
-    else input.click()
-  }
-
   private handleTriggerKeydown(event: KeyboardEvent) {
     if(!["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) return
     event.preventDefault()
     if(!this.open) {
       this.toggle()
       void this.updateComplete.then(() => {
-        const selected = this.renderRoot.querySelector<HTMLButtonElement>('.option[aria-selected="true"]')
-        const option = selected ?? this.renderRoot.querySelector<HTMLButtonElement>(".option")
+        const selected = this.renderRoot.querySelector<HTMLButtonElement>('.option[aria-selected="true"], .color-swatch[aria-pressed="true"]')
+        const option = selected ?? this.renderRoot.querySelector<HTMLButtonElement>(".option, .palette-action")
         option?.focus()
       })
     }
   }
 
   private handleOptionKeydown(event: KeyboardEvent) {
-    const options = Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>(".option"))
-    const current = options.indexOf(event.currentTarget as HTMLButtonElement)
+    const options = Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>(".option, .palette-action, .color-swatch"))
+    const current = options.indexOf(event.target as HTMLButtonElement)
     const offset = event.key === "ArrowDown"? 1: event.key === "ArrowUp"? -1: 0
     if(!offset) return
     event.preventDefault()
@@ -420,7 +375,7 @@ export class RibbonCombobox extends LitElement {
     return normalizedA === span.style.getPropertyValue(this.name)
   }
 
-  private colorPreview(value: string, optionLabel: string, option = false) {
+  private colorPreview(value: string) {
     const property = this.name === "color"? "color": "background-color"
     const className = property === "color"? "color-preview text-color": "color-preview background-color"
     const style = value? `--preview-color: ${value};`: ""
@@ -428,7 +383,6 @@ export class RibbonCombobox extends LitElement {
       <span
         class=${className}
         style=${style}
-        title=${option? optionLabel: ""}
         aria-hidden="true"
       >A</span>
     `
@@ -465,7 +419,7 @@ export class RibbonCombobox extends LitElement {
       `top: ${this.listboxPosition.top}px`,
       this.listboxPosition.width? `min-width: ${this.listboxPosition.width}px`: "",
     ].filter(Boolean).join("; ")
-    const options = this.open ? this.options.map(option => html`
+    const options = this.open && this.variant !== "color" ? this.options.map(option => html`
       <button
         class="option"
         type="button"
@@ -477,12 +431,9 @@ export class RibbonCombobox extends LitElement {
         title=${option.label}
         style=${this.name === "font-family" && option.value? `font-family: ${option.value}`: ""}
         @click=${() => this.select(option)}
-        @keydown=${this.handleOptionKeydown}
       >
         <span class="option-check" aria-hidden="true">✓</span>
-        ${this.variant === "color"
-          ? this.colorPreview(option.value, option.label, true)
-          : option.label}
+        ${option.label}
       </button>
     `) : nothing
     return html`
@@ -491,7 +442,7 @@ export class RibbonCombobox extends LitElement {
         type="button"
         role="combobox"
         aria-label=${this.label}
-        aria-haspopup="listbox"
+        aria-haspopup=${this.variant === "color" ? "dialog" : "listbox"}
         aria-controls=${listboxId}
         aria-expanded=${this.open}
         title=${`${this.label}: ${activeLabel}${selectionCount? ` +${selectionCount}`: ""}`}
@@ -501,7 +452,7 @@ export class RibbonCombobox extends LitElement {
       >
         <span class="value" style=${this.name === "font-family" && firstSelected.value? `font-family: ${firstSelected.value}`: ""}>
           ${this.variant === "color"
-            ? this.colorPreview(firstSelected.value, firstSelected.label)
+            ? this.colorPreview(firstSelected.value)
             : activeLabel}
           ${selectionCount? html`<small class="selection-count">+${selectionCount}</small>`: ""}
         </span>
@@ -510,25 +461,20 @@ export class RibbonCombobox extends LitElement {
       ${this.open? html`
         <div
           id=${listboxId}
-          class="listbox"
-          role="listbox"
+          class=${this.variant === "color" ? "listbox border-color-palette" : "listbox"}
+          role=${this.variant === "color" ? "dialog" : "listbox"}
           aria-label=${this.label}
           aria-multiselectable=${this.multiple ? "true" : nothing}
           style=${style}
+          @keydown=${this.handleOptionKeydown}
         >
-          ${options}
-          ${this.variant === "color" ? html`<button class="option option-custom-color" type="button" role="option"
-            aria-label="Custom" title="Custom color"
-            aria-selected=${Boolean(this.value && !this.options.some(option => this.valuesEqual(option.value, this.value)))}
-            @click=${this.pickCustomColor} @keydown=${this.handleOptionKeydown}>
-            <span class="custom-color-preview" aria-hidden="true"></span>Custom…
-          </button>` : nothing}
+          ${this.variant === "color" ? renderColorPalette(this.label, this.value, (event, value) => {
+            const keyboardFocus = this.shadowRoot?.activeElement === event.currentTarget
+            this.select({label: value || "Automatic", value})
+            if(keyboardFocus && !this.disabled) this.renderRoot.querySelector<HTMLButtonElement>(".combobox")?.focus()
+          }, {disabled: this.disabled, persistent: true, swatches: this.swatches}) : options}
         </div>
       `: ""}
-      ${this.variant === "color" ? html`<input class="custom-color-input" type="color" tabindex="-1"
-        data-ribbon-input-persistent aria-label=${`Custom ${this.label.toLowerCase()}`} ?disabled=${this.disabled}
-        .value=${colorHex(this.value)}
-        @change=${(event: Event) => this.select({label: "Custom", value: (event.currentTarget as HTMLInputElement).value})}>` : nothing}
     `
   }
 }

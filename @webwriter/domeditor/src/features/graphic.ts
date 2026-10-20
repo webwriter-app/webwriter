@@ -7,6 +7,7 @@ import {stripActiveContent} from "../active-content"
 import {getDocumentRoot} from "../document-template"
 import {
   graphicShapeDragType,
+  readGraphicShapeDrag,
   SVG_NAMESPACE,
   graphicContainerForNode,
   graphicShapeForNode,
@@ -833,14 +834,8 @@ export class GraphicFeature extends EditorFeature {
     },
     insertGraphic: ({shape}: {type: "insertGraphic", shape?: GraphicShapeType}) => {
       if(shape !== undefined && !isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
-      const graphic = this.#createGraphic()
-      if(shape) {
-        let element = this.#createShape(shape, 0, graphic)
-        graphic.append(element)
-        if(shape === "text-box") element = this.#setLabel(element, "Text")
-        this.#fitStandaloneGraphic(graphic, element)
-      }
-      this.editor.features.manipulation.insert(graphic, 0, false, this.editor.features.canvas.active || undefined)
+      const graphic = this.createGraphic(shape)
+      this.editor.features.manipulation.insert(graphic, 0, false, this.editor.features.canvas.active || this.editor.features.slides.active || undefined)
       if(graphic.isConnected) {
         if(shape) this.editor.features.selection.selectElement(graphic)
         else this.editor.features.selection.captureElement(graphic)
@@ -970,12 +965,7 @@ export class GraphicFeature extends EditorFeature {
 
   #insertShape(graphic: SVGSVGElement, shape: GraphicShapeType, paint?: GraphicShapePaint, point?: Point, label = "Text") {
     let element = this.#createShape(shape, graphicShapeRoots(graphic).length, graphic)
-    for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
-      const value = paint?.[name]
-      if(typeof value === "string" && !(name === "fill" && graphicShapeIsOpen(shape))) {
-        this.#setParameter(element, name, value)
-      }
-    }
+    this.#applyShapePaint(element, shape, paint)
     graphic.append(element)
     if(shape === "text-box") element = this.#setLabel(element, label)
     if(point) {
@@ -986,6 +976,15 @@ export class GraphicFeature extends EditorFeature {
     this.#selectShape(element)
     this.#refresh()
     this.editor.postSelectionPath()
+  }
+
+  #applyShapePaint(element: SVGGraphicsElement, shape: GraphicShapeType, paint?: GraphicShapePaint) {
+    for(const name of ["fill", "stroke", "stroke-width", "opacity"] as const) {
+      const value = paint?.[name]
+      if(typeof value === "string" && !(name === "fill" && graphicShapeIsOpen(shape))) {
+        this.#setParameter(element, name, value)
+      }
+    }
   }
 
   get textInsertionGraphic() {
@@ -1030,14 +1029,13 @@ export class GraphicFeature extends EditorFeature {
   #dropShape(event: DragEvent) {
     const data = event.dataTransfer
     if(!data?.types.includes(graphicShapeDragType)) return false
+    const graphic = this.#imageDropGraphic(event)
+    if(!graphic) return false
+    this.editor.features.manipulation.endNodeDrag()
     event.preventDefault()
     event.stopImmediatePropagation()
-    const graphic = this.#imageDropGraphic(event)
-    if(!graphic) return true
-    let detail
-    try { detail = JSON.parse(data.getData(graphicShapeDragType)) }
-    catch { return true }
-    if(!detail || !isGraphicShapeType(detail.shape)) return true
+    const detail = readGraphicShapeDrag(data)
+    if(!detail) return true
     const point = applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})
     this.editor.doc.stopCapturing()
     this.#insertShape(graphic, detail.shape, detail.paint, point)
@@ -1049,9 +1047,11 @@ export class GraphicFeature extends EditorFeature {
   captureListeners: DocumentListenerMap = {
     dragover: event => {
       if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+        if(!this.#imageDropGraphic(event)) return
+        if(document.body.classList.contains("◆drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
         event.preventDefault()
         event.stopImmediatePropagation()
-        event.dataTransfer.dropEffect = this.#imageDropGraphic(event) ? "copy" : "none"
+        event.dataTransfer.dropEffect = "copy"
         return
       }
       if(!this.#imageDropGraphic(event) || !event.dataTransfer) return
@@ -1430,10 +1430,18 @@ export class GraphicFeature extends EditorFeature {
     return (this.#labelEditor?.shape.isConnected ? graphicContainerForNode(this.#labelEditor.shape) : null) ?? this.#capturedGraphic() ?? (this.#standaloneShape() ? $.selectedElement as SVGSVGElement : null)
   }
 
-  #createGraphic() {
+  /** Builds detached authored content for insertion and placement previews. */
+  createGraphic(shape?: GraphicShapeType, paint?: GraphicShapePaint) {
     const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
     graphic.setAttribute("viewBox", "0 0 1600 900")
     graphic.setAttribute("width", "100%")
+    if(shape) {
+      let element = this.#createShape(shape, 0, graphic)
+      this.#applyShapePaint(element, shape, paint)
+      graphic.append(element)
+      if(shape === "text-box") element = this.#setLabel(element, "Text")
+      this.#fitStandaloneGraphic(graphic, element)
+    }
     return graphic
   }
 
@@ -1583,7 +1591,6 @@ export class GraphicFeature extends EditorFeature {
     // Theme rules for page content override SVG presentation attributes.
     // Keep the fitted viewport dimensions authoritative for standalone shapes.
     Object.assign(graphic.style, {
-      position: "absolute",
       width: `${cleanNumber(width+padding*2)}px`,
       height: `${cleanNumber(height+padding*2)}px`,
     })
