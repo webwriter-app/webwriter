@@ -443,6 +443,23 @@ describe("semantic list editing", () => {
     expect(document.querySelectorAll("ol")[1].classList.contains("◆temporary")).toBe(false)
   })
 
+  it("keeps attribution only on the original list when Enter creates a trailing list", () => {
+    document.body.innerHTML = '<ol data-ww-license="MIT" data-ww-attribution-name="Ada" data-other="keep"><li>A</li><li data-ww-license="CC0-1.0">B</li></ol>'
+    editor.doc.syncFromDOM()
+    const moved = document.querySelectorAll("li")[1]
+    $.move(document.querySelector("li")!.firstChild!, 1)
+    keydown("Enter")
+    keydown("Enter")
+    const [left, right] = document.querySelectorAll("ol")
+    expect(left.getAttribute("data-ww-license")).toBe("MIT")
+    expect(left.getAttribute("data-ww-attribution-name")).toBe("Ada")
+    expect(right.hasAttribute("data-ww-license")).toBe(false)
+    expect(right.hasAttribute("data-ww-attribution-name")).toBe(false)
+    expect(right.getAttribute("data-other")).toBe("keep")
+    expect(right.firstElementChild).toBe(moved)
+    expect(moved.hasAttribute("data-ww-license")).toBe(false)
+  })
+
   it("replaces an entirely empty list with a paragraph when Enter exits it", () => {
     editor.features.list.toggleList("ul")
 

@@ -637,7 +637,7 @@ export class ListFeature extends EditorFeature {
     const paragraph = document.createElement("p")
 
     if(firstTrailingItem) {
-      const trailingList = cloneWithoutEditorMarkers(list, false) as HTMLElement
+      const trailingList = this.editor.features.manipulation.cloneSplitContinuation(list)
       this.prepareSplitContinuation(list, trailingList, following)
       following.forEach(node => trailingList.append(node))
       list.after(paragraph, trailingList)
@@ -1151,7 +1151,7 @@ export class ListFeature extends EditorFeature {
       ? this.itemToBlocks(node as HTMLElement)
       : [node]))
     if(after.length) {
-      const right = cloneWithoutEditorMarkers(list, false) as HTMLElement
+      const right = this.editor.features.manipulation.cloneSplitContinuation(list)
       right.append(...after)
       replacement.push(right)
     }

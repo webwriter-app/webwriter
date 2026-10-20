@@ -2,6 +2,7 @@ import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
 import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
+import {attributionAttributes} from "../attribution.js"
 import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
@@ -1473,7 +1474,7 @@ export class ManipulationFeature extends EditorFeature {
         const parent = block.parentElement
         if(!parent) return null
         const offset = this.splitTextLikePoint(block, point)
-        const right = cloneWithoutEditorMarkers(block, false) as Element
+        const right = this.cloneSplitContinuation(block)
         right.removeAttribute("id")
         right.append(...Array.from(block.childNodes).slice(offset))
         if(block.childNodes.length) block.after(...nodes)
@@ -2729,7 +2730,7 @@ export class ManipulationFeature extends EditorFeature {
       if(!parent) return
       const blockIndex = Array.from(parent.childNodes).indexOf(block)
       const proposed = Array.from(parent.childNodes)
-      proposed.splice(blockIndex + 1, 0, ...nodes, cloneWithoutEditorMarkers(block, false) as ChildNode)
+      proposed.splice(blockIndex + 1, 0, ...nodes, this.cloneSplitContinuation(block) as ChildNode)
       const containsWidget = nodes.some(node => Boolean(this.insertedWidget(node)))
       if(!containsWidget && !this.editor.schema.isContentValid(parent, proposed)) {
         const fallback = this.plainTextClipboardFragment(nodes.map(node => node.textContent ?? "").join("\n"))
@@ -2738,7 +2739,7 @@ export class ManipulationFeature extends EditorFeature {
       }
 
       const offset = this.splitTextLikePoint(block, $.range)
-      const right = cloneWithoutEditorMarkers(block, false) as Element
+      const right = this.cloneSplitContinuation(block)
       right.append(...Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)))
       block.normalize()
       right.normalize()
@@ -2822,6 +2823,13 @@ export class ManipulationFeature extends EditorFeature {
     $.move(text ?? node, 0)
   }
 
+  /** A new continuation keeps formatting, but the original retains attribution. */
+  cloneSplitContinuation<T extends Element>(element: T): T {
+    const continuation = cloneWithoutEditorMarkers(element, false)
+    for(const name of Object.values(attributionAttributes)) continuation.removeAttribute(name)
+    return continuation
+  }
+
   /** Promotes a DOM point through nested mark wrappers to an offset in the
    * containing non-mark element, splitting text and marks only when the point
    * is actually inside them. */
@@ -2860,7 +2868,7 @@ export class ManipulationFeature extends EditorFeature {
         pointOffset = index + 1
       }
       else {
-        const right = cloneWithoutEditorMarkers(pointNode, false) as Element
+        const right = this.cloneSplitContinuation(pointNode)
         right.append(...Array.from(pointNode.childNodes).slice(pointOffset).filter(node => !isOutOfFlow(node)))
         pointNode.after(right)
         pointOffset = Array.from(parent.childNodes).indexOf(right)
@@ -2896,7 +2904,7 @@ export class ManipulationFeature extends EditorFeature {
       const schema = this.editor.schema.get(container)
       const next = (splittingSummary || container.matches("h1, h2, h3, h4, h5, h6") || strict && schema.inseperable
         ? this.editor.schema.create(undefined, container.ownerDocument)
-        : cloneWithoutEditorMarkers(container, false)) as Element
+        : this.cloneSplitContinuation(container)) as Element
       container.after(next)
       const moving = Array.from(container.childNodes).slice(offset).filter(node => !isOutOfFlow(node))
       this.editor.features.list.prepareSplitContinuation(container, next, moving)
@@ -3397,7 +3405,8 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       if(ev.inputType === "insertParagraph" && (summary?.parentElement?.matches("details")
-        || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6"))) {
+        || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6")
+        || $.anchorContainer?.closest(Object.values(attributionAttributes).map(name => `[${name}]`).join(",")))) {
         ev.preventDefault()
         this.insert()
         return
@@ -3597,7 +3606,7 @@ export class ManipulationFeature extends EditorFeature {
         const schema = this.editor.schema.get(container)
         const next = (strict && schema.inseperable
           ? this.editor.schema.create()
-          : cloneWithoutEditorMarkers(container, false)) as Element
+          : this.cloneSplitContinuation(container)) as Element
         container.after(next)
         next.append(...right)
         node? $.move(node, -1): $.move(next, 0)
@@ -4271,7 +4280,7 @@ export class ManipulationFeature extends EditorFeature {
       const parent = block.parentElement
       if(!parent) return
       const offset = this.splitTextLikePoint(block, $.range)
-      const right = cloneWithoutEditorMarkers(block, false) as Element
+      const right = this.cloneSplitContinuation(block)
       right.append(...Array.from(block.childNodes).slice(offset).filter(node => !isOutOfFlow(node)))
       block.normalize()
       right.normalize()
