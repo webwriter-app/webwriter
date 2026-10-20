@@ -4852,7 +4852,7 @@ describe("unified content transfer", () => {
     expect(editor.features.manipulation.floatSide(target, x)).toBe(side)
     editor.features.manipulation.showFloatDropPreview(target, side, "transfer", source)
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
-    expect(parseFloat(preview.style.top)).toBe(55)
+    expect(parseFloat(preview.style.top)).toBe(50)
     expect(parseFloat(preview.style.height)).toBe(60)
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:150, clientY:100}), source)).toBeNull()
     expect(editor.features.manipulation.floatDropTarget(new MouseEvent("mousemove", {clientX:x, clientY:116}), source)).toBeNull()
@@ -4876,9 +4876,18 @@ describe("unified content transfer", () => {
       const target = editor.features.manipulation.floatDropTarget(event, source)
       expect(target).toBe(paragraphs[index])
       editor.features.manipulation.showFloatDropPreview(target!, "right", "transfer", source)
-      expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(index * 40 + 5)
+      expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(index * 40)
     }
     expect(sourceRect).not.toHaveBeenCalled()
+  })
+
+  it("keeps float drop previews at the top when attribution reserves space below", () => {
+    document.body.innerHTML = '<video style="width:40px;height:60px;--ww-float-attribution-before:18px"></video><p>target</p>'
+    const source = document.querySelector("video")!, target = document.querySelector("p")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 200, 40, 60))
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 100, 30))
+    editor.features.manipulation.showFloatDropPreview(target, "right", "transfer", source)
+    expect(parseFloat(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.top)).toBe(50)
   })
 
   it("measures a standard insertion once per lane across many sibling targets", () => {

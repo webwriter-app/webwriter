@@ -56,7 +56,8 @@ describe("document themes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain("container-type: inline-size;")
       expect(theme.source).toContain("--ww-float-width: max(0px,")
-      expect(theme.source).toContain("--ww-float-gap: 1rem;")
+      expect(theme.source).toContain("--ww-float-gap: var(--ww-page-gutter, 1rem);")
+      expect(theme.source).toContain("margin-block: 0 calc(var(--ww-page-gutter, 1rem) + var(--ww-float-attribution-before, 0px) + var(--ww-attribution-after));")
       expect(theme.source).toContain("--ww-lane: 0px;")
       expect(theme.source).toContain("padding-inline: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane));")
       expect(theme.source).toContain("@container (width >= 1200px)")

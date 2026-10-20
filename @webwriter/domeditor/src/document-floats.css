@@ -4,7 +4,7 @@
     container-type: inline-size;
     --ww-page-width: min(var(--ww-page-max, 2160px), calc(100cqw - 2 * var(--ww-page-gutter, 1rem)));
     --ww-float-width: max(0px, calc((var(--ww-page-width) - var(--ww-prose-max, 45rem)) / 2 - var(--ww-float-gap)));
-    --ww-float-gap: 1rem;
+    --ww-float-gap: var(--ww-page-gutter, 1rem);
   }
 
   @media screen {
@@ -71,10 +71,8 @@
       inline-size: var(--ww-float-size, var(--ww-float-width)) !important;
       min-inline-size: 0 !important;
       max-inline-size: min(100%, var(--ww-float-width));
-    }
-
-    :is(.ww-float-left, .ww-float-right) {
-      margin-block: 5px;
+      --ww-attribution-after: 0px;
+      margin-block: 0 calc(var(--ww-page-gutter, 1rem) + var(--ww-float-attribution-before, 0px) + var(--ww-attribution-after));
     }
   }
 

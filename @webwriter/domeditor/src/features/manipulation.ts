@@ -887,7 +887,7 @@ export class ManipulationFeature extends EditorFeature {
   private floatPreviewTop(container: Element, side: "left" | "right", source: Element | undefined, clears: boolean, measurements: FloatPreviewMeasurements) {
     const parent = container.parentElement!, rect = container.getBoundingClientRect()
     const number = (value: string) => parseFloat(value) || 0
-    let top = rect.top + 5
+    let top = rect.top
     if(source?.parentElement === parent && source.compareDocumentPosition(container) & Node.DOCUMENT_POSITION_FOLLOWING
       && source.getBoundingClientRect().bottom <= rect.top
       && getComputedStyle(source).float === "none" && !isOutOfFlow(source)) {
@@ -903,7 +903,7 @@ export class ManipulationFeature extends EditorFeature {
           clearance.set(sibling, {...bottom})
           if(sibling === source) continue
           const style = getComputedStyle(sibling), float = style.float
-          if(float === "left" || float === "right") bottom[float] = Math.max(bottom[float], sibling.getBoundingClientRect().bottom + number(style.marginBottom) + 5)
+          if(float === "left" || float === "right") bottom[float] = Math.max(bottom[float], sibling.getBoundingClientRect().bottom + number(style.marginBottom))
         }
         measurements.clearance.set(parent, clearance)
       }
