@@ -694,6 +694,64 @@ describe("selected outlines around native floats", () => {
   })
 })
 
+describe("revealing selections inside details", () => {
+  it.each(["element", "capture", "text"])("opens nested details for a %s selection without rebuilding content", kind => {
+    document.body.innerHTML = '<details><!--keep--><summary>Outer</summary><section><details><summary>Inner</summary><p>Body</p><test-widget></test-widget></details></section></details><details><summary>Other</summary></details>'
+    const [outer, inner, other] = document.querySelectorAll("details")
+    const paragraph = inner.querySelector("p")!
+    const original = outer.innerHTML
+    if(kind === "capture") feature.captureElement(inner.querySelector("test-widget")!)
+    else if(kind === "element") feature.selectElement(paragraph)
+    else {
+      document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 1, paragraph.firstChild!, 3)
+      document.dispatchEvent(new Event("selectionchange"))
+    }
+    expect(outer.open).toBe(true)
+    expect(inner.open).toBe(true)
+    expect(other.open).toBe(false)
+    expect(inner.querySelector("p")).toBe(paragraph)
+    expect(outer.innerHTML.replaceAll(' open=""', "").replace(/ class="[^"]*"/g, "")).toBe(original)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("reveals an inner summary or details element while keeping that disclosure closed", () => {
+    document.body.innerHTML = '<details><summary>Outer</summary><details><summary><b>Inner</b></summary><p>Body</p></details></details>'
+    const [outer, inner] = document.querySelectorAll("details")
+    for(const select of [() => $.move(inner.querySelector("b")!.firstChild!, 1), () => $.selectElement(inner)]) {
+      outer.open = false
+      select()
+      feature.processSelection()
+      expect(outer.open).toBe(true)
+      expect(inner.open).toBe(false)
+    }
+  })
+
+  it("opens details at both endpoints of a native text selection", () => {
+    document.body.innerHTML = '<details><summary>First</summary><p>First body</p></details><details><summary>Last</summary><p>Last body</p></details>'
+    const [first, last] = document.querySelectorAll("details")
+    document.getSelection()!.setBaseAndExtent(first.querySelector("p")!.firstChild!, 2, last.querySelector("p")!.firstChild!, 3)
+    feature.processSelection()
+    expect(first.open).toBe(true)
+    expect(last.open).toBe(true)
+  })
+
+  it("opens details when inserting a widget from its selected summary", () => {
+    editor.schema.extendWidgets([{tagName: "test-widget"}])
+    document.body.innerHTML = '<details><summary>Title</summary><!--keep--><p>Body</p></details>'
+    const details = document.querySelector("details")!
+    feature.selectElement(details.querySelector("summary")!)
+    expect(details.open).toBe(false)
+    const widget = document.createElement("test-widget")
+    editor.features.manipulation.insert(widget)
+    expect(widget.parentElement).toBe(details)
+    expect(feature.captureSelectedElement).toBe(widget)
+    expect(details.open).toBe(true)
+    expect(details.querySelector("summary")!.textContent).toBe("Title")
+    expect(details.querySelector("p")!.textContent).toBe("Body")
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>Title</summary><test-widget></test-widget><!--keep--><p>Body</p></details>')
+  })
+})
+
 it("keeps summary editable without allowing element or capture selection", () => {
   document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
   const summary = document.querySelector("summary")!

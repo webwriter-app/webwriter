@@ -1928,6 +1928,18 @@ export class SelectionFeature extends EditorFeature {
     else if(left || top) window.scrollBy({left, top, behavior})
   }
 
+  /** Reveal the selected content before measuring its selection UI. A summary
+   * stays visible while closed, and selecting a disclosure itself need only
+   * reveal its ancestors. */
+  #revealDetails(node: Node | null) {
+    if(!node || !document.body.contains(node)) return
+    let details = (isElement(node) ? node : node.parentElement)?.closest("details")
+    while(details) {
+      if(!details.open && !details.querySelector(":scope > summary")?.contains(node)) details.open = true
+      details = details.parentElement?.closest("details")
+    }
+  }
+
   /** Normalizes and re-applies exactly one selection kind for the current
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. Passive refreshes
@@ -1956,6 +1968,7 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.manipulation.refreshNodeDragTarget(null)
       document.body.classList.add("◆", "◆node-selection-active")
       for(const element of $.selectedElements) {
+        this.#revealDetails(element.parentNode)
         this.#markSelection(element, "◆element-selected", "◆atomic-range-selected")
         const overlay = document.createElement("div")
         overlay.classList.add("◆", "◆editor-only")
@@ -2007,6 +2020,11 @@ export class SelectionFeature extends EditorFeature {
     const selectedElement = kind === "capture" ? capturedElement
       : kind === "section" ? this.selectedSectionElement
         : kind === "element" ? $.selectedElement ?? null : null
+    if(selectedElement) this.#revealDetails(selectedElement.parentNode)
+    else {
+      this.#revealDetails(sel?.anchorNode ?? null)
+      this.#revealDetails(sel?.focusNode ?? null)
+    }
     // Geometry refreshes read layout below. Keep an unchanged node's anchor
     // and outline installed while those reads flush styles during a gesture.
     const textElement = (kind === "text" || kind === "empty") && sel?.rangeCount
