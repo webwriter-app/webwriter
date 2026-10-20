@@ -244,7 +244,7 @@ export class EditorCombobox extends LitElement {
     if((changed.has("value") || changed.has("showValue") || changed.has("options") || changed.has("values")) && !this.editing) this.draft = this.displayedValue()
   }
 
-  private displayedValue() {
+  protected displayedValue() {
     if(this.multiple) return this.values.map(value => this.options.find(option => option.value === value)?.label ?? value).join(", ")
     return this.showValue ? this.value : this.selectedOption()?.label ?? this.value
   }
@@ -265,7 +265,7 @@ export class EditorCombobox extends LitElement {
     }))
   }
 
-  private selectedOption() {
+  protected selectedOption() {
     return this.options.find(option => option.value === this.value)
   }
 
@@ -290,7 +290,7 @@ export class EditorCombobox extends LitElement {
     }
   }
 
-  private async setOpen(open: boolean) {
+  protected async setOpen(open: boolean) {
     if(this.disabled) return
     this.open = open
     if(!this.open) return
@@ -343,13 +343,16 @@ export class EditorCombobox extends LitElement {
     void this.setOpen(true)
   }
 
-  private handleInput(event: InputEvent) {
+  protected handleInputClick() { void this.setOpen(true) }
+
+  protected handleInput(event: InputEvent) {
     if(this.disabled || !this.editable || this.multiple) return
     this.editing = true
     this.draft = (event.currentTarget as HTMLInputElement).value
     this.dispatchEvent(new Event("combobox-input", {bubbles: true, composed: true}))
     this.activeIndex = -1
     void this.setOpen(true)
+    this.requestUpdate()
   }
 
   protected handleKeydown(event: KeyboardEvent) {
@@ -384,14 +387,24 @@ export class EditorCombobox extends LitElement {
     }
   }
 
-  render() {
-    const options = this.filteredOptions()
+  protected optionGroups(options: readonly ComboboxOption[]) {
     const groups = new Map<string, {option: ComboboxOption, index: number}[]>()
     options.forEach((option, index) => {
       const group = option.group ?? ""
       if(!groups.has(group)) groups.set(group, [])
       groups.get(group)!.push({option, index})
     })
+    return groups
+  }
+
+  protected renderEmptyOptions(_group: string): unknown {
+    return html`<span class="option-name">No matches</span>`
+  }
+
+  render() {
+    const options = this.open ? this.filteredOptions() : []
+    const groups = this.optionGroups(options)
+    const selected = this.selectedOption()
     return html`
       <span class="control" style=${`anchor-name: --${this.listboxId}`}>
         <input
@@ -409,7 +422,7 @@ export class EditorCombobox extends LitElement {
           .value=${live(this.draft)}
           ?disabled=${this.disabled}
           .readOnly=${!this.editable || this.multiple}
-          @click=${() => { if(!this.editable) void this.setOpen(true) }}
+          @click=${this.handleInputClick}
           @focus=${this.handleFocus}
           @blur=${this.blurInput}
           @input=${this.handleInput}
@@ -439,9 +452,10 @@ export class EditorCombobox extends LitElement {
           aria-label=${`${this.label} suggestions`}
           style=${`position-anchor: --${this.listboxId}`}
         >
-          ${options.length ? Array.from(groups, ([group, entries]) => html`
+          ${groups.size ? Array.from(groups, ([group, entries]) => html`
             <div class="option-group" role=${group ? "group" : nothing} aria-label=${group || nothing}>
               ${group ? html`<div class="group-label" title=${group} aria-hidden="true">${group}</div>` : nothing}
+              ${entries.length ? nothing : this.renderEmptyOptions(group)}
               ${entries.map(({option, index}) => html`
                 ${option.dividerBefore ? html`<hr class="divider" role="separator" />` : nothing}
                 <button
@@ -450,7 +464,7 @@ export class EditorCombobox extends LitElement {
                   type="button"
                   role="option"
                   title=${option.description ? `${option.label} — ${option.description}` : option.label}
-                  aria-selected=${this.multiple ? this.values.includes(option.value) : this.value === option.value}
+                  aria-selected=${this.multiple ? this.values.includes(option.value) : selected === option}
                   data-active=${this.activeIndex === index ? "" : nothing}
                   @mousedown=${(event: MouseEvent) => event.preventDefault()}
                   @click=${(event: MouseEvent) => this.select(option, event)}

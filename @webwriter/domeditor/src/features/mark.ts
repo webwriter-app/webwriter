@@ -26,6 +26,7 @@ import {SVG_NAMESPACE} from "../graphic"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
 import {isLinkEdit, normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
+import {bunnyStylesheetFamily, fontFamilies, fontWithFallback, syncBunnyFonts} from "../fonts"
 
 // Bounded domain labels, with separate email matching to avoid linking just its domain.
 const automaticLinkDomain = String.raw`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})(?![a-z0-9_@-])`
@@ -413,6 +414,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private observer: MutationObserver | null = null
+  private fontResources = new Map<string, string>()
   private stateRefreshQueued = false
   /** `null` inherits the live DOM marks; a Set is an explicit typing state. */
   private storedMarks: Set<MarkName> | null = null
@@ -577,8 +579,8 @@ export class MarkFeature extends EditorFeature {
     }) => this.setRubyComponent("rp", index, expected, value),
     removeRubyFallback: ({}: {type: "removeRubyFallback"}) => this.removeRubyFallback(),
     removeRuby: ({}: {type: "removeRuby"}) => this.removeRuby(),
-    setStyleMark: ({property, value}: {type: "setStyleMark", property: StyleMarkName, value: string}) =>
-      this.setStyleMark(property, value),
+    setStyleMark: ({property, value, fontStylesheet}: {type: "setStyleMark", property: StyleMarkName, value: string, fontStylesheet?: string}) =>
+      this.setStyleMark(property, value, fontStylesheet),
     increaseFontSize: ({}: {type: "increaseFontSize"}) => this.adjustFontSize(1),
     decreaseFontSize: ({}: {type: "decreaseFontSize"}) => this.adjustFontSize(-1),
     removeMarks: ({}: {type: "removeMarks"}) => this.removeMarks(),
@@ -590,7 +592,7 @@ export class MarkFeature extends EditorFeature {
     input: event => { if(!(event as InputEvent).isComposing) this.queueAutomaticLinks() },
     compositionstart: () => { this.composing = true },
     compositionend: () => { this.composing = false; this.queueAutomaticLinks() },
-    selectionchange: () => this.clearStoredMarksIfSelectionChanged(),
+    selectionchange: () => { this.clearStoredMarksIfSelectionChanged(); this.syncFonts() },
   }
 
   enable() {
@@ -604,12 +606,14 @@ export class MarkFeature extends EditorFeature {
     try {
       observer.observe(document.body, {
         attributes: true,
-        attributeFilter: ["style", "id", "title", "aria-label", "is", ...markAttributeNames, ...svgStyleNames],
+        attributeFilter: ["style", "class", "id", "title", "aria-label", "is", ...markAttributeNames, ...svgStyleNames],
         childList: true,
         characterData: true,
         subtree: true,
       })
+      observer.observe(document.head, {attributes: true, childList: true, characterData: true, subtree: true})
       this.observer = observer
+      this.syncFonts()
       this.editor.doc.doc.on("afterTransaction", this.handleHistoryTransaction)
     }
     catch {
@@ -1237,8 +1241,27 @@ export class MarkFeature extends EditorFeature {
   }
 
   /** Sets one inline CSS property on span marks, or removes it for the default option. */
-  setStyleMark(property: StyleMarkName, value: string): boolean {
-    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setStyleMark(property, value))
+  setStyleMark(property: StyleMarkName, value: string, fontStylesheet?: string): boolean {
+    const normalizedValue = property === "font-family" ? fontWithFallback(value) : value
+    const changed = this.applyStyleMark(property, normalizedValue)
+    if(property === "font-family") {
+      const family = fontStylesheet && bunnyStylesheetFamily(fontStylesheet)
+      if(family && fontFamilies(value)[0] === family
+        && (changed || this.getStyleState()[property] === this.normalizeStyleValue(property, normalizedValue))) this.fontResources.set(family, fontStylesheet!)
+      this.syncFonts()
+    }
+    return changed
+  }
+
+  private syncFonts() {
+    this.clearStoredMarksIfSelectionChanged()
+    const pending = this.storedSelection?.anchorNode.isConnected && this.storedSelection.focusNode.isConnected
+      ? this.storedStyles?.["font-family"] : ""
+    syncBunnyFonts(document, this.fontResources, pending)
+  }
+
+  private applyStyleMark(property: StyleMarkName, value: string): boolean {
+    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.applyStyleMark(property, value))
     this.assertStyleMark(property)
     const normalizedValue = this.normalizeStyleValue(property, value)
     if(normalizedValue && !this.isMarkAllowed("span")) return false
@@ -1429,8 +1452,10 @@ export class MarkFeature extends EditorFeature {
 
   private storeStyles(styles: StyleMarkValues, selection: Selection) {
     if(!selection.anchorNode || !selection.focusNode) return
+    const previousFont = this.storedStyles?.["font-family"]
     this.storedStyles = {...styles}
     this.storeSelection(selection)
+    if(previousFont !== styles["font-family"]) this.syncFonts()
   }
 
   private storeAttributes(attributes: MarkAttributeValues, selection: Selection) {
@@ -2115,6 +2140,7 @@ export class MarkFeature extends EditorFeature {
     queueMicrotask(() => {
       this.stateRefreshQueued = false
       if(this.isEnabled) {
+        this.syncFonts()
         if(!this.composing && this.automaticLinkBlock) {
           const block = this.automaticLinkBlock
           this.automaticLinkBlock = null

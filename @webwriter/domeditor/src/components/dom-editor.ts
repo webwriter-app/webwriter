@@ -5244,7 +5244,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleRibbonComboboxChange = (event: Event) => {
-    const detail = (event as CustomEvent<{name?: unknown, value?: unknown, values?: unknown}>).detail
+    const detail = (event as CustomEvent<{name?: unknown, value?: unknown, values?: unknown, fontStylesheet?: unknown}>).detail
     if(detail?.name === "mark-types") {
       const group = mergedMarkGroupFor("span")
       if(!group || !Array.isArray(detail.values) || !detail.values.every(value => (
@@ -5268,6 +5268,7 @@ export class DomEditor extends LitElement {
       type: "setStyleMark",
       property: detail.name,
       value: detail.value,
+      ...(typeof detail.fontStylesheet === "string" ? {fontStylesheet: detail.fontStylesheet} : {}),
     }).finally(() => this.focusEditor())
   }
 

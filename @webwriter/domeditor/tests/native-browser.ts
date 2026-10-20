@@ -3258,6 +3258,94 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
   }
 })
 
+await check("font dropdowns join their white controls at viewport edges", async () => {
+  const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
+  const {fontFamilyOptions, fontSizeOptions} = await import("../src/marks")
+  for(const name of ["font-family", "font-size"]) for(const placement of ["below", "above", "right"]) {
+    const combo = new RibbonCombobox()
+    Object.assign(combo, {name, label: name, options: name === "font-family" ? fontFamilyOptions : fontSizeOptions})
+    Object.assign(combo.style, {position: "fixed", width: "90px",
+      left: `${placement === "right" ? window.innerWidth - 98 : 40.25}px`,
+      top: `${placement === "above" ? window.innerHeight - 48 : 100.5}px`})
+    document.body.append(combo)
+    try {
+      await combo.updateComplete
+      const font = combo.shadowRoot!.querySelector("font-combobox")
+      const field = font ?? combo.shadowRoot!.querySelector("font-size-combobox")!
+      // The editing document's scrollbar gutters offset fixed-position origins.
+      const desiredLeft = placement === "right" ? window.innerWidth - 98 : 40.25
+      combo.style.left = `${parseFloat(combo.style.left) + desiredLeft - combo.getBoundingClientRect().left}px`
+      await field.updateComplete
+      if(font) {
+        // Geometry checks use an empty cached catalog, without network requests.
+        Object.assign(font, {loaded: true})
+      }
+      const root = field.shadowRoot!
+      const trigger = root.querySelector<HTMLInputElement>("input")!
+      const placeholder = getComputedStyle(trigger, "::placeholder")
+      assert(placeholder.fontSize === getComputedStyle(trigger).fontSize && placeholder.color === "rgb(107, 119, 135)",
+        `${name}: font placeholder does not match the input size and muted color`)
+      assert(trigger.value === "" && trigger.matches(":placeholder-shown")
+        && trigger.placeholder === (font ? "Default font" : "Size"), `${name}: default is not shown as a placeholder`)
+      trigger.click()
+      await combo.updateComplete
+      await field.updateComplete
+      await layoutFrame()
+      const control = root.querySelector<HTMLElement>(".control")!
+      const menu = root.querySelector<HTMLElement>(".listbox")!
+      const box = control.getBoundingClientRect(), popup = menu.getBoundingClientRect()
+      const above = placement === "above"
+      assert(control.dataset.connected === (above ? "above" : "below"), `${name}: wrong font popup placement`)
+      assert(Math.abs((above ? popup.bottom - box.top : box.bottom - popup.top) - 1) < .1,
+        `${name}: font dropdown does not share a border with its control`)
+      assert(popup.left >= 8 && popup.right <= window.innerWidth - 8,
+        `${name}/${placement}: font dropdown overflows the viewport (${popup.left}–${popup.right}, width ${window.innerWidth})`)
+      const surface = getComputedStyle(menu), style = getComputedStyle(control)
+      assert(style.backgroundColor === "rgb(255, 255, 255)" && surface.backgroundColor === style.backgroundColor,
+        `${name}: open font control does not match the white dropdown`)
+      assert(style.borderLeftColor === surface.borderLeftColor && style.outlineStyle === "none",
+        `${name}: open font control does not use the dropdown border`)
+      assert(Math.abs(parseFloat(getComputedStyle(menu, "::before").width) - box.width + 2) < .1,
+        `${name}: font dropdown border mask does not match its control`)
+      const scroller = name === "font-size" ? menu.querySelector<HTMLElement>(".option-group") : null
+      if(scroller) {
+        scroller.scrollTop = scroller.scrollHeight
+        await layoutFrame()
+        assert(scroller.scrollTop > 0 && menu.scrollTop === 0, "font sizes do not scroll independently of their joined border")
+        const mask = getComputedStyle(menu, "::before")
+        assert((above ? mask.bottom : mask.top) === "0px", "scrolling moves the font dropdown's shared border mask")
+      }
+      if(name === "font-size") {
+        let value: string | undefined
+        combo.addEventListener("ribbon-combobox-change", event => { value = (event as CustomEvent<{value: string}>).detail.value })
+        trigger.value = "17.5pt"
+        trigger.dispatchEvent(new InputEvent("input", {bubbles: true}))
+        await field.updateComplete
+        assert(root.querySelectorAll('[role="option"]').length === fontSizeOptions.length, "typing a font size filters out presets")
+        trigger.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+        await field.updateComplete
+        assert(value === "17.5px" && trigger.value === "17.5", "typed font size did not ignore its unit and use pixels")
+      }
+      combo.close()
+      await combo.updateComplete
+      await field.updateComplete
+      assert(!control.hasAttribute("data-connected") && !root.querySelector(".listbox"), `${name}: closing retains connected styling`)
+      combo.disabled = true
+      await combo.updateComplete
+      await field.updateComplete
+      const disabled = getComputedStyle(control)
+      assert(trigger.disabled && root.querySelector<HTMLButtonElement>(".toggle")!.disabled,
+        `${name}: unavailable font input or toggle remains enabled`)
+      assert(disabled.opacity === "0.6" && disabled.color === "rgb(154, 164, 177)"
+        && disabled.backgroundColor === "rgb(247, 247, 247)", `${name}: disabled appearance is missing`)
+      trigger.click()
+      await field.updateComplete
+      assert(!root.querySelector(".listbox"), `${name}: disabled font control opens its dropdown`)
+    }
+    finally { combo.remove() }
+  }
+})
+
 await check("ribbon shapes retain their aspect ratio under the document theme", async () => {
   const theme = document.createElement("style")
   theme.textContent = defaultDocumentTheme.source

@@ -3,6 +3,7 @@ import {afterEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "./domeditor"
 import {restoreOriginalResourceURLs} from "./serialization"
 import {bundleOfflineModules} from "./offline-module-bundler"
+import {bunnyFontStylesheet} from "./fonts"
 
 vi.mock("./offline-module-bundler", () => ({bundleOfflineModules: vi.fn()}))
 
@@ -29,6 +30,32 @@ afterEach(() => {
 })
 
 describe("offline HTML resources", () => {
+  it("keeps Bunny font links online and embeds their font-face files for offline documents", async () => {
+    const href = bunnyFontStylesheet({familyName: "Alegreya", category: "serif", weights: [400, 700], styles: ["normal"]})
+    document.head.insertAdjacentHTML("beforeend", `<link rel="stylesheet" href="${href}">`)
+    document.body.innerHTML = '<p style="font-family: Alegreya, serif">Text</p>'
+    const css = '@font-face {font-family: "Alegreya"; font-style: normal; font-weight: 400; src: url(https://fonts.bunny.net/alegreya/files/normal.woff2) format("woff2"); unicode-range: U+0000-00FF;} @font-face {font-family: "Alegreya"; font-weight: 700; src: url(https://fonts.bunny.net/alegreya/files/bold.woff2) format("woff2");}'
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
+      if(String(input) === href) return new Response(css, {headers: {"content-type": "text/css"}})
+      if(String(input).endsWith("/normal.woff2")) return new Response(new Uint8Array([1, 2]), {headers: {"content-type": "font/woff2"}})
+      if(String(input).endsWith("/bold.woff2")) return new Response(new Uint8Array([3, 4]), {headers: {"content-type": "font/woff2"}})
+      throw new Error(`Unexpected fetch: ${input}`)
+    })
+    activeEditor = new DOMEditor()
+    const online = new DOMParser().parseFromString(await activeEditor.serializeHTML(), "text/html")
+    expect(online.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')!.href).toBe(href)
+    expect(fetcher).not.toHaveBeenCalled()
+    const offline = new DOMParser().parseFromString(await activeEditor.serializeHTML(true), "text/html")
+    const bundled = decodeData(offline.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')!.href)
+    expect(bundled).toContain('url("data:font/woff2;base64,AQI=")')
+    expect(bundled).toContain('url("data:font/woff2;base64,AwQ=")')
+    expect(bundled).toContain('unicode-range: U+0000-00FF')
+    expect(bundled).not.toContain("https://")
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(offline.querySelector("p")!.style.fontFamily).toBe("Alegreya, serif")
+    expect(document.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')!.href).toBe(href)
+  })
+
   it("bundles selected package modules once and restores their online entries on reopen", async () => {
     document.head.insertAdjacentHTML("beforeend", '<script type="module" src="https://cdn.example/a.js"></script><script type="module" src="https://cdn.example/b.js"></script>')
     activeEditor = new DOMEditor()

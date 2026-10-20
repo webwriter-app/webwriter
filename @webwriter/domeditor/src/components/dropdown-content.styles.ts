@@ -1,5 +1,49 @@
 import {css} from "lit"
 
+/** Font controls share the white, connected surface used by ribbon buttons. */
+export const connectedComboboxStyles = css`
+  input::placeholder {font-size: inherit; color: #6b7787; opacity: 1;}
+  :host([disabled]) .control {
+    color: #9aa4b1;
+    background: #f7f7f7;
+    border-color: #c5ccd5;
+    opacity: .6;
+  }
+  :host([disabled]) input, :host([disabled]) .toggle {cursor: default;}
+  :host([open]) .control, :host([name="font-size"][open]) .combobox {background: #fff;}
+  :host([open]) .control[data-connected], :host([open]) .combobox[data-connected] {
+    border: 1px solid #a8a8a8;
+    border-bottom-color: #fff;
+    border-radius: .45rem .45rem 0 0;
+    background: #fff;
+    outline: none;
+    box-shadow: none;
+  }
+  :host([open]) .control[data-connected="above"], :host([open]) .combobox[data-connected="above"] {
+    border-top-color: #fff;
+    border-bottom-color: #a8a8a8;
+    border-radius: 0 0 .45rem .45rem;
+  }
+  .listbox[data-connected] {
+    border: 1px solid #a8a8a8;
+    border-radius: var(--popup-border-radius);
+  }
+  .listbox[data-connected="below"] {clip-path: inset(0 -2rem -2rem -2rem);}
+  .listbox[data-connected="above"] {clip-path: inset(-2rem -2rem 0 -2rem);}
+  .listbox[data-connected]::before {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    left: var(--popup-join-left);
+    width: var(--popup-join-width);
+    height: 1px;
+    background: #fff;
+    pointer-events: none;
+  }
+  .listbox[data-connected="above"]::before {top: auto; bottom: 0;}
+`
+
 /** Controls shared by ribbon button popovers and File submenus. */
 export const dropdownContentStyles = css`
     .button-dropdown-form > fieldset {

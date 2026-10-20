@@ -21,6 +21,11 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
 
 describe("local live preview bundles", () => {
+  it("allows Bunny Fonts stylesheets in an editing frame without installed widgets", () => {
+    const source = editorFrameHTML('<p style="font-family: Alegreya, serif">Text</p>', editorOptions({bridgeNonce: "font-test"}))
+    const policy = parse(source).head.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!
+    expect(policy).toContain("style-src-elem 'nonce-font-test' https://fonts.bunny.net;")
+  })
   afterEach(() => vi.restoreAllMocks())
   const script = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js?revision=2`
   const style = `${hostOrigin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.css?revision=2`

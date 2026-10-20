@@ -2,6 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {LiveSession} from "./live-session"
 import {connectLiveLearner} from "./live-learner"
+import {bunnyFontStylesheet} from "./fonts"
 
 vi.mock("./frame-origins", () => ({editorHostOrigin: () => "https://app.test"}))
 
@@ -24,6 +25,20 @@ afterEach(() => {
 })
 
 describe("connectLiveLearner", () => {
+  it("includes Bunny font stylesheets and font usage in the participant snapshot", () => {
+    const href = bunnyFontStylesheet({familyName: "Alegreya", category: "serif", weights: [400], styles: ["normal"]})
+    const {host, learner} = sessionPair(`<!doctype html><html><head><link rel="stylesheet" href="${href}"></head><body><p style="font-family: Alegreya, serif">Lesson</p></body></html>`)
+    const disconnect = connectLiveLearner(learner)
+    try {
+      expect(document.querySelector<HTMLLinkElement>('link[rel="stylesheet"]')!.href).toBe(href)
+      expect(document.querySelector("p")!.style.fontFamily).toBe("Alegreya, serif")
+      const policy = document.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content
+      expect(policy).toContain("style-src * data: 'unsafe-inline'")
+      expect(policy).toContain("font-src * data:")
+    }
+    finally { disconnect(); host.destroy(); learner.destroy() }
+  })
+
   const flushMicrotasks = async () => {
     await Promise.resolve()
     await Promise.resolve()
