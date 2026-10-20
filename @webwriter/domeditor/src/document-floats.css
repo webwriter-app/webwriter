@@ -147,4 +147,52 @@
   tfoot > tr > :is(th, td) {
     background-color: #f2f2f2;
   }
+
+  /* Legacy widgets expose their authoring controls through a shadow part.
+   * Keep compact documents in flow; moving the part never moves authored DOM. */
+  :where([contenteditable=""], [contenteditable="true"]) {
+    position: relative;
+  }
+
+  :not([class~="◆element-capture-selected"])::part(options) {
+    display: none;
+  }
+
+  [contenteditable]:not([contenteditable="false"])::part(options) {
+    box-sizing: border-box;
+    float: right;
+    inline-size: 16rem;
+    max-inline-size: 100%;
+    block-size: 100%;
+    overflow-y: auto;
+    background-color: #fff;
+    padding-inline-end: 1rem;
+    margin: 0 0 1rem 1rem;
+  }
+
+  body:is([class~="ww-canvas"], [class~="ww-slides"], [class~="ww-board"]) [contenteditable]:not([contenteditable="false"])::part(options) {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: calc(100% + 1rem);
+    max-inline-size: none;
+    margin: 0;
+  }
+
+  @container (width >= 1200px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"]) {
+      [contenteditable]:not([contenteditable="false"])::part(options) {
+        position: absolute;
+        inset-block-start: 0;
+        inset-inline-start: calc(100% + var(--ww-float-gap));
+        inline-size: min(16rem, var(--ww-float-width));
+        max-inline-size: none;
+        margin: 0;
+      }
+
+      /* Centered widgets narrower than the prose measure still use its gutter. */
+      :is(&, & > main, & > article, & > section) > [contenteditable]:not([contenteditable="false"])::part(options) {
+        inset-inline-start: calc(max(100%, (100% + var(--ww-prose-max, 45rem)) / 2) + var(--ww-float-gap));
+      }
+    }
+  }
 }

@@ -6,6 +6,7 @@ import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode} from "../src/utility"
 import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
+import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
@@ -24,6 +25,105 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "height: 500px; max-width: none"
+  document.body.append(frame)
+  try {
+    for(const theme of documentThemes) {
+      for(const [width, mode] of [[1440, "document"], [900, "document"], [375, "document"], [900, "canvas"], [900, "slides"], [900, "board"]] as const) {
+        frame.style.width = `${width}px`
+        const widgetHTML = '<legacy-options-widget contenteditable=""><!--keep--><p>Authored widget content</p></legacy-options-widget>'
+        const content = mode === "slides" ? `<div class="ww-slides-viewport"><section class="ww-slide">${widgetHTML}</section></div>`
+          : mode === "board" ? `<section class="ww-board-column"><h2>Column</h2><article class="ww-board-card">${widgetHTML}</article></section>` : widgetHTML
+        const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+        frame.srcdoc = `<!doctype html><style>${theme.source}\n${canvasStyles}\n${slidesStyles}\n${boardStyles}</style><body class="${mode === "document" ? "" : `ww-${mode}`}">${content}</body>`
+        await loaded
+        const doc = frame.contentDocument!, view = frame.contentWindow!
+        const widget = doc.querySelector<HTMLElement>("legacy-options-widget")!
+        const root = widget.attachShadow({mode: "open"})
+        root.innerHTML = `<style>
+          :host {display: block; box-sizing: border-box; padding: 1rem; border: 1px solid #cbd5e1; background: white; font: 16px/1.5 system-ui}
+          :host(:not([contenteditable])) [part] {display: none}
+          [part] {padding: .5rem; border: 1px solid #cbd5e1; background: #f5f7fa}
+          input {box-sizing: border-box; width: 100%}
+        </style><div part="options controls"><label>Answer<input value="42"></label><button>Reset</button></div><slot></slot>`
+        if(mode !== "document") widget.style.cssText = "width: 240px; left: 20px; top: 20px"
+        const part = root.querySelector<HTMLElement>("[part]")!
+        const context = `${theme.value}/${mode}/${width}`
+        assert(view.getComputedStyle(part).display === "none", `${context}: unselected options are visible`)
+        widget.classList.add("◆element-selected")
+        widget.focus()
+        assert(view.getComputedStyle(part).display === "none", `${context}: ordinary selection or focus exposed options`)
+        widget.classList.add("◆element-capture-selected")
+        const authoredHTML = doc.body.innerHTML
+        await layoutFrame()
+        const bounds = () => ({host: widget.getBoundingClientRect(), options: part.getBoundingClientRect()})
+        let {host, options} = bounds()
+        assert(options.width > 100 && options.height > 0, `${context}: options disappeared`)
+        assert(view.getComputedStyle(part).backgroundColor === "rgb(255, 255, 255)", `${context}: options do not have a white background`)
+        assert(view.getComputedStyle(part).overflowY === "auto", `${context}: options cannot scroll vertically`)
+        assert(parseFloat(view.getComputedStyle(part).paddingInlineEnd) > parseFloat(view.getComputedStyle(part).paddingInlineStart), `${context}: options lack additional right padding`)
+        if(width >= 1200 || mode !== "document") {
+          assert(options.left > host.right + 1, `${context}: options are not to the right of the widget`)
+          assert(Math.abs(options.top - host.top) <= 2, `${context}: options do not align with the widget top`)
+          assert(Math.abs(options.height - host.height) <= 2, `${context}: options do not share the widget height`)
+        }
+        else {
+          assert(view.getComputedStyle(part).position === "static", `${context}: compact options left normal flow`)
+          assert(options.right <= host.right + 1, `${context}: compact options overflow the widget`)
+        }
+        assert(doc.body.innerHTML === authoredHTML, `${context}: layout changed authored content`)
+        if(width >= 1200 || mode !== "document") {
+          const longControls = doc.createElement("div")
+          longControls.style.height = "800px"
+          longControls.textContent = "Long widget controls"
+          part.append(longControls)
+          for(const height of [240, 120]) {
+            widget.style.height = `${height}px`
+            await layoutFrame()
+            ;({host, options} = bounds())
+            assert(Math.abs(options.height - host.height) <= 2, `${context}: options did not follow a resized widget`)
+            assert(part.scrollHeight > part.clientHeight, `${context}: long controls did not overflow inside the panel`)
+            part.scrollTop = 50
+            assert(part.scrollTop > 0, `${context}: long controls cannot be scrolled`)
+          }
+          widget.style.removeProperty("height")
+          longControls.remove()
+          await layoutFrame()
+        }
+        if(width >= 1200) {
+          const gutterLeft = options.left
+          widget.style.width = "360px"
+          await layoutFrame()
+          ;({host, options} = bounds())
+          assert(Math.abs(options.left - gutterLeft) <= 1, `${context}: a narrow widget moved options out of the gutter`)
+          assert(options.right <= width, `${context}: gutter options overflow the page`)
+          frame.style.width = "375px"
+          await layoutFrame()
+          assert(view.getComputedStyle(part).position === "static", `${context}: options did not reflow after resizing`)
+        }
+        const other = doc.createElement("legacy-options-widget")
+        other.setAttribute("contenteditable", "")
+        other.attachShadow({mode: "open"}).innerHTML = '<div part="options">Other widget options</div>'
+        widget.after(other)
+        const otherPart = other.shadowRoot!.querySelector<HTMLElement>("[part]")!
+        assert(view.getComputedStyle(otherPart).display === "none", `${context}: another widget's options are visible`)
+        widget.classList.remove("◆element-capture-selected")
+        other.classList.add("◆element-capture-selected")
+        assert(view.getComputedStyle(part).display === "none", `${context}: previous widget's options remained visible`)
+        assert(view.getComputedStyle(otherPart).display !== "none", `${context}: newly captured options stayed hidden`)
+        other.classList.remove("◆element-capture-selected")
+        assert(view.getComputedStyle(otherPart).display === "none", `${context}: clearing capture left options visible`)
+        widget.classList.add("◆element-capture-selected")
+        widget.removeAttribute("contenteditable")
+        assert(view.getComputedStyle(part).display === "none", `${context}: theme overrode the widget's reader presentation`)
+      }
+    }
+  }
+  finally { frame.remove() }
+})
 
 await check("bundled document themes always render light colors", async () => {
   const frame = document.createElement("iframe")
