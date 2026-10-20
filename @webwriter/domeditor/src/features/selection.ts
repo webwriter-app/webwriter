@@ -1105,7 +1105,10 @@ export class SelectionFeature extends EditorFeature {
     input: event => this.#handleWidgetShadowInteraction(event),
     change: event => this.#handleWidgetShadowInteraction(event),
     wheel: event => this.#handleWidgetWheel(event),
-    scroll: event => this.#handleWidgetScroll(event),
+    scroll: event => {
+      this.#handleWidgetScroll(event)
+      if(!isWidgetShadowInteraction(event, this.editor.schema) && !isAppendixInteraction(event)) this.#refreshGapCaretInlinePosition()
+    },
   }
 
   /** Capture owns editing input, including native editing defaults. Only an
@@ -1528,7 +1531,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("height")
     caret.style.removeProperty("font-size")
     caret.style.removeProperty("--gap-caret-block-offset")
-    caret.style.removeProperty("--gap-caret-inline-offset")
+    caret.style.removeProperty("--gap-caret-inline-position")
     caret.style.removeProperty("--math-caret-top")
     caret.style.removeProperty("--math-caret-height")
     for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
@@ -1689,8 +1692,8 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Gap insertion belongs to the parent's content column, even when the
-   * adjacent block has an authored width or horizontal margins. Keep the
-   * vertical CSS anchor on that block so it still tracks the boundary. */
+   * adjacent block is empty or changes width after layout. Only the vertical
+   * position uses that block's CSS anchor; horizontal placement is independent. */
   readonly #refreshGapCaretInlinePosition = () => {
     const caret = this.gapCaret
     const element = Array.from(this.#selectionMarkers).find(element =>
@@ -1703,8 +1706,8 @@ export class SelectionFeature extends EditorFeature {
     const themedColumn = parent.matches("body:not(.ww-canvas, .ww-slides), body:not(.ww-canvas, .ww-slides) > :is(main, article, section)")
       && getComputedStyle(document.body).getPropertyValue("--ww-float-width")
     const maximum = themedColumn ? style.getPropertyValue("--ww-prose-max").trim() || "45rem" : `${right - left}px`
-    caret.style.setProperty("--gap-caret-inline-offset",
-      `calc(${left - element.getBoundingClientRect().left}px + max(0px, (${right - left}px - ${maximum}) / 2))`)
+    caret.style.setProperty("--gap-caret-inline-position",
+      `calc(${fixedClientX(left)}px + max(0px, (${right - left}px - ${maximum}) / 2))`)
   }
 
   /** Retains marker owners so removal also cleans disconnected content. */

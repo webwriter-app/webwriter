@@ -1674,15 +1674,17 @@ await check("global directional shorthands preserve authored overrides in native
 
 await check("gap carets track their authored boundary", async () => {
   const frame = document.createElement("iframe")
-  frame.style.cssText = "width:800px;height:400px"
-  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  frame.style.cssText = "width:1200px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
   document.body.append(frame)
   try {
     const view = frame.contentWindow as Window & {InputEvent: typeof InputEvent}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
     assert(view.editor, "gap fixture did not initialize")
     const doc = frame.contentDocument!, selection = doc.getSelection()!, feature = view.editor!.features.selection
-    for(const html of ["<p></p>", "<p>Populated</p>", "<p>Before</p><p>After</p>",
+    const emptyStyle = doc.createElement("style")
+    doc.head.append(emptyStyle)
+    for(const html of ["<p></p>", "<p><br></p>", "<p> </p>", "<p><span></span></p>", "<p></p><p></p>", "<p>Populated</p>", "<p>Before</p><p>After</p>",
       '<p style="margin-bottom:0px"></p>', '<p style="margin-bottom:47px"></p>',
       '<p style="--ww-block-spacing:3em;font-size:24px"></p>', "<h2>Heading</h2>", "<hr>",
       '<!--keep--><p></p>\n<!--keep too-->',
@@ -1697,6 +1699,12 @@ await check("gap carets track their authored boundary", async () => {
         selection.setPosition(container, offset)
         feature.processSelection(undefined, {scrollIntoView: false})
         await layoutFrame()
+        // CSSOM changes and late layout can move an empty block without a
+        // DOM mutation. Its box must not pull the caret out of the column.
+        if(html === "<p></p>") {
+          emptyStyle.sheet!.insertRule("p:empty { inline-size: 320px }")
+          await layoutFrame()
+        }
         const anchor = doc.querySelector<HTMLElement>(".◆gap-before-selected, .◆gap-after-selected")!
         assert(anchor, `missing gap anchor: html=${html}, offset=${offset}, selection=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
         const box = anchor.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
@@ -1713,6 +1721,7 @@ await check("gap carets track their authored boundary", async () => {
         feature.processSelection(undefined, {scrollIntoView: false})
         assert(!doc.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap markers survived typing")
         assert(!view.editor!.toHTML(true).includes("◆"), "gap presentation leaked into serialized HTML")
+        if(emptyStyle.sheet!.cssRules.length) emptyStyle.sheet!.deleteRule(0)
         doc.body.innerHTML = html
         container = doc.querySelector("#gap-container") ?? doc.body
       }
