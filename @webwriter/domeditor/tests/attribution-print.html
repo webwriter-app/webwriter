@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Attribution print verification</title>
+  <style>
+    @page { size: A4; margin: 16mm; }
+    :root { --ww-page-gutter: 16px; font: 16px/1.5 system-ui, sans-serif; }
+    body { margin: 16px; }
+    h1 { font-size: 24px; }
+    figure { margin: 24px 0; }
+    img { display: block; width: 100%; height: 280px; object-fit: cover; }
+    article { margin: 32px 0; padding: 16px; border: 1px solid #cbd5e1; }
+    .second-page { break-before: page; clear: both; }
+    .bubble-fixture article { padding: 4px; }
+    .bubble-sample { position: relative; z-index: 9999; box-sizing: border-box; width: calc(50% - 12px); height: 24px; margin-block: 8px; padding-inline: 12px; color: #fff; background: #334155; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    button { margin-bottom: 16px; }
+    @media print { button { display: none; } }
+  </style>
+</head>
+<body>
+  <button onclick="window.print()">Print verification document</button>
+  <h1>Attribution in the smallest margin</h1>
+  <figure>
+    <img alt="A blue landscape" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='280'%3E%3Crect width='600' height='280' fill='%23e0f2fe'/%3E%3Cpath d='M0 230L180 70L340 230L470 120L600 240V280H0' fill='%237dd3fc'/%3E%3C/svg%3E" data-ww-attribution-name="Ada Lovelace" data-ww-attribution-year="2026" data-ww-license="CC-BY-4.0" data-ww-attribution-contact="https://example.com/landscape">
+    <figcaption>An attributed image, with two vertical lines of small print.</figcaption>
+  </figure>
+  <article data-ww-attribution-name="Grace Hopper" data-ww-attribution-year="2025" data-ww-license="CC0-1.0">
+    An ordinary authored element with one line of attribution.
+  </article>
+  <p data-ww-attribution-name="The original author and the collaborative research and illustration team, including archive and restoration contributors" data-ww-attribution-year="2026" data-ww-license="CC-BY-4.0" data-ww-attribution-contact="mailto:team@example.com">A short element whose full attribution becomes a numbered print note.</p>
+  <p hidden data-ww-attribution-name="Hidden author">Hidden content must not print.</p>
+  <section class="second-page">
+    <h1>Second printed page</h1>
+    <print-test-widget data-ww-attribution-name="Katherine Johnson" data-ww-attribution-year="2024" data-ww-license="CC-BY-SA-4.0" data-ww-attribution-contact="mailto:katherine@example.com" style="display: block; height: 240px; padding: 16px; background: #f1f5f9;">
+      A custom element on a later page. Its attribution must print here, once.
+    </print-test-widget>
+  </section>
+  <script type="module">
+    import {mountAttributionReader} from "../src/attribution.js"
+    import {creativeCommonsLicenses} from "../src/document-head.ts"
+    if(new URLSearchParams(location.search).has("bubbles")) {
+      document.body.classList.add("bubble-fixture")
+      for(let index = 3; index <= 12; index++) {
+        const sample = document.createElement("p")
+        sample.className = "bubble-sample"
+        sample.style.float = index % 2 ? "left" : "right"
+        sample.textContent = `Reference ${index}`
+        sample.setAttribute("data-ww-attribution-name", `Print author ${index}`)
+        sample.setAttribute("data-ww-license", "MIT")
+        sample.setAttribute("data-ww-attribution-contact", `https://example.com/footnote/${index}`)
+        document.querySelector(".second-page").before(sample)
+      }
+    }
+    mountAttributionReader(creativeCommonsLicenses)
+  </script>
+</body>
+</html>

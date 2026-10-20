@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Responsive float attribution</title>
+  <style>
+    :is(aside, figure) { min-height: 240px; padding: 16px; background: #e0f2fe; }
+    #right { background: #f1f5f9; }
+  </style>
+  <script type="module">
+    import {defaultDocumentTheme} from "../src/document-themes.ts"
+    import {mountAttributionReader} from "../src/attribution.js"
+    import {creativeCommonsLicenses} from "../src/document-head.ts"
+    const theme = document.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    document.head.prepend(theme)
+    if(new URLSearchParams(location.search).has("captions")) {
+      for(const element of document.querySelectorAll("aside")) {
+        const figure = document.createElement("figure")
+        for(const attribute of element.attributes) figure.setAttribute(attribute.name, attribute.value)
+        const content = document.createElement("div")
+        content.style.height = "240px"
+        content.textContent = element.textContent
+        const caption = document.createElement("figcaption")
+        caption.textContent = element.id === "left" ? "Caption below" : "Caption above"
+        figure.append(...(element.id === "left" ? [content, caption] : [caption, content]))
+        element.replaceWith(figure)
+      }
+    }
+    if(new URLSearchParams(location.search).has("column")) {
+      const column = document.querySelector("body > p")
+      column.setAttribute("data-ww-attribution-name", "Content column author")
+      column.setAttribute("data-ww-attribution-contact", "mailto:column@example.com")
+      column.style.minHeight = "160px"
+    }
+    if(new URLSearchParams(location.search).has("long")) {
+      for(const element of document.querySelectorAll("aside, figure")) {
+        element.setAttribute("data-ww-attribution-name", "A long attribution naming the original author and collaborative illustration team")
+      }
+    }
+    if(new URLSearchParams(location.search).has("compact")) {
+      for(const element of document.querySelectorAll("aside, figure")) {
+        element.style.minHeight = "0"
+        element.setAttribute("data-ww-attribution-name", "The original author and the collaborative research and illustration team, with contributions from the archive and restoration project")
+      }
+    }
+    if(new URLSearchParams(location.search).has("nested")) {
+      const paragraph = document.querySelector("body > p")
+      const section = document.createElement("section")
+      paragraph.before(section)
+      section.append(paragraph)
+    }
+    if(new URLSearchParams(location.search).has("editing")) {
+      const {DOMEditor} = await import("../src/domeditor.ts")
+      new DOMEditor()
+    }
+    else mountAttributionReader(creativeCommonsLicenses)
+  </script>
+</head>
+<body>
+  <h1>Responsive float attribution</h1>
+  <aside id="left" class="ww-float-left" data-ww-attribution-name="Ada Lovelace" data-ww-attribution-year="2026" data-ww-license="CC-BY-4.0" data-ww-attribution-contact="https://example.com/left">Authored left float</aside>
+  <aside id="right" class="ww-float-right" data-ww-attribution-name="Grace Hopper" data-ww-attribution-year="2026" data-ww-license="CC0-1.0" data-ww-attribution-contact="mailto:grace@example.com">Authored right float</aside>
+  <p>The attribution stays outside each side float. The gap between a full-width float and the content column matches the outer page margin.</p>
+  <p>Below 1200px both floats move to the right lane, with their attribution on the right. Below 600px the floats stack in the content column.</p>
+
+</body>
+</html>
