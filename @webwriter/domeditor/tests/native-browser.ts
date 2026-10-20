@@ -2422,6 +2422,21 @@ await check("attribution inputs keep visible carets during element and capture s
         assert(style.caretColor === "auto" || style.caretColor === style.color, `attribution ${field.name} caret is invisible during ${captured ? "capture" : "element"} selection: ${style.caretColor}`)
         assert(getComputedStyle(document.body).caretColor === "rgba(0, 0, 0, 0)", "attribution input restored the document's background caret")
       }
+      const picker = popup.querySelector<import("../src/components/attribution-license-picker").AttributionLicensePicker>("attribution-license-picker")!
+      await picker.updateComplete
+      const controls = [popup.querySelector<HTMLInputElement>('input[name="name"]')!, popup.querySelector<HTMLInputElement>('input[name="year"]')!,
+        picker.shadowRoot!.querySelector<HTMLInputElement>("input")!, popup.querySelector<HTMLInputElement>('input[name="contact"]')!,
+        popup.querySelector<HTMLButtonElement>(".save")!, popup.querySelector<HTMLButtonElement>(".close")!]
+      controls[0].focus()
+      for(const shiftKey of [false, true]) {
+        for(let step = 0; step < controls.length; step++) {
+          const index = shiftKey ? (controls.length - step) % controls.length : step
+          controls[index].dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", shiftKey, bubbles: true, composed: true, cancelable: true}))
+          const next = controls[(index + (shiftKey ? -1 : 1) + controls.length) % controls.length]
+          assert((next.getRootNode() as ShadowRoot).activeElement === next, `attribution Tab order skipped ${next.getAttribute("name") ?? next.className} (capture: ${captured}, reverse: ${shiftKey})`)
+          assert(!popup.hidden, "Tab dismissed the attribution dialog")
+        }
+      }
       popup.querySelector<HTMLButtonElement>(".close")!.click()
     }
     assert(paragraph.getAttribute(attributionAttributes.name) === "Ada", "focusing attribution inputs changed authored metadata")

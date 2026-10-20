@@ -35,6 +35,10 @@ export class AttributionLicensePicker extends EditorCombobox {
     if(event.key === "Escape" && !this.open) return
     super.handleKeydown(event)
   }
+
+  focus(options?: FocusOptions) {
+    this.renderRoot.querySelector<HTMLInputElement>("input")?.focus(options)
+  }
 }
 
 if(!customElements.get("attribution-license-picker")) {

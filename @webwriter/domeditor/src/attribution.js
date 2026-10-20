@@ -458,6 +458,15 @@ export function createAttributionController(doc, options = {}) {
   popup.addEventListener("toggle", event => { if(event.newState === "closed") close() })
   root.addEventListener("keydown", event => {
     if(event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true) }
+    if(event.key === "Tab" && opened && editable() && !event.defaultPrevented && event.composedPath().includes(popup)) {
+      const controls = [inputs.name, inputs.year, licensePicker, inputs.contact, root.querySelector(".save"), root.querySelector(".close")]
+        .filter(control => control?.isConnected && !control.disabled)
+      const index = controls.findIndex(control => event.composedPath().includes(control))
+      event.preventDefault()
+      event.stopPropagation()
+      licensePicker?.close()
+      controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length].focus({preventScroll: true})
+    }
   })
   inputs.contact.addEventListener("input", () => inputs.contact.setCustomValidity(""))
   const save = () => {

@@ -42,6 +42,41 @@ afterEach(() => {
 })
 
 describe("element attribution editing", () => {
+  it.each([false, true])("cycles through dialog controls with Tab and Shift+Tab (capture: %s)", async captured => {
+    const element = start()
+    element.setAttribute(attributionAttributes.name, "Ada")
+    bounds(element)
+    if(captured) editor!.features.selection.captureElement(element)
+    else select(element)
+    document.dispatchEvent(new Event("selectionchange"))
+    notes()[0].click()
+    const picker = licensePicker()
+    await picker.updateComplete
+    const controls = [input("name"), input("year"), picker.shadowRoot!.querySelector<HTMLInputElement>("input")!,
+      input("contact"), ui().querySelector<HTMLButtonElement>(".save")!, ui().querySelector<HTMLButtonElement>(".close")!]
+    const checkFocus = (control: HTMLElement) => expect((control.getRootNode() as ShadowRoot).activeElement).toBe(control)
+    checkFocus(controls[0])
+    for(const shiftKey of [false, true]) {
+      for(let step = 0; step < controls.length; step++) {
+        const index = shiftKey ? (controls.length - step) % controls.length : step
+        const event = new KeyboardEvent("keydown", {key: "Tab", shiftKey, bubbles: true, composed: true, cancelable: true})
+        controls[index].dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+        checkFocus(controls[(index + (shiftKey ? -1 : 1) + controls.length) % controls.length])
+        expect(popup().hidden).toBe(false)
+      }
+    }
+    picker.focus()
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await picker.updateComplete
+    controls[2].dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", bubbles: true, composed: true, cancelable: true}))
+    await picker.updateComplete
+    checkFocus(input("contact"))
+    expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
+    expect(element.getAttribute(attributionAttributes.name)).toBe("Ada")
+    expect(document.body.classList.contains("◆node-selection-active")).toBe(true)
+  })
+
   it("offers only current CC licenses with separate, wrapping component definitions", async () => {
     const element = start()
     bounds(element); select(element); button().click()
