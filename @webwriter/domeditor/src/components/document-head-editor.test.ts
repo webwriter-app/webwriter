@@ -183,6 +183,17 @@ describe("document head form", () => {
     expect(choices).toHaveLength(creativeCommonsLicenses.length)
     expect(choices[0].querySelector(".option-code")?.textContent).toBe("CC0-1.0")
     expect(choices[0].querySelector(".option-name")?.textContent).toBe("Creative Commons Zero 1.0 Universal")
+    const descriptions = [
+      "The work can be copied, modified, distributed and performed, even for commercial purposes, all without asking permission.",
+      "Credit must be given to the creator.",
+      "Credit must be given to the creator. Adaptations must be shared under the same terms.",
+      "Credit must be given to the creator. Only noncommercial use of the work is permitted.",
+      "Credit must be given to the creator. No derivatives or adaptations of the work are permitted.",
+      "Credit must be given to the creator. Only noncommercial use of the work is permitted. Adaptations must be shared under the same terms.",
+      "Credit must be given to the creator. Only noncommercial use of the work is permitted. No derivatives or adaptations of the work are permitted.",
+    ]
+    expect(choices.map(choice => choice.querySelector(".option-description")?.textContent)).toEqual(descriptions)
+    expect(picker.shadowRoot!.textContent).not.toContain("Noncommercial means")
 
     choices[1].click()
     expect(actions).toContainEqual({

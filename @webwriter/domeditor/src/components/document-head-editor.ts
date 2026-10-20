@@ -96,7 +96,15 @@ export function orderedLanguageOptions(
 }
 
 /** Metadata presentation of the shared editor combobox. */
-export class DocumentHeadCombobox extends EditorCombobox {}
+export class DocumentHeadCombobox extends EditorCombobox {
+  static styles = [EditorCombobox.styles, css`
+    :host([label="License"]) .listbox {
+      width: max(anchor-size(width), 22rem);
+      position-area: bottom span-left;
+      justify-self: end;
+    }
+  `]
+}
 
 
 class DocumentThemePicker extends LitElement {
@@ -846,6 +854,7 @@ export class DocumentHeadEditor extends LitElement {
       value: license.url,
       label: license.code,
       description: license.name,
+      detail: license.description,
     }))
     return html`
       <div class="common-grid" aria-label="Common document metadata">
