@@ -752,6 +752,10 @@ describe("mark ribbon controls", () => {
 
     const dropdown = span.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
     expect(dropdown.hidden).toBe(false)
+    const menu = span.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    await menu.updateComplete
+    expect(getComputedStyle(menu).width).toBe("max-content")
+    expect(getComputedStyle(menu).maxWidth).toBe(`calc(${window.innerWidth}px - 16px)`)
     expect(dropdown.querySelector('[role="listbox"]')?.getAttribute("aria-multiselectable")).toBe("true")
     expect(Array.from(dropdown.querySelectorAll<HTMLElement>(".mark-dropdown-option-name")).map(option => option.textContent))
       .toEqual([
