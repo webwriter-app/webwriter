@@ -561,6 +561,8 @@ describe("reading attribution", () => {
     expect(contact.textContent).toBe("ada@example.com")
     expect(label.textContent).not.toContain("mailto:")
     expect(getComputedStyle(label).color).toBe("#777")
+    expect(getComputedStyle(label).userSelect).toBe("none")
+    expect(getComputedStyle(label).getPropertyValue("-webkit-user-select")).toBe("none")
     for(const link of [license, contact]) {
       expect(getComputedStyle(link).textDecoration).toContain("underline")
       if(!editing) {

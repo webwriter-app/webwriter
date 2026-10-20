@@ -70,7 +70,7 @@ export function createAttributionController(doc, options = {}) {
     .◆attribution-ui .details { display: grid; gap: 8px; overflow-wrap: anywhere; }
     .◆attribution-ui a { color: inherit; text-decoration: underline; }
     .◆attribution-ui .error { margin: 0; color: #b91c1c; }
-    .◆attribution-ui .attribution-note { display: block; position: absolute; width: max-content; height: max-content; max-width: none; max-height: none; overflow: visible; margin: 0; padding: 0; color: #777; background: transparent; font: 6pt/6pt system-ui, sans-serif; writing-mode: sideways-lr; direction: ltr; white-space: nowrap; pointer-events: auto; user-select: text; -webkit-user-select: text; }
+    .◆attribution-ui .attribution-note { display: block; position: absolute; width: max-content; height: max-content; max-width: none; max-height: none; overflow: visible; margin: 0; padding: 0; color: #777; background: transparent; font: 6pt/6pt system-ui, sans-serif; writing-mode: sideways-lr; direction: ltr; white-space: nowrap; pointer-events: auto; user-select: none; -webkit-user-select: none; }
     .◆attribution-ui .attribution-group { display: contents; }
     .◆attribution-ui .attribution-group:hover .attribution-note { color: #000; }
     .◆attribution-ui .attribution-note.left-attribution { writing-mode: sideways-rl; text-align: right; transform: translateX(-100%); }

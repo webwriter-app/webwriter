@@ -5608,6 +5608,7 @@ await check("wrapped attribution keeps two text columns and moves contact to the
           const label = labels()[index], text = label.querySelector<HTMLElement>(".attribution-text")!
           const contact = appendix.querySelector<HTMLElement>(`[part="${label.getAttribute("part")}-contact"]`)!
           assert(label.parentElement === contact.parentElement && label.parentElement!.classList.contains("attribution-group"), "split attribution parts do not share their hover group")
+          assert([label, contact].every(note => view.getComputedStyle(note).userSelect === "none"), "attribution text is selectable")
           assert(contact?.textContent === element.getAttribute("data-ww-attribution-contact")!.replace(/^mailto:/, ""), "wrapped attribution did not move its complete contact")
           assert(text.textContent!.includes(element.getAttribute("data-ww-attribution-name")!), "wrapped attribution shortened the author name")
           const box = element.getBoundingClientRect(), noteBox = label.getBoundingClientRect(), contactBox = contact.getBoundingClientRect()
