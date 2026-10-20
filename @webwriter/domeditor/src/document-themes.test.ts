@@ -15,6 +15,13 @@ const ruleHeaders = (source: string) => Array.from(
 const layoutExamples = import.meta.glob("../examples/layouts/**/*.html", {query: "?raw", import: "default", eager: true}) as Record<string, string>
 
 describe("document themes", () => {
+  it("defaults iframes to 16:9 with low-priority CSS in editing and exports", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain(":where(iframe:not([is])) {\n    aspect-ratio: 16 / 9;\n  }")
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+    }
+  })
+
   it("uses only light colors regardless of system preferences or theme attributes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain("color-scheme: only light;")

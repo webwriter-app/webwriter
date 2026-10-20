@@ -1984,6 +1984,65 @@ await check("document resizing and graphic fitting preserve normal flow", async 
   finally { graphic.remove(); editor.features.transformation.clearTransform() }
 })
 
+await check("iframes default to 16:9 and resize vertically in document flow", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:900px;height:1000px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><iframe id="empty"></iframe><iframe id="loaded" src="about:blank"></iframe><iframe id="sized" height="220" style="width:400px"></iframe><iframe id="styled" style="height:240px;width:400px"></iframe><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "iframe resize fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.setAttribute("data-ww-theme", "base")
+    doc.head.append(theme)
+    for(const preset of documentThemes) {
+      theme.textContent = preset.source
+      for(const width of [375, 900]) {
+        frame.style.width = `${width}px`
+        await layoutFrame()
+        for(const id of ["empty", "loaded"]) {
+          const rect = doc.getElementById(id)!.getBoundingClientRect()
+          assert(rect.width > 0 && Math.abs(rect.width * 9 / 16 - rect.height) < 1, `${preset.value}/${width}/${id}: default iframe is not 16:9 (${rect.width} × ${rect.height})`)
+        }
+        assert(Math.abs(doc.getElementById("sized")!.getBoundingClientRect().height - 220) < 1, "16:9 default replaced authored height attribute")
+        assert(Math.abs(doc.getElementById("styled")!.getBoundingClientRect().height - 240) < 1, "16:9 default replaced authored CSS height")
+      }
+    }
+    theme.textContent = defaultDocumentTheme.source
+    const target = doc.querySelector<HTMLIFrameElement>("#empty")!
+    editor.features.selection.selectElement(target)
+    const transform = editor.features.transformation
+    for(const delta of [100, -60]) {
+      const before = target.getBoundingClientRect()
+      const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.bottom}))
+      transform.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: before.right, clientY: before.bottom + delta, altKey: true}))
+      transform.handleScaleEnd()
+      await layoutFrame()
+      const after = target.getBoundingClientRect()
+      assert(Math.abs(after.height - before.height - delta) < 1, `iframe height did not change by ${delta}px`)
+      assert(Math.abs(after.width - before.width) < 1 && Math.abs(after.top - before.top) < 1, "vertical resizing changed iframe width or flow position")
+      assert(!target.style.position && !target.style.top && !target.style.left, "iframe resize left normal flow")
+    }
+    const saved = document.createElement("iframe")
+    saved.style.cssText = frame.style.cssText
+    const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
+    saved.srcdoc = editor.toHTML()
+    document.body.append(saved)
+    try {
+      await loaded
+      assert(Math.abs(saved.contentDocument!.getElementById("empty")!.getBoundingClientRect().height - target.getBoundingClientRect().height) < 1, "standalone export lost resized iframe height")
+      const rect = saved.contentDocument!.getElementById("loaded")!.getBoundingClientRect()
+      assert(Math.abs(rect.width * 9 / 16 - rect.height) < 1, "standalone export lost 16:9 default")
+    }
+    finally { saved.remove() }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("cancelled resizing accepts the first delete activation", async () => {
   const feature = editor.features.transformation
   for(const tag of ["p", "demo-widget"]) {

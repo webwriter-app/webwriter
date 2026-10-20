@@ -13,6 +13,10 @@
     }
   }
 
+  :where(iframe:not([is])) {
+    aspect-ratio: 16 / 9;
+  }
+
   body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
     --ww-lane: 0px;
     display: flow-root;

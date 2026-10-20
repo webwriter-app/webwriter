@@ -43,6 +43,7 @@ const expectedChecks = [
   "Board columns and cards retain native editing and standalone layout",
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
+  "iframes default to 16:9 and resize vertically in document flow",
   "cancelled resizing accepts the first delete activation",
   "media and graphics enforce minimum editing dimensions",
   "details remain intact after applying style presets",
