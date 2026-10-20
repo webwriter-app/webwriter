@@ -209,6 +209,12 @@ export class AppRibbon extends EditingControls {
       max-height: 40px;
     }
 
+    :host([expanded][drawers-collapsed]) {
+      height: 90px;
+      max-height: 90px;
+      --ribbon-drawer-summary-direction: row;
+    }
+
     :host(:not([expanded])) .ribbon {
       background: #f2f2f2;
     }
@@ -1345,7 +1351,10 @@ export class AppRibbon extends EditingControls {
 
   private updateResponsiveLayout(drawers: RibbonDrawer[]) {
     const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
-    if(!content || content.hidden || !drawers.length) return
+    if(!content || content.hidden || !drawers.length) {
+      this.removeAttribute("drawers-collapsed")
+      return
+    }
 
     const contentStyle = getComputedStyle(content)
     const inlinePadding =
@@ -1357,6 +1366,7 @@ export class AppRibbon extends EditingControls {
     // Reader controls fill the remaining ribbon width and adapt inside the
     // drawer instead of being exchanged for a collapsed summary.
     if(this.previewActive && this.liveSessionRole !== "learner") {
+      this.removeAttribute("drawers-collapsed")
       drawers.forEach(drawer => {
         drawer.compact = false
         drawer.collapsed = false
@@ -1402,6 +1412,7 @@ export class AppRibbon extends EditingControls {
       drawer.compact = layouts[index] === "compact"
       drawer.collapsed = layouts[index] === "collapsed"
     })
+    this.toggleAttribute("drawers-collapsed", layouts.every(layout => layout === "collapsed"))
   }
 
   private updatePackageCapacity() {
@@ -2197,6 +2208,7 @@ export class AppRibbon extends EditingControls {
     const members = pkg.members.filter(member => member.insertable)
     const installed = this.installedPackages.some(candidate => candidate.name === pkg.name)
     const management = this.packageManagementMode
+    const busy = this.busyPackageNames.includes(pkg.name)
     return html`
       <ribbon-button
         slot=${slot}
@@ -2208,7 +2220,7 @@ export class AppRibbon extends EditingControls {
         icon-url=${pkg.iconUrl ?? ""}
         .action=${packageAction(pkg)}
         .dragHTML=${this.packageDragHTML(pkg, members[0])}
-        .submenu=${management || !installed ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
+        .submenu=${management || !installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
           dragHTML: this.packageDragHTML(pkg, member),
@@ -2222,9 +2234,9 @@ export class AppRibbon extends EditingControls {
         ?active=${installed}
         ?management=${management}
         ?muted=${!installed}
-        .loading=${this.busyPackageNames.includes(pkg.name)}
-        ?disabled=${this.busyPackageNames.includes(pkg.name) || !management && !members.length}
-        ?keep-drawer-open=${management}
+        .loading=${busy}
+        ?disabled=${!busy && !management && !members.length}
+        ?keep-drawer-open=${management || !installed || busy}
       ></ribbon-button>
     `
   }
@@ -2640,9 +2652,8 @@ export class AppRibbon extends EditingControls {
         label: pkg.label, italic: this.isDeveloperPackage(pkg), selected: this.isConsoleSelectedPackage(pkg), icon: "Packages", iconUrl: pkg.iconUrl,
         action: packageAction(pkg),
         dragHTML: this.packageDragHTML(pkg, pkg.members.find(member => member.insertable)),
-        disabled: this.busyPackageNames.includes(pkg.name),
         removeAction: installed ? packageToggleAction(pkg) : undefined,
-        submenu: pkg.members.filter(member => member.insertable).slice(1).map(member => ({
+        submenu: !installed || this.busyPackageNames.includes(pkg.name) ? [] : pkg.members.filter(member => member.insertable).slice(1).map(member => ({
           label: member.label, action: packageMemberAction(member), dragHTML: this.packageDragHTML(pkg, member), icon: "Packages", iconUrl: pkg.iconUrl,
         })),
       }

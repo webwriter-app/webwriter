@@ -11,6 +11,7 @@ import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenu} from "./ribbon-menu"
 import type {RibbonTab} from "./ribbon-tab"
 import {WebWriterPackageRegistry} from "../packages"
+import * as fonts from "../fonts"
 
 afterEach(() => {
   document.body.replaceChildren()
@@ -19,6 +20,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.spyOn(WebWriterPackageRegistry.prototype, "search").mockResolvedValue([])
+  vi.spyOn(fonts, "bunnyFonts").mockResolvedValue([])
 })
 
 async function mountRibbon() {
@@ -932,6 +934,28 @@ describe("mark ribbon controls", () => {
     }
   })
 
+  it("disables both font inputs and their toggles when marks are unavailable", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    for(const canMark of [false, true, false]) {
+      ribbon.canMark = canMark
+      await ribbon.updateComplete
+      for(const name of ["font-family", "font-size"]) {
+        const picker = drawer.querySelector<RibbonCombobox>(`ribbon-combobox[name="${name}"]`)!
+        await picker.updateComplete
+        const field = picker.shadowRoot!.querySelector("font-combobox") ?? picker.shadowRoot!.querySelector("font-size-combobox")!
+        await field.updateComplete
+        const input = field.shadowRoot!.querySelector("input")!
+        const toggle = field.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!
+        expect(input.disabled).toBe(!canMark)
+        expect(toggle.disabled).toBe(!canMark)
+        expect(Number(getComputedStyle(field.shadowRoot!.querySelector(".control")!).opacity || 1)).toBe(canMark ? 1 : .6)
+        toggle.click()
+        await field.updateComplete
+        expect(input.getAttribute("aria-expanded")).toBe(String(canMark))
+      }
+    }
+  })
+
   it("opens custom listboxes and emits the selected style mark", async () => {
     const {ribbon, drawer} = await mountRibbon()
     ribbon.canMark = true
@@ -943,24 +967,40 @@ describe("mark ribbon controls", () => {
     const size = drawer.querySelector<RibbonCombobox>('ribbon-combobox[name="font-size"]')!
     await Promise.all([family.updateComplete, size.updateComplete])
 
-    expect(family.shadowRoot!.querySelector<HTMLElement>(".value")!.textContent!.trim()).toBe("Font")
-    expect(size.shadowRoot!.querySelector<HTMLElement>(".value")!.textContent!.trim()).toBe("Size")
+    const font = family.shadowRoot!.querySelector("font-combobox")!
+    await font.updateComplete
+    const fontInput = font.shadowRoot!.querySelector("input")!
+    const sizeCombo = size.shadowRoot!.querySelector("font-size-combobox")!
+    await sizeCombo.updateComplete
+    const sizeInput = sizeCombo.shadowRoot!.querySelector("input")!
+    expect(fontInput.placeholder).toBe("Default font")
+    expect(sizeInput.placeholder).toBe("Size")
 
-    family.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
-    await family.updateComplete
-    expect(family.shadowRoot!.querySelector("[role=listbox]")).not.toBeNull()
-    expect(family.shadowRoot!.querySelector<HTMLButtonElement>('.option[aria-label="Default font"]')!.textContent)
+    fontInput.focus()
+    await font.updateComplete
+    expect(font.shadowRoot!.querySelector("[role=listbox]")).not.toBeNull()
+    expect(font.shadowRoot!.querySelector<HTMLButtonElement>('.option[title="Default font"]')!.textContent)
       .toContain("Default font")
-    family.shadowRoot!.querySelector<HTMLButtonElement>('.option[aria-label="Arial"]')!.click()
+    font.shadowRoot!.querySelector<HTMLButtonElement>('.option[title="Arial"]')!.click()
 
     expect(changed).toHaveBeenCalledWith(expect.objectContaining({
       detail: {name: "font-family", value: "Arial, sans-serif"},
     }))
 
-    size.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
-    await size.updateComplete
-    expect(size.shadowRoot!.querySelector<HTMLButtonElement>('.option[aria-label="Default size"]')!.textContent)
-      .toContain("Default size")
+    sizeInput.focus()
+    await sizeCombo.updateComplete
+    expect(sizeCombo.shadowRoot!.querySelector<HTMLButtonElement>('.option[title="Default"]')!.textContent)
+      .toContain("Default")
+  })
+
+  it("forwards Bunny font resources with the selected font through the editor bridge", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const fontStylesheet = "https://fonts.bunny.net/css?family=Alegreya:400,700&display=swap"
+    editor.shadowRoot!.querySelector("app-ribbon")!.dispatchEvent(new CustomEvent("ribbon-combobox-change", {
+      detail: {name: "font-family", value: '"Alegreya", serif', fontStylesheet}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setStyleMark", property: "font-family", value: '"Alegreya", serif', fontStylesheet})
   })
 })
 
@@ -1008,15 +1048,23 @@ describe("mark ribbon bridge", () => {
     expect(size.value).toBe("18px")
     bold.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
     increase.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
-    size.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
-    await size.updateComplete
-    size.shadowRoot!.querySelector<HTMLButtonElement>('.option[aria-label="24 px"]')!.click()
+    const sizeCombo = size.shadowRoot!.querySelector("font-size-combobox")!
+    await sizeCombo.updateComplete
+    sizeCombo.shadowRoot!.querySelector<HTMLInputElement>("input")!.focus()
+    await sizeCombo.updateComplete
+    sizeCombo.shadowRoot!.querySelector<HTMLButtonElement>('.option[title="24 px"]')!.click()
     clear.shadowRoot!.querySelector<HTMLButtonElement>("button")!.click()
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "toggleMark", mark: "b"})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "increaseFontSize"})
     expect(execute).toHaveBeenNthCalledWith(3, {type: "setStyleMark", property: "font-size", value: "24px"})
     expect(execute).toHaveBeenNthCalledWith(4, {type: "removeMarks"})
+    const sizeInput = sizeCombo.shadowRoot!.querySelector<HTMLInputElement>("input")!
+    sizeInput.click()
+    sizeInput.value = "17.5em"
+    sizeInput.dispatchEvent(new InputEvent("input"))
+    sizeInput.dispatchEvent(new Event("change"))
+    expect(execute).toHaveBeenNthCalledWith(5, {type: "setStyleMark", property: "font-size", value: "17.5px"})
   })
 
   it("propagates ruby state and routes guarded ruby actions through the iframe bridge", async () => {

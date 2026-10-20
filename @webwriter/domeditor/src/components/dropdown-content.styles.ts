@@ -1,5 +1,55 @@
 import {css} from "lit"
 
+/** Font controls share the white, connected surface used by ribbon buttons. */
+export const connectedComboboxStyles = css`
+  .option-group {scrollbar-width: thin;}
+  input::placeholder {font-size: inherit; color: #6b7787; opacity: 1;}
+  .control:focus-within {outline-offset: -2px;}
+  :host([disabled]) .control {
+    color: #9aa4b1;
+    background: #f7f7f7;
+    border-color: #c5ccd5;
+    opacity: .6;
+  }
+  :host([disabled]) input, :host([disabled]) .toggle {cursor: default;}
+  :host([open]:not([disabled])) .control {background: #fff;}
+  :host([open]:not([disabled])) .control[data-connected] {
+    border: 1px solid #a8a8a8;
+    border-bottom-color: #fff;
+    border-radius: 4px 4px 0 0;
+    background: #fff;
+    outline: none;
+    box-shadow: none;
+  }
+  :host([open]:not([disabled])) .control[data-connected="above"] {
+    border-top-color: #fff;
+    border-bottom-color: #a8a8a8;
+    border-radius: 4px;
+  }
+  .listbox[data-connected] {
+    border: 1px solid #a8a8a8;
+    border-radius: var(--popup-border-radius);
+  }
+  .listbox[data-connected="below"] {border-top-width: 0; padding-top: 1px; clip-path: inset(0 -2rem -2rem -2rem);}
+  .listbox[data-connected="above"] {border-bottom-width: 0; padding-bottom: 1px; clip-path: inset(-2rem -2rem 0 -2rem);}
+  .listbox[data-connected]::before {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    /* Draw the remaining edge inside the clipped popup, leaving the join white. */
+    background: linear-gradient(to right,
+      #a8a8a8 0 var(--popup-join-left),
+      #fff var(--popup-join-left) calc(var(--popup-join-left) + var(--popup-join-width)),
+      #a8a8a8 calc(var(--popup-join-left) + var(--popup-join-width)) 100%);
+    pointer-events: none;
+  }
+  .listbox[data-connected="above"]::before {top: auto; bottom: 0;}
+`
+
 /** Controls shared by ribbon button popovers and File submenus. */
 export const dropdownContentStyles = css`
     .button-dropdown-form > fieldset {

@@ -621,12 +621,16 @@ export class SelectionFeature extends EditorFeature {
     else $.selectDocumentStart()
     super.enable()
     this.#floatObserver = new MutationObserver(records => {
-      if(records.some(isAuthoredMutation)) this.#invalidateFloatCandidates()
+      if(records.some(isAuthoredMutation)) {
+        this.#invalidateFloatCandidates()
+        this.#refreshGapCaretInlinePosition()
+      }
     })
     this.#floatObserver.observe(document.documentElement, {
       subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true,
     })
     window.addEventListener("resize", this.#invalidateFloatCandidates)
+    window.addEventListener("resize", this.#refreshGapCaretInlinePosition)
     document.addEventListener("load", this.#invalidateFloatCandidates, true)
     this.#ensureHoverCaret()
     window.addEventListener("focus", this.#handleWindowFocus)
@@ -641,6 +645,7 @@ export class SelectionFeature extends EditorFeature {
     this.#floatObserver = null
     this.#invalidateFloatCandidates()
     window.removeEventListener("resize", this.#invalidateFloatCandidates)
+    window.removeEventListener("resize", this.#refreshGapCaretInlinePosition)
     document.removeEventListener("load", this.#invalidateFloatCandidates, true)
     this.editor.doc.doc.off("afterTransaction", this.#handleSharedChange)
     window.removeEventListener("focus", this.#handleWindowFocus)
@@ -1100,7 +1105,10 @@ export class SelectionFeature extends EditorFeature {
     input: event => this.#handleWidgetShadowInteraction(event),
     change: event => this.#handleWidgetShadowInteraction(event),
     wheel: event => this.#handleWidgetWheel(event),
-    scroll: event => this.#handleWidgetScroll(event),
+    scroll: event => {
+      this.#handleWidgetScroll(event)
+      if(!isWidgetShadowInteraction(event, this.editor.schema) && !isAppendixInteraction(event)) this.#refreshGapCaretInlinePosition()
+    },
   }
 
   /** Capture owns editing input, including native editing defaults. Only an
@@ -1523,6 +1531,7 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("height")
     caret.style.removeProperty("font-size")
     caret.style.removeProperty("--gap-caret-block-offset")
+    caret.style.removeProperty("--gap-caret-inline-position")
     caret.style.removeProperty("--math-caret-top")
     caret.style.removeProperty("--math-caret-height")
     for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
@@ -1680,6 +1689,25 @@ export class SelectionFeature extends EditorFeature {
   /** The shadow-DOM visual caret for an empty document, if created. */
   get emptyDocumentCaret() {
     return this.editor.appendix.querySelector<HTMLElement>(".◆empty-document-caret")
+  }
+
+  /** Gap insertion belongs to the parent's content column, even when the
+   * adjacent block is empty or changes width after layout. Only the vertical
+   * position uses that block's CSS anchor; horizontal placement is independent. */
+  readonly #refreshGapCaretInlinePosition = () => {
+    const caret = this.gapCaret
+    const element = Array.from(this.#selectionMarkers).find(element =>
+      element.isConnected && element.matches(".◆gap-before-selected, .◆gap-after-selected"))
+    const parent = element?.parentElement
+    if(!caret || !element || !parent) return
+    const style = getComputedStyle(parent), rect = parent.getBoundingClientRect()
+    const left = rect.left + (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.paddingLeft) || 0)
+    const right = rect.right - (parseFloat(style.borderRightWidth) || 0) - (parseFloat(style.paddingRight) || 0)
+    const themedColumn = parent.matches("body:not(.ww-canvas, .ww-slides), body:not(.ww-canvas, .ww-slides) > :is(main, article, section)")
+      && getComputedStyle(document.body).getPropertyValue("--ww-float-width")
+    const maximum = themedColumn ? style.getPropertyValue("--ww-prose-max").trim() || "45rem" : `${right - left}px`
+    caret.style.setProperty("--gap-caret-inline-position",
+      `calc(${fixedClientX(left)}px + max(0px, (${right - left}px - ${maximum}) / 2))`)
   }
 
   /** Retains marker owners so removal also cleans disconnected content. */
@@ -2064,6 +2092,7 @@ export class SelectionFeature extends EditorFeature {
         }
         const gapCaret = this.#showSelectionCaret("gap")
         this.#markSelection(element, `◆gap-${placement}-selected`)
+        this.#refreshGapCaretInlinePosition()
         // Include the trailing margin in the insertion position. The gap
         // marker previews the theme's spacing even on its current last block.
         gapCaret.style.setProperty("--gap-caret-block-offset", placement === "after"
@@ -2229,7 +2258,15 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection()
       }
       else if(ev.key === "ArrowUp" && ev.altKey) {
-
+        if(!ev.shiftKey || ev.ctrlKey || ev.metaKey || ev.isComposing || ev.defaultPrevented) return
+        if(!document.getSelection()?.rangeCount || $.isElementSelection || $.isMultiElementSelection) return
+        const node = $.commonAncestor
+        const target = atomicEditingContainer(node, this.editor.schema) ?? getContainer(node)
+        const root = getDocumentRoot()
+        if(!isElement(target) || target === root || !root.contains(target)
+          || target.matches("caption, figcaption, details > summary")) return
+        ev.preventDefault()
+        this.selectElement(target)
       } 
       else if(ev.key === "ArrowUp" && modifierKeyDown(ev)) {
 

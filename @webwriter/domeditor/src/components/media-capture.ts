@@ -169,6 +169,7 @@ export class MediaCapture {
     this.connect.disabled = busy
     this.connect.hidden = state === "recording" || state === "saving"
     this.connect.textContent = this.screen ? "Choose screen" : state === "ready" ? "Reconnect" : "Enable device"
+    this.connect.classList.toggle("primary", state !== "ready")
     this.capture.hidden = state !== "ready"
     this.stop.hidden = state !== "recording"
     this.dialog.setAttribute("aria-busy", String(state === "pending" || state === "saving"))
@@ -191,11 +192,10 @@ export class MediaCapture {
   }
 
   private permissionChanged() {
-    if(this.closed) return
+    if(this.closed || this.state === "pending") return
     const denied = this.mode.startsWith("camera-") && this.permissions.get("camera")?.state === "denied"
       || this.needsMicrophone && this.permissions.get("microphone")?.state === "denied"
     if(denied) this.fail(errorMessage({name: "NotAllowedError"}))
-    else if(this.state === "error") this.setState("idle", "Choose a source to try again.")
   }
 
   private async updateDevices() {
@@ -245,8 +245,8 @@ export class MediaCapture {
         stream = await navigator.mediaDevices.getDisplayMedia({video: true, audio: this.media === "audio" || this.media === "video" && this.sound.checked})
       }
       else {
-        await this.checkPermissions()
-        if(this.closed || generation !== this.generation) return
+        // Request access directly from the click. Permission queries are only
+        // advisory and must never delay or cancel the browser's request.
         const constraint = (select: HTMLSelectElement) => select.value ? {deviceId: {exact: select.value}} : true
         stream = await navigator.mediaDevices.getUserMedia({
           video: this.mode.startsWith("camera-") ? constraint(this.camera) : false,

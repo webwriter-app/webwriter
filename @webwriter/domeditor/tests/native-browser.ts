@@ -6,11 +6,13 @@ import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode} from "../src/utility"
 import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
+import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
+import localFontURL from "temml/dist/Temml.woff2?url"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -24,6 +26,136 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "height: 500px; max-width: none"
+  document.body.append(frame)
+  try {
+    for(const theme of documentThemes) {
+      for(const [width, mode] of [[1440, "document"], [900, "document"], [375, "document"], [900, "canvas"], [900, "slides"], [900, "board"]] as const) {
+        frame.style.width = `${width}px`
+        const widgetHTML = '<legacy-options-widget contenteditable=""><!--keep--><p>Authored widget content</p></legacy-options-widget>'
+        const content = mode === "slides" ? `<div class="ww-slides-viewport"><section class="ww-slide">${widgetHTML}</section></div>`
+          : mode === "board" ? `<section class="ww-board-column"><h2>Column</h2><article class="ww-board-card">${widgetHTML}</article></section>` : widgetHTML
+        const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+        frame.srcdoc = `<!doctype html><style>${theme.source}\n${canvasStyles}\n${slidesStyles}\n${boardStyles}</style><body class="${mode === "document" ? "" : `ww-${mode}`}">${content}</body>`
+        await loaded
+        const doc = frame.contentDocument!, view = frame.contentWindow!
+        const widget = doc.querySelector<HTMLElement>("legacy-options-widget")!
+        const root = widget.attachShadow({mode: "open"})
+        root.innerHTML = `<style>
+          :host {display: block; box-sizing: border-box; padding: 1rem; border: 1px solid #cbd5e1; background: white; font: 16px/1.5 system-ui}
+          :host(:not([contenteditable])) [part] {display: none}
+          [part] {padding: .5rem; border: 1px solid #cbd5e1; background: #f5f7fa}
+          input {box-sizing: border-box; width: 100%}
+        </style><div part="options controls"><label>Answer<input value="42"></label><button>Reset</button></div><slot></slot>`
+        if(mode !== "document") widget.style.cssText = "width: 240px; left: 20px; top: 20px"
+        const part = root.querySelector<HTMLElement>("[part]")!
+        const context = `${theme.value}/${mode}/${width}`
+        assert(view.getComputedStyle(part).display === "none", `${context}: unselected options are visible`)
+        widget.classList.add("◆element-selected")
+        widget.focus()
+        assert(view.getComputedStyle(part).display === "none", `${context}: ordinary selection or focus exposed options`)
+        widget.classList.add("◆element-capture-selected")
+        const authoredHTML = doc.body.innerHTML
+        await layoutFrame()
+        const bounds = () => ({host: widget.getBoundingClientRect(), options: part.getBoundingClientRect()})
+        let {host, options} = bounds()
+        assert(options.width > 100 && options.height > 0, `${context}: options disappeared`)
+        assert(view.getComputedStyle(part).backgroundColor === "rgb(255, 255, 255)", `${context}: options do not have a white background`)
+        assert(view.getComputedStyle(part).overflowY === "auto", `${context}: options cannot scroll vertically`)
+        assert(parseFloat(view.getComputedStyle(part).paddingInlineEnd) > parseFloat(view.getComputedStyle(part).paddingInlineStart), `${context}: options lack additional right padding`)
+        if(width >= 1200 || mode !== "document") {
+          assert(options.left > host.right + 1, `${context}: options are not to the right of the widget`)
+          assert(Math.abs(options.top - host.top) <= 2, `${context}: options do not align with the widget top`)
+          assert(Math.abs(options.height - host.height) <= 2, `${context}: options do not share the widget height`)
+        }
+        else {
+          assert(view.getComputedStyle(part).position === "static", `${context}: compact options left normal flow`)
+          assert(options.right <= host.right + 1, `${context}: compact options overflow the widget`)
+        }
+        assert(doc.body.innerHTML === authoredHTML, `${context}: layout changed authored content`)
+        if(width >= 1200 || mode !== "document") {
+          const longControls = doc.createElement("div")
+          longControls.style.height = "800px"
+          longControls.textContent = "Long widget controls"
+          part.append(longControls)
+          for(const height of [240, 120]) {
+            widget.style.height = `${height}px`
+            await layoutFrame()
+            ;({host, options} = bounds())
+            assert(Math.abs(options.height - host.height) <= 2, `${context}: options did not follow a resized widget`)
+            assert(part.scrollHeight > part.clientHeight, `${context}: long controls did not overflow inside the panel`)
+            part.scrollTop = 50
+            assert(part.scrollTop > 0, `${context}: long controls cannot be scrolled`)
+          }
+          widget.style.removeProperty("height")
+          longControls.remove()
+          await layoutFrame()
+        }
+        if(width >= 1200) {
+          const gutterLeft = options.left
+          widget.style.width = "360px"
+          await layoutFrame()
+          ;({host, options} = bounds())
+          assert(Math.abs(options.left - gutterLeft) <= 1, `${context}: a narrow widget moved options out of the gutter`)
+          assert(options.right <= width, `${context}: gutter options overflow the page`)
+          frame.style.width = "375px"
+          await layoutFrame()
+          assert(view.getComputedStyle(part).position === "static", `${context}: options did not reflow after resizing`)
+        }
+        const other = doc.createElement("legacy-options-widget")
+        other.setAttribute("contenteditable", "")
+        other.attachShadow({mode: "open"}).innerHTML = '<div part="options">Other widget options</div>'
+        widget.after(other)
+        const otherPart = other.shadowRoot!.querySelector<HTMLElement>("[part]")!
+        assert(view.getComputedStyle(otherPart).display === "none", `${context}: another widget's options are visible`)
+        widget.classList.remove("◆element-capture-selected")
+        other.classList.add("◆element-capture-selected")
+        assert(view.getComputedStyle(part).display === "none", `${context}: previous widget's options remained visible`)
+        assert(view.getComputedStyle(otherPart).display !== "none", `${context}: newly captured options stayed hidden`)
+        other.classList.remove("◆element-capture-selected")
+        assert(view.getComputedStyle(otherPart).display === "none", `${context}: clearing capture left options visible`)
+        widget.classList.add("◆element-capture-selected")
+        widget.removeAttribute("contenteditable")
+        assert(view.getComputedStyle(part).display === "none", `${context}: theme overrode the widget's reader presentation`)
+        if(mode === "document" || mode === "board") {
+          other.remove()
+          widget.setAttribute("contenteditable", "")
+          frame.style.width = `${width}px`
+          for(const placement of [
+            {classes: "ww-float-left", style: "", side: "left"},
+            {classes: "ww-float-right", style: "", side: "right"},
+            {classes: "", style: "float: left", side: "left"},
+            {classes: "", style: "float:right", side: "right"},
+            {classes: "ww-float-left", style: "float: right", side: "left"},
+            {classes: "ww-float-right", style: "float:left", side: "right"},
+          ]) {
+            widget.className = `◆element-selected ◆element-capture-selected ${placement.classes}`
+            widget.setAttribute("style", placement.style)
+            const floatHTML = doc.body.innerHTML
+            await layoutFrame()
+            ;({host, options} = bounds())
+            const side = view.getComputedStyle(widget).float
+            assert(side === (width < 600 ? "none" : width < 1200 ? "right" : placement.side), `${context}: unexpected responsive float for ${JSON.stringify(placement)}`)
+            if(side === "left") assert(options.left > host.right + 1, `${context}: left-floated options did not open to the right`)
+            else if(side === "right") assert(options.right < host.left - 1, `${context}: right-floated options did not open to the left`)
+            else assert(view.getComputedStyle(part).position === "static", `${context}: in-flow options did not retain the narrow layout`)
+            if(side !== "none") {
+              assert(Math.abs(options.height - host.height) <= 2, `${context}: floated options lost their shared height`)
+              assert(options.left >= 0 && options.right <= width, `${context}: floated options extend beyond the page`)
+            }
+            assert(doc.body.innerHTML === floatHTML, `${context}: float options changed authored content`)
+            widget.classList.remove("◆element-capture-selected")
+            assert(view.getComputedStyle(part).display === "none", `${context}: floated options remained visible after capture ended`)
+          }
+        }
+      }
+    }
+  }
+  finally { frame.remove() }
+})
 
 await check("bundled document themes always render light colors", async () => {
   const frame = document.createElement("iframe")
@@ -1543,37 +1675,56 @@ await check("global directional shorthands preserve authored overrides in native
 
 await check("gap carets track their authored boundary", async () => {
   const frame = document.createElement("iframe")
-  frame.style.cssText = "width:800px;height:400px"
-  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  frame.style.cssText = "width:1200px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
   document.body.append(frame)
   try {
     const view = frame.contentWindow as Window & {InputEvent: typeof InputEvent}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
     assert(view.editor, "gap fixture did not initialize")
     const doc = frame.contentDocument!, selection = doc.getSelection()!, feature = view.editor!.features.selection
-    for(const html of ["<p></p>", "<p>Populated</p>", "<p>Before</p><p>After</p>",
+    const emptyStyle = doc.createElement("style")
+    doc.head.append(emptyStyle)
+    for(const html of ["<p></p>", "<p><br></p>", "<p> </p>", "<p><span></span></p>", "<p></p><p></p>", "<p>Populated</p>", "<p>Before</p><p>After</p>",
       '<p style="margin-bottom:0px"></p>', '<p style="margin-bottom:47px"></p>',
       '<p style="--ww-block-spacing:3em;font-size:24px"></p>', "<h2>Heading</h2>", "<hr>",
-      '<!--keep--><p></p>\n<!--keep too-->']) {
+      '<!--keep--><p></p>\n<!--keep too-->',
+      '<p style="width:240px;height:80px">Resized</p>',
+      '<hr style="width:240px">',
+      '<p style="width:100%;max-width:none">Wide block</p>',
+      '<section><div id="gap-container" style="padding:24px;border:3px solid"><!--keep--><p style="width:200px;margin-inline:auto">Nested resized block</p></div></section>',
+      '<main id="gap-container"><p style="width:240px">Resized in a landmark</p></main>']) {
       doc.body.innerHTML = html
-      for(const offset of html.includes("<h2") || html === "<hr>" ? [1] : Array.from({length: doc.body.childNodes.length + 1}, (_, index) => index)) {
-        selection.setPosition(doc.body, offset)
+      let container = doc.querySelector("#gap-container") ?? doc.body
+      for(const offset of html.includes("<h2") || html.startsWith("<hr") ? [1] : Array.from({length: container.childNodes.length + 1}, (_, index) => index)) {
+        selection.setPosition(container, offset)
         feature.processSelection(undefined, {scrollIntoView: false})
         await layoutFrame()
+        // CSSOM changes and late layout can move an empty block without a
+        // DOM mutation. Its box must not pull the caret out of the column.
+        if(html === "<p></p>") {
+          emptyStyle.sheet!.insertRule("p:empty { inline-size: 320px }")
+          await layoutFrame()
+        }
         const anchor = doc.querySelector<HTMLElement>(".◆gap-before-selected, .◆gap-after-selected")!
+        assert(anchor, `missing gap anchor: html=${html}, offset=${offset}, selection=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
         const box = anchor.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
         const expected = anchor.classList.contains("◆gap-before-selected") ? box.top
           : box.bottom + (parseFloat(view.getComputedStyle(feature.gapCaret!).marginTop) || 0)
-        assert(Math.abs(caret.top - expected) < 1 && Math.abs(caret.left - box.left) < 1,
+        assert(Math.abs(caret.top - expected) < 1,
           `gap caret is detached from its insertion boundary: offset=${offset}, caret=${caret.left},${caret.top}, anchor=${box.left},${expected}`)
         doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Inserted"}))
-        const inserted = Array.from(doc.body.children).find(element => element.textContent === "Inserted")!
+        const inserted = Array.from(container.children).find(element => element.textContent === "Inserted")!
         assert(inserted && Math.abs(inserted.getBoundingClientRect().top - caret.top) < 1,
           `insertion misses the gap caret: html=${html}, offset=${offset}, caret=${caret.top}, inserted=${inserted?.getBoundingClientRect().top}`)
+        assert(Math.abs(inserted.getBoundingClientRect().left - caret.left) < 1,
+          `gap caret misses the content column: html=${html}, offset=${offset}, caret=${caret.left}, inserted=${inserted.getBoundingClientRect().left}`)
         feature.processSelection(undefined, {scrollIntoView: false})
         assert(!doc.querySelector(".◆gap-before-selected, .◆gap-after-selected"), "gap markers survived typing")
         assert(!view.editor!.toHTML(true).includes("◆"), "gap presentation leaked into serialized HTML")
+        if(emptyStyle.sheet!.cssRules.length) emptyStyle.sheet!.deleteRule(0)
         doc.body.innerHTML = html
+        container = doc.querySelector("#gap-container") ?? doc.body
       }
     }
   }
@@ -1799,6 +1950,37 @@ await check("document resizing and graphic fitting preserve normal flow", async 
   finally { graphic.remove(); editor.features.transformation.clearTransform() }
 })
 
+await check("cancelled resizing accepts the first delete activation", async () => {
+  const feature = editor.features.transformation
+  for(const tag of ["p", "demo-widget"]) {
+    const target = document.createElement(tag)
+    target.style.cssText = "display:block;width:240px;height:120px"
+    target.innerHTML = 'Content<!--keep--><unfamiliar-node>child</unfamiliar-node>'
+    fixture.append(target)
+    try {
+      editor.features.selection.captureElement(target)
+      const initialStyle = target.style.cssText
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      const rect = target.getBoundingClientRect()
+      // Public mouse handlers avoid synthetic events requiring native pointer capture.
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new MouseEvent("mousedown", {button: 0, clientX: rect.right, clientY: rect.bottom}))
+      feature.handleScaleDrag(new MouseEvent("mousemove", {buttons: 1, clientX: rect.right - 40, clientY: rect.bottom - 20}))
+      assert(target.style.maxWidth !== "", `${tag}: resize did not start`)
+      document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+      assert(target.style.cssText === initialStyle, `${tag}: cancellation did not restore styles`)
+      assert(editor.features.selection.captureSelectedElement === target, `${tag}: cancellation lost selection`)
+      const deleter = feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!
+      deleter.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 52}))
+      deleter.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, button: 0, pointerId: 52}))
+      deleter.click()
+      assert(!target.isConnected && feature.target === null, `${tag}: first Delete activation was ignored`)
+      assert(!target.className.includes("◆"), `${tag}: deleted target retained editor markers`)
+    }
+    finally { target.remove(); feature.clearTransform() }
+  }
+})
+
 await check("media and graphics enforce minimum editing dimensions", async () => {
   for(const [tag, width, height] of [
     ["audio", 175, 35], ["video", 175, 70], ["img", 32, 32], ["picture", 32, 32],
@@ -1908,21 +2090,20 @@ await check("tiny images open media inputs in a speech bubble", async () => {
   fixture.append(picture)
   const placeholder = editor.features.media.placeholder
   try {
-    $.selectElement(picture)
-    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    editor.features.selection.captureElement(picture)
     await layoutFrame()
     placeholder.showFor(picture)
     const expand = placeholder.root.querySelector<HTMLButtonElement>(".expand")!
     const content = placeholder.root.querySelector<HTMLElement>(".content")!
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
     const host = placeholder.element.getBoundingClientRect(), button = expand.getBoundingClientRect()
-    assert(getComputedStyle(expand).display === "grid" && getComputedStyle(content).display === "none", "tiny image did not reduce to one button")
+    assert(getComputedStyle(expand).display === "grid", "tiny image did not retain its source button")
+    assert(content.matches(":popover-open") && placeholder.root.activeElement === input, "selecting a tiny image did not open and focus its URL input")
     assert(button.left >= host.left && button.right <= host.right && button.top >= host.top && button.bottom <= host.bottom, "tiny image button escapes its image")
     const icon = expand.querySelector("svg")!.getBoundingClientRect()
     assert(icon.left >= button.left && icon.right <= button.right && icon.top >= button.top && icon.bottom <= button.bottom, "tiny image button clips its icon")
     const passive = getComputedStyle(picture, "::after")
     assert(parseFloat(passive.width) > 0 && parseFloat(passive.width) <= 32 && parseFloat(passive.height) > 0 && parseFloat(passive.height) <= 32 && passive.backgroundSize === "contain", `passive image icon does not fit 32px: ${passive.width}x${passive.height}`)
-    expand.click()
     assert(placeholder.root.activeElement === input, `media bubble lost focus immediately: ${document.activeElement?.localName}, ${editor.appendix.activeElement?.localName}`)
     await layoutFrame()
     assert(content.matches(":popover-open"), "media inputs did not open in the top layer")
@@ -2565,7 +2746,7 @@ await check("leaving an empty inline formula removes it without moving the text 
 
 await check("audio insertion retains element selection at the document start", async () => {
   const frame = document.createElement("iframe")
-  frame.src = "/"
+  frame.src = "/editor/"
   document.body.append(frame)
   try {
     let app: DomEditor | null = null
@@ -3084,6 +3265,374 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
       assert(!row.hasAttribute("data-connected") && menu.hidden && !menu.matches(":popover-open"), "closing the menu retains connected styling")
     }
     finally { button.remove() }
+  }
+})
+
+await check("font dropdowns join their white controls at viewport edges", async () => {
+  const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
+  const {RibbonDrawer} = await import("../src/components/ribbon-drawer")
+  const {fontFamilyOptions, fontSizeOptions} = await import("../src/marks")
+  for(const name of ["font-family", "font-size"]) for(const placement of ["below", "above", "right"]) {
+    const combo = new RibbonCombobox()
+    Object.assign(combo, {name, label: name, options: name === "font-family" ? fontFamilyOptions : fontSizeOptions})
+    Object.assign(combo.style, {position: "fixed", width: name === "font-size" ? "56px" : "90px",
+      left: `${placement === "right" ? window.innerWidth - 98 : 40.25}px`,
+      top: `${placement === "above" ? window.innerHeight - 48 : 100.5}px`})
+    document.body.append(combo)
+    try {
+      await combo.updateComplete
+      const font = combo.shadowRoot!.querySelector("font-combobox")
+      const field = font ?? combo.shadowRoot!.querySelector("font-size-combobox")!
+      // The editing document's scrollbar gutters offset fixed-position origins.
+      const desiredLeft = placement === "right" ? window.innerWidth - 98 : 40.25
+      combo.style.left = `${parseFloat(combo.style.left) + desiredLeft - combo.getBoundingClientRect().left}px`
+      await field.updateComplete
+      if(font) {
+        // Geometry checks use an empty cached catalog, without network requests.
+        Object.assign(font, {loaded: true, fontAccess: {}})
+      }
+      const root = field.shadowRoot!
+      const trigger = root.querySelector<HTMLInputElement>("input")!
+      const control = root.querySelector<HTMLElement>(".control")!
+      const closed = getComputedStyle(control)
+      const topCorners = [closed.borderTopLeftRadius, closed.borderTopRightRadius]
+      const placeholder = getComputedStyle(trigger, "::placeholder")
+      assert(placeholder.fontSize === getComputedStyle(trigger).fontSize && placeholder.color === "rgb(107, 119, 135)",
+        `${name}: font placeholder does not match the input size and muted color`)
+      assert(trigger.value === "" && trigger.matches(":placeholder-shown")
+        && trigger.placeholder === (font ? "Default font" : "Size"), `${name}: default is not shown as a placeholder`)
+      trigger.click()
+      await combo.updateComplete
+      await field.updateComplete
+      await layoutFrame()
+      const menu = root.querySelector<HTMLElement>(".listbox")!
+      if(font) {
+        const headings = menu.querySelectorAll<HTMLElement>(".group-label")
+        assert(Math.abs(headings[0].getBoundingClientRect().height - headings[1].getBoundingClientRect().height) < .1,
+          "standard and custom font headings do not align")
+      }
+      assert([...menu.querySelectorAll(".option-group")].every(group => getComputedStyle(group).scrollbarWidth === "thin"),
+        `${name}: font list scrollbars are not thin`)
+      const box = control.getBoundingClientRect(), popup = menu.getBoundingClientRect()
+      const above = placement === "above"
+      assert(control.dataset.connected === (above ? "above" : "below"), `${name}: wrong font popup placement`)
+      assert(Math.abs((above ? popup.bottom - box.top : box.bottom - popup.top) - 1) < .1,
+        `${name}: font dropdown does not share a border with its control`)
+      assert(popup.left >= 8 && popup.right <= window.innerWidth - 8,
+        `${name}/${placement}: font dropdown overflows the viewport (${popup.left}–${popup.right}, width ${window.innerWidth})`)
+      const surface = getComputedStyle(menu), style = getComputedStyle(control)
+      assert(style.backgroundColor === "rgb(255, 255, 255)" && surface.backgroundColor === style.backgroundColor,
+        `${name}: open font control does not match the white dropdown`)
+      assert(style.borderLeftColor === surface.borderLeftColor && style.outlineStyle === "none",
+        `${name}: open font control does not use the dropdown border`)
+      assert(style.borderTopLeftRadius === topCorners[0] && style.borderTopRightRadius === topCorners[1],
+        `${name}: opening changes the input's top corner radii`)
+      const join = getComputedStyle(menu, "::before")
+      assert((above ? surface.borderBottomWidth : surface.borderTopWidth) === "0px"
+        && (above ? surface.paddingBottom : surface.paddingTop) === "1px",
+        `${name}: a dividing border remains between the field and its dropdown`)
+      assert((above ? join.bottom : join.top) === "0px" && join.left === "0px"
+        && join.backgroundImage.includes("rgb(255, 255, 255)")
+        && Math.abs(parseFloat(menu.style.getPropertyValue("--popup-join-width")) - box.width + 2) < .1,
+        `${name}: the joining surface is clipped outside the popup or does not match its control`)
+      if(font) {
+        const column = menu.querySelector(".option-group")!.getBoundingClientRect()
+        assert(Math.abs(column.width - box.width + 2) < .1, "the standard font column does not match the input's inner width")
+        if(placement !== "right") assert(Math.abs(column.right - box.right + 1) < .1, "the standard font divider does not align with the input's right border")
+        const times = menu.querySelector<HTMLElement>('[title="Times New Rom."] .option-code')!
+        assert(times && times.scrollHeight <= times.clientHeight && times.scrollWidth <= times.clientWidth,
+          "the shortened Times New Roman label overflows its column")
+        for(const query of ["Georgia", "no font matches this", ""]) {
+          trigger.value = query
+          trigger.dispatchEvent(new InputEvent("input", {bubbles: true}))
+          await field.updateComplete; await layoutFrame()
+          const filtered = menu.getBoundingClientRect()
+          assert(Math.abs(filtered.width - popup.width) < .1 && Math.abs(filtered.height - popup.height) < .1
+            && Math.abs(menu.querySelector(".option-group")!.getBoundingClientRect().width - column.width) < .1,
+            "searching resized the font menu or its standard-font column")
+        }
+        combo.close()
+        await field.updateComplete
+        trigger.value = "Georgia"
+        trigger.dispatchEvent(new InputEvent("input", {bubbles: true}))
+        await field.updateComplete; await layoutFrame()
+        const typedOpen = root.querySelector<HTMLElement>(".listbox")!.getBoundingClientRect()
+        assert(Math.abs(typedOpen.height - popup.height) < .1 && Math.abs(typedOpen.width - popup.width) < .1,
+          "typing into a closed font picker skipped retaining its unfiltered size")
+      }
+      const scroller = name === "font-size" ? menu.querySelector<HTMLElement>(".option-group") : null
+      if(scroller) {
+        const scrollBox = scroller.getBoundingClientRect()
+        assert(Math.abs(scrollBox.right - popup.right + 1) < .1 && Math.abs(scrollBox.top - popup.top - 1) < .1
+          && Math.abs(scrollBox.bottom - popup.bottom + 1) < .1, "font size scrollbar is inset from the dropdown border")
+        assert(Math.abs(popup.width - box.width) < .1, "font size dropdown does not match its input width")
+        assert(scroller.scrollWidth === scroller.clientWidth, "narrow font size options overflow horizontally")
+        assert([...scroller.querySelectorAll<HTMLElement>(".option-code")].every(label => label.scrollWidth <= label.clientWidth),
+          "narrow font size options truncate their labels")
+        assert(menu.querySelector('[role="option"]')?.getAttribute("title") === "Default", "font size reset option is not labeled Default")
+        scroller.scrollTop = scroller.scrollHeight
+        await layoutFrame()
+        assert(scroller.scrollTop > 0 && menu.scrollTop === 0, "font sizes do not scroll independently of their joined border")
+        const mask = getComputedStyle(menu, "::before")
+        assert((above ? mask.bottom : mask.top) === "0px", "scrolling moves the font dropdown's shared border mask")
+      }
+      if(name === "font-size") {
+        let value: string | undefined
+        combo.addEventListener("ribbon-combobox-change", event => { value = (event as CustomEvent<{value: string}>).detail.value })
+        trigger.value = "17.5pt"
+        trigger.dispatchEvent(new InputEvent("input", {bubbles: true}))
+        await field.updateComplete
+        assert(root.querySelectorAll('[role="option"]').length === fontSizeOptions.length, "typing a font size filters out presets")
+        trigger.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+        await field.updateComplete
+        assert(value === "17.5px" && trigger.value === "17.5", "typed font size did not ignore its unit and use pixels")
+      }
+      combo.close()
+      await combo.updateComplete
+      await field.updateComplete
+      assert(!control.hasAttribute("data-connected") && !root.querySelector(".listbox"), `${name}: closing retains connected styling`)
+      trigger.focus()
+      await field.updateComplete
+      combo.close()
+      await field.updateComplete
+      const focus = getComputedStyle(control)
+      assert(control.matches(":focus-within") && focus.outlineStyle === "solid" && parseFloat(focus.outlineWidth) > 0
+        && parseFloat(focus.outlineOffset) + parseFloat(focus.outlineWidth) <= 0,
+        `${name}: the focus ring extends outside the input and can be clipped by the ribbon`)
+      trigger.click()
+      await field.updateComplete; await layoutFrame()
+      assert(root.querySelector(".listbox"), `${name}: font control did not reopen before disabling`)
+      combo.disabled = true
+      await combo.updateComplete
+      await field.updateComplete
+      const disabled = getComputedStyle(control)
+      assert(trigger.disabled && root.querySelector<HTMLButtonElement>(".toggle")!.disabled,
+        `${name}: unavailable font input or toggle remains enabled`)
+      assert(disabled.opacity === "0.6" && disabled.color === "rgb(154, 164, 177)"
+        && disabled.backgroundColor === "rgb(247, 247, 247)", `${name}: disabled appearance is missing`)
+      assert(!field.hasAttribute("open") && !root.querySelector(".listbox"), `${name}: disabling retains the open dropdown`)
+      // Disabled styling must win even while an open attribute is being removed.
+      field.setAttribute("open", "")
+      assert(getComputedStyle(control).backgroundColor === "rgb(247, 247, 247)", `${name}: an open attribute turns the disabled field white`)
+      field.removeAttribute("open")
+      trigger.click()
+      await field.updateComplete
+      assert(!root.querySelector(".listbox"), `${name}: disabled font control opens its dropdown`)
+    }
+    finally { combo.remove() }
+  }
+  const drawer = new RibbonDrawer(), combo = new RibbonCombobox()
+  Object.assign(drawer, {layout: "marks"})
+  Object.assign(drawer.style, {position: "fixed", left: "40px", top: "100px", height: "90px", width: "var(--ribbon-drawer-expanded-width)"})
+  Object.assign(combo, {name: "font-family", label: "Font family", options: fontFamilyOptions, className: "font-family"})
+  drawer.append(combo)
+  document.body.append(drawer)
+  try {
+    await drawer.updateComplete; await combo.updateComplete
+    const field = combo.shadowRoot!.querySelector("font-combobox")!
+    Object.assign(field, {loaded: true, fontAccess: {}})
+    await field.updateComplete
+    const input = field.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await field.updateComplete; await layoutFrame()
+    const edge = drawer.shadowRoot!.querySelector(".drawer")!.getBoundingClientRect()
+    for(const query of ["", "Georgia", "no matching fonts"]) {
+      if(query) {
+        input.value = query
+        input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+        await field.updateComplete; await layoutFrame()
+      }
+      const menu = field.shadowRoot!.querySelector(".listbox")!.getBoundingClientRect()
+      assert(Math.abs(menu.left - edge.left - (edge.right - menu.right)) < .1,
+        `the font dropdown does not have equal spacing to the marks drawer's left and right edges (${menu.left - edge.left}, ${edge.right - menu.right}; drawer width ${edge.width}; menu width ${menu.width})`)
+    }
+  }
+  finally { drawer.remove() }
+})
+
+await check("font searches split installed and web results without scrolling", async () => {
+  const {FontCombobox} = await import("../src/components/font-combobox")
+  const combo = new FontCombobox()
+  Object.assign(combo.style, {position: "fixed", left: "80px", top: "100px", width: "90px"})
+  Object.assign(combo, {loaded: true, fontAccess: {}, devicePermissionGranted: true,
+    devices: Array.from({length: 20}, (_, i) => ({family: `Search Installed ${i}`, blob: () => { throw new Error("Unexpected font read") }})),
+    fonts: Array.from({length: 20}, (_, i) => ({familyName: `Search Web ${i}`, category: "sans-serif", weights: [400], styles: ["normal"]})),
+  })
+  document.body.append(combo)
+  try {
+    await combo.updateComplete
+    const root = combo.shadowRoot!, input = root.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await combo.updateComplete; await layoutFrame()
+    const popup = root.querySelector<HTMLElement>(".listbox")!, before = popup.getBoundingClientRect()
+    assert(root.querySelectorAll('[aria-label="Custom fonts"] [role="option"]').length === 40, "unfiltered fonts are missing")
+    const custom = root.querySelector<HTMLElement>('[aria-label="Custom fonts"]')!
+    const sections = [...custom.querySelectorAll<HTMLElement>(".font-section")]
+    const [installedHeading, webHeading] = sections.map(section => section.querySelector<HTMLElement>(".section-label")!)
+    const groupHeading = custom.querySelector<HTMLElement>(".group-label")!
+    const pinnedTop = custom.getBoundingClientRect().top + groupHeading.getBoundingClientRect().height
+    const webStart = sections[1].getBoundingClientRect().top
+    assert([installedHeading, webHeading].every(heading => getComputedStyle(heading).fontWeight === "700"), "font section headings are not bold")
+    custom.scrollTop = 84
+    await layoutFrame()
+    assert(Math.abs(installedHeading.getBoundingClientRect().top - pinnedTop) < .1, "installed heading does not stay below the custom-font heading")
+    custom.scrollTop = webStart - pinnedTop - webHeading.getBoundingClientRect().height / 2
+    await layoutFrame()
+    assert(installedHeading.getBoundingClientRect().top < pinnedTop
+      && installedHeading.getBoundingClientRect().bottom <= webHeading.getBoundingClientRect().top,
+      "the next font section does not push out the previous heading")
+    custom.scrollTop = webStart - pinnedTop + 84
+    await layoutFrame()
+    assert(Math.abs(webHeading.getBoundingClientRect().top - pinnedTop) < .1, "web heading does not stick at its section's top")
+    assert(Math.abs(groupHeading.getBoundingClientRect().top - custom.getBoundingClientRect().top) < .1, "section scrolling covers the custom-font heading")
+    custom.scrollTop = 0
+    for(const query of ["Search", "no matching fonts", "Search Installed", "Search"]) {
+      input.value = query
+      input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+      await combo.updateComplete; await layoutFrame(); await combo.updateComplete
+      const panels = [...root.querySelectorAll<HTMLElement>(".search-section")]
+      assert(panels.length === 2, "search results are not split into two sections")
+      assert(Math.abs(panels[0].getBoundingClientRect().height - panels[1].getBoundingClientRect().height) < .1,
+        "installed and web results do not each use half of the search area")
+      assert(Math.abs(popup.getBoundingClientRect().height - before.height) < .1, "split search changed the popup height")
+      for(const panel of panels) {
+        const options = [...panel.querySelectorAll<HTMLElement>('[role="option"]')]
+        const heading = panel.querySelector<HTMLElement>(".section-label")!
+        const capacity = Math.floor((panel.clientHeight - heading.getBoundingClientRect().height) / 28)
+        assert(options.length === (query === "no matching fonts" || query === "Search Installed" && panel === panels[1] ? 0 : capacity), "result count does not fill the available whole rows")
+        assert(panel.scrollHeight === panel.clientHeight && getComputedStyle(panel).overflowY === "hidden", "search section still scrolls")
+        assert(options.every(option => option.getBoundingClientRect().bottom <= panel.getBoundingClientRect().bottom), "a partial search result is visible")
+      }
+      const visible = [...root.querySelectorAll<HTMLElement>('[role="option"]')]
+      if(query === "Search") {
+        for(let i = 0; i < visible.length; i++) input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true}))
+        await combo.updateComplete
+        assert(root.querySelector("[data-active]") === visible[0], "keyboard navigation includes hidden results")
+      }
+    }
+    input.value = ""
+    input.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    await combo.updateComplete; await layoutFrame()
+    assert(!root.querySelector(".search-results") && root.querySelectorAll('[aria-label="Custom fonts"] [role="option"]').length === 40,
+      "clearing the query does not restore the complete scrollable list")
+  }
+  finally { combo.remove() }
+})
+
+await check("font list previews only load the active web font", async () => {
+  const {FontCombobox} = await import("../src/components/font-combobox")
+  const originalFetch = window.fetch
+  let requests = 0
+  window.fetch = async (input, options) => {
+    if(String(input).startsWith("https://fonts.bunny.net/css?")) {
+      requests++
+      return new Response(`@font-face {font-family: Preview; font-style: normal; font-weight: 400; src: url("${new URL(localFontURL, location.href).href}") format("woff2");}`)
+    }
+    return originalFetch(input, options)
+  }
+  const field = new FontCombobox()
+  Object.assign(field, {loaded: true, fontAccess: {}, fonts: [
+    {familyName: "Web Preview One", category: "serif", weights: [400, 700], styles: ["normal", "italic"]},
+    {familyName: "Web Preview Two", category: "serif", weights: [400], styles: ["normal"]},
+  ], devices: [{family: "Device Preview", blob: () => { throw new Error("List preview must not read installed font bytes") }}]})
+  document.body.append(field)
+  try {
+    await field.updateComplete
+    const input = field.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!
+    input.click()
+    await layoutFrame()
+    const root = field.shadowRoot!
+    const options = root.querySelectorAll<HTMLButtonElement>('[aria-label="Custom fonts"] [role="option"]')
+    const first = [...options].find(option => option.title === "Web Preview One")!
+    const second = [...options].find(option => option.title === "Web Preview Two")!
+    assert(requests === 0 && first.style.fontFamily === "" && second.style.fontFamily === "", "inactive web fonts load previews")
+    assert(getComputedStyle(root.querySelector('[title="Georgia"]')!).fontFamily === "Georgia, serif", "standard font item does not use its font")
+    assert(getComputedStyle(root.querySelector('[title="Device Preview"]')!).fontFamily.includes("Device Preview"), "installed font item does not use its font")
+    first.dispatchEvent(new PointerEvent("pointerenter"))
+    for(let count = 0; count < 120 && !first.style.fontFamily.includes("webwriter-font-preview-"); count++) await nextFrame()
+    const family = first.style.fontFamily.split(",")[0]
+    const loaded = await document.fonts.load(`12px ${family}`, "Web Preview One")
+    assert(requests === 1 && loaded.length > 0 && loaded.every(face => face.status === "loaded"), "active web preview did not load its font")
+    assert(second.style.fontFamily === "", "preview also styled an inactive web font")
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown"}))
+    for(let count = 0; count < 120 && !second.style.fontFamily.includes("webwriter-font-preview-"); count++) await nextFrame()
+    assert(requests === 2 && first.style.fontFamily === "" && second.style.fontFamily.includes("webwriter-font-preview-"),
+      `keyboard navigation did not move the font preview (${requests} requests, first ${first.style.fontFamily}, second ${second.style.fontFamily}, active ${root.querySelector('[data-active]')?.textContent})`)
+    assert(loaded.every(face => !document.fonts.has(face)), "previous preview faces remain registered")
+    const current = [...document.fonts].filter(face => face.family.includes("webwriter-font-preview-"))
+    field.close()
+    await field.updateComplete
+    assert(current.length > 0 && current.every(face => !document.fonts.has(face)), "closing retains preview fonts")
+    assert(!document.head.querySelector('link[href^="https://fonts.bunny.net/css"]'), "list previews added a document stylesheet")
+  }
+  finally { field.remove(); window.fetch = originalFetch }
+})
+
+await check("local fonts embed selected bytes and load under the editor CSP", async () => {
+  const {FontCombobox} = await import("../src/components/font-combobox")
+  const {embedFontFiles} = await import("../src/local-fonts")
+  const {readFontFiles, saveFontFile} = await import("../src/local-font-storage")
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const bytes = await (await fetch(localFontURL)).blob()
+  const font = await embedFontFiles([bytes])
+  const id = crypto.randomUUID()
+  await saveFontFile({id, name: font.family, file: new File([bytes], "Temml.woff2", {type: "font/woff2"})})
+  const stored = (await readFontFiles()).find(record => record.id === id)
+  assert(stored?.file && stored.file.size === bytes.size, "font file input fallback did not survive IndexedDB structured cloning")
+  if(navigator.storage?.getDirectory) {
+    const directory = await navigator.storage.getDirectory()
+    const handle = await directory.getFileHandle(`${id}.woff2`, {create: true})
+    const writer = await handle.createWritable()
+    await writer.write(bytes); await writer.close()
+    await saveFontFile({id: `${id}-handle`, name: font.family, handle})
+    const restored = (await readFontFiles()).find(record => record.id === `${id}-handle`)!.handle!
+    assert((await restored.getFile()).size === bytes.size, "font handle did not survive IndexedDB structured cloning")
+    await directory.removeEntry(handle.name)
+  }
+  let reads = 0, queries = 0
+  const field = new FontCombobox(), frame = document.createElement("iframe")
+  Object.assign(field, {loaded: true, fontAccess: {
+    navigator: {permissions: {query: async () => ({state: "prompt"})}},
+    queryLocalFonts: async () => {
+      queries++
+      return [{family: font.family, fullName: font.family, style: "Regular", postscriptName: font.family, blob: async () => { reads++; return bytes }}]
+    },
+  }})
+  Object.assign(field.style, {position: "fixed", left: "40px", top: "100px", width: "90px"})
+  document.body.append(field)
+  try {
+    await field.updateComplete
+    assert(queries === 0, "installed fonts were queried before opening the picker")
+    field.shadowRoot!.querySelector<HTMLInputElement>('input[role="combobox"]')!.click()
+    await layoutFrame()
+    const custom = field.shadowRoot!.querySelector('[aria-label="Custom fonts"]')!
+    const load = custom.querySelector<HTMLButtonElement>(".browse-fonts")!
+    assert(queries === 0 && load.textContent?.includes("Load installed fonts") && getComputedStyle(load).fontStyle === "italic"
+      && load.querySelector("svg"), "installed fonts did not wait for the explicit load action")
+    load.click()
+    await layoutFrame()
+    assert(queries === 1 && reads === 0, "enumerating installed fonts read font bytes")
+    assert(custom.querySelector('[aria-label="Import font file"]'), "custom fonts heading has no import button")
+    assert(custom.querySelector('[role="option"]')?.textContent?.includes(font.family), "installed font is not the first custom option")
+    let selected: {value: string, fontStylesheet: string} | undefined
+    field.addEventListener("font-change", event => { selected = (event as CustomEvent).detail })
+    custom.querySelector<HTMLButtonElement>('[role="option"]')!.click()
+    for(let count = 0; count < 120 && !selected; count++) await nextFrame()
+    assert(selected?.fontStylesheet.startsWith("data:text/css;base64,") && reads === 1, "installed font did not embed its selected bytes")
+    const source = `<!doctype html><html><head><link rel="stylesheet" href="${selected!.fontStylesheet}"></head><body><p style='font-family: ${selected!.value}'>Font sample x</p></body></html>`
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = editorFrameHTML(source, {bridgeNonce: "font-csp-test", revision: 0, language: "en", packages: [],
+      hostOrigin: location.origin, entryURL: new URL("../src/editor-entry.ts", location.href).href, executeScripts: false})
+    document.body.append(frame)
+    await loaded
+    const doc = frame.contentDocument!
+    const faces = await doc.fonts.load(`16px ${JSON.stringify(font.family)}`, "x")
+    assert(faces.length > 0 && faces.every(face => face.status === "loaded"), "embedded font was blocked by the editor CSP or failed to decode")
+    assert(getComputedStyle(doc.querySelector("p")!).fontFamily.includes(font.family), "embedded font family was not applied")
+    assert(!field.shadowRoot!.querySelector('[role="option"]'), "closing retains local font options in the DOM")
+  }
+  finally {
+    field.remove(); frame.remove()
   }
 })
 
@@ -5683,13 +6232,32 @@ await check("ribbon collapses when vertical space is constrained", async () => {
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     assert(ribbon?.shadowRoot, "ribbon fixture did not initialize")
-    for(const [width, height, expected] of [[400, 900, 140], [1200, 500, 40], [400, 500, 40], [400, 900, 140], [400, 500, 40]]) {
+    for(const [width, height, expected] of [[400, 900, 90], [1200, 900, 140], [500, 900, 140], [380, 900, 90], [1200, 500, 40], [400, 500, 40], [400, 900, 90], [400, 500, 40]]) {
       frame.style.width = `${width}px`
       frame.style.height = `${height}px`
       await layoutFrame(); await layoutFrame()
       assert(Math.abs(ribbon!.getBoundingClientRect().height - expected) < 1, `ribbon height was not ${expected}px at ${width}x${height}`)
-      assert(ribbon!.expanded === (expected === 140), "ribbon state did not match its visible height")
+      assert(ribbon!.expanded === (expected !== 40), "ribbon state did not match its visible height")
       assert(ribbon!.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!.hidden === (expected === 40), "collapsed ribbon left its drawers visible")
+      if(expected === 90) {
+        const content = ribbon!.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!
+        assert(Math.abs(content.getBoundingClientRect().height - 50) <= 1, "summary-only ribbon did not halve its drawer strip")
+        for(const drawer of content.querySelectorAll<import("../src/components/ribbon-drawer").RibbonDrawer>(":scope > ribbon-drawer")) {
+          assert(drawer.collapsed, "short ribbon retained an expanded drawer")
+          const summary = drawer.shadowRoot!.querySelector<HTMLElement>(".summary")!
+          const icon = summary.querySelector<HTMLElement>(".summary-icon")!.getBoundingClientRect()
+          const label = summary.querySelector<HTMLElement>(".summary-label")!
+          const bounds = label.getBoundingClientRect()
+          assert(bounds.left >= icon.right && bounds.height + .1 >= parseFloat(frame.contentWindow!.getComputedStyle(label).lineHeight), "short summary clipped its icon or label")
+          const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+          assert(toggle.getBoundingClientRect().top >= bounds.bottom, "short summary label overlaps its drawer button")
+          toggle.click()
+          await drawer.updateComplete; await layoutFrame()
+          assert(drawer.hasAttribute("drawer-open") && drawer.shadowRoot!.querySelector(".controls")!.getBoundingClientRect().height > 0, "short summary did not open its drawer")
+          drawer.closeDrawer()
+          await drawer.updateComplete
+        }
+      }
     }
     ribbon!.logoUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path d="M0 0h24v24H0z"/></svg>'
     await ribbon!.updateComplete; await layoutFrame()
@@ -5719,6 +6287,68 @@ await check("ribbon collapses when vertical space is constrained", async () => {
     assert(Math.abs(ribbon!.getBoundingClientRect().height - 40) < 1, "manual ribbon collapse did not retain its normal height")
   }
   finally {frame.remove()}
+})
+
+await check("narrow toolboxes collapse below bottom panels and restore on tab activation", async () => {
+  const {DomEditor} = await import("../src/components/dom-editor")
+  const app = new DomEditor()
+  app.style.cssText = "position:fixed;inset:0;box-sizing:content-box;width:900px;height:800px;background:white"
+  const host = app as any
+  host.execute = async () => ({versions: [], checkpoints: [], comments: [], preview: null, currentCheckpointId: null, currentUserId: 0})
+  host.settings = {...host.settings, showGuidedTour: false}
+  host.documentLayoutsDismissed = true
+  fixture.append(app)
+  // Exercise host UI state without a live editing frame replacing the selections below.
+  clearTimeout(host.frameStartTimer)
+  host.frameStartTimer = undefined
+  const settle = async () => {
+    await app.updateComplete
+    await layoutFrame()
+    await app.updateComplete
+    await app.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!.updateComplete
+    await layoutFrame()
+  }
+  try {
+    await settle()
+    const toolbox = app.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!
+    const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
+    const tabs = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
+    for(const surface of ["console", "versions", "math", "shape", "link"]) {
+      Object.assign(app, {consoleOpen: false, reviewOpen: false, mathSelection: null, graphicSelection: null, linkSelection: null,
+        mathKeyboardHidden: false, shapeKeyboardHidden: false, linkKeyboardHidden: false})
+      app.style.width = "900px"
+      await settle()
+      host.breadcrumbVisible = true
+      toolbox.selectTool(surface === "versions" ? "Review" : "Edit")
+      if(surface === "console") host.consoleOpen = true
+      else if(surface === "versions") host.reviewOpen = true
+      else if(surface === "math") host.mathSelection = {active: true, display: "inline"}
+      else if(surface === "shape") host.graphicSelection = {active: true, capture: true}
+      else host.linkSelection = {active: true, identity: "link-1", href: "https://example.com", text: "Example",
+        attributes: {href: "https://example.com"}, targets: [], references: []}
+      await settle()
+      assert(!toolbox.collapsed && pane.getBoundingClientRect().height > 0, `${surface}: wide toolbox collapsed`)
+      for(const width of [600, 599, 380]) {
+        app.style.width = `${width}px`
+        await settle()
+        assert(toolbox.collapsed === (width < 600), `${surface}: collapse does not match container width ${width}`)
+        if(width >= 600) continue
+        const panel = app.shadowRoot!.querySelector<HTMLElement>(surface === "console" || surface === "versions"
+          ? ".html-source-panel" : `.${surface}-keyboard-area`)!
+        const bar = tabs.getBoundingClientRect(), bounds = panel.getBoundingClientRect(), editorBounds = app.getBoundingClientRect()
+        assert(pane.hidden && pane.getBoundingClientRect().height === 0, `${surface}: toolbox pane is still visible`)
+        assert(bar.top >= bounds.bottom - 1 && Math.abs(bar.bottom - editorBounds.bottom + .5) <= 1,
+          `${surface}: tabs are not at the bottom below the open panel`)
+        assert(Math.abs(toolbox.getBoundingClientRect().height - 30) < 1, `${surface}: toolbox reserves more than the tab row`)
+        assert(tabs.scrollWidth <= tabs.clientWidth, `${surface}: tabs overflow horizontally`)
+        assert(!toolbox.shadowRoot!.querySelector('[aria-selected="true"]'), `${surface}: hidden pane has a selected tab`)
+      }
+      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`[data-tool="${toolbox.activeTool}"]`)!.click()
+      await settle()
+      assert(!toolbox.collapsed && !pane.hidden, `${surface}: selecting the remembered tab did not reopen its pane`)
+    }
+  }
+  finally {app.remove()}
 })
 
 await check("AI toolbox adapts its width and short-screen controls", async () => {

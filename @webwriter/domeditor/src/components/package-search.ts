@@ -178,10 +178,10 @@ export class PackageSearch extends LitElement {
         </button>
         <input
           type="search"
-          placeholder="Search packages"
-          aria-label="Search packages"
+          placeholder="Search widgets"
+          aria-label="Search widgets"
           aria-busy=${this.loading}
-          title=${this.error || "Search packages"}
+          title=${this.error || "Search widgets"}
           .value=${this.query}
           @focus=${this.requestCatalog}
           @input=${this.updateQuery}

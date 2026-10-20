@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
   "standalone live learners receive large initial documents over HTTP and synchronize activity",
@@ -42,6 +43,7 @@ const expectedChecks = [
   "Board columns and cards retain native editing and standalone layout",
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
+  "cancelled resizing accepts the first delete activation",
   "media and graphics enforce minimum editing dimensions",
   "details remain intact after applying style presets",
   "figure permalinks align with padded caption numbering",
@@ -76,6 +78,7 @@ const expectedChecks = [
   "recent documents fit one layout card when space is limited",
   "narrow ribbons show only the AI sparkles button",
   "AI toolbox adapts its width and short-screen controls",
+  "narrow toolboxes collapse below bottom panels and restore on tab activation",
   "ribbon collapses when vertical space is constrained",
   "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",
@@ -91,6 +94,10 @@ const expectedChecks = [
   "standalone SVG affordances refit rotated elements and resize beyond their original size",
   "ribbon shapes retain their aspect ratio under the document theme",
   "ribbon dropdowns join their triggers without gaps at viewport edges",
+  "font dropdowns join their white controls at viewport edges",
+  "font list previews only load the active web font",
+  "font searches split installed and web results without scrolling",
+  "local fonts embed selected bytes and load under the editor CSP",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
   "uploaded videos survive installing and removing packages",

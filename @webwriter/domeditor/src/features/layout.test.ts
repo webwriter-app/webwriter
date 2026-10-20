@@ -23,6 +23,81 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
 describe("document floats", () => {
+  it.each(["far-left", "far-right"] as const)("adds an unfloated paragraph beside a lone element placed %s", side => {
+    document.body.innerHTML = '<!--before-->\n<custom-card title="Keep"><unfamiliar-node>content</unfamiliar-node></custom-card>\n<!--after-->'
+    const element = document.querySelector("custom-card")!
+    const nodes = Array.from(document.body.childNodes), contents = element.innerHTML
+    editor.features.selection.captureElement(element)
+    expect(setFloat(side)).toBe(true)
+    const paragraph = document.body.lastElementChild!
+    expect(paragraph.outerHTML).toBe("<p></p>")
+    expect(getComputedStyle(paragraph).float || "none").toBe("none")
+    expect(Array.from(document.body.childNodes).slice(0, -1)).toEqual(nodes)
+    expect(element.innerHTML).toBe(contents)
+    expect(editor.features.selection.captureSelectedElement).toBe(element)
+    expect(setFloat(side === "far-left" ? "far-right" : "far-left")).toBe(true)
+    expect(setFloat("none")).toBe(true)
+    expect(document.body.children.length).toBe(2)
+    expect(document.body.lastElementChild).toBe(paragraph)
+  })
+
+  it("adds a paragraph when floating the sole top-level container and preserves the inner caret", () => {
+    document.body.innerHTML = '<section><p>text</p></section>'
+    const container = document.querySelector("section")!, text = container.querySelector("p")!.firstChild!
+    $.move(text, 2)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "far-left", topLevel: true})).toBe(true)
+    expect(container.classList.contains("ww-float-left")).toBe(true)
+    expect(container.nextElementSibling?.outerHTML).toBe("<p></p>")
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("synchronizes, serializes, undoes and redoes the lone element's float and new paragraph together", () => {
+    document.body.innerHTML = '<p lang="de">Text</p>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    expect(setFloat("far-right")).toBe(true)
+    editor.doc.syncFromDOM()
+    const floated = editor.toHTML(true)
+    expect(floated).toBe('<p lang="de" class="ww-float-right">Text</p><p></p>')
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      expect(sharedDOMBody(remote).length).toBe(2)
+      expect((sharedDOMBody(remote).get(1) as Y.XmlElement).nodeName).toBe("p")
+    }
+    finally { remote.destroy() }
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe('<p lang="de">Text</p>')
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(floated)
+  })
+
+  it("keeps a sole element alone when clearing placement", () => {
+    document.body.innerHTML = '<p class="ww-float-left">Text</p>'
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    expect(setFloat("none")).toBe(true)
+    expect(editor.toHTML(true)).toBe("<p>Text</p>")
+  })
+
+  it("clears a stylesheet float on the added paragraph", () => {
+    floatStylesheet.textContent += " p {float: right}"
+    document.body.innerHTML = "<custom-card></custom-card>"
+    $.selectElement(document.querySelector("custom-card")!)
+    expect(setFloat("far-left")).toBe(true)
+    const paragraph = document.querySelector("p")!
+    expect(paragraph.classList.contains("ww-float-none")).toBe(true)
+    expect(getComputedStyle(paragraph).float).toBe("none")
+  })
+
+  it("does not add a paragraph outside a sole nested float", () => {
+    document.body.innerHTML = "<section><p>Text</p></section>"
+    $.move(document.querySelector("p")!.firstChild!, 2)
+    expect(setFloat("far-left")).toBe(true)
+    expect(document.body.children.length).toBe(1)
+    expect(document.querySelector("section")!.children.length).toBe(1)
+  })
+
   it("floats and moves the top-level container from an inner text selection", () => {
     document.body.innerHTML = '<div><p>inner</p></div><p>next</p>'
     const container = document.body.firstElementChild!

@@ -433,6 +433,7 @@ export class DomEditor extends LitElement {
     editingSnippetId: {state: true},
     breadcrumbVisible: {attribute: false, state: true},
     aiToolboxOpen: {state: true},
+    narrowLayout: {state: true},
     guidedTourReady: {state: true},
   }
 
@@ -545,6 +546,8 @@ export class DomEditor extends LitElement {
   private htmlSourceRanges = new Map<string, Range[]>()
   private htmlSourceScrollFrame = 0
   private htmlSourceResizeObserver: ResizeObserver | null = null
+  private layoutResizeObserver: ResizeObserver | null = null
+  private narrowLayout = false
   private htmlSourceObservedInput: HTMLTextAreaElement | null = null
   private presenceUsers: PresenceUser[] = []
   private collaborationLink = ""
@@ -561,6 +564,7 @@ export class DomEditor extends LitElement {
   private packageImportMapPackageSetKey: string | null = null
   private packagesLoading = false
   private busyPackageNames: string[] = []
+  private readonly packageInstallations = new Map<string, AbortController>()
   private packageError = ""
   private localPackages: WebWriterPackage[] = []
   private localPackagesLoading = false
@@ -1106,6 +1110,13 @@ export class DomEditor extends LitElement {
       .document-stage:has(+ dom-editor-toolbox[active-tool]:not([hidden])) {grid-column: 1 / -1}
       .html-source-panel {grid-row: 5}
       .document-layouts-panel {grid-row: 6}
+      dom-editor-toolbox[collapsed]:not([hidden]) {
+        grid-column: 1 / -1;
+        grid-row: 7;
+        justify-self: stretch;
+        width: 100%;
+        height: 30px;
+      }
     }
   `
 
@@ -4109,14 +4120,20 @@ export class DomEditor extends LitElement {
       const name = label.slice("package:".length)
       const pkg = this.installedPackages.find(candidate => candidate.name === name) ??
         this.packages.find(candidate => candidate.name === name)
-      if(pkg) void this.installAndInsertPackage(pkg)
+      if(pkg) {
+        if(this.busyPackageNames.includes(name)) void this.setPackageInstalled(pkg, false)
+        else if(this.installedPackages.some(candidate => candidate.name === name)) void this.installAndInsertPackage(pkg)
+        else void this.setPackageInstalled(pkg, true)
+      }
       else this.focusEditor()
       return
     }
     if(label?.startsWith("element:")) {
       const tag = label.slice("element:".length)
       if(insertionMenuItems.some(item => item.tag === tag)) {
-        void this.execute({type: "insertElement", tag}).finally(() => this.focusEditor())
+        void this.execute({type: "insertElement", tag}).finally(() => {
+          if(!isMediaType(tag)) this.focusEditor()
+        })
       }
       else this.focusEditor()
       return
@@ -4355,9 +4372,12 @@ export class DomEditor extends LitElement {
       void this.setHTMLMode(true)
       return
     }
-    if(!item.tag) return
+    const tag = item.tag
+    if(!tag) return
 
-    void this.execute({type: "insertElement", tag: item.tag}).finally(() => this.focusEditor())
+    void this.execute({type: "insertElement", tag}).finally(() => {
+      if(!isMediaType(tag)) this.focusEditor()
+    })
   }
 
   private selectLocalPackage(name: string) {
@@ -4962,7 +4982,13 @@ export class DomEditor extends LitElement {
   }
 
   private async setPackageInstalled(pkg: WebWriterPackage, installed: boolean) {
-    if(this.busyPackageNames.includes(pkg.name)) return undefined
+    if(this.busyPackageNames.includes(pkg.name)) {
+      const installation = this.packageInstallations.get(pkg.name)
+      if(installation && !installed) installation.abort()
+      return undefined
+    }
+    const installation = installed ? new AbortController() : undefined
+    if(installation) this.packageInstallations.set(pkg.name, installation)
     this.busyPackageNames = [...this.busyPackageNames, pkg.name]
     this.packageError = ""
     try {
@@ -4971,11 +4997,23 @@ export class DomEditor extends LitElement {
         return undefined
       }
       const localPackage = this.localPackages.find(candidate => candidate.name === pkg.name)
-      const resolvedPackage = installed ? localPackage ?? await this.packageRegistry.getPackage(pkg) : pkg
+      const resolvedPackage = installation ? localPackage ?? await Promise.race([
+        this.packageRegistry.getPackage(pkg),
+        new Promise<undefined>(resolve => installation.signal.addEventListener("abort", () => resolve(undefined), {once: true})),
+      ]) : pkg
+      if(!resolvedPackage || installation?.signal.aborted) return undefined
       const nextPackages = installed
         ? [...this.installedPackages.filter(candidate => candidate.name !== pkg.name), resolvedPackage]
         : this.installedPackages.filter(candidate => candidate.name !== pkg.name)
-      await this.reloadEditor(nextPackages)
+      try { await this.reloadEditor(nextPackages) }
+      catch(error) { if(!installation?.signal.aborted) throw error }
+      finally {
+        // The frame may already have adopted the package while its scripts load.
+        if(installation?.signal.aborted && this.installedPackages.some(candidate => candidate.name === pkg.name)) {
+          await this.reloadEditor(this.installedPackages.filter(candidate => candidate.name !== pkg.name))
+        }
+      }
+      if(installation?.signal.aborted) return undefined
       const localRecord = [...this.localPackageManager.records.values()].find(candidate => candidate.package.name === pkg.name)
       if(localRecord) localRecord.enabled = installed
       this.packages = this.packages.map(candidate => candidate.name === resolvedPackage.name ? resolvedPackage : candidate)
@@ -4986,6 +5024,7 @@ export class DomEditor extends LitElement {
       return undefined
     }
     finally {
+      this.packageInstallations.delete(pkg.name)
       this.busyPackageNames = this.busyPackageNames.filter(name => name !== pkg.name)
     }
   }
@@ -5229,7 +5268,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleRibbonComboboxChange = (event: Event) => {
-    const detail = (event as CustomEvent<{name?: unknown, value?: unknown, values?: unknown}>).detail
+    const detail = (event as CustomEvent<{name?: unknown, value?: unknown, values?: unknown, fontStylesheet?: unknown}>).detail
     if(detail?.name === "mark-types") {
       const group = mergedMarkGroupFor("span")
       if(!group || !Array.isArray(detail.values) || !detail.values.every(value => (
@@ -5253,6 +5292,7 @@ export class DomEditor extends LitElement {
       type: "setStyleMark",
       property: detail.name,
       value: detail.value,
+      ...(typeof detail.fontStylesheet === "string" ? {fontStylesheet: detail.fontStylesheet} : {}),
     }).finally(() => this.focusEditor())
   }
 
@@ -5914,14 +5954,21 @@ export class DomEditor extends LitElement {
 
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
-    if(tool !== "Review" && this.reviewOpen) {
+    const expandDockedToolbox = this.narrowLayout && this.bottomPanelOpen
+    if(expandDockedToolbox) {
+      this.mathKeyboardHidden = true
+      this.shapeKeyboardHidden = true
+      this.linkKeyboardHidden = true
+    }
+    if((tool !== "Review" || expandDockedToolbox) && this.reviewOpen) {
       this.reviewOpen = false
       void this.setHTMLMode(this.consoleOpen && this.consoleTab === "HTML")
+      if(expandDockedToolbox && tool === "Review") void this.clearHistoryPreview()
     }
     this.aiToolboxOpen = tool === "AI"
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     if(ribbon) ribbon.aiChatOpen = this.aiToolboxOpen
-    if(tool !== "Edit" && !this.htmlPending && !this.settings.pinDeveloperConsole) {
+    if(!this.htmlPending && (expandDockedToolbox || tool !== "Edit" && !this.settings.pinDeveloperConsole)) {
       void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: false}}))
     }
   }
@@ -6242,6 +6289,15 @@ export class DomEditor extends LitElement {
 
   private get isMathEditing() {
     return this.mathSelection?.active && (this.mathSelection.display === "inline" || this.captureSelection)
+  }
+
+  private get bottomPanelOpen() {
+    if(this.liveSessionActive) return false
+    if((this.consoleOpen || this.reviewOpen) && (!this.previewActive || this.settings.pinDeveloperConsole)) return true
+    if(this.previewActive) return false
+    return Boolean(this.graphicSelection?.capture && !this.shapeKeyboardHidden
+      || this.linkSelection?.active && !this.mathSelection?.active && !this.graphicSelection?.capture && !this.linkKeyboardHidden
+      || this.isMathEditing && !this.mathKeyboardHidden)
   }
 
   private handleMathKeyboardCommand = (event: CustomEvent<{command: string}>) => {
@@ -7257,6 +7313,11 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    this.layoutResizeObserver = new ResizeObserver(entries => {
+      const entry = entries.find(entry => entry.target === this)
+      if(entry) this.narrowLayout = entry.contentRect.width < 600
+    })
+    this.layoutResizeObserver.observe(this)
     this.recentDocumentsReady = this.restoreRecentDocuments()
     this.lang = "en"
     this.localPackageManager.autoReload = this.settings.autoReloadPackages
@@ -7316,6 +7377,8 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    this.layoutResizeObserver?.disconnect()
+    this.layoutResizeObserver = null
     this.clearHTMLSourceRanges()
     this.htmlSourceTokens = null
     if(this.htmlSourceScrollFrame) cancelAnimationFrame(this.htmlSourceScrollFrame)
@@ -7704,6 +7767,7 @@ export class DomEditor extends LitElement {
         ` : ""}
         ${this.frameStarted ? html`<iframe
           class=${documentLoading || this.documentFramePending ? "editor-frame loading" : "editor-frame"}
+          allow="camera; microphone; display-capture"
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
           referrerpolicy="no-referrer"
@@ -7770,6 +7834,7 @@ export class DomEditor extends LitElement {
         ` : ""}
       </div>
       <dom-editor-toolbox
+        .collapsed=${this.narrowLayout && this.bottomPanelOpen}
         .preview=${this.previewActive}
         .feedbackActive=${this.liveSessionActive}
         .feedbackRole=${this.liveSessionRole}

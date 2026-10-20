@@ -71,6 +71,7 @@ export class DomEditorToolbox extends EditingControls {
     aiSidebar: {type: Boolean, attribute: "ai-sidebar", reflect: true},
     showStyleToolbox: {type: Boolean, attribute: "show-style-toolbox", reflect: true},
     activeTool: {type: String, attribute: "active-tool", reflect: true},
+    collapsed: {type: Boolean, reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
     elementSelected: {type: Boolean, attribute: false},
@@ -247,7 +248,7 @@ export class DomEditorToolbox extends EditingControls {
     }
 
     :host([ai-sidebar]) {grid-template-rows: 30px minmax(0, 1fr)}
-    :host([ai-sidebar]) .toolbox-tab:not([data-active]) {display: none}
+    :host([ai-sidebar]:not([collapsed])) .toolbox-tab:not([data-active]) {display: none}
     .ai-toolbox-content {flex: 1; min-height: 0; height: 100%; overflow: hidden}
     .ai-toolbox-content .ai-chat-panel[data-open] {
       display: flex; flex-direction: column; position: relative; inset: auto;
@@ -283,7 +284,7 @@ export class DomEditorToolbox extends EditingControls {
 
     @media (max-height: 600px) {
       .ai-tab-label-prefix {display: none}
-      :host([active-tool="AI"]) .toolbox-tab:not([data-active]) {display: none}
+      :host([active-tool="AI"]:not([collapsed])) .toolbox-tab:not([data-active]) {display: none}
       :host([active-tool="AI"]) .toolbox-pane,
       :host([active-tool="AI"]) .toolbox-pane-content,
       :host([active-tool="AI"]) .ai-toolbox-content,
@@ -728,6 +729,10 @@ export class DomEditorToolbox extends EditingControls {
       cursor: default;
     }
 
+    :host([collapsed]) {grid-template-rows: 30px}
+    :host([collapsed]) .toolbox-tabs-area {grid-row: 1}
+    :host([collapsed]) .toolbox-tabs {padding-left: 4px}
+    :host([collapsed])::after {display: none}
 
 
     @media (prefers-reduced-motion: reduce) {
@@ -746,6 +751,8 @@ export class DomEditorToolbox extends EditingControls {
 
   showStyleToolbox = false
   activeTool: ToolboxTool | null = null
+  // Keep the current tool's state while a bottom panel occupies its space.
+  collapsed = false
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
   elementSelected = false
@@ -1499,13 +1506,13 @@ export class DomEditorToolbox extends EditingControls {
     this.dispatchEvent(new CustomEvent("document-layout-change", {detail: {mode}, bubbles: true, composed: true}))
   }
 
-  selectTool(tool: ToolboxTool | null) {
+  selectTool(tool: ToolboxTool | null, expand = false) {
     if(tool && (this.preview ? tool !== "Feedback" : tool === "Feedback")) return
     if(tool === "AI" && this.disableAI) return
     if(tool === "Style" && !this.showStyleToolbox) return
     const nextTool = tool
     if(this.htmlPending && nextTool !== "Edit") return
-    if(this.activeTool === nextTool) return
+    if(this.activeTool === nextTool && !(expand && this.collapsed)) return
     if(nextTool === null) this.advancedOpen.clear()
     const previousMenu = this.activeMenu
     this.activeTool = nextTool
@@ -1679,7 +1686,7 @@ export class DomEditorToolbox extends EditingControls {
         <div class="toolbox-tabs-area">
           <div class="toolbox-tabs" role="tablist" aria-label="Toolbox">
             ${(this.preview ? [{label: "Feedback" as const, icon: "Comments"}] : tools).filter(tool => (tool.label !== "Style" || this.showStyleToolbox) && (tool.label !== "AI" || !this.disableAI)).map(tool => {
-              const active = this.activeTool === tool.label
+              const active = !this.collapsed && this.activeTool === tool.label
               const tabId = `toolbox-tab-${tool.label.toLowerCase()}`
               const contextualLabel = tool.label === "Edit" ? this.editTypeLabel : null
               const toolLabel = tool.label === "AI" ? "Ask AI" : tool.label
@@ -1697,7 +1704,7 @@ export class DomEditorToolbox extends EditingControls {
                   ?data-accessibility=${accessibilityCount > 0}
                   ?data-active=${active}
                   ?data-contextual=${contextualLabel !== null}
-                  ?data-available=${(contextualLabel !== null || tool.label === "Feedback") && this.activeTool === null}
+                  ?data-available=${(contextualLabel !== null || tool.label === "Feedback") && (this.activeTool === null || this.collapsed)}
                   data-hover-kind=${tool.label === "Review" && this.activeTool !== "Review" ? this.proofreadingState.issues.find(issue => issue.id === this.proofreadingState.hoveredIssueId)?.kind ?? nothing : nothing}
                 >
                   <button
@@ -1716,7 +1723,7 @@ export class DomEditorToolbox extends EditingControls {
                     aria-controls="toolbox-pane"
                     aria-selected=${active}
                     ?disabled=${this.htmlPending && tool.label !== "Edit"}
-                    @click=${() => this.selectTool(tool.label)}
+                    @click=${() => this.selectTool(tool.label, true)}
                   >
                     <span class="toolbox-tab-icon" aria-hidden="true">
                       ${ribbonIcon(tool.icon)}
@@ -1752,7 +1759,7 @@ export class DomEditorToolbox extends EditingControls {
           role="tabpanel"
           aria-labelledby=${this.activeTool ? `toolbox-tab-${this.activeTool.toLowerCase()}` : ""}
           aria-label=${this.activeTool ? `${this.activeTool} tools` : "Toolbox"}
-          ?hidden=${this.activeTool === null}
+          ?hidden=${this.activeTool === null || this.collapsed}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
             ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}

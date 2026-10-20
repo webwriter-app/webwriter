@@ -889,6 +889,11 @@ describe("DomEditor document loading", () => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("delegates camera, microphone and screen capture to the editing frame", async () => {
+    const {iframe} = await mountEditor()
+    expect(iframe.getAttribute("allow")).toBe("camera; microphone; display-capture")
+  })
+
   it("suppresses UI context menus while preserving text fields, editable content and document menus", async () => {
     const {editor, iframe} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -2428,6 +2433,95 @@ describe("DomEditor ribbon drag relay", () => {
 })
 
 describe("DomEditor breadcrumb visibility", () => {
+  it.each(["console", "versions", "math", "shape", "link"])("collapses the docked toolbox while %s is open and restores it on close", async surface => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(editor, "execute").mockResolvedValue(emptyVersionHistoryState())
+    vi.spyOn(host, "focusEditor").mockImplementation(() => {})
+    host.narrowLayout = true
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool(surface === "versions" ? "Review" : "Edit")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    if(surface === "console" || surface === "versions") {
+      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(surface === "console" ? ".developer-console-toggle" : ".versions-console-toggle")!.click()
+    }
+    else if(surface === "math") host.mathSelection = {active: true, display: "inline"}
+    else if(surface === "shape") host.graphicSelection = {active: true, capture: true}
+    else host.linkSelection = {active: true, identity: "link-1", href: "https://example.com", text: "Example",
+      attributes: {href: "https://example.com"}, targets: [], references: []}
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(true)
+    expect(toolbox.activeTool).toBe(surface === "versions" ? "Review" : "Edit")
+    if(surface === "console" || surface === "versions") {
+      expect(editor.shadowRoot!.querySelector<HTMLElement>(".html-source-panel")!.inert).toBe(false)
+      expect(host[surface === "console" ? "consoleOpen" : "reviewOpen"]).toBe(true)
+    }
+    else {
+      const keyboard = editor.shadowRoot!.querySelector(`dom-editor-${surface}-keyboard`)!
+      keyboard.dispatchEvent(new CustomEvent(`${surface}-keyboard-close`))
+      await editor.updateComplete
+      await toolbox.updateComplete
+      expect(toolbox.collapsed).toBe(false)
+      editor.shadowRoot!.querySelector<HTMLButtonElement>(".math-keyboard-open")!.click()
+      await editor.updateComplete
+      await toolbox.updateComplete
+      expect(toolbox.collapsed).toBe(true)
+    }
+    // A tab remains usable even when it is the remembered current tool.
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`[data-tool="${toolbox.activeTool}"]`)!.click()
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(false)
+    expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!.hidden).toBe(false)
+  })
+
+  it("keeps wide toolboxes expanded and preserves pending HTML when the container narrows", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Edit")
+    Object.assign(editor, {consoleOpen: true, consoleTab: "HTML", htmlMode: true, htmlPending: true, htmlSource: "<p>Draft</p>"})
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(false)
+    host.narrowLayout = true
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(true)
+    expect(host.htmlPending).toBe(true)
+    expect(host.htmlSource).toBe("<p>Draft</p>")
+    expect(host.consoleOpen).toBe(true)
+    host.narrowLayout = false
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(false)
+    expect(toolbox.activeTool).toBe("Edit")
+  })
+
+  it("keeps a version preview while collapsed and clears it when its tab replaces Versions", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const clearPreview = vi.spyOn(host, "clearHistoryPreview").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("Review")
+    const preview = {checkpointId: "old", added: 1, removed: 0, modified: 0, isCurrent: false}
+    Object.assign(editor, {reviewOpen: true, historyState: {...emptyVersionHistoryState(), preview}, narrowLayout: true})
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(true)
+    expect(host.historyState.preview).toBe(preview)
+    expect(clearPreview).not.toHaveBeenCalled()
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Review"]')!.click()
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(false)
+    expect(host.reviewOpen).toBe(false)
+    expect(clearPreview).toHaveBeenCalledOnce()
+  })
+
   it("hides the breadcrumb and toolbox when collapsed and restores them when the ribbon expands", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -5621,15 +5715,18 @@ describe("DomEditor.execute()", () => {
     await Promise.all([search.updateComplete, button.updateComplete])
 
     expect(drawer).not.toBeNull()
-    expect(search.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Search packages"]')).not.toBeNull()
+    expect(search.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Search widgets"]')?.placeholder).toBe("Search widgets")
     expect(search.shadowRoot!.querySelector(".icon-tabler-search")).not.toBeNull()
     expect(button.shadowRoot!.querySelector('button[aria-label="Show more Demo options"]')).toBeNull()
   })
 
-  it("installs an uninstalled package and then inserts its first member", async () => {
+  it("installs an uninstalled package and inserts its first member only on a later click", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
-    const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
+    const install = vi.spyOn(editor as any, "setPackageInstalled").mockImplementation(async () => {
+      ;(editor as any).installedPackages = [demoPackage]
+      return demoPackage
+    })
     const insert = vi.spyOn(editor as any, "insertPackageMember").mockResolvedValue(undefined)
     const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
     await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-drawer[label="Packages"] ribbon-button[label="Demo"]')).not.toBeNull())
@@ -5637,12 +5734,18 @@ describe("DomEditor.execute()", () => {
     await button.updateComplete
     button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
 
-    await vi.waitFor(() => expect(insert).toHaveBeenCalled())
     expect(install).toHaveBeenCalledWith(demoPackage, true)
+    expect(insert).not.toHaveBeenCalled()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await vi.waitFor(() => expect(insert).toHaveBeenCalledTimes(1))
+    expect(install).toHaveBeenCalledTimes(1)
     expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
   })
 
-  it("installs and inserts packages while package search is active", async () => {
+  it("installs without inserting while package search is active", async () => {
     vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
     const {editor} = await mountEditor()
     const install = vi.spyOn(editor as any, "setPackageInstalled").mockResolvedValue(demoPackage)
@@ -5662,8 +5765,61 @@ describe("DomEditor.execute()", () => {
 
     await vi.waitFor(() => expect(install).toHaveBeenCalled())
     expect(install).toHaveBeenCalledWith(demoPackage, true)
-    expect(insert).toHaveBeenCalledWith(demoPackage.members[0])
+    expect(insert).not.toHaveBeenCalled()
     expect(button.shadowRoot!.querySelector(".corner-icon")).toBeNull()
+  })
+
+  it("cancels an installation by clicking its loading button before metadata resolves", async () => {
+    vi.mocked(WebWriterPackageRegistry.prototype.search).mockResolvedValue([demoPackage])
+    const {editor} = await mountEditor()
+    const host = editor as any
+    let resolvePackage!: (pkg: WebWriterPackage) => void
+    vi.spyOn(host.packageRegistry, "getPackage").mockImplementation(() => new Promise(resolve => {resolvePackage = resolve}))
+    const reload = vi.spyOn(host, "reloadEditor").mockResolvedValue(undefined)
+    const insert = vi.spyOn(host, "insertPackageMember").mockResolvedValue(undefined)
+    const ribbon = editor.shadowRoot!.querySelector("app-ribbon")!
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector('ribbon-button[label="Demo"]')).not.toBeNull())
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Demo"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await editor.updateComplete
+    await ribbon.updateComplete
+    await button.updateComplete
+    expect(button.loading).toBe(true)
+    expect(button.disabled).toBe(false)
+    button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
+    await vi.waitFor(() => expect(host.busyPackageNames).toEqual([]))
+    resolvePackage(demoPackage)
+    await Promise.resolve()
+    expect(reload).not.toHaveBeenCalled()
+    expect(insert).not.toHaveBeenCalled()
+    expect(host.installedPackages).toEqual([])
+    expect(host.packageInstallations.size).toBe(0)
+    expect(host.packageError).toBe("")
+  })
+
+  it.each([false, true])("removes an installation cancelled while its frame loads (load fails: %s)", async fails => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const other = {...demoPackage, name: "@webwriter/other"}
+    host.installedPackages = [other]
+    vi.spyOn(host.packageRegistry, "getPackage").mockResolvedValue(demoPackage)
+    let finishLoading!: () => void
+    const reload = vi.spyOn(host, "reloadEditor").mockImplementationOnce(async (packages: any) => {
+      host.installedPackages = packages
+      await new Promise<void>(resolve => {finishLoading = resolve})
+      if(fails) throw new Error("Widget load failed")
+    }).mockImplementation(async (packages: any) => {host.installedPackages = packages})
+    const installing = host.setPackageInstalled(demoPackage, true)
+    await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+    await host.setPackageInstalled(demoPackage, false)
+    finishLoading()
+    expect(await installing).toBeUndefined()
+    expect(reload).toHaveBeenLastCalledWith([other])
+    expect(host.installedPackages).toEqual([other])
+    expect(host.busyPackageNames).toEqual([])
+    expect(host.packageInstallations.size).toBe(0)
+    expect(host.packageError).toBe("")
   })
 
   it("removes an installed package from a management-mode package action", async () => {
@@ -6000,6 +6156,10 @@ describe("DomEditor.execute()", () => {
   })
 
   it.each([
+    ["Audio", {type: "insertElement", tag: "audio"}],
+    ["Video", {type: "insertElement", tag: "video"}],
+    ["element:picture", {type: "insertElement", tag: "picture"}],
+    ["element:iframe", {type: "insertElement", tag: "iframe"}],
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
     ["selected-media-file", {type: "selectMediaFile"}],

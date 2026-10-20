@@ -4,11 +4,14 @@ import {anchorColorSubmenu, fixedPopupPosition} from "./popup-position"
 import {colorHex} from "../css-color"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
+import "./font-combobox"
+import "./font-size-combobox"
 
 export type RibbonComboboxChangeDetail = {
   name: string
   value: string
   values?: string[]
+  fontStylesheet?: string
 }
 
 /** A compact, keyboard-accessible ribbon picker with a custom listbox. */
@@ -296,10 +299,14 @@ export class RibbonCombobox extends LitElement {
 
   close() {
     this.open = false
+    this.renderRoot.querySelector(".combobox")?.removeAttribute("data-connected")
+    this.renderRoot.querySelector("font-combobox")?.close()
+    this.renderRoot.querySelector("font-size-combobox")?.close()
   }
 
   private toggle() {
     if(this.disabled) return
+    if(this.open) { this.close(); return }
     this.open = !this.open
     if(this.open) void this.positionListbox()
   }
@@ -428,6 +435,24 @@ export class RibbonCombobox extends LitElement {
   }
 
   render() {
+    if(this.name === "font-family") return html`<font-combobox
+      .label=${this.label} .value=${this.value} ?disabled=${this.disabled}
+      @font-change=${(event: CustomEvent<{value: string, fontStylesheet?: string}>) => {
+        event.stopPropagation()
+        this.value = event.detail.value
+        this.dispatchEvent(new CustomEvent<RibbonComboboxChangeDetail>("ribbon-combobox-change", {
+          detail: {name: this.name, ...event.detail}, bubbles: true, composed: true,
+        }))
+      }}></font-combobox>`
+    if(this.name === "font-size") return html`<font-size-combobox
+      .label=${this.label} .value=${this.value} .options=${this.options} ?disabled=${this.disabled}
+      @combobox-change=${(event: CustomEvent<{value: string}>) => {
+        event.stopPropagation()
+        this.value = event.detail.value
+        this.dispatchEvent(new CustomEvent<RibbonComboboxChangeDetail>("ribbon-combobox-change", {
+          detail: {name: this.name, value: event.detail.value}, bubbles: true, composed: true,
+        }))
+      }}></font-size-combobox>`
     const selected = this.multiple? this.selectedOptions(): [this.selectedOption()]
     const firstSelected = selected[0] ?? {label: this.label, value: ""}
     const activeLabel = !firstSelected.value && this.defaultValueLabel
@@ -440,6 +465,26 @@ export class RibbonCombobox extends LitElement {
       `top: ${this.listboxPosition.top}px`,
       this.listboxPosition.width? `min-width: ${this.listboxPosition.width}px`: "",
     ].filter(Boolean).join("; ")
+    const options = this.open ? this.options.map(option => html`
+      <button
+        class="option"
+        type="button"
+        role="option"
+        aria-label=${option.label}
+        aria-selected=${this.multiple
+          ? this.selectedValues().some(value => this.valuesEqual(option.value, value))
+          : this.valuesEqual(option.value, this.value)}
+        title=${option.label}
+        style=${this.name === "font-family" && option.value? `font-family: ${option.value}`: ""}
+        @click=${() => this.select(option)}
+        @keydown=${this.handleOptionKeydown}
+      >
+        <span class="option-check" aria-hidden="true">✓</span>
+        ${this.variant === "color"
+          ? this.colorPreview(option.value, option.label, true)
+          : option.label}
+      </button>
+    `) : nothing
     return html`
       <button
         class="combobox"
@@ -471,26 +516,7 @@ export class RibbonCombobox extends LitElement {
           aria-multiselectable=${this.multiple ? "true" : nothing}
           style=${style}
         >
-          ${this.options.map(option => html`
-            <button
-              class="option"
-              type="button"
-              role="option"
-              aria-label=${option.label}
-              aria-selected=${this.multiple
-                ? this.selectedValues().some(value => this.valuesEqual(option.value, value))
-                : this.valuesEqual(option.value, this.value)}
-              title=${option.label}
-              style=${this.name === "font-family" && option.value? `font-family: ${option.value}`: ""}
-              @click=${() => this.select(option)}
-              @keydown=${this.handleOptionKeydown}
-            >
-              <span class="option-check" aria-hidden="true">✓</span>
-              ${this.variant === "color"
-                ? this.colorPreview(option.value, option.label, true)
-                : option.label}
-            </button>
-          `)}
+          ${options}
           ${this.variant === "color" ? html`<button class="option option-custom-color" type="button" role="option"
             aria-label="Custom" title="Custom color"
             aria-selected=${Boolean(this.value && !this.options.some(option => this.valuesEqual(option.value, this.value)))}

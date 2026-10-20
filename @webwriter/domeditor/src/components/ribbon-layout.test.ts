@@ -64,7 +64,9 @@ describe("preview reader drawer", () => {
     const content = ribbon.shadowRoot!.querySelector<HTMLElement>(".ribbon-content")!
     Object.defineProperty(content, "clientWidth", {configurable: true, value: 320})
     const drawers = Array.from(content.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
+    ribbon.setAttribute("drawers-collapsed", "")
     ;(ribbon as any).updateResponsiveLayout(drawers)
+    expect(ribbon.hasAttribute("drawers-collapsed")).toBe(false)
     expect(drawers.every(item => !item.collapsed && !item.compact)).toBe(true)
     expect(drawers.map(item => item.layout)).toEqual(["learners", "sharing-preview"])
     expect(drawers[1].layoutWidths.expanded).toBe(72)

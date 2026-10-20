@@ -114,6 +114,7 @@ describe("native media capture lifecycle", () => {
     devices.getUserMedia.mockReturnValue(new Promise(resolve => { approve = resolve }))
     open("microphone-audio")
     expect(devices.getUserMedia).not.toHaveBeenCalled()
+    expect(button(".connect")).toHaveClass("primary")
     button(".connect").click()
     await vi.waitFor(() => expect(devices.getUserMedia).toHaveBeenCalledTimes(1))
     expect(status()).toMatch(/Waiting for permission/)
@@ -121,6 +122,8 @@ describe("native media capture lifecycle", () => {
     expect(button(".connect")).toBeDisabled()
     approve(stream(new Track("audio")))
     await ready()
+    expect(button(".connect")).not.toHaveClass("primary")
+    expect(button(".capture")).toHaveClass("primary")
     expect(Recorder.instances).toHaveLength(0)
   })
 
@@ -138,17 +141,48 @@ describe("native media capture lifecycle", () => {
     expect(closed).toHaveBeenCalledOnce()
   })
 
-  it("respects denied permission and retries after it changes", async () => {
+  it("requests device access even after a denied permission query and allows retry", async () => {
     microphonePermission.state = "denied"
+    devices.getUserMedia.mockRejectedValueOnce(new DOMException("device", "NotAllowedError"))
     open("microphone-audio")
     await vi.waitFor(() => expect(status()).toMatch(/Permission was not granted/))
     button(".connect").click()
-    await Promise.resolve()
-    expect(devices.getUserMedia).not.toHaveBeenCalled()
+    expect(devices.getUserMedia).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(button(".connect")).not.toBeDisabled())
+    expect(status()).toMatch(/Permission was not granted/)
     microphonePermission.change("granted")
     button(".connect").click()
     await ready()
-    expect(devices.getUserMedia).toHaveBeenCalledOnce()
+    expect(devices.getUserMedia).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(["camera-image", "camera-video", "microphone-audio"] as const)(
+    "requests %s access within the click even if permission queries never settle", async mode => {
+      permissionQuery.mockReturnValue(new Promise(() => {}))
+      devices.getUserMedia.mockResolvedValue(stream(new Track(mode === "microphone-audio" ? "audio" : "video")))
+      open(mode)
+      button(".connect").click()
+      expect(devices.getUserMedia).toHaveBeenCalledWith({video: mode.startsWith("camera-"), audio: mode === "microphone-audio"})
+      await ready()
+    },
+  )
+
+  it("does not let a late permission query cancel a pending device request", async () => {
+    let queried!: (permission: Permission) => void
+    let approve!: (value: MediaStream) => void
+    permissionQuery.mockReturnValue(new Promise(resolve => { queried = resolve }))
+    devices.getUserMedia.mockReturnValue(new Promise(resolve => { approve = resolve }))
+    open("microphone-audio")
+    button(".connect").click()
+    microphonePermission.state = "denied"
+    queried(microphonePermission)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(status()).toMatch(/Waiting for permission/)
+    const audio = new Track("audio")
+    approve(stream(audio))
+    await ready()
+    expect(audio.stop).not.toHaveBeenCalled()
   })
 
   it.each(["NotAllowedError", "NotReadableError", "NotFoundError", "OverconstrainedError"])(
@@ -174,6 +208,7 @@ describe("native media capture lifecycle", () => {
 
   it("calls the screen picker within the click without waiting on permissions", async () => {
     open("screen-video")
+    expect(button(".connect")).toHaveClass("primary")
     button(".connect").click()
     expect(devices.getDisplayMedia).toHaveBeenCalledWith({video: true, audio: true})
     expect(permissionQuery).not.toHaveBeenCalled()

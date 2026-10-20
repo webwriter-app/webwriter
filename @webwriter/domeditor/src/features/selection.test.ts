@@ -141,6 +141,103 @@ describe("selection preservation across authored DOM shapes", () => {
   })
 })
 
+describe("Alt+Shift+ArrowUp element selection", () => {
+  function press(init: KeyboardEventInit = {}, target: EventTarget = document) {
+    const event = new KeyboardEvent("keydown", {
+      key: "ArrowUp", altKey: true, shiftKey: true, bubbles: true, composed: true, cancelable: true, ...init,
+    })
+    target.dispatchEvent(event)
+    return event
+  }
+
+  it.each([
+    '<p>before <strong>middle</strong> after</p>',
+    '<section><!--keep--><p>before <a href="#target"><em>middle</em></a> after</p></section>',
+    '<ul><li><p>before <span>middle</span> after</p></li></ul>',
+    '<table><tbody><tr><td><p>before <span>middle</span> after</p></td></tr></tbody></table>',
+  ])("selects the text container through inline marks in %s", html => {
+    document.body.innerHTML = html
+    const paragraph = document.querySelector("p")!
+    const text = paragraph.querySelector("strong, em, span")!.firstChild!
+    const authored = editor.toHTML(true)
+    const nodes = Array.from(paragraph.childNodes)
+    const selection = document.getSelection()!
+    for(const [anchor, focus] of [[2, 2], [1, 4], [4, 1]]) {
+      selection.setBaseAndExtent(text, anchor, text, focus)
+      expect(press().defaultPrevented).toBe(true)
+      expect($.selectedElement).toBe(paragraph)
+      expect(paragraph).toHaveClass("◆element-selected")
+      expect(Array.from(paragraph.childNodes)).toEqual(nodes)
+      expect(editor.toHTML(true)).toBe(authored)
+      editor.doc.syncFromDOM()
+      expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    }
+    $.move(text, 1)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(paragraph).not.toHaveClass("◆element-selected")
+  })
+
+  it("uses the current common container across sibling text nodes and after replacement", () => {
+    document.body.innerHTML = '<ul><li><!--keep--><p>First</p><p>Last</p></li></ul>'
+    const item = document.querySelector("li")!
+    $.selectRange(item.querySelector("p")!.firstChild!, 1, item.lastChild!.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(item)
+    const replacement = document.createElement("li")
+    replacement.textContent = "Replacement"
+    item.replaceWith(replacement)
+    $.move(replacement.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(replacement)
+    expect(item).not.toHaveClass("◆element-selected")
+  })
+
+  it("selects an atomic widget host and leaves its shadow keyboard events alone", () => {
+    document.body.innerHTML = '<unknown-selection-widget><p>Private content</p></unknown-selection-widget>'
+    const widget = document.body.firstElementChild!
+    $.move(widget.firstChild!.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(widget)
+    const input = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(input)
+    const paragraph = el("p", "Keep selection")
+    $.move(paragraph.firstChild!, 2)
+    expect(press({}, input).defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it.each([
+    {altKey: false}, {shiftKey: false}, {ctrlKey: true}, {metaKey: true}, {isComposing: true},
+  ])("leaves other shortcuts and composition alone: %j", init => {
+    const paragraph = el("p", "Keep selection")
+    $.move(paragraph.firstChild!, 2)
+    expect(press(init).defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("leaves handled events, absent ranges, root ranges, and existing element selections alone", () => {
+    const paragraph = el("p", "Keep selection")
+    $.move(paragraph.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {key: "ArrowUp", altKey: true, shiftKey: true, cancelable: true})
+    event.preventDefault()
+    feature.activeListeners.keydown!(event)
+    expect($.anchor).toBe(paragraph.firstChild)
+    document.getSelection()!.removeAllRanges()
+    expect(press().defaultPrevented).toBe(false)
+    const last = document.createElement("p")
+    last.textContent = "Last"
+    document.body.append(last)
+    $.selectRange(paragraph.firstChild!, 1, last.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph.firstChild)
+    feature.selectElement(paragraph)
+    expect(press().defaultPrevented).toBe(false)
+    expect($.selectedElement).toBe(paragraph)
+  })
+})
+
 describe("figure node selection", () => {
   it.each(["ltr", "rtl"])("aligns the empty flow caret with the %s content edge beside a lone float", direction => {
     document.body.innerHTML = '<audio controls style="float:right"></audio>'
@@ -1759,6 +1856,56 @@ describe("processSelection()", () => {
     feature.processSelection()
     expect(feature.selectionCaret!.style.getPropertyValue("--gap-caret-block-offset")).toBe("")
     expect(paragraph).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+  })
+  it("keeps resized block and widget gaps in the live content column", async () => {
+    document.body.style.cssText = "--ww-float-width: 100px; --ww-prose-max: 720px; padding: 0 20px; border: 2px solid"
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 0, 1004, 500))
+    for(const tag of ["p", "interactive-widget"]) {
+      document.body.innerHTML = `<${tag} style="width: 200px; margin-inline: auto"></${tag}>`
+      const element = document.body.firstElementChild!
+      const bounds = vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(412, 50, 200, 100))
+      for(const placement of ["before", "after"] as const) {
+        $.selectGap(element, placement)
+        feature.processSelection()
+        expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-position"))
+          .toBe("calc(32px + max(0px, (960px - 720px) / 2))")
+      }
+      bounds.mockReturnValue(new DOMRect(312, 50, 400, 100))
+      element.setAttribute("style", "width: 400px; margin-inline: auto")
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-position"))
+        .toBe("calc(32px + max(0px, (960px - 720px) / 2))")
+      vi.mocked(document.body.getBoundingClientRect).mockReturnValue(new DOMRect(-90, 0, 1004, 500))
+      document.dispatchEvent(new Event("scroll"))
+      expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-position"))
+        .toBe("calc(-68px + max(0px, (960px - 720px) / 2))")
+
+      vi.mocked(document.body.getBoundingClientRect).mockReturnValue(new DOMRect(10, 0, 804, 500))
+      window.dispatchEvent(new Event("resize"))
+      expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-position"))
+        .toBe("calc(32px + max(0px, (760px - 720px) / 2))")
+      vi.mocked(document.body.getBoundingClientRect).mockReturnValue(new DOMRect(10, 0, 1004, 500))
+      expect(editor.toHTML(true)).not.toContain("◆")
+      $.selectElement(element)
+      feature.processSelection()
+      expect(feature.selectionCaret!.style.getPropertyValue("--gap-caret-inline-position")).toBe("")
+    }
+    document.body.style.cssText = ""
+  })
+  it("uses the padded content area of a nested gap's current parent", () => {
+    document.body.innerHTML = '<section><div style="padding: 0 24px; border: 3px solid"><!--keep--><p style="width: 200px; margin-inline: auto">Text</p></div></section>'
+    const parent = document.querySelector("div")!, paragraph = document.querySelector("p")!
+    vi.spyOn(parent, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 500, 200))
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(250, 30, 200, 50))
+    $.selectGap(paragraph)
+    feature.processSelection()
+    expect(feature.gapCaret!.style.getPropertyValue("--gap-caret-inline-position"))
+      .toBe("calc(127px + max(0px, (446px - 446px) / 2))")
+    paragraph.remove()
+    window.dispatchEvent(new Event("resize"))
+    editor.destroy()
+    expect(paragraph).not.toHaveClass("◆gap-after-selected")
+    expect(editor.appendix.querySelector(".◆selection-caret")).toBeNull()
   })
   it("skips positioned siblings when presenting a gap", () => {
     document.body.innerHTML = '<p>before</p><interactive-widget style="position: absolute">overlay</interactive-widget><hr style="position: fixed"><p>after</p>'

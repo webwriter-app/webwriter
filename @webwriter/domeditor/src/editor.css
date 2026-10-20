@@ -1522,19 +1522,32 @@ body::part(gap-caret-drop-caret-before), body::part(gap-caret-drop-caret-after) 
     color: var(--sl-color-primary-400);
     --size: 1.5em;
 }
-body::part(gap-caret-gap-before-selected), body::part(gap-caret-drop-caret-before) {
-    position-area: top center;
-    justify-self: start;
-}
-body::part(gap-caret-gap-after-selected), body::part(gap-caret-drop-caret-after) {
-    position-area: bottom center;
+body::part(gap-caret-gap-before-selected), body::part(gap-caret-drop-caret-before), body::part(gap-caret-gap-after-selected), body::part(gap-caret-drop-caret-after) {
     justify-self: start;
 }
 body::part(gap-caret-gap-after-selected) {
     margin-top: var(--gap-caret-block-offset, 0px);
 }
+body::part(gap-caret-gap-before-selected), body::part(gap-caret-gap-after-selected) {
+    position-area: none;
+    left: var(--gap-caret-inline-position, anchor(left));
+}
+body::part(gap-caret-gap-before-selected) {
+    top: anchor(top);
+}
+body::part(gap-caret-gap-after-selected) {
+    top: anchor(bottom);
+}
 body::part(gap-caret-drop-caret-before), body::part(gap-caret-drop-caret-after) {
+    top: auto;
+    left: auto;
     margin-top: 0;
+}
+body::part(gap-caret-drop-caret-before) {
+    position-area: top center;
+}
+body::part(gap-caret-drop-caret-after) {
+    position-area: bottom center;
 }
 body::part(gap-caret)::after {
     content: "";

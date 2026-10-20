@@ -104,7 +104,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   const packageEvaluation = hasWidgetScripts ? " 'unsafe-eval'" : ""
   // Libraries such as CodeMirror create their own style elements inside
   // widget shadows. They cannot inherit the nonce on their module script.
-  const packageStyles = hasWidgetScripts ? "* data: blob: 'unsafe-inline'" : `'nonce-${nonce}'`
+  const packageStyles = hasWidgetScripts ? "* data: blob: 'unsafe-inline'" : `'nonce-${nonce}' https://fonts.bunny.net data:`
   // Module workers also fetch their imports under worker-src in Chromium.
   // Permit the trusted frame origin for those HTTP development modules.
   const entryURL = new URL(options.entryURL, /^[a-z]+:/i.test(options.entryURL) ? options.hostOrigin : editorFrameOrigin())
