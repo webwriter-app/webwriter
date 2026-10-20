@@ -55,6 +55,29 @@ async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
 }
 
+it("reconciles derived DOM metadata with its source edit in one undoable change", async () => {
+  const root = document.createElement("main")
+  root.innerHTML = "<p>First</p>"
+  const shared = new SharedDOMDoc(undefined, undefined, [], [], {root, beforeSyncFromDOM: () => {
+    const count = String(root.children.length)
+    if(root.getAttribute("data-count") !== count) root.setAttribute("data-count", count)
+  }})
+  sharedDocs.push(shared)
+  expect(shared.body.getAttribute("data-count")).toBe("1")
+  expect(shared.canUndo).toBe(false)
+  root.append(document.createElement("p"))
+  await mutationsDelivered()
+  expect(shared.body.length).toBe(2)
+  expect(shared.body.getAttribute("data-count")).toBe("2")
+  shared.undo()
+  expect(root.children).toHaveLength(1)
+  expect(shared.body.getAttribute("data-count")).toBe("1")
+  expect(shared.canUndo).toBe(false)
+  shared.redo()
+  expect(root.children).toHaveLength(2)
+  expect(shared.body.getAttribute("data-count")).toBe("2")
+})
+
 describe("concurrent minimum-content repairs", () => {
   function repair(peer: ReturnType<typeof createShared>) {
     peer.root.replaceChildren()
