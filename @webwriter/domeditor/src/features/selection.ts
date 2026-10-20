@@ -2229,7 +2229,15 @@ export class SelectionFeature extends EditorFeature {
         this.processSelection()
       }
       else if(ev.key === "ArrowUp" && ev.altKey) {
-
+        if(!ev.shiftKey || ev.ctrlKey || ev.metaKey || ev.isComposing || ev.defaultPrevented) return
+        if(!document.getSelection()?.rangeCount || $.isElementSelection || $.isMultiElementSelection) return
+        const node = $.commonAncestor
+        const target = atomicEditingContainer(node, this.editor.schema) ?? getContainer(node)
+        const root = getDocumentRoot()
+        if(!isElement(target) || target === root || !root.contains(target)
+          || target.matches("caption, figcaption, details > summary")) return
+        ev.preventDefault()
+        this.selectElement(target)
       } 
       else if(ev.key === "ArrowUp" && modifierKeyDown(ev)) {
 

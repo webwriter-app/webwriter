@@ -141,6 +141,103 @@ describe("selection preservation across authored DOM shapes", () => {
   })
 })
 
+describe("Alt+Shift+ArrowUp element selection", () => {
+  function press(init: KeyboardEventInit = {}, target: EventTarget = document) {
+    const event = new KeyboardEvent("keydown", {
+      key: "ArrowUp", altKey: true, shiftKey: true, bubbles: true, composed: true, cancelable: true, ...init,
+    })
+    target.dispatchEvent(event)
+    return event
+  }
+
+  it.each([
+    '<p>before <strong>middle</strong> after</p>',
+    '<section><!--keep--><p>before <a href="#target"><em>middle</em></a> after</p></section>',
+    '<ul><li><p>before <span>middle</span> after</p></li></ul>',
+    '<table><tbody><tr><td><p>before <span>middle</span> after</p></td></tr></tbody></table>',
+  ])("selects the text container through inline marks in %s", html => {
+    document.body.innerHTML = html
+    const paragraph = document.querySelector("p")!
+    const text = paragraph.querySelector("strong, em, span")!.firstChild!
+    const authored = editor.toHTML(true)
+    const nodes = Array.from(paragraph.childNodes)
+    const selection = document.getSelection()!
+    for(const [anchor, focus] of [[2, 2], [1, 4], [4, 1]]) {
+      selection.setBaseAndExtent(text, anchor, text, focus)
+      expect(press().defaultPrevented).toBe(true)
+      expect($.selectedElement).toBe(paragraph)
+      expect(paragraph).toHaveClass("◆element-selected")
+      expect(Array.from(paragraph.childNodes)).toEqual(nodes)
+      expect(editor.toHTML(true)).toBe(authored)
+      editor.doc.syncFromDOM()
+      expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    }
+    $.move(text, 1)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(paragraph).not.toHaveClass("◆element-selected")
+  })
+
+  it("uses the current common container across sibling text nodes and after replacement", () => {
+    document.body.innerHTML = '<ul><li><!--keep--><p>First</p><p>Last</p></li></ul>'
+    const item = document.querySelector("li")!
+    $.selectRange(item.querySelector("p")!.firstChild!, 1, item.lastChild!.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(item)
+    const replacement = document.createElement("li")
+    replacement.textContent = "Replacement"
+    item.replaceWith(replacement)
+    $.move(replacement.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(replacement)
+    expect(item).not.toHaveClass("◆element-selected")
+  })
+
+  it("selects an atomic widget host and leaves its shadow keyboard events alone", () => {
+    document.body.innerHTML = '<unknown-selection-widget><p>Private content</p></unknown-selection-widget>'
+    const widget = document.body.firstElementChild!
+    $.move(widget.firstChild!.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(widget)
+    const input = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(input)
+    const paragraph = el("p", "Keep selection")
+    $.move(paragraph.firstChild!, 2)
+    expect(press({}, input).defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it.each([
+    {altKey: false}, {shiftKey: false}, {ctrlKey: true}, {metaKey: true}, {isComposing: true},
+  ])("leaves other shortcuts and composition alone: %j", init => {
+    const paragraph = el("p", "Keep selection")
+    $.move(paragraph.firstChild!, 2)
+    expect(press(init).defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("leaves handled events, absent ranges, root ranges, and existing element selections alone", () => {
+    const paragraph = el("p", "Keep selection")
+    $.move(paragraph.firstChild!, 2)
+    const event = new KeyboardEvent("keydown", {key: "ArrowUp", altKey: true, shiftKey: true, cancelable: true})
+    event.preventDefault()
+    feature.activeListeners.keydown!(event)
+    expect($.anchor).toBe(paragraph.firstChild)
+    document.getSelection()!.removeAllRanges()
+    expect(press().defaultPrevented).toBe(false)
+    const last = document.createElement("p")
+    last.textContent = "Last"
+    document.body.append(last)
+    $.selectRange(paragraph.firstChild!, 1, last.firstChild!, 2)
+    expect(press().defaultPrevented).toBe(false)
+    expect($.anchor).toBe(paragraph.firstChild)
+    feature.selectElement(paragraph)
+    expect(press().defaultPrevented).toBe(false)
+    expect($.selectedElement).toBe(paragraph)
+  })
+})
+
 describe("figure node selection", () => {
   it.each(["ltr", "rtl"])("aligns the empty flow caret with the %s content edge beside a lone float", direction => {
     document.body.innerHTML = '<audio controls style="float:right"></audio>'
