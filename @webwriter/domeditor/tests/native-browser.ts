@@ -974,7 +974,7 @@ await check("Border controls are narrow and dropdown chevrons overlay field valu
   finally {editor.remove(); style.remove(); ribbon.remove()}
 })
 
-await check("Ribbon custom colors show rainbow swatches and commit chosen colors", async () => {
+await check("Ribbon text colors share the toolbox palette and commit chosen colors", async () => {
   const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
   for(const name of ["color", "background-color"]) {
     const combo = new RibbonCombobox()
@@ -988,9 +988,12 @@ await check("Ribbon custom colors show rainbow swatches and commit chosen colors
       await combo.updateComplete
       await layoutFrame()
       const custom = combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Custom"]')!
-      const swatch = custom.querySelector<HTMLElement>(".custom-color-preview")!
-      assert(getComputedStyle(swatch).backgroundImage.includes("linear-gradient"), "Custom lacks a rainbow gradient")
-      assert(swatch.getBoundingClientRect().width > 20 && swatch.getBoundingClientRect().height > 10, "rainbow swatch is not visible")
+      const swatches = combo.shadowRoot!.querySelectorAll<HTMLElement>(".color-swatch")
+      assert(swatches.length === 70, "palette does not match the toolbox colors")
+      const swatch = swatches[0].getBoundingClientRect()
+      assert(swatch.width > 10 && Math.abs(swatch.width - swatch.height) < .1, "palette swatches are not visible squares")
+      const icon = custom.querySelector("svg")!.getBoundingClientRect()
+      assert(icon.width === 16 && icon.height === 16, "Custom icon does not match the toolbox size")
       const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
       let opened = false
       Object.defineProperty(input, "showPicker", {value: () => {opened = true}})

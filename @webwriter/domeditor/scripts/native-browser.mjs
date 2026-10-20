@@ -32,7 +32,7 @@ const expectedChecks = [
   "Closed AI bar shows status and anchored reply speech bubbles",
   "Document toolbox combines metadata and layouts with primary and detailed options",
   "Border controls are narrow and dropdown chevrons overlay field values",
-  "Ribbon custom colors show rainbow swatches and commit chosen colors",
+  "Ribbon text colors share the toolbox palette and commit chosen colors",
   "File actions align with the font size controls",
   "Editor UI prevents text selection while preserving editable fields and the document",
   "Toolbox choices distinguish defaults from explicit matching values",
