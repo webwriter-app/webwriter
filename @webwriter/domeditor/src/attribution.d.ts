@@ -13,6 +13,7 @@ export function createAttributionController(doc: Document, options?: {
   editable?: () => boolean
   canAttribute?: (element: Element) => boolean
   selectedElement?: () => Element | null
+  affordanceContainer?: (element: Element) => HTMLElement | null
   resolveElement?: (element: Element) => Element
   append?: (element: HTMLElement) => void
   save?: (element: Element, values: Partial<AttributionValues>) => boolean

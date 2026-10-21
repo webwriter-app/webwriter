@@ -124,6 +124,7 @@ const expectedChecks = [
   "uploaded videos survive installing and removing packages",
   "canvas and slide delete affordances follow rotation placement",
   "canvas and slide element selections keep Delete borderless",
+  "canvas and slide copyright controls share freeform placement",
   "bundled layouts render under the strict editor CSP without widgets",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",

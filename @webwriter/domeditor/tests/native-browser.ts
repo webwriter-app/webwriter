@@ -4562,6 +4562,54 @@ await check("canvas and slide element selections keep Delete borderless", async 
   }
 })
 
+await check("canvas and slide copyright controls share freeform placement", async () => {
+  for(const mode of ["canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "position:fixed;left:0;top:0;width:900px;height:700px"
+    frame.srcdoc = '<!doctype html><body><picture id="copyright-item"><img></picture><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, `${mode}: editor did not initialize: ${view.editorError}`)
+      const editor = view.editor!, doc = frame.contentDocument!, target = doc.querySelector<HTMLElement>("#copyright-item")!
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
+      Object.assign(target.style, {position: "absolute", left: "200px", top: "200px", width: "240px", height: "100px", margin: "0"})
+      editor.features.selection.selectElement(target)
+      doc.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame(); await layoutFrame()
+      const overlay = editor.features.transformation.overlay
+      const control = overlay.querySelector<HTMLButtonElement>('[part~="transform-overlay-attribution-freeform"]')!
+      assert(control && !control.hidden, `${mode}: copyright is missing from the shared overlay`)
+      const rotator = overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!
+      for(const top of [120, 2, 120]) {
+        const rect = target.getBoundingClientRect()
+        const scale = rect.height / 100
+        target.style.top = `${parseFloat(target.style.top) + (top - rect.top) / scale}px`
+        await layoutFrame()
+        editor.features.transformation.updateInfo()
+        const style = view.getComputedStyle(control)
+        const box = control.getBoundingClientRect(), item = target.getBoundingClientRect()
+        assert(style.width === "16px" && style.height === "16px", `${mode}: copyright does not share freeform sizing`)
+        assert(Math.abs((box.left + box.right) / 2 - (item.left - 3 * scale)) < 1, `${mode}: copyright control is not at the top-left corner`)
+        assert(style.borderTopWidth === "0px" && style.backgroundColor === "rgba(0, 0, 0, 0)", `${mode}: copyright retains its circular background or border`)
+        assert(top === 2 ? box.top > item.top && box.top >= 0 : box.bottom < item.top, `${mode}: copyright did not flip inward at the viewport top`)
+        const stem = view.getComputedStyle(control, "::after")
+        assert(stem.content !== "none" && stem.width === "2px" && parseFloat(stem.height) > 0, `${mode}: copyright has no connector`)
+        assert(stem.backgroundColor === view.getComputedStyle(rotator, "::after").backgroundColor, `${mode}: copyright connector has a different color`)
+        assert(view.getComputedStyle(control.querySelector("svg")!).display === "none", `${mode}: duplicate copyright icon remains`)
+      }
+      control.click()
+      const popup = editor.appendix.querySelector<HTMLElement>('.◆attribution-ui .popup')!
+      assert(!popup.hidden, `${mode}: copyright does not open its dialog`)
+      assert(!editor.toHTML(true).includes("transform-overlay"), `${mode}: copyright control leaked into authored HTML`)
+      editor.features.attribution.disable()
+      assert(!control.isConnected, `${mode}: disabling attribution left its control in the overlay`)
+    }
+    finally {frame.contentWindow?.editor?.destroy(); frame.remove()}
+  }
+})
+
 await check("canvas and slide delete affordances follow rotation placement", async () => {
   for(const mode of ["canvas", "slides"] as const) {
     const frame = document.createElement("iframe")

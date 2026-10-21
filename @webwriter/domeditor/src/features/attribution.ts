@@ -11,6 +11,10 @@ export class AttributionFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
   protected handlesFormControlInteractions = true
 
+  private root(element: Element) {
+    return this.editor.features.slides.active && this.editor.features.slides.containingSlide(element.parentElement) || getDocumentRoot()
+  }
+
   activeListeners: DocumentListenerMap = {
     selectionchange: event => this.controller?.handleEvent(event),
     pointerdown: event => this.controller?.handleEvent(event),
@@ -28,7 +32,8 @@ export class AttributionFeature extends EditorFeature {
         })
         return picker
       },
-      canAttribute: element => element.parentElement === getDocumentRoot(),
+      canAttribute: element => element.parentElement === this.root(element),
+      affordanceContainer: element => this.editor.features.transformation.freeformControlContainer(element),
       editable: () => !this.editor.isEditingLocked,
       resolveElement: element => figureSelectionTarget(atomicEditingContainer(element, this.editor.schema) ?? element),
       selectedElement: () => {
@@ -48,12 +53,13 @@ export class AttributionFeature extends EditorFeature {
     super.disable()
   }
 
-  /** Nested attributions belong to their current top-level ancestor as a unit. */
+  /** Nested attributions belong to their top-level document or slide item as a unit. */
   normalize() {
-    const root = getDocumentRoot()
+    const documentRoot = getDocumentRoot()
     const names = Object.values(attributionAttributes)
     const hasAttribution = (element: Element) => names.some(name => element.getAttribute(name)?.trim())
-    for(const element of root.querySelectorAll(names.map(name => `[${name}]`).join(","))) {
+    for(const element of documentRoot.querySelectorAll(names.map(name => `[${name}]`).join(","))) {
+      const root = this.root(element)
       if(!root.contains(element)) continue
       let top = element
       while(top.parentElement && top.parentElement !== root) top = top.parentElement
@@ -70,7 +76,7 @@ export class AttributionFeature extends EditorFeature {
   }
 
   private save(element: Element, values: Partial<AttributionValues>) {
-    if(this.editor.isEditingLocked || element.parentElement !== getDocumentRoot()) return false
+    if(this.editor.isEditingLocked || element.parentElement !== this.root(element)) return false
     const end = this.editor.doc.beginUndoGroup()
     try {
       for(const [key, value] of Object.entries(values)) {

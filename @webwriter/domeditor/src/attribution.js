@@ -51,7 +51,7 @@ export function createAttributionController(doc, options = {}) {
   root.contentEditable = "false"
   root.innerHTML = `<style>
     .◆attribution-ui { display: contents; color: #334155; font: 13px/1.4 system-ui, sans-serif; }
-    .◆attribution-ui [hidden] { display: none !important; }
+    .◆attribution-ui [hidden], .copyright[hidden], .copyright svg[hidden] { display: none !important; }
     .◆attribution-ui .bridge { position: fixed; z-index: 1002; width: max(16px, var(--ww-page-gutter, 1rem)); height: 16px; pointer-events: auto; }
     .◆attribution-ui button, .◆attribution-ui input { box-sizing: border-box; font: inherit; }
     .◆attribution-ui .copyright:not(.empty-attribution) { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-inline: auto; padding: 0; border: 0; border-radius: 3px; background: #fff; color: #64748b; cursor: pointer; }
@@ -395,11 +395,15 @@ export function createAttributionController(doc, options = {}) {
       target = next
       if(target) resize?.observe(target)
     }
-    bridge.hidden = !target || !options.selectedElement || Object.values(values(target)).some(value => value.trim())
+    const empty = Boolean(target && options.selectedElement) && !Object.values(values(target)).some(value => value.trim())
+    bridge.hidden = !empty
+    const container = empty ? options.affordanceContainer?.(target) : null
+    const parent = container ?? bridge
+    if(button.parentElement !== parent) parent.append(button)
+    button.hidden = !target
     if(!target) return
-    const empty = Boolean(options.selectedElement) && !Object.values(values(target)).some(value => value.trim())
     button.classList.toggle("empty-attribution", empty)
-    button.setAttribute("part", empty ? "transform-overlay-button transform-overlay-attribution" : "")
+    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${container ? " transform-overlay-attribution-freeform" : ""}` : "")
     bridge.setAttribute("part", empty ? "transform-overlay" : "")
     button.querySelector("svg").toggleAttribute("hidden", empty)
     // Paint with the normal controls, above the native drag hit regions.
@@ -408,6 +412,8 @@ export function createAttributionController(doc, options = {}) {
     const style = view.getComputedStyle(target)
     bridge.hidden = bridge.hidden || !rect.width || !rect.height || style.visibility === "hidden" || style.display === "none"
       || rect.bottom <= 0 || rect.top >= view.innerHeight
+    button.hidden = bridge.hidden
+    if(container) bridge.hidden = true
     const html = doc.documentElement
     const offset = html.clientWidth && view.getComputedStyle(html).scrollbarGutter?.includes("both-edges")
       ? Math.max(0, view.innerWidth - html.clientWidth) : 0
@@ -427,8 +433,9 @@ export function createAttributionController(doc, options = {}) {
     if(opened) {
       if(!editable()) { form.hidden = true; details.hidden = false; renderDetails() }
       const box = popup.getBoundingClientRect()
-      popup.style.left = `${Math.max(8, Math.min(left - offset, view.innerWidth - box.width - 8 - offset))}px`
-      popup.style.top = `${top + size + 4 + box.height <= view.innerHeight - 8 ? top + size + 4 : Math.max(8, top - box.height - 4)}px`
+      const control = container ? button.getBoundingClientRect() : {left, top, bottom: top + size}
+      popup.style.left = `${Math.max(8, Math.min(control.left - offset, view.innerWidth - box.width - 8 - offset))}px`
+      popup.style.top = `${control.bottom + 4 + box.height <= view.innerHeight - 8 ? control.bottom + 4 : Math.max(8, control.top - box.height - 4)}px`
     }
   }
   const schedule = () => {
@@ -499,7 +506,7 @@ export function createAttributionController(doc, options = {}) {
   })
   const handleEvent = event => {
     const path = event.composedPath()
-    if(path.includes(root)) return
+    if(path.includes(root) || path.includes(button)) return
     if(event.type === "pointerdown") close()
     else if(event.type === "selectionchange") refresh()
     else schedule()
@@ -525,6 +532,7 @@ export function createAttributionController(doc, options = {}) {
     popup.hidePopover?.()
     appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(current => current !== sheet)
     root.remove()
+    button.remove()
   }}
 }
 

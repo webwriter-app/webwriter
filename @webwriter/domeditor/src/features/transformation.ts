@@ -385,6 +385,10 @@ export class TransformationFeature extends EditorFeature {
   get anchor() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-anchor")! }
   get isNarrow() { return this.overlay.classList.contains("◆transform-overlay-narrow") }
 
+  freeformControlContainer(element: Element) {
+    return this.target === element && this.#isFreeformItem(element) ? this.overlay : null
+  }
+
   #canTransform(element: Element): element is TransformElement {
     return (element instanceof HTMLElement || element instanceof SVGSVGElement
       || mathRoot(element) === element && element.getAttribute("display") === "block")
@@ -647,10 +651,12 @@ export class TransformationFeature extends EditorFeature {
     const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
     const rotateTop = centerY + matrix.d * (-height / 2 - 34) - controlRadius
     const ordererTop = centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 22) - controlRadius
-    const deleteTop = this.#isFreeformItem(target)
-      ? centerY + matrix.b * (width / 2 + 3) + matrix.d * (-height / 2 - 34) - controlRadius
+    const freeform = this.#isFreeformItem(target)
+    // Copyright and Delete share the top row at opposite corners.
+    const cornerControlsTop = freeform
+      ? centerY - Math.abs(matrix.b) * (width / 2 + 3) + matrix.d * (-height / 2 - 34) - controlRadius
       : Infinity
-    setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop, deleteTop) < 0)
+    setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop, cornerControlsTop) < 0)
     overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
     const style = getComputedStyle(target)
     const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"

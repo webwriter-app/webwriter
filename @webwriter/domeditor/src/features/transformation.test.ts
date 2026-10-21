@@ -1366,6 +1366,20 @@ describe("selection-owned transformation", () => {
     expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-at-top")
   })
 
+  it("flips the rotated top-left copyright control inward with the other top controls", () => {
+    const target = targetElement()
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    Object.assign(target.style, {width: "240px", height: "100px"})
+    target.style.setProperty("rotate", "30deg")
+    let top = 35
+    vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => new DOMRect(50, top, 257.85, 206.6))
+    feature.startTransform(target)
+    expect(feature.overlay.getAttribute("part")).toContain("transform-overlay-at-top")
+    top = 100
+    feature.updateInfo()
+    expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-at-top")
+  })
+
   it("clears the target and appendix state when selection is deselected", () => {
     const target = targetElement()
     selectNode(target)
