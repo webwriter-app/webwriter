@@ -1652,6 +1652,40 @@ body::part(presence-gap-caret-label) {
 ::highlight(webwriter-active-comment) {
   background-color: #ffd45b;
 }
+body::part(comment-bubbles) {
+  position: fixed;
+  width: var(--ww-page-gutter, 1rem);
+  height: 0;
+  pointer-events: none;
+}
+body::part(comment-bubble) {
+  position: fixed;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 1px;
+  border: 0;
+  border-radius: 3px;
+  color: #9a6700;
+  background: #fff3a3;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 2147483645;
+}
+body::part(comment-bubble):hover,
+body::part(comment-bubble-active) {
+  background: #ffd45b;
+}
+body::part(comment-bubble):focus-visible {
+  outline: 2px solid #9a6700;
+  outline-offset: 1px;
+}
+body::part(comment-bubble-hidden) {
+  display: none;
+}
 /* Harper supplies the underlines; hide the browser's overlapping decorations. */
 ::spelling-error,
 ::grammar-error {

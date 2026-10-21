@@ -41,6 +41,7 @@ import {
   executeFailureEvent,
   markStateChangeEvent,
   commentStateChangeEvent,
+  commentReviewRequestEvent,
   proofreadingStateChangeEvent,
   proofreadingDictionaryAddEvent,
   type ProofreadingState,
@@ -693,7 +694,7 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent) {
+    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent) {
       return
     }
 

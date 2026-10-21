@@ -106,6 +106,7 @@ import {
   isPresenceChangeMessage,
   markStateChangeEvent,
   commentStateChangeEvent,
+  commentReviewRequestEvent,
   proofreadingStateChangeEvent,
   proofreadingDictionaryAddEvent,
   historyStateChangeEvent,
@@ -7030,6 +7031,11 @@ export class DomEditor extends LitElement {
         bubbles: true,
         composed: true,
       }))
+      return
+    }
+    if(event.data?.type === commentReviewRequestEvent) {
+      if(!this.isEditorMessage(event)) return
+      this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Review", true)
       return
     }
     if(isCommentStateChangeMessage(event.data)) {

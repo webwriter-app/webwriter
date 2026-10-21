@@ -1,6 +1,8 @@
 import {EditorFeature} from "."
-import {isAtomicEditingElement} from "../utility"
-import type {CommentState} from "../editor-bridge"
+import {fixedClientX, isAppendixInteraction, isAtomicEditingElement, isWidgetShadowInteraction, setPart} from "../utility"
+import {commentReviewRequestEvent, type CommentState} from "../editor-bridge"
+import {documentLayoutMode} from "../document-layout"
+import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 
 const markerPrefix = "webwriter:comment:"
 const markerPattern = /^webwriter:comment:(node|start|end):([A-Za-z0-9]+)(?::(.*))?$/
@@ -153,9 +155,18 @@ export class CommentFeature extends EditorFeature {
   private cachedMarkers: {node: Comment, marker: CommentMarker}[] | null = null
   private stateRefreshQueued = false
   private highlighting = true
+  private bubbleContainer: HTMLElement | null = null
+  private bubbles = new Map<Element, {button: HTMLButtonElement, id: string}>()
+  private resizeObserver: ResizeObserver | null = null
+  private bubbleFrame: number | null = null
   private activeThreadId: string | null = null
   activeListeners = {
     selectionchange: () => this.renderCommentUI(),
+  }
+  captureListeners = {
+    scroll: (event: Event) => {
+      if(!isAppendixInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)) this.scheduleBubblePosition()
+    },
   }
 
   actions = {
@@ -178,12 +189,13 @@ export class CommentFeature extends EditorFeature {
     super.enable()
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
-      this.observer = new FrameMutationObserver(() => {
-        this.cachedMarkers = null
+      this.observer = new FrameMutationObserver(records => {
+        if(records.some(record => record.type !== "attributes")) this.cachedMarkers = null
         this.queueStateRefresh()
       })
       try {
-        this.observer.observe(document.body, {childList: true, characterData: true, subtree: true})
+        this.observer.observe(document.body, {childList: true, characterData: true, subtree: true,
+          attributes: true, attributeFilter: ["class", "style", "hidden", "open"]})
       }
       catch {
         // Scoped-registry startup can briefly pair the iframe document with a
@@ -193,6 +205,12 @@ export class CommentFeature extends EditorFeature {
         this.observer = null
       }
     }
+    const FrameResizeObserver = document.defaultView?.ResizeObserver
+    if(FrameResizeObserver) {
+      this.resizeObserver = new FrameResizeObserver(() => this.scheduleBubblePosition())
+      this.resizeObserver.observe(document.body)
+    }
+    window.addEventListener("resize", this.scheduleBubblePosition)
     this.renderCommentUI()
   }
 
@@ -201,6 +219,14 @@ export class CommentFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.cachedMarkers = null
+    window.removeEventListener("resize", this.scheduleBubblePosition)
+    this.resizeObserver?.disconnect()
+    this.resizeObserver = null
+    if(this.bubbleFrame !== null) cancelAnimationFrame(this.bubbleFrame)
+    this.bubbleFrame = null
+    this.bubbles.clear()
+    this.bubbleContainer?.remove()
+    this.bubbleContainer = null
     this.highlightRegistry()?.delete(commentHighlightName)
     this.activeThreadId = null
     this.highlightRegistry()?.delete("webwriter-active-comment")
@@ -435,8 +461,9 @@ export class CommentFeature extends EditorFeature {
   private markers() {
     // Selection and scroll repositioning read markers far more often than
     // they change. Records not yet delivered invalidate the cache here.
-    if(this.observer?.takeRecords().length) {
-      this.cachedMarkers = null
+    const records = this.observer?.takeRecords()
+    if(records?.length) {
+      if(records.some(record => record.type !== "attributes")) this.cachedMarkers = null
       this.queueStateRefresh()
     }
     if(this.cachedMarkers) return this.cachedMarkers
@@ -484,25 +511,112 @@ export class CommentFeature extends EditorFeature {
     if(!this.highlighting) return
     const Highlight = this.highlightConstructor()
     if(!Highlight) return
-    const ranges = comments.map(comment => this.commentRange(comment)).filter((range): range is Range => range !== null)
+    const ranges = comments.filter(comment => comment.kind === "span")
+      .map(comment => this.commentRange(comment)).filter((range): range is Range => range !== null)
     if(ranges.length) registry.set(commentHighlightName, new Highlight(...ranges))
+  }
+
+  private syncElementBubbles(comments: DocumentComment[]) {
+    const elements = new Map<Element, NodeComment[]>()
+    if(this.highlighting) {
+      for(const comment of comments) {
+        if(comment.kind === "node" && comment.marker.parentElement && comment.marker.isConnected) {
+          const target = comment.marker.parentElement
+          const group = elements.get(target) ?? []
+          group.push(comment)
+          elements.set(target, group)
+        }
+      }
+    }
+    for(const [element, {button}] of this.bubbles) {
+      if(elements.has(element)) continue
+      button.remove()
+      this.resizeObserver?.unobserve(element)
+      this.bubbles.delete(element)
+    }
+    if(elements.size && !this.bubbleContainer) {
+      this.bubbleContainer = document.createElement("div")
+      this.bubbleContainer.setAttribute("part", "comment-bubbles")
+      this.editor.addAppendix(this.bubbleContainer)
+    }
+    for(const [element, group] of elements) {
+      let bubble = this.bubbles.get(element)
+      if(!bubble) {
+        const button = document.createElement("button")
+        button.type = "button"
+        button.setAttribute("part", "comment-bubble")
+        button.innerHTML = messageCircle
+        button.querySelector("svg")!.setAttribute("width", "14")
+        button.querySelector("svg")!.setAttribute("height", "14")
+        bubble = {button, id: group[0].id}
+        const record = bubble
+        button.addEventListener("pointerdown", event => event.preventDefault())
+        button.addEventListener("click", () => {
+          if(this.selectComment(record.id, element)) this.editor.postHostMessage({type: commentReviewRequestEvent})
+        })
+        this.bubbleContainer!.append(button)
+        this.bubbles.set(element, bubble)
+        this.resizeObserver?.observe(element)
+      }
+      bubble.id = group[0].id
+      bubble.button.title = group.map(comment => comment.text).join("\n")
+      bubble.button.setAttribute("aria-label", `Show ${group.length === 1 ? "comment" : `${group.length} comments`}`)
+      bubble.button.setAttribute("aria-pressed", String(group.some(comment => comment.id === this.activeThreadId)))
+      setPart(bubble.button, "comment-bubble-active", group.some(comment => comment.id === this.activeThreadId))
+    }
+    this.positionBubbles()
+  }
+
+  private scheduleBubblePosition = () => {
+    if(!this.isEnabled || !this.bubbles.size || this.bubbleFrame !== null) return
+    this.bubbleFrame = requestAnimationFrame(() => {
+      this.bubbleFrame = null
+      this.positionBubbles()
+    })
+  }
+
+  private positionBubbles() {
+    const documentLayout = documentLayoutMode() === "document"
+    // The page gutter is the smallest margin, even when a float lane or a
+    // narrower element leaves more room. Resolve its CSS length in the appendix.
+    const gutter = this.bubbleContainer?.getBoundingClientRect().width || 16
+    for(const [element, {button}] of this.bubbles) {
+      const rect = element.getBoundingClientRect()
+      button.hidden = !element.isConnected || !rect.width || !rect.height
+        || rect.bottom <= 0 || rect.top >= window.innerHeight
+        || element.checkVisibility?.({visibilityProperty: true}) === false
+      setPart(button, "comment-bubble-hidden", button.hidden)
+      if(button.hidden) continue
+      let left = false
+      if(documentLayout) {
+        for(let ancestor: Element | null = element; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+          const side = getComputedStyle(ancestor).float
+          if(side && side !== "none") { left = side === "left"; break }
+        }
+      }
+      const gap = documentLayout ? Math.max(0, (gutter - 16) / 2) : 4
+      button.style.left = `${fixedClientX(left ? rect.left - gap - 16 : rect.right + gap)}px`
+      button.style.top = `${rect.top}px`
+    }
   }
 
   private renderCommentUI() {
     if(!this.isEnabled) return
     const comments = this.comments()
     if(!comments.some(comment => comment.id === this.activeThreadId)) this.activeThreadId = null
+    this.syncElementBubbles(comments)
     this.syncHighlights(comments)
     const registry = this.highlightRegistry()
     registry?.delete("webwriter-active-comment")
     const active = comments.find(comment => comment.id === this.activeThreadId)
-    const range = active && this.commentRange(active)
+    const range = this.highlighting && active?.kind === "span" && this.commentRange(active)
     const Highlight = this.highlightConstructor()
     if(range && Highlight) registry?.set("webwriter-active-comment", new Highlight(range))
   }
 
-  selectComment(id: string) {
-    const thread = this.threads().find(candidate => candidate.comments.some(comment => comment.id === id))
+  selectComment(id: string, target?: Element) {
+    const thread = this.threads().find(candidate => candidate.comments.some(comment => comment.id === id
+      && (!target || comment.kind === "node" && comment.marker.parentElement === target)))
     if(!thread) return false
     const comment = thread.comments.find(comment => comment.id === id)!
     const range = this.commentRange(comment)
