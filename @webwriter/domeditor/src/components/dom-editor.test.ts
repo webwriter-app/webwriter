@@ -5037,28 +5037,25 @@ describe("DomEditor.execute()", () => {
     expect(editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!.value).toBe(source)
   })
 
-  it("highlights HTML only while its source is hovered or focused, without restoring editor selection", async () => {
+  it("leaves document highlighting and selection alone while hovering, focusing, and refreshing HTML source", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
     const restore = vi.spyOn(editor as any, "restoreEditorSelection")
-    await (editor as any).setHTMLMode(true)
+    const host = editor as any
+    await host.setHTMLMode(true)
     await editor.updateComplete
-    expect(restore).not.toHaveBeenCalled()
-    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "hoverHTMLSelectionEdit"}))
+    execute.mockClear()
     const input = editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
     input.dispatchEvent(new MouseEvent("mouseenter"))
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
     input.dispatchEvent(new FocusEvent("focus"))
     input.dispatchEvent(new MouseEvent("mouseleave"))
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
+    for(let i = 0; i < 3; i++) await host.refreshHTMLSource()
     input.dispatchEvent(new FocusEvent("blur"))
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: false})
-    input.dispatchEvent(new FocusEvent("focus"))
-    execute.mockClear()
-    await (editor as any).refreshHTMLSource()
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
-    await (editor as any).setHTMLMode(false)
-    expect((editor as any).htmlSourceHighlightActive).toBe(false)
+    expect(execute.mock.calls.map(([action]) => action.type)).toEqual(Array(3).fill("beginHTMLSelectionEdit"))
+    expect(restore).not.toHaveBeenCalled()
+    expect(input.value).toBe("<p>Hello</p>")
+    await host.setHTMLMode(false)
+    expect(execute).toHaveBeenLastCalledWith({type: "discardHTMLSelectionEdit"})
   })
 
   it("loads indented HTML as the clean baseline and leaves typing untouched", async () => {

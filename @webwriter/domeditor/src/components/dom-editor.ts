@@ -537,9 +537,6 @@ export class DomEditor extends LitElement {
   private documentLayout: DocumentLayoutState = defaultDocumentLayoutState()
   private documentLayoutError = ""
   private htmlSourceRefreshSequence = 0
-  private htmlSourceHovered = false
-  private htmlSourceFocused = false
-  private htmlSourceHighlightActive = false
   private htmlSourceRefreshQueued = false
   private htmlSourceWindow = {start: 0, end: 8192}
   private htmlSourcePainted = ""
@@ -5893,7 +5890,6 @@ export class DomEditor extends LitElement {
       this.htmlSource = indentHTMLSource(result.html)
       this.htmlOriginalSource = this.htmlSource
       this.htmlSourceError = ""
-      this.syncHTMLSourceHover(true)
     }
     catch(error) {
       if(sequence !== this.htmlSourceRefreshSequence || !this.htmlMode) return
@@ -5916,7 +5912,6 @@ export class DomEditor extends LitElement {
     const sequence = ++this.htmlSourceRefreshSequence
     if(!enabled) {
       this.htmlMode = false
-      this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
       try {
         await this.execute({type: "discardHTMLSelectionEdit"})
       }
@@ -6075,14 +6070,6 @@ export class DomEditor extends LitElement {
       this.documentLayoutConversionCount--
       if(revision === this.frameRevision) this.updateDocumentLayoutsVisibility()
     })
-  }
-
-  private syncHTMLSourceHover(force = false) {
-    const hovered = this.htmlMode && (this.htmlSourceHovered || this.htmlSourceFocused)
-    if(!hovered && !this.htmlSourceHighlightActive || !force && hovered === this.htmlSourceHighlightActive) return
-    this.htmlSourceHighlightActive = hovered
-    if(!this.htmlMode) return
-    void this.execute({type: "hoverHTMLSelectionEdit", hovered}).catch(() => {})
   }
 
   private handleHTMLSourceInput = (event: Event) => {
@@ -6276,10 +6263,6 @@ export class DomEditor extends LitElement {
                 aria-label="Selected HTML"
                 .value=${this.htmlSource}
                 spellcheck="false"
-                @mouseenter=${() => {this.htmlSourceHovered = true; this.syncHTMLSourceHover()}}
-                @mouseleave=${() => {this.htmlSourceHovered = false; this.syncHTMLSourceHover()}}
-                @focus=${() => {this.htmlSourceFocused = true; this.syncHTMLSourceHover()}}
-                @blur=${() => {this.htmlSourceFocused = false; this.syncHTMLSourceHover()}}
                 @input=${this.handleHTMLSourceInput}
                 @scroll=${(event: Event) => this.syncHTMLSourceScroll(event.currentTarget as HTMLTextAreaElement)}
               ></textarea>
@@ -7568,7 +7551,6 @@ export class DomEditor extends LitElement {
     this.elementStyleRefreshQueued = false
     this.htmlSourceRefreshSequence++
     this.htmlSourceRefreshQueued = false
-    this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
     this.consoleOpen = false
     this.reviewOpen = false
     this.consoleTab = "Packages"
