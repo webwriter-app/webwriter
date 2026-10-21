@@ -5813,7 +5813,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
     if(!action || !["setFloat", "moveFloat", "setCaption"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
@@ -6601,6 +6601,10 @@ export class DomEditor extends LitElement {
         ? {localName: value.target.localName, namespaceURI: value.target.namespaceURI,
           ...(value.target.float === "none" || value.target.float === "far-left" || value.target.float === "far-right"
             ? {float: value.target.float} : {}),
+          ...(value.target.alignment === "left" || value.target.alignment === "center" || value.target.alignment === "right"
+            ? {alignment: value.target.alignment} : {}),
+          ...(typeof value.target.canMoveUp === "boolean" ? {canMoveUp: value.target.canMoveUp} : {}),
+          ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined

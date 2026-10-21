@@ -5621,6 +5621,113 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
   finally { frame.remove(); URL.revokeObjectURL(url) }
 })
 
+await check("Placement arrows move elements in normal document flow", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const frame = document.createElement("iframe"), toolbox = new DomEditorToolbox()
+  frame.srcdoc = '<!doctype html><body><p>first</p><!--keep--><p id="selected">selected text</p><custom-card>last</custom-card><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  toolbox.style.width = "220px"
+  fixture.append(frame, toolbox)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "normal-flow movement fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, selected = doc.querySelector("#selected")!, text = selected.firstChild!
+    doc.querySelector('script[class~="◆editor-only"]')?.remove()
+    const selection = view.getSelection()!
+    selection.setBaseAndExtent(text, 5, text, 2)
+    toolbox.activeTool = "Edit"
+    toolbox.elementStyle = editor.features.manipulation.getStyleState([], selected, false)
+    toolbox.addEventListener("layout-action", event => {
+      const action = (event as CustomEvent<{type: "moveFloat", direction: "up" | "down"}>).detail
+      if(action.type === "moveFloat") {
+        assert(editor.features.layout.actions.moveFloat({...action, topLevel: true}), "normal-flow move failed")
+        toolbox.elementStyle = editor.features.manipulation.getStyleState([], selected, false)
+      }
+    })
+    await toolbox.updateComplete
+    await layoutFrame()
+    for(const direction of ["down", "up"] as const) {
+      const button = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[aria-label="Move ${direction}"]`)!
+      assert(!button.disabled, `${direction} arrow is disabled for normal flow`)
+      button.click()
+      await toolbox.updateComplete
+      assert(direction === "down" ? selected.previousElementSibling?.localName === "custom-card" : selected.nextElementSibling?.localName === "custom-card", "arrow did not swap adjacent elements")
+      assert(selection.anchorNode === text && selection.anchorOffset === 5 && selection.focusNode === text && selection.focusOffset === 2, "move changed the backward selection")
+      assert(view.getComputedStyle(selected).float === "none", "moving introduced a float")
+      assert(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Move down"]')!.disabled === (direction === "down"), "down arrow did not follow the last-element boundary")
+    }
+    assert(doc.body.childNodes[1].nodeType === Node.COMMENT_NODE, "moving removed an authored comment")
+    const up = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Move up"]')!
+    up.click()
+    await toolbox.updateComplete
+    assert(up.disabled, "up arrow is enabled at the first element")
+    assert(getComputedStyle(up).opacity === "0.4" && getComputedStyle(up).cursor === "default", "disabled up arrow is not visibly greyed out")
+    for(const sibling of Array.from(doc.body.children)) if(sibling !== selected) sibling.remove()
+    toolbox.elementStyle = editor.features.manipulation.getStyleState([], selected, false)
+    await toolbox.updateComplete
+    assert(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".float-move")).every(button => button.disabled), "arrows are enabled for an only element surrounded by comments")
+    assert(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".float-move")).every(button => getComputedStyle(button).opacity === "0.4"), "disabled arrows are not visibly greyed out")
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove(); toolbox.remove()
+  }
+})
+
+await check("unfloated placements align within the content column", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1440px;height:700px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "content alignment fixture did not initialize")
+    const editor = view.editor!
+    const doc = frame.contentDocument!, theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const content = '<p>Reading column</p><picture style="width:160px;height:60px"><img alt="Picture" width="160" height="60"></picture><native-alignment-widget style="display:block;width:240px;height:60px">Widget</native-alignment-widget>'
+    doc.body.innerHTML = `${content}<main>${content}</main><article>${content}</article><section>${content}</section>`
+    const targets = Array.from(doc.querySelectorAll<HTMLElement>("picture, native-alignment-widget"))
+    const aligned = (document: Document, alignment: "left" | "center" | "right") => {
+      for(const target of document.querySelectorAll<HTMLElement>("picture, native-alignment-widget")) {
+        const box = target.getBoundingClientRect(), prose = target.parentElement!.querySelector(":scope > p")!.getBoundingClientRect()
+        const edge = (box: DOMRect) => alignment === "left" ? box.left : alignment === "right" ? box.right : (box.left + box.right) / 2
+        assert(Math.abs(edge(box) - edge(prose)) < 1, `${target.localName} ${alignment} escaped the content column at ${frame.style.width}`)
+        assert(document.defaultView!.getComputedStyle(target).float === "none", "aligned content still floats")
+      }
+    }
+    for(const [width, floated] of [[1440, false], [1440, true], [1000, true], [590, true], [360, true]] as const) {
+      if(floated && !doc.querySelector("aside")) doc.body.insertAdjacentHTML("afterbegin", '<aside class="ww-float-left" style="width:80px;height:60px">Float lane</aside>')
+      frame.style.width = `${width}px`
+      for(const prose of ["45rem", "30rem"]) {
+        doc.documentElement.style.setProperty("--ww-prose-max", prose)
+        for(const alignment of ["left", "center", "right"] as const) {
+          for(const target of targets) {
+            editor.features.manipulation.setFloat(target, "far-right")
+            assert(editor.features.manipulation.setFloat(target, "none", alignment), "alignment command failed")
+            assert(editor.features.manipulation.getStyleState([], target, false).target?.alignment === alignment, "alignment state did not follow the live margins")
+          }
+          await layoutFrame()
+          aligned(doc, alignment)
+          const saved = document.createElement("iframe")
+          saved.style.cssText = frame.style.cssText
+          const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
+          saved.srcdoc = await editor.serializeHTML()
+          document.body.append(saved)
+          try { await loaded; await layoutFrame(); aligned(saved.contentDocument!, alignment) }
+          finally { saved.remove() }
+        }
+      }
+    }
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
+})
+
 await check("media stays centered in editing and standalone documents", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1000px;height:700px;border:0;max-width:none"

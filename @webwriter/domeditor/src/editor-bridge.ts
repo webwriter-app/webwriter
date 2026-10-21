@@ -333,6 +333,9 @@ export type ElementStyleState = {
   target: {
     documentRoot?: true
     float?: "none" | "far-left" | "far-right"
+    alignment?: "left" | "center" | "right"
+    canMoveUp?: boolean
+    canMoveDown?: boolean
     localName: string
     namespaceURI: string | null
   } | null

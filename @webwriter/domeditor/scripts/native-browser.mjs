@@ -24,6 +24,8 @@ const expectedChecks = [
   "document scrollbar gutters stay symmetric as content grows",
   "empty Details retains summary height and padding in standalone documents",
   "media stays centered in editing and standalone documents",
+  "unfloated placements align within the content column",
+  "Placement arrows move elements in normal document flow",
   "crop preview reveals the source and restores content outside the frame",
   "video crop controls remain available after repeated crops",
   "media interiors capture while outline edges element-select",

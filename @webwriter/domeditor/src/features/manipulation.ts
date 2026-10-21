@@ -541,10 +541,11 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Float placement is authored through the document theme's classes. */
-  setFloat(element: Element, side: FloatSide) {
+  setFloat(element: Element, side: FloatSide, alignment?: "left" | "center" | "right") {
     if(this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
       || !["left", "right", "none", "far-left", "far-right"].includes(side) || element === getDocumentRoot()
-      || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)) return false
+      || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)
+      || alignment !== undefined && (side !== "none" || !["left", "center", "right"].includes(alignment))) return false
     const style = this.inlineStyleOf(element)
     if(!style) return false
     const desired = side === "far-left" ? "left" : side === "far-right" ? "right" : side
@@ -574,6 +575,14 @@ export class ManipulationFeature extends EditorFeature {
     else {
       const computed = getComputedStyle(element).float
       if(computed && computed !== "none") element.classList.add("ww-float-none")
+    }
+    if(alignment) {
+      for(const property of ["margin-inline", "margin-inline-start", "margin-inline-end"]) style.removeProperty(property)
+      // The containing block can span the page. Keep unfloated content on the
+      // prose column's edges, including when its width or float lanes change.
+      const inset = "max(0px, calc((100% - var(--ww-prose-max, 45rem)) / 2))"
+      style.setProperty("margin-left", alignment === "left" ? inset : "auto")
+      style.setProperty("margin-right", alignment === "right" ? inset : "auto")
     }
     if(!element.classList.length) element.removeAttribute("class")
     if(!style.length) element.removeAttribute("style")
@@ -2464,8 +2473,13 @@ export class ManipulationFeature extends EditorFeature {
       computed[name] = values.every(value => value === values[0]) ? values[0] : ""
     })
     const parentDisplay = target.parentElement? getComputedStyle(target.parentElement).display: ""
+    const movable = this.floatContainer(target) === target
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        canMoveUp: movable && target.previousElementSibling !== null,
+        canMoveDown: movable && target.nextElementSibling !== null,
+        alignment: style.marginLeft === "auto" && style.marginRight !== "auto" ? "right"
+          : style.marginRight === "auto" && style.marginLeft !== "auto" ? "left" : "center",
         ...(target.matches(".ww-float-left, .ww-float-right, .ww-float-none")
           ? {float: floatSideFromStyles(computedStyle.float, style, target.classList)} : {}),
         ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},

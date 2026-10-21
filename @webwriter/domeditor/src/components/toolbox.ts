@@ -12,7 +12,7 @@ import "./document-head-editor"
 import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
-import {captionIconSource, ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {captionIconSource, floatNoneIconSource, ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -168,12 +168,15 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button {position: relative; display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
     .float-button-group float-info {position: absolute; top: -3px; right: -2px; z-index: 2}
     .float-button-group .float-move {flex: 0 0 auto; padding: .35rem .2rem}
+    .float-button-group .float-move:disabled {opacity: .4; cursor: default}
     .float-button-group button + button {margin-left: -.5px}
     .float-button-group button:first-child {border-radius: .2rem 0 0 .2rem}
     .float-button-group button:last-child {border-radius: 0 .2rem .2rem 0}
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
+    .float-button-group[aria-label="Placement"] button {padding-inline: .2rem}
+    .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
     .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, auto)}
     .caption-button-group button {min-height: 1.55rem; padding: .1rem .25rem; margin: 0; border-radius: 0}
     .caption-button-group button + button {margin-left: -.5px}
@@ -1432,33 +1435,39 @@ export class DomEditorToolbox extends EditingControls {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     const captionPosition = this.captionPosition ?? (this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
+    const alignment = target?.alignment ?? "center"
+    const placements: {side: FloatSide, alignment?: "left" | "center" | "right", label: string}[] = [
+      {side: "far-left", label: "Float left"},
+      ...(["left", "center", "right"] as const).map(alignment => ({side: "none" as const, alignment, label: `No float, align ${alignment}`})),
+      {side: "far-right", label: "Float right"},
+    ]
     return html`
         <div class="layout-action-controls float-action-controls">
           ${this.documentLayout.mode === "document" ? html`
           <span class="float-placement-label">Placement</span>
           <div class="float-button-group" role="group" aria-label="Placement">
             <button type="button" class="float-move" aria-label="Move down" title="Move down"
-              ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
+              ?disabled=${!target?.canMoveDown || this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "down"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowDown")}</button>
-            ${(["far-left", "none", "far-right"] as const satisfies readonly FloatSide[]).map(side => html`<button type="button"
-              aria-label=${side === "none" ? "Clear float" : `Float ${side === "far-left" ? "left" : "right"}`} aria-pressed=${float === side}
-              title=${side === "none" ? "Clear float" : `Float ${side === "far-left" ? "left" : "right"}`}
+            ${placements.map(placement => html`<button type="button"
+              aria-label=${placement.label} aria-pressed=${float === placement.side && (!placement.alignment || alignment === placement.alignment)}
+              title=${placement.label}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${(event: Event) => {
                 this.dispatchEvent(new CustomEvent("layout-action", {
-                  detail: {type: "setFloat", side}, bubbles: true, composed: true,
+                  detail: {type: "setFloat", side: placement.side, ...(placement.alignment ? {alignment: placement.alignment} : {})}, bubbles: true, composed: true,
                 }))
                 const info = (event.currentTarget as HTMLElement).querySelector<FloatInfo>("float-info")
                 info?.showBriefly()
-              }}>${ribbonIcon(side === "none" ? "Float none" : side === "far-left" ? "Float left" : "Float right")}
-                ${(side === "far-left" && this.elementStyle.context.floatLeftForcedRight)
-                  || (side === "far-right" && this.elementStyle.context.floatRightInFlow)
-                  ? html`<float-info .side=${side === "far-right" ? "right" : "left"} .badge=${float === side}></float-info>` : nothing}
+              }}>${placement.alignment ? unsafeSVG(floatNoneIconSource(placement.alignment)) : ribbonIcon(placement.side === "far-left" ? "Float left" : "Float right")}
+                ${(placement.side === "far-left" && this.elementStyle.context.floatLeftForcedRight)
+                  || (placement.side === "far-right" && this.elementStyle.context.floatRightInFlow)
+                  ? html`<float-info .side=${placement.side === "far-right" ? "right" : "left"} .badge=${float === placement.side}></float-info>` : nothing}
               </button>`)}
             <button type="button" class="float-move" aria-label="Move up" title="Move up"
-              ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
+              ?disabled=${!target?.canMoveUp || this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowUp")}</button>
           </div>

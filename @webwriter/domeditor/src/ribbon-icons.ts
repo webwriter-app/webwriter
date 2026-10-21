@@ -226,6 +226,16 @@ import world from "@tabler/icons/outline/world.svg?raw"
 
 const iconContents = (icon: string) => icon.match(/<svg[^>]*>([\s\S]*?)<\/svg>/)?.[1] ?? ""
 
+/** Keep the no-float glyph's text lines while moving its square to show alignment. */
+export function floatNoneIconSource(alignment: "left" | "center" | "right") {
+  const x = alignment === "left" ? 4 : alignment === "center" ? 9 : 14
+  const square = `M${x} 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4`
+  return floatNone.replace(
+    'M4 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4',
+    square,
+  )
+}
+
 /** Match Enumeration's enlarged markers and three text lines without font-dependent glyphs. */
 const listStyleIcon = (markers: string) => `
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
