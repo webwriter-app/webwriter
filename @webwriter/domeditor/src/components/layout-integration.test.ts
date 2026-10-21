@@ -402,6 +402,27 @@ describe("layout host and toolbox integration", () => {
     expect(buttons.map(button => button.disabled)).toEqual([false, true, false, false])
   })
 
+  it.each(["board", "slides"] as const)("offers layout switching for the selected %s document", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {
+      path: [{path: [], name: mode === "board" ? "Board" : "Slides"}],
+      nodeSelected: true,
+      documentLayout: {mode, canConvert: true, zoom: 100},
+    })
+    const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+
+    expect(toolbox.documentSelected).toBe(true)
+    const choices = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Document"] [aria-label="Layouts"]')!
+    expect(choices.querySelectorAll("button[data-mode]")).toHaveLength(4)
+    expect(choices.querySelector(`[data-mode="${mode}"]`)!.getAttribute("aria-pressed")).toBe("true")
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(false)
+    choices.querySelector<HTMLButtonElement>('[data-mode="document"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentLayout", mode: "document", expectedMode: mode})
+    await settle(editor)
+  })
+
   it.each(["canvas", "slides"] as const)("withholds float and former block controls in %s", async mode => {
     const {editor} = await mountEditor()
     const toolbox = await settle(editor)

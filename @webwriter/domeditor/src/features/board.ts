@@ -55,6 +55,8 @@ export class BoardFeature extends EditorFeature {
   }
   constrainSelection() {
     if(!this.active || this.allowsSelection()) return
+    // The breadcrumb selects BODY to expose document options and layouts.
+    if($.selectedElement === document.body) return
     const selection = document.getSelection(), scope = this.editingScope(selection?.anchorNode ?? null)
     if(scope && selection) selection.collapse(selection.anchorNode, selection.anchorOffset)
     else {

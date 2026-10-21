@@ -31,6 +31,23 @@ afterEach(() => {
 })
 
 describe("CSS-only Slides layout", () => {
+  it("retains breadcrumb document selection for the Document toolbox", async () => {
+    convert("slides")
+    const html = await editor.serializeHTML()
+    const post = vi.spyOn(window.parent, "postMessage")
+    editor.features.selection.actions.selectNode({type: "selectNode", path: []})
+    await settle()
+    editor.features.selection.processSelection()
+    editor.postSelectionPath()
+
+    expect($.selectedElement).toBe(document.body)
+    const detail = post.mock.calls.filter(([message]) => message.type === selectionChangeEvent).at(-1)![0].detail as SelectionChangeDetail
+    expect(detail.nodeSelected).toBe(true)
+    expect(detail.path.map(item => item.path)).toEqual([[]])
+    expect(detail.selectedElementTypes ?? []).toEqual([])
+    expect(await editor.serializeHTML()).toBe(html)
+  })
+
   it("installs a CSP-compatible layout stylesheet and removes it on disable", () => {
     const layout = document.adoptedStyleSheets.find(sheet => Array.from(sheet.cssRules)
       .some(rule => (rule as CSSStyleRule).selectorText === "body.ww-slides > .ww-slides-viewport"))
@@ -662,15 +679,11 @@ describe("CSS-only Slides layout", () => {
       expect($.selectedElement).toBe(element.parentElement?.matches("picture") ? element.parentElement : element)
     })
 
-    it("retains an explicit document selection outside slides and enters a slide in slides mode", async () => {
+    it("retains an explicit document selection across layout conversion", async () => {
       $.selectElement(document.body)
       expect(convert(target)).toBe(true)
       await settle()
-      if(target === "slides") {
-        expect(editor.features.slides.containingSlide($.anchor)).not.toBeNull()
-        expect(editor.features.slides.allowsSelection()).toBe(true)
-      }
-      else expect($.selectedElement).toBe(document.body)
+      expect($.selectedElement).toBe(document.body)
     })
 
     it("retains an explicit authored section selection", async () => {

@@ -301,8 +301,8 @@ export class SlidesFeature extends EditorFeature {
   /** Outer carousel gaps are navigation space, not editable document positions. */
   constrainSelection() {
     if(!this.active || this.allowsSelection()) return
-    // Breadcrumbs can select a whole slide; its native node range is in the viewport.
-    if(isSlide($.selectedElement ?? null)) return
+    // Breadcrumbs select BODY for document options, or a whole slide in the viewport.
+    if($.selectedElement === document.body || isSlide($.selectedElement ?? null)) return
     const selection = document.getSelection()
     if(!selection) return
     const anchorSlide = this.containingSlide(selection.anchorNode)
