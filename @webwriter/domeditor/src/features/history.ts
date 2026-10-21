@@ -19,6 +19,7 @@ type StoredCheckpoint = {
   user: VersionHistoryUser
   changes: VersionHistoryChanges
   source: string
+  restoredFrom?: string
 }
 
 type StoredComment = VersionHistoryComment
@@ -46,6 +47,7 @@ export class HistoryFeature extends EditorFeature {
   #previewCheckpointId: string | null = null
   #previewChanges: VersionHistoryState["preview"] = null
   #previewCurrentSource: string | null = null
+  #previewSource: string | null = null
   #currentCheckpointId: string | null = null
   #publishingSource: string | null = null
   #restoring = false
@@ -189,7 +191,7 @@ export class HistoryFeature extends EditorFeature {
     const commentCounts = new Map<string, number>()
     comments.forEach(comment => commentCounts.set(comment.checkpointId, (commentCounts.get(comment.checkpointId) ?? 0) + 1))
     const checkpoints = this.#checkpoints.toArray()
-      .map(({source: _source, ...checkpoint}) => ({
+      .map(({source: _source, restoredFrom: _restoredFrom, ...checkpoint}) => ({
         ...checkpoint,
         user: {...checkpoint.user},
         changes: {...checkpoint.changes},
@@ -200,9 +202,8 @@ export class HistoryFeature extends EditorFeature {
       this.#currentCheckpointId = checkpoints[0]?.id ?? null
     }
     const saved = this.#versions.toArray().sort((left, right) => left.timestamp - right.timestamp)
-    const assigned = new Set(saved.flatMap(version => version.checkpointIds))
-    const pending = checkpoints.filter(checkpoint => !assigned.has(checkpoint.id))
-    const versions = saved.map(({source: versionSource, ...version}) => ({
+    const pending = this.#pendingCheckpoints()
+    const versions = saved.map(({source: versionSource, restoredFrom: _restoredFrom, ...version}) => ({
       ...version,
       user: {...version.user},
       changes: {...version.changes},
@@ -212,19 +213,23 @@ export class HistoryFeature extends EditorFeature {
       isCurrent: versionSource === source,
     })).reverse()
     if(!saved.length || pending.length || saved.at(-1)!.source !== source) {
+      const unsaved = this.#unsavedCheckpoint(source, pending)
       const diffSource = saved.at(-1)?.source ?? this.#checkpoints.toArray()[0]?.source ?? source
-      const changes = checkpointDiff?.beforeSource === diffSource && checkpointDiff.afterSource === source
-        ? {...checkpointDiff.changes} : this.#diff(diffSource, source)
+      const changes = checkpointDiff?.beforeSource === diffSource && checkpointDiff.afterSource === unsaved.source
+        ? {...checkpointDiff.changes} : this.#diff(diffSource, unsaved.source)
       versions.unshift({
         id: unsavedVersionId,
-        timestamp: pending[0]?.timestamp ?? checkpoints[0]?.timestamp ?? Date.now(),
+        timestamp: unsaved.timestamp,
         label: "Unsaved changes",
         user: this.#localUser(),
         changes,
-        checkpointIds: pending.map(checkpoint => checkpoint.id),
+        checkpointIds: [
+          ...pending.filter(checkpoint => checkpoint.id === unsaved.id),
+          ...pending.filter(checkpoint => checkpoint.id !== unsaved.id),
+        ].map(checkpoint => checkpoint.id),
         commentCount: 0,
         isUnsaved: true,
-        isCurrent: true,
+        isCurrent: unsaved.source === source,
       })
     }
     return {
@@ -247,6 +252,7 @@ export class HistoryFeature extends EditorFeature {
     this.#previewCheckpointId = null
     this.#previewChanges = null
     this.#previewCurrentSource = null
+    this.#previewSource = null
     if(!wasPreviewing) return false
     this.#restoring = true
     let appliedQueuedChanges = false
@@ -317,7 +323,7 @@ export class HistoryFeature extends EditorFeature {
     this.#recordCheckpoint(undefined, {source, changes, stateDiff: {beforeSource: diffSource, afterSource: source, changes: stateChanges}})
   }
 
-  #recordCheckpoint(label?: string, prepared?: {source: string, changes?: VersionHistoryChanges,
+  #recordCheckpoint(label?: string, prepared?: {source: string, changes?: VersionHistoryChanges, restoredFrom?: string,
     stateDiff?: {beforeSource: string, afterSource: string, changes: VersionHistoryChanges}}) {
     const source = prepared?.source ?? this.#source()
     const matchingCheckpoint = this.#checkpoints.toArray().at(-1)
@@ -337,6 +343,7 @@ export class HistoryFeature extends EditorFeature {
       user,
       changes,
       source,
+      ...(prepared?.restoredFrom ? {restoredFrom: prepared.restoredFrom} : {}),
     }
     this.#currentCheckpointId = checkpoint.id
     // Yjs observers may synchronously apply another authored DOM change while
@@ -419,10 +426,16 @@ export class HistoryFeature extends EditorFeature {
   }
 
   #revertCheckpoint(checkpointId: string) {
+    if(!this.#previewCheckpointId) this.editor.doc.syncFromDOM()
     this.#flushCheckpoint()
     const checkpoint = this.#checkpoint(checkpointId)
     if(!checkpoint) throw new Error("That version is no longer available")
     this.clearPreview()
+    if(this.#source() === checkpoint.source) {
+      const state = this.state()
+      this.postState(state)
+      return state
+    }
     this.#restoring = true
     this.editor.doc.stopCapturing()
     this.editor.doc.stopObserve()
@@ -436,7 +449,7 @@ export class HistoryFeature extends EditorFeature {
       this.editor.doc.stopCapturing()
       this.#restoring = false
     }
-    this.#recordCheckpoint(`Restored ${checkpoint.label}`)
+    this.#recordCheckpoint(`Restored ${checkpoint.label}`, {source: this.#source(), restoredFrom: checkpointId})
     const state = this.state()
     this.postState(state)
     return state
@@ -496,6 +509,7 @@ export class HistoryFeature extends EditorFeature {
     }
     this.#previewObserver?.disconnect()
     this.#previewCheckpointId = checkpointId
+    this.#previewSource = checkpoint.source
     this.#applySource(checkpoint.source)
     const changes = this.#diff(checkpoint.source, this.#previewCurrentSource!)
     this.#previewChanges = {
@@ -509,11 +523,28 @@ export class HistoryFeature extends EditorFeature {
 
   #checkpoint(checkpointId: string) {
     if(checkpointId === unsavedVersionId) {
-      const source = this.#previewCurrentSource ?? this.#source()
-      return {id: unsavedVersionId, source, label: "Unsaved changes"}
+      const source = this.#previewCheckpointId === unsavedVersionId ? this.#previewSource : null
+      return {source: source ?? this.#unsavedCheckpoint().source, id: unsavedVersionId, label: "Unsaved changes"}
     }
     return this.#versions.toArray().find(version => version.id === checkpointId)
       ?? this.#checkpoints.toArray().find(checkpoint => checkpoint.id === checkpointId)
+  }
+
+  #pendingCheckpoints() {
+    const assigned = new Set(this.#versions.toArray().flatMap(version => version.checkpointIds))
+    return this.#checkpoints.toArray().filter(checkpoint => !assigned.has(checkpoint.id)).reverse()
+  }
+
+  #unsavedCheckpoint(source = this.#previewCurrentSource ?? this.#source(), pending = this.#pendingCheckpoints()) {
+    const latest = pending[0]
+    // Restoring a version is a history event, but must not replace the unsaved
+    // edits that the user may want to recover through their version card.
+    if(latest?.restoredFrom && latest.source === source) {
+      return pending.find(checkpoint => !checkpoint.restoredFrom) ?? latest
+    }
+    return latest?.source === source ? latest : {
+      id: unsavedVersionId, source, label: "Unsaved changes", timestamp: latest?.timestamp ?? Date.now(),
+    }
   }
 
   /** MutationObserver is the boundary for native, widget, and direct DOM edits.

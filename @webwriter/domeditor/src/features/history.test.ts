@@ -153,6 +153,105 @@ describe("collaborative version history", () => {
     expect(document.body.textContent).toBe("First change")
   })
 
+  it.each([false, true])("recovers unsaved edits after restoring a saved version (preview: %s)", async preview => {
+    const history = editor.features.history
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    const savedId = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId}).versions[0].id
+    document.body.innerHTML = '<section><p>Unsaved</p><!--note--><custom-widget state="ready"></custom-widget></section>'
+    document.head.innerHTML = "<title>Unsaved title</title>"
+    document.documentElement.lang = "de"
+    await mutationsDelivered()
+    const edited = history.actions.getVersionHistory({type: "getVersionHistory"})
+    const unsaved = edited.versions[0]
+    const source = editor.toHTML(false, false)
+
+    if(preview) history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: savedId})
+    const restored = history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: savedId})
+    expect(document.body.innerHTML).toBe("<p>Hello</p>")
+    expect(restored.versions[0]).toMatchObject({id: unsaved.id, changes: unsaved.changes, isCurrent: false})
+    expect(restored.versions[0].checkpointIds[0]).toBe(unsaved.checkpointIds[0])
+
+    history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: unsaved.id})
+    expect(editor.toHTML(false, false)).toBe(source)
+    history.clearPreview()
+    expect(editor.toHTML(true, false)).toBe("<p>Hello</p>")
+    const reapplied = history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: unsaved.id})
+    expect(editor.toHTML(false, false)).toBe(source)
+    expect(reapplied.versions[0]).toMatchObject({changes: unsaved.changes, isCurrent: true})
+    const widget = document.querySelector("custom-widget")
+    const repeated = history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: unsaved.id})
+    expect(repeated.checkpoints).toHaveLength(reapplied.checkpoints.length)
+    expect(document.querySelector("custom-widget")).toBe(widget)
+    history.actions.undo({type: "undo"})
+    expect(editor.toHTML(true, false)).toBe("<p>Hello</p>")
+    history.actions.redo({type: "redo"})
+    expect(editor.toHTML(false, false)).toBe(source)
+  })
+
+  it("retains unsaved recovery in shared history and advances it for new edits and saves", async () => {
+    let history = editor.features.history
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    const savedId = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId}).versions[0].id
+    // Restore before MutationObserver delivery: the current edits still need a checkpoint.
+    document.querySelector("p")!.textContent = "Pending edit"
+    history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: savedId})
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+      editor.destroy()
+      editor = new DOMEditor({initialState: {update: Array.from(Y.encodeStateAsUpdate(remote))}})
+      history = editor.features.history
+      const resumed = history.actions.getVersionHistory({type: "getVersionHistory"})
+      expect(resumed.versions[0].isCurrent).toBe(false)
+      history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: resumed.versions[0].id})
+      expect(document.body.textContent).toBe("Pending edit")
+
+      document.querySelector("p")!.textContent = "New edit"
+      const changed = history.actions.getVersionHistory({type: "getVersionHistory"})
+      expect(changed.versions[0]).toMatchObject({isCurrent: true, checkpointIds: expect.arrayContaining([changed.checkpoints[0].id])})
+      history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: savedId})
+      history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: savedId})
+      history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: changed.versions[0].id})
+      expect(document.body.textContent).toBe("New edit")
+
+      const next = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+      const saved = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: next.checkpointId})
+      expect(saved.versions).toHaveLength(2)
+      expect(saved.versions[0]).toMatchObject({isUnsaved: false, isCurrent: true})
+      expect(saved.checkpoints[0]).not.toHaveProperty("restoredFrom")
+      expect(saved.versions[0]).not.toHaveProperty("restoredFrom")
+    }
+    finally { remote.destroy() }
+  })
+
+  it("keeps the previewed unsaved source when a collaborator publishes another checkpoint", async () => {
+    const history = editor.features.history
+    const snapshot = await history.actions.prepareVersionSave({type: "prepareVersionSave"})
+    const savedId = history.actions.recordVersionSave({type: "recordVersionSave", checkpointId: snapshot.checkpointId}).versions[0].id
+    document.querySelector("p")!.textContent = "Unsaved"
+    history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: savedId})
+    history.actions.previewVersionCheckpoint({type: "previewVersionCheckpoint", checkpointId: "unsaved"})
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+      const checkpoints = remote.getArray<any>("version-history")
+      const previous = checkpoints.toArray().at(-1)!
+      remote.transact(() => {
+        const text = (sharedDOMBody(remote).get(0) as Y.XmlElement).get(0) as Y.XmlText
+        text.delete(0, text.length)
+        text.insert(0, "Remote")
+        checkpoints.push([{...previous, id: "remote-checkpoint", restoredFrom: undefined,
+          source: previous.source.replace("Hello", "Remote")}])
+      })
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client")
+      expect(document.body.textContent).toBe("Unsaved")
+      history.actions.revertVersionCheckpoint({type: "revertVersionCheckpoint", checkpointId: "unsaved"})
+      expect(document.body.textContent).toBe("Unsaved")
+      expect(history.state().preview).toBeNull()
+    }
+    finally { remote.destroy() }
+  })
+
   it("keeps every selected entry in editing mode and rolls back direct DOM and widget mutations", async () => {
     const history = editor.features.history
     document.body.innerHTML = '<section><p>Hello</p><!--note--><custom-widget state="ready"></custom-widget><template><b>Template</b></template></section>'
