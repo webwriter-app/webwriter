@@ -1,10 +1,22 @@
 import {EditorFeature} from "."
 import type {FloatSide} from "../element-styles"
 import {$} from "../utility"
+import {createFigureLayout} from "../figure-layout.js"
 
 /** Document arrangement uses native floats and sibling moves on the live DOM. */
 export class LayoutFeature extends EditorFeature {
-  refresh() {}
+  private figures: ReturnType<typeof createFigureLayout> | null = null
+  enable() {
+    if(this.isEnabled) return
+    super.enable()
+    this.figures = createFigureLayout(document)
+  }
+  disable() {
+    this.figures?.destroy()
+    this.figures = null
+    super.disable()
+  }
+  refresh() { this.figures?.refresh() }
   getState() { return null }
 
   moveFloat(direction: "up" | "down", topLevel = false) {

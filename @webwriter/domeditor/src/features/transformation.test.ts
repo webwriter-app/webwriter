@@ -516,6 +516,52 @@ describe("resize alignment", () => {
 })
 
 describe("caption affordance", () => {
+  it("applies figure transforms to its content while keeping the caption upright through undo and redo", () => {
+    document.body.innerHTML = '<figure><!--keep--><demo-widget title="Preserve"><unfamiliar-child></unfamiliar-child></demo-widget><figcaption><em>Upright</em></figcaption></figure>'
+    const figure = document.querySelector<HTMLElement>("figure")!, content = figure.querySelector<HTMLElement>("demo-widget")!
+    const caption = figure.querySelector("figcaption")!, nodes = Array.from(figure.childNodes)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    expect(editor.features.manipulation.setElementStyles(figure, {rotate: "30deg", "transform-origin": "0px 0px"})).toBe(true)
+    expect(content.style.getPropertyValue("rotate")).toBe("30deg")
+    expect(figure.style.getPropertyValue("rotate")).toBe("")
+    expect(caption.getAttribute("style")).toBeNull()
+    expect(Array.from(figure.childNodes)).toEqual(nodes)
+    const state = editor.features.manipulation.getStyleState(["rotate"], figure, false)
+    expect(state.inline.rotate.value).toBe("30deg")
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it.each(["pointercancel", "removed", "commit"])("rotates only figure content with the freeform handle and handles %s", outcome => {
+    document.body.innerHTML = '<figure style="width: 200px; height: 140px"><demo-widget style="width: 200px; height: 100px"></demo-widget><figcaption>Upright</figcaption></figure>'
+    const figure = document.querySelector<HTMLElement>("figure")!, content = figure.firstElementChild as HTMLElement
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    mockRect(figure, {width: 200, height: 140})
+    mockRect(content, {width: 200, height: 100})
+    captureNode(figure)
+    feature.handleRotateStart(new MouseEvent("mousedown", {button: 0, clientX: 300, clientY: 150}))
+    feature.handleRotateDrag(new MouseEvent("mousemove", {clientX: 200, clientY: 250}))
+    expect(content.style.getPropertyValue("rotate")).toBe("90deg")
+    expect(figure.style.getPropertyValue("rotate")).toBe("")
+    if(outcome === "commit") feature.handleRotateEnd()
+    else if(outcome === "pointercancel") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else { content.remove(); feature.handleRotateDrag(new MouseEvent("mousemove", {clientX: 100, clientY: 150})) }
+    expect(content.style.getPropertyValue("rotate")).toBe(outcome === "commit" ? "90deg" : "")
+    if(outcome === "commit") {
+      feature.restore()
+      expect(content.style.getPropertyValue("rotate")).toBe("")
+      expect(content.style.width).toBe("200px")
+    }
+    expect(document.body.className).not.toContain("◆transform-rotating")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
 
   it.each((["document", "canvas", "slides"] as const).flatMap(mode =>

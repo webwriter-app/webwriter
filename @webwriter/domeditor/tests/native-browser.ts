@@ -9399,6 +9399,80 @@ await check("Elements pullout reserves matching padding after its opening animat
 })
 
 
+await check("rotated figure captions flow upright and their transformation frames fit the content", async () => {
+  const overlaps = (polygon: {x: number, y: number}[], rect: DOMRect) => {
+    const text = [{x: rect.left, y: rect.top}, {x: rect.right, y: rect.top}, {x: rect.right, y: rect.bottom}, {x: rect.left, y: rect.bottom}]
+    for(const points of [polygon, text]) for(let index = 0; index < points.length; index++) {
+      const start = points[index], end = points[(index + 1) % points.length]
+      const project = (point: {x: number, y: number}) => (end.y - start.y) * point.x - (end.x - start.x) * point.y
+      const a = polygon.map(project), b = text.map(project)
+      if(Math.max(...a) <= Math.min(...b) || Math.max(...b) <= Math.min(...a)) return false
+    }
+    return true
+  }
+  for(const standalone of [false, true]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:480px;height:700px;max-width:none"
+    frame.src = `/tests/figure-rotation.html${standalone ? "?standalone" : ""}`
+    document.body.append(frame)
+    try {
+      for(let attempt = 0; !frame.contentDocument?.querySelector("figure[class*='◆figure-flow-']") && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      const doc = frame.contentDocument!, view = frame.contentWindow!
+      const figure = doc.querySelector<HTMLElement>("figure")!, image = figure.querySelector("img")!, caption = figure.querySelector<HTMLElement>("figcaption")!
+      assert(figure && image && caption, "figure fixture did not initialize")
+      const editor = (view as Window & {editor?: DOMEditor}).editor
+      const authored = image.getAttribute("style")
+      for(const rotation of [-30, 30, 90, 150]) for(const alignment of ["left", "center", "right"] as const) for(const above of [false, true]) {
+        image.style.rotate = `${rotation}deg`
+        caption.style.textAlign = alignment
+        above ? figure.prepend(caption) : figure.append(caption)
+        await layoutFrame(); await layoutFrame()
+        const style = view.getComputedStyle(image), box = image.getBoundingClientRect()
+        const radians = rotation * Math.PI / 180, c = Math.cos(radians), s = Math.sin(radians)
+        const width = parseFloat(style.width), height = parseFloat(style.height)
+        const polygon = [[-width / 2, -height / 2], [width / 2, -height / 2], [width / 2, height / 2], [-width / 2, height / 2]].map(([x, y]) => ({x: box.left + box.width / 2 + c * x - s * y, y: box.top + box.height / 2 + s * x + c * y}))
+        const context = `${standalone}/${rotation}/${alignment}/${above}`
+        assert(!view.getComputedStyle(caption).rotate || ["none", "0deg"].includes(view.getComputedStyle(caption).rotate), `${context}: caption rotated`)
+        const text = caption.firstChild!
+        const range = doc.createRange()
+        for(let index = 0; index < text.textContent!.length; index++) {
+          range.setStart(text, index); range.setEnd(text, index + 1)
+          assert(!Array.from(range.getClientRects()).some(rect => overlaps(polygon, rect)), `${context}: caption character ${index} overlaps the rotated content`)
+        }
+        for(const word of text.textContent!.matchAll(/\S+/g)) {
+          range.setStart(text, word.index!); range.setEnd(text, word.index! + word[0].length)
+          assert(range.getClientRects().length === 1, `${context}: a caption word broke into narrow fragments`)
+        }
+        assert(figure.getBoundingClientRect().bottom + 1 >= box.bottom, `${context}: rotated content escaped its flow allocation`)
+        if(editor) {
+          editor.features.selection.captureElement(figure)
+          editor.features.transformation.updateInfo()
+          const overlay = editor.features.transformation.overlay.getBoundingClientRect()
+          assert(Math.abs(overlay.left - box.left) < 1 && Math.abs(overlay.top - box.top) < 1
+            && Math.abs(overlay.width - box.width) < 1 && Math.abs(overlay.height - box.height) < 1, `${context}: frame is offset from the rotated content`)
+        }
+      }
+      image.setAttribute("style", authored!)
+      if(editor) {
+        editor.doc.syncFromDOM()
+        const html = editor.toHTML()
+        assert(!new DOMParser().parseFromString(html, "text/html").body.innerHTML.includes("◆"), "layout markers leaked into saved content")
+        assert(html.includes("createFigureLayout(document)"), "standalone save lost caption layout")
+        assert(!html.includes('src="./figure-rotation.ts"'), "test fixture script leaked into the standalone save")
+        editor.destroy()
+        const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+        frame.srcdoc = html
+        await loaded
+        await layoutFrame(); await layoutFrame()
+        const savedFigure = frame.contentDocument!.querySelector("figure")!
+        assert(Array.from(savedFigure.classList).some(name => name.startsWith("◆figure-flow-")), "saved HTML did not activate its caption layout")
+        assert(frame.contentWindow!.getComputedStyle(savedFigure, "::before").shapeOutside.startsWith("polygon("), "saved HTML did not restore shape-aware wrapping")
+      }
+    }
+    finally { frame.remove() }
+  }
+})
+
 const failed = checks.filter(item => item.error)
 document.querySelector("#status")!.textContent = `${checks.length - failed.length} passed, ${failed.length} failed`
 document.querySelector("#report")!.textContent = JSON.stringify(checks, null, 2)

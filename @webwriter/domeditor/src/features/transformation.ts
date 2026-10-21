@@ -7,12 +7,18 @@ import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../eleme
 import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../ribbon-icons"
 import {mathRoot} from "../math"
+import {captionedFigureContent} from "../figure-layout.js"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
 const cropDirections = ["up-left", "down-right"] as const
 type StyleValue = {value: string, priority: string}
 type GestureStyles = {target: TransformElement, initial: CSSStyleDeclaration, written: Map<string, StyleValue>}
+type BoxGeometry = {
+  rect: DOMRect, width: number, height: number, matrix: DOMMatrix
+  styles: {width: string, height: string, left: string, top: string, transform: string}
+  corners: {x: number, y: number}[]
+}
 type Gesture = {
   target: TransformElement
   parent: Element | null
@@ -590,7 +596,11 @@ export class TransformationFeature extends EditorFeature {
   }
 
   /** Border-box geometry shared by transform, selection and hover overlays. */
-  boxGeometry(element: TransformElement, cropped = true) {
+  boxGeometry(element: TransformElement, cropped = true): BoxGeometry {
+    if(element.localName === "figure" && Array.from(element.classList).some(name => name.startsWith("◆figure-flow-"))) {
+      const content = captionedFigureContent(element)
+      if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped)
+    }
     let rect = element.getBoundingClientRect()
     let {width, height} = this.#size(element)
     let matrix = this.#matrix(element)
@@ -658,7 +668,9 @@ export class TransformationFeature extends EditorFeature {
       ? centerY - Math.abs(matrix.b) * (width / 2 + 3) + matrix.d * (-height / 2 - 34) - controlRadius
       : Infinity
     setPart(overlay, "transform-overlay-at-top", Math.min(rotateTop, ordererTop, cornerControlsTop) < 0)
-    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key)))
+    const transformedContent = captionedFigureContent(target)
+    overlay.classList.toggle("◆transform-overlay-changed", ["rotate", "scale", "width", "height", "max-width", "max-height", "position", "top", "left", "float", "z-index"].some(key => target.style.getPropertyValue(key))
+      || Boolean(transformedContent && ["rotate", "scale", "translate", "transform"].some(key => (transformedContent as TransformElement).style?.getPropertyValue(key))))
     const style = getComputedStyle(target)
     const position = (style.position || "static") as "static" | "relative" | "absolute" | "fixed" | "sticky"
     const block = findContainingBlock(target as HTMLElement, position)
@@ -821,16 +833,19 @@ export class TransformationFeature extends EditorFeature {
     const initial = document.createElement("div").style
     initial.cssText = target.style.cssText
     const style = getComputedStyle(target)
-    const image = mode === "scale" && target.localName === "picture" ? this.editor.features.media.cropTargetFor(target) : null
+    const content = captionedFigureContent(target)
+    const rotationTarget = mode === "rotate" && content && this.#canTransform(content) ? content : null
+    if(mode === "rotate" && target.matches("figure:not([is])") && target.querySelector(":scope > figcaption") && !rotationTarget) return false
+    const image = rotationTarget ?? (mode === "scale" && target.localName === "picture" ? this.editor.features.media.cropTargetFor(target) : null)
     const imageStyle = document.createElement("div").style
     imageStyle.cssText = image?.style.cssText ?? ""
     this.#gesture = {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
-      x: event.clientX, y: event.clientY, rect: target.getBoundingClientRect(), ...this.#size(target),
-      matrix, parentMatrix: this.#matrix(renderedParentElement(target)), rotate: this.#angle(style.getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
+      x: event.clientX, y: event.clientY, rect: (rotationTarget ?? target).getBoundingClientRect(), ...this.#size(target),
+      matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
       initial, written: new Map(), moved: false,
-      image: image instanceof HTMLImageElement ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
+      image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
         matrix: cropBox.matrix, insets, edges: [...insets], sourceStyle} : undefined,
@@ -892,7 +907,8 @@ export class TransformationFeature extends EditorFeature {
           element.style.getPropertyValue(property) !== initial.getPropertyValue(property)
           || element.style.getPropertyPriority(property) !== initial.getPropertyPriority(property))))
       || gesture.canvas && gesture.target.getAttribute("viewBox") !== gesture.canvas.written
-      || gesture.image && (this.editor.features.media.cropTargetFor(gesture.target) !== gesture.image.target || gesture.image.parent !== gesture.image.target.parentElement
+      || gesture.image && ((gesture.mode === "rotate" ? captionedFigureContent(gesture.target) !== gesture.image.target
+        : this.editor.features.media.cropTargetFor(gesture.target) !== gesture.image.target) || gesture.image.parent !== gesture.image.target.parentElement
         || [...gesture.image.written].some(([key, last]) => gesture.image!.target.style.getPropertyValue(key) !== last.value
           || gesture.image!.target.style.getPropertyPriority(key) !== last.priority))
       || this.editor.isEditingLocked || gesture.target !== this.target || gesture.parent !== gesture.target.parentElement
@@ -1171,8 +1187,9 @@ export class TransformationFeature extends EditorFeature {
     const end = this.#vector(inverse, event.clientX - cx, event.clientY - cy)
     const degrees = (Math.atan2(end.y, end.x) - Math.atan2(start.y, start.x)) * 180 / Math.PI
     const angle = this.getRoundingFunc(event)(gesture.rotate + degrees)
-    this.#write("rotate", `${angle}deg`)
-    const rect = this.targetRect
+    this.#write("rotate", `${angle}deg`, "", gesture.image ?? gesture)
+    this.editor.features.layout.refresh()
+    const rect = (gesture.image?.target ?? gesture.target).getBoundingClientRect()
     this.#offsetBy(cx - (rect.left + rect.width / 2), cy - (rect.top + rect.height / 2))
     this.updateInfo()
   }
@@ -1280,6 +1297,7 @@ export class TransformationFeature extends EditorFeature {
       if(gesture.mode !== "move") this.editor.features.manipulation.clearDropFloat(target)
     }
     this.#gesture = null
+    if(gesture.mode === "rotate" && gesture.image) this.editor.features.layout.refresh()
     if(gesture.crop) {
       const preview = this.overlay.querySelector<HTMLCanvasElement>("[part='transform-overlay-crop-preview']")!
       preview.hidden = true
@@ -1310,7 +1328,13 @@ export class TransformationFeature extends EditorFeature {
 
   restore() {
     if(!this.target || this.editor.isEditingLocked) return
+    const content = captionedFigureContent(this.target) as TransformElement | null
+    if(content?.style) {
+      for(const property of ["transform", "translate", "rotate", "scale"]) content.style.removeProperty(property)
+      if(!content.style.length) content.removeAttribute("style")
+    }
     clearInlinePlacement(this.target)
+    this.editor.features.layout.refresh()
     this.updateInfo()
   }
 

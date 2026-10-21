@@ -3,6 +3,7 @@ import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
+import {captionedFigureContent} from "../figure-layout.js"
 import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType, type GraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
@@ -2428,6 +2429,10 @@ export class ManipulationFeature extends EditorFeature {
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
   private stylePropertyTarget(target: Element, name: string) {
+    if(target.matches("figure:not([is])") && target.querySelector(":scope > figcaption")
+      && ["rotate", "scale", "translate", "transform", "transform-origin"].includes(name)) {
+      return captionedFigureContent(target)
+    }
     if(target.matches("td, th") && ["table-layout", "border-collapse", "border-spacing", "caption-side"].includes(name)) {
       return tableForNode(target)
     }

@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "rotated figure captions flow upright and their transformation frames fit the content",
   "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
