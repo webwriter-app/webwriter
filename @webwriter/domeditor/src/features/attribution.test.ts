@@ -433,6 +433,62 @@ describe("top-level attribution", () => {
     for(const [key, value] of Object.entries(metadata)) expect(element.getAttribute(attributionAttributes[key as keyof typeof metadata])).toBe(value)
   }
 
+  it.each([false, true])("keeps attribution available after adding a caption (capture: %s)", captured => {
+    const element = start()
+    if(captured) editor!.features.selection.captureElement(element)
+    else editor!.features.selection.selectElement(element)
+    expect(editor!.features.manipulation.setCaption("below", "left", {preserveSelection: true})).toBe(true)
+    const figure = element.parentElement!
+    expect(figure.localName).toBe("figure")
+    bounds(figure)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(false)
+    button().click()
+    expect(popup().hidden).toBe(false)
+    input("name").value = "Figure author"
+    submit()
+    expect(figure.getAttribute(attributionAttributes.name)).toBe("Figure author")
+    expectEmpty(element)
+    expect(figure.querySelector("figcaption")).toBeTruthy()
+    expect(editor!.toHTML(true)).not.toContain("◆attribution-ui")
+    expect(editor!.doc.body.toString()).not.toContain("◆attribution-ui")
+    editor!.doc.undo()
+    expectEmpty(document.querySelector("figure")!)
+    editor!.doc.redo()
+    expect(document.querySelector("figure")!.getAttribute(attributionAttributes.name)).toBe("Figure author")
+  })
+
+  it.each([
+    '<p><em>Content</em></p>',
+    '<picture><img alt="Content"></picture>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100"></rect></svg>',
+    '<attribution-widget><p>Widget content</p></attribution-widget>',
+  ])("resolves captioned content to its figure inside a document template: %s", content => {
+    document.body.innerHTML = `<attribution-template role="document"><figure><!--keep--><figcaption><em>Caption above</em></figcaption>${content}</figure></attribution-template>`
+    start()
+    const figure = document.querySelector("figure")!
+    const element = figure.lastElementChild!
+    const descendant = element.lastElementChild ?? element
+    const original = cloneWithoutEditorMarkers(figure, true).innerHTML
+    bounds(figure)
+    editor!.features.selection.captureElement(descendant)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(false)
+    button().click()
+    input("license").value = "CC-BY-4.0"
+    submit()
+    expect(figure.getAttribute(attributionAttributes.license)).toBe("CC-BY-4.0")
+    expectEmpty(element)
+    expectEmpty(descendant)
+    expect(cloneWithoutEditorMarkers(figure, true).innerHTML).toBe(original)
+    const captionText = figure.querySelector("figcaption em")!
+    editor!.features.selection.selectElement(captionText)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(true)
+    button().click()
+    expect(popup().hidden).toBe(true)
+  })
+
   it.each([false, true])("offers attribution only on direct document children (capture: %s)", captured => {
     document.body.innerHTML = '<section><!--keep--><p><em>Nested</em></p></section><p>Other</p>'
     start()

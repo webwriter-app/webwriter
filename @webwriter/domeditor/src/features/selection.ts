@@ -1563,13 +1563,20 @@ export class SelectionFeature extends EditorFeature {
     return caret
   }
 
-  /** Reuse the transform controls' border box instead of the axis-aligned
-   * CSS anchor box. Only the element owning this outline may position it. */
+  /** Reuse transform geometry, including the figure around captured content,
+   * without changing the media or widget that owns capture. */
   positionTransformCaret(element: Element, geometry: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">, floats = this.floatExclusions(element, element.getBoundingClientRect(), geometry)) {
     const caret = this.selectionCaret
-    const owner = this.captureSelectedElement ?? this.selectedSectionElement ?? $.selectedElement
-    if(owner !== element || !element.isConnected || !caret
+    const captured = this.captureSelectedElement
+    const owner = captured ?? this.selectedSectionElement ?? $.selectedElement
+    const outlineOwner = captured ? figureSelectionTarget(captured) : owner
+    if(owner !== element && outlineOwner !== element || !element.isConnected || !caret
       || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) return
+    if(outlineOwner !== element && outlineOwner instanceof HTMLElement) {
+      const box = this.editor.features.transformation.boxGeometry(outlineOwner)
+      geometry = {...box.styles, left: `${fixedClientX(parseFloat(box.styles.left))}px`}
+      floats = this.floatExclusions(outlineOwner, box.rect, geometry)
+    }
     for(const property of ["left", "top", "width", "height", "transform"] as const) {
       caret.style.setProperty(property, geometry[property], "important")
     }

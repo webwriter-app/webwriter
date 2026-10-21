@@ -989,6 +989,48 @@ describe("captured element insertion", () => {
 })
 
 describe("capture outline selection", () => {
+  it.each(["picture", "interactive-widget", "svg"])("includes captions around captured %s content and follows live figure geometry", tag => {
+    const figure = el("figure")
+    figure.innerHTML = `<${tag}>${tag === "picture" ? '<img alt="Content">' : ""}</${tag}><!--keep--><figcaption>Caption below</figcaption>`
+    const content = figure.firstElementChild!
+    const caption = figure.lastElementChild!
+    const figureRect = vi.spyOn(figure, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 60, 320, 240))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 60, 320, 200))
+    const authored = editor.toHTML(true)
+    try {
+      feature.captureElement(content)
+      const caret = feature.selectionCaret!
+      expect(feature.captureSelectedElement).toBe(content)
+      expect(content).toHaveClass("◆element-capture-selected")
+      expect(caret).toHaveClass("◆selection-caret-capture")
+      expect(caret.style.left).toBe("40px")
+      expect(caret.style.top).toBe("60px")
+      expect(caret.style.width).toBe("320px")
+      expect(caret.style.height).toBe("240px")
+      expect(editor.features.transformation.target).toBe(content)
+      expect(editor.features.transformation.overlay.style.height).toBe("200px")
+
+      figure.prepend(caption)
+      figureRect.mockReturnValue(new DOMRect(40, 20, 320, 280))
+      editor.features.transformation.updateInfo()
+      expect(caret.style.top).toBe("20px")
+      expect(caret.style.height).toBe("280px")
+      expect(feature.captureSelectedElement).toBe(content)
+
+      document.body.append(content)
+      editor.features.transformation.updateInfo()
+      expect(caret.style.top).toBe("60px")
+      expect(caret.style.height).toBe("200px")
+      figure.prepend(content)
+      figure.append(caption)
+      expect(editor.toHTML(true)).toBe(authored)
+      expect(editor.toHTML(true)).not.toContain("selection-caret")
+      feature.selectElement(el("p", "Next"))
+      expect(content).not.toHaveClass("◆element-capture-selected", "◆element-selected")
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
   it.each(["top", "right", "bottom", "left"])("selects the captured element through its %s edge", side => {
     const widget = el("interactive-widget")
     const button = document.createElement("button")

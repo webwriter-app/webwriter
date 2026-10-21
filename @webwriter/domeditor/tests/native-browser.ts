@@ -1898,6 +1898,29 @@ await check("media interiors capture while outline edges element-select", async 
     await layoutFrame()
     assert(selection.captureSelectedElement === audio && !shield.isConnected, "interior did not restore native interaction")
     assert(!editor.toHTML(true).includes("◆"), "selection artifacts leaked into serialization")
+    const figure = document.createElement("figure"), caption = document.createElement("figcaption")
+    audio.before(figure)
+    figure.append(audio, caption)
+    caption.textContent = "Captioned native audio controls"
+    try {
+      for(const above of [false, true]) {
+        if(above) figure.prepend(caption)
+        selection.captureElement(audio)
+        await layoutFrame()
+        const outline = selection.selectionCaret!.getBoundingClientRect(), bounds = figure.getBoundingClientRect()
+        for(const key of ["left", "top", "width", "height"] as const) {
+          assert(Math.abs(outline[key] - bounds[key]) < 1, `capture outline excludes the ${above ? "above" : "below"} caption (${key})`)
+        }
+        assert(selection.captureSelectedElement === audio, "caption outline replaced the native capture owner")
+        const mediaBox = audio.getBoundingClientRect()
+        assert(document.elementFromPoint(mediaBox.left + mediaBox.width / 2, mediaBox.top + mediaBox.height / 2) === audio,
+          "caption outline blocks native audio controls")
+        selection.selectionCaret!.querySelector('[part~="selection-capture-edge-bottom"]')!
+          .dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+        assert(!selection.isCaptureSelection && $.selectedElement === figure, "caption outline edge did not select the whole figure")
+      }
+    }
+    finally { figure.replaceWith(audio) }
   }
   finally { audio.remove(); editor.features.selection.processSelection() }
 })

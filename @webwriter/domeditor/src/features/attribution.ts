@@ -1,7 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {attributionAttributes, createAttributionController, type AttributionController, type AttributionValues} from "../attribution.js"
 import {creativeCommonsLicenses} from "../document-head"
-import {$, atomicEditingContainer} from "../utility"
+import {$, atomicEditingContainer, figureSelectionTarget} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {AttributionLicensePicker} from "../components/attribution-license-picker"
 
@@ -30,7 +30,7 @@ export class AttributionFeature extends EditorFeature {
       },
       canAttribute: element => element.parentElement === getDocumentRoot(),
       editable: () => !this.editor.isEditingLocked,
-      resolveElement: element => atomicEditingContainer(element, this.editor.schema) ?? element,
+      resolveElement: element => figureSelectionTarget(atomicEditingContainer(element, this.editor.schema) ?? element),
       selectedElement: () => {
         const target = this.editor.features.selection.captureSelectedElement
           ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
