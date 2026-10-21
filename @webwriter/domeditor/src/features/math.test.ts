@@ -76,6 +76,31 @@ describe("DOM MathML editing", () => {
     expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
   })
 
+  it.each(["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mstyle><mrow></mrow></mstyle>", "<mtext></mtext>"])("centers the caret in the whole empty block instead of its inner row: %s", content => {
+    const math = load(content)
+    math.setAttribute("display", "block")
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 80, 280, 64))
+    const geometry = vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(4, 8, 8, 18))
+    const position = math.querySelector("mrow:empty, mtext:empty") ?? math
+    const authored = clean()
+    try {
+      for(const direction of ["ltr", "rtl"]) {
+        math.setAttribute("dir", direction)
+        $.move(position, 0)
+        editor.features.math.refresh()
+        const rect = editor.features.math.structuralTextRect(position, 0)!
+        expect([rect.left, rect.top, rect.width, rect.height]).toEqual([240, 103, 0, 18])
+        const caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+        expect([caret.style.left, caret.style.top, caret.style.height]).toEqual(["240px", "103px", "18px"])
+        editor.features.math.refresh()
+        expect(editor.appendix.querySelector('[part="math-caret"]')).toBe(caret)
+      }
+      math.removeAttribute("dir")
+      expect(clean()).toBe(authored)
+    }
+    finally { geometry.mockRestore() }
+  })
+
   it("keeps the body caret marker transient when its formula is removed", () => {
     document.body.classList.add("authored")
     const math = load("<mrow></mrow>")

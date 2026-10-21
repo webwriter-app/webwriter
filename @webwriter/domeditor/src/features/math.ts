@@ -1376,6 +1376,10 @@ export class MathFeature extends EditorFeature {
       range.selectNodeContents(character.firstChild!)
       const rect = range.getBoundingClientRect()
       if(!rect.height) return null
+      if(!outside && root.getAttribute("display") === "block" && emptyMath(root)) {
+        const height = Math.min(rect.height, actual.height)
+        return new DOMRect(actual.left + actual.width / 2, actual.top + (actual.height - height) / 2, 0, height)
+      }
       range.collapse(true)
       const start = range.getBoundingClientRect()
       const bounds = container.getBoundingClientRect()
@@ -1510,6 +1514,7 @@ export class MathFeature extends EditorFeature {
     if(!root || root.getAttribute("display") === "block" && this.selectedMath === root && !this.editor.features.selection.isCaptureSelection) {
       this.clearPresentation(); this.dismissCommand(); this.input?.refresh(); return
     }
+    const emptyBlock = root.getAttribute("display") === "block" && emptyMath(root)
     if(root !== this.observedRoot) {
       this.resizeObserver?.disconnect()
       this.resizeObserver?.observe(root)
@@ -1543,7 +1548,7 @@ export class MathFeature extends EditorFeature {
     const caretOffset = caretPoint?.[1] ?? 0
     const caretElement = caretNode instanceof Element ? caretNode : caretNode?.parentElement
     const structuralCaret = Boolean(caretNode && caretElement
-      && (Boolean(isRow(caretElement)) || caretElement.localName !== "mtext" && plainToken(caretElement))
+      && (emptyBlock || Boolean(isRow(caretElement)) || caretElement.localName !== "mtext" && plainToken(caretElement))
       && !(caretNode === root && root.childNodes.length && root.getAttribute("display") !== "block"
         && (caretOffset === 0 || caretOffset === root.childNodes.length)))
     if(!structuralCaret) { this.caret?.remove(); this.caret = null }
@@ -1560,7 +1565,7 @@ export class MathFeature extends EditorFeature {
       outerRows.add(outer)
     }
     markers.forEach((marker, element) => {
-      if(marker !== "◆math-slot" || outerRows.has(element)) return
+      if(marker !== "◆math-slot" || outerRows.has(element) || emptyBlock) return
       const rect = element.getBoundingClientRect()
       const glyph = this.isFencedPlaceholder(element) ? this.structuralTextRect(element, 0) : null
       const style = getComputedStyle(element)
@@ -1578,7 +1583,7 @@ export class MathFeature extends EditorFeature {
       const rect = this.pointRect(caretPoint ?? [selection.focusNode, selection.focusOffset], structuralCaret)
       this.input?.refresh(rect)
       if(structuralCaret) {
-        const inset = caretNode instanceof Element && markers.get(caretNode) === "◆math-slot" && !outerRows.has(caretNode) ? 1 : 0
+        const inset = !emptyBlock && caretNode instanceof Element && markers.get(caretNode) === "◆math-slot" && !outerRows.has(caretNode) ? 1 : 0
         const caret = this.caret ??= document.createElement("span")
         caret.setAttribute("part", "math-caret")
         caret.style.cssText = `position:absolute;background:currentColor;width:1px;left:${rect.left + inset}px;top:${rect.top}px;height:${rect.height}px;animation:var(--ww-ui-animation, blink 1s step-end 0s infinite)`

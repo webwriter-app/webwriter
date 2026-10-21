@@ -6,8 +6,9 @@ import {boardLayoutRole, isSlide} from "../document-layout"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../element-styles"
 import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../ribbon-icons"
+import {mathRoot} from "../math"
 
-type TransformElement = HTMLElement | SVGSVGElement
+type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
 const cropDirections = ["up-left", "down-right"] as const
 type StyleValue = {value: string, priority: string}
@@ -45,7 +46,7 @@ type Gesture = {
  * Canvas and slide items retain spatial positioning. Ctrl/Cmd previews a flow
  * gap; Shift constrains spatial movement to one axis; Alt disables snapping.
  *
- * Resize: text containers resize horizontally and grow with content.
+ * Resize: text containers and block formulas resize horizontally and grow with content.
  * Document elements expose the bottom corner opposite their alignment; centered
  * elements resize symmetrically along the horizontal axis. Freeform
  * corners set max-inline/block-size; midpoints constrain one logical axis.
@@ -385,7 +386,8 @@ export class TransformationFeature extends EditorFeature {
   get isNarrow() { return this.overlay.classList.contains("◆transform-overlay-narrow") }
 
   #canTransform(element: Element): element is TransformElement {
-    return (element instanceof HTMLElement || element instanceof SVGSVGElement)
+    return (element instanceof HTMLElement || element instanceof SVGSVGElement
+      || mathRoot(element) === element && element.getAttribute("display") === "block")
       && element !== document.documentElement && element !== document.head
       && !isDocumentRoot(element) && getDocumentRoot().contains(element)
   }
@@ -419,6 +421,7 @@ export class TransformationFeature extends EditorFeature {
 
   #isTextContainer(target: Element) {
     return target instanceof HTMLElement && target.matches("p:not([is]), h1:not([is]), h2:not([is]), h3:not([is]), h4:not([is]), h5:not([is]), h6:not([is])")
+      || mathRoot(target) === target && target.getAttribute("display") === "block"
   }
 
   #resizeAlignment(target: TransformElement) {
@@ -1054,7 +1057,7 @@ export class TransformationFeature extends EditorFeature {
     else {
       if(text) {
         this.#write("height", "auto")
-        this.#write("min-height", "0px")
+        this.#write("min-height", mathRoot(target) === target ? "" : "0px")
         this.#write("max-height", "none")
       }
       if(image) {

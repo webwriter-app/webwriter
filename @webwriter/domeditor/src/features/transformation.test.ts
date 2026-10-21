@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 
 import {DOMEditor} from "../domeditor"
 import {$, cloneWithoutEditorMarkers} from "../utility"
+import {MATH_NAMESPACE} from "../math"
 
 let editor: DOMEditor
 let feature: DOMEditor["features"]["transformation"]
@@ -42,7 +43,7 @@ function targetElement(tag = "p") {
 
 /** Happy-dom has no layout. Keep the rect tied to authored offsets so the
  * movement/resize code still exercises its geometry calculations. */
-function mockRect(target: HTMLElement | SVGSVGElement, values: {left?: number, top?: number, width?: number, height?: number} = {}) {
+function mockRect(target: HTMLElement | SVGSVGElement | MathMLElement, values: {left?: number, top?: number, width?: number, height?: number} = {}) {
   const base = {left: 100, top: 100, width: 100, height: 50, ...values}
   const computedStyle = vi.mocked(getComputedStyle).getMockImplementation?.() ?? getComputedStyle
   const size = () => {
@@ -157,6 +158,106 @@ describe("text container resizing", () => {
     feature.updateInfo()
     expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
     expect(handle.getAttribute("part")).not.toContain("transform-overlay-scale-text")
+  })
+})
+
+describe("block formula affordances", () => {
+  function formula(display = "block") {
+    document.body.innerHTML = "<p>After</p>"
+    // Happy DOM's HTML parser does not enter the MathML namespace.
+    const target = document.createElementNS(MATH_NAMESPACE, "math") as MathMLElement
+    target.setAttribute("display", display)
+    const fraction = document.createElementNS(MATH_NAMESPACE, "mfrac")
+    const numerator = document.createElementNS(MATH_NAMESPACE, "mi")
+    numerator.textContent = "x"
+    const denominator = document.createElementNS(MATH_NAMESPACE, "mn")
+    denominator.textContent = "2"
+    fraction.append(numerator, denominator)
+    target.append(document.createComment("keep"), fraction)
+    document.body.prepend(target)
+    return target
+  }
+
+  it.each([false, true])("shows standard block controls for capture=%s and preserves the formula through captioning", async captured => {
+    const target = formula()
+    const children = Array.from(target.childNodes)
+    mockRect(target)
+    captured ? captureNode(target) : selectNode(target)
+    expect(feature.target).toBe(target)
+    for(const name of ["mover", "caption", "delete"]) {
+      expect(feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${name}`)!.hidden).toBe(false)
+    }
+    expect(feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable).toBe(true)
+    const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+    expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual(["down-right"])
+    expect(handles[0].getAttribute("part")).toContain("transform-overlay-scale-text")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!.click()
+    expect(target.parentElement!.localName).toBe("figure")
+    expect(target.nextElementSibling!.localName).toBe("figcaption")
+    expect(Array.from(target.childNodes)).toEqual(children)
+    expect(feature.target).toBe(target.parentElement)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelector("figure")).toBeNull()
+    editor.doc.redo()
+    expect(document.querySelector("figure math")).toBeTruthy()
+  })
+
+  it("resizes only horizontally, ignoring Shift and vertical movement, and supports undo", async () => {
+    const target = formula()
+    Object.assign(target.style, {width: "200px", height: "50px", minHeight: "40px", maxHeight: "60px"})
+    mockRect(target, {width: 200})
+    selectNode(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const initial = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 125}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300, clientY: 300}))
+    expect(target.style.maxWidth).toBe("")
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe("160px")
+    expect(target.style.height).toBe("auto")
+    expect(target.style.minHeight).toBe("")
+    expect(target.style.maxHeight).toBe("none")
+    expect(target.style.getPropertyValue("scale")).toBe("")
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const resized = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(resized)
+  })
+
+  it("deletes the formula using the block control", () => {
+    const target = formula()
+    captureNode(target)
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!.click()
+    expect(target.isConnected).toBe(false)
+    expect(document.querySelector("p")!.textContent).toBe("After")
+    expect(feature.target).toBeNull()
+    expect(target.className).not.toContain("◆transform-target")
+  })
+
+  it("excludes inline formulas and MathML descendants and clears controls after concurrent replacement", async () => {
+    const target = formula()
+    selectNode(target)
+    target.replaceWith(document.createElement("p"))
+    await mutationsDelivered()
+    expect(feature.target).not.toBe(target)
+    expect(target.className).not.toContain("◆transform-target")
+    const inline = formula("inline")
+    feature.syncSelection(inline)
+    expect(feature.target).toBeNull()
+    feature.startTransform(inline.querySelector("mi")!)
+    expect(feature.target).toBeNull()
   })
 })
 

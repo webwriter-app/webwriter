@@ -2145,6 +2145,80 @@ await check("text containers resize horizontally and fit their content", async (
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("block formulas expose block controls and resize horizontally", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  document.body.append(frame)
+  try {
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = '<!doctype html><body><p>Before</p><math display="block"><!--keep--><mfrac><mi>x</mi><mn>2</mn></mfrac></math><p>After</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    await loaded
+    const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "formula fixture did not initialize")
+    const editor = view.editor!, theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    const target = doc.querySelector<MathMLElement>("math")!, children = Array.from(target.childNodes)
+    const feature = editor.features.transformation
+    // MathML can retain line-height: normal; its resolved padding includes .5lh.
+    const lineHeight = 2 * (parseFloat(view.getComputedStyle(target).paddingTop) - 2)
+    const centered = () => {
+      const block = target.getBoundingClientRect(), row = target.firstElementChild!.getBoundingClientRect()
+      assert(block.height >= 2 * lineHeight + 4, "formula block lost its doubled minimum height")
+      assert(Math.abs(row.left + row.width / 2 - block.left - block.width / 2) < 1, "formula is not horizontally centered")
+      assert(Math.abs(row.top + row.height / 2 - block.top - block.height / 2) < 1, "formula is not vertically centered")
+    }
+    editor.features.selection.selectElement(target)
+    await layoutFrame()
+    assert(feature.target === target, "block formula has no transform target")
+    centered()
+    for(const name of ["mover", "caption", "delete"]) {
+      const button = feature.overlay.querySelector<HTMLButtonElement>(`#◆transform-overlay-${name}`)!
+      assert(!button.hidden && button.getBoundingClientRect().width > 0, `${name} control is hidden`)
+    }
+    const mover = feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!, transfer = new view.DataTransfer()
+    mover.dispatchEvent(new view.DragEvent("dragstart", {bubbles: true, composed: true, cancelable: true, dataTransfer: transfer}))
+    const dragged = new view.DOMParser().parseFromString(transfer.getData("text/html"), "text/html")
+    assert(dragged.querySelector('math[display="block"] mfrac'), `move control did not start a native formula drag: ${transfer.getData("text/html")}`)
+    mover.dispatchEvent(new view.DragEvent("dragend", {bubbles: true, composed: true, dataTransfer: transfer}))
+    const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+    assert(handles.length === 1 && handles[0].getAttribute("part")!.includes("transform-overlay-scale-text"), "formula has vertical resize controls")
+    const before = target.getBoundingClientRect(), handle = handles[0]
+    handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+    handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.bottom}))
+    feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: before.right - 40, clientY: before.bottom + 90, shiftKey: true, altKey: true}))
+    feature.handleScaleEnd()
+    await layoutFrame()
+    const resized = target.getBoundingClientRect()
+    centered()
+    assert(parseFloat(view.getComputedStyle(target).minHeight) >= 2 * lineHeight, "horizontal resize disabled the formula minimum height")
+    assert(Math.abs(resized.width - before.width + 80) < 1, `formula width did not follow centered resize: ${before.width} -> ${resized.width}`)
+    assert(Math.abs(resized.height - before.height) < 1 && target.style.height === "auto" && !target.style.scale, "vertical movement stretched the formula")
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!.click()
+    await layoutFrame()
+    assert(target.parentElement!.localName === "figure" && target.nextElementSibling!.localName === "figcaption", "formula caption was not added")
+    assert(Array.from(target.childNodes).every((node, index) => node === children[index]), "captioning rebuilt formula content")
+    assert(feature.target === target.parentElement, "captioning lost figure controls")
+    assert(!editor.toHTML(true).includes("◆"), "formula controls leaked into serialization")
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!.click()
+    assert(!target.isConnected && doc.querySelector("p")!.textContent === "Before", "delete control did not remove just the formula")
+    const empty = doc.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+    empty.setAttribute("display", "block")
+    doc.body.append(empty)
+    editor.features.math.refresh()
+    await layoutFrame()
+    const emptyBounds = empty.getBoundingClientRect()
+    assert(Math.abs(emptyBounds.height - (2 * lineHeight + 4)) < 1, "empty formula height was not doubled")
+    doc.getSelection()!.setPosition(empty, 0)
+    editor.features.selection.processSelection()
+    editor.features.math.refresh()
+    const caret = editor.features.math.structuralTextRect(empty, 0)
+    assert(caret && caret.height > 0 && Math.abs(caret.top + caret.height / 2 - emptyBounds.top - emptyBounds.height / 2) < 1, "empty formula caret is not vertically centered")
+    editor.destroy()
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("images stretch independently of their intrinsic aspect ratio", async () => {
   for(const mode of ["document", "canvas", "slides"] as const) {
     const frame = document.createElement("iframe")
@@ -2891,10 +2965,11 @@ await check("empty formula carets fit their space and blink across presentation 
   const paragraph = document.createElement("p")
   fixture.append(paragraph)
   try {
-    for(const display of ["inline", "block"]) for(const content of ["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mfrac><mrow></mrow><mi>a</mi></mfrac>"]) {
-      paragraph.innerHTML = `a<math display="${display}"${display === "block" ? ' style="max-width:240px"' : ""}>${content}</math>a`
+    for(const display of ["inline", "block"]) for(const direction of ["ltr", "rtl"]) for(const content of ["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mstyle><mrow></mrow></mstyle>", "<mtext></mtext>", "<mfrac><mrow></mrow><mi>a</mi></mfrac>"]) {
+      if(display === "inline" && content === "<mtext></mtext>") continue // Inline text tokens use the native text caret.
+      paragraph.innerHTML = `a<math display="${display}" style="direction:${direction};${display === "block" ? "max-width:240px" : ""}">${content}</math>a`
       const math = paragraph.querySelector("math")!
-      const position = math.querySelector("mrow:empty") ?? math
+      const position = math.querySelector("mrow:empty, mtext:empty") ?? math
       $.move(position, 0)
       editor.features.selection.processSelection(undefined, {scrollIntoView: false})
       editor.features.math.refresh()
@@ -2906,8 +2981,10 @@ await check("empty formula carets fit their space and blink across presentation 
         const container = paragraph.getBoundingClientRect()
         assert(Math.abs((bounds.left + bounds.right) / 2 - (container.left + container.right) / 2) < 1,
           "empty block formula box is not centered in its container")
-        assert(Math.abs(rect.left - (bounds.left + bounds.right) / 2) < 8,
+        assert(Math.abs(rect.left - (bounds.left + bounds.right) / 2) < 1,
           "empty block formula caret is not centered")
+        assert(Math.abs((rect.top + rect.bottom) / 2 - (bounds.top + bounds.bottom) / 2) < 1,
+          "empty block formula caret is not vertically centered")
         const height = bounds.height
         $.move(paragraph.lastChild!, 1)
         editor.features.selection.processSelection(undefined, {scrollIntoView: false})
@@ -2925,9 +3002,10 @@ await check("empty formula carets fit their space and blink across presentation 
         caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
       }
       if(!content.includes("mfrac")) {
-        const bounds = position.getBoundingClientRect(), rect = caret.getBoundingClientRect(), style = getComputedStyle(position)
-        const top = bounds.top + (position === math ? parseFloat(style.paddingTop) : 0)
-        const bottom = bounds.bottom - (position === math ? parseFloat(style.paddingBottom) : 0)
+        const container = display === "block" ? math : position
+        const bounds = container.getBoundingClientRect(), rect = caret.getBoundingClientRect(), style = getComputedStyle(container)
+        const top = bounds.top + (container === math ? parseFloat(style.paddingTop) : 0)
+        const bottom = bounds.bottom - (container === math ? parseFloat(style.paddingBottom) : 0)
         assert(rect.top >= top - 0.5 && rect.bottom <= bottom + 0.5,
           `empty ${display} formula caret hangs below its space (${content}): ${rect.top}–${rect.bottom}, space ${top}–${bottom}`)
       }

@@ -1,4 +1,15 @@
-import {Document, Node, Range, PropertySymbol} from "happy-dom"
+import {Document, Element, HTMLElement, Node, Range, PropertySymbol} from "happy-dom"
+
+// Happy DOM creates MathML as generic Elements without MathMLElement.style.
+// Reuse its native CSS declaration implementation for namespaced math elements.
+const htmlStyle = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "style")
+if(!Object.getOwnPropertyDescriptor(Element.prototype, "style")) {
+  Object.defineProperty(Element.prototype, "style", {
+    configurable: true,
+    get() { return this.namespaceURI === "http://www.w3.org/1998/Math/MathML" ? htmlStyle.get.call(this) : undefined },
+    set(value) { if(this.namespaceURI === "http://www.w3.org/1998/Math/MathML") htmlStyle.set.call(this, value) },
+  })
+}
 
 // Happy DOM 20.8.3 stores MutationObserver delivery callbacks only through an
 // unretained WeakRef. Keep each registered callback alive for the lifetime of

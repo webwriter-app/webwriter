@@ -2361,6 +2361,14 @@ math:not([display="block"]) {
   margin-inline: 2px;
 }
 
+math[display="block"] {
+  box-sizing: border-box;
+  min-height: 2lh;
+  /* Native math layout ignores align-content; keep its row and spacing intact. */
+  padding-block: calc(0.5lh + 2px);
+  padding-inline: 0;
+}
+
 .◆math-editing:not(.◆atomic-range-selected) {
   background-color: #eeeeee;
 }
@@ -2424,8 +2432,9 @@ math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty {
 math[display="block"].◆math-empty {
   display: block math;
   box-sizing: border-box;
-  min-height: 1lh;
-  height: calc(1lh + 4px);
+  min-height: 2lh;
+  height: calc(2lh + 4px);
+  padding-block: 2px;
   width: 100%;
   margin-inline: auto;
   aspect-ratio: auto;
