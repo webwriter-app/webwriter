@@ -1949,6 +1949,31 @@ describe("canonical media", () => {
 
 
 describe("selected media source", () => {
+  it.each(["unchanged", "remote change", "disconnected", "disabled", "cancelled", "superseded"])(
+    "guards a host file picker when %s", condition => {
+      document.body.innerHTML = '<audio src="existing.mp3"></audio><audio src="other.mp3"></audio>'
+      const audio = document.querySelector("audio")!
+      $.selectElement(audio)
+      editor.features.selection.processSelection()
+      expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", pickerId: "first"})).toBe(true)
+      expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+      const file = new File(["audio"], "song.mp3", {type: "audio/mpeg"})
+      if(condition === "remote change") audio.setAttribute("src", "remote.mp3")
+      if(condition === "disconnected") audio.remove()
+      if(condition === "disabled") editor.features.media.disable()
+      if(condition === "cancelled") editor.features.media.actions.setMediaFile({type: "setMediaFile", file: null, pickerId: "first"})
+      if(condition === "superseded") editor.features.media.actions.selectMediaFile({type: "selectMediaFile", pickerId: "second"})
+      // A host picker remains bound to the original node, even if selection moves.
+      $.selectElement(document.querySelectorAll("audio")[condition === "disconnected" ? 0 : 1])
+      const changed = editor.features.media.actions.setMediaFile({type: "setMediaFile", file, pickerId: "first"})
+      expect(changed).toBe(condition === "unchanged")
+      if(condition === "unchanged") expect(audio.getAttribute("src")).toMatch(/^blob:/)
+      else expect(audio.getAttribute("src")).toBe(condition === "remote change" ? "remote.mp3" : "existing.mp3")
+      expect(document.querySelector('audio[src="other.mp3"]')).not.toBeNull()
+      expect(editor.toHTML(true)).not.toContain("◆")
+    },
+  )
+
   it("removes timed sources without rebuilding fallback, tracks, or resource elements", () => {
     document.body.innerHTML = '<video src="old.mp4"><!--keep--><source src="alternative.mp4" type="video/mp4"><track src="captions.vtt"><span>Fallback</span></video>'
     const video = document.querySelector("video")!

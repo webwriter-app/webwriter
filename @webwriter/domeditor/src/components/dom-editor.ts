@@ -3569,11 +3569,12 @@ export class DomEditor extends LitElement {
     finally { this.documentLoading = false }
   }
 
-  private pickFileInput(): Promise<File | null> {
+  private pickFileInput(accept = ".html,.htm,text/html"): Promise<File | null> {
+    this.cancelFileInput?.()
     return new Promise((resolve, reject) => {
       const input = document.createElement("input")
       input.type = "file"
-      input.accept = ".html,.htm,text/html"
+      input.accept = accept
       input.hidden = true
       const finish = (file: File | null, error?: unknown) => {
         input.removeEventListener("change", change)
@@ -3592,6 +3593,32 @@ export class DomEditor extends LitElement {
       try {input.click()}
       catch(error) {finish(null, error)}
     })
+  }
+
+  private async pickMediaFile(attribute?: "poster") {
+    const media = this.mediaSelection
+    if(!media || attribute && media.type !== "video") return
+    const pickerId = crypto.randomUUID()
+    const revision = this.frameRevision
+    const prepared = this.execute({type: "selectMediaFile", attribute, pickerId})
+    const accept = attribute === "poster" || media.type === "picture" || media.type === "img" ? "image/*"
+      : media.type === "audio" ? "audio/*" : media.type === "video" ? "video/*" : ".html,.htm,text/html"
+    // Opening in the host click avoids depending on activation in another origin.
+    const picked = this.pickFileInput(accept)
+    const cancel = this.cancelFileInput
+    try {
+      const [ready, file] = await Promise.all([prepared, picked])
+      if(ready && this.isConnected && revision === this.frameRevision) {
+        await this.execute({type: "setMediaFile", file, pickerId})
+      }
+    }
+    catch(error) {
+      if(this.cancelFileInput === cancel) cancel?.()
+      if(this.isConnected && revision === this.frameRevision) {
+        await this.execute({type: "setMediaFile", file: null, pickerId}).catch(() => {})
+      }
+      this.reportFileError(error)
+    }
   }
 
   private triggerFileDownload(source: string, name: string) {
@@ -4147,7 +4174,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "selected-media-cover-file") {
-      void this.execute({type: "selectMediaFile", attribute: "poster"})
+      void this.pickMediaFile("poster")
       return
     }
     if(label?.startsWith("selected-media-cover-capture:")) {
@@ -4156,7 +4183,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "selected-media-file") {
-      void this.execute({type: "selectMediaFile"})
+      void this.pickMediaFile()
       return
     }
     if(label === "remove-media-source") {

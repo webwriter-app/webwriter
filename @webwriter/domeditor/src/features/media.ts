@@ -1234,7 +1234,7 @@ export class MediaFeature extends EditorFeature {
   private mediaPlaceholder: MediaPlaceholder | null = null
   private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
   private readonly sourceLabels = new WeakMap<Element, Map<string, {label: string, kind: "file" | "capture" | "recording"}>>()
-  private pendingFile: {picker: HTMLInputElement} | null = null
+  private pendingFile: {picker: HTMLInputElement, pickerId?: string, apply: (file: Blob | null) => boolean} | null = null
   private cancelSourceFile() {
     const pending = this.pendingFile
     this.pendingFile = null
@@ -1665,7 +1665,10 @@ export class MediaFeature extends EditorFeature {
   }
 
   actions = {
-    setMediaFile: ({file, attribute}: {type: "setMediaFile", file: Blob, attribute?: "poster"}) => {
+    setMediaFile: ({file, attribute, pickerId}: {type: "setMediaFile", file: Blob | null, attribute?: "poster", pickerId?: string}) => {
+      if(pickerId !== undefined) {
+        return this.pendingFile?.pickerId === pickerId ? this.pendingFile.apply(file) : false
+      }
       const element = this.selectedMedia()
       return element && file instanceof Blob ? this.setFile(element, file, attribute) : false
     },
@@ -1678,7 +1681,7 @@ export class MediaFeature extends EditorFeature {
       this.refresh()
       return changed
     },
-    selectMediaFile: ({attribute}: {type: "selectMediaFile", attribute?: "poster"}) => {
+    selectMediaFile: ({attribute, pickerId}: {type: "selectMediaFile", attribute?: "poster", pickerId?: string}) => {
       const element = this.selectedMedia()
       if(!this.isEnabled || !element || attribute && !element.matches("video") || sourceEditingBlocked(element, this.editor.schema)) return false
       this.cancelSourceFile()
@@ -1689,17 +1692,21 @@ export class MediaFeature extends EditorFeature {
       picker.hidden = true
       picker.accept = attribute === "poster" || element.matches("picture, img") ? "image/*" : element.matches("audio") ? "audio/*"
         : element.matches("video") ? "video/*" : ".html,.htm,text/html"
-      const pending = {picker}
+      const pending = {picker, pickerId, apply: (file: Blob | null): boolean => {
+        if(!valid() || !(file instanceof Blob)) { if(this.pendingFile === pending) this.cancelSourceFile(); return false }
+        try { return this.setFile(element, file, attribute) }
+        finally { this.cancelSourceFile() }
+      }}
       this.pendingFile = pending
       const valid = () => this.pendingFile === pending && this.isEnabled && document.body.contains(element)
         && !sourceEditingBlocked(element, this.editor.schema) && snapshot === this.sourceSnapshot(element)
         && sourceTarget === mediaSourceTarget(element, false)
+      // The host opens its own picker while its click still has user activation.
+      // Retain the same DOM guards used by the in-document picker.
+      if(pickerId !== undefined) return true
       picker.addEventListener("cancel", () => { if(this.pendingFile === pending) this.cancelSourceFile() }, {once: true})
       picker.addEventListener("change", () => {
-        const file = picker.files?.[0]
-        if(!valid() || !file) { if(this.pendingFile === pending) this.cancelSourceFile(); return }
-        this.setFile(element, file, attribute)
-        this.cancelSourceFile()
+        pending.apply(picker.files?.[0] ?? null)
       }, {once: true})
       this.editor.addAppendix(picker)
       picker.click()

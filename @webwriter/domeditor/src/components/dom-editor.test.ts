@@ -6175,8 +6175,6 @@ describe("DomEditor.execute()", () => {
     ["element:iframe", {type: "insertElement", tag: "iframe"}],
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
-    ["selected-media-file", {type: "selectMediaFile"}],
-    ["selected-media-cover-file", {type: "selectMediaFile", attribute: "poster"}],
     ["selected-media-cover-capture:camera-image", {type: "captureSelectedMedia", mode: "camera-image", attribute: "poster"}],
     ["selected-media-capture:screen-image", {type: "captureSelectedMedia", mode: "screen-image"}],
     ["remove-media-source", {type: "removeMediaSource"}],
@@ -6195,6 +6193,67 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith(action)
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["selected-media-file", "audio", undefined, "audio/*"],
+    ["selected-media-file", "picture", undefined, "image/*"],
+    ["selected-media-file", "iframe", undefined, ".html,.htm,text/html"],
+    ["selected-media-cover-file", "video", "poster", "image/*"],
+  ] as const)("reopens the host %s picker for %s after cancellation", async (label, type, attribute, accept) => {
+    const {editor} = await mountEditor()
+    ;(editor as any).mediaSelection = {type, attributes: {}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
+    const open = () => toolbox.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label}, bubbles: true, composed: true,
+    }))
+
+    open()
+    const first = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(first.accept).toBe(accept)
+    expect(click).toHaveBeenCalledOnce()
+    const pickerId = (execute.mock.calls[0][0] as any).pickerId
+    expect(execute).toHaveBeenCalledWith({type: "selectMediaFile", attribute, pickerId})
+    first.dispatchEvent(new Event("cancel"))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file: null, pickerId}))
+    expect(first.isConnected).toBe(false)
+
+    open()
+    const second = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(second).not.toBe(first)
+    expect(click).toHaveBeenCalledTimes(2)
+    const nextId = (execute.mock.calls[2][0] as any).pickerId
+    expect(nextId).not.toBe(pickerId)
+    const file = new File(["media"], "media.bin")
+    Object.defineProperty(second, "files", {value: [file]})
+    second.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file, pickerId: nextId}))
+    expect(second.isConnected).toBe(false)
+    expect(document.body.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it.each(["disconnect", "reload", "picker failure"])("cleans up a host media picker after %s", async condition => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.mediaSelection = {type: "video", attributes: {}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const report = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {
+      if(condition === "picker failure") throw new Error("Picker unavailable")
+    })
+    const picking = host.pickMediaFile()
+    const input = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')
+    if(condition === "disconnect") editor.remove()
+    if(condition === "reload") {
+      host.frameRevision++
+      input!.dispatchEvent(new Event("cancel"))
+    }
+    await picking
+    expect(input?.isConnected ?? false).toBe(false)
+    expect(execute).toHaveBeenCalledTimes(condition === "picker failure" ? 2 : 1)
+    expect(report).toHaveBeenCalledTimes(condition === "picker failure" ? 1 : 0)
   })
 
   it.each([
