@@ -4,6 +4,7 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
+import {isAuthoredMutation} from "../editor-artifacts"
 import {getDocumentRoot} from "../document-template"
 import {
   graphicShapeDragType,
@@ -708,6 +709,10 @@ export class GraphicFeature extends EditorFeature {
   #refreshQueued = false
   #frame: number | null = null
   #presentedGraphic: SVGSVGElement | null = null
+  #overflowStylesheet: CSSStyleSheet | null = null
+  #overflowRule = ""
+  #presentationObserver: MutationObserver | null = null
+  #presentationResizeObserver: ResizeObserver | null = null
   #spaceDown = false
   #lockedShapes = new Set<SVGGraphicsElement>()
   #viewportState = new WeakMap<SVGSVGElement, GraphicViewport>()
@@ -2888,6 +2893,7 @@ export class GraphicFeature extends EditorFeature {
     catch {
       // Preview navigation is a progressive enhancement in DOM shims.
     }
+    if(this.#presentedGraphic === graphic) this.#updateOverflowPresentation(graphic)
   }
 
   #cleanupInteraction(interaction: Interaction) {
@@ -4196,13 +4202,71 @@ export class GraphicFeature extends EditorFeature {
     const captured = this.#capturedGraphic()
     if(this.#presentedGraphic !== captured) this.#clearCanvasPresentation()
     if(!captured) return
-    this.#presentedGraphic = captured
+    if(!this.#presentedGraphic) {
+      this.#presentedGraphic = captured
+      this.#overflowStylesheet = new CSSStyleSheet()
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.#overflowStylesheet]
+      this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.#overflowStylesheet]
+      this.#presentationObserver = new MutationObserver(records => {
+        if(records.some(isAuthoredMutation)) this.#scheduleRefresh()
+      })
+      this.#presentationObserver.observe(document.body, {subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true})
+      this.#presentationResizeObserver = new ResizeObserver(this.#scheduleRefresh)
+      this.#presentationResizeObserver.observe(captured)
+    }
+    captured.classList.add("◆", "◆graphic-overflow-visible")
+    this.#updateOverflowPresentation(captured)
     if(this.#options.grid) captured.classList.add("◆", "◆graphic-grid-visible")
     else removeEditorMarker(captured, "◆graphic-grid-visible")
   }
 
+  #updateOverflowPresentation(graphic: SVGSVGElement) {
+    const sheet = this.#overflowStylesheet!
+    // Read authored filters without feeding our own filter back into the chain.
+    const sheets = [...document.adoptedStyleSheets]
+    document.adoptedStyleSheets = sheets.filter(current => current !== sheet)
+    const style = getComputedStyle(graphic)
+    const authoredFilter = style.filter === "none" ? "" : style.filter
+    const width = graphic.clientWidth || parseFloat(style.width)
+    const height = graphic.clientHeight || parseFloat(style.height)
+    document.adoptedStyleSheets = sheets
+    if(!(width > 0 && height > 0)) return
+    let region: Bounds = {x: 0, y: 0, width, height}
+    try {
+      for(const root of [graphic, ...this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview")]) {
+        const box = root.getBBox()
+        const matrix = root.getCTM()
+        if(matrix) region = unionBounds([region, boundsForPoints([
+          {x: box.x, y: box.y}, {x: box.x + box.width, y: box.y},
+          {x: box.x + box.width, y: box.y + box.height}, {x: box.x, y: box.y + box.height},
+        ].map(point => applyMatrix(matrix, point)))])
+      }
+    }
+    catch { /* Detached SVGs and DOM shims may not expose native geometry. */ }
+    const padding = Math.max(width, height, region.width, region.height)
+    // CSS filters on the outer SVG use viewport pixels, independently of its
+    // viewBox and native pan/zoom. Filtering preserves native overflow hit tests.
+    const source = `<svg xmlns="${SVG_NAMESPACE}"><filter id="overflow" filterUnits="userSpaceOnUse" x="${region.x - padding}" y="${region.y - padding}" width="${region.width + padding * 2}" height="${region.height + padding * 2}"><feFlood flood-opacity="0.35" result="outside"/><feFlood x="0" y="0" width="${width}" height="${height}" result="inside"/><feMerge><feMergeNode in="outside"/><feMergeNode in="inside"/></feMerge><feComposite in="SourceGraphic" operator="in"/></filter></svg>`
+    const rule = `svg.◆graphic-overflow-visible, svg.◆graphic-preview { overflow: visible !important; filter: ${authoredFilter} url("data:image/svg+xml,${encodeURIComponent(source)}#overflow") !important; }`
+    if(this.#overflowRule !== rule) {
+      sheet.replaceSync(rule)
+      this.#overflowRule = rule
+    }
+  }
+
   #clearCanvasPresentation() {
-    if(this.#presentedGraphic) removeEditorMarker(this.#presentedGraphic, "◆graphic-grid-visible")
+    this.#presentationObserver?.disconnect()
+    this.#presentationObserver = null
+    this.#presentationResizeObserver?.disconnect()
+    this.#presentationResizeObserver = null
+    if(this.#overflowStylesheet) {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.#overflowStylesheet)
+      this.editor.appendix.adoptedStyleSheets = this.editor.appendix.adoptedStyleSheets.filter(sheet => sheet !== this.#overflowStylesheet)
+    }
+    this.#overflowStylesheet = null
+    this.#overflowRule = ""
+    if(this.#presentedGraphic) removeEditorMarker(this.#presentedGraphic, "◆graphic-grid-visible", "◆graphic-overflow-visible")
+    document.querySelectorAll(".◆graphic-overflow-visible").forEach(element => removeEditorMarker(element, "◆graphic-overflow-visible"))
     this.#presentedGraphic = null
   }
 

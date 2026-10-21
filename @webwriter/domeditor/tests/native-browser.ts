@@ -1382,6 +1382,64 @@ await check("SVG shape outlines and handles align inside symmetric scrollbar gut
   }
 })
 
+await check("SVG overflow fades while retaining native shape selection", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:700px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string, PointerEvent: typeof PointerEvent}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "SVG overflow fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    doc.body.innerHTML = '<svg viewBox="100 50 600 300" style="display:block;margin:150px auto;width:600px;height:300px;overflow:hidden;filter:grayscale(0.2)"><!--keep--><rect x="40" y="100" width="120" height="80" fill="red"/><rect x="640" y="200" width="120" height="80" fill="blue"/><rect x="250" y="0" width="80" height="100" fill="green"/><g transform="rotate(15 450 330)"><rect x="410" y="280" width="80" height="100" fill="orange"/></g></svg>'
+    const graphic = doc.querySelector("svg")!, shapes = Array.from(graphic.querySelectorAll("rect"))
+    const authored = graphic.getAttribute("style")
+    editor.features.selection.captureElement(graphic)
+    editor.features.graphic.actions.toggleGraphicOption({type:"toggleGraphicOption", name:"grid"})
+    await layoutFrame()
+    const presentation = view.getComputedStyle(graphic)
+    assert(graphic.getAttribute("style") === authored, "editing changed authored styles")
+    assert(presentation.overflow === "visible", `editing still clips SVG overflow: ${graphic.className.baseVal}; ${presentation.filter}`)
+    assert(presentation.filter.startsWith("grayscale(0.2) url("), "overflow fading replaced the authored filter")
+    const source = decodeURIComponent(presentation.filter.match(/data:image\/svg\+xml,([^"#]+)/)![1])
+    assert(source.includes('flood-opacity="0.35"') && source.includes('width="600" height="300" result="inside"'), "overflow opacity or viewport boundary is incorrect")
+    const points = [{x:60,y:140}, {x:740,y:240}, {x:290,y:20}, {x:450,y:365}]
+    for(let index = 0; index < shapes.length; index++) {
+      const matrix = shapes[index].getScreenCTM()!, point = points[index]
+      const x = matrix.a * point.x + matrix.c * point.y + matrix.e
+      const y = matrix.b * point.x + matrix.d * point.y + matrix.f
+      const hit = doc.elementFromPoint(x, y)
+      assert(hit === shapes[index], `overflow at edge ${index} is not a native shape hit target`)
+      hit!.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:1, clientX:x, clientY:y}))
+      doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles:true, pointerId:1, clientX:x, clientY:y}))
+      assert(editor.features.graphic.selectedShape?.contains(shapes[index]), `overflow at edge ${index} could not be selected`)
+    }
+    const shape = shapes[0], rect = shape.getBoundingClientRect()
+    shape.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles:true, button:0, pointerId:2, clientX:rect.left + 10, clientY:rect.top + 20}))
+    doc.dispatchEvent(new view.PointerEvent("pointermove", {bubbles:true, buttons:1, pointerId:2, clientX:rect.left - 30, clientY:rect.top + 20}))
+    await layoutFrame()
+    const preview = editor.appendix.querySelector(".◆graphic-preview")!
+    assert(preview && view.getComputedStyle(preview).filter.includes("#overflow"), "drag preview lost overflow fading")
+    doc.dispatchEvent(new view.PointerEvent("pointercancel", {bubbles:true, pointerId:2}))
+    editor.features.graphic.actions.navigateGraphic({type:"navigateGraphic", operation:"zoom-in"})
+    graphic.style.rotate = "12deg"
+    graphic.style.width = "500px"
+    await layoutFrame()
+    const updated = decodeURIComponent(view.getComputedStyle(graphic).filter.match(/data:image\/svg\+xml,([^"#]+)/)![1])
+    assert(updated.includes('width="500" height="300" result="inside"'), "overflow boundary did not follow resize, rotation and zoom")
+    assert(!editor.toHTML(true).includes("#overflow"), "overflow presentation entered saved HTML")
+    const resizedStyle = graphic.getAttribute("style")
+    editor.features.graphic.disable()
+    assert(!view.getComputedStyle(graphic).filter.includes("#overflow"), "overflow filter survived feature teardown")
+    assert(graphic.getAttribute("style") === resizedStyle, "teardown changed authored styles")
+  }
+  finally {
+    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
+})
+
 await check("editing affordances align with media inside symmetric scrollbar gutters", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:450px;border:0;max-width:none"
