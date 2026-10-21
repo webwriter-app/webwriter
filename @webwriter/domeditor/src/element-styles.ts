@@ -4,6 +4,11 @@ export type CSSWideKeyword = typeof cssWideKeywords[number]
 
 export type FloatSide = "none" | "left" | "right" | "far-left" | "far-right"
 
+export function alignmentFromStyles(style: Pick<CSSStyleDeclaration, "marginLeft" | "marginRight">): "left" | "center" | "right" {
+  return style.marginLeft === "auto" && style.marginRight !== "auto" ? "right"
+    : style.marginRight === "auto" && style.marginLeft !== "auto" ? "left" : "center"
+}
+
 /** Recover the authored placement even when a narrow viewport has no outset. */
 export function floatSideFromStyles(float: string, inline: Pick<CSSStyleDeclaration, "getPropertyValue">, classes: Iterable<string> = []): "none" | "far-left" | "far-right" {
   const names = new Set(classes)

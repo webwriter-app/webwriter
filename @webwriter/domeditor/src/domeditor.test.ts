@@ -107,7 +107,7 @@ describe("DOMEditor stylesheets", () => {
   })
 
   it("mounts the main-DOM stylesheet on the document", () => {
-    const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))
+    const stylesheet = document.adoptedStyleSheets.find(sheet => hasExactSelector(sheet, "html"))
 
     expect(stylesheet).toBeInstanceOf(CSSStyleSheet)
     expect(document.adoptedStyleSheets).toContain(stylesheet)
@@ -144,7 +144,7 @@ describe("DOMEditor stylesheets", () => {
   it("uses the main-DOM stylesheet to style exposed shadow parts", () => {
     const appendix = editor.appendix
     const overlay = editor.features.transformation.overlay
-    const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))
+    const stylesheet = document.adoptedStyleSheets.find(sheet => hasExactSelector(sheet, "html"))
     const appendixStylesheet = appendix.adoptedStyleSheets.find(sheet =>
       hasExactSelector(sheet, ":host(.◆editing-locked) > :not(slot):not(.◆ai-review-toolbar)"),
     )
@@ -162,7 +162,7 @@ describe("DOMEditor stylesheets", () => {
   })
 
   it("shows a full-width contiguous editor-only grid for otherwise unstyled tables", () => {
-    const stylesheet = document.adoptedStyleSheets.find(sheet => hasSelector(sheet, "html"))!
+    const stylesheet = document.adoptedStyleSheets.find(sheet => hasExactSelector(sheet, "html"))!
     const tableRule = Array.from(stylesheet.cssRules)
       .find(rule => (rule as CSSStyleRule).selectorText === ":where(table)") as CSSStyleRule | undefined
     const cellRule = Array.from(stylesheet.cssRules)
@@ -208,7 +208,7 @@ describe("DOMEditor stylesheets", () => {
         ? (Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
           .find(rule => (rule as CSSStyleRule).selectorText?.includes("svg:not(svg *)")) as CSSStyleRule).style
         : getComputedStyle(element)
-      expect(style.minWidth).toBe(`${width}px`)
+      expect(style.minWidth).toBe(["iframe", "embed", "object"].includes(tag) ? `min(${width}px, 100%)` : `${width}px`)
       expect(style.minHeight).toBe(`${height}px`)
     }
     finally { element.remove() }
@@ -266,7 +266,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(presence-element-selection\)[\s\S]*?outline:\s*2px solid color-mix\(in srgb, var\(--presence-color\) 40%, transparent\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toContain("body::part(selection-caret)")
     expect(editorStyleString).not.toMatch(/body\s*>\s*\*\s*\+\s*\*\s*\{[^}]*margin-block-start:/)
-    expect(editorStyleString).toMatch(/body\s*>\s*:last-child\s*\{[\s\S]*?margin-block-end:\s*0;/)
+    expect(editorStyleString).toMatch(/body\s*>\s*:last-child:not\(:where\(\.◆gap-after-selected\)\)\s*\{[^}]*margin-block-end:\s*0;/)
     expect(editorStyleString).not.toMatch(/body:has\(>\s*:last-child\)\s*\{[^}]*padding/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?width:\s*1\.125rem;/)
     expect(editorStyleString).toMatch(/body::part\(presence-caret-label\)[\s\S]*?font:\s*8px\/1\.25/)
@@ -318,7 +318,8 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toMatch(/\.◆media-empty\.◆element-selected\s*\{/)
     expect(editorStyleString).toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?width:\s*100%;/)
     expect(editorStyleString).not.toMatch(/:is\(picture, audio, video\)\s*\{[^}]*?(?:height|aspect-ratio):/)
-    expect(editorStyleString).toMatch(/:is\(picture, video\)\s*\{[^}]*?height:\s*auto;[^}]*?aspect-ratio:\s*16\s*\/\s*9;/)
+    expect(editorStyleString).toMatch(/:is\(picture, video\)\s*\{[^}]*?height:\s*auto;/)
+    expect(editorStyleString).toMatch(/:is\(picture, img, video\)\.◆media-empty\s*\{[^}]*?aspect-ratio:\s*16\s*\/\s*9;/)
     expect(editorStyleString).not.toContain("audio.◆media-empty::-webkit-media-controls-enclosure")
     expect(editorStyleString).not.toMatch(/:is\([^)]*audio[^)]*\)\.◆media-empty\s*\{/)
     expect(editorStyleString).not.toMatch(/body:has\(\.◆media-empty:is\(\.◆gap-before-selected, \.◆gap-after-selected\)\)::part\(gap-caret\)\s*\{[\s\S]*?display:\s*none;/)
@@ -1033,6 +1034,8 @@ describe("bridge origin binding", () => {
       for(const [index, paragraph] of Array.from(document.querySelectorAll("p")).entries()) {
         const text = paragraph.firstChild!
         document.getSelection()!.setBaseAndExtent(text, 0, text, 0)
+        // Let the changed selection and initial DOM observation settle before the read.
+        await new Promise(resolve => setTimeout(resolve, 0))
         postMessage.mockClear()
         window.dispatchEvent(new MessageEvent("message", {data: {
           type: "getStyleState", properties: ["padding"], requestId: `style-${index}`,
@@ -1074,14 +1077,6 @@ describe("bridge origin binding", () => {
     }), window.location.origin))
     expect(postMessage.mock.calls.some(([message]) => message.type === selectionChangeEvent)).toBe(false)
 
-    postMessage.mockClear()
-    window.dispatchEvent(new MessageEvent("message", {data: {
-      type: "hoverHTMLSelectionEdit", hovered: true, requestId: "html-hover", bridgeNonce,
-    }}))
-    await vi.waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
-      type: executeCompleteEvent, detail: {requestId: "html-hover", result: undefined},
-    }), window.location.origin))
-    expect(postMessage.mock.calls.some(([message]) => message.type === selectionChangeEvent)).toBe(false)
     editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
     editor.destroy()
     postMessage.mockRestore()
@@ -1186,28 +1181,28 @@ describe("legacy preformatted blocks", () => {
     finally {editor.destroy()}
   })
 
-  it("converts opened PRE content while preserving inline overrides and widget-owned content", () => {
+  it("preserves opened PRE content, inline overrides, and widget-owned content", () => {
     document.body.innerHTML = '<pre id="sample" style="font-family: serif; white-space: break-spaces">  hello\nworld</pre><test-widget><pre>owned</pre></test-widget>'
     const editor = new DOMEditor()
     try {
-      const paragraph = document.querySelector<HTMLParagraphElement>("p#sample")!
+      const paragraph = document.querySelector<HTMLPreElement>("pre#sample")!
       expect(paragraph).not.toBeNull()
       expect(paragraph.style.fontFamily).toBe("serif")
       expect(paragraph.style.whiteSpace).toBe("break-spaces")
       expect(paragraph.textContent).toBe("  hello\nworld")
       expect(document.querySelector("test-widget pre")!.textContent).toBe("owned")
-      expect(editor.toHTML()).not.toContain('<pre id="sample"')
+      expect(editor.toHTML()).toContain('<pre id="sample"')
     }
     finally {editor.destroy()}
   })
 })
 
 describe("independent disclosure elements", () => {
-  it("removes accordion names on opening and importing while retaining open state and content", () => {
+  it("preserves opened accordion names and removes them from imported content", () => {
     document.body.innerHTML = '<details name="faq" open><summary>Question</summary><p>Answer</p></details>'
     const editor = new DOMEditor()
     try {
-      expect(document.querySelector("details")!.hasAttribute("name")).toBe(false)
+      expect(document.querySelector("details")!.getAttribute("name")).toBe("faq")
       expect(document.querySelector("details")!.open).toBe(true)
       expect(() => editor.features.manipulation.setAuthoredElementAttribute(document.querySelector("details")!, "name", "faq"))
         .toThrow()

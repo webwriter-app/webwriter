@@ -64,7 +64,8 @@ describe("document reader export", () => {
     expect(parsed.getElementById("webwriter-canvas-viewer")).not.toBeNull()
     parsed.body.className = "ww-slides"
     editor.features.dependency.appendSerializedAssets(parsed)
-    expect(parsed.querySelector("script")).toBeNull()
+    expect(parsed.querySelectorAll("script")).toHaveLength(1)
+    expect(parsed.querySelector("#webwriter-figure-layout")!.textContent).toContain("createFigureLayout(document)")
   })
 
   it("saves a direct edit with its matching slug before observer delivery", () => {

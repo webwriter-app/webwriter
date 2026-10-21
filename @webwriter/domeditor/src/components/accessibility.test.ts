@@ -126,7 +126,7 @@ describe("component accessibility contracts", () => {
     expect(button.shadowRoot!.activeElement).toBe(trigger)
   })
 
-  it("uses native list and button semantics for the document hierarchy", async () => {
+  it("labels the document outline menu and exposes its selection buttons", async () => {
     const tree: DocumentTreeItem = {
       name: "body",
       path: [],
@@ -138,11 +138,14 @@ describe("component accessibility contracts", () => {
     document.body.append(breadcrumb)
     await breadcrumb.updateComplete
 
-    const list = breadcrumb.shadowRoot!.querySelector<HTMLElement>("#document-tree")!
-    expect(list.getAttribute("role")).toBeNull()
-    expect(list.getAttribute("aria-label")).toBe("Document tree")
-    expect(list.querySelector<HTMLButtonElement>(".tree-item")).not.toBeNull()
-    expect(list.querySelector('[role="treeitem"]')).toBeNull()
+    const outline = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    await outline.updateComplete
+    const menu = outline.shadowRoot!.querySelector<HTMLElement>('[role="menu"]')!
+    expect(menu.getAttribute("aria-label")).toBe("Document outline")
+    const button = menu.querySelector<HTMLButtonElement>('button[role="menuitem"]')!
+    expect(button).not.toBeNull()
+    expect(button.textContent).toContain("paragraph")
+    expect(menu.querySelector('[role="treeitem"]')).toBeNull()
   })
 
   it("marks only the active breadcrumb tree trigger as expanded", async () => {

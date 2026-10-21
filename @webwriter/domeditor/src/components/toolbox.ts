@@ -12,7 +12,7 @@ import "./document-head-editor"
 import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
-import {captionIconSource, ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
+import {captionIconSource, floatNoneIconSource, ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
@@ -21,7 +21,7 @@ import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutMod
 import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, listMarkerImageProperty, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
-import {mediaCaptureOptions, mediaSourceAttribute, mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
+import {mediaCaptureOptions, mediaSourceAttribute, mediaAttributeOptions, type MediaType, type MediaAttributeOption} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {canonicalMarkName} from "../marks"
 import "./style-combobox"
@@ -122,6 +122,7 @@ export class DomEditorToolbox extends EditingControls {
     .large-source-warning-bubble {position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(100% + .45rem); display: none; padding: .45rem .6rem; border: 1px solid #d6b44a; border-radius: .35rem; background: #fff3bf; color: #493900; box-shadow: 0 3px 10px #0002; font: .72rem/1.35 system-ui, sans-serif; text-align: left;}
     .large-source-warning-bubble::after {position: absolute; top: 100%; left: 2.7rem; width: .5rem; height: .5rem; border-right: 1px solid #d6b44a; border-bottom: 1px solid #d6b44a; background: #fff3bf; content: ""; transform: translateY(-50%) rotate(45deg);}
     .large-source-warning:hover .large-source-warning-bubble, .large-source-warning:focus .large-source-warning-bubble, .large-source-warning:focus-visible .large-source-warning-bubble {display: block;}
+    .video-playback-warning {box-sizing: border-box; width: 100%; margin: .35rem 0; padding: .4rem .5rem; border: 1px solid #d6b44a; border-radius: .3rem; background: #fff3bf; color: #493900; font: .72rem/1.35 system-ui, sans-serif; overflow-wrap: anywhere;}
 
 
 
@@ -168,12 +169,15 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button {position: relative; display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
     .float-button-group float-info {position: absolute; top: -3px; right: -2px; z-index: 2}
     .float-button-group .float-move {flex: 0 0 auto; padding: .35rem .2rem}
+    .float-button-group .float-move:disabled {opacity: .4; cursor: default}
     .float-button-group button + button {margin-left: -.5px}
     .float-button-group button:first-child {border-radius: .2rem 0 0 .2rem}
     .float-button-group button:last-child {border-radius: 0 .2rem .2rem 0}
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
+    .float-button-group[aria-label="Placement"] button {padding-inline: .2rem}
+    .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
     .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, auto)}
     .caption-button-group button {min-height: 1.55rem; padding: .1rem .25rem; margin: 0; border-radius: 0}
     .caption-button-group button + button {margin-left: -.5px}
@@ -871,7 +875,7 @@ export class DomEditorToolbox extends EditingControls {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
     const properties = documentTarget ? ["background-color"] : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
-      "width", "height", "margin", "border-radius", "rotate", "scale", "opacity", "box-shadow", "filter",
+      "width", "height", "margin", "border-radius", "opacity", "box-shadow", "filter",
       ...Object.keys(this.elementStyle.inline).filter(name => /^(margin|padding)-(top|right|bottom|left|block(?:-start|-end)?|inline(?:-start|-end)?)$/.test(name)
         || /^border-(top|right|bottom|left|block|inline|start|end)(-|$)/.test(name)),
     ]
@@ -906,7 +910,7 @@ export class DomEditorToolbox extends EditingControls {
   private renderUniversalStyleDrawer() {
     const disabled = !this.elementStyle.target
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "rotate", "scale", "opacity", "box-shadow", "filter"]
+    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
     const advancedCount = advancedProperties.filter(name => name === "border-width"
       ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
@@ -1100,14 +1104,16 @@ export class DomEditorToolbox extends EditingControls {
     const profile = specializedElementStyle(localName)
     const widget = Boolean(widgetOptions || localName.includes("-"))
     if(!profile && !widget && !group) return nothing
-    const primary = profile?.primary ?? []
+    const mediaStyles = this.media && ["picture", "img", "video"].includes(localName)
+      ? ["object-view-box", "object-fit", "object-position"] : []
+    const primary = (profile?.primary ?? []).filter(name => !mediaStyles.includes(name))
     const advanced = this.media && ["picture", "img"].includes(this.media.type) ? [] : profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
-    const properties = [...new Set([...primary, ...advanced, ...(list ? [listMarkerImageProperty] : [])])]
+    const properties = [...new Set([...primary, ...advanced, ...mediaStyles, ...(list ? [listMarkerImageProperty] : [])])]
     const resetStyles = Object.fromEntries(properties.filter(name => Object.hasOwn(style.inline, name)).map(name => [name, null]))
     const groupedWidgetOptions = Boolean(widgetOptions?.groups?.length || [...widgetOptions?.options ?? [], ...widgetOptions?.actions ?? []].some(item => item.group))
     const configuredWidgetOptions = widgetOptions?.options.filter(option => !option.hidden && !option.disabled && !option.readOnly).filter(option => group ? group.configuredWidgetOptions.includes(option.name) : option.value !== null && option.value !== "") ?? []
-    const count = advanced.filter(name => Object.hasOwn(style.inline, name)).length
+    const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
@@ -1118,7 +1124,7 @@ export class DomEditorToolbox extends EditingControls {
     const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
-    const hasOptions = advanced.length > 0 || commands !== nothing
+    const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
@@ -1159,7 +1165,14 @@ export class DomEditorToolbox extends EditingControls {
       </div></div>` : nothing}
       ${this.media && (!group || singleTarget) ? html`
         ${this.renderMediaSource()}
+        ${this.media.type === "video" && this.media.videoPlaybackWarning ? html`<div class="video-playback-warning" role="status">${this.media.videoPlaybackWarning === "unsupported"
+          ? "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."
+          : "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."}</div>` : nothing}
         ${this.media.type === "video" ? this.renderMediaSource(true) : nothing}
+        <div class="media-toolbox-controls">
+          ${mediaAttributeOptions[this.media.type].filter(option => ["alt", "aria-label"].includes(option.name))
+            .map(option => this.renderMediaAttribute(this.media!.type, option))}
+        </div>
         <div class="media-toolbox-controls media-primary-options">
           ${mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
@@ -1175,6 +1188,7 @@ export class DomEditorToolbox extends EditingControls {
       ${hasOptions ? html`<div slot="more" class="specialized-options">
         ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
+        ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
@@ -1263,10 +1277,7 @@ export class DomEditorToolbox extends EditingControls {
     }
     if(this.table?.active) return nothing
     if(this.media) {
-      const type = this.media.type
       return html`<div class="specialized-commands media-toolbox-controls">
-        ${isMediaType(type) ? mediaAttributeOptions[type].filter(option => ["alt", "aria-label"].includes(option.name))
-          .map(option => this.renderMediaAttribute(type, option)) : nothing}
         ${this.renderTimedMediaResources()}
         ${this.renderImageMapControls()}
       </div>`
@@ -1427,38 +1438,44 @@ export class DomEditorToolbox extends EditingControls {
   private renderElementLayoutControls() {
     const target = this.elementStyle.target
     if(this.activeTool !== "Edit"
-      || this.documentSelected || target?.documentRoot || target?.localName === "body") return nothing
+      || this.documentSelected || target?.documentRoot || ["body", "td", "th"].includes(target?.localName ?? "")) return nothing
     const float = target?.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     const captionPosition = this.captionPosition ?? (this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
+    const alignment = target?.alignment ?? "center"
+    const placements: {side: FloatSide, alignment?: "left" | "center" | "right", label: string}[] = [
+      {side: "far-left", label: "Float left"},
+      ...(["left", "center", "right"] as const).map(alignment => ({side: "none" as const, alignment, label: `No float, align ${alignment}`})),
+      {side: "far-right", label: "Float right"},
+    ]
     return html`
         <div class="layout-action-controls float-action-controls">
           ${this.documentLayout.mode === "document" ? html`
           <span class="float-placement-label">Placement</span>
           <div class="float-button-group" role="group" aria-label="Placement">
             <button type="button" class="float-move" aria-label="Move down" title="Move down"
-              ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
+              ?disabled=${!target?.canMoveDown || this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "down"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowDown")}</button>
-            ${(["far-left", "none", "far-right"] as const satisfies readonly FloatSide[]).map(side => html`<button type="button"
-              aria-label=${side === "none" ? "Clear float" : `Float ${side === "far-left" ? "left" : "right"}`} aria-pressed=${float === side}
-              title=${side === "none" ? "Clear float" : `Float ${side === "far-left" ? "left" : "right"}`}
+            ${placements.map(placement => html`<button type="button"
+              aria-label=${placement.label} aria-pressed=${float === placement.side && (!placement.alignment || alignment === placement.alignment)}
+              title=${placement.label}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${(event: Event) => {
                 this.dispatchEvent(new CustomEvent("layout-action", {
-                  detail: {type: "setFloat", side}, bubbles: true, composed: true,
+                  detail: {type: "setFloat", side: placement.side, ...(placement.alignment ? {alignment: placement.alignment} : {})}, bubbles: true, composed: true,
                 }))
                 const info = (event.currentTarget as HTMLElement).querySelector<FloatInfo>("float-info")
                 info?.showBriefly()
-              }}>${ribbonIcon(side === "none" ? "Float none" : side === "far-left" ? "Float left" : "Float right")}
-                ${(side === "far-left" && this.elementStyle.context.floatLeftForcedRight)
-                  || (side === "far-right" && this.elementStyle.context.floatRightInFlow)
-                  ? html`<float-info .side=${side === "far-right" ? "right" : "left"} .badge=${float === side}></float-info>` : nothing}
+              }}>${placement.alignment ? unsafeSVG(floatNoneIconSource(placement.alignment)) : ribbonIcon(placement.side === "far-left" ? "Float left" : "Float right")}
+                ${(placement.side === "far-left" && this.elementStyle.context.floatLeftForcedRight)
+                  || (placement.side === "far-right" && this.elementStyle.context.floatRightInFlow)
+                  ? html`<float-info .side=${placement.side === "far-right" ? "right" : "left"} .badge=${float === placement.side}></float-info>` : nothing}
               </button>`)}
             <button type="button" class="float-move" aria-label="Move up" title="Move up"
-              ?disabled=${float === "none" || this.historyState.preview !== null || this.htmlPending}
+              ?disabled=${!target?.canMoveUp || this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowUp")}</button>
           </div>

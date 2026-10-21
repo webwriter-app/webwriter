@@ -160,7 +160,6 @@ describe("document state operation boundaries", () => {
       const nodes = Array.from(document.body.childNodes)
       const state = editor.features.state.actions
       expect(state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit", path})).toEqual({html: expected})
-      state.hoverHTMLSelectionEdit({type: "hoverHTMLSelectionEdit", hovered: true})
       state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
       expect(editor.isEditingLocked).toBe(true)
       expect(editor.toHTML(true)).toBe("<p>First</p><!--keep--><aside>Other</aside>")
@@ -239,7 +238,6 @@ describe("document state operation boundaries", () => {
       const state = editor.features.state.actions
       document.getSelection()!.setPosition(document.querySelector("p")!.firstChild!, 2)
       state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
-      state.hoverHTMLSelectionEdit({type: "hoverHTMLSelectionEdit", hovered: true})
       state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
       const sync = vi.spyOn(editor.doc, "syncFromDOM").mockImplementationOnce(() => { throw new Error("Sync failed") })
       expect(() => state.applyHTMLSelectionEdit({type: "applyHTMLSelectionEdit", html: "<p>After</p>"})).toThrow("Sync failed")
@@ -863,7 +861,6 @@ describe("StateFeature", () => {
     {type: "beginHTMLSelectionEdit", path: [-1]},
     {type: "beginHTMLSelectionEdit", path: [0.5]},
     {type: "beginHTMLSelectionEdit", path: "0"},
-    {type: "hoverHTMLSelectionEdit", hovered: "yes"},
     {type: "setHTMLSelectionEditPending", pending: "yes"},
   ])("rejects malformed $type inputs without changing state: %j", async options => {
     await withAIEditor('<p class="authored">Keep</p><!--keep-->', editor => {
@@ -887,7 +884,6 @@ describe("StateFeature", () => {
       const keep = document.querySelectorAll("p")[1]
       document.getSelection()!.setPosition(paragraph.firstChild!, 2)
       editor.features.state.actions.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
-      editor.features.state.actions.hoverHTMLSelectionEdit({type: "hoverHTMLSelectionEdit", hovered: true})
       editor.features.state.actions.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
       expect(editor.isEditingLocked).toBe(true)
       expect(paragraph.classList.contains("◆html-source-pending")).toBe(true)
@@ -1197,8 +1193,7 @@ describe("StateFeature", () => {
     expect(selection.isCollapsed).toBe(true)
     expect(selection.anchorNode).toBe(text)
     expect(selection.anchorOffset).toBe(2)
-    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
-    expect(document.querySelector("p")!.classList.contains("◆style-target-hovered")).toBe(true)
+    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
     expect(selection.isCollapsed).toBe(true)
     editor.getActionHandler("discardHTMLSelectionEdit")({type: "discardHTMLSelectionEdit"})
     expect(selection.anchorNode).toBe(text)
@@ -1208,40 +1203,24 @@ describe("StateFeature", () => {
     editor.destroy()
   })
 
-  it.each(["<p><b>Text</b></p>", "<unknown-widget><!--keep--><span>Text</span></unknown-widget>", '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" /></svg>'])("highlights the saved HTML target without selecting or serializing editor artifacts: %s", html => {
+  it.each(["<p><b>Text</b></p>", "<unknown-widget><!--keep--><span>Text</span></unknown-widget>", '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" /></svg>'])("reads HTML without adding hover markers or changing the selection: %s", html => {
     document.body.innerHTML = html + "<p>Other</p>"
+    const expected = document.body.firstElementChild!.outerHTML
     const editor = new DOMEditor()
-    document.getSelection()!.setPosition(document.body, 0)
+    const selection = document.getSelection()!
+    selection.setPosition(document.body, 0)
     const target = document.body.firstElementChild!
-    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit", path: [0]})
-    document.getSelection()!.setPosition(document.body.lastElementChild!.firstChild!, 1)
     const before = editor.toHTML(true)
-    editor.getActionHandler("setHTMLSelectionEditPending")({type: "setHTMLSelectionEditPending", pending: true})
-    expect(editor.features.state.allowsActionDuringHTMLSelectionEdit("hoverHTMLSelectionEdit")).toBe(true)
-    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
-    expect(target.classList.contains("◆style-target-hovered")).toBe(true)
-    expect(document.body.lastElementChild!.classList.contains("◆style-target-hovered")).toBe(false)
+    for(let i = 0; i < 3; i++) {
+      expect(editor.features.state.actions.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit", path: [0]})).toEqual({html: expected})
+    }
+    expect(document.querySelector(".◆style-target-hovered, .◆element-hovered")).toBeNull()
+    expect(document.body.firstElementChild).toBe(target)
     expect(editor.toHTML(true)).toBe(before)
-    expect(document.getSelection()!.isCollapsed).toBe(true)
-    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: false})
-    expect(target.classList.contains("◆style-target-hovered")).toBe(false)
-    editor.destroy()
-  })
-
-  it("cleans up a detached HTML hover target and ignores its concurrently replaced range", () => {
-    document.body.innerHTML = "<p>Original</p><p>Other</p>"
-    const editor = new DOMEditor()
-    document.getSelection()!.setPosition(document.body, 0)
-    const target = document.body.firstElementChild!
-    editor.getActionHandler("beginHTMLSelectionEdit")({type: "beginHTMLSelectionEdit", path: [0]})
-    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
-    target.replaceWith(document.createElement("article"))
-    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
-    expect(target.classList.contains("◆style-target-hovered")).toBe(false)
-    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
-    document.body.append(target)
-    editor.getActionHandler("hoverHTMLSelectionEdit")({type: "hoverHTMLSelectionEdit", hovered: true})
-    expect(document.querySelector(".◆style-target-hovered")).toBeNull()
+    expect(selection.anchorNode).toBe(document.body)
+    expect(selection.anchorOffset).toBe(0)
+    expect(selection.isCollapsed).toBe(true)
+    editor.features.state.actions.discardHTMLSelectionEdit({type: "discardHTMLSelectionEdit"})
     editor.destroy()
   })
 

@@ -4,6 +4,8 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
+import {isAuthoredMutation} from "../editor-artifacts"
+import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
 import {getDocumentRoot} from "../document-template"
 import {
   graphicShapeDragType,
@@ -708,6 +710,10 @@ export class GraphicFeature extends EditorFeature {
   #refreshQueued = false
   #frame: number | null = null
   #presentedGraphic: SVGSVGElement | null = null
+  #overflowStylesheet: CSSStyleSheet | null = null
+  #overflowRule = ""
+  #presentationObserver: MutationObserver | null = null
+  #presentationResizeObserver: ResizeObserver | null = null
   #spaceDown = false
   #lockedShapes = new Set<SVGGraphicsElement>()
   #viewportState = new WeakMap<SVGSVGElement, GraphicViewport>()
@@ -1043,12 +1049,59 @@ export class GraphicFeature extends EditorFeature {
     return true
   }
 
+  /** Resolve the authored graphic beneath editing chrome at execution time. */
+  dropPosition(event: DragEvent) {
+    const graphic = this.#imageDropGraphic(event)
+    if(!graphic) return null
+    return {graphic, ...applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})}
+  }
+
+  insertDroppedShape(graphic: SVGSVGElement, shape: GraphicShapeType, point: Point) {
+    if(!this.#canInsertText(graphic) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false
+    const end = this.editor.doc.beginUndoGroup()
+    try { this.#insertShape(graphic, shape, undefined, point) }
+    finally { end() }
+    return true
+  }
+
+  /** HTML and widgets retain their authored structure inside native SVG HTML. */
+  insertDroppedContent(graphic: SVGSVGElement, nodes: Node[], point: Point) {
+    if(!nodes.length || !this.#canInsertText(graphic) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false
+    const container = document.createElementNS(SVG_NAMESPACE, "foreignObject")
+    const media = nodes.length === 1 && nodes[0] instanceof Element && nodes[0].matches("audio, video, iframe") ? nodes[0] : null
+    const width = 320, height = media?.localName === "audio" ? 54 : 180
+    container.setAttribute("x", cleanNumber(point.x - width / 2))
+    container.setAttribute("y", cleanNumber(point.y - height / 2))
+    container.setAttribute("width", String(width))
+    container.setAttribute("height", String(height))
+    if(media instanceof HTMLElement) {
+      media.style.width = "100%"
+      media.style.height = "100%"
+    }
+    container.append(...nodes)
+    const end = this.editor.doc.beginUndoGroup()
+    try { graphic.append(container) }
+    finally { end() }
+    this.editor.features.selection.captureElement(graphic)
+    this.#clearShapeSelection()
+    this.#refresh()
+    this.editor.postSelectionPath()
+    return true
+  }
+
   // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
     dragover: event => {
-      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
-        if(!this.#imageDropGraphic(event)) return
+      if(event.defaultPrevented) return
+      if(event.dataTransfer && [graphicShapeDragType, elementDragType, ribbonInsertionDragType].some(type => event.dataTransfer!.types.includes(type))) {
+        const graphic = this.#imageDropGraphic(event)
+        if(!graphic) return
         if(document.body.classList.contains("◆drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
+        if(this.editor.features.selection.captureSelectedElement !== graphic) {
+          this.editor.features.selection.captureElement(graphic)
+          this.#refresh()
+          this.editor.postSelectionPath()
+        }
         event.preventDefault()
         event.stopImmediatePropagation()
         event.dataTransfer.dropEffect = "copy"
@@ -1063,6 +1116,8 @@ export class GraphicFeature extends EditorFeature {
       data.dropEffect = "copy"
     },
     drop: event => {
+      if(event.defaultPrevented) return
+      if(event.dataTransfer && [elementDragType, ribbonInsertionDragType].some(type => event.dataTransfer!.types.includes(type))) return
       if(this.#dropShape(event)) return
       this.#dropImage(event)
       if(event.defaultPrevented) return
@@ -1085,11 +1140,14 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #imageDropGraphic(event: DragEvent) {
-    if(this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
+    if(!this.isEnabled || this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
     const target = this.editor.features.media.mediaDropTarget(event)
       ?? (event.target instanceof Node ? event.target : null)
-    const graphic = graphicContainerForNode(target)
-    return graphic?.isConnected && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
+    const direct = graphicContainerForNode(target)
+    const graphic = direct && getDocumentRoot().contains(direct) ? direct
+      : this.editor.hitTestBeneathAppendix(() => graphicContainerForNode(document.elementFromPoint?.(event.clientX, event.clientY) ?? null))
+    return graphic?.isConnected && getDocumentRoot().contains(graphic)
+      && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
   }
 
   #dropImage(event: DragEvent) {
@@ -2888,6 +2946,7 @@ export class GraphicFeature extends EditorFeature {
     catch {
       // Preview navigation is a progressive enhancement in DOM shims.
     }
+    if(this.#presentedGraphic === graphic) this.#updateOverflowPresentation(graphic)
   }
 
   #cleanupInteraction(interaction: Interaction) {
@@ -4196,13 +4255,71 @@ export class GraphicFeature extends EditorFeature {
     const captured = this.#capturedGraphic()
     if(this.#presentedGraphic !== captured) this.#clearCanvasPresentation()
     if(!captured) return
-    this.#presentedGraphic = captured
+    if(!this.#presentedGraphic) {
+      this.#presentedGraphic = captured
+      this.#overflowStylesheet = new CSSStyleSheet()
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.#overflowStylesheet]
+      this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.#overflowStylesheet]
+      this.#presentationObserver = new MutationObserver(records => {
+        if(records.some(isAuthoredMutation)) this.#scheduleRefresh()
+      })
+      this.#presentationObserver.observe(document.body, {subtree: true, attributes: true, attributeOldValue: true, childList: true, characterData: true})
+      this.#presentationResizeObserver = new ResizeObserver(this.#scheduleRefresh)
+      this.#presentationResizeObserver.observe(captured)
+    }
+    captured.classList.add("◆", "◆graphic-overflow-visible")
+    this.#updateOverflowPresentation(captured)
     if(this.#options.grid) captured.classList.add("◆", "◆graphic-grid-visible")
     else removeEditorMarker(captured, "◆graphic-grid-visible")
   }
 
+  #updateOverflowPresentation(graphic: SVGSVGElement) {
+    const sheet = this.#overflowStylesheet!
+    // Read authored filters without feeding our own filter back into the chain.
+    const sheets = [...document.adoptedStyleSheets]
+    document.adoptedStyleSheets = sheets.filter(current => current !== sheet)
+    const style = getComputedStyle(graphic)
+    const authoredFilter = style.filter === "none" ? "" : style.filter
+    const width = graphic.clientWidth || parseFloat(style.width)
+    const height = graphic.clientHeight || parseFloat(style.height)
+    document.adoptedStyleSheets = sheets
+    if(!(width > 0 && height > 0)) return
+    let region: Bounds = {x: 0, y: 0, width, height}
+    try {
+      for(const root of [graphic, ...this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview")]) {
+        const box = root.getBBox()
+        const matrix = root.getCTM()
+        if(matrix) region = unionBounds([region, boundsForPoints([
+          {x: box.x, y: box.y}, {x: box.x + box.width, y: box.y},
+          {x: box.x + box.width, y: box.y + box.height}, {x: box.x, y: box.y + box.height},
+        ].map(point => applyMatrix(matrix, point)))])
+      }
+    }
+    catch { /* Detached SVGs and DOM shims may not expose native geometry. */ }
+    const padding = Math.max(width, height, region.width, region.height)
+    // CSS filters on the outer SVG use viewport pixels, independently of its
+    // viewBox and native pan/zoom. Filtering preserves native overflow hit tests.
+    const source = `<svg xmlns="${SVG_NAMESPACE}"><filter id="overflow" filterUnits="userSpaceOnUse" x="${region.x - padding}" y="${region.y - padding}" width="${region.width + padding * 2}" height="${region.height + padding * 2}"><feFlood flood-opacity="0.35" result="outside"/><feFlood x="0" y="0" width="${width}" height="${height}" result="inside"/><feMerge><feMergeNode in="outside"/><feMergeNode in="inside"/></feMerge><feComposite in="SourceGraphic" operator="in"/></filter></svg>`
+    const rule = `svg.◆graphic-overflow-visible, svg.◆graphic-preview { overflow: visible !important; filter: ${authoredFilter} url("data:image/svg+xml,${encodeURIComponent(source)}#overflow") !important; }`
+    if(this.#overflowRule !== rule) {
+      sheet.replaceSync(rule)
+      this.#overflowRule = rule
+    }
+  }
+
   #clearCanvasPresentation() {
-    if(this.#presentedGraphic) removeEditorMarker(this.#presentedGraphic, "◆graphic-grid-visible")
+    this.#presentationObserver?.disconnect()
+    this.#presentationObserver = null
+    this.#presentationResizeObserver?.disconnect()
+    this.#presentationResizeObserver = null
+    if(this.#overflowStylesheet) {
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.#overflowStylesheet)
+      this.editor.appendix.adoptedStyleSheets = this.editor.appendix.adoptedStyleSheets.filter(sheet => sheet !== this.#overflowStylesheet)
+    }
+    this.#overflowStylesheet = null
+    this.#overflowRule = ""
+    if(this.#presentedGraphic) removeEditorMarker(this.#presentedGraphic, "◆graphic-grid-visible", "◆graphic-overflow-visible")
+    document.querySelectorAll(".◆graphic-overflow-visible").forEach(element => removeEditorMarker(element, "◆graphic-overflow-visible"))
     this.#presentedGraphic = null
   }
 

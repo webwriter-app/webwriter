@@ -29,6 +29,7 @@ export const executeFailureEvent = "dom-editor-execute-failure"
 export const selectionChangeEvent = "dom-editor-selection-change"
 export const markStateChangeEvent = "dom-editor-mark-state-change"
 export const commentStateChangeEvent = "dom-editor-comment-state-change"
+export const commentReviewRequestEvent = "dom-editor-comment-review-request"
 export const proofreadingStateChangeEvent = "dom-editor-proofreading-state-change"
 export const proofreadingDictionaryAddEvent = "dom-editor-proofreading-dictionary-add"
 export const presenceChangeEvent = "dom-editor-presence-change"
@@ -43,7 +44,7 @@ export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 /** Relative DOM positions survive package installation replacing the iframe. */
 export type RibbonDropPosition = {
   anchor: unknown
-  layout: "document" | "canvas" | "slides" | "board"
+  layout: "document" | "canvas" | "slides" | "board" | "graphic"
   x?: number
   y?: number
   float?: "left" | "right"
@@ -333,6 +334,9 @@ export type ElementStyleState = {
   target: {
     documentRoot?: true
     float?: "none" | "far-left" | "far-right"
+    alignment?: "left" | "center" | "right"
+    canMoveUp?: boolean
+    canMoveDown?: boolean
     localName: string
     namespaceURI: string | null
   } | null
@@ -801,6 +805,7 @@ const isMediaSelection = (media: UnknownRecord) => {
     && isOptional(media.sources, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.tracks, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.fallbackHTML, isString)
+    && isOptional(media.videoPlaybackWarning, value => media.type === "video" && (value === "unsupported" || value === "no-video"))
     && isOptional(media.imageMap, isImageMap)
     && (media.type === "audio" || media.type === "video" || (media.sources === undefined && media.tracks === undefined && media.fallbackHTML === undefined))
     && (media.type === "picture" || media.type === "img" || media.imageMap === undefined)

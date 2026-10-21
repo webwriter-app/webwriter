@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 
 import {DOMEditor} from "../domeditor"
 import {$, cloneWithoutEditorMarkers} from "../utility"
+import {MATH_NAMESPACE} from "../math"
 
 let editor: DOMEditor
 let feature: DOMEditor["features"]["transformation"]
@@ -42,7 +43,7 @@ function targetElement(tag = "p") {
 
 /** Happy-dom has no layout. Keep the rect tied to authored offsets so the
  * movement/resize code still exercises its geometry calculations. */
-function mockRect(target: HTMLElement | SVGSVGElement, values: {left?: number, top?: number, width?: number, height?: number} = {}) {
+function mockRect(target: HTMLElement | SVGSVGElement | MathMLElement, values: {left?: number, top?: number, width?: number, height?: number} = {}) {
   const base = {left: 100, top: 100, width: 100, height: 50, ...values}
   const computedStyle = vi.mocked(getComputedStyle).getMockImplementation?.() ?? getComputedStyle
   const size = () => {
@@ -83,15 +84,509 @@ function captureNode(target: Element) {
   editor.features.selection.captureElement(target)
 }
 
-describe("caption affordance", () => {
-  const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
+describe("text container resizing", () => {
+  describe("document layout", () => {
+    it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6"])("keeps the bottom-right handle horizontal for %s and lets height follow content", async tag => {
+      const target = targetElement(tag)
+      target.id = "text-container"
+      target.innerHTML = 'Text <em>with formatting</em><!--keep--><unfamiliar-inline>and content</unfamiliar-inline>'
+      const children = Array.from(target.childNodes)
+      Object.assign(target.style, {width: "200px", height: "50px", minHeight: "40px", maxHeight: "60px"})
+      mockRect(target, {width: 200})
+      captureNode(target)
+      const visible = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"), handle => handle.dataset.resizeDirection)
+      expect(visible).toEqual(["down-right"])
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const initial = editor.toHTML(true)
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 125}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+      expect(target.style.maxWidth).toBe("160px")
+      expect(target.style.height).toBe("auto")
+      expect(target.style.minHeight).toBe("0px")
+      expect(target.style.maxHeight).toBe("none")
+      expect(target.style.getPropertyValue("scale")).toBe("")
+      expect(Array.from(target.childNodes)).toEqual(children)
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const resized = editor.toHTML(true)
+      expect(resized).not.toContain("◆")
+      expect(editor.doc.body.toString()).not.toContain("◆")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(initial)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(resized)
+    })
+  })
 
-  it.each(["p", "caption-widget", "table"].flatMap(tag => [false, true].map(captured => ({tag, captured}))))("adds a bottom-left caption to $tag and preserves capture=$captured selection", ({tag, captured}) => {
-    const target = targetElement(tag)
-    if(tag === "table") target.innerHTML = '<tbody><tr><td>Content</td></tr></tbody>'
+  describe.each(["canvas", "slides"] as const)("%s layout", mode => {
+    function freeformText(tag: string) {
+      let target: HTMLElement | MathMLElement = targetElement(tag === "math" ? "p" : tag)
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      if(tag === "math") {
+        const formula = document.createElementNS(MATH_NAMESPACE, "math")
+        target.replaceWith(formula)
+        target = formula
+        target.setAttribute("display", "block")
+        const identifier = document.createElementNS(MATH_NAMESPACE, "mi")
+        identifier.textContent = "x"
+        target.append(identifier)
+      }
+      else target.innerHTML = 'Text <em>with formatting</em><!--keep--><unfamiliar-inline>and content</unfamiliar-inline>'
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      Object.assign(target.style, {width: "200px", height: "100px", left: "0px", top: "0px"})
+      mockRect(target)
+      captureNode(target)
+      return target
+    }
+
+    it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6", "math"])("offers all corners and edge midpoints for %s", tag => {
+      freeformText(tag)
+      const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+      expect(handles.map(handle => handle.dataset.resizeDirection).sort()).toEqual([
+        "down-down", "down-left", "down-right", "left-left", "right-right", "up-left", "up-right", "up-up",
+      ])
+      for(const handle of handles) expect(handle.getAttribute("part")).not.toContain("transform-overlay-scale-text")
+    })
+
+    it.each(["up-left", "up-up", "up-right", "right-right", "down-right", "down-down", "down-left", "left-left"])("resizes text with %s while anchoring the opposite edge", async direction => {
+      const target = freeformText("p"), children = Array.from(target.childNodes)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const initial = editor.toHTML(true), before = target.getBoundingClientRect()
+      const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
+      const y = direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
+      const drag = () => {
+        feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+          .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+        document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + x * 40, clientY: 150 + y * 30}))
+      }
+      drag()
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+      expect(editor.toHTML(true)).toBe(initial)
+      drag()
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+      const after = target.getBoundingClientRect()
+      expect(after.width).toBe(200 + (x ? 40 : 0))
+      expect(after.height).toBe(100 + (y ? 30 : 0))
+      expect(x < 0 ? after.right : after.left).toBe(x < 0 ? before.right : before.left)
+      expect(y < 0 ? after.bottom : after.top).toBe(y < 0 ? before.bottom : before.top)
+      expect(Array.from(target.childNodes)).toEqual(children)
+      expect(document.body.className).not.toContain("◆transform-scaling")
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const resized = editor.toHTML(true)
+      expect(resized).not.toMatch(/◆|transform-overlay/)
+      expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(initial)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(resized)
+    })
+  })
+
+  it.each(["Escape", "pointercancel", "removed"])("restores height constraints and cleans markers on %s", cancellation => {
+    const target = targetElement("p")
+    Object.assign(target.style, {height: "50px", minHeight: "40px", maxHeight: "60px"})
+    const initial = target.style.cssText
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 125}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 300}))
+    expect(target.style.height).toBe("auto")
+    target.title = "Concurrent edit"
+    if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    else {
+      target.replaceWith(document.createElement("p"))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 160, clientY: 300}))
+    }
+    expect(target.style.cssText).toBe(initial)
+    expect(target.title).toBe("Concurrent edit")
+    expect(document.body.className).not.toContain("◆transform-scaling")
+  })
+
+  it("ignores vertical drags and preserves customized built-in widget resizing", () => {
+    const target = targetElement("h2")
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 150, clientY: 150}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 150, clientY: 190}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.hasAttribute("style")).toBe(false)
+    target.setAttribute("is", "heading-widget")
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
+    expect(handle.getAttribute("part")).not.toContain("transform-overlay-scale-text")
+  })
+})
+
+describe("block formula affordances", () => {
+  function formula(display = "block") {
+    document.body.innerHTML = "<p>After</p>"
+    // Happy DOM's HTML parser does not enter the MathML namespace.
+    const target = document.createElementNS(MATH_NAMESPACE, "math") as MathMLElement
+    target.setAttribute("display", display)
+    const fraction = document.createElementNS(MATH_NAMESPACE, "mfrac")
+    const numerator = document.createElementNS(MATH_NAMESPACE, "mi")
+    numerator.textContent = "x"
+    const denominator = document.createElementNS(MATH_NAMESPACE, "mn")
+    denominator.textContent = "2"
+    fraction.append(numerator, denominator)
+    target.append(document.createComment("keep"), fraction)
+    document.body.prepend(target)
+    return target
+  }
+
+  it.each([false, true])("shows standard block controls for capture=%s and preserves the formula through captioning", async captured => {
+    const target = formula()
+    const children = Array.from(target.childNodes)
     mockRect(target)
     captured ? captureNode(target) : selectNode(target)
-    expect(button().hidden).toBe(false)
+    expect(feature.target).toBe(target)
+    for(const name of ["mover", "caption", "delete"]) {
+      expect(feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${name}`)!.hidden).toBe(false)
+    }
+    expect(feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable).toBe(true)
+    const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+    expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual(["down-right"])
+    expect(handles[0].getAttribute("part")).toContain("transform-overlay-scale-text")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!.click()
+    expect(target.parentElement!.localName).toBe("figure")
+    expect(target.nextElementSibling!.localName).toBe("figcaption")
+    expect(Array.from(target.childNodes)).toEqual(children)
+    expect(feature.target).toBe(target.parentElement)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelector("figure")).toBeNull()
+    editor.doc.redo()
+    expect(document.querySelector("figure math")).toBeTruthy()
+  })
+
+  it("resizes only horizontally, ignoring Shift and vertical movement, and supports undo", async () => {
+    const target = formula()
+    Object.assign(target.style, {width: "200px", height: "50px", minHeight: "40px", maxHeight: "60px"})
+    mockRect(target, {width: 200})
+    selectNode(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const initial = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 125}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300, clientY: 300}))
+    expect(target.style.maxWidth).toBe("")
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe("160px")
+    expect(target.style.height).toBe("auto")
+    expect(target.style.minHeight).toBe("")
+    expect(target.style.maxHeight).toBe("none")
+    expect(target.style.getPropertyValue("scale")).toBe("")
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const resized = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(resized)
+  })
+
+  it("deletes the formula using the block control", () => {
+    const target = formula()
+    captureNode(target)
+    feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!.click()
+    expect(target.isConnected).toBe(false)
+    expect(document.querySelector("p")!.textContent).toBe("After")
+    expect(feature.target).toBeNull()
+    expect(target.className).not.toContain("◆transform-target")
+  })
+
+  it("excludes inline formulas and MathML descendants and clears controls after concurrent replacement", async () => {
+    const target = formula()
+    selectNode(target)
+    target.replaceWith(document.createElement("p"))
+    await mutationsDelivered()
+    expect(feature.target).not.toBe(target)
+    expect(target.className).not.toContain("◆transform-target")
+    const inline = formula("inline")
+    feature.syncSelection(inline)
+    expect(feature.target).toBeNull()
+    feature.startTransform(inline.querySelector("mi")!)
+    expect(feature.target).toBeNull()
+  })
+})
+
+describe.each(["img", "picture"])("%s stretching", tag => {
+  function imageTarget() {
+    const target = targetElement(tag)
+    if(tag === "picture") target.innerHTML = '<source srcset="alternate.png"><!--keep--><img alt="Keep description">'
+    const image = (tag === "picture" ? target.querySelector("img")! : target) as HTMLImageElement
+    image.style.objectFit = "contain"
+    Object.assign(target.style, {width: "200px", height: "100px"})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    return {target, image}
+  }
+
+  it.each([{dx: 60, dy: -20}, {dx: -40, dy: 30}, {dx: 0, dy: 40}, {dx: 40, dy: 0}])("changes dimensions independently by $dx/$dy and preserves undo", async ({dx, dy}) => {
+    const {target, image} = imageTarget()
+    const children = Array.from(target.childNodes)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe(`${200 + dx}px`)
+    expect(target.style.maxHeight).toBe(`${100 + dy}px`)
+    expect(target.style.width).toBe("100%")
+    expect(target.style.height).toBe("auto")
+    expect(target.style.aspectRatio).toBe(`${200 + dx} / ${100 + dy}`)
+    expect(image.style.objectFit).toBe("fill")
+    if(tag === "picture") {
+      expect(image.style.width).toBe("100%")
+      expect(image.style.height).toBe("100%")
+    }
+    expect(Array.from(target.childNodes)).toEqual(children)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const resized = editor.toHTML(true)
+    expect(resized).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(resized)
+  })
+
+  it.each([
+    {direction: "down-right", dx: 60, dy: -20, width: 260, height: 130},
+    {direction: "down-right", dx: -60, dy: -10, width: 140, height: 70},
+    {direction: "down-right", dx: 0, dy: 40, width: 280, height: 140},
+    {direction: "right-right", dx: 40, dy: 0, width: 240, height: 120},
+    {direction: "down-down", dx: 0, dy: -20, width: 160, height: 80},
+    {direction: "up-left", dx: -40, dy: 10, width: 240, height: 120},
+  ])("keeps proportions with Shift at $direction ($dx/$dy) and preserves undo", async ({direction, dx, dy, width, height}) => {
+    const {target} = imageTarget()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, shiftKey: true, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe(`${width}px`)
+    expect(target.style.maxHeight).toBe(`${height}px`)
+    expect(target.style.aspectRatio).toBe(`${width} / ${height}`)
+    expect(target.style.getPropertyValue("scale")).toBe("")
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const resized = editor.toHTML(true)
+    expect(resized).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(resized)
+  })
+
+  it("switches between proportional and free resizing during one gesture", () => {
+    const {target} = imageTarget()
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    const move = (shiftKey: boolean) => document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 360, clientY: 180, shiftKey, altKey: true}))
+    move(false)
+    expect(target.style.aspectRatio).toBe("260 / 80")
+    move(true)
+    expect(target.style.aspectRatio).toBe("260 / 130")
+    move(false)
+    expect(target.style.aspectRatio).toBe("260 / 80")
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(target.style.width).toBe("200px")
+    expect(target.style.height).toBe("100px")
+    expect(target.style.aspectRatio).toBe("")
+  })
+
+  it.each(["Escape", "pointercancel", "replace", "concurrent", "destroy"])("restores owned image styles on %s", cancellation => {
+    const {target, image} = imageTarget()
+    const original = target.style.cssText, imageOriginal = image.style.cssText
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 340, clientY: 180}))
+    image.title = "Concurrent edit"
+    if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    else if(cancellation === "destroy") editor.destroy()
+    else {
+      if(cancellation === "replace") image.replaceWith(document.createElement("img"))
+      else image.style.objectFit = "cover"
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 350, clientY: 180}))
+    }
+    if(cancellation === "concurrent") {
+      expect(image.style.objectFit).toBe("cover")
+      image.style.objectFit = "contain"
+    }
+    expect(target.style.cssText).toBe(original)
+    expect(image.style.cssText).toBe(imageOriginal)
+    expect(image.title).toBe("Concurrent edit")
+    expect(document.body.className).not.toContain("◆transform-scaling")
+  })
+})
+
+describe("resize alignment", () => {
+  it.each([
+    {marginLeft: "0px", marginRight: "auto", float: "none", corner: "down-right", width: 230},
+    {marginLeft: "20px", marginRight: "20px", float: "none", corner: "down-right", width: 230},
+    {marginLeft: "auto", marginRight: "0px", float: "none", corner: "down-left", width: 230},
+    {marginLeft: "auto", marginRight: "auto", float: "none", corner: "down-right", width: 260},
+    {marginLeft: "auto", marginRight: "auto", float: "right", corner: "down-left", width: 230},
+    {marginLeft: "auto", marginRight: "auto", float: "left", corner: "down-right", width: 230},
+  ])("uses $corner for margins $marginLeft/$marginRight and float $float", ({marginLeft, marginRight, float, corner, width}) => {
+    const target = targetElement("img")
+    Object.assign(target.style, {width: "200px", height: "100px", marginLeft, marginRight, float})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+    expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual([corner])
+    handles[0].dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: corner === "down-left" ? 270 : 330, clientY: 220, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe(`${width}px`)
+    expect(target.style.maxHeight).toBe("120px")
+    expect(target.style.marginLeft).toBe(marginLeft)
+    expect(target.style.marginRight).toBe(marginRight)
+    expect(target.style.position).toBe("")
+  })
+
+  it.each(["p", "demo-widget", "picture", "img"])("refreshes %s handles after placement changes", tag => {
+    const target = targetElement(tag)
+    mockRect(target)
+    selectNode(target)
+    for(const alignment of ["right", "center", "left"] as const) {
+      editor.features.manipulation.setFloat(target, "none", alignment)
+      feature.updateInfo()
+      const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+      expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual([alignment === "right" ? "down-left" : "down-right"])
+    }
+    target.classList.add("ww-float-right")
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!.hidden).toBe(false)
+    target.classList.replace("ww-float-right", "ww-float-left")
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
+  })
+
+  it("does not compound centered resizing with Ctrl/Cmd", () => {
+    const target = targetElement("img")
+    Object.assign(target.style, {width: "200px", height: "100px", margin: "auto"})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 330, clientY: 220, ctrlKey: true, altKey: true}))
+    expect(target.style.maxWidth).toBe("260px")
+    expect(target.style.maxHeight).toBe("140px")
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe("")
+    expect(target.style.maxHeight).toBe("")
+  })
+
+  it("follows responsive float placement instead of the authored side", () => {
+    const target = targetElement("img")
+    target.classList.add("ww-float-left")
+    target.style.setProperty("float", "right", "important")
+    mockRect(target)
+    selectNode(target)
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!.hidden).toBe(false)
+    target.style.setProperty("float", "none", "important")
+    target.style.setProperty("--ww-responsive-float", "none")
+    target.style.margin = "auto"
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
+  })
+})
+
+describe("caption affordance", () => {
+  it("applies figure transforms to its content while keeping the caption upright through undo and redo", () => {
+    document.body.innerHTML = '<figure><!--keep--><demo-widget title="Preserve"><unfamiliar-child></unfamiliar-child></demo-widget><figcaption><em>Upright</em></figcaption></figure>'
+    const figure = document.querySelector<HTMLElement>("figure")!, content = figure.querySelector<HTMLElement>("demo-widget")!
+    const caption = figure.querySelector("figcaption")!, nodes = Array.from(figure.childNodes)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    expect(editor.features.manipulation.setElementStyles(figure, {rotate: "30deg", "transform-origin": "0px 0px"})).toBe(true)
+    expect(content.style.getPropertyValue("rotate")).toBe("30deg")
+    expect(figure.style.getPropertyValue("rotate")).toBe("")
+    expect(caption.getAttribute("style")).toBeNull()
+    expect(Array.from(figure.childNodes)).toEqual(nodes)
+    const state = editor.features.manipulation.getStyleState(["rotate"], figure, false)
+    expect(state.inline.rotate.value).toBe("30deg")
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it.each(["pointercancel", "removed", "commit"])("rotates only figure content with the freeform handle and handles %s", outcome => {
+    document.body.innerHTML = '<figure style="width: 200px; height: 140px"><demo-widget style="width: 200px; height: 100px"></demo-widget><figcaption>Upright</figcaption></figure>'
+    const figure = document.querySelector<HTMLElement>("figure")!, content = figure.firstElementChild as HTMLElement
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    mockRect(figure, {width: 200, height: 140})
+    mockRect(content, {width: 200, height: 100})
+    captureNode(figure)
+    feature.handleRotateStart(new MouseEvent("mousedown", {button: 0, clientX: 300, clientY: 150}))
+    feature.handleRotateDrag(new MouseEvent("mousemove", {clientX: 200, clientY: 250}))
+    expect(content.style.getPropertyValue("rotate")).toBe("90deg")
+    expect(figure.style.getPropertyValue("rotate")).toBe("")
+    if(outcome === "commit") feature.handleRotateEnd()
+    else if(outcome === "pointercancel") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else { content.remove(); feature.handleRotateDrag(new MouseEvent("mousemove", {clientX: 100, clientY: 150})) }
+    expect(content.style.getPropertyValue("rotate")).toBe(outcome === "commit" ? "90deg" : "")
+    if(outcome === "commit") {
+      feature.restore()
+      expect(content.style.getPropertyValue("rotate")).toBe("")
+      expect(content.style.width).toBe("200px")
+    }
+    expect(document.body.className).not.toContain("◆transform-rotating")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
+
+  it.each((["document", "canvas", "slides"] as const).flatMap(mode =>
+    ["p", "caption-widget", "table"].flatMap(tag => [false, true].map(captured => ({mode, tag, captured})))))("adds a bottom-left caption to $tag in $mode and preserves capture=$captured selection", async ({mode, tag, captured}) => {
+    const target = targetElement(tag)
+    if(tag === "table") target.innerHTML = '<tbody><tr><td>Content</td></tr></tbody>'
+    if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    mockRect(target)
+    if(mode === "canvas") {
+      // Retire the initial canvas caret placeholder before creating a node range;
+      // Happy DOM collapses parent ranges when that preceding paragraph is removed.
+      $.move(target.firstChild ?? target, 0)
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+    }
+    if(captured) captureNode(target)
+    else {
+      // Happy DOM delivers selectionchange synchronously while ranges are set.
+      $.isSettingRanges = true
+      try { $.selectElement(target) }
+      finally { $.isSettingRanges = false }
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+    }
+    expect(button().hidden).toBe(mode !== "document")
     expect(button().getAttribute("part")).toContain("transform-overlay-button")
     expect(button().getAttribute("aria-label")).toBe("Add caption")
     const addIcon = decodeURIComponent(button().style.getPropertyValue("--icon"))
@@ -100,15 +595,17 @@ describe("caption affordance", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const original = editor.toHTML(true)
-    button().click()
+    if(mode === "document") button().click()
+    else editor.features.manipulation.actions.cycleCaption({type: "cycleCaption"})
     const caption = document.querySelector<HTMLElement>("figcaption, caption")!
     expect(caption.style.textAlign).toBe("left")
     expect(editor.features.manipulation.getCaptionPosition()).toBe("below")
     expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
     if(!captured) expect($.selectedElement).toBe(tag === "table" ? target : target.parentElement)
     expect(document.getSelection()!.anchorNode).not.toBe(caption)
-    expect(button().hidden).toBe(false)
-    button().click()
+    expect(button().hidden).toBe(mode !== "document")
+    if(mode === "document") button().click()
+    else editor.features.manipulation.actions.cycleCaption({type: "cycleCaption"})
     expect(caption.style.textAlign).toBe("center")
     expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
     expect(document.body.querySelector("#◆transform-overlay-caption")).toBeNull()
@@ -666,7 +1163,7 @@ describe("selection-owned transformation", () => {
     })
 
     it("restores dimensions on cancellation and supports undo/redo after resizing", async () => {
-      const target = targetElement()
+      const target = targetElement("figure")
       target.id = "resized-item"
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
       // These rect mocks model unscaled CSS pixels. Zoom has separate coverage.
@@ -874,9 +1371,11 @@ describe("selection-owned transformation", () => {
       selectNode(paragraph)
       expect($.selectedElement).toBe(paragraph)
       expect(feature.target).toBe(article)
+      expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-content-selected")
       captureNode(widget)
       expect(editor.features.selection.captureSelectedElement).toBe(widget)
       expect(feature.target).toBe(article)
+      expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-content-selected")
       const next = document.createElement("p"); next.textContent = "Next"
       article.after(next)
       editor.features.selection.selectDropRange((() => { const range = document.createRange(); range.setStart(next.firstChild!, 1); range.collapse(true); return range })())
@@ -989,6 +1488,20 @@ describe("selection-owned transformation", () => {
     expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
     Object.assign(target.style, {width: "240px", height: "100px"})
     target.style.setProperty("rotate", "-30deg")
+    let top = 35
+    vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => new DOMRect(50, top, 257.85, 206.6))
+    feature.startTransform(target)
+    expect(feature.overlay.getAttribute("part")).toContain("transform-overlay-at-top")
+    top = 100
+    feature.updateInfo()
+    expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-at-top")
+  })
+
+  it("flips the rotated top-left copyright control inward with the other top controls", () => {
+    const target = targetElement()
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    Object.assign(target.style, {width: "240px", height: "100px"})
+    target.style.setProperty("rotate", "30deg")
     let top = 35
     vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => new DOMRect(50, top, 257.85, 206.6))
     feature.startTransform(target)
@@ -1611,7 +2124,7 @@ describe("transform controls and geometry", () => {
   })
 
   it("handles scale through composed appendix pointer events", () => {
-    const target = targetElement()
+    const target = targetElement("figure")
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
     mockRect(target)
@@ -1678,7 +2191,7 @@ describe("transform controls and geometry", () => {
     expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
   })
 
-  describe.each(["p", "demo-widget"])("static %s resizing", tag => {
+  describe.each(["figure", "demo-widget"])("static %s resizing", tag => {
     it.each(["up-left", "up-right", "down-left", "down-right", "up-up", "right-right", "down-down", "left-left"])("keeps normal flow when dragging %s", direction => {
       const target = targetElement(tag)
       Object.assign(target.style, {width: "100px", height: "50px"})
@@ -1719,7 +2232,7 @@ describe("transform controls and geometry", () => {
       {edge: "up", x: 130, y: 100, dx: 13, dy: 20, width: "", height: "30px", left: "0px", top: "20px"},
       {edge: "down", x: 130, y: 150, dx: 13, dy: -20, width: "", height: "30px", left: "0px", top: "0px"},
     ])("resizes only the $edge axis without changing document insets", ({edge, x, y, dx, dy, width, height, left, top}) => {
-      const target = targetElement(captured ? "demo-widget" : "p")
+      const target = targetElement(captured ? "demo-widget" : "figure")
       const child = target.appendChild(document.createElement(captured ? "unfamiliar-content" : "mark"))
       target.appendChild(document.createComment("keep"))
       target.setAttribute("data-authored", "keep")
@@ -1758,7 +2271,7 @@ describe("transform controls and geometry", () => {
     {modifiers: {ctrlKey: true}, width: "130px", left: "0px", scale: ""},
     {modifiers: {shiftKey: true}, width: "", left: "0px", scale: "1.1 1"},
   ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
-    const target = targetElement()
+    const target = targetElement("figure")
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     mockRect(target)
     selectNode(target)
@@ -2133,12 +2646,12 @@ describe("drop, cancellation, and document ownership", () => {
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 150, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 110, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(preview).not.toBeNull()
     expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
     expect(parseFloat(preview.style.left)).toBeCloseTo(300 + (side === "left" ? 0 : 60))
-    expect(preview.style.top).toBe("105px")
+    expect(preview.style.top).toBe("100px")
     expect(parseFloat(preview.style.width)).toBeCloseTo(40)
     expect(preview.style.height).toBe("50px")
     expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
@@ -2160,9 +2673,9 @@ describe("drop, cancellation, and document ownership", () => {
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
 
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 150, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 110, ctrlKey: true}))
     expect(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.left).toBe("300px")
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 150, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 110, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(editor.appendix.querySelectorAll("#◆float-drop-preview")).toHaveLength(1)
     expect(parseFloat(preview.style.left)).toBeCloseTo(360)

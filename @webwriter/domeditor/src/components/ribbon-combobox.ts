@@ -266,9 +266,9 @@ export class RibbonCombobox extends LitElement {
 
   close() {
     this.open = false
-    this.renderRoot.querySelector(".combobox")?.removeAttribute("data-connected")
-    this.renderRoot.querySelector("font-combobox")?.close()
-    this.renderRoot.querySelector("font-size-combobox")?.close()
+    this.renderRoot?.querySelector(".combobox")?.removeAttribute("data-connected")
+    this.renderRoot?.querySelector("font-combobox")?.close()
+    this.renderRoot?.querySelector("font-size-combobox")?.close()
   }
 
   private toggle() {

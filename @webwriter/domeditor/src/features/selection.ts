@@ -1141,13 +1141,11 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Modifier-click owns the entire activation sequence at the document
-   * boundary, except inside the element that currently owns capture. */
+   * boundary, including inside the element that currently owns capture. */
   readonly #handleModifierClick = (event: MouseEvent) => {
     if(event.type === "pointerdown") this.#modifierClick = false
     if(event.button !== 0 || (!this.#modifierClick && !modifierKeyDown(event)) || isAppendixInteraction(event)) return false
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
-    const captured = this.captureSelectedElement
-    if(!this.#modifierClick && captured && (widget === captured || (event.target instanceof Node && captured.contains(event.target)))) return false
     event.preventDefault()
     event.stopImmediatePropagation()
     if(event.type === "pointerdown") {
@@ -1157,6 +1155,7 @@ export class SelectionFeature extends EditorFeature {
       this.#releaseCaptureSelection()
       this.editor.features.table.finishResize()
       this.editor.features.table.clearCellSelection(false)
+      if(this.editor.features.table.selectCellAtPoint(widget ?? event.target, event.clientX, event.clientY)) return true
       const target = this.#modifierSelectionTarget(widget ?? event.target)
       if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
         const elements = $.selectedElements
@@ -1563,13 +1562,20 @@ export class SelectionFeature extends EditorFeature {
     return caret
   }
 
-  /** Reuse the transform controls' border box instead of the axis-aligned
-   * CSS anchor box. Only the element owning this outline may position it. */
+  /** Reuse transform geometry, including the figure around captured content,
+   * without changing the media or widget that owns capture. */
   positionTransformCaret(element: Element, geometry: Pick<CSSStyleDeclaration, "left" | "top" | "width" | "height" | "transform">, floats = this.floatExclusions(element, element.getBoundingClientRect(), geometry)) {
     const caret = this.selectionCaret
-    const owner = this.captureSelectedElement ?? this.selectedSectionElement ?? $.selectedElement
-    if(owner !== element || !element.isConnected || !caret
+    const captured = this.captureSelectedElement
+    const owner = captured ?? this.selectedSectionElement ?? $.selectedElement
+    const outlineOwner = captured ? figureSelectionTarget(captured) : owner
+    if(owner !== element && outlineOwner !== element || !element.isConnected || !caret
       || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) return
+    if(outlineOwner !== element && outlineOwner instanceof HTMLElement) {
+      const box = this.editor.features.transformation.boxGeometry(outlineOwner)
+      geometry = {...box.styles, left: `${fixedClientX(parseFloat(box.styles.left))}px`}
+      floats = this.floatExclusions(outlineOwner, box.rect, geometry)
+    }
     for(const property of ["left", "top", "width", "height", "transform"] as const) {
       caret.style.setProperty(property, geometry[property], "important")
     }
@@ -2022,8 +2028,16 @@ export class SelectionFeature extends EditorFeature {
         : kind === "element" ? $.selectedElement ?? null : null
     if(selectedElement) this.#revealDetails(selectedElement.parentNode)
     else {
-      this.#revealDetails(sel?.anchorNode ?? null)
-      this.#revealDetails(sel?.focusNode ?? null)
+      const range = sel?.rangeCount === 1 ? sel.getRangeAt(0) : null
+      const selectedChild = range && range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
+        ? range.startContainer.childNodes.item(range.startOffset) : null
+      // A native range around SUMMARY has endpoints in DETAILS, but only
+      // selects the summary's visible content. Reveal its ancestors instead.
+      if(isElement(selectedChild) && selectedChild.matches("details > summary")) this.#revealDetails(selectedChild)
+      else {
+        this.#revealDetails(sel?.anchorNode ?? null)
+        this.#revealDetails(sel?.focusNode ?? null)
+      }
     }
     // Geometry refreshes read layout below. Keep an unchanged node's anchor
     // and outline installed while those reads flush styles during a gesture.

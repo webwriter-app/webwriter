@@ -21,6 +21,7 @@ import {
   isImageMapHotspotShape,
   createImageMapPopoverController,
   imageMapHotspotBounds,
+  imageMapHotspotShape,
   isMediaType,
   isTimedMediaResourceType,
   isWebsiteType,
@@ -565,6 +566,9 @@ const imageMapOverlayStylesheet = createStylesheet(`
     vector-effect: non-scaling-stroke;
     pointer-events: none;
   }
+  .hotspot.ww-hotspot-transparent { fill: transparent; stroke: none; }
+  .hotspot.ww-hotspot-no-border { stroke: none; }
+  .hotspot.ww-hotspot-no-background { fill: transparent; }
   .preview {
     fill: rgb(245 158 11 / 22%);
     stroke: #f59e0b;
@@ -953,34 +957,7 @@ class ImageMapOverlay {
       const shape = area.getAttribute("shape")?.toLowerCase() || "rect"
       const coords = this.drag?.area === area ? this.drag.next
         : (area.getAttribute("coords") ?? "").split(",").map(value => Number(value.trim()))
-      if(coords.some(value => !Number.isFinite(value))) return []
-      let element: SVGElement | null = null
-      if(shape === "rect" && coords.length === 4) {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "rect")
-        element.setAttribute("x", String(Math.min(coords[0], coords[2])))
-        element.setAttribute("y", String(Math.min(coords[1], coords[3])))
-        element.setAttribute("width", String(Math.abs(coords[2] - coords[0])))
-        element.setAttribute("height", String(Math.abs(coords[3] - coords[1])))
-      }
-      else if(shape === "circle" && coords.length === 3) {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "circle")
-        element.setAttribute("cx", String(coords[0]))
-        element.setAttribute("cy", String(coords[1]))
-        element.setAttribute("r", String(Math.max(0, coords[2])))
-      }
-      else if(shape === "poly" && coords.length >= 6 && coords.length % 2 === 0) {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "polygon")
-        element.setAttribute("points", Array.from({length: coords.length / 2}, (_, index) => (
-          `${coords[index * 2]},${coords[index * 2 + 1]}`
-        )).join(" "))
-      }
-      else if(shape === "default") {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "rect")
-        element.setAttribute("x", "0")
-        element.setAttribute("y", "0")
-        element.setAttribute("width", String(geometry.coordinateWidth))
-        element.setAttribute("height", String(geometry.coordinateHeight))
-      }
+      const element = imageMapHotspotShape(area, geometry.coordinateWidth, geometry.coordinateHeight, coords)
       if(!element) return []
       element.classList.add("hotspot")
       this.shapeAreas.set(element, area)
@@ -1234,7 +1211,7 @@ export class MediaFeature extends EditorFeature {
   private mediaPlaceholder: MediaPlaceholder | null = null
   private mediaCapture: {controller: MediaCapture, valid: () => boolean} | null = null
   private readonly sourceLabels = new WeakMap<Element, Map<string, {label: string, kind: "file" | "capture" | "recording"}>>()
-  private pendingFile: {picker: HTMLInputElement} | null = null
+  private pendingFile: {picker: HTMLInputElement, pickerId?: string, apply: (file: Blob | null) => boolean} | null = null
   private cancelSourceFile() {
     const pending = this.pendingFile
     this.pendingFile = null
@@ -1499,10 +1476,18 @@ export class MediaFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    document.body.querySelectorAll("audio, video").forEach(media => {
+      if(media instanceof HTMLMediaElement) media.pause()
+    })
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
         for(const record of records) {
+          if(record.type === "attributes" && record.attributeName === "autoplay") this.suppressAutoplay(record.target)
+          if(record.type === "childList") record.addedNodes.forEach(node => {
+            this.suppressAutoplay(node)
+            if(node instanceof Element) node.querySelectorAll("audio, video").forEach(media => this.suppressAutoplay(media))
+          })
           if(record.type === "attributes" && record.attributeName === "muted"
             && record.target instanceof Element && !sourceEditingBlocked(record.target, this.editor.schema)) syncMutedProperty(record.target)
           if(record.type === "childList") {
@@ -1574,6 +1559,7 @@ export class MediaFeature extends EditorFeature {
     this.graphicImagePlaceholders.clear()
     this.shieldReleasePending.clear()
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
+    document.querySelectorAll(".◆hotspot-placeholder").forEach(element => removeEditorMarker(element, "◆hotspot-placeholder"))
     super.disable()
   }
 
@@ -1583,6 +1569,30 @@ export class MediaFeature extends EditorFeature {
       target.scrollIntoView({block: "nearest", inline: "nearest"})
     }
     this.scheduleRefresh()
+  }
+
+  private handleVideoPlaybackChange = (event: Event) => {
+    // Media events do not bubble. Inspect their authored origin before routing
+    // captured events, including failures on a direct child SOURCE.
+    const target = event.target
+    const video = target instanceof HTMLSourceElement ? target.parentElement : target
+    if(!(video instanceof HTMLVideoElement) || !document.body.contains(video)
+      || isWidgetShadowInteraction(event, this.editor.schema) || sourceEditingBlocked(video, this.editor.schema)) return
+    const post = () => {
+      if(this.isEnabled && document.body.contains(video) && !sourceEditingBlocked(video, this.editor.schema)
+        && this.selectedMedia() === video) this.editor.postSelectionPath()
+    }
+    // The browser finishes advancing through SOURCE candidates after firing
+    // their error event, before NETWORK_NO_SOURCE becomes observable.
+    if(target instanceof HTMLSourceElement) queueMicrotask(post)
+    else post()
+  }
+
+  private suppressAutoplay(target: Node) {
+    // pause() clears the native can-autoplay flag without changing authored
+    // attributes. This document policy also covers widget light DOM, but never
+    // enters widget shadow trees. Leave explicit playback running.
+    if(target instanceof HTMLMediaElement && document.body.contains(target) && target.paused) target.pause()
   }
 
   passiveListeners = {
@@ -1629,6 +1639,16 @@ export class MediaFeature extends EditorFeature {
   }
 
   captureListeners = {
+    loadedmetadata: this.handleVideoPlaybackChange,
+    loadeddata: this.handleVideoPlaybackChange,
+    resize: this.handleVideoPlaybackChange,
+    error: this.handleVideoPlaybackChange,
+    emptied: this.handleVideoPlaybackChange,
+    loadstart: (event: Event) => {
+      // Source changes and load() reset the native can-autoplay flag.
+      if(event.target instanceof Node) this.suppressAutoplay(event.target)
+      this.handleVideoPlaybackChange(event)
+    },
     pointerdown: (event: PointerEvent) => {
       this.pointerDown = event.button === 0
       this.pendingUrlFocus = null
@@ -1665,7 +1685,10 @@ export class MediaFeature extends EditorFeature {
   }
 
   actions = {
-    setMediaFile: ({file, attribute}: {type: "setMediaFile", file: Blob, attribute?: "poster"}) => {
+    setMediaFile: ({file, attribute, pickerId}: {type: "setMediaFile", file: Blob | null, attribute?: "poster", pickerId?: string}) => {
+      if(pickerId !== undefined) {
+        return this.pendingFile?.pickerId === pickerId ? this.pendingFile.apply(file) : false
+      }
       const element = this.selectedMedia()
       return element && file instanceof Blob ? this.setFile(element, file, attribute) : false
     },
@@ -1678,7 +1701,7 @@ export class MediaFeature extends EditorFeature {
       this.refresh()
       return changed
     },
-    selectMediaFile: ({attribute}: {type: "selectMediaFile", attribute?: "poster"}) => {
+    selectMediaFile: ({attribute, pickerId}: {type: "selectMediaFile", attribute?: "poster", pickerId?: string}) => {
       const element = this.selectedMedia()
       if(!this.isEnabled || !element || attribute && !element.matches("video") || sourceEditingBlocked(element, this.editor.schema)) return false
       this.cancelSourceFile()
@@ -1689,17 +1712,21 @@ export class MediaFeature extends EditorFeature {
       picker.hidden = true
       picker.accept = attribute === "poster" || element.matches("picture, img") ? "image/*" : element.matches("audio") ? "audio/*"
         : element.matches("video") ? "video/*" : ".html,.htm,text/html"
-      const pending = {picker}
+      const pending = {picker, pickerId, apply: (file: Blob | null): boolean => {
+        if(!valid() || !(file instanceof Blob)) { if(this.pendingFile === pending) this.cancelSourceFile(); return false }
+        try { return this.setFile(element, file, attribute) }
+        finally { this.cancelSourceFile() }
+      }}
       this.pendingFile = pending
       const valid = () => this.pendingFile === pending && this.isEnabled && document.body.contains(element)
         && !sourceEditingBlocked(element, this.editor.schema) && snapshot === this.sourceSnapshot(element)
         && sourceTarget === mediaSourceTarget(element, false)
+      // The host opens its own picker while its click still has user activation.
+      // Retain the same DOM guards used by the in-document picker.
+      if(pickerId !== undefined) return true
       picker.addEventListener("cancel", () => { if(this.pendingFile === pending) this.cancelSourceFile() }, {once: true})
       picker.addEventListener("change", () => {
-        const file = picker.files?.[0]
-        if(!valid() || !file) { if(this.pendingFile === pending) this.cancelSourceFile(); return }
-        this.setFile(element, file, attribute)
-        this.cancelSourceFile()
+        pending.apply(picker.files?.[0] ?? null)
       }, {once: true})
       this.editor.addAppendix(picker)
       picker.click()
@@ -1905,6 +1932,20 @@ export class MediaFeature extends EditorFeature {
       this.finishImageMapChange()
       return true
     },
+    setImageMapOverlay: ({path, expected, part, value}: {
+      type: "setImageMapOverlay", path: number[], expected: Record<string, string>, part: "border" | "background", value: boolean
+    }) => {
+      const area = this.selectedImageMapArea(path, expected)
+      if(!area || !["border", "background"].includes(part) || typeof value !== "boolean") return false
+      if(area.classList.contains("ww-hotspot-transparent")) {
+        area.classList.add("ww-hotspot-no-border", "ww-hotspot-no-background")
+        area.classList.remove("ww-hotspot-transparent")
+      }
+      area.classList.toggle(`ww-hotspot-no-${part}`, !value)
+      if(!area.getAttribute("class")) area.removeAttribute("class")
+      this.finishImageMapChange()
+      return true
+    },
     removeImageMapArea: ({path, expected}: {
       type: "removeImageMapArea"
       path: number[]
@@ -1942,7 +1983,6 @@ export class MediaFeature extends EditorFeature {
       content.id = id
       content.setAttribute("popover", "auto")
       const paragraph = document.createElement("p")
-      paragraph.textContent = "Popover content"
       content.append(paragraph)
       area.closest("map")!.after(content)
       area.setAttribute("popovertarget", id)
@@ -2036,6 +2076,7 @@ export class MediaFeature extends EditorFeature {
         : `${provenance.kind === "capture" ? "Capture" : "Recording"} ${peers.indexOf(element) + 1}`
     }
     if(element.matches("video")) {
+      state.videoPlaybackWarning = this.videoPlaybackWarning(element as HTMLVideoElement)
       const poster = element.getAttribute("poster") ?? ""
       const cover = this.sourceLabels.get(element)?.get(poster)
       state.cover = {size: this.editor.mediaSourceSize(poster), ...cover,
@@ -2056,6 +2097,29 @@ export class MediaFeature extends EditorFeature {
       } : null
     }
     return state
+  }
+
+  private videoPlaybackWarning(video: HTMLVideoElement): MediaSelectionState["videoPlaybackWarning"] {
+    if(isEmptyMedia(video)) return
+    const sources = video.hasAttribute("src") ? [video.src]
+      : Array.from(video.children).filter((child): child is HTMLSourceElement => child instanceof HTMLSourceElement && Boolean(child.getAttribute("src")?.trim()))
+        .map(source => source.src)
+    // A DOM or remote edit can replace a URL before the browser resets its
+    // previous metadata/error. Do not attribute that status to the new source.
+    // When child candidates are exhausted, currentSrc can still name the
+    // previous load even though the browser has finished rejecting the new set.
+    const exhaustedSources = !video.hasAttribute("src") && video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE
+    if(video.currentSrc && !sources.includes(video.currentSrc) && !exhaustedSources) return
+    if(video.error) {
+      if(video.error.code === 3 || video.error.code === 4) return "unsupported"
+      return // Aborted requests and network errors do not identify a codec issue.
+    }
+    if(video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      if(video.videoWidth === 0 && video.videoHeight === 0) return "no-video"
+    }
+    // Exhausting child SOURCE candidates fires errors on the sources, and can
+    // leave video.error null even when no format can be played.
+    else if(video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) return "unsupported"
   }
 
   private selectedMedia() {
@@ -2447,6 +2511,23 @@ export class MediaFeature extends EditorFeature {
       if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
     })
     const selected = this.refreshPlaceholder()
+
+    const placeholders = new Set<Element>()
+    document.querySelectorAll("map area[popovertarget], map area[interestfor]").forEach(area => {
+      if(sourceEditingBlocked(area, this.editor.schema)) return
+      const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
+      const content = id ? document.getElementById(id) : null
+      const paragraph = content?.firstElementChild
+      if(content?.hasAttribute("popover") && content.children.length === 1
+        && paragraph?.matches("p") && !paragraph.textContent
+        && (paragraph.children.length === 0 || paragraph.children.length === 1 && paragraph.firstElementChild?.matches("br"))) placeholders.add(paragraph)
+    })
+    document.querySelectorAll(".◆hotspot-placeholder").forEach(element => {
+      if(!placeholders.has(element)) removeEditorMarker(element, "◆hotspot-placeholder")
+    })
+    placeholders.forEach(element => {
+      if(!element.classList.contains("◆hotspot-placeholder")) element.classList.add("◆hotspot-placeholder")
+    })
 
     this.popoverController?.refresh()
     const selectedImage = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null

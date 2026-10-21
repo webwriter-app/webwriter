@@ -485,12 +485,12 @@ describe("settings panel", () => {
     await ribbon.updateComplete
 
     expect(ribbon.settings).toEqual(changed)
-    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...changed, shortcutsVersion: 2})
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...changed, shortcutsVersion: 3})
 
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".reset-settings-button")!.click()
     await panel.updateComplete
     expect(ribbon.settings).toEqual(defaultAppSettings())
-    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...defaultAppSettings(), shortcutsVersion: 2})
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).toEqual({...defaultAppSettings(), shortcutsVersion: 3})
     expect(panel.shadowRoot!.querySelector(".status")?.textContent).toContain("Settings reset")
     expect(ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#settings-dialog")!.open).toBe(true)
   })

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
-import {commentStateChangeEvent} from "../editor-bridge"
+import {commentReviewRequestEvent, commentStateChangeEvent} from "../editor-bridge"
 import {WebWriterPackageRegistry} from "../packages"
 import {DomEditor} from "./dom-editor"
 import {AppRibbon} from "./ribbon"
@@ -270,6 +270,23 @@ describe("comment ribbon controls", () => {
 })
 
 describe("comment ribbon bridge", () => {
+  it("opens and expands Review on each bubble click and ignores requests from other frames", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    const select = vi.spyOn(toolbox, "selectTool")
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: commentReviewRequestEvent, bridgeNonce: "untrusted"},
+      source: editorWindow, origin: window.location.origin,
+    }))
+    expect(select).not.toHaveBeenCalled()
+    dispatchEditorMessage(editor, editorWindow, {type: commentReviewRequestEvent})
+    expect(select).toHaveBeenLastCalledWith("Review", true)
+    expect(toolbox.activeTool).toBe("Review")
+    toolbox.selectTool(null)
+    dispatchEditorMessage(editor, editorWindow, {type: commentReviewRequestEvent})
+    expect(toolbox.activeTool).toBe("Review")
+  })
+
   it("routes Review thread selection, reply, edit, and delete commands", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

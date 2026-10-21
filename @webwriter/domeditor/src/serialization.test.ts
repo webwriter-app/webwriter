@@ -3,6 +3,20 @@ import {describe, expect, it} from "vitest"
 import {appendSerializedAssets, restoreOriginalResourceURLs, serializeDoctype} from "./serialization"
 import type {WebWriterPackage} from "./packages"
 
+it.each(["canvas", "board"])("embeds portable %s print support once and removes it after conversion", mode => {
+  const root = new DOMParser().parseFromString(`<body class="ww-${mode}"><p>Content</p></body>`, "text/html")
+  const content = root.body.innerHTML
+  appendSerializedAssets(root, []); appendSerializedAssets(root, [])
+  const scripts = root.querySelectorAll(mode === "canvas" ? "#webwriter-canvas-viewer" : "#webwriter-layout-print")
+  expect(scripts).toHaveLength(1)
+  expect(scripts[0].textContent).toContain("createLayoutPrint(document)")
+  expect(scripts[0].textContent).not.toContain("import ")
+  expect(root.body.innerHTML).toBe(content)
+  root.body.className = "ww-slides"
+  appendSerializedAssets(root, [])
+  expect(root.querySelector("#webwriter-layout-print")).toBeNull()
+})
+
 it.each(["", "ww-canvas", "ww-slides", "ww-board"])("embeds attribution reading controls once for layout '%s' without authored UI", layout => {
   const root = new DOMParser().parseFromString(`<body class="${layout}"><div data-ww-attribution-name="Ada" data-ww-license="CC-BY-4.0"><custom-widget></custom-widget></div></body>`, "text/html")
   const body = root.body.innerHTML
@@ -94,6 +108,10 @@ it("includes one hotspot popover runtime in standalone exports", () => {
   expect(root.querySelector("#webwriter-image-map-popovers")!.textContent).toContain('document.addEventListener("pointerover", handle)')
   expect(root.body.innerHTML).toBe(body)
   root.querySelector("area")!.removeAttribute("popovertarget")
+  appendSerializedAssets(root, [])
+  // Link-only maps also need scaled reading-mode hit areas.
+  expect(root.querySelector("#webwriter-image-map-popovers")!.textContent).toContain("mountImageMapReader(document, controller, imageMapHotspotShape)")
+  root.querySelector("map")!.remove()
   appendSerializedAssets(root, [])
   expect(root.querySelector("#webwriter-image-map-popovers")).toBeNull()
 })

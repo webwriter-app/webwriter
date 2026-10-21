@@ -1,7 +1,9 @@
-import {createImageMapPopoverController, imageMapHotspotBounds} from "./media"
+import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, mountImageMapReader} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
+import figureLayoutSource from "./figure-layout.js?raw"
+import layoutPrintSource from "./document-layout-print.js?raw"
 import attributionSource from "./attribution.js?raw"
 import {attributionAttributes} from "./attribution.js"
 import listMarkerStyleSource from "./document-list-markers.css?raw"
@@ -93,6 +95,14 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     catch { return url }
   }
   const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
+  root.querySelectorAll('script[id="webwriter-figure-layout"]').forEach(script => script.remove())
+  if(root.body.querySelector("figure > figcaption")) {
+    const script = root.createElement("script")
+    script.id = "webwriter-figure-layout"
+    script.type = "module"
+    script.textContent = `${figureLayoutSource}\ncreateFigureLayout(document)\n`.replace(/<\/script/gi, "<\\/script")
+    head.append(script)
+  }
   root.querySelectorAll('script[id="webwriter-attribution-reader"]').forEach(script => script.remove())
   if(root.body.querySelector(Object.values(attributionAttributes).map(name => `[${name}]`).join(","))) {
     const script = root.createElement("script")
@@ -110,11 +120,11 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     head.append(style)
   }
   root.querySelectorAll('script[id="webwriter-image-map-popovers"]').forEach(script => script.remove())
-  if(root.querySelector("map area[popovertarget], map area[interestfor]")) {
+  if(root.querySelector("img[usemap]") && root.querySelector("map area")) {
     const script = root.createElement("script")
     script.id = "webwriter-image-map-popovers"
     script.type = "module"
-    script.textContent = `(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("resize", controller.refresh); document.addEventListener("scroll", controller.refresh, true); window.addEventListener("pagehide", () => controller.dispose(), {once:true}); })();`
+    script.textContent = `(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const imageMapHotspotShape = ${imageMapHotspotShape.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const mountImageMapReader = ${mountImageMapReader.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const reader = mountImageMapReader(document, controller, imageMapHotspotShape); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("pagehide", () => { document.removeEventListener("click", handle); document.removeEventListener("pointerover", handle); reader.dispose(); }, {once:true}); })();`.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
@@ -122,6 +132,14 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   // Replace an earlier export's runtime, including after a template change.
   root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
   root.querySelectorAll('script[id="webwriter-document-viewer"]').forEach(script => script.remove())
+  root.querySelectorAll('script[id="webwriter-layout-print"]').forEach(script => script.remove())
+  if(documentLayoutMode(root.body) === "board") {
+    const script = root.createElement("script")
+    script.id = "webwriter-layout-print"
+    script.type = "module"
+    script.textContent = `${layoutPrintSource}\ncreateLayoutPrint(document)\n`
+    head.append(script)
+  }
   if(getDocumentRoot(root.body) === root.body && documentLayoutMode(root.body) === "document") {
     const script = root.createElement("script")
     script.id = "webwriter-document-viewer"
@@ -137,7 +155,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const script = root.createElement("script")
     script.id = "webwriter-canvas-viewer"
     script.type = "module"
-    script.textContent = `${canvasViewerSource}\nmountCanvasReader()\n`
+    script.textContent = `${layoutPrintSource}\n${canvasViewerSource}\nmountCanvasReader()\ncreateLayoutPrint(document)\n`
     head.append(script)
   }
   const tags = new Set<string>()

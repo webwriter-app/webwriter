@@ -85,6 +85,8 @@ export type MediaSelectionState = {
   sourceLabel?: string
   sourceKind?: "file" | "capture" | "recording"
   cover?: {label?: string, kind?: "file" | "capture" | "recording", size?: number}
+  /** Local browser playback status; never part of the authored document. */
+  videoPlaybackWarning?: "unsupported" | "no-video"
   /** Direct child resources, present only for AUDIO and VIDEO. */
   sources?: TimedMediaResourceState[]
   tracks?: TimedMediaResourceState[]
@@ -296,6 +298,44 @@ export function isEmptyMedia(element: Element) {
   return !element.getAttribute(mediaSourceAttribute(element))?.trim() && !element.getAttribute("srcset")?.trim()
 }
 
+/** Native SVG geometry shared by editor handles and reading-mode links. */
+export function imageMapHotspotShape(area: HTMLAreaElement, width: number, height: number,
+  coords = (area.getAttribute("coords") ?? "").split(",").map(value => Number(value.trim()))) {
+  const shape = area.getAttribute("shape")?.toLowerCase() || "rect"
+  if(coords.some(value => !Number.isFinite(value))) return null
+  let element: SVGElement | null = null
+  if(shape === "rect" && coords.length === 4) {
+    element = area.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "rect")
+    element.setAttribute("x", String(Math.min(coords[0], coords[2])))
+    element.setAttribute("y", String(Math.min(coords[1], coords[3])))
+    element.setAttribute("width", String(Math.abs(coords[2] - coords[0])))
+    element.setAttribute("height", String(Math.abs(coords[3] - coords[1])))
+  }
+  else if(shape === "circle" && coords.length === 3) {
+    element = area.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "circle")
+    element.setAttribute("cx", String(coords[0]))
+    element.setAttribute("cy", String(coords[1]))
+    element.setAttribute("r", String(Math.max(0, coords[2])))
+  }
+  else if(shape === "poly" && coords.length >= 6 && coords.length % 2 === 0) {
+    element = area.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "polygon")
+    element.setAttribute("points", Array.from({length: coords.length / 2}, (_, index) => (
+      `${coords[index * 2]},${coords[index * 2 + 1]}`
+    )).join(" "))
+  }
+  else if(shape === "default") {
+    element = area.ownerDocument.createElementNS("http://www.w3.org/2000/svg", "rect")
+    element.setAttribute("x", "0")
+    element.setAttribute("y", "0")
+    element.setAttribute("width", String(width))
+    element.setAttribute("height", String(height))
+  }
+  for(const name of ["ww-hotspot-transparent", "ww-hotspot-no-border", "ww-hotspot-no-background"]) {
+    if(area.classList.contains(name)) element?.classList.add(name)
+  }
+  return element
+}
+
 /** Hotspot bounds in client coordinates, shared by popovers and appendix controls. */
 export function imageMapHotspotBounds(area: HTMLAreaElement, image: HTMLImageElement) {
   const rect = image.getBoundingClientRect()
@@ -434,4 +474,119 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
   const hasOpenFor = (image: HTMLImageElement) => Array.from(opened.entries())
     .some(([target, entry]) => entry.image === image && isOpen(target))
   return {open, handleEvent, refresh, dispose, hasOpenFor}
+}
+
+/** Render intrinsic image-map coordinates without changing authored AREA nodes. */
+export function mountImageMapReader(doc: Document, controller: ReturnType<typeof createImageMapPopoverController>, shapeFor = imageMapHotspotShape) {
+  const view = doc.defaultView!
+  const appendix = doc.body.shadowRoot ?? doc.body.attachShadow({mode: "open"})
+  let slot = Array.from(appendix.children).find(element => element.matches("slot:not([name])"))
+  if(!slot) { slot = doc.createElement("slot"); appendix.append(slot) }
+  const host = doc.createElement("div")
+  host.className = "◆image-map-reader"
+  const root = host.attachShadow({mode: "open"})
+  const style = doc.createElement("style")
+  style.textContent = `
+    :host { pointer-events:none; }
+    svg { position:fixed; z-index:1; overflow:hidden; pointer-events:auto; }
+    a { fill:rgb(37 99 235 / 12%); stroke:#2563eb; stroke-width:1.5; cursor:pointer; }
+    a:hover, a:focus-visible { fill:rgb(37 99 235 / 24%); stroke-width:2.5; outline:none; }
+    a > * { vector-effect:non-scaling-stroke; }
+    .ww-hotspot-transparent { fill:transparent; stroke:none; }
+    .ww-hotspot-no-border { stroke:none; }
+    .ww-hotspot-no-background { fill:transparent; }
+    @media print { svg { display:none; } }
+  `
+  root.append(style)
+  appendix.append(host)
+  const overlays = new Map<HTMLImageElement, {svg: SVGSVGElement, areas: HTMLAreaElement[], signature: string}>()
+  let pending = 0
+  const schedule = () => { if(!pending) pending = view.requestAnimationFrame(refresh) }
+  const resize = view.ResizeObserver ? new view.ResizeObserver(schedule) : null
+  const refresh = () => {
+    view.cancelAnimationFrame(pending)
+    pending = 0
+    const images = new Set(doc.querySelectorAll<HTMLImageElement>("img[usemap]"))
+    for(const [image, overlay] of overlays) {
+      if(!images.has(image)) { overlay.svg.remove(); resize?.unobserve(image); overlays.delete(image) }
+    }
+    for(const image of images) {
+      const name = image.getAttribute("usemap")?.trim().slice(1)
+      const map = image.getAttribute("usemap")?.trim().startsWith("#")
+        ? Array.from(doc.querySelectorAll("map[name]")).find(map => map.getAttribute("name") === name) : null
+      const areas = Array.from(map?.querySelectorAll("area") ?? [])
+      const rect = image.getBoundingClientRect()
+      const width = image.naturalWidth || Number(image.getAttribute("width")) || rect.width
+      const height = image.naturalHeight || Number(image.getAttribute("height")) || rect.height
+      let overlay = overlays.get(image)
+      if(!areas.length || !width || !height || !rect.width || !rect.height || view.getComputedStyle(image).visibility === "hidden") {
+        if(overlay) { overlay.svg.remove(); resize?.unobserve(image); overlays.delete(image) }
+        continue
+      }
+      if(!overlay) {
+        const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+        svg.setAttribute("preserveAspectRatio", "none")
+        overlay = {svg, areas: [], signature: ""}
+        overlays.set(image, overlay)
+        root.append(svg)
+        resize?.observe(image)
+      }
+      const {svg} = overlay
+      svg.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`)
+      const signature = areas.map(area => area.outerHTML).join("") + `/${width}/${height}`
+      if(signature === overlay.signature && areas.every((area, index) => area === overlay!.areas[index])) continue
+      overlay.signature = signature
+      overlay.areas = areas
+      svg.replaceChildren()
+      // Native image maps give the first matching AREA priority.
+      for(const area of areas.slice().reverse()) {
+        if(!area.hasAttribute("href") && !area.hasAttribute("popovertarget") && !area.hasAttribute("interestfor")) continue
+        const shape = shapeFor(area, width, height)
+        if(!shape) continue
+        const link = doc.createElementNS("http://www.w3.org/2000/svg", "a")
+        const expected = area.outerHTML
+        const current = () => area.isConnected && image.isConnected && area.closest("map") === map
+          && image.getAttribute("usemap")?.trim() === `#${map?.getAttribute("name")}` && area.outerHTML === expected
+        for(const name of ["href", "target", "rel", "download", "referrerpolicy"]) {
+          if(area.hasAttribute(name)) link.setAttribute(name, area.getAttribute(name)!)
+        }
+        link.setAttribute("tabindex", "0")
+        link.setAttribute("aria-label", area.getAttribute("alt") || area.getAttribute("title") || `Hotspot ${areas.indexOf(area) + 1}`)
+        link.addEventListener("click", event => {
+          if(!current()) { event.preventDefault(); schedule(); return }
+          if(area.hasAttribute("popovertarget") || area.hasAttribute("interestfor")) {
+            event.preventDefault()
+            controller.open(area, image)
+          }
+        })
+        link.addEventListener("pointerover", () => {
+          if(current() && area.hasAttribute("interestfor")) controller.open(area, image)
+        })
+        link.append(shape)
+        svg.append(link)
+      }
+    }
+    controller.refresh()
+  }
+  const observer = new view.MutationObserver(schedule)
+  observer.observe(doc.body, {subtree:true, childList:true, attributes:true})
+  observer.observe(slot, {attributes:true})
+  doc.addEventListener("load", schedule, true)
+  doc.addEventListener("scroll", schedule, true)
+  view.addEventListener("resize", schedule)
+  refresh()
+  return {
+    refresh,
+    dispose: () => {
+      view.cancelAnimationFrame(pending)
+      observer.disconnect()
+      resize?.disconnect()
+      doc.removeEventListener("load", schedule, true)
+      doc.removeEventListener("scroll", schedule, true)
+      view.removeEventListener("resize", schedule)
+      host.remove()
+      controller.dispose()
+    },
+  }
 }

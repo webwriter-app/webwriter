@@ -2,7 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
-import {$} from "../utility"
+import {$, isOnApple} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
 import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
@@ -36,6 +36,91 @@ beforeEach(() => {
   editor = new DOMEditor()
 })
 afterEach(() => editor.destroy())
+
+describe("formula shortcut modifiers", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it.each([true, false])("leaves browser and modified editing shortcuts native (Apple: %s)", apple => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(apple ? "MacIntel" : "Win32")
+    // Happy DOM reports every Alt press as AltGraph; these are ordinary shortcuts.
+    vi.spyOn(KeyboardEvent.prototype, "getModifierState").mockReturnValue(false)
+    const math = load('<mstyle><!--keep--><mi>abc</mi><mfrac><mi>x</mi><mi>y</mi></mfrac></mstyle>')
+    const text = math.querySelector("mi")!.firstChild!
+    $.move(text, 2)
+    editor.features.math.refresh()
+    const original = clean()
+    const primary = apple ? {metaKey: true} : {ctrlKey: true}
+    const shortcuts: [string, KeyboardEventInit][] = [
+      ["a", {...primary, shiftKey: true}],
+      ["a", {...primary, altKey: true}],
+      ["a", {metaKey: true, ctrlKey: true}],
+      ["a", apple ? {ctrlKey: true} : {metaKey: true}],
+      ["a", {metaKey: true, altKey: true, shiftKey: true}],
+      ["z", {...primary, altKey: true}],
+      ["z", {ctrlKey: true, metaKey: true}],
+      ["y", {...primary, shiftKey: true}],
+      ["y", {...primary, altKey: true}],
+      ["y", apple ? {metaKey: true} : {metaKey: true, ctrlKey: true}],
+      ["Escape", {shiftKey: true}],
+      ["Enter", {shiftKey: true}],
+      ["Enter", {ctrlKey: true}],
+      ["Enter", {metaKey: true, ctrlKey: true}],
+      ["Enter", {altKey: true}],
+      ["Dead", {code: "KeyI", altKey: true}],
+      ...["Backspace", "Delete"].flatMap(value => [
+        {ctrlKey: true}, {metaKey: true}, {altKey: true}, {shiftKey: true},
+        {...primary, shiftKey: true}, {ctrlKey: true, altKey: true},
+      ].map(modifiers => [value, modifiers] as [string, KeyboardEventInit])),
+    ]
+    for(const [value, modifiers] of shortcuts) {
+      expect(key(value, modifiers).defaultPrevented, JSON.stringify([value, modifiers])).toBe(false)
+      expect(clean()).toBe(original)
+      expect(document.getSelection()!.focusNode).toBe(text)
+      expect(document.getSelection()!.focusOffset).toBe(2)
+    }
+  })
+
+  it.each([true, false])("keeps primary Select All and history shortcuts (Apple: %s)", apple => {
+    vi.spyOn(navigator, "platform", "get").mockReturnValue(apple ? "MacIntel" : "Win32")
+    const math = load('<mi>x</mi><mo>+</mo><mi>y</mi>')
+    const primary = apple ? {metaKey: true} : {ctrlKey: true}
+    expect(key("a", primary).defaultPrevented).toBe(true)
+    expect(document.getSelection()!.getRangeAt(0).commonAncestorContainer).toBe(math)
+    const undo = vi.spyOn(editor.doc, "undo").mockImplementation(() => {})
+    const redo = vi.spyOn(editor.doc, "redo").mockImplementation(() => {})
+    expect(key("z", primary).defaultPrevented).toBe(true)
+    expect(undo).toHaveBeenCalledOnce()
+    expect(key(apple ? "Z" : "y", {...primary, shiftKey: apple}).defaultPrevented).toBe(true)
+    expect(redo).toHaveBeenCalledOnce()
+    if(!apple) {
+      expect(key("Z", {...primary, shiftKey: true}).defaultPrevented).toBe(true)
+      expect(redo).toHaveBeenCalledTimes(2)
+    }
+  })
+
+  it("preserves native word, line, and cut beforeinput without generic document deletion", () => {
+    const math = load('<mstyle><!--keep--><mi>abc def</mi><mfrac><mi>x</mi><mi>y</mi></mfrac></mstyle>')
+    $.move(math.querySelector("mi")!.firstChild!, 4)
+    editor.features.math.refresh()
+    const original = clean()
+    for(const inputType of ["deleteWordBackward", "deleteWordForward", "deleteSoftLineBackward",
+      "deleteSoftLineForward", "deleteHardLineBackward", "deleteHardLineForward", "deleteEntireSoftLine", "deleteByCut"]) {
+      const event = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented, inputType).toBe(false)
+      expect(clean()).toBe(original)
+    }
+  })
+
+  it("allows AltGraph text even when Ctrl and Alt are reported", () => {
+    const math = load("")
+    const event = new KeyboardEvent("keydown", {key: "a", ctrlKey: true, altKey: true, bubbles: true, cancelable: true})
+    vi.spyOn(event, "getModifierState").mockImplementation(modifier => modifier === "AltGraph")
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(math.textContent).toBe("a")
+  })
+})
 
 describe("DOM MathML editing", () => {
   it.each(["inline", "block"])("paints a whole %s formula once and restores partial text selection", display => {
@@ -74,6 +159,31 @@ describe("DOM MathML editing", () => {
     editor.features.math.disable()
     expect(editor.appendix.querySelector('[part="math-caret"]')).toBeNull()
     expect(document.body.classList.contains("◆math-structural-caret")).toBe(false)
+  })
+
+  it.each(["", "<mrow></mrow>", "<mrow><mrow></mrow></mrow>", "<mstyle><mrow></mrow></mstyle>", "<mtext></mtext>"])("centers the caret in the whole empty block instead of its inner row: %s", content => {
+    const math = load(content)
+    math.setAttribute("display", "block")
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 80, 280, 64))
+    const geometry = vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(4, 8, 8, 18))
+    const position = math.querySelector("mrow:empty, mtext:empty") ?? math
+    const authored = clean()
+    try {
+      for(const direction of ["ltr", "rtl"]) {
+        math.setAttribute("dir", direction)
+        $.move(position, 0)
+        editor.features.math.refresh()
+        const rect = editor.features.math.structuralTextRect(position, 0)!
+        expect([rect.left, rect.top, rect.width, rect.height]).toEqual([240, 103, 0, 18])
+        const caret = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+        expect([caret.style.left, caret.style.top, caret.style.height]).toEqual(["240px", "103px", "18px"])
+        editor.features.math.refresh()
+        expect(editor.appendix.querySelector('[part="math-caret"]')).toBe(caret)
+      }
+      math.removeAttribute("dir")
+      expect(clean()).toBe(authored)
+    }
+    finally { geometry.mockRestore() }
   })
 
   it("keeps the body caret marker transient when its formula is removed", () => {
@@ -215,6 +325,23 @@ describe("DOM MathML editing", () => {
     editor.features.math.disable()
     expect(math.querySelector(".◆math-slot")).toBeNull()
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
+  })
+
+  it.each([0.5, 2])("scales placeholder padding into client coordinates at zoom %s", zoom => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
+    vi.spyOn(editor.features.canvas, "zoom", "get").mockReturnValue(zoom)
+    const math = load('<msup><mi>x</mi><mrow style="padding-left:10px;padding-right:4px"></mrow></msup>')
+    const slot = math.querySelector("mrow")!
+    vi.spyOn(slot, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 20, 24 * zoom, 12 * zoom))
+    $.move(slot, 0)
+    const authored = clean()
+    editor.features.math.refresh()
+    const guide = editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!
+    expect([guide.style.left, guide.style.width]).toEqual([`${30 + 10 * zoom}px`, `${10 * zoom}px`])
+    expect(clean()).toBe(authored)
+    editor.features.math.disable()
+    expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
+    expect(math.querySelector(".◆math-slot")).toBeNull()
   })
 
   it("highlights only the hovered structure placeholder border and restores it on exit", () => {
@@ -985,6 +1112,20 @@ describe("DOM MathML editing", () => {
     expect(clean()).toBe("<p>unchanged</p>")
   })
 
+  it.each(mathStructureOptions)("creates a detached $title for graphic drops without changing the selection", option => {
+    const text = document.querySelector("p")!.firstChild ?? document.querySelector("p")!
+    $.move(text, 0)
+    const selection = document.getSelection()!
+    const before = clean(), anchor = selection.anchorNode, offset = selection.anchorOffset
+    const math = editor.features.math.create(option.command.slice("structure:".length))!
+    expect(math.isConnected).toBe(false)
+    expect(math.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML")
+    expect(math.firstElementChild!.childElementCount).toBeGreaterThan(0)
+    expect(selection.anchorNode).toBe(anchor)
+    expect(selection.anchorOffset).toBe(offset)
+    expect(clean()).toBe(before)
+  })
+
   it("undoes a prefilled formula insertion as one operation", () => {
     document.body.innerHTML = "<p>beforeafter</p>"
     $.move(document.querySelector("p")!.firstChild!, 6)
@@ -1438,7 +1579,7 @@ describe("DOM MathML editing", () => {
     editor.doc.syncFromDOM()
     const edited = clean()
     expect(editor.features.selection.captureSelectedElement).toBeNull()
-    expect(key("z", {ctrlKey: true, metaKey: true}).defaultPrevented).toBe(true)
+    expect(key("z", isOnApple() ? {metaKey: true} : {ctrlKey: true}).defaultPrevented).toBe(true)
     expect(document.querySelector("math")?.textContent).toBe("x")
     expect(document.querySelector("mfrac")).toBeNull()
     editor.doc.redo()
@@ -1753,8 +1894,8 @@ describe("DOM MathML editing", () => {
 
   it("selects formula contents with Ctrl+A and preserves neighboring prose on deletion", () => {
     const math = load('<mi>x</mi><mo>+</mo><mi>y</mi>')
-    key("a", {ctrlKey: true})
-    key("Backspace", {ctrlKey: true})
+    key("a", isOnApple() ? {metaKey: true} : {ctrlKey: true})
+    key("Backspace")
     expect(math.children).toHaveLength(0)
     expect(document.querySelector("p")!.textContent).toBe("Before  after")
   })

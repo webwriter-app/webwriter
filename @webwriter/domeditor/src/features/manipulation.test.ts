@@ -15,7 +15,7 @@ import {mathElement} from "../math"
 import {graphicShapeDragType} from "../graphic"
 import {elementAttributeState} from "../element-attributes"
 import {floatSideFromStyles} from "../element-styles"
-import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
+import {elementDragType, insertionMenuItems, ribbonInsertionDragType} from "../components/insertion-menu"
 import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type SelectionChangeDetail} from "../editor-bridge"
 
 let editor: DOMEditor
@@ -4157,6 +4157,119 @@ describe("setStyle()", () => {
 
     expect(table).toHaveStyle({borderCollapse: "collapse"})
   })
+  it.each([false, true])("styles only the selected cells (Edit toolbox: %s)", topLevel => {
+    document.body.innerHTML = '<section><!--keep--><table><thead><tr><th colspan="2">Heading</th><th>Other</th></tr></thead><tbody><tr><td><p>one</p></td><td><demo-widget></demo-widget></td><td>three</td></tr></tbody></table></section>'
+    const table = document.querySelector("table")!
+    const [heading, other, first, second, third] = Array.from(table.querySelectorAll("td, th")) as HTMLTableCellElement[]
+    const children = Array.from(table.querySelectorAll("*"))
+    editor.features.table.selectCells(heading, first)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel, styles: {
+      "background-color": "gold", "border-color": "red", padding: "8px", color: {value: "blue", priority: "important"},
+    }})
+
+    for(const cell of [heading, first, second]) {
+      expect(cell).toHaveStyle({backgroundColor: "gold", borderColor: "red", padding: "8px", color: "blue"})
+      expect(cell.style.getPropertyPriority("color")).toBe("important")
+    }
+    for(const element of [table, other, third, document.querySelector("section"), first.firstElementChild, second.firstElementChild]) {
+      expect(element).not.toHaveAttribute("style")
+    }
+    expect(Array.from(table.querySelectorAll("*"))).toEqual(children)
+    const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel, properties: ["background-color", "padding", "color"]})
+    expect(state.target?.localName).toBe("th")
+    expect(state.inline.color).toEqual({value: "blue", priority: "important"})
+    expect(state.inline.padding?.value).toBe("8px")
+    editor.doc.syncFromDOM()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelector("table [style]")).toBeNull()
+    editor.doc.redo()
+    expect(document.querySelectorAll('table [style*="background-color"]')).toHaveLength(3)
+  })
+  it("keeps an all-cell selection scoped to cells and reports mixed values", () => {
+    document.body.innerHTML = '<table><tbody><tr><td style="padding: 4px; color: red">one</td><td style="padding: 4px; color: blue">two</td></tr></tbody></table>'
+    const table = document.querySelector("table")!, cells = table.querySelectorAll("td")
+    editor.features.table.selectCells(cells[0], cells[1])
+    const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["color", "padding"]})
+    expect(state.inline).not.toHaveProperty("color")
+    expect(state.computed).not.toHaveProperty("color")
+    expect(state.inline.padding?.value).toBe("4px")
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: null, "background-color": "gold"}})
+    expect(table).not.toHaveAttribute("style")
+    expect(Array.from(cells, cell => cell.style.padding)).toEqual(["", ""])
+    expect(Array.from(cells, cell => cell.style.backgroundColor)).toEqual(["gold", "gold"])
+  })
+  it("scopes specialized cell styles to every selected cell of that type", () => {
+    document.body.innerHTML = '<table><tbody><tr><th>Heading</th><td style="vertical-align: top">one</td><td style="vertical-align: top">two</td><td>outside</td></tr></tbody></table>'
+    const cells = document.querySelectorAll("td")
+    editor.features.table.selectCells(cells[0], cells[1])
+    const state = editor.features.manipulation.getSelectedElementTypes(["vertical-align"])
+      .find(state => state.element.localName === "td")!
+    expect(state.count).toBe(2)
+    expect(state.style.inline["vertical-align"]?.value).toBe("top")
+    editor.features.manipulation.actions.setSelectedElementStyles({type: "setSelectedElementStyles",
+      selectionType: {localName: "td", namespaceURI: "http://www.w3.org/1999/xhtml"}, styles: {"vertical-align": "middle"}})
+    expect(Array.from(cells, cell => cell.style.verticalAlign)).toEqual(["middle", "middle", ""])
+    expect(document.querySelector("th")).not.toHaveAttribute("style")
+    expect(document.querySelector("table")).not.toHaveAttribute("style")
+  })
+  it.each([false, true])("styles the whole table without spreading layout styles to cells (Edit toolbox: %s)", topLevel => {
+    document.body.innerHTML = '<section><!--keep--><table><caption>Title</caption><thead><tr><th>Heading</th><th>Other</th></tr></thead><tbody><tr><td style="background: white">one<table><tbody><tr><td>Nested</td></tr></tbody></table></td><td><demo-widget><table><tbody><tr><td>Private</td></tr></tbody></table></demo-widget></td></tr></tbody></table></section>'
+    const table = document.querySelector("table")!
+    const cells = Array.from(table.querySelectorAll<HTMLTableCellElement>(":scope > thead > tr > th, :scope > tbody > tr > td"))
+    const descendants = Array.from(table.querySelectorAll("*"))
+    $.selectElement(table)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel, styles: {
+      "background-color": "gold", color: "blue", "border-color": "red", padding: "8px", margin: "12px", width: "500px", "box-shadow": "0 4px 8px #0003", "border-radius": "4px",
+    }})
+    expect(table).toHaveStyle({backgroundColor: "gold", margin: "12px", width: "500px"})
+    for(const cell of cells) {
+      expect(cell).toHaveStyle({backgroundColor: "gold", color: "blue", borderColor: "red", padding: "8px"})
+      for(const property of ["margin", "width", "box-shadow", "border-radius"]) expect(cell.style.getPropertyValue(property)).toBe("")
+    }
+    for(const element of descendants) {
+      if(!cells.includes(element as HTMLTableCellElement)) expect(element).not.toHaveAttribute("style")
+    }
+    expect(table.parentElement).not.toHaveAttribute("style")
+    expect(Array.from(table.querySelectorAll("*"))).toEqual(descendants)
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel}).target?.localName).toBe("table")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("table")?.getAttribute("style")).toBeNull()
+    expect(document.querySelector("tbody td")?.getAttribute("style")).toBe("background: white")
+    editor.doc.redo()
+    expect(document.querySelector("table")?.style.backgroundColor).toBe("gold")
+  })
+  it("styles the current cell from a caret inside nested cell content", () => {
+    document.body.innerHTML = '<section><table><tbody><tr><td><p><b>one</b></p></td><td>two</td></tr></tbody></table></section>'
+    $.move(document.querySelector("b")!.firstChild!, 1)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    expect(document.querySelector("td")).toHaveStyle({backgroundColor: "gold"})
+    for(const element of document.querySelectorAll("section, table, p, b, td + td")) expect(element).not.toHaveAttribute("style")
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("td")
+  })
+  it("resolves the selected rectangle again after direct cell replacement", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>one</td><td>two</td><td>three</td></tr></tbody></table>'
+    const [first, middle, last] = Array.from(document.querySelectorAll("td"))
+    editor.features.table.selectCells(first, last)
+    const replacement = document.createElement("th")
+    replacement.textContent = "replacement"
+    middle.replaceWith(replacement)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    expect(replacement).toHaveStyle({backgroundColor: "gold"})
+    expect(middle).not.toHaveAttribute("style")
+    first.remove()
+    editor.features.table.selectCells(replacement)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {color: "blue"}})
+    expect(replacement.style.color).toBe("blue")
+    expect(last.style.color).toBe("")
+  })
   it("styles the body without a live selection", () => {
     document.body.innerHTML = "<p>hello</p>"
     const paragraph = document.body.firstElementChild!
@@ -4325,6 +4438,163 @@ describe("unified content transfer", () => {
     expect(document.querySelectorAll("svg")).toHaveLength(1)
     expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
     expect(paragraph).toHaveTextContent("target")
+  })
+
+  it("capture-selects a graphic beneath its drag surface throughout a keyboard shape hover", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!, original = graphic.querySelector("rect")!
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    expect(surface).not.toBeNull()
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    const capture = vi.spyOn(editor.features.selection, "captureElement")
+    const data = shapeData("ellipse")
+    const read = vi.spyOn(data, "getData").mockReturnValue("")
+    const over = transferEvent("dragover", data)
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(surface.isConnected).toBe(false)
+    // Subsequent events may hit authored content or SVG editing chrome.
+    const outline = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    editor.addAppendix(outline)
+    for(const target of [graphic, outline, graphic]) target.dispatchEvent(transferEvent("dragover", data))
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(graphic).toHaveClass("◆element-capture-selected")
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    read.mockRestore()
+    outline.dispatchEvent(transferEvent("drop", data))
+    expect(document.querySelectorAll("svg")).toHaveLength(1)
+    expect(graphic.querySelector("rect")).toBe(original)
+    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  })
+
+  it.each(insertionMenuItems.filter(item => item.tag).map(item => item.tag!))("drops ribbon %s inside the hovered graphic without replacing authored content", tag => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const original = graphic.lastChild
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    editor.features.selection.selectElement(graphic)
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    const data = ribbonData(tag)
+    const read = vi.spyOn(data, "getData").mockReturnValue("")
+    surface.dispatchEvent(transferEvent("dragover", data, {clientX: 500, clientY: 350}))
+    read.mockRestore()
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 500, clientY: 350}))
+    expect(graphic.childNodes[1]).toBe(original)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    const inserted = graphic.lastElementChild!
+    if(tag === "picture") expect(inserted.localName).toBe("image")
+    else {
+      expect(inserted.localName).toBe("foreignObject")
+      expect(inserted.firstElementChild!.localName).toBe(tag)
+      expect(inserted).toHaveAttribute("x", "40")
+      expect(inserted).toHaveAttribute("y", tag === "audio" ? "123" : "60")
+      if(tag === "table") expect(inserted.querySelectorAll("td")).toHaveLength(4)
+      if(tag === "math") expect(inserted.querySelector("mrow")).not.toBeNull()
+    }
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each([
+    ["insert-graphic-shape:ellipse", "ellipse"],
+    ["insert-math:frac", "foreignObject math mfrac"],
+    ["list-style:ol:lower-alpha", "foreignObject ol"],
+    ["element:table", "foreignObject table"],
+  ])("drops the ribbon action %s into the graphic with undo and redo", (action, selector) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, action)
+    graphic.dispatchEvent(transferEvent("drop", data))
+    expect(graphic.querySelector(selector)).not.toBeNull()
+    if(action.startsWith("list-style:")) expect(graphic.querySelector("ol")!.style.listStyleType).toBe("lower-alpha")
+    editor.doc.syncFromDOM()
+    const after = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    editor.doc.undo()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(before)
+    editor.doc.redo()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(after)
+  })
+
+  it.each([false, true])("anchors delayed ribbon widget insertion to the graphic (target replaced: %s)", async replaced => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "package-member:demo")
+    const post = vi.spyOn(editor, "postHostMessage")
+    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 250, clientY: 160}))
+    const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0] as {position: RibbonDropPosition}
+    expect(message.position.layout).toBe("graphic")
+    if(replaced) {
+      graphic.replaceWith(document.createElement("p"))
+      editor.doc.syncFromDOM()
+    }
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<!--snippet--><demo-widget title="keep"><p>Nested</p></demo-widget>', position: message.position})).toBe(!replaced)
+    if(replaced) expect(document.querySelector("demo-widget")).toBeNull()
+    else {
+      expect(graphic.querySelector("foreignObject demo-widget")).toHaveAttribute("title", "keep")
+      expect(graphic.querySelector("demo-widget p")).toHaveTextContent("Nested")
+      expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+      expect(editor.toHTML(true)).not.toContain("◆")
+    }
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("retains a ribbon graphic target across a package reload", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "package:demo")
+    const post = vi.spyOn(editor, "postHostMessage")
+    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 250, clientY: 160}))
+    const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0] as {position: RibbonDropPosition}
+    const initialState = editor.doc.snapshot()
+    editor.destroy()
+    document.body.innerHTML = '<p></p>'
+    editor = new DOMEditor({initialState})
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<p>Loaded content</p>', position: message.position})).toBe(true)
+    expect(document.querySelector("svg foreignObject p")).toHaveTextContent("Loaded content")
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+  })
+
+  it.each(["drop", "dragend"])("finishes a keyboard shape %s on the document's shadow slot", eventType => {
+    document.body.innerHTML = '<p>keep</p>'
+    const paragraph = document.querySelector("p")!, slot = editor.appendix.querySelector("slot")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(paragraph)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 2})
+    const data = shapeData()
+    slot.dispatchEvent(transferEvent("dragover", data, {clientX: 125, clientY: 50}))
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
+    const event = transferEvent(eventType, data, {clientX: 125, clientY: 50})
+    slot.dispatchEvent(event)
+    if(eventType === "drop") {
+      expect(event.defaultPrevented).toBe(true)
+      const graphic = document.querySelector("svg")!
+      expect(graphic.querySelector("rect")).toHaveAttribute("fill", "red")
+      expect(graphic.querySelectorAll("rect")).toHaveLength(1)
+      expectClassFloat(graphic, "left")
+    }
+    else expect(document.querySelector("svg")).toBeNull()
+    expect(paragraph).toHaveTextContent("keep")
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it("ignores document shape drops while locked and inside widget shadow DOM", () => {
@@ -5865,8 +6135,12 @@ describe("unified content transfer", () => {
   it("positions the idle node drag surface only after geometry invalidation and cleans up observers", () => {
     document.body.innerHTML = "<p>source</p>"
     const source = document.body.firstElementChild!
-    // Presence carets also redraw on resize; count only the drag surface's frames.
+    // Other editing overlays also redraw on resize; count only the drag
+    // surface's frames in this geometry and lifecycle test.
     editor.features.collaboration.disable()
+    editor.features.graphic.disable()
+    editor.features.attribution.disable()
+    editor.features.layout.disable()
     const callbacks = new Map<number, FrameRequestCallback>()
     let nextFrame = 0
     const requestFrame = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
@@ -5894,6 +6168,9 @@ describe("unified content transfer", () => {
     expect(requestFrame).toHaveBeenCalledTimes(2)
     editor.features.manipulation.enable()
     editor.features.collaboration.enable()
+    editor.features.graphic.enable()
+    editor.features.attribution.enable()
+    editor.features.layout.enable()
   })
 
   it.each(["dragend", "dragleave", "disable"])("cleans up the drop indicator and handles %s", ending => {

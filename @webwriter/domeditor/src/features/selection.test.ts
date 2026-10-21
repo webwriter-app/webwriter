@@ -726,6 +726,22 @@ describe("revealing selections inside details", () => {
     }
   })
 
+  it.each([false, true])("keeps a disclosure closed for a native range around its summary (backward: %s)", backward => {
+    document.body.innerHTML = '<details><summary>Outer</summary><details><!--keep--><summary title="keep"><b>Inner</b></summary><p>Body</p></details></details>'
+    const [outer, inner] = document.querySelectorAll("details")
+    const summary = inner.querySelector("summary")!
+    const index = Array.from(inner.childNodes).indexOf(summary)
+    document.getSelection()!.setBaseAndExtent(inner, index + Number(backward), inner, index + Number(!backward))
+
+    feature.processSelection()
+
+    expect(outer.open).toBe(true)
+    expect(inner.open).toBe(false)
+    expect(inner.querySelector("summary")).toBe(summary)
+    expect(summary.getAttribute("title")).toBe("keep")
+    expect(document.getSelection()!.toString()).toBe("Inner")
+  })
+
   it("opens details at both endpoints of a native text selection", () => {
     document.body.innerHTML = '<details><summary>First</summary><p>First body</p></details><details><summary>Last</summary><p>Last body</p></details>'
     const [first, last] = document.querySelectorAll("details")
@@ -989,6 +1005,48 @@ describe("captured element insertion", () => {
 })
 
 describe("capture outline selection", () => {
+  it.each(["picture", "interactive-widget", "svg"])("includes captions around captured %s content and follows live figure geometry", tag => {
+    const figure = el("figure")
+    figure.innerHTML = `<${tag}>${tag === "picture" ? '<img alt="Content">' : ""}</${tag}><!--keep--><figcaption>Caption below</figcaption>`
+    const content = figure.firstElementChild!
+    const caption = figure.lastElementChild!
+    const figureRect = vi.spyOn(figure, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 60, 320, 240))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 60, 320, 200))
+    const authored = editor.toHTML(true)
+    try {
+      feature.captureElement(content)
+      const caret = feature.selectionCaret!
+      expect(feature.captureSelectedElement).toBe(content)
+      expect(content).toHaveClass("◆element-capture-selected")
+      expect(caret).toHaveClass("◆selection-caret-capture")
+      expect(caret.style.left).toBe("40px")
+      expect(caret.style.top).toBe("60px")
+      expect(caret.style.width).toBe("320px")
+      expect(caret.style.height).toBe("240px")
+      expect(editor.features.transformation.target).toBe(content)
+      expect(editor.features.transformation.overlay.style.height).toBe("200px")
+
+      figure.prepend(caption)
+      figureRect.mockReturnValue(new DOMRect(40, 20, 320, 280))
+      editor.features.transformation.updateInfo()
+      expect(caret.style.top).toBe("20px")
+      expect(caret.style.height).toBe("280px")
+      expect(feature.captureSelectedElement).toBe(content)
+
+      document.body.append(content)
+      editor.features.transformation.updateInfo()
+      expect(caret.style.top).toBe("60px")
+      expect(caret.style.height).toBe("200px")
+      figure.prepend(content)
+      figure.append(caption)
+      expect(editor.toHTML(true)).toBe(authored)
+      expect(editor.toHTML(true)).not.toContain("selection-caret")
+      feature.selectElement(el("p", "Next"))
+      expect(content).not.toHaveClass("◆element-capture-selected", "◆element-selected")
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
   it.each(["top", "right", "bottom", "left"])("selects the captured element through its %s edge", side => {
     const widget = el("interactive-widget")
     const button = document.createElement("button")
@@ -3490,30 +3548,61 @@ describe("document listeners", () => {
     }
     expect(received).not.toHaveBeenCalled()
   })
-  it("allows modifier interactions in a widget explicitly selected for capture", () => {
+  it.each(["open", "closed", "light-button", "light-control"] as const)("intercepts modifier interactions in a capture-selected %s widget", kind => {
     const widget = document.createElement("interactive-widget")
-    const button = document.createElement("button")
-    widget.attachShadow({mode: "open"}).append(button)
+    const target = kind === "light-control" ? document.createElement("input") : document.createElement("button")
+    if(kind === "open" || kind === "closed") widget.attachShadow({mode: kind}).append(target)
+    else widget.append(target)
     appendToBody(widget)
     feature.captureElement(widget)
+    target.focus()
     const received = vi.fn()
-    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) button.addEventListener(type, received)
+    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) target.addEventListener(type, received, {capture: true})
 
     for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) {
-      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
-      button.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(false)
+      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, ctrlKey: true, metaKey: true})
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
     }
 
-    expect(received).toHaveBeenCalledTimes(6)
-    expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(received).not.toHaveBeenCalled()
+    expect($.selectedElement).toBe(widget)
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
   })
-  it("suppresses activation even when the modifier is released before the click", () => {
+  it.each(["audio", "video", "iframe", "input", "button", "select", "textarea", "svg"])("intercepts modifier activation of a capture-selected <%s> before target handlers", tag => {
+    const target = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag)
+    if(target instanceof HTMLMediaElement) target.controls = true
+    appendToBody(target)
+    const received = vi.fn()
+    const types = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]
+    for(const type of types) target.addEventListener(type, received, {capture: true})
+
+    for(const modifier of ["ctrlKey", "metaKey"]) {
+      const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue(modifier === "metaKey" ? "MacIntel" : "Win32")
+      try {
+        feature.captureElement(target)
+        for(const type of types) {
+          const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, [modifier]: true})
+          target.dispatchEvent(event)
+          expect(event.defaultPrevented).toBe(true)
+        }
+        expect($.selectedElement).toBe(target)
+        expect(feature.isCaptureSelection).toBe(false)
+        expect(target).toHaveClass("◆element-selected")
+        expect(target).not.toHaveClass("◆element-capture-selected")
+      }
+      finally { platform.mockRestore() }
+    }
+    expect(received).not.toHaveBeenCalled()
+  })
+  it.each([false, true])("suppresses activation even when the modifier is released before the click (captured: %s)", captured => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
     appendToBody(widget)
+    if(captured) feature.captureElement(widget)
     const activated = vi.fn()
     button.addEventListener("click", activated)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true}))

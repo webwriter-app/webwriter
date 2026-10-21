@@ -25,6 +25,25 @@ function type(input: HTMLInputElement, value: string) {
 }
 
 describe("font size combobox", () => {
+  it("can close before its first render and reopen without changing its value", async () => {
+    const combo = new FontSizeCombobox()
+    combo.value = "18px"
+
+    expect(() => combo.close()).not.toThrow()
+    document.body.append(combo)
+    await combo.updateComplete
+
+    expect(combo.value).toBe("18px")
+    expect(combo.shadowRoot!.querySelector<HTMLInputElement>("input")!.getAttribute("aria-expanded")).toBe("false")
+    expect(combo.shadowRoot!.querySelector('[role="listbox"]')).toBeNull()
+    expect(combo.shadowRoot!.querySelector<HTMLInputElement>("input")!.value).toBe("18")
+
+    combo.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await combo.updateComplete
+    expect(combo.shadowRoot!.querySelector<HTMLInputElement>("input")!.getAttribute("aria-expanded")).toBe("true")
+    expect(combo.shadowRoot!.querySelector('[role="listbox"]')).not.toBeNull()
+  })
+
   it("focuses and selects the number when opened from its dropdown arrow", async () => {
     const combo = new FontSizeCombobox()
     combo.value = "16px"

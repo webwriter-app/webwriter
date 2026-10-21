@@ -23,6 +23,66 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
 describe("document floats", () => {
+  // Left/right use CSS math unsupported by Happy DOM; native-browser.ts checks
+  // their rendered alignment and exported HTML at each document breakpoint.
+  it("clears floating and centers the live top-level widget without changing its structure", () => {
+    const alignment = "center"
+    document.body.innerHTML = '<!--before--><custom-card class="authored ww-float-right" style="width: 12rem; margin: 7px; margin-inline: 4px 9px; color: red"><unfamiliar-node>keep</unfamiliar-node><!--inside--></custom-card><!--after--><p>next</p>'
+    const target = document.querySelector<HTMLElement>("custom-card")!
+    const children = Array.from(target.childNodes), siblings = Array.from(document.body.childNodes)
+    editor.features.selection.captureElement(target)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "none", alignment, topLevel: true})).toBe(true)
+    expect(target.style.marginLeft).toBe("auto")
+    expect(target.style.marginRight).toBe("auto")
+    expect(target.style.getPropertyValue("margin-inline")).toBe("")
+    expect(target.style.marginTop).toBe("7px")
+    expect(target.style.marginBottom).toBe("7px")
+    expect(target.style.width).toBe("12rem")
+    expect(target.style.color).toBe("red")
+    expect(target.classList.contains("ww-float-right")).toBe(false)
+    expect(target.classList.contains("authored")).toBe(true)
+    expect(Array.from(target.childNodes)).toEqual(children)
+    expect(Array.from(document.body.childNodes)).toEqual(siblings)
+    expect(editor.features.selection.captureSelectedElement).toBe(target)
+    expect(editor.features.manipulation.getStyleState([], target, false).target?.alignment).toBe(alignment)
+  })
+
+  it("synchronizes and serializes alignment with float removal and restores both through undo and redo", () => {
+    const target = document.querySelector<HTMLElement>("p")!
+    target.classList.add("ww-float-right")
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    $.move(target.firstChild!, 2)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "none", alignment: "center"})).toBe(true)
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    expect(after).toContain("margin-left: auto")
+    expect(after).toContain("margin-right: auto")
+    expect(after).not.toContain("◆")
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const paragraph = (sharedDOMBody(remote).get(0) as Y.XmlElement).get(0) as Y.XmlElement
+      expect(paragraph.getAttribute("style")).toContain("margin-left: auto")
+      expect(paragraph.getAttribute("class")).toBeUndefined()
+    }
+    finally { remote.destroy() }
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("rejects alignment when the selected endpoint was removed or the command is invalid", () => {
+    const target = document.querySelector("p")!
+    $.move(target.firstChild!, 2)
+    target.remove()
+    const before = editor.toHTML(true)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "none", alignment: "left"})).toBe(false)
+    expect(editor.features.manipulation.setFloat(document.querySelector("custom-card")!, "far-right", "left")).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
   it.each(["far-left", "far-right"] as const)("adds an unfloated paragraph beside a lone element placed %s", side => {
     document.body.innerHTML = '<!--before-->\n<custom-card title="Keep"><unfamiliar-node>content</unfamiliar-node></custom-card>\n<!--after-->'
     const element = document.querySelector("custom-card")!
@@ -98,13 +158,13 @@ describe("document floats", () => {
     expect(document.querySelector("section")!.children.length).toBe(1)
   })
 
-  it("floats and moves the top-level container from an inner text selection", () => {
+  it.each(["none", "far-right"] as const)("moves the %s top-level container from an inner text selection", side => {
     document.body.innerHTML = '<div><p>inner</p></div><p>next</p>'
     const container = document.body.firstElementChild!
     const text = container.querySelector("p")!.firstChild!
     $.move(text, 2)
-    expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "far-right", topLevel: true})).toBe(true)
-    expect(container.classList.contains("ww-float-right")).toBe(true)
+    expect(editor.features.layout.actions.setFloat({type: "setFloat", side, topLevel: true})).toBe(true)
+    expect(container.classList.contains("ww-float-right")).toBe(side === "far-right")
     expect(container.firstElementChild!.classList.contains("ww-float-right")).toBe(false)
     expect(editor.features.layout.actions.moveFloat({type: "moveFloat", direction: "down", topLevel: true})).toBe(true)
     expect(document.body.lastElementChild).toBe(container)
@@ -117,8 +177,8 @@ describe("document floats", () => {
     expect(editor.features.layout.actions.moveFloat({type: "moveFloat", direction: "down", topLevel: true})).toBe(false)
   })
 
-  it.each(["p", "custom-card"])("moves a floated %s across adjacent elements while preserving its content and selection", tag => {
-    document.body.innerHTML = `<section><p>first</p><!--keep--><${tag} style="float:right;width:140px;color:red">floating text</${tag}><p>last</p></section>`
+  it.each(["p", "custom-card"].flatMap(tag => ["none", "right"].map(float => ({tag, float}))))("moves a $tag with float $float across adjacent elements while preserving its content and selection", ({tag, float}) => {
+    document.body.innerHTML = `<section><p>first</p><!--keep--><${tag} style="float:${float};width:140px;color:red">moving text</${tag}><p>last</p></section>`
     const parent = document.querySelector("section")!, element = parent.children[1] as HTMLElement
     const comment = parent.childNodes[1], text = element.firstChild!, style = element.getAttribute("style")
     if(tag === "custom-card") editor.features.selection.captureElement(element)
@@ -136,11 +196,9 @@ describe("document floats", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
-  it("keeps moves within the current parent and rejects nonfloated and locked targets", () => {
+  it("keeps normal-flow moves within the current parent and rejects locked targets", () => {
     const element = document.querySelector("p")!
     $.selectElement(element)
-    expect(editor.features.layout.moveFloat("down")).toBe(false)
-    setFloat("left")
     expect(editor.features.layout.moveFloat("up")).toBe(false)
     expect(editor.features.layout.moveFloat("down")).toBe(true)
     expect(editor.features.layout.moveFloat("down")).toBe(false)
@@ -150,10 +208,41 @@ describe("document floats", () => {
     expect(element.parentElement).toBe(document.querySelector("section"))
   })
 
-  it("moves an authored float when responsive CSS stacks it, and supports undo and redo", () => {
+  it.each(["none", "far-right"] as const)("projects current swap availability for a captured widget placed %s", side => {
+    document.body.innerHTML = '<!--before-->\n<custom-card>selected</custom-card><!--between--><p>next</p>\n<!--after-->'
+    const selected = document.querySelector("custom-card")!, next = document.querySelector("p")!
+    editor.features.selection.captureElement(selected)
+    setFloat(side)
+    const state = () => editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target
+    expect(state()).toMatchObject({canMoveUp: false, canMoveDown: true})
+    expect(editor.features.layout.moveFloat("down", true)).toBe(true)
+    expect(state()).toMatchObject({canMoveUp: true, canMoveDown: false})
+    next.remove()
+    expect(state()).toMatchObject({canMoveUp: false, canMoveDown: false})
+    selected.before(next)
+    const added = document.createElement("p")
+    selected.after(added)
+    expect(state()).toMatchObject({canMoveUp: true, canMoveDown: true})
+    expect(editor.features.manipulation.getStyleState([], document.body, false).target)
+      .toMatchObject({canMoveUp: false, canMoveDown: false})
+  })
+
+  it("projects swap availability for the top-level container rather than its selected text block", () => {
+    document.body.innerHTML = '<p>first</p><div><p>inner</p></div>'
+    const inner = document.querySelector("div > p")!
+    $.move(inner.firstChild!, 2)
+    expect(editor.features.manipulation.getStyleState([], inner, false).target)
+      .toMatchObject({canMoveUp: false, canMoveDown: false})
+    const state = () => editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target
+    expect(state()).toMatchObject({localName: "div", canMoveUp: true, canMoveDown: false})
+    expect(editor.features.layout.moveFloat("up", true)).toBe(true)
+    expect(state()).toMatchObject({localName: "div", canMoveUp: false, canMoveDown: true})
+  })
+
+  it.each(["none", "right"] as const)("moves an element with authored float %s when CSS computes none, and supports undo and redo", side => {
     const element = document.querySelector("p")!
     $.selectElement(element)
-    setFloat("right")
+    setFloat(side)
     // A stylesheet can override the authored side on a narrow page.
     const computed = getComputedStyle.bind(globalThis)
     vi.spyOn(globalThis, "getComputedStyle").mockImplementation((node, pseudo) => node === element
@@ -169,6 +258,31 @@ describe("document floats", () => {
     expect(document.querySelector("section")!.firstElementChild?.localName).toBe("p")
     editor.doc.redo()
     expect(document.querySelector("section")!.lastElementChild?.localName).toBe("p")
+  })
+
+  it("uses the current adjacent element after another source inserts content", () => {
+    document.body.innerHTML = '<p>first</p><p>selected</p><p>last</p>'
+    const selected = document.body.children[1], first = document.body.firstElementChild!
+    $.move(selected.firstChild!, 2)
+    const inserted = document.createElement("custom-card")
+    inserted.innerHTML = '<unfamiliar-element>keep<!--inside--></unfamiliar-element>'
+    selected.before(inserted)
+    expect(editor.features.layout.moveFloat("up", true)).toBe(true)
+    expect(Array.from(document.body.children)).toEqual([first, selected, inserted, document.body.lastElementChild])
+    expect(inserted.innerHTML).toBe('<unfamiliar-element>keep<!--inside--></unfamiliar-element>')
+    expect($.anchor).toBe(selected.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("does not move a captured element after it is disconnected", () => {
+    document.body.innerHTML = '<custom-card>selected</custom-card><p>keep</p>'
+    const selected = document.body.firstElementChild!
+    editor.features.selection.captureElement(selected)
+    selected.remove()
+    const before = editor.toHTML(true)
+    expect(editor.features.layout.moveFloat("down", true)).toBe(false)
+    expect(editor.features.layout.moveFloat("up", true)).toBe(false)
+    expect(editor.toHTML(true)).toBe(before)
   })
 
   it.each(["far-left", "far-right"] as const)("uses a placement class for %s and preserves authored styles", side => {

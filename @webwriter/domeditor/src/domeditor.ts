@@ -41,6 +41,7 @@ import {
   executeFailureEvent,
   markStateChangeEvent,
   commentStateChangeEvent,
+  commentReviewRequestEvent,
   proofreadingStateChangeEvent,
   proofreadingDictionaryAddEvent,
   type ProofreadingState,
@@ -693,7 +694,7 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent) {
+    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent) {
       return
     }
 
@@ -755,7 +756,7 @@ export class DOMEditor {
         // Selection projections do not change the selection. Reposting it
         // starts another host read before this response arrives, creating a
         // feedback loop that also makes valid style/HTML responses stale.
-        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "hoverHTMLSelectionEdit" && ev.data.type !== "getStyleState") this.postSelectionPath()
+        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState") this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }
@@ -1147,9 +1148,9 @@ export class DOMEditor {
             : this.features.canvas.convert("canvas", false)
       if(!changed) return false
       const restoredAnchor = anchor(), restoredFocus = focus()
-      // An empty Canvas becomes a new paragraph with a text caret. Keep that
-      // editing position instead of restoring the old canvas root selection.
-      const emptyDocumentStart = state.mode === "canvas" && mode === "document" && $.isEmptySelection
+      // Keep the new paragraph's caret after resetting empty Canvas content,
+      // unless the user explicitly selected the document for its toolbox.
+      const emptyDocumentStart = !documentSelected && state.mode === "canvas" && mode === "document" && $.isEmptySelection
         && $.anchor instanceof HTMLParagraphElement && $.anchor.parentElement === document.body
         && document.body.childNodes.length === 1
       if(!emptyDocumentStart && (documentSelected || restoredAnchor && restoredFocus)) {

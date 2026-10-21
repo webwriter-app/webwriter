@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
-import {$} from "../utility"
+import {$, clearEditorMarkerClasses} from "../utility"
 import {
   graphicShapeDragType,
   SVG_NAMESPACE,
@@ -2352,6 +2352,57 @@ describe("graphic editing", () => {
     expect(graphic).not.toHaveClass("◆graphic-grid-visible")
     expect(editor.features.graphic.getState()?.options?.grid).toBe(false)
     expect(editor.toHTML(true)).not.toContain("graphic-grid-visible")
+  })
+
+  it("fades captured overflow without changing authored filters, content or selection", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.style.cssText = "width:600px;height:300px;filter:grayscale(0.5);overflow:hidden"
+    graphic.innerHTML = '<!--keep--><g transform="rotate(15)"><rect x="-120" y="-40" width="300" height="200" fill="red"/></g><foreignObject><custom-widget xmlns="http://www.w3.org/1999/xhtml"/></foreignObject>'
+    const content = graphic.innerHTML, authoredStyle = graphic.getAttribute("style")
+    const shape = graphic.querySelector("rect")!
+    clickShape(shape)
+    const sheet = document.adoptedStyleSheets.find(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes("graphic-overflow-visible")))!
+    const rule = () => sheet.cssRules[0] as CSSStyleRule
+    expect(rule().style.filter).toMatch(/^grayscale\(0.5\) url\(/)
+    const source = decodeURIComponent(rule().style.filter.match(/data:image\/svg\+xml,([^"#]+)/)![1])
+    const filter = new DOMParser().parseFromString(source, "image/svg+xml")
+    expect(filter.querySelector('feFlood[result="outside"]')).toHaveAttribute("flood-opacity", "0.35")
+    expect(filter.querySelector('feFlood[result="inside"]')).toHaveAttribute("width", "600")
+    expect(filter.querySelector('feFlood[result="inside"]')).toHaveAttribute("height", "300")
+    expect(editor.features.graphic.selectedShape).toBe(shape.parentElement)
+    const clean = graphic.cloneNode(true) as SVGSVGElement
+    clearEditorMarkerClasses(clean)
+    expect(clean.innerHTML).toBe(content)
+    expect(graphic.getAttribute("style")).toBe(authoredStyle)
+    await mutationsDelivered()
+    expect(editor.doc.domToYxmlNode(graphic)!.toString()).not.toContain("◆graphic-overflow-visible")
+    expect(editor.toHTML(true)).not.toContain("#overflow")
+    expect(await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})).not.toContain("◆")
+    editor.features.graphic.disable()
+    expect(document.adoptedStyleSheets).not.toContain(sheet)
+    expect(graphic).not.toHaveClass("◆graphic-overflow-visible")
+    expect(graphic.getAttribute("style")).toBe(authoredStyle)
+  })
+
+  it("refreshes overflow boundaries after direct edits and cleans replaced graphics", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.style.cssText = "width:600px;height:300px"
+    clickShape(graphic)
+    const sheet = document.adoptedStyleSheets.find(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes("graphic-overflow-visible")))!
+    const before = sheet.cssRules[0].cssText
+    graphic.style.width = "800px"
+    await mutationsDelivered()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(sheet.cssRules[0].cssText).not.toBe(before)
+    const replacement = graphic.cloneNode(true) as SVGSVGElement
+    graphic.replaceWith(replacement)
+    await mutationsDelivered()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(document.adoptedStyleSheets).not.toContain(sheet)
+    expect(graphic).not.toHaveClass("◆graphic-overflow-visible")
+    expect(replacement).not.toHaveClass("◆graphic-overflow-visible")
   })
 
   it.each([false, true])("repeats the grid despite a theme background reset (with shapes: %s)", withShapes => {

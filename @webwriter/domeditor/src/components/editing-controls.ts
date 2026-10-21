@@ -1750,7 +1750,9 @@ export abstract class EditingControls extends LitElement {
             >${label}</button>
           `)}
         </div>
-        ${areas.length ? areas.map((area, position) => html`
+        ${areas.length ? areas.map((area, position) => {
+          const classes = new Set((area.attributes.class ?? "").split(/\s+/).filter(Boolean))
+          return html`
           <div class="media-resource-card image-map-area">
             <div class="media-resource-card-heading">
               <span>Hotspot ${position + 1}</span>
@@ -1763,7 +1765,23 @@ export abstract class EditingControls extends LitElement {
                 })}
               >×</button>
             </div>
-            ${imageMapAreaAttributeOptions.map(option => this.renderImageMapAreaAttribute(area, option))}
+            ${imageMapAreaAttributeOptions
+              .filter(option => !(option.name === "href" && (area.attributes.popovertarget || area.attributes.interestfor)))
+              .map(option => this.renderImageMapAreaAttribute(area, option))}
+            <div class="image-map-appearance">
+              ${(["border", "background"] as const).map(part => html`
+                <label class="media-attribute media-attribute-boolean">
+                  <span>${part === "border" ? "Border" : "Background"}</span>
+                  <input type="checkbox" data-ribbon-input-persistent aria-label=${`Hotspot: ${part === "border" ? "Border" : "Background"}`}
+                    .checked=${!classes.has("ww-hotspot-transparent") && !classes.has(`ww-hotspot-no-${part}`)}
+                    @change=${(event: Event) => this.dispatchImageMapAction({
+                      action: "set-overlay", path: area.path, expected: area.attributes, part,
+                      value: (event.currentTarget as HTMLInputElement).checked,
+                    })}
+                  />
+                </label>
+              `)}
+            </div>
             ${area.attributes.popovertarget || area.attributes.interestfor ? html`
               <div>
                 ${this.renderMediaAttributeField({
@@ -1777,15 +1795,13 @@ export abstract class EditingControls extends LitElement {
                     value: (event.currentTarget as HTMLSelectElement).value,
                   }),
                 })}
-                <button class="media-resource-action" type="button" aria-label=${`Open hotspot ${position + 1} popover`}
-                  @click=${() => this.dispatchImageMapAction({action: "open-popover", path: area.path, expected: area.attributes})}>Open popover</button>
               </div>
             ` : html`
               <button class="media-resource-add" type="button" aria-label=${`Add hotspot ${position + 1} popover`}
                 @click=${() => this.dispatchImageMapAction({action: "add-popover", path: area.path, expected: area.attributes})}>Add popover</button>
             `}
           </div>
-        `) : html`<p class="image-map-note">Draw a shape to add the first hotspot.</p>`}
+        `}) : html`<p class="image-map-note">Draw a shape to add the first hotspot.</p>`}
       </section>
     `
   }

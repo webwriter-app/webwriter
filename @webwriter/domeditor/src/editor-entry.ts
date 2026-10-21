@@ -58,10 +58,10 @@ export function observeFrameDocument(document: Document, callback: MutationCallb
 }
 
 /** Whether a frame-level shortcut belongs to the editor document. */
-export function shouldCaptureFrameShortcut(event: KeyboardEvent) {
+export function shouldCaptureFrameShortcut(event: KeyboardEvent, action?: string) {
   return !event.defaultPrevented && !event.isComposing
-    && !isWidgetShadowInteraction(event) && !isAppendixInteraction(event)
-    && !isTextFieldInteraction(event, document.body)
+    && (action === "Print" || !isWidgetShadowInteraction(event) && !isAppendixInteraction(event)
+      && !isTextFieldInteraction(event, document.body))
 }
 
 type SelectionBookmark = {
@@ -146,11 +146,11 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true})
   document.addEventListener("keydown", event => {
     post({type: "editor-frame-interaction"})
-    if(!shouldCaptureFrameShortcut(event)) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => shortcuts[candidate.id] === shortcut)
     if(!command && !builtinShortcuts().has(shortcut)) return
+    if(!shouldCaptureFrameShortcut(event, command?.action)) return
     event.preventDefault()
     event.stopImmediatePropagation()
     if(command && !event.repeat) post({type: "editor-frame-shortcut", action: command.action})

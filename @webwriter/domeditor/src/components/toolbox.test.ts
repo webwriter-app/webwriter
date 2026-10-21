@@ -652,8 +652,8 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
     expect(getComputedStyle(content).getPropertyValue("scrollbar-gutter")).toBe("stable both-edges")
-    expect(getComputedStyle(content).paddingLeft).toBe("2px")
-    expect(getComputedStyle(content).paddingRight).toBe("2px")
+    expect(getComputedStyle(content).paddingLeft).toBe("8px")
+    expect(getComputedStyle(content).paddingRight).toBe("8px")
     const drawers = Array.from(content.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.length).toBeGreaterThan(1)
     for(const drawer of drawers) {
@@ -694,7 +694,8 @@ describe("toolbox", () => {
     expect(drawer.shadowRoot!.querySelector(".pane-icon .icon-tabler-palette")).not.toBeNull()
     const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
     await advanced.updateComplete
-    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "rotate", "scale", "opacity", "box-shadow", "filter"])
+    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"])
+    expect(advanced.shadowRoot!.querySelector('[data-property="rotate"], [data-property="scale"]')).toBeNull()
     const compactCombos = advanced.shadowRoot!.querySelectorAll<HTMLElement>('style-combobox[id^="compact-"]')
     expect(compactCombos.length).toBeGreaterThan(0)
     expect(Array.from(compactCombos).every(combo => combo.shadowRoot?.querySelector("input"))).toBe(true)
@@ -1259,7 +1260,7 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
   expect(reset().disabled).toBe(true)
   toolbox.elementStyle = {
     target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
-    inline: {"font-family": {value: "serif", priority: ""}},
+    inline: {"font-family": {value: "serif", priority: ""}, rotate: {value: "30deg", priority: ""}, scale: {value: "1.5", priority: ""}},
     computed: {width: "400px"}, context: {display: "block", parentDisplay: "block"},
   }
   await toolbox.updateComplete
@@ -1480,12 +1481,29 @@ it("uses the current text target inside a table for specialized style controls",
     inline: {}, computed: {}, context: {display: "block", parentDisplay: "table-cell"},
   }
   await toolbox.updateComplete
-  const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="p"]')!
+  const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="p"]')!
   expect(drawer).not.toBeNull()
-  expect(drawer.querySelector('ribbon-button[label="Row above"]')).not.toBeNull()
+  expect(drawer.label).toBe("Paragraph")
   const editors = Array.from(drawer.querySelectorAll<ElementStyleEditor>("element-style-editor"))
   expect(editors.flatMap(editor => editor.propertyNames ?? [])).toContain("text-align")
   expect(editors.flatMap(editor => editor.propertyNames ?? [])).not.toContain("table-layout")
+})
+
+it.each(["td", "th"])("keeps %s style presets available without cell placement actions", async localName => {
+  const toolbox = await mountToolbox()
+  toolbox.activeTool = "Edit"
+  toolbox.elementStyle = {
+    target: {localName, namespaceURI: "http://www.w3.org/1999/xhtml"},
+    inline: {}, computed: {}, context: {display: "table-cell", parentDisplay: "table-row"},
+  }
+  await toolbox.updateComplete
+  const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"]')!
+  expect(drawer.querySelector('element-style-editor[show-presets]')).not.toBeNull()
+  expect(drawer.querySelector('[aria-label="Placement"], [aria-label="Caption"]')).toBeNull()
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {localName: "table", namespaceURI: "http://www.w3.org/1999/xhtml"}}
+  await toolbox.updateComplete
+  expect(drawer.querySelector('[aria-label="Placement"]')).not.toBeNull()
+  expect(drawer.querySelector('[aria-label="Caption"]')).not.toBeNull()
 })
 
 

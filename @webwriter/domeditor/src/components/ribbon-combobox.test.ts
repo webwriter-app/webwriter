@@ -4,6 +4,25 @@ import {RibbonCombobox} from "./ribbon-combobox"
 
 afterEach(() => document.body.replaceChildren())
 
+it("can close before its first render and reopen without changing its value", async () => {
+  const combo = new RibbonCombobox()
+  combo.variant = "color"
+  combo.value = "#123456"
+
+  expect(() => combo.close()).not.toThrow()
+  document.body.append(combo)
+  await combo.updateComplete
+
+  expect(combo.value).toBe("#123456")
+  expect(combo.shadowRoot!.querySelector(".listbox")).toBeNull()
+  expect(combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.getAttribute("aria-expanded")).toBe("false")
+
+  combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+  await combo.updateComplete
+  expect(combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.getAttribute("aria-expanded")).toBe("true")
+  expect(combo.shadowRoot!.querySelector(".listbox")).not.toBeNull()
+})
+
 it.each(["color", "background-color"])("picks a custom %s without committing when the picker opens", async name => {
   const combo = new RibbonCombobox()
   combo.name = name

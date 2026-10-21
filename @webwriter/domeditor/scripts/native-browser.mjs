@@ -7,6 +7,8 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "editing suppresses native autoplay while preserving attributes and explicit playback",
+  "rotated figure captions flow upright and their transformation frames fit the content",
   "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
@@ -20,10 +22,13 @@ const expectedChecks = [
   "gap carets track their authored boundary",
   "insertion and saved-reader controls align inside symmetric scrollbar gutters",
   "SVG shape outlines and handles align inside symmetric scrollbar gutters",
+  "SVG overflow fades while retaining native shape selection",
   "editing affordances align with media inside symmetric scrollbar gutters",
   "document scrollbar gutters stay symmetric as content grows",
   "empty Details retains summary height and padding in standalone documents",
   "media stays centered in editing and standalone documents",
+  "unfloated placements align within the content column",
+  "Placement arrows move elements in normal document flow",
   "crop preview reveals the source and restores content outside the frame",
   "video crop controls remain available after repeated crops",
   "media interiors capture while outline edges element-select",
@@ -43,10 +48,16 @@ const expectedChecks = [
   "Board columns and cards retain native editing and standalone layout",
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
+  "text containers resize horizontally and fit their content",
+  "canvas and slide text exposes eight functional resize handles",
+  "block formulas expose block controls and resize horizontally",
   "iframes default to 16:9 and resize vertically in document flow",
+  "images stretch independently of their intrinsic aspect ratio",
+  "resize handles follow alignment and centered edges track the cursor",
   "cancelled resizing accepts the first delete activation",
   "media and graphics enforce minimum editing dimensions",
   "details remain intact after applying style presets",
+  "table presets respect whole-table and cell selections without changing layout",
   "figure permalinks align with padded caption numbering",
   "empty caption numbering is visible as a grey editing placeholder",
   "empty media controls wrap to fit their element",
@@ -70,6 +81,8 @@ const expectedChecks = [
   "new paragraphs and line breaks reveal the caret at the document end",
   "native drag floats in preview areas and preserves ordinary gap drops",
   "document shape drops use float lanes and ordinary content flow",
+  "keyboard shape drags capture graphics and finish drops through appendix surfaces",
+  "ribbon elements drop inside captured graphics with native content and cleanup",
   "empty document gutters prefer floats throughout the viewport",
   "empty graphics drag through their full capture outline into floats",
   "native MathML editing preserves inline rendering and argument hit targets",
@@ -78,6 +91,7 @@ const expectedChecks = [
   "empty formula carets fit their space and blink across presentation refreshes",
   "empty roots keep their baseline and one caret across focus and formula edges",
   "structural formula carets match inserted text without duplicate capture carets",
+  "formula carets follow canvas and slide zoom",
   "formula clicks distinguish script endings and select whole formulas",
   "inline formula edges use text selections and block formula edges use gaps",
   "inline formulas retain distinct inner and outer text insertion positions",
@@ -85,6 +99,7 @@ const expectedChecks = [
   "blank space around a formula paragraph selects gaps for every click count",
   "leaving an empty inline formula removes it without moving the text caret",
   "bottom layout cards retain native editing focus after rendering",
+  "toolbox Canvas to Document conversion retains the document selection",
   "recent documents fit one layout card when space is limited",
   "narrow ribbons show only the AI sparkles button",
   "AI toolbox adapts its width and short-screen controls",
@@ -97,6 +112,8 @@ const expectedChecks = [
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",
   "selection feature treats custom element as atomic",
+  "modifier clicks select table cells and outer borders",
+  "table insertion controls follow rotated edges and preview lines",
   "touch caret and ranges use shared pointer selection",
   "layout based hit testing returns the rendered target",
   "clicks below closed details keep hidden media collapsed",
@@ -110,8 +127,12 @@ const expectedChecks = [
   "local fonts embed selected bytes and load under the editor CSP",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
+  "New discards the previous canvas iframe and its document state",
   "uploaded videos survive installing and removing packages",
   "canvas and slide delete affordances follow rotation placement",
+  "canvas and slide element selections keep Delete borderless",
+  "canvas and slide copyright controls share freeform placement",
+  "canvas and slide captions remain available through toolbox commands",
   "bundled layouts render under the strict editor CSP without widgets",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",
@@ -125,6 +146,8 @@ const expectedChecks = [
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
   "exported canvas runs its standalone viewer without editor dependencies",
+  "image hotspots scale and open popovers in preview and standalone reading mode",
+  "hotspot popovers use grey editing placeholders and compact controls",
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
 const mathVisual = process.argv.includes("--math-visual")
@@ -258,7 +281,8 @@ try {
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
-    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
+    // Exercise editor autoplay suppression even when Chrome permits playback.
+    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", "--autoplay-policy=no-user-gesture-required", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
   browser = spawn(command, args, {
     stdio: ["ignore", "ignore", "pipe"],
     ...(browserName === "webkit" && swiftDeveloperDir

@@ -47,6 +47,23 @@ afterEach(() => {
 })
 
 describe("Board layout", () => {
+  it("retains breadcrumb document selection for the Document toolbox", async () => {
+    convert("board")
+    const html = await editor.serializeHTML()
+    const post = vi.spyOn(window.parent, "postMessage")
+    editor.features.selection.actions.selectNode({type: "selectNode", path: []})
+    await settle()
+    editor.features.selection.processSelection()
+    editor.postSelectionPath()
+
+    expect($.selectedElement).toBe(document.body)
+    const detail = post.mock.calls.filter(([message]) => message.type === selectionChangeEvent).at(-1)![0].detail as SelectionChangeDetail
+    expect(detail.nodeSelected).toBe(true)
+    expect(detail.path.map(item => item.path)).toEqual([[]])
+    expect(detail.selectedElementTypes ?? []).toEqual([])
+    expect(await editor.serializeHTML()).toBe(html)
+  })
+
   it.each(["", "<br>"])("discards only empty column heading placeholders during layout conversion (%s)", placeholder => {
     convert("board")
     const heading = columns()[0].querySelector("h2")!

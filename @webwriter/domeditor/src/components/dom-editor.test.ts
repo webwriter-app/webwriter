@@ -704,7 +704,7 @@ describe("DomEditor document loading", () => {
     read("<p>Loaded lesson</p>")
     await vi.waitFor(() => expect(host.frameRevision).toBe(1))
     await editor.updateComplete
-    iframe.dispatchEvent(new Event("load"))
+    editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!.dispatchEvent(new Event("load"))
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
     completePendingPackageLoad(editor)
@@ -1155,7 +1155,9 @@ describe("DomEditor iframe setup", () => {
     finishLoading()
     await reload
     expect(focus).toHaveBeenCalledOnce()
-    expect(editor.shadowRoot!.activeElement).toBe(iframe)
+    const reloadedFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    expect(reloadedFrame).not.toBe(iframe)
+    expect(editor.shadowRoot!.activeElement).toBe(reloadedFrame)
   })
 
   it.each(["initial", "preview", "reload", "disconnected"])("focuses the initial selection after loading: %s", async mode => {
@@ -1644,6 +1646,68 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
   })
 
+  it("discards the entire iframe and ignores old document messages when creating a new document", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    const oldDocument = iframe.contentDocument!
+    oldDocument.documentElement.setAttribute("data-authored", "old")
+    oldDocument.head.insertAdjacentHTML("beforeend", "<title>Old canvas</title><style>body {color: red}</style>")
+    oldDocument.body.className = "ww-canvas"
+    oldDocument.body.innerHTML = '<div><div><custom-widget answer="42"><!--keep--><p>Old canvas content</p></custom-widget></div></div>'
+    oldDocument.body.attachShadow({mode: "open"}).innerHTML = "<slot></slot><div>Old controls</div>"
+    const oldHTML = oldDocument.documentElement.outerHTML
+    await new Promise(resolve => setTimeout(resolve, 0))
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    host.frameState = {update: [1, 2, 3]}
+    host.savedEditorSelection = {anchor: {}, focus: {}}
+    host.undoState = {canUndo: true, canRedo: true}
+    const initializeFrame = host.initializeEditorFrame.bind(host)
+    vi.spyOn(host as {initializeEditorFrame(frame: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(frame => {
+      if(frame === host.editorIframe()) wirePackageLoadCompletion(frame.contentWindow!)
+      initializeFrame(frame)
+    })
+
+    for(let iteration = 0; iteration < 2; iteration++) {
+      const previousFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+      await host.newDocument("document")
+      await editor.updateComplete
+      const freshFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+      expect(freshFrame).not.toBe(previousFrame)
+      expect(previousFrame.isConnected).toBe(false)
+      expect(freshFrame.contentWindow).not.toBe(editorWindow)
+      expect(host.editorDocument).toBe(freshFrame.contentDocument)
+      expect(host.editorDocument.documentElement.hasAttribute("data-authored")).toBe(false)
+      expect(host.editorDocument.title).toBe("")
+      expect(host.editorDocument.body.innerHTML).toBe("")
+      expect(host.editorDocument.body.shadowRoot).toBeNull()
+      expect(host.frameState).toBeUndefined()
+      expect(host.savedEditorSelection).toBeNull()
+      expect(host.undoState).toEqual({canUndo: false, canRedo: false})
+      expect(host.documentLayout).toMatchObject({mode: "document", canConvert: true})
+      expect(host.documentLayoutsDismissed).toBe(false)
+      expect(host.fileDirty).toBe(false)
+
+      initializeFrame(previousFrame)
+      host.editorOpaque = true
+      window.dispatchEvent(new MessageEvent("message", {
+        origin: window.location.origin, source: editorWindow,
+        data: {type: "editor-frame-snapshot", bridgeNonce: host.bridgeNonce, html: oldHTML, treeChanged: true},
+      }))
+      host.handleEditorMessage(new MessageEvent("message", {
+        origin: new URL(host.frameShellURL("editor", host.frameRevision)).origin, source: editorWindow,
+        data: {type: "webwriter-editor-frame-ready", bridgeNonce: host.bridgeNonce},
+      }))
+      expect(host.editorDocument).toBe(freshFrame.contentDocument)
+      expect(host.editorWindow).toBe(freshFrame.contentWindow)
+      expect(host.fileDirty).toBe(false)
+      host.editorOpaque = false
+
+      editor.requestUpdate()
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBe(freshFrame)
+    }
+  })
+
   it("passes the saved-once accessibility gate into initial and restarted editor frames", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -1994,7 +2058,11 @@ describe("DomEditor iframe setup", () => {
       execute.mockClear()
       const key = String((index + 1) % 10)
       const event = new KeyboardEvent("keydown", {
-        key, code: `Digit${key}`, metaKey: apple, ctrlKey: !apple, bubbles: true, cancelable: true,
+        key, code: `Digit${key}`,
+        metaKey: key === "0" ? false : apple,
+        ctrlKey: key === "0" ? false : !apple,
+        altKey: key === "0", shiftKey: key === "0",
+        bubbles: true, cancelable: true,
       })
       iframe.contentDocument!.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
@@ -4296,6 +4364,9 @@ describe("DomEditor file actions", () => {
     const entries = [...nav.querySelectorAll<HTMLButtonElement>(".document-layout-document")]
     expect(entries.map(button => button.title)).toEqual(documents.slice(0, 10).map(document => document.title))
     expect(nav.previousElementSibling?.classList.contains("document-layout-cards")).toBe(true)
+    expect(getComputedStyle(nav).position).toBe("relative")
+    expect(getComputedStyle(nav.querySelector("ul")!).position).toBe("absolute")
+    expect(getComputedStyle(nav.querySelector("ul")!).overflowY).toBe("auto")
     expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-full-title")?.textContent).toBe("Recently opened")
     expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-short-title")?.textContent).toBe("Recent")
     expect(nav.querySelector("h2")).toBeNull()
@@ -4571,6 +4642,79 @@ describe("DomEditor file actions", () => {
     expect(iframe.sandbox.contains("allow-modals")).toBe(true)
   })
 
+  it.each(["Ctrl", "Meta", "Alt"])("prints the iframe from UI fields, widgets, and dialogs (%s)", async modifier => {
+    const {editor, editorWindow, iframe} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, shortcuts: {...host.settings.shortcuts, "document.print": `${modifier}+P`}}
+    const print = vi.fn()
+    Object.defineProperty(editorWindow, "print", {configurable: true, value: print})
+    const outerPrint = vi.fn()
+    vi.stubGlobal("print", outerPrint)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const source = document.createElement("textarea")
+    source.className = "html-source-input"
+    source.value = "Selected source"
+    const settings = document.createElement("settings-panel")
+    const settingsButton = settings.appendChild(document.createElement("button"))
+    editor.shadowRoot!.append(source, settings)
+    const frameDocument = iframe.contentDocument!
+    const input = frameDocument.body.appendChild(frameDocument.createElement("input"))
+    const widget = frameDocument.body.appendChild(frameDocument.createElement("test-widget"))
+    const widgetControl = widget.attachShadow({mode: "open"}).appendChild(frameDocument.createElement("button"))
+    const appendix = frameDocument.body.shadowRoot ?? frameDocument.body.attachShadow({mode: "open"})
+    const appendixControl = appendix.appendChild(frameDocument.createElement("input"))
+    const targets = [ribbon, ribbon.shadowRoot!.querySelector<HTMLInputElement>(".ai-prompt-input")!, source,
+      settingsButton, frameDocument.querySelector("p")!, input, widgetControl, appendixControl]
+    const keydown = (target: EventTarget, repeat = false) => {
+      const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: modifier === "Ctrl",
+        metaKey: modifier === "Meta", altKey: modifier === "Alt", bubbles: true, composed: true, cancelable: true, repeat})
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    for(const target of targets) {
+      expect(target).not.toBeNull()
+      ;(target as HTMLElement).focus()
+      if(target === source) source.select()
+      keydown(target)
+    }
+    expect(source.selectionStart).toBe(0)
+    expect(source.selectionEnd).toBe(source.value.length)
+    expect(print).toHaveBeenCalledTimes(targets.length)
+    keydown(source, true)
+    expect(print).toHaveBeenCalledTimes(targets.length)
+
+    const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector("dialog")!.open = true
+    keydown(menu)
+    expect(print).toHaveBeenCalledTimes(targets.length + 1)
+    expect(outerPrint).not.toHaveBeenCalled()
+
+    editor.remove()
+    const detached = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: modifier === "Ctrl",
+      metaKey: modifier === "Meta", altKey: modifier === "Alt", bubbles: true, cancelable: true})
+    document.dispatchEvent(detached)
+    expect(detached.defaultPrevented).toBe(false)
+    expect(print).toHaveBeenCalledTimes(targets.length + 1)
+  })
+
+  it("routes printing from a UI field to the cross-origin editor frame", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    const control = vi.spyOn(host, "postFrameControl")
+    const source = editor.shadowRoot!.appendChild(document.createElement("textarea"))
+    const shortcut = host.settings.shortcuts["document.print"]
+    const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", metaKey: shortcut.includes("Meta"),
+      ctrlKey: shortcut.includes("Ctrl"), bubbles: true, composed: true, cancelable: true})
+
+    source.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(control).toHaveBeenCalledWith("print")
+  })
+
   it("prints the active preview document", async () => {
     const {editor, editorWindow} = await mountEditor()
     const editorPrint = vi.fn()
@@ -4581,8 +4725,13 @@ describe("DomEditor file actions", () => {
     })
     ;(editor as any).previewActive = true
 
-    ;(editor as any).printDocument()
+    const source = editor.shadowRoot!.appendChild(document.createElement("textarea"))
+    const shortcut = (editor as any).settings.shortcuts["document.print"]
+    const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", metaKey: shortcut.includes("Meta"),
+      ctrlKey: shortcut.includes("Ctrl"), bubbles: true, composed: true, cancelable: true})
+    source.dispatchEvent(event)
 
+    expect(event.defaultPrevented).toBe(true)
     expect(previewPrint).toHaveBeenCalledTimes(1)
     expect(editorPrint).not.toHaveBeenCalled()
   })
@@ -4892,28 +5041,25 @@ describe("DomEditor.execute()", () => {
     expect(editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!.value).toBe(source)
   })
 
-  it("highlights HTML only while its source is hovered or focused, without restoring editor selection", async () => {
+  it("leaves document highlighting and selection alone while hovering, focusing, and refreshing HTML source", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue({html: "<p>Hello</p>"} as any)
     const restore = vi.spyOn(editor as any, "restoreEditorSelection")
-    await (editor as any).setHTMLMode(true)
+    const host = editor as any
+    await host.setHTMLMode(true)
     await editor.updateComplete
-    expect(restore).not.toHaveBeenCalled()
-    expect(execute).not.toHaveBeenCalledWith(expect.objectContaining({type: "hoverHTMLSelectionEdit"}))
+    execute.mockClear()
     const input = editor.shadowRoot!.querySelector<HTMLTextAreaElement>(".html-source-input")!
     input.dispatchEvent(new MouseEvent("mouseenter"))
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
     input.dispatchEvent(new FocusEvent("focus"))
     input.dispatchEvent(new MouseEvent("mouseleave"))
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
+    for(let i = 0; i < 3; i++) await host.refreshHTMLSource()
     input.dispatchEvent(new FocusEvent("blur"))
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: false})
-    input.dispatchEvent(new FocusEvent("focus"))
-    execute.mockClear()
-    await (editor as any).refreshHTMLSource()
-    expect(execute).toHaveBeenLastCalledWith({type: "hoverHTMLSelectionEdit", hovered: true})
-    await (editor as any).setHTMLMode(false)
-    expect((editor as any).htmlSourceHighlightActive).toBe(false)
+    expect(execute.mock.calls.map(([action]) => action.type)).toEqual(Array(3).fill("beginHTMLSelectionEdit"))
+    expect(restore).not.toHaveBeenCalled()
+    expect(input.value).toBe("<p>Hello</p>")
+    await host.setHTMLMode(false)
+    expect(execute).toHaveBeenLastCalledWith({type: "discardHTMLSelectionEdit"})
   })
 
   it("loads indented HTML as the clean baseline and leaves typing untouched", async () => {
@@ -5285,6 +5431,67 @@ describe("DomEditor.execute()", () => {
     selectInserted({path: [{path: [], name: "Document"}, {path: [0], name: "Form"}]})
     expect(toolbox.activeTool).toBeNull()
 
+  })
+
+  it("opens Edit when a video playback warning appears and avoids reopening unchanged warnings", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("AI")
+    const selectVideo = (path: number[], media: object) => window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path, name: "Video"}],
+        nodeSelected: true,
+        media,
+      }},
+      source: editorWindow,
+    }))
+    const warnedVideo = {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"}
+
+    selectVideo([0], warnedVideo)
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectVideo([0], warnedVideo)
+    expect(toolbox.activeTool).toBeNull()
+
+    selectVideo([0], {type: "video", attributes: {src: "movie.mp4"}})
+    selectVideo([0], {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "no-video"})
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectVideo([0], {type: "video", attributes: {src: "new-movie.mp4"}, videoPlaybackWarning: "no-video"})
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectVideo([1], {type: "video", attributes: {src: "new-movie.mp4"}, videoPlaybackWarning: "no-video"})
+    expect(toolbox.activeTool).toBe("Edit")
+  })
+
+  it("expands an already active Edit toolbox when a video warning appears", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const host = editor as any
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    host.narrowLayout = true
+    host.mathSelection = {active: true, display: "inline"}
+    toolbox.selectTool("Edit")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(true)
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Video"}],
+        nodeSelected: true,
+        media: {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"},
+      }},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolbox.collapsed).toBe(false)
+    expect(host.mathKeyboardHidden).toBe(true)
   })
 
   it("does not auto-open contextual tools while collapsed, even with the breadcrumb shown", async () => {
@@ -5671,13 +5878,13 @@ describe("DomEditor.execute()", () => {
     expect(loadAppSettings().userSnippets).toEqual([])
   })
 
-  it("inserts ribbon drops from authenticated snippet messages and ignores invalid requests", async () => {
+  it.each(["canvas", "graphic"] as const)("inserts ribbon %s drops from authenticated snippet messages and ignores invalid requests", async layout => {
     const {editor} = await mountEditor()
     const host = editor as any
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const authenticated = vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
     host.settings = {...host.settings, userSnippets: [{id: "saved", label: "Saved", html: '<p>Saved</p>'}]}
-    const position = {anchor: {type: "body", tname: "root"}, layout: "canvas", x: 200, y: 100}
+    const position = {anchor: {type: "body", tname: "root"}, layout, x: 200, y: 100}
     const drop = (action: string, target = position) => host.handleEditorMessage(new MessageEvent("message", {
       data: {type: "editor-ribbon-drop", action, position: target},
     }))
@@ -6140,6 +6347,11 @@ describe("DomEditor.execute()", () => {
       name: "href",
       value: "library.html",
     })
+    toolbox.dispatchEvent(new CustomEvent("image-map-action", {
+      detail: {type:"img", action:"set-overlay", path:[1, 0], expected:{shape:"rect"}, part:"border", value:false},
+      bubbles:true, composed:true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type:"setImageMapOverlay", path:[1, 0], expected:{shape:"rect"}, part:"border", value:false})
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
     for(const [label, action] of [
@@ -6175,8 +6387,6 @@ describe("DomEditor.execute()", () => {
     ["element:iframe", {type: "insertElement", tag: "iframe"}],
     ["media-capture:screen-image", {type: "captureMedia", mode: "screen-image"}],
     ["media-file:picture", {type: "insertMedia", media: "picture", selectFile: true}],
-    ["selected-media-file", {type: "selectMediaFile"}],
-    ["selected-media-cover-file", {type: "selectMediaFile", attribute: "poster"}],
     ["selected-media-cover-capture:camera-image", {type: "captureSelectedMedia", mode: "camera-image", attribute: "poster"}],
     ["selected-media-capture:screen-image", {type: "captureSelectedMedia", mode: "screen-image"}],
     ["remove-media-source", {type: "removeMediaSource"}],
@@ -6195,6 +6405,67 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith(action)
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["selected-media-file", "audio", undefined, "audio/*"],
+    ["selected-media-file", "picture", undefined, "image/*"],
+    ["selected-media-file", "iframe", undefined, ".html,.htm,text/html"],
+    ["selected-media-cover-file", "video", "poster", "image/*"],
+  ] as const)("reopens the host %s picker for %s after cancellation", async (label, type, attribute, accept) => {
+    const {editor} = await mountEditor()
+    ;(editor as any).mediaSelection = {type, attributes: {}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
+    const open = () => toolbox.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label}, bubbles: true, composed: true,
+    }))
+
+    open()
+    const first = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(first.accept).toBe(accept)
+    expect(click).toHaveBeenCalledOnce()
+    const pickerId = (execute.mock.calls[0][0] as any).pickerId
+    expect(execute).toHaveBeenCalledWith({type: "selectMediaFile", attribute, pickerId})
+    first.dispatchEvent(new Event("cancel"))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file: null, pickerId}))
+    expect(first.isConnected).toBe(false)
+
+    open()
+    const second = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(second).not.toBe(first)
+    expect(click).toHaveBeenCalledTimes(2)
+    const nextId = (execute.mock.calls[2][0] as any).pickerId
+    expect(nextId).not.toBe(pickerId)
+    const file = new File(["media"], "media.bin")
+    Object.defineProperty(second, "files", {value: [file]})
+    second.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file, pickerId: nextId}))
+    expect(second.isConnected).toBe(false)
+    expect(document.body.querySelector('input[type="file"]')).toBeNull()
+  })
+
+  it.each(["disconnect", "reload", "picker failure"])("cleans up a host media picker after %s", async condition => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.mediaSelection = {type: "video", attributes: {}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const report = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {
+      if(condition === "picker failure") throw new Error("Picker unavailable")
+    })
+    const picking = host.pickMediaFile()
+    const input = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')
+    if(condition === "disconnect") editor.remove()
+    if(condition === "reload") {
+      host.frameRevision++
+      input!.dispatchEvent(new Event("cancel"))
+    }
+    await picking
+    expect(input?.isConnected ?? false).toBe(false)
+    expect(execute).toHaveBeenCalledTimes(condition === "picker failure" ? 2 : 1)
+    expect(report).toHaveBeenCalledTimes(condition === "picker failure" ? 1 : 0)
   })
 
   it.each([
@@ -6819,7 +7090,7 @@ describe("DomEditor.execute()", () => {
     expect(previewHTML).not.toContain("window.evil")
   })
 
-  it("rewrites authored carousel fragments only in the preview copy", async () => {
+  it("preserves authored carousel fragments while stripping scripts from the preview copy", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.className = "ww-slides"
     iframe.contentDocument!.body.innerHTML = '<nav class="ww-slides-navigation"><a href="#slide-one">Slide one</a></nav><section id="slide-one" class="ww-slide">One</section><script>window.untrusted = true</script>'
@@ -6828,7 +7099,7 @@ describe("DomEditor.execute()", () => {
     expect(source.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("#slide-one")
     const previewHTML = (editor as unknown as {currentPreviewHTML(): string}).currentPreviewHTML()
     const preview = new DOMParser().parseFromString(previewHTML, "text/html")
-    expect(preview.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("about:srcdoc#slide-one")
+    expect(preview.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("#slide-one")
     expect(preview.querySelectorAll("script")).toHaveLength(0)
     expect(source.querySelector("script")).not.toBeNull()
   })
@@ -7745,6 +8016,7 @@ describe("DomEditor.execute()", () => {
     vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(undefined)
     await host.reloadDocument("<p>Existing document</p>")
     host.settings = {...host.settings, pinDeveloperConsole: pinned}
+    host.documentLayoutsManuallyDismissed = true
 
     await host.newDocument("document")
     await editor.updateComplete
@@ -7782,7 +8054,7 @@ describe("DomEditor.execute()", () => {
     expect((editor as any).fileDirty).toBe(false)
   })
 
-  it("hides Layouts on the first authored edit and keeps it hidden after undoing that edit", async () => {
+  it("hides Layouts on the first authored edit and restores it after undoing that edit", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
     const body = iframe.contentDocument!.body
@@ -7798,7 +8070,61 @@ describe("DomEditor.execute()", () => {
     body.firstElementChild!.textContent = ""
     await new Promise(resolve => setTimeout(resolve, 0))
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).not.toBeNull()
+  })
+
+  it.each([false, true])("restores Layouts after clearing a saved document unless manually dismissed (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    host.fileHandle = {}
+    const doc = iframe.contentDocument!
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    }
+    const change = async (html: string) => {
+      doc.body.innerHTML = html
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
+        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML, treeChanged: true}}))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+      expect(doc.body.innerHTML).toBe(html)
+    }
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!
+    for(const html of ["", '<p class="◆ ◆empty-selected"><br></p>', "<h1></h1><p><br></p>"]) {
+      await change("<p>Content</p>")
+      expect(panel.inert).toBe(true)
+      await change(html)
+      expect(panel.inert).toBe(false)
+      expect(host.fileDirty).toBe(true)
+    }
+    for(const html of ["<custom-card></custom-card>", "<img src=\"example.png\">", "<!--keep-->", '<p id="anchor"></p>']) {
+      await change(html)
+      expect(panel.inert).toBe(true)
+    }
+    await change("")
+    editor.shadowRoot!.querySelector<HTMLButtonElement>(".document-layouts-close")!.click()
+    await change("<p>More content</p>")
+    await change("")
+    expect(panel.inert).toBe(true)
+  })
+
+  it.each([
+    ["canvas", '<p style="position: absolute; left: 0px; top: 0px; width: 320px;"><br></p>'],
+    ["slides", '<div class="ww-slides-viewport"><section class="ww-slide" tabindex="-1"><h1></h1><p><br></p></section></div>'],
+    ["board", '<section class="ww-board-column"><h2></h2><article class="ww-board-card"><p><br></p></article></section>'],
+  ])("restores Layouts when %s content returns to empty layout placeholders", async (mode, html) => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    const body = iframe.contentDocument!.body
+    body.className = `ww-${mode}`
+    body.innerHTML = "<p>Content</p>"
+    await vi.waitFor(() => expect((editor as any).documentLayoutsDismissed).toBe(true))
+    body.innerHTML = html
+    await vi.waitFor(() => expect((editor as any).documentLayoutsDismissed).toBe(false))
+    expect(body.innerHTML).toBe(html)
+    expect((editor as any).fileDirty).toBe(true)
   })
 
   it.each([false, true])("keeps the initial layout clean and the pane open across repeated layout switches (isolated frame: %s)", async isolated => {
@@ -7884,7 +8210,7 @@ describe("DomEditor.execute()", () => {
       expect(doc.body.innerHTML).toBe(html)
     }
     for(const html of ['<p style="color: red"></p>', '<p id="anchor"></p>', '<p><br class="authored"></p>', '<!--keep-->',
-      '<custom-card></custom-card>', '<p></p><p></p>', '<p>Content</p>']) {
+      '<custom-card></custom-card>', '<p>Content</p>']) {
       doc.body.innerHTML = html
       snapshot()
       await vi.waitFor(() => expect(host.fileDirty).toBe(true))

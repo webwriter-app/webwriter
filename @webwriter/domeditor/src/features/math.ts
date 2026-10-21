@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, fixedClientX, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, fixedClientX, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, parseMathFragment, type MathSelectionState} from "../math"
 
 import {styleMarkNames, type MarkName} from "../marks"
@@ -46,6 +46,8 @@ export class MathFeature extends EditorFeature {
   private typingPoint: Point | null = null
   private input: MathCompletionInput | null = null
   private spelling = false
+
+  private get zoom() { return this.editor.features.canvas.active ? this.editor.features.canvas.zoom : this.editor.features.slides.zoom }
 
   private pendingStyles() {
     const selection = document.getSelection()
@@ -318,6 +320,12 @@ export class MathFeature extends EditorFeature {
       }
       if(!this.activeMath) return
       const deadPower = this.atDeadPowerPoint()
+      // Word/line deletion and alternate Cut bindings belong to the browser.
+      // Keep generic document commands from replacing their native semantics.
+      if(/^delete(?:Word|SoftLine|HardLine|EntireSoftLine)/.test(event.inputType) || event.inputType === "deleteByCut") {
+        event.stopImmediatePropagation()
+        return
+      }
       event.preventDefault()
       event.stopImmediatePropagation()
       if(deadPower && ["insertText", "insertCompositionText"].includes(event.inputType)) {
@@ -464,6 +472,19 @@ export class MathFeature extends EditorFeature {
     return true
   }
 
+  create(structure?: string) {
+    if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return null
+    const math = mathElement("math", mathElement("mrow"))
+    math.setAttribute("display", "block")
+    if(structure) {
+      const range = document.createRange()
+      range.selectNodeContents(math.firstChild!)
+      range.collapse(true)
+      this.insertStructure(range, structure, false)
+    }
+    return math
+  }
+
   insert(structure?: string) {
     if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return false
     const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
@@ -471,8 +492,7 @@ export class MathFeature extends EditorFeature {
       document.body.focus({preventScroll: true})
       if(!document.body.contains(selected)) return false
       this.editor.features.selection.selectElement(selected)
-      const math = mathElement("math", mathElement("mrow"))
-      math.setAttribute("display", "block")
+      const math = this.create()!
       this.editor.features.manipulation.insert(math)
       if(!math.isConnected) return false
       $.move(math.firstChild!, 0)
@@ -739,7 +759,7 @@ export class MathFeature extends EditorFeature {
     return true
   }
 
-  private insertStructure(range: Range, name: string): boolean {
+  private insertStructure(range: Range, name: string, select = true): boolean {
     const extra = ["sqrt", "cbrt", "coprod", "norm", "floor", "ceil", "angle", "cancel", "bcancel", "xcancel", "box", "overbrace", "underbrace", "overbracket", "underbracket", "overparen", "underparen", "text"]
     if(!mathStructureOptions.some(option => option.command === `structure:${name}`) && !extra.includes(name)) return false
     // Preserve selected nodes by moving them, retaining identity and attributes.
@@ -818,9 +838,11 @@ export class MathFeature extends EditorFeature {
     else node = mathElement(name === "int" ? "msubsup" : "munderover", mathElement("mo", operators[name]), first, second)
     parent.insertBefore(node, operand[0]?.parentNode === parent ? operand[0] : parent.childNodes[offset] ?? null)
     first.append(...operand)
-    if(name === "text") $.move(node.firstChild ?? node, node.firstChild instanceof Text ? node.firstChild.length : 0)
-    else if(name === "square" && operand.length) $.move(...after(node))
-    else $.move(target, target.childNodes.length)
+    if(select) {
+      if(name === "text") $.move(node.firstChild ?? node, node.firstChild instanceof Text ? node.firstChild.length : 0)
+      else if(name === "square" && operand.length) $.move(...after(node))
+      else $.move(target, target.childNodes.length)
+    }
     return true
   }
 
@@ -1010,26 +1032,39 @@ export class MathFeature extends EditorFeature {
     // A circumflex dead key can already carry isComposing on macOS. Resolve
     // the shortcut before the IME guard, and retain only its live script slot
     // so the following composed character is not silently discarded.
-    const deadPower = event.key === "Dead" && !event.metaKey && !event.ctrlKey
-      && (["Backquote", "IntlBackslash"].includes(event.code) && !event.altKey
-        || event.code === "KeyI" && event.altKey)
+    const deadPower = event.key === "Dead" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+      && ["Backquote", "IntlBackslash"].includes(event.code)
     const continuingDeadPower = this.atDeadPowerPoint()
     if(!root || event.isComposing && !deadPower && !continuingDeadPower) return
     this.marked.add(root)
-    if((event.metaKey || event.ctrlKey) && ["z", "y"].includes(event.key.toLowerCase())) {
+    const apple = isOnApple()
+    const primary = !event.altKey && !event.getModifierState("AltGraph")
+      && (apple ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
+    const letter = event.key.toLowerCase()
+    if(primary && (letter === "z" || letter === "y" && !event.shiftKey && !apple)) {
       this.editor.features.history.activeListeners.keydown?.(event)
       if(event.defaultPrevented) { event.stopImmediatePropagation(); this.changed() }
       return
     }
-    if((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+    if(primary && !event.shiftKey && letter === "a") {
       event.preventDefault()
       event.stopImmediatePropagation()
       document.getSelection()?.setBaseAndExtent(root, 0, root, root.childNodes.length)
       this.changed()
       return
     }
-    if(!deadPower && (event.metaKey || event.ctrlKey || event.altKey) && !event.getModifierState("AltGraph")
-      && !["Backspace", "Delete", "Enter"].includes(event.key)) return
+    if(!deadPower && (event.metaKey || event.ctrlKey || event.altKey)
+      && !(event.getModifierState("AltGraph") && event.key.length === 1)) {
+      // Leave browser shortcuts and native editing defaults uncanceled, but
+      // prevent the general selection/history/deletion listeners claiming them.
+      if(["a", "z", "y", "backspace", "delete", "enter", "escape", "tab", "home", "end",
+        "arrowleft", "arrowright", "arrowup", "arrowdown"].includes(letter)) event.stopImmediatePropagation()
+      return
+    }
+    if(event.shiftKey && ["Backspace", "Delete", "Enter", "Escape"].includes(event.key)) {
+      event.stopImmediatePropagation()
+      return
+    }
     const key = deadPower ? "^" : continuingDeadPower ? event.key.normalize("NFD").replace(/\u0302/g, "") : event.key
     const directions: Record<string, string> = {ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", Home: "start", End: "end"}
     const handled = key.length === 1 || key in directions || ["Backspace", "Delete", "Tab", "Enter", "Escape"].includes(key)
@@ -1106,7 +1141,7 @@ export class MathFeature extends EditorFeature {
     input.addEventListener("compositionend", event => finish(event.data))
     input.addEventListener("blur", () => finish(null))
     input.addEventListener("keyup", event => {
-      if(event.key === "Dead" || ["Backquote", "IntlBackslash", "KeyI"].includes(event.code)) finish("")
+      if(event.key === "Dead" || ["Backquote", "IntlBackslash"].includes(event.code)) finish("")
     })
     // Chrome can finish a dead-key sequence with ordinary text input.
     input.addEventListener("input", event => {
@@ -1335,8 +1370,13 @@ export class MathFeature extends EditorFeature {
       copies[index].setAttribute("style", properties.map(key => `${key}:${style.getPropertyValue(key)}`).join(";"))
     })
     clone.setAttribute("style", `${clone.getAttribute("style")};display:inline math`)
+    const zoom = this.zoom
     const probe = document.createElement("span")
-    probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;white-space:nowrap"
+    // The appendix is outside the canvas transform and the slide's CSS zoom.
+    // Keep probe measurements in the same client coordinates as authored math.
+    probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;white-space:nowrap;transform-origin:0 0"
+    if(this.editor.features.slides.active) probe.style.zoom = String(zoom)
+    else probe.style.transform = `scale(${zoom})`
     probe.setAttribute("aria-hidden", "true")
     const baseline = document.createElement("span")
     baseline.style.cssText = "display:inline-block;width:0;height:0;padding:0;border:0;vertical-align:baseline"
@@ -1376,13 +1416,17 @@ export class MathFeature extends EditorFeature {
       range.selectNodeContents(character.firstChild!)
       const rect = range.getBoundingClientRect()
       if(!rect.height) return null
+      if(!outside && root.getAttribute("display") === "block" && emptyMath(root)) {
+        const height = Math.min(rect.height, actual.height)
+        return new DOMRect(actual.left + actual.width / 2, actual.top + (actual.height - height) / 2, 0, height)
+      }
       range.collapse(true)
       const start = range.getBoundingClientRect()
       const bounds = container.getBoundingClientRect()
       const fitPlaceholder = !outside && !element.childNodes.length && !this.isFencedPlaceholder(element)
       const style = getComputedStyle(element)
-      const paddingTop = node === root ? parseFloat(style.paddingTop) || 0 : 0
-      const paddingBottom = node === root ? parseFloat(style.paddingBottom) || 0 : 0
+      const paddingTop = node === root ? (parseFloat(style.paddingTop) || 0) * zoom : 0
+      const paddingBottom = node === root ? (parseFloat(style.paddingBottom) || 0) * zoom : 0
       const availableHeight = Math.max(0, bounds.height - paddingTop - paddingBottom)
       // Empty arguments reserve an inline-block box with no text descent.
       // Typing replaces that box and can change the structure's layout. Until then,
@@ -1395,7 +1439,7 @@ export class MathFeature extends EditorFeature {
       // edge spacing. Measure horizontal placement at the real block width;
       // retain the inline probe's baseline measurement for vertical placement.
       if(!outside && container === root && root.getAttribute("display") === "block") {
-        clone.setAttribute("style", `${clone.getAttribute("style")};display:block math;box-sizing:border-box;width:${actual.width}px`)
+        clone.setAttribute("style", `${clone.getAttribute("style")};display:block math;box-sizing:border-box;width:${actual.width / zoom}px`)
         return new DOMRect(bounds.left + range.getBoundingClientRect().left - row.getBoundingClientRect().left, top, 0, height)
       }
       return new DOMRect(bounds.left + start.left - row.getBoundingClientRect().left, top, 0, height)
@@ -1510,6 +1554,7 @@ export class MathFeature extends EditorFeature {
     if(!root || root.getAttribute("display") === "block" && this.selectedMath === root && !this.editor.features.selection.isCaptureSelection) {
       this.clearPresentation(); this.dismissCommand(); this.input?.refresh(); return
     }
+    const emptyBlock = root.getAttribute("display") === "block" && emptyMath(root)
     if(root !== this.observedRoot) {
       this.resizeObserver?.disconnect()
       this.resizeObserver?.observe(root)
@@ -1543,7 +1588,7 @@ export class MathFeature extends EditorFeature {
     const caretOffset = caretPoint?.[1] ?? 0
     const caretElement = caretNode instanceof Element ? caretNode : caretNode?.parentElement
     const structuralCaret = Boolean(caretNode && caretElement
-      && (Boolean(isRow(caretElement)) || caretElement.localName !== "mtext" && plainToken(caretElement))
+      && (emptyBlock || Boolean(isRow(caretElement)) || caretElement.localName !== "mtext" && plainToken(caretElement))
       && !(caretNode === root && root.childNodes.length && root.getAttribute("display") !== "block"
         && (caretOffset === 0 || caretOffset === root.childNodes.length)))
     if(!structuralCaret) { this.caret?.remove(); this.caret = null }
@@ -1560,12 +1605,12 @@ export class MathFeature extends EditorFeature {
       outerRows.add(outer)
     }
     markers.forEach((marker, element) => {
-      if(marker !== "◆math-slot" || outerRows.has(element)) return
+      if(marker !== "◆math-slot" || outerRows.has(element) || emptyBlock) return
       const rect = element.getBoundingClientRect()
       const glyph = this.isFencedPlaceholder(element) ? this.structuralTextRect(element, 0) : null
       const style = getComputedStyle(element)
-      const paddingLeft = parseFloat(style.paddingLeft) || 0
-      const paddingRight = parseFloat(style.paddingRight) || 0
+      const paddingLeft = (parseFloat(style.paddingLeft) || 0) * this.zoom
+      const paddingRight = (parseFloat(style.paddingRight) || 0) * this.zoom
       const guide = document.createElement("span")
       // Fenced slots reserve only ink ascent for delimiter layout, but their
       // visible guide and caret use the full character box. Other slots keep
@@ -1578,7 +1623,7 @@ export class MathFeature extends EditorFeature {
       const rect = this.pointRect(caretPoint ?? [selection.focusNode, selection.focusOffset], structuralCaret)
       this.input?.refresh(rect)
       if(structuralCaret) {
-        const inset = caretNode instanceof Element && markers.get(caretNode) === "◆math-slot" && !outerRows.has(caretNode) ? 1 : 0
+        const inset = !emptyBlock && caretNode instanceof Element && markers.get(caretNode) === "◆math-slot" && !outerRows.has(caretNode) ? 1 : 0
         const caret = this.caret ??= document.createElement("span")
         caret.setAttribute("part", "math-caret")
         caret.style.cssText = `position:absolute;background:currentColor;width:1px;left:${rect.left + inset}px;top:${rect.top}px;height:${rect.height}px;animation:var(--ww-ui-animation, blink 1s step-end 0s infinite)`

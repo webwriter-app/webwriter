@@ -3,6 +3,7 @@ import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import {parseCommentMarker} from "./comment"
 import {$} from "../utility"
+import {commentReviewRequestEvent} from "../editor-bridge"
 
 const editor = new DOMEditor()
 const feature = editor.features.comment
@@ -14,6 +15,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 function setContent(html: string) {
@@ -333,6 +335,140 @@ describe("CommentFeature document commands", () => {
 })
 
 describe("CommentFeature highlights and threads", () => {
+  const bubbles = () => Array.from(editor.appendix.querySelectorAll<HTMLButtonElement>('[part~="comment-bubble"]'))
+  const bounds = (element: Element, left = 100, top = 50, width = 200) =>
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(left, top, width, 80))
+
+  it("represents element comments and replies with one appendix bubble without text highlighting", () => {
+    const highlights = {set: vi.fn(), delete: vi.fn()}
+    vi.stubGlobal("CSS", {...globalThis.CSS, highlights})
+    vi.stubGlobal("Highlight", class {})
+    const target = setContent("<aside><custom-note>note</custom-note><p>More</p></aside>")
+    bounds(target)
+    $.selectElement(target)
+    feature.addComment("Element note")
+    const id = markers(target)[0].marker.id
+    feature.actions.addCommentReply({type: "addCommentReply", id, text: "Reply"})
+    expect(bubbles()).toHaveLength(1)
+    expect(bubbles()[0].getAttribute("aria-label")).toBe("Show 2 comments")
+    expect(bubbles()[0].title).toBe("Element note\nReply")
+    const html = editor.toHTML(true)
+    const post = vi.spyOn(editor, "postHostMessage")
+    bubbles()[0].click()
+    expect(post).toHaveBeenCalledWith({type: commentReviewRequestEvent})
+    expect(feature.getState().activeThreadId).toBe(id)
+    expect(bubbles()[0].getAttribute("aria-pressed")).toBe("true")
+    expect(highlights.set).not.toHaveBeenCalled()
+    expect(target.querySelector("button, svg")).toBeNull()
+    expect(editor.toHTML(true)).toBe(html)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.yxmlToDomNode(editor.doc.body)!.querySelector("button, svg")).toBeNull()
+
+    feature.setCommentHighlighting(false)
+    expect(bubbles()).toHaveLength(0)
+    feature.setCommentHighlighting(true)
+    expect(bubbles()).toHaveLength(1)
+    feature.removeAllComments()
+    expect(bubbles()).toHaveLength(0)
+  })
+
+  it("centers bubbles in the minimum document gutter and follows actual float placement", () => {
+    const target = setContent('<aside style="float:left"><custom-note>note</custom-note></aside>')
+    const widget = target.firstElementChild!
+    bounds(widget)
+    $.selectElement(widget)
+    feature.addComment("Widget note")
+    const container = editor.appendix.querySelector<HTMLElement>('[part="comment-bubbles"]')!
+    bounds(container, 0, 0, 32)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(bubbles()[0].style.left).toBe("76px")
+    expect(bubbles()[0].style.top).toBe("50px")
+    ;(target as HTMLElement).style.float = "right"
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(bubbles()[0].style.left).toBe("308px")
+    ;(target as HTMLElement).style.float = "none"
+    bounds(container, 0, 0, 16)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(bubbles()[0].style.left).toBe("300px")
+  })
+
+  it.each(["canvas", "slides", "board"])("places %s bubbles just outside the top right even for left floats", mode => {
+    const target = setContent('<aside style="float:left">note</aside>')
+    bounds(target)
+    document.body.classList.add(`ww-${mode}`)
+    try {
+      $.selectElement(target)
+      feature.addComment("Element note")
+      expect(bubbles()[0].style.left).toBe("304px")
+      expect(bubbles()[0].style.top).toBe("50px")
+    }
+    finally { document.body.classList.remove(`ww-${mode}`) }
+  })
+
+  it("follows scrolling and hides bubbles for missing boxes without opening stale comments", async () => {
+    const target = setContent("<aside>note</aside>")
+    const box = bounds(target)
+    $.selectElement(target)
+    feature.addComment("Element note")
+    const button = bubbles()[0]
+    box.mockReturnValue(new DOMRect(120, 30, 200, 80))
+    document.dispatchEvent(new Event("scroll"))
+    await new Promise(resolve => setTimeout(resolve, 40))
+    expect(button.style.top).toBe("30px")
+    box.mockReturnValue(new DOMRect())
+    window.dispatchEvent(new Event("resize"))
+    await new Promise(resolve => setTimeout(resolve, 40))
+    expect(button.hidden).toBe(true)
+    target.remove()
+    const post = vi.spyOn(editor, "postHostMessage")
+    button.click()
+    expect(post).not.toHaveBeenCalledWith({type: commentReviewRequestEvent})
+  })
+
+  it("selects the clicked copy when cloned elements retain the same comment id", () => {
+    const target = setContent("<aside>note</aside>")
+    bounds(target)
+    $.selectElement(target)
+    feature.addComment("Element note")
+    const copy = target.cloneNode(true) as Element
+    document.body.append(copy)
+    bounds(copy)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(bubbles()).toHaveLength(2)
+    bubbles()[1].click()
+    const range = document.getSelection()!.getRangeAt(0)
+    expect(range.startContainer).toBe(document.body)
+    expect(document.body.childNodes[range.startOffset]).toBe(copy)
+    expect(range.endOffset).toBe(range.startOffset + 1)
+  })
+
+  it("refreshes bubbles after edits and copies and removes them when targets disappear or the feature is disabled", async () => {
+    const section = setContent("<section><custom-note>note</custom-note><aside>Other</aside></section>")
+    const target = section.firstElementChild!
+    bounds(target)
+    $.selectElement(target)
+    feature.addComment("Widget note")
+    const marker = markers(target)[0].node
+    const copy = target.cloneNode(true) as Element
+    section.append(copy)
+    const copyMarker = markers(copy)[0].node
+    const other = section.querySelector("aside")!
+    other.append(marker)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(bubbles()).toHaveLength(2)
+    copyMarker.remove()
+    other.remove()
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(bubbles()).toHaveLength(0)
+    target.append(marker)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(bubbles()).toHaveLength(1)
+    feature.disable()
+    expect(bubbles()).toHaveLength(0)
+    feature.enable()
+    expect(bubbles()).toHaveLength(1)
+  })
+
   it("stores author and timestamps in a backwards-compatible HTML marker", () => {
     editor.doc.setUser({name: "Ada Lovelace"})
     const paragraph = setContent("<p>annotated</p>")

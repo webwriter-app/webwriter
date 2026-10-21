@@ -8,7 +8,7 @@ vi.mock("./domeditor", () => ({
   DOMEditor: class {
     doc = {disconnectCollaboration: providerDisconnect}
     features = {
-      proofreading: {setDocumentChecking: vi.fn(), setDictionary: vi.fn()},
+      proofreading: {setChecking: vi.fn(), setDocumentChecking: vi.fn(), setDictionary: vi.fn()},
       comment: {setCommentHighlighting: vi.fn()},
     }
   },
@@ -113,7 +113,7 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
   const postMessage = vi.spyOn(window, "postMessage")
   window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
     type: initializeEditorMessage, syncUrl: "ws://localhost:1234", bridgeNonce: nonce,
-    shortcuts: {"editor.undo": "Ctrl+Z"},
+    shortcuts: {"editor.undo": "Ctrl+Z", "document.print": "Ctrl+P"},
   }}))
   await flushMutations()
 
@@ -139,6 +139,25 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
   const shortcuts = postMessage.mock.calls.map(([message]) => message as {type?: string, action?: string})
     .filter(message => message.type === "editor-frame-shortcut")
   expect(shortcuts.map(message => message.action)).toEqual(["Undo"])
+
+  const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
+  const appendixControl = appendix.appendChild(document.createElement("input"))
+  for(const target of [document.querySelector("p")!, document.querySelector("input")!, widgetRoot.firstChild!, appendixControl]) {
+    const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: true,
+      bubbles: true, composed: true, cancelable: true})
+    target.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+  }
+  const prints = () => postMessage.mock.calls.map(([message]) => message as {type?: string, action?: string})
+    .filter(message => message.type === "editor-frame-shortcut" && message.action === "Print")
+  expect(prints()).toHaveLength(4)
+  for(const extra of [{repeat: true}, {isComposing: true}]) {
+    const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: true,
+      bubbles: true, composed: true, cancelable: true, ...extra})
+    appendixControl.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(extra.repeat === true)
+  }
+  expect(prints()).toHaveLength(4)
 
   window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
     type: editorFrameControlMessage, bridgeNonce: nonce, command: "disconnect-collaboration",

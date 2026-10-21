@@ -3,7 +3,8 @@ import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
-import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType} from "../graphic"
+import {captionedFigureContent} from "../figure-layout.js"
+import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType, type GraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
@@ -21,11 +22,11 @@ import {
   type HeadingGroupSelectionState,
   type RibbonDropPosition,
 } from "../editor-bridge"
-import {floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
+import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
-import {createTable} from "../table"
+import {cellForNode, createTable, tableForNode} from "../table"
 import {
   elementAttributeState,
   elementAttributeTargetId,
@@ -541,10 +542,11 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Float placement is authored through the document theme's classes. */
-  setFloat(element: Element, side: FloatSide) {
+  setFloat(element: Element, side: FloatSide, alignment?: "left" | "center" | "right") {
     if(this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
       || !["left", "right", "none", "far-left", "far-right"].includes(side) || element === getDocumentRoot()
-      || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)) return false
+      || !getDocumentRoot().contains(element) || atomicEditingContainer(element.parentElement, this.editor.schema)
+      || alignment !== undefined && (side !== "none" || !["left", "center", "right"].includes(alignment))) return false
     const style = this.inlineStyleOf(element)
     if(!style) return false
     const desired = side === "far-left" ? "left" : side === "far-right" ? "right" : side
@@ -574,6 +576,14 @@ export class ManipulationFeature extends EditorFeature {
     else {
       const computed = getComputedStyle(element).float
       if(computed && computed !== "none") element.classList.add("ww-float-none")
+    }
+    if(alignment) {
+      for(const property of ["margin-inline", "margin-inline-start", "margin-inline-end"]) style.removeProperty(property)
+      // The containing block can span the page. Keep unfloated content on the
+      // prose column's edges, including when its width or float lanes change.
+      const inset = "max(0px, calc((100% - var(--ww-prose-max, 45rem)) / 2))"
+      style.setProperty("margin-left", alignment === "left" ? inset : "auto")
+      style.setProperty("margin-right", alignment === "right" ? inset : "auto")
     }
     if(!element.classList.length) element.removeAttribute("class")
     if(!style.length) element.removeAttribute("style")
@@ -1156,6 +1166,12 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private ribbonDropPosition(event: DragEvent, source?: Element): RibbonDropPosition | null {
+    const graphic = this.editor.features.graphic.dropPosition(event)
+    if(graphic) {
+      this.editor.doc.syncFromDOM()
+      const anchor = this.editor.doc.relativePositionFromDOMPoint(graphic.graphic, 0)
+      return anchor ? {anchor: relativePositionToJSON(anchor), layout: "graphic", x: graphic.x, y: graphic.y} : null
+    }
     const target = this.ribbonDropTarget(event)
     if(this.editor.features.slides.active && !target) return null
     const tag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
@@ -1256,6 +1272,10 @@ export class ManipulationFeature extends EditorFeature {
     const generation = this.insertionGeneration
     const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
     if(migrated === null || generation !== this.insertionGeneration || this.editor.isEditingLocked) return false
+    if(position.layout === "graphic") {
+      const {fragment} = this.editor.parseHTMLFragment(migrated, false, false)
+      return this.insertGraphicDrop(position, Array.from(fragment.childNodes))
+    }
     return this.insertAtRibbonDrop(position, () => {
       if(position.layout === "document") this.insertHTML(migrated, false, false)
       else {
@@ -1544,6 +1564,22 @@ export class ManipulationFeature extends EditorFeature {
 
   private insertRibbonCommand(action: string, position: RibbonDropPosition) {
     if(!ribbonElementInsertionAction(action)) return false
+    if(position.layout === "graphic") {
+      if(action.startsWith("insert-graphic-shape:")) {
+        const shape = action.slice("insert-graphic-shape:".length)
+        return isGraphicShapeType(shape) && this.insertGraphicDrop(position, [], shape)
+      }
+      if(action === "element:picture") return this.insertGraphicDrop(position, [], "image")
+      if(action.startsWith("element:")) return this.insertGraphicDrop(position, [this.ribbonElement(action.slice("element:".length))])
+      if(action.startsWith("insert-math:")) {
+        const math = this.editor.features.math.create(action.slice("insert-math:".length))
+        return Boolean(math && this.insertGraphicDrop(position, [math]))
+      }
+      const [, tag, style] = action.split(":")
+      const list = this.ribbonElement(tag) as HTMLElement
+      list.style.listStyleType = style
+      return this.insertGraphicDrop(position, [list])
+    }
     return this.insertAtRibbonDrop(position, () => {
       if(action.startsWith("element:")) this.createRibbonElement(action.slice("element:".length))
       else if(action.startsWith("insert-graphic-shape:")) {
@@ -1562,6 +1598,19 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     })
+  }
+
+  private insertGraphicDrop(position: RibbonDropPosition, nodes: Node[], shape?: GraphicShapeType) {
+    if(!this.isEnabled || this.editor.isEditingLocked || position.layout !== "graphic"
+      || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return false
+    let point: ReturnType<typeof this.editor.doc.domPointFromRelativePosition>
+    try { point = this.editor.doc.domPointFromRelativePosition(createRelativePositionFromJSON(position.anchor as Parameters<typeof createRelativePositionFromJSON>[0])) }
+    catch { return false }
+    const graphic = point?.node
+    if(!(graphic instanceof SVGSVGElement)) return false
+    const location = {x: position.x!, y: position.y!}
+    return shape ? this.editor.features.graphic.insertDroppedShape(graphic, shape, location)
+      : this.editor.features.graphic.insertDroppedContent(graphic, nodes, location)
   }
 
   private drop(event: DragEvent) {
@@ -1599,7 +1648,8 @@ export class ManipulationFeature extends EditorFeature {
       const ribbonTag = this.ribbonDragTag(data)
       if(ribbonTag) {
         const position = this.ribbonDropPosition(event)
-        if(position) dropped = this.insertAtRibbonDrop(position, () => this.createRibbonElement(ribbonTag))
+        if(position) dropped = position.layout === "graphic" ? this.insertRibbonCommand(`element:${ribbonTag}`, position)
+          : this.insertAtRibbonDrop(position, () => this.createRibbonElement(ribbonTag))
         return
       }
       // Only this live drag session can bypass import processing. An external
@@ -2197,10 +2247,8 @@ export class ManipulationFeature extends EditorFeature {
       element?.isConnected && (element === body || body.contains(element)),
     )
 
-    const selectedTable = this.editor.features.table.hasCellSelection
-      ? this.editor.features.table.selectedTable
-      : null
-    if(inAuthoredBody(selectedTable)) return selectedTable
+    const selectedCell = this.editor.features.table.selectionFocusCell
+    if(inAuthoredBody(selectedCell)) return selectedCell
 
     const captured = this.editor.features.selection.captureSelectedElement
     if(inAuthoredBody(captured)) return figureSelectionTarget(captured)
@@ -2229,11 +2277,16 @@ export class ManipulationFeature extends EditorFeature {
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
-  /** Edit toolbox styles belong to the direct container below Document. */
+  /** Edit toolbox styles use the selected table/cell or the direct container
+   * below Document. */
   get topLevelStyleTarget(): Element | null {
     const root = getDocumentRoot()
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
+    // Table and cell selections keep their scope inside sections and templates.
+    const cell = cellForNode(target)
+    if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
+    if(target instanceof HTMLTableElement) return target
     if(target === document.body || target === root) {
       const selection = document.getSelection()
       if(!selection?.rangeCount) return root
@@ -2376,6 +2429,13 @@ export class ManipulationFeature extends EditorFeature {
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
   private stylePropertyTarget(target: Element, name: string) {
+    if(target.matches("figure:not([is])") && target.querySelector(":scope > figcaption")
+      && ["rotate", "scale", "translate", "transform", "transform-origin"].includes(name)) {
+      return captionedFigureContent(target)
+    }
+    if(target.matches("td, th") && ["table-layout", "border-collapse", "border-spacing", "caption-side"].includes(name)) {
+      return tableForNode(target)
+    }
     if(!["object-fit", "object-position", "image-rendering", "clip-path", "object-view-box"].includes(name)) return target
     if(target.localName === "figure") {
       const media = Array.from(target.children).filter(child => child.matches("picture, img, video"))
@@ -2385,8 +2445,9 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true): ElementStyleState {
-    if(includeSelection && $.isMultiElementSelection) {
-      const styles = $.selectedElements.map(element => this.getStyleState(properties, element, false))
+    const cells = includeSelection && this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
+    if(includeSelection && (cells.length || $.isMultiElementSelection)) {
+      const styles = (cells.length ? cells : $.selectedElements).map(element => this.getStyleState(properties, element, false))
       return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
         authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
         computed: commonValues(styles.map(state => state.computed))}
@@ -2464,8 +2525,12 @@ export class ManipulationFeature extends EditorFeature {
       computed[name] = values.every(value => value === values[0]) ? values[0] : ""
     })
     const parentDisplay = target.parentElement? getComputedStyle(target.parentElement).display: ""
+    const movable = this.floatContainer(target) === target
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        canMoveUp: movable && target.previousElementSibling !== null,
+        canMoveDown: movable && target.nextElementSibling !== null,
+        alignment: alignmentFromStyles(style),
         ...(target.matches(".ww-float-left, .ww-float-right, .ww-float-none")
           ? {float: floatSideFromStyles(computedStyle.float, style, target.classList)} : {}),
         ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},
@@ -2498,7 +2563,9 @@ export class ManipulationFeature extends EditorFeature {
     }
     const captured = this.editor.features.selection.captureSelectedElement
       ?? this.editor.features.selection.selectedSectionElement
-    if(captured) addContainer(captured, true)
+    const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
+    if(cells.length) cells.forEach(cell => addContainer(cell, true))
+    else if(captured) addContainer(captured, true)
     else if($.isMultiElementSelection) $.selectedElements.forEach(element => addContainer(element, true))
     else if($.isElementSelection && $.selectedElement) addContainer($.selectedElement, true)
     else if($.ranges.length) {
@@ -3218,10 +3285,11 @@ export class ManipulationFeature extends EditorFeature {
       if(properties !== undefined && (!Array.isArray(properties) || properties.some(name => typeof name !== "string"))) {
         throw new TypeError("Style-state property names must be strings")
       }
-      return topLevel ? this.getStyleState(properties, this.topLevelStyleTarget, false) : this.getStyleState(properties)
+      return topLevel && !this.editor.features.table.hasCellSelection
+        ? this.getStyleState(properties, this.topLevelStyleTarget, false) : this.getStyleState(properties)
     },
     setStyle: ({styles, topLevel}: {type: "setStyle", styles: Record<string, ElementStyleMutation>, topLevel?: boolean}) => {
-      if(topLevel) {
+      if(topLevel && !this.editor.features.table.hasCellSelection) {
         const target = this.topLevelStyleTarget
         if(target) this.setElementStyles(target, styles)
       }
@@ -3342,11 +3410,24 @@ export class ManipulationFeature extends EditorFeature {
       this.insertBreak("br")
     },
     "dragover": event => {
+      // Ribbon content can land on appendix chrome. Give the graphic beneath
+      // it first refusal before resolving a document insertion point.
+      if(event.dataTransfer?.types.includes(graphicShapeDragType) || this.ribbonSurfaceDrag(event)) {
+        this.editor.features.graphic.captureListeners.dragover?.(event)
+        if(!isWidgetShadowInteraction(event, this.editor.schema)) this.dragOver(event)
+        return
+      }
       if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
     },
     "drop": event => {
+      if(event.dataTransfer?.types.includes(graphicShapeDragType) || this.ribbonSurfaceDrag(event)) {
+        this.editor.features.graphic.captureListeners.drop?.(event)
+        if(!isWidgetShadowInteraction(event, this.editor.schema)) this.drop(event)
+        return
+      }
       if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
     },
+    "dragend": () => this.endNodeDrag(),
   }
 
   passiveListeners: DocumentListenerMap = {
@@ -3362,7 +3443,6 @@ export class ManipulationFeature extends EditorFeature {
       const selected = $.selectedElement
       if(selected && event.target instanceof Node && selected.contains(event.target)) this.startNodeDrag(event, selected)
     },
-    "dragend": () => this.endNodeDrag(),
     "dragover": event => this.dragOver(event),
     "dragleave": event => this.dragLeave(event),
     "drop": event => this.drop(event),
@@ -4068,8 +4148,10 @@ export class ManipulationFeature extends EditorFeature {
    * element. Null or an empty string clears a property. */
   setStyle(styles: Record<string, ElementStyleMutation>) {
     const entries = this.validatedStyleEntries(styles)
-    if($.isMultiElementSelection) {
-      const elements = $.selectedElements
+    const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
+    const target = this.styleTarget
+    if(cells.length || $.isMultiElementSelection || target.matches("table, td, th")) {
+      const elements = cells.length ? cells : $.isMultiElementSelection ? $.selectedElements : [target]
       const end = this.editor.doc.beginUndoGroup()
       try {
         return elements.reduce((changed, element) => (
@@ -4078,7 +4160,6 @@ export class ManipulationFeature extends EditorFeature {
       }
       finally { end() }
     }
-    const target = this.styleTarget
     if(!this.allowedElementStyles(target, entries).length) return false
     return this.withNormalization(() => this.applyElementStyleEntries(target, entries))
   }
@@ -4086,9 +4167,19 @@ export class ManipulationFeature extends EditorFeature {
   private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[]) {
     if(!element.isConnected || !getDocumentRoot().contains(element) || this.editor.isEditingLocked) return false
     const targets = new Map<Element, ValidatedStyleEntry[]>()
+    const add = (target: Element, entry: ValidatedStyleEntry) => targets.set(target, [...(targets.get(target) ?? []), entry])
     for(const entry of this.allowedElementStyles(element, entries)) {
       const target = this.stylePropertyTarget(element, entry.name)
-      if(target) targets.set(target, [...(targets.get(target) ?? []), entry])
+      if(target) add(target, entry)
+      // Whole-table paint and cell spacing must reach cells, whose theme or
+      // authored declarations otherwise hide the table's background and text.
+      // Dimensions, margins, transforms and effects belong only to the table.
+      if(element instanceof HTMLTableElement
+        && /^(background-color|color|border(?:-(?:width|style|color|(?:top|right|bottom|left|block|inline)(?:-.*)?))?|padding(?:-.*)?|text-align|vertical-align)$/.test(entry.name)) {
+        for(const cell of element.querySelectorAll("td, th")) {
+          if(tableForNode(cell) === element && !atomicEditingContainer(cell, this.editor.schema)) add(cell, entry)
+        }
+      }
     }
     let changed = false
     for(const [target, declarations] of targets) {

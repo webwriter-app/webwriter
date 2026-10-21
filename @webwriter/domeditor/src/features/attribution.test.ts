@@ -139,7 +139,7 @@ describe("element attribution editing", () => {
     expect(element.getAttribute(attributionAttributes.license)).toBe("MIT")
   })
 
-  it("shows the blue circle only for element selection, centered on the right edge", () => {
+  it.each([false, true])("aligns the copyright affordance below the delete control at the right midpoint (capture: %s)", captured => {
     const element = start()
     bounds(element)
     const original = element.innerHTML
@@ -153,13 +153,16 @@ describe("element attribution editing", () => {
     document.getSelection()!.setBaseAndExtent(text, 0, text, 3)
     document.dispatchEvent(new Event("selectionchange"))
     expect(bridge.hidden).toBe(true)
-    select(element)
+    if(captured) editor!.features.selection.captureElement(element)
+    else select(element)
+    document.dispatchEvent(new Event("selectionchange"))
     expect(bridge.hidden).toBe(false)
-    expect(bridge.style.left).toBe("293px")
+    expect(bridge.style.left).toBe("290px")
     expect(bridge.style.top).toBe("90px")
     expect(bridge.style.width).toBe("20px")
     expect(bridge.style.height).toBe("20px")
-    expect(parseFloat(bridge.style.left) + 10).toBe(element.getBoundingClientRect().right + 3)
+    expect(parseFloat(bridge.style.left) + 10).toBe(element.getBoundingClientRect().right)
+    expect(parseFloat(bridge.style.top) + 10).toBe((element.getBoundingClientRect().top + element.getBoundingClientRect().bottom) / 2)
     expect(button().getAttribute("part")).toBe("transform-overlay-button transform-overlay-attribution")
     expect(button().querySelector("svg")!.hasAttribute("hidden")).toBe(true)
     expect(button().classList.contains("empty-attribution")).toBe(true)
@@ -172,6 +175,60 @@ describe("element attribution editing", () => {
     button().click()
     expect(popup().hidden).toBe(false)
     expect(input("name").value).toBe("")
+  })
+
+  describe.each(["canvas", "slides"] as const)("%s copyright affordance", mode => {
+    it.each([false, true])("uses the live transform overlay and returns to document positioning (capture: %s)", async captured => {
+      const element = start()
+      expect(editor!.setDocumentLayout(mode, "document")).toBe(true)
+      bounds(element)
+      if(captured) editor!.features.selection.captureElement(element)
+      else $.selectElement(element)
+      editor!.features.selection.processSelection()
+      document.dispatchEvent(new Event("selectionchange"))
+      await settle()
+      const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
+      expect(control.parentElement).toBe(editor!.features.transformation.overlay)
+      expect(control.getAttribute("part")).toContain("transform-overlay-attribution-freeform")
+      expect(control.hidden).toBe(false)
+      control.click()
+      expect(popup().hidden).toBe(false)
+      ui().querySelector<HTMLButtonElement>(".close")!.click()
+
+      expect(editor!.setDocumentLayout("document", mode)).toBe(true)
+      $.selectElement(element)
+      editor!.features.selection.processSelection()
+      document.dispatchEvent(new Event("selectionchange"))
+      await settle()
+      expect(control.parentElement).toBe(ui().querySelector(".bridge"))
+      expect(control.getAttribute("part")).not.toContain("transform-overlay-attribution-freeform")
+      expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
+      editor!.features.attribution.disable()
+      expect(control.isConnected).toBe(false)
+    })
+
+    it("keeps saved metadata on its content element through reconciliation and undo", async () => {
+      const element = start()
+      expect(editor!.setDocumentLayout(mode, "document")).toBe(true)
+      bounds(element)
+      $.selectElement(element)
+      editor!.features.selection.processSelection()
+      document.dispatchEvent(new Event("selectionchange"))
+      await settle()
+      editor!.doc.syncFromDOM()
+      editor!.doc.stopCapturing()
+      editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!.click()
+      input("name").value = "Ada"
+      submit()
+      editor!.doc.syncFromDOM()
+      expect(element.getAttribute(attributionAttributes.name)).toBe("Ada")
+      expect(element.parentElement!.hasAttribute(attributionAttributes.name)).toBe(false)
+      editor!.doc.undo()
+      expect(document.querySelector("p")!.hasAttribute(attributionAttributes.name)).toBe(false)
+      editor!.doc.redo()
+      expect(document.querySelector("p")!.getAttribute(attributionAttributes.name)).toBe("Ada")
+      expect(editor!.setDocumentLayout("document", mode)).toBe(true)
+    })
   })
 
   it.each([false, true])("keeps native input carets visible while the element remains selected (capture: %s)", captured => {
@@ -211,7 +268,7 @@ describe("element attribution editing", () => {
     ui().querySelector<HTMLButtonElement>(".close")!.click()
     element.removeAttribute(attributionAttributes.name)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(bridge.style.left).toBe("293px")
+    expect(bridge.style.left).toBe("290px")
     expect(button().classList.contains("empty-attribution")).toBe(true)
     document.getSelection()!.removeAllRanges()
     document.dispatchEvent(new Event("selectionchange"))
@@ -429,6 +486,62 @@ describe("top-level attribution", () => {
   const expectMetadata = (element: Element) => {
     for(const [key, value] of Object.entries(metadata)) expect(element.getAttribute(attributionAttributes[key as keyof typeof metadata])).toBe(value)
   }
+
+  it.each([false, true])("keeps attribution available after adding a caption (capture: %s)", captured => {
+    const element = start()
+    if(captured) editor!.features.selection.captureElement(element)
+    else editor!.features.selection.selectElement(element)
+    expect(editor!.features.manipulation.setCaption("below", "left", {preserveSelection: true})).toBe(true)
+    const figure = element.parentElement!
+    expect(figure.localName).toBe("figure")
+    bounds(figure)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(false)
+    button().click()
+    expect(popup().hidden).toBe(false)
+    input("name").value = "Figure author"
+    submit()
+    expect(figure.getAttribute(attributionAttributes.name)).toBe("Figure author")
+    expectEmpty(element)
+    expect(figure.querySelector("figcaption")).toBeTruthy()
+    expect(editor!.toHTML(true)).not.toContain("◆attribution-ui")
+    expect(editor!.doc.body.toString()).not.toContain("◆attribution-ui")
+    editor!.doc.undo()
+    expectEmpty(document.querySelector("figure")!)
+    editor!.doc.redo()
+    expect(document.querySelector("figure")!.getAttribute(attributionAttributes.name)).toBe("Figure author")
+  })
+
+  it.each([
+    '<p><em>Content</em></p>',
+    '<picture><img alt="Content"></picture>',
+    '<svg xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100"></rect></svg>',
+    '<attribution-widget><p>Widget content</p></attribution-widget>',
+  ])("resolves captioned content to its figure inside a document template: %s", content => {
+    document.body.innerHTML = `<attribution-template role="document"><figure><!--keep--><figcaption><em>Caption above</em></figcaption>${content}</figure></attribution-template>`
+    start()
+    const figure = document.querySelector("figure")!
+    const element = figure.lastElementChild!
+    const descendant = element.lastElementChild ?? element
+    const original = cloneWithoutEditorMarkers(figure, true).innerHTML
+    bounds(figure)
+    editor!.features.selection.captureElement(descendant)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(false)
+    button().click()
+    input("license").value = "CC-BY-4.0"
+    submit()
+    expect(figure.getAttribute(attributionAttributes.license)).toBe("CC-BY-4.0")
+    expectEmpty(element)
+    expectEmpty(descendant)
+    expect(cloneWithoutEditorMarkers(figure, true).innerHTML).toBe(original)
+    const captionText = figure.querySelector("figcaption em")!
+    editor!.features.selection.selectElement(captionText)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(true)
+    button().click()
+    expect(popup().hidden).toBe(true)
+  })
 
   it.each([false, true])("offers attribution only on direct document children (capture: %s)", captured => {
     document.body.innerHTML = '<section><!--keep--><p><em>Nested</em></p></section><p>Other</p>'
@@ -800,15 +913,13 @@ describe("reading attribution", () => {
       await settle()
     }
     element.setAttribute(attributionAttributes.name, "Short")
-    await settle()
+    await vi.waitFor(() => expect(notes().map(note => note.textContent)).toEqual(["© Shorthttps://example.com"]))
     expect(element.isConnected).toBe(true)
     expect(element.getAttribute(attributionAttributes.name)).toBe("Short")
-    expect(notes().map(note => note.textContent)).toEqual(["© Shorthttps://example.com"])
     element.setAttribute(attributionAttributes.name, "Long again")
     await vi.waitFor(() => expect(notes()).toHaveLength(2))
     element.removeAttribute(attributionAttributes.contact)
-    await settle()
-    expect(notes()).toHaveLength(1)
+    await vi.waitFor(() => expect(notes()).toHaveLength(1))
     expect(notes()[0].textContent).toBe("© Long again")
     if(editing) editor!.features.attribution.disable()
     else reader!.destroy()

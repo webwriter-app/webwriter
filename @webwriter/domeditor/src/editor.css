@@ -1324,6 +1324,15 @@ summary::after {
   cursor: pointer;
 }
 
+.◆hotspot-placeholder:is(:empty, :has(> br:only-child))::before {
+  content: "Hotspot content";
+  visibility: visible;
+  display: inline-block;
+  color: darkgray;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Reserve ::after for theme disclosure icons. The placeholder occupies the
  * text origin after the native marker, independently of a themed chevron. */
 summary:is(:empty, :has(> br:only-child))::before {
@@ -1643,6 +1652,40 @@ body::part(presence-gap-caret-label) {
 ::highlight(webwriter-active-comment) {
   background-color: #ffd45b;
 }
+body::part(comment-bubbles) {
+  position: fixed;
+  width: var(--ww-page-gutter, 1rem);
+  height: 0;
+  pointer-events: none;
+}
+body::part(comment-bubble) {
+  position: fixed;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 1px;
+  border: 0;
+  border-radius: 3px;
+  color: #9a6700;
+  background: #fff3a3;
+  cursor: pointer;
+  pointer-events: auto;
+  z-index: 2147483645;
+}
+body::part(comment-bubble):hover,
+body::part(comment-bubble-active) {
+  background: #ffd45b;
+}
+body::part(comment-bubble):focus-visible {
+  outline: 2px solid #9a6700;
+  outline-offset: 1px;
+}
+body::part(comment-bubble-hidden) {
+  display: none;
+}
 /* Harper supplies the underlines; hide the browser's overlapping decorations. */
 ::spelling-error,
 ::grammar-error {
@@ -1709,6 +1752,7 @@ body::part(transform-overlay-hidden) {
 body::part(transform-overlay-content-selected) {
   --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
   --ww-transform-hover-color: var(--sl-color-gray-300, #cbd5e1);
+  --ww-transform-action-visibility: hidden;
 }
 body::part(transform-overlay-freeform) {
   outline: 2px dotted var(--ww-transform-color);
@@ -1847,6 +1891,7 @@ body::part(transform-overlay-scale-up-up) { top: -7px; left: calc(50% - 4px); cu
 body::part(transform-overlay-scale-down-down) { bottom: -7px; left: calc(50% - 4px); cursor: ns-resize; }
 body::part(transform-overlay-scale-left-left) { left: -7px; top: calc(50% - 4px); cursor: ew-resize; }
 body::part(transform-overlay-scale-right-right) { right: -7px; top: calc(50% - 4px); cursor: ew-resize; }
+body::part(transform-overlay-scale-text) { cursor: ew-resize; }
 body::part(transform-overlay-scale) {
   position: absolute;
   pointer-events: auto;
@@ -1932,7 +1977,8 @@ body::part(transform-overlay-rotator)::before {
     --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-rotate"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M19.95 11a8 8 0 1 0 -.5 4m.5 5v-5h-5" /></svg>');
 }
 body::part(transform-overlay-rotator)::after,
-body::part(transform-overlay-delete-freeform)::after {
+body::part(transform-overlay-delete-freeform)::after,
+body::part(transform-overlay-attribution-freeform)::after {
     content: "";
     display: block;
     width: 2px;
@@ -1954,6 +2000,10 @@ body::part(transform-overlay-button) {
   border-radius: 100%;
   background: none;
   cursor: pointer;
+}
+body::part(transform-overlay-button),
+body::part(transform-overlay-crop) {
+  visibility: var(--ww-transform-action-visibility, visible);
 }
 body::part(transform-overlay-button)::before {
     content: "";
@@ -2225,17 +2275,25 @@ body::part(transform-overlay-delete) {
   right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-delete-right, -10px));
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1 -14M10 10v6M14 10v6"/></svg>');
 }
-body::part(transform-overlay-delete-freeform) {
+body::part(transform-overlay-delete-freeform),
+body::part(transform-overlay-attribution-freeform) {
   top: var(--transform-rotate-top, -42px);
-  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, -7px) - 4px);
+  bottom: auto;
   display: block;
   width: 16px;
   height: 16px;
   background: none;
-  border: none;
+  border: 0;
   border-radius: 0;
 }
-body::part(transform-overlay-delete-freeform)::before {
+body::part(transform-overlay-delete-freeform) {
+  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, -7px) - 4px);
+}
+body::part(transform-overlay-attribution-freeform) {
+  left: calc(var(--selection-flow-top-left, 0px) + var(--selection-flow-handle-top-left, -7px) - 4px);
+}
+body::part(transform-overlay-delete-freeform)::before,
+body::part(transform-overlay-attribution-freeform)::before {
   width: 16px;
   height: 16px;
 }
@@ -2360,6 +2418,14 @@ math:not([display="block"]) {
   margin-inline: 2px;
 }
 
+math[display="block"] {
+  box-sizing: border-box;
+  min-height: 2lh;
+  /* Native math layout ignores align-content; keep its row and spacing intact. */
+  padding-block: calc(0.5lh + 2px);
+  padding-inline: 0;
+}
+
 .◆math-editing:not(.◆atomic-range-selected) {
   background-color: #eeeeee;
 }
@@ -2423,8 +2489,9 @@ math mrow:has(> mo:first-child):has(> mo:last-child) > mfrac > mrow:empty {
 math[display="block"].◆math-empty {
   display: block math;
   box-sizing: border-box;
-  min-height: 1lh;
-  height: calc(1lh + 4px);
+  min-height: 2lh;
+  height: calc(2lh + 4px);
+  padding-block: 2px;
   width: 100%;
   margin-inline: auto;
   aspect-ratio: auto;

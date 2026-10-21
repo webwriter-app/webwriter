@@ -2,7 +2,9 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import type {Window as TestWindow} from "happy-dom"
 import "@testing-library/jest-dom/vitest"
+import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
 import {createImageMapPopoverController, imageMapHotspotBounds} from "../media"
@@ -27,6 +29,11 @@ function fileTransfer(file: File) {
 }
 
 beforeEach(() => {
+  // Happy DOM omits these standard native media constants.
+  Object.defineProperties(HTMLMediaElement, {
+    HAVE_METADATA: {value: 1, configurable: true},
+    NETWORK_NO_SOURCE: {value: 3, configurable: true},
+  })
   // Source-attribute tests should not request real iframe pages.
   fetchSettings.interceptor = {beforeAsyncRequest: async ({window}) => new window.Response("")}
   document.body.replaceChildren()
@@ -40,6 +47,84 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each([
+    {readyState: 0},
+    {readyState: 1, videoWidth: 640, videoHeight: 360},
+    {error: {code: 1}},
+    {error: {code: 2}},
+  ])("does not report a codec problem for loading, healthy or network-failed video: %j", status => {
+    document.body.innerHTML = '<video controls src="movie.webm"></video>'
+    const video = document.querySelector("video")!
+    Object.entries(status).forEach(([name, value]) => Object.defineProperty(video, name, {value, configurable: true}))
+    editor.features.selection.captureElement(video)
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+  })
+
+  it.each([
+    [{error: {code: 3}}, "unsupported"],
+    [{error: {code: 4}}, "unsupported"],
+    [{networkState: 3}, "unsupported"],
+    [{networkState: 3, currentSrc: "https://example.test/previous.webm"}, "unsupported"],
+    [{readyState: 1, videoWidth: 0, videoHeight: 0}, "no-video"],
+  ] as const)("reports native video playback failure %j", (status, expected) => {
+    document.body.innerHTML = '<figure><!--keep--><video controls><source src="movie.ogv"><track src="captions.vtt"></video><figcaption>Bird</figcaption></figure>'
+    const video = document.querySelector("video")!
+    Object.entries(status).forEach(([name, value]) => Object.defineProperty(video, name, {value, configurable: true}))
+    editor.features.selection.captureElement(video)
+    const html = editor.toHTML(true)
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBe(expected)
+    expect(editor.toHTML(true)).toBe(html)
+    expect(editor.doc.body.toString()).not.toContain("videoPlaybackWarning")
+  })
+
+  it("refreshes warnings on non-bubbling playback events and clears recovered or replaced sources", () => {
+    document.body.innerHTML = '<video controls src="movie.ogv"></video>'
+    const video = document.querySelector("video")!
+    const status = {currentSrc: video.src, readyState: 1, videoWidth: 0, videoHeight: 0}
+    for(const name of Object.keys(status) as Array<keyof typeof status>) Object.defineProperty(video, name, {get: () => status[name]})
+    editor.features.selection.captureElement(video)
+    const post = vi.spyOn(editor, "postSelectionPath")
+    for(const type of ["loadedmetadata", "loadeddata", "resize", "error", "emptied", "loadstart"]) {
+      post.mockClear()
+      video.dispatchEvent(new Event(type))
+      expect(post).toHaveBeenCalledOnce()
+    }
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBe("no-video")
+    status.videoWidth = 640
+    status.videoHeight = 360
+    video.dispatchEvent(new Event("resize"))
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+    status.videoWidth = status.videoHeight = 0
+    video.src = "replacement.webm"
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+    video.removeAttribute("src")
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+    post.mockClear()
+    editor.features.media.disable()
+    video.dispatchEvent(new Event("loadedmetadata"))
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it("observes child source errors and ignores disconnected, replaced and widget-owned video", async () => {
+    document.body.innerHTML = '<video controls><source src="movie.ogv"></video><custom-widget></custom-widget>'
+    const video = document.querySelector("video")!, source = video.querySelector("source")!
+    editor.features.selection.captureElement(video)
+    const post = vi.spyOn(editor, "postSelectionPath")
+    source.dispatchEvent(new Event("error"))
+    await Promise.resolve()
+    expect(post).toHaveBeenCalledOnce()
+    post.mockClear()
+    document.querySelector("custom-widget")!.append(video)
+    video.dispatchEvent(new Event("loadedmetadata"))
+    const shadow = document.querySelector("custom-widget")!.attachShadow({mode: "open"})
+    shadow.innerHTML = '<video src="widget.ogv"></video>'
+    shadow.querySelector("video")!.dispatchEvent(new Event("loadedmetadata", {composed: true}))
+    expect(post).not.toHaveBeenCalled()
+    video.replaceWith(document.createElement("video"))
+    video.dispatchEvent(new Event("loadedmetadata"))
+    expect(post).not.toHaveBeenCalled()
+  })
+
   it.each([
     '<picture><!--keep--><img></picture>', '<img>', '<audio controls=""></audio>',
     '<video controls=""></video>', '<iframe></iframe>', '<embed>', '<object></object>',
@@ -1190,6 +1275,122 @@ describe("media editing", () => {
     await vi.waitFor(() => expect(player.muted).toBe(true))
   })
 
+  it.each(["audio", "video"] as const)("suppresses %s autoplay without changing authored HTML", async media => {
+    document.body.innerHTML = `<section><!--keep--><${media} controls autoplay="autoplay"><source src="recording.mp3"><p>Fallback</p></${media}></section>`
+    const player = document.querySelector(media)!
+    const pause = vi.spyOn(player, "pause")
+    await vi.waitFor(() => expect(pause).toHaveBeenCalled())
+    editor.features.media.disable()
+    const before = document.body.innerHTML
+    pause.mockClear()
+    editor.features.media.enable()
+    expect(pause).toHaveBeenCalledOnce()
+    expect(document.body.innerHTML).toBe(before)
+    expect(player.autoplay).toBe(true)
+
+    pause.mockClear()
+    player.dispatchEvent(new Event("loadstart"))
+    expect(pause).toHaveBeenCalledOnce()
+    expect(editor.toHTML()).toContain('autoplay="autoplay"')
+
+    // Changing the authored setting must also disarm a loaded player.
+    pause.mockClear()
+    player.removeAttribute("autoplay")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    player.setAttribute("autoplay", "")
+    await vi.waitFor(() => expect(pause).toHaveBeenCalled())
+
+    editor.features.media.disable()
+    pause.mockClear()
+    player.dispatchEvent(new Event("loadstart"))
+    player.setAttribute("autoplay", "autoplay")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(pause).not.toHaveBeenCalled()
+    pause.mockRestore()
+  })
+
+  it("suppresses autoplay in nested widget light DOM while leaving shadow media and explicit playback alone", async () => {
+    const widget = document.createElement("media-autoplay-widget")
+    widget.innerHTML = '<section><audio controls autoplay></audio></section>'
+    const audio = widget.querySelector("audio")!
+    const pause = vi.spyOn(audio, "pause")
+    const shadow = widget.attachShadow({mode: "open"})
+    shadow.innerHTML = '<video autoplay></video><slot></slot>'
+    const shadowVideo = shadow.querySelector("video")!
+    const shadowPause = vi.spyOn(shadowVideo, "pause")
+    document.body.append(widget)
+    await vi.waitFor(() => expect(pause).toHaveBeenCalled())
+    shadowVideo.dispatchEvent(new Event("loadstart", {composed: true}))
+    expect(shadowPause).not.toHaveBeenCalled()
+
+    // A direct mutation inside an already connected widget is also covered.
+    const video = document.createElement("video")
+    video.autoplay = true
+    const videoPause = vi.spyOn(video, "pause")
+    widget.append(video)
+    await vi.waitFor(() => expect(videoPause).toHaveBeenCalled())
+
+    pause.mockClear()
+    Object.defineProperty(audio, "paused", {configurable: true, value: false})
+    audio.dispatchEvent(new Event("loadstart"))
+    audio.setAttribute("autoplay", "autoplay")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(pause).not.toHaveBeenCalled()
+    audio.remove()
+    audio.dispatchEvent(new Event("loadstart"))
+    expect(pause).not.toHaveBeenCalled()
+    pause.mockRestore()
+    shadowPause.mockRestore()
+    videoPause.mockRestore()
+  })
+
+  it("preserves collaborated autoplay attributes and their local undo history", async () => {
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause")
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+      const sharedVideo = new Y.XmlElement("video")
+      sharedVideo.setAttribute("autoplay", "autoplay")
+      sharedVideo.setAttribute("controls", "")
+      const body = sharedDOMBody(remote)
+      body.insert(body.length, [sharedVideo])
+      const canUndo = editor.doc.canUndo
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+      await vi.waitFor(() => expect(document.querySelector("video")).not.toBeNull())
+      const video = document.querySelector("video")!
+      await vi.waitFor(() => expect(pause.mock.instances).toContain(video))
+      expect(video).toHaveAttribute("autoplay", "autoplay")
+      expect(editor.doc.canUndo).toBe(canUndo)
+      expect(sharedVideo.getAttribute("autoplay")).toBe("autoplay")
+      expect(editor.toHTML()).toContain('autoplay="autoplay"')
+
+      $.selectElement(video)
+      editor.doc.stopCapturing()
+      editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "autoplay", value: null})
+      editor.doc.syncFromDOM()
+      expect(video).not.toHaveAttribute("autoplay")
+      editor.doc.undo()
+      expect(document.querySelector("video")).toHaveAttribute("autoplay", "autoplay")
+      editor.doc.redo()
+      expect(document.querySelector("video")).not.toHaveAttribute("autoplay")
+    }
+    finally { pause.mockRestore(); remote.destroy() }
+  })
+
+  it("leaves unfamiliar media namespaces intact while suppressing autoplay", async () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const audio = document.createElementNS("urn:example", "audio")
+    audio.setAttribute("autoplay", "")
+    svg.append(audio)
+    document.body.append(svg)
+    const html = svg.outerHTML
+    await new Promise(resolve => setTimeout(resolve, 0))
+    editor.features.media.disable()
+    expect(() => editor.features.media.enable()).not.toThrow()
+    expect(svg.outerHTML).toBe(html)
+  })
+
   it("syncs the muted property for newly added media subtrees", async () => {
     const section = document.createElement("section")
     section.innerHTML = '<audio muted></audio>'
@@ -1543,9 +1744,72 @@ describe("media editing", () => {
     editor.doc.redo()
     await Promise.resolve()
     const content = document.querySelector<HTMLElement>("[popover]")!
-    expect(content.querySelector("p")!.textContent).toBe("Popover content")
+    expect(content.querySelector("p")!.textContent).toBe("")
     expect(document.querySelector("area")).toHaveAttribute("popovertarget", content.id)
     expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("uses an editing placeholder for empty hotspot content and cleans up its marker", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
+    const paragraph = document.querySelector("[popover] p")!
+    editor.features.media["refresh"]()
+    expect(paragraph.textContent).toBe("")
+    expect(paragraph).toHaveClass("◆hotspot-placeholder")
+    expect(editor.toHTML(true)).not.toMatch(/Hotspot content|Popover content|◆hotspot-placeholder/)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆hotspot-placeholder")
+    paragraph.textContent = "My content"
+    editor.features.media["refresh"]()
+    expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
+    paragraph.innerHTML = "<br>"
+    editor.features.media["refresh"]()
+    expect(paragraph).toHaveClass("◆hotspot-placeholder")
+    editor.features.media.disable()
+    expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
+  })
+
+  it.each(["border", "background"] as const)("saves hotspot %s visibility, preserves classes, and supports undo and redo", async part => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area class="authored" shape="rect" coords="10,10,40,40" href="library.html"></map>'
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:area.path, expected:area.attributes, part, value:false})).toBe(true)
+    expect(document.querySelector("area")).toHaveClass("authored", `ww-hotspot-no-${part}`)
+    expect(editor.toHTML(true)).toContain(`ww-hotspot-no-${part}`)
+    expect(editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:area.path, expected:area.attributes, part, value:true})).toBe(false)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.querySelector("area")).toHaveClass("authored")
+    expect(document.querySelector("area")).not.toHaveClass(`ww-hotspot-no-${part}`)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(document.querySelector("area")).toHaveClass(`ww-hotspot-no-${part}`)
+    const current = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:current.path, expected:current.attributes, part, value:true})).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored")
+  })
+
+  it("changes border and background independently, including previously hidden overlays", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area class="authored ww-hotspot-transparent" shape="rect" coords="10,10,40,40"></map>'
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    const set = (part: "border" | "background", value: boolean) => {
+      const area = editor.features.media.getState()!.imageMap!.areas[0]
+      return editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:area.path, expected:area.attributes, part, value})
+    }
+    expect(set("border", true)).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored ww-hotspot-no-background")
+    expect(set("border", false)).toBe(true)
+    expect(document.querySelector("area")).toHaveClass("ww-hotspot-no-background", "ww-hotspot-no-border")
+    expect(set("background", true)).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored ww-hotspot-no-border")
+    expect(set("border", true)).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored")
   })
 
   it.each(["Backspace", "Delete"])("removes the selected hotspot with %s without removing the image", key => {
@@ -1949,6 +2213,31 @@ describe("canonical media", () => {
 
 
 describe("selected media source", () => {
+  it.each(["unchanged", "remote change", "disconnected", "disabled", "cancelled", "superseded"])(
+    "guards a host file picker when %s", condition => {
+      document.body.innerHTML = '<audio src="existing.mp3"></audio><audio src="other.mp3"></audio>'
+      const audio = document.querySelector("audio")!
+      $.selectElement(audio)
+      editor.features.selection.processSelection()
+      expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", pickerId: "first"})).toBe(true)
+      expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+      const file = new File(["audio"], "song.mp3", {type: "audio/mpeg"})
+      if(condition === "remote change") audio.setAttribute("src", "remote.mp3")
+      if(condition === "disconnected") audio.remove()
+      if(condition === "disabled") editor.features.media.disable()
+      if(condition === "cancelled") editor.features.media.actions.setMediaFile({type: "setMediaFile", file: null, pickerId: "first"})
+      if(condition === "superseded") editor.features.media.actions.selectMediaFile({type: "selectMediaFile", pickerId: "second"})
+      // A host picker remains bound to the original node, even if selection moves.
+      $.selectElement(document.querySelectorAll("audio")[condition === "disconnected" ? 0 : 1])
+      const changed = editor.features.media.actions.setMediaFile({type: "setMediaFile", file, pickerId: "first"})
+      expect(changed).toBe(condition === "unchanged")
+      if(condition === "unchanged") expect(audio.getAttribute("src")).toMatch(/^blob:/)
+      else expect(audio.getAttribute("src")).toBe(condition === "remote change" ? "remote.mp3" : "existing.mp3")
+      expect(document.querySelector('audio[src="other.mp3"]')).not.toBeNull()
+      expect(editor.toHTML(true)).not.toContain("◆")
+    },
+  )
+
   it("removes timed sources without rebuilding fallback, tracks, or resource elements", () => {
     document.body.innerHTML = '<video src="old.mp4"><!--keep--><source src="alternative.mp4" type="video/mp4"><track src="captions.vtt"><span>Fallback</span></video>'
     const video = document.querySelector("video")!

@@ -19,6 +19,7 @@ import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
 import {guard} from "lit/directives/guard.js"
 import {cache} from "lit/directives/cache.js"
+import {keyed} from "lit/directives/keyed.js"
 import {when} from "lit/directives/when.js"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import {editorInteractionStyles} from "./editing-controls.styles"
@@ -105,6 +106,7 @@ import {
   isPresenceChangeMessage,
   markStateChangeEvent,
   commentStateChangeEvent,
+  commentReviewRequestEvent,
   proofreadingStateChangeEvent,
   proofreadingDictionaryAddEvent,
   historyStateChangeEvent,
@@ -536,9 +538,6 @@ export class DomEditor extends LitElement {
   private documentLayout: DocumentLayoutState = defaultDocumentLayoutState()
   private documentLayoutError = ""
   private htmlSourceRefreshSequence = 0
-  private htmlSourceHovered = false
-  private htmlSourceFocused = false
-  private htmlSourceHighlightActive = false
   private htmlSourceRefreshQueued = false
   private htmlSourceWindow = {start: 0, end: 8192}
   private htmlSourcePainted = ""
@@ -600,6 +599,7 @@ export class DomEditor extends LitElement {
     },
   })
   private frameState: EditorStateSnapshot | undefined
+  // Key the iframe by revision so old windows and their queued messages are retired.
   private frameRevision = 0
   private frameStarted = false
   private frameStartTimer: ReturnType<typeof setTimeout> | undefined
@@ -607,6 +607,7 @@ export class DomEditor extends LitElement {
   private fileName = ""
   private fileDirty = false
   private documentLayoutsDismissed = false
+  private documentLayoutsManuallyDismissed = false
   private sizeWarningDismissed = false
   private documentLayoutConversionCount = 0
   private fileError = ""
@@ -1015,8 +1016,8 @@ export class DomEditor extends LitElement {
     .document-layouts-bar .layout-preset { min-height: 0; }
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
-    .document-layouts-documents {margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
-    .document-layouts-documents ul {display: grid; grid-template-rows: repeat(5, 1.6rem); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
+    .document-layouts-documents {position: relative; align-self: stretch; margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
+    .document-layouts-documents ul {position: absolute; inset: 0; overflow-y: auto; display: grid; grid-auto-rows: 1.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
     .document-layouts-documents li {min-width: 0}
     .document-layout-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
     .document-layout-document svg {width: .9rem; height: .9rem; flex-shrink: 0; color: #526b86}
@@ -1857,6 +1858,7 @@ export class DomEditor extends LitElement {
   }
 
   private initializeEditorFrame(iframe: HTMLIFrameElement) {
+    if(iframe !== this.editorIframe()) return
     this.guidedTourReady = false
     this.handleHostWindowFocus()
     for(const pending of this.frameRequests.values()) {
@@ -1948,7 +1950,7 @@ export class DomEditor extends LitElement {
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
-            if(this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
+            this.updateDocumentLayoutsVisibility()
           }
           if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
@@ -2118,7 +2120,7 @@ export class DomEditor extends LitElement {
         if(this.dirtyTrackingMutationPending) {
           this.dirtyTrackingMutationPending = false
           this.fileDirty = !this.isFreshDocumentUnchanged()
-          if(this.fileDirty && this.documentLayoutConversionCount === 0) this.documentLayoutsDismissed = true
+          this.updateDocumentLayoutsVisibility()
         }
         this.dirtyTrackingTimer = undefined
       }, 0)
@@ -2210,6 +2212,22 @@ export class DomEditor extends LitElement {
     }
     if(!resetEmptyLayoutContent(body)) return null
     return doc.documentElement.outerHTML
+  }
+
+  private updateDocumentLayoutsVisibility() {
+    if(!this.dirtyTrackingReady || this.documentLayoutConversionCount !== 0) return
+    if(this.documentLayoutsManuallyDismissed || this.consoleOpen || this.reviewOpen || this.settings.pinDeveloperConsole) {
+      this.documentLayoutsDismissed = true
+      return
+    }
+    if(!this.fileDirty) {
+      this.documentLayoutsDismissed = false
+      return
+    }
+    const body = this.editorDocument?.body.cloneNode(true) as HTMLElement | undefined
+    if(!body) return
+    clearEditorArtifacts(body)
+    this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
 
   private async retainFreshDocumentLayout(revision: number, initialSnapshot?: string | null) {
@@ -3014,18 +3032,21 @@ export class DomEditor extends LitElement {
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
-    if(isTextFieldInteraction(event, this.editorDocument?.body)
-      || event.currentTarget === this.editorDocument && isWidgetShadowInteraction(event)) return
-    const appendix = this.editorDocument?.body.shadowRoot
-    if(appendix && event.composedPath().includes(appendix)) return
-    if(event.composedPath().some(target => target instanceof HTMLElement
-      && target.classList.contains("html-source-input"))) return
-    if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
-    if(this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.shadowRoot?.querySelector("dialog")?.open) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => this.settings.shortcuts[candidate.id] === shortcut)
     if(!command && !builtinShortcuts().has(shortcut)) return
+    // Printing belongs to the document regardless of which UI control has focus.
+    if(command?.id !== "document.print") {
+      if(isTextFieldInteraction(event, this.editorDocument?.body)
+        || event.currentTarget === this.editorDocument && isWidgetShadowInteraction(event)) return
+      const appendix = this.editorDocument?.body.shadowRoot
+      if(appendix && event.composedPath().includes(appendix)) return
+      if(event.composedPath().some(target => target instanceof HTMLElement
+        && target.classList.contains("html-source-input"))) return
+      if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
+      if(this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.shadowRoot?.querySelector("dialog")?.open) return
+    }
     event.preventDefault()
     event.stopImmediatePropagation()
     if(!command || event.repeat) return
@@ -3171,6 +3192,7 @@ export class DomEditor extends LitElement {
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
     this.documentLayoutsDismissed = !isNewDocument || this.settings.pinDeveloperConsole
+    this.documentLayoutsManuallyDismissed = false
     // Only successful widget initialization may reveal the incoming document.
     this.documentFramePending = true
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
@@ -3569,11 +3591,12 @@ export class DomEditor extends LitElement {
     finally { this.documentLoading = false }
   }
 
-  private pickFileInput(): Promise<File | null> {
+  private pickFileInput(accept = ".html,.htm,text/html"): Promise<File | null> {
+    this.cancelFileInput?.()
     return new Promise((resolve, reject) => {
       const input = document.createElement("input")
       input.type = "file"
-      input.accept = ".html,.htm,text/html"
+      input.accept = accept
       input.hidden = true
       const finish = (file: File | null, error?: unknown) => {
         input.removeEventListener("change", change)
@@ -3592,6 +3615,32 @@ export class DomEditor extends LitElement {
       try {input.click()}
       catch(error) {finish(null, error)}
     })
+  }
+
+  private async pickMediaFile(attribute?: "poster") {
+    const media = this.mediaSelection
+    if(!media || attribute && media.type !== "video") return
+    const pickerId = crypto.randomUUID()
+    const revision = this.frameRevision
+    const prepared = this.execute({type: "selectMediaFile", attribute, pickerId})
+    const accept = attribute === "poster" || media.type === "picture" || media.type === "img" ? "image/*"
+      : media.type === "audio" ? "audio/*" : media.type === "video" ? "video/*" : ".html,.htm,text/html"
+    // Opening in the host click avoids depending on activation in another origin.
+    const picked = this.pickFileInput(accept)
+    const cancel = this.cancelFileInput
+    try {
+      const [ready, file] = await Promise.all([prepared, picked])
+      if(ready && this.isConnected && revision === this.frameRevision) {
+        await this.execute({type: "setMediaFile", file, pickerId})
+      }
+    }
+    catch(error) {
+      if(this.cancelFileInput === cancel) cancel?.()
+      if(this.isConnected && revision === this.frameRevision) {
+        await this.execute({type: "setMediaFile", file: null, pickerId}).catch(() => {})
+      }
+      this.reportFileError(error)
+    }
   }
 
   private triggerFileDownload(source: string, name: string) {
@@ -4147,7 +4196,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "selected-media-cover-file") {
-      void this.execute({type: "selectMediaFile", attribute: "poster"})
+      void this.pickMediaFile("poster")
       return
     }
     if(label?.startsWith("selected-media-cover-capture:")) {
@@ -4156,7 +4205,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "selected-media-file") {
-      void this.execute({type: "selectMediaFile"})
+      void this.pickMediaFile()
       return
     }
     if(label === "remove-media-source") {
@@ -5613,6 +5662,7 @@ export class DomEditor extends LitElement {
       path?: unknown
       expected?: unknown
       attribute?: unknown
+      part?: unknown
       value?: unknown
     }>).detail
     if((detail?.type !== "picture" && detail?.type !== "img") || typeof detail.action !== "string") {
@@ -5653,6 +5703,10 @@ export class DomEditor extends LitElement {
     }
     if(detail.action === "set-popover-trigger" && (detail.value === "click" || detail.value === "hover")) {
       void this.execute({type: "setImageMapPopoverTrigger", path, expected, value: detail.value})
+      return
+    }
+    if(detail.action === "set-overlay" && (detail.part === "border" || detail.part === "background") && typeof detail.value === "boolean") {
+      void this.execute({type: "setImageMapOverlay", path, expected, part: detail.part, value: detail.value})
       return
     }
     if(detail.action === "remove-area") {
@@ -5813,7 +5867,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
     if(!action || !["setFloat", "moveFloat", "setCaption"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
@@ -5823,9 +5877,9 @@ export class DomEditor extends LitElement {
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
   }
 
-  private openEditToolbox() {
+  private openEditToolbox(expand = false) {
     if(!this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.expanded) return
-    this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit")
+    this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit", expand)
   }
 
   private async refreshHTMLSource() {
@@ -5842,7 +5896,6 @@ export class DomEditor extends LitElement {
       this.htmlSource = indentHTMLSource(result.html)
       this.htmlOriginalSource = this.htmlSource
       this.htmlSourceError = ""
-      this.syncHTMLSourceHover(true)
     }
     catch(error) {
       if(sequence !== this.htmlSourceRefreshSequence || !this.htmlMode) return
@@ -5865,7 +5918,6 @@ export class DomEditor extends LitElement {
     const sequence = ++this.htmlSourceRefreshSequence
     if(!enabled) {
       this.htmlMode = false
-      this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
       try {
         await this.execute({type: "discardHTMLSelectionEdit"})
       }
@@ -6022,16 +6074,8 @@ export class DomEditor extends LitElement {
       this.documentLayoutError = error instanceof Error ? error.message : String(error)
     }).finally(() => {
       this.documentLayoutConversionCount--
-      if(revision === this.frameRevision && this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
+      if(revision === this.frameRevision) this.updateDocumentLayoutsVisibility()
     })
-  }
-
-  private syncHTMLSourceHover(force = false) {
-    const hovered = this.htmlMode && (this.htmlSourceHovered || this.htmlSourceFocused)
-    if(!hovered && !this.htmlSourceHighlightActive || !force && hovered === this.htmlSourceHighlightActive) return
-    this.htmlSourceHighlightActive = hovered
-    if(!this.htmlMode) return
-    void this.execute({type: "hoverHTMLSelectionEdit", hovered}).catch(() => {})
   }
 
   private handleHTMLSourceInput = (event: Event) => {
@@ -6225,10 +6269,6 @@ export class DomEditor extends LitElement {
                 aria-label="Selected HTML"
                 .value=${this.htmlSource}
                 spellcheck="false"
-                @mouseenter=${() => {this.htmlSourceHovered = true; this.syncHTMLSourceHover()}}
-                @mouseleave=${() => {this.htmlSourceHovered = false; this.syncHTMLSourceHover()}}
-                @focus=${() => {this.htmlSourceFocused = true; this.syncHTMLSourceHover()}}
-                @blur=${() => {this.htmlSourceFocused = false; this.syncHTMLSourceHover()}}
                 @input=${this.handleHTMLSourceInput}
                 @scroll=${(event: Event) => this.syncHTMLSourceScroll(event.currentTarget as HTMLTextAreaElement)}
               ></textarea>
@@ -6601,6 +6641,10 @@ export class DomEditor extends LitElement {
         ? {localName: value.target.localName, namespaceURI: value.target.namespaceURI,
           ...(value.target.float === "none" || value.target.float === "far-left" || value.target.float === "far-right"
             ? {float: value.target.float} : {}),
+          ...(value.target.alignment === "left" || value.target.alignment === "center" || value.target.alignment === "right"
+            ? {alignment: value.target.alignment} : {}),
+          ...(typeof value.target.canMoveUp === "boolean" ? {canMoveUp: value.target.canMoveUp} : {}),
+          ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined
@@ -6782,7 +6826,7 @@ export class DomEditor extends LitElement {
       if(!this.isEditorMessage(event) || typeof event.data.action !== "string" || !ribbonInsertionAction(event.data.action)) return
       const position = event.data.position as RibbonDropPosition | undefined
       if(!position || !position.anchor || typeof position.anchor !== "object"
-        || !["document", "canvas", "slides"].includes(position.layout)
+        || !["document", "canvas", "slides", "graphic"].includes(position.layout)
         || position.layout !== "document" && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) return
       void this.insertRibbonDropAction(event.data.action, position)
       return
@@ -6891,7 +6935,7 @@ export class DomEditor extends LitElement {
         if(this.historyDocumentTransitionCount === 0) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true
-          if(this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
+          this.updateDocumentLayoutsVisibility()
         }
         if(this.stylesVisible()) this.queueElementStyleRefresh()
       }
@@ -6989,6 +7033,11 @@ export class DomEditor extends LitElement {
       }))
       return
     }
+    if(event.data?.type === commentReviewRequestEvent) {
+      if(!this.isEditorMessage(event)) return
+      this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Review", true)
+      return
+    }
     if(isCommentStateChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.commentState = {...event.data.detail}
@@ -7029,6 +7078,7 @@ export class DomEditor extends LitElement {
     }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
+      const previousSelectionPath = this.selectionPath.at(-1)?.path
       const path = event.data.detail.path.map(item => ({
         ...item,
         path: [...item.path],
@@ -7075,9 +7125,22 @@ export class DomEditor extends LitElement {
       this.figure = event.data.detail.figure ? {...event.data.detail.figure} : null
       this.captionPosition = event.data.detail.captionPosition ?? null
       this.captionAlignment = event.data.detail.captionAlignment ?? null
+      const previousMedia = this.mediaSelection
       this.mediaSelection = event.data.detail.media
         ? {...event.data.detail.media, attributes: {...event.data.detail.media.attributes}}
         : null
+      const playbackWarning = this.mediaSelection?.type === "video" ? this.mediaSelection.videoPlaybackWarning : undefined
+      if(playbackWarning) {
+        const mediaKey = (media: MediaSelectionState | null, selectionPath?: number[]) => JSON.stringify({
+          selectionPath,
+          type: media?.type,
+          source: media?.attributes.src,
+          sources: media?.sources?.map(source => source.attributes.src),
+        })
+        const previousWarning = previousMedia?.type === "video" ? previousMedia.videoPlaybackWarning : undefined
+        const selectionChanged = mediaKey(previousMedia, previousSelectionPath) !== mediaKey(this.mediaSelection, path.at(-1)?.path)
+        if(!previousWarning || selectionChanged) this.openEditToolbox(true)
+      }
       this.dialogSelection = event.data.detail.dialog ? {
         ...event.data.detail.dialog,
         attributes: {...event.data.detail.dialog.attributes},
@@ -7499,7 +7562,6 @@ export class DomEditor extends LitElement {
     this.elementStyleRefreshQueued = false
     this.htmlSourceRefreshSequence++
     this.htmlSourceRefreshQueued = false
-    this.htmlSourceHovered = this.htmlSourceFocused = this.htmlSourceHighlightActive = false
     this.consoleOpen = false
     this.reviewOpen = false
     this.consoleTab = "Packages"
@@ -7765,7 +7827,7 @@ export class DomEditor extends LitElement {
             @load=${this.handlePreviewFrameLoad}
           ></iframe>
         ` : ""}
-        ${this.frameStarted ? html`<iframe
+        ${this.frameStarted ? keyed(this.frameRevision, html`<iframe
           class=${documentLoading || this.documentFramePending ? "editor-frame loading" : "editor-frame"}
           allow="camera; microphone; display-capture"
           title="DOM editor"
@@ -7780,7 +7842,7 @@ export class DomEditor extends LitElement {
           @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}
           @lostpointercapture=${this.relayFrameTouch} @touchstart=${this.handleFrameTouchStart}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
-        ></iframe>` : ""}
+        ></iframe>`) : ""}
         ${this.ribbonDrag && !this.previewActive ? html`<div class="ribbon-drag-shield"
           @dragenter=${this.relayRibbonDrag} @dragover=${this.relayRibbonDrag}
           @dragleave=${this.relayRibbonDrag} @drop=${this.relayRibbonDrag}></div>` : ""}
@@ -7884,6 +7946,7 @@ export class DomEditor extends LitElement {
                   @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
                   @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
                   @click=${async () => {
+                    this.documentLayoutsManuallyDismissed = true
                     this.documentLayoutsDismissed = true
                     await this.updateComplete
                     this.focusEditor()

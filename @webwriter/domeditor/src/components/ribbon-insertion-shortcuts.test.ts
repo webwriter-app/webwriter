@@ -149,8 +149,9 @@ describe("insertion ribbon shortcuts", () => {
 
     for(const [label, id, key] of insertionShortcuts) {
       const command = commandById.get(`insert.${id}`)!
-      expect(command.defaultShortcut?.(applePlatform)).toBe(`${applePlatform ? "Meta" : "Ctrl"}+${key}`)
-      expect(settings.shortcuts[command.id]).toBe(`${applePlatform ? "Meta" : "Ctrl"}+${key}`)
+      const expectedShortcut = id === "formula" ? "Alt+Shift+0" : `${applePlatform ? "Meta" : "Ctrl"}+${key}`
+      expect(command.defaultShortcut?.(applePlatform)).toBe(expectedShortcut)
+      expect(settings.shortcuts[command.id]).toBe(expectedShortcut)
       const button = ribbon.shadowRoot!.querySelector<RibbonButton>(`ribbon-button[label="${label}"]`)!
       const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
       expect(main.title).toBe(`${label} (${formatShortcut(settings.shortcuts[command.id])})`)
@@ -160,6 +161,7 @@ describe("insertion ribbon shortcuts", () => {
       ?.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe(`Paragraph (${formatShortcut(settings.shortcuts["insert.paragraph"])})`)
     expect(elements.querySelector('ribbon-button[label="Section"]')).toBeNull()
     expect(settings.shortcuts["insert.paragraph"]).toBe("Alt+Shift+Enter")
+    expect(settings.shortcuts["insert.formula"]).not.toMatch(/^(Ctrl|Meta)\+0$/)
     expect(settings.shortcuts).not.toHaveProperty("insert.section")
     expect(elements.querySelector('ribbon-button[label="Layouts"]')).toBeNull()
   })
