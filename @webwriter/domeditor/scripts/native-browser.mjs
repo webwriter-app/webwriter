@@ -77,6 +77,7 @@ const expectedChecks = [
   "new paragraphs and line breaks reveal the caret at the document end",
   "native drag floats in preview areas and preserves ordinary gap drops",
   "document shape drops use float lanes and ordinary content flow",
+  "keyboard shape drags capture graphics and finish drops through appendix surfaces",
   "empty document gutters prefer floats throughout the viewport",
   "empty graphics drag through their full capture outline into floats",
   "native MathML editing preserves inline rendering and argument hit targets",

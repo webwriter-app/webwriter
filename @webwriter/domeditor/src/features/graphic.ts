@@ -1051,9 +1051,16 @@ export class GraphicFeature extends EditorFeature {
   // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
     dragover: event => {
+      if(event.defaultPrevented) return
       if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
-        if(!this.#imageDropGraphic(event)) return
+        const graphic = this.#imageDropGraphic(event)
+        if(!graphic) return
         if(document.body.classList.contains("◆drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
+        if(this.editor.features.selection.captureSelectedElement !== graphic) {
+          this.editor.features.selection.captureElement(graphic)
+          this.#refresh()
+          this.editor.postSelectionPath()
+        }
         event.preventDefault()
         event.stopImmediatePropagation()
         event.dataTransfer.dropEffect = "copy"
@@ -1068,6 +1075,7 @@ export class GraphicFeature extends EditorFeature {
       data.dropEffect = "copy"
     },
     drop: event => {
+      if(event.defaultPrevented) return
       if(this.#dropShape(event)) return
       this.#dropImage(event)
       if(event.defaultPrevented) return
@@ -1090,11 +1098,14 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #imageDropGraphic(event: DragEvent) {
-    if(this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
+    if(!this.isEnabled || this.editor.isEditingLocked || isWidgetShadowInteraction(event, this.editor.schema)) return null
     const target = this.editor.features.media.mediaDropTarget(event)
       ?? (event.target instanceof Node ? event.target : null)
-    const graphic = graphicContainerForNode(target)
-    return graphic?.isConnected && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
+    const direct = graphicContainerForNode(target)
+    const graphic = direct && getDocumentRoot().contains(direct) ? direct
+      : this.editor.hitTestBeneathAppendix(() => graphicContainerForNode(document.elementFromPoint?.(event.clientX, event.clientY) ?? null))
+    return graphic?.isConnected && getDocumentRoot().contains(graphic)
+      && !atomicEditingContainer(graphic.parentElement, this.editor.schema) ? graphic : null
   }
 
   #dropImage(event: DragEvent) {

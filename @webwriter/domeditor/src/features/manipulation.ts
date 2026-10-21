@@ -3355,11 +3355,24 @@ export class ManipulationFeature extends EditorFeature {
       this.insertBreak("br")
     },
     "dragover": event => {
+      // Keyboard shapes can land on appendix chrome. Give the graphic beneath
+      // it first refusal before resolving a document insertion point.
+      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+        this.editor.features.graphic.captureListeners.dragover?.(event)
+        if(!isWidgetShadowInteraction(event, this.editor.schema)) this.dragOver(event)
+        return
+      }
       if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
     },
     "drop": event => {
+      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+        this.editor.features.graphic.captureListeners.drop?.(event)
+        if(!isWidgetShadowInteraction(event, this.editor.schema)) this.drop(event)
+        return
+      }
       if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.drop(event)
     },
+    "dragend": () => this.endNodeDrag(),
   }
 
   passiveListeners: DocumentListenerMap = {
@@ -3375,7 +3388,6 @@ export class ManipulationFeature extends EditorFeature {
       const selected = $.selectedElement
       if(selected && event.target instanceof Node && selected.contains(event.target)) this.startNodeDrag(event, selected)
     },
-    "dragend": () => this.endNodeDrag(),
     "dragover": event => this.dragOver(event),
     "dragleave": event => this.dragLeave(event),
     "drop": event => this.drop(event),

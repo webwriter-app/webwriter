@@ -6973,6 +6973,62 @@ await check("document shape drops use float lanes and ordinary content flow", as
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("keyboard shape drags capture graphics and finish drops through appendix surfaces", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:850px;border:0"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "keyboard drag fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const events = view as unknown as {DragEvent: typeof DragEvent, DataTransfer: typeof DataTransfer}
+    doc.body.innerHTML = '<svg viewBox="0 0 600 300" style="display:block;width:600px;height:300px"><!--keep--><rect x="100" y="80" width="160" height="120" fill="skyblue"/></svg><p id="anchor" style="height:140px">Document drop target</p>'
+    const graphic = doc.querySelector("svg")!, original = graphic.querySelector("rect")!, paragraph = doc.querySelector("p")!
+    editor.features.selection.selectElement(graphic)
+    await layoutFrame()
+    const data = new events.DataTransfer()
+    data.setData("application/x-webwriter-graphic-shape", JSON.stringify({shape:"ellipse", paint:{fill:"#fbbf24"}}))
+    const dispatch = (target: EventTarget, type: string, x: number, y: number) => {
+      const event = new events.DragEvent(type, {bubbles:true, cancelable:true, composed:true, dataTransfer:data, clientX:x, clientY:y})
+      target.dispatchEvent(event)
+      return event
+    }
+    const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    assert(surface && dispatch(surface, "dragover", x, y).defaultPrevented, "shape hover was not accepted on the selected graphic surface")
+    const outline = editor.appendix.querySelector(".◆selection-caret")
+    for(let index = 0; index < 5; index++) {
+      await layoutFrame()
+      assert(editor.features.selection.captureSelectedElement === graphic && !surface.isConnected, "graphic hover flickered back to element selection")
+      assert(!editor.appendix.querySelector("#◆float-drop-preview"), "graphic hover showed a document placement preview")
+      dispatch(doc.elementFromPoint(x, y) ?? graphic, "dragover", x, y)
+    }
+    assert(editor.appendix.querySelector(".◆selection-caret") === outline, "graphic hover replaced its selection chrome")
+    assert(dispatch(doc.elementFromPoint(x, y) ?? graphic, "drop", x, y).defaultPrevented, "graphic shape drop was rejected")
+    assert(doc.querySelectorAll("svg").length === 1 && graphic.querySelector("rect") === original && graphic.querySelector("ellipse"), "shape was not added to the existing graphic")
+    // Native events in blank document space can originate on the appendix slot.
+    for(const type of ["dragend", "drop"]) {
+      const bounds = paragraph.getBoundingClientRect()
+      editor.features.manipulation.showFloatDropPreview(paragraph, "left", "transfer", editor.features.graphic.createGraphic("ellipse"))
+      const preview = editor.appendix.querySelector("#◆float-drop-preview")!.getBoundingClientRect()
+      const dropX = preview.left + preview.width / 2, dropY = Math.min(bounds.bottom - 10, preview.top + preview.height / 2)
+      editor.features.manipulation.clearFloatDropPreview("transfer")
+      const slot = editor.appendix.querySelector("slot")!
+      assert(dispatch(slot, "dragover", dropX, dropY).defaultPrevented, "slot hover was rejected")
+      assert(editor.appendix.querySelector("#◆float-drop-preview"), "slot hover did not show its float placement")
+      dispatch(slot, type, dropX, dropY)
+      await layoutFrame()
+      assert(doc.querySelectorAll("svg").length === (type === "drop" ? 2 : 1), `slot ${type} inserted the wrong number of graphics`)
+      if(type === "drop") assert(doc.querySelectorAll("svg")[1].querySelectorAll("ellipse").length === 1, "document drop inserted the keyboard shape twice")
+      assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `slot ${type} left a float preview behind`)
+    }
+    assert(paragraph.textContent === "Document drop target" && !editor.toHTML(true).includes("◆"), "keyboard dragging altered document text or serialized editor chrome")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("native drag floats in preview areas and preserves ordinary gap drops", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;inline-size:1400px;min-inline-size:1400px;max-inline-size:none;height:700px;border:0"

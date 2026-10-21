@@ -4327,6 +4327,62 @@ describe("unified content transfer", () => {
     expect(paragraph).toHaveTextContent("target")
   })
 
+  it("capture-selects a graphic beneath its drag surface throughout a keyboard shape hover", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!, original = graphic.querySelector("rect")!
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    expect(surface).not.toBeNull()
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    const capture = vi.spyOn(editor.features.selection, "captureElement")
+    const data = shapeData("ellipse")
+    const read = vi.spyOn(data, "getData").mockReturnValue("")
+    const over = transferEvent("dragover", data)
+    surface.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(surface.isConnected).toBe(false)
+    // Subsequent events may hit authored content or SVG editing chrome.
+    const outline = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    editor.addAppendix(outline)
+    for(const target of [graphic, outline, graphic]) target.dispatchEvent(transferEvent("dragover", data))
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(graphic).toHaveClass("◆element-capture-selected")
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    read.mockRestore()
+    outline.dispatchEvent(transferEvent("drop", data))
+    expect(document.querySelectorAll("svg")).toHaveLength(1)
+    expect(graphic.querySelector("rect")).toBe(original)
+    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  })
+
+  it.each(["drop", "dragend"])("finishes a keyboard shape %s on the document's shadow slot", eventType => {
+    document.body.innerHTML = '<p>keep</p>'
+    const paragraph = document.querySelector("p")!, slot = editor.appendix.querySelector("slot")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(paragraph)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 2})
+    const data = shapeData()
+    slot.dispatchEvent(transferEvent("dragover", data, {clientX: 125, clientY: 50}))
+    expect(document.body).toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
+    const event = transferEvent(eventType, data, {clientX: 125, clientY: 50})
+    slot.dispatchEvent(event)
+    if(eventType === "drop") {
+      expect(event.defaultPrevented).toBe(true)
+      const graphic = document.querySelector("svg")!
+      expect(graphic.querySelector("rect")).toHaveAttribute("fill", "red")
+      expect(graphic.querySelectorAll("rect")).toHaveLength(1)
+      expectClassFloat(graphic, "left")
+    }
+    else expect(document.querySelector("svg")).toBeNull()
+    expect(paragraph).toHaveTextContent("keep")
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("ignores document shape drops while locked and inside widget shadow DOM", () => {
     editor.schema.extendWidgets([{tagName: "test-widget"}])
     document.body.innerHTML = '<p>keep</p><test-widget></test-widget>'
@@ -5865,8 +5921,11 @@ describe("unified content transfer", () => {
   it("positions the idle node drag surface only after geometry invalidation and cleans up observers", () => {
     document.body.innerHTML = "<p>source</p>"
     const source = document.body.firstElementChild!
-    // Presence carets also redraw on resize; count only the drag surface's frames.
+    // Other editing overlays also redraw on resize; count only the drag
+    // surface's frames in this geometry and lifecycle test.
     editor.features.collaboration.disable()
+    editor.features.graphic.disable()
+    editor.features.attribution.disable()
     const callbacks = new Map<number, FrameRequestCallback>()
     let nextFrame = 0
     const requestFrame = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
@@ -5894,6 +5953,8 @@ describe("unified content transfer", () => {
     expect(requestFrame).toHaveBeenCalledTimes(2)
     editor.features.manipulation.enable()
     editor.features.collaboration.enable()
+    editor.features.graphic.enable()
+    editor.features.attribution.enable()
   })
 
   it.each(["dragend", "dragleave", "disable"])("cleans up the drop indicator and handles %s", ending => {
