@@ -25,7 +25,7 @@ import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStyle
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
-import {createTable} from "../table"
+import {cellForNode, createTable, tableForNode} from "../table"
 import {
   elementAttributeState,
   elementAttributeTargetId,
@@ -2246,10 +2246,8 @@ export class ManipulationFeature extends EditorFeature {
       element?.isConnected && (element === body || body.contains(element)),
     )
 
-    const selectedTable = this.editor.features.table.hasCellSelection
-      ? this.editor.features.table.selectedTable
-      : null
-    if(inAuthoredBody(selectedTable)) return selectedTable
+    const selectedCell = this.editor.features.table.selectionFocusCell
+    if(inAuthoredBody(selectedCell)) return selectedCell
 
     const captured = this.editor.features.selection.captureSelectedElement
     if(inAuthoredBody(captured)) return figureSelectionTarget(captured)
@@ -2278,11 +2276,16 @@ export class ManipulationFeature extends EditorFeature {
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
-  /** Edit toolbox styles belong to the direct container below Document. */
+  /** Edit toolbox styles use the selected table/cell or the direct container
+   * below Document. */
   get topLevelStyleTarget(): Element | null {
     const root = getDocumentRoot()
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
+    // Table and cell selections keep their scope inside sections and templates.
+    const cell = cellForNode(target)
+    if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
+    if(target instanceof HTMLTableElement) return target
     if(target === document.body || target === root) {
       const selection = document.getSelection()
       if(!selection?.rangeCount) return root
@@ -2425,6 +2428,9 @@ export class ManipulationFeature extends EditorFeature {
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
   private stylePropertyTarget(target: Element, name: string) {
+    if(target.matches("td, th") && ["table-layout", "border-collapse", "border-spacing", "caption-side"].includes(name)) {
+      return tableForNode(target)
+    }
     if(!["object-fit", "object-position", "image-rendering", "clip-path", "object-view-box"].includes(name)) return target
     if(target.localName === "figure") {
       const media = Array.from(target.children).filter(child => child.matches("picture, img, video"))
@@ -2434,8 +2440,9 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true): ElementStyleState {
-    if(includeSelection && $.isMultiElementSelection) {
-      const styles = $.selectedElements.map(element => this.getStyleState(properties, element, false))
+    const cells = includeSelection && this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
+    if(includeSelection && (cells.length || $.isMultiElementSelection)) {
+      const styles = (cells.length ? cells : $.selectedElements).map(element => this.getStyleState(properties, element, false))
       return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
         authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
         computed: commonValues(styles.map(state => state.computed))}
@@ -2551,7 +2558,9 @@ export class ManipulationFeature extends EditorFeature {
     }
     const captured = this.editor.features.selection.captureSelectedElement
       ?? this.editor.features.selection.selectedSectionElement
-    if(captured) addContainer(captured, true)
+    const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
+    if(cells.length) cells.forEach(cell => addContainer(cell, true))
+    else if(captured) addContainer(captured, true)
     else if($.isMultiElementSelection) $.selectedElements.forEach(element => addContainer(element, true))
     else if($.isElementSelection && $.selectedElement) addContainer($.selectedElement, true)
     else if($.ranges.length) {
@@ -3271,10 +3280,11 @@ export class ManipulationFeature extends EditorFeature {
       if(properties !== undefined && (!Array.isArray(properties) || properties.some(name => typeof name !== "string"))) {
         throw new TypeError("Style-state property names must be strings")
       }
-      return topLevel ? this.getStyleState(properties, this.topLevelStyleTarget, false) : this.getStyleState(properties)
+      return topLevel && !this.editor.features.table.hasCellSelection
+        ? this.getStyleState(properties, this.topLevelStyleTarget, false) : this.getStyleState(properties)
     },
     setStyle: ({styles, topLevel}: {type: "setStyle", styles: Record<string, ElementStyleMutation>, topLevel?: boolean}) => {
-      if(topLevel) {
+      if(topLevel && !this.editor.features.table.hasCellSelection) {
         const target = this.topLevelStyleTarget
         if(target) this.setElementStyles(target, styles)
       }
@@ -4133,8 +4143,10 @@ export class ManipulationFeature extends EditorFeature {
    * element. Null or an empty string clears a property. */
   setStyle(styles: Record<string, ElementStyleMutation>) {
     const entries = this.validatedStyleEntries(styles)
-    if($.isMultiElementSelection) {
-      const elements = $.selectedElements
+    const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
+    const target = this.styleTarget
+    if(cells.length || $.isMultiElementSelection || target.matches("table, td, th")) {
+      const elements = cells.length ? cells : $.isMultiElementSelection ? $.selectedElements : [target]
       const end = this.editor.doc.beginUndoGroup()
       try {
         return elements.reduce((changed, element) => (
@@ -4143,7 +4155,6 @@ export class ManipulationFeature extends EditorFeature {
       }
       finally { end() }
     }
-    const target = this.styleTarget
     if(!this.allowedElementStyles(target, entries).length) return false
     return this.withNormalization(() => this.applyElementStyleEntries(target, entries))
   }
@@ -4151,9 +4162,19 @@ export class ManipulationFeature extends EditorFeature {
   private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[]) {
     if(!element.isConnected || !getDocumentRoot().contains(element) || this.editor.isEditingLocked) return false
     const targets = new Map<Element, ValidatedStyleEntry[]>()
+    const add = (target: Element, entry: ValidatedStyleEntry) => targets.set(target, [...(targets.get(target) ?? []), entry])
     for(const entry of this.allowedElementStyles(element, entries)) {
       const target = this.stylePropertyTarget(element, entry.name)
-      if(target) targets.set(target, [...(targets.get(target) ?? []), entry])
+      if(target) add(target, entry)
+      // Whole-table paint and cell spacing must reach cells, whose theme or
+      // authored declarations otherwise hide the table's background and text.
+      // Dimensions, margins, transforms and effects belong only to the table.
+      if(element instanceof HTMLTableElement
+        && /^(background-color|color|border(?:-(?:width|style|color|(?:top|right|bottom|left|block|inline)(?:-.*)?))?|padding(?:-.*)?|text-align|vertical-align)$/.test(entry.name)) {
+        for(const cell of element.querySelectorAll("td, th")) {
+          if(tableForNode(cell) === element && !atomicEditingContainer(cell, this.editor.schema)) add(cell, entry)
+        }
+      }
     }
     let changed = false
     for(const [target, declarations] of targets) {

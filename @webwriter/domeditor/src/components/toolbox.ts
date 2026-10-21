@@ -1438,7 +1438,7 @@ export class DomEditorToolbox extends EditingControls {
   private renderElementLayoutControls() {
     const target = this.elementStyle.target
     if(this.activeTool !== "Edit"
-      || this.documentSelected || target?.documentRoot || target?.localName === "body") return nothing
+      || this.documentSelected || target?.documentRoot || ["body", "td", "th"].includes(target?.localName ?? "")) return nothing
     const float = target?.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })

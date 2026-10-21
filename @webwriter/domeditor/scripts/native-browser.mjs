@@ -55,6 +55,7 @@ const expectedChecks = [
   "cancelled resizing accepts the first delete activation",
   "media and graphics enforce minimum editing dimensions",
   "details remain intact after applying style presets",
+  "table presets respect whole-table and cell selections without changing layout",
   "figure permalinks align with padded caption numbering",
   "empty caption numbering is visible as a grey editing placeholder",
   "empty media controls wrap to fit their element",

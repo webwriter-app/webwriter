@@ -1552,6 +1552,79 @@ await check("empty Details retains summary height and padding in standalone docu
   }
 })
 
+await check("table presets respect whole-table and cell selections without changing layout", async () => {
+  const {ElementStyleEditor} = await import("../src/components/element-style-editor")
+  const controls = new ElementStyleEditor()
+  controls.mode = "compact"
+  controls.showPresets = true
+  controls.propertyNames = []
+  controls.style.cssText = "display:block;width:280px"
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:600px;height:400px;max-width:none"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><section><!--keep--><table style="width:100%"><thead><tr><th colspan="2">Heading</th></tr></thead><tbody><tr><td style="width:40%"><p>First cell</p></td><td>Second cell</td></tr></tbody></table><p>After table</p></section><script type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body>`
+  fixture.append(controls, frame)
+  try {
+    for(let attempt = 0; attempt < 200 && !frame.contentWindow?.editor; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const editor = frame.contentWindow?.editor
+    assert(editor, `table preset editor failed: ${frame.contentWindow?.editorError}`)
+    const doc = frame.contentDocument!, view = frame.contentWindow!
+    const table = doc.querySelector("table")!, cells = Array.from(table.querySelectorAll<HTMLTableCellElement>("th, td"))
+    const descendants = Array.from(table.querySelectorAll("*"))
+    controls.addEventListener("element-style-change", event => {
+      editor!.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: (event as CustomEvent).detail.styles})
+    })
+    for(const selection of ["table", "cell", "all cells"]) {
+      table.removeAttribute("style")
+      table.style.width = "100%"
+      for(const cell of cells) cell.removeAttribute("style")
+      cells[1].style.width = "40%"
+      editor!.features.table.clearCellSelection(false)
+      if(selection === "table") {
+        const range = doc.createRange()
+        range.selectNode(table)
+        doc.getSelection()!.removeAllRanges()
+        doc.getSelection()!.addRange(range)
+      }
+      else editor!.features.table.selectCells(selection === "cell" ? cells[1] : cells[0], selection === "cell" ? cells[1] : cells[2])
+      const selected = selection === "cell" ? [cells[1]] : cells
+      controls.state = editor!.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true})
+      await controls.updateComplete
+      while(!controls.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Previous style presets"]')!.disabled) {
+        controls.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Previous style presets"]')!.click()
+        await controls.updateComplete
+      }
+      for(let page = 0; page < 4; page++) {
+        for(const button of controls.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")) {
+          button.click()
+          const expected = selection === "table" ? table.style.backgroundColor : cells[1].style.backgroundColor
+          for(const cell of selected) {
+            const computed = view.getComputedStyle(cell), box = cell.getBoundingClientRect(), tableBox = table.getBoundingClientRect()
+            assert(computed.backgroundColor === expected, `${selection}: preset color is hidden by theme cell paint`)
+            assert(computed.display === "table-cell" && computed.paddingTop === "8px", `${selection}: preset broke cell layout or padding`)
+            assert(box.width > 0 && box.height > 0 && box.left >= tableBox.left - 1 && box.right <= tableBox.right + 1,
+              `${selection}: cell escaped table bounds`)
+            for(const property of ["margin", "position", "transform", "box-shadow", "border-radius"]) {
+              assert(!cell.style.getPropertyValue(property), `${selection}: preset added cell ${property}`)
+            }
+          }
+          assert(cells[1].style.width === "40%" && !cells[0].style.width && !cells[2].style.width, "preset changed authored cell sizing")
+          assert(table.style.width === "100%" && !table.style.margin, "preset changed table sizing or margins")
+          if(selection === "cell") assert(!cells[0].style.backgroundColor && !cells[2].style.backgroundColor && !table.style.backgroundColor,
+            "individual preset escaped the selected cell")
+          assert(descendants.every((node, index) => table.querySelectorAll("*")[index] === node), "preset rebuilt authored table content")
+          assert(controls.shadowRoot!.querySelector<HTMLElement>(".style-gallery")!.scrollWidth <= 280, "preset gallery overflows the toolbox")
+        }
+        if(page < 3) {
+          controls.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Next style presets"]')!.click()
+          await controls.updateComplete
+        }
+      }
+    }
+    assert(!editor!.toHTML(true).includes("◆"), "table preset export contains editing markers")
+  }
+  finally {frame.contentWindow?.editor?.destroy(); frame.remove(); controls.remove()}
+})
+
 await check("details remain intact after applying style presets", async () => {
   const {ElementStyleEditor} = await import("../src/components/element-style-editor")
   const controls = new ElementStyleEditor()

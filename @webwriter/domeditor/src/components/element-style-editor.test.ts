@@ -839,6 +839,29 @@ it("offers eight palette-based box presets and applies each as one style change"
   expect(changes.at(-1)).toEqual({styles: {"background-color": {value: "#e2efda", priority: ""}}})
 })
 
+it.each(["td", "th"])("keeps all %s presets limited to cell paint and padding", async localName => {
+  const editor = await mount([], {...state(), target: {localName, namespaceURI: "http://www.w3.org/1999/xhtml"}}, "compact")
+  editor.showPresets = true
+  await editor.updateComplete
+  const changes: {styles: Record<string, {value: string}>}[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  for(let page = 0; page < 4; page++) {
+    for(const button of editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")) {
+      button.click()
+      const styles = changes.at(-1)!.styles
+      expect(Object.keys(styles).sort()).toEqual(["background-color", "border-color", "border-style", "border-width", "color", "padding"])
+      expect(styles.padding.value).toBe("8px")
+      expect(styles.color.value).toBe(page >= 2 ? "#ffffff" : "#2f3742")
+      expect(button.title).not.toContain("corners")
+    }
+    if(page < 3) {
+      editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Next style presets"]')!.click()
+      await editor.updateComplete
+    }
+  }
+  expect(changes).toHaveLength(32)
+})
+
 
 it("edits and clears corner rounding using pixels and presets", async () => {
   const editor = await mount([], state(), "compact")

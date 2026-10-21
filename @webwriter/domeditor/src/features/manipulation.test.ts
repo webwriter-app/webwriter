@@ -4157,6 +4157,119 @@ describe("setStyle()", () => {
 
     expect(table).toHaveStyle({borderCollapse: "collapse"})
   })
+  it.each([false, true])("styles only the selected cells (Edit toolbox: %s)", topLevel => {
+    document.body.innerHTML = '<section><!--keep--><table><thead><tr><th colspan="2">Heading</th><th>Other</th></tr></thead><tbody><tr><td><p>one</p></td><td><demo-widget></demo-widget></td><td>three</td></tr></tbody></table></section>'
+    const table = document.querySelector("table")!
+    const [heading, other, first, second, third] = Array.from(table.querySelectorAll("td, th")) as HTMLTableCellElement[]
+    const children = Array.from(table.querySelectorAll("*"))
+    editor.features.table.selectCells(heading, first)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel, styles: {
+      "background-color": "gold", "border-color": "red", padding: "8px", color: {value: "blue", priority: "important"},
+    }})
+
+    for(const cell of [heading, first, second]) {
+      expect(cell).toHaveStyle({backgroundColor: "gold", borderColor: "red", padding: "8px", color: "blue"})
+      expect(cell.style.getPropertyPriority("color")).toBe("important")
+    }
+    for(const element of [table, other, third, document.querySelector("section"), first.firstElementChild, second.firstElementChild]) {
+      expect(element).not.toHaveAttribute("style")
+    }
+    expect(Array.from(table.querySelectorAll("*"))).toEqual(children)
+    const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel, properties: ["background-color", "padding", "color"]})
+    expect(state.target?.localName).toBe("th")
+    expect(state.inline.color).toEqual({value: "blue", priority: "important"})
+    expect(state.inline.padding?.value).toBe("8px")
+    editor.doc.syncFromDOM()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.doc.undo()
+    expect(document.querySelector("table [style]")).toBeNull()
+    editor.doc.redo()
+    expect(document.querySelectorAll('table [style*="background-color"]')).toHaveLength(3)
+  })
+  it("keeps an all-cell selection scoped to cells and reports mixed values", () => {
+    document.body.innerHTML = '<table><tbody><tr><td style="padding: 4px; color: red">one</td><td style="padding: 4px; color: blue">two</td></tr></tbody></table>'
+    const table = document.querySelector("table")!, cells = table.querySelectorAll("td")
+    editor.features.table.selectCells(cells[0], cells[1])
+    const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["color", "padding"]})
+    expect(state.inline).not.toHaveProperty("color")
+    expect(state.computed).not.toHaveProperty("color")
+    expect(state.inline.padding?.value).toBe("4px")
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: null, "background-color": "gold"}})
+    expect(table).not.toHaveAttribute("style")
+    expect(Array.from(cells, cell => cell.style.padding)).toEqual(["", ""])
+    expect(Array.from(cells, cell => cell.style.backgroundColor)).toEqual(["gold", "gold"])
+  })
+  it("scopes specialized cell styles to every selected cell of that type", () => {
+    document.body.innerHTML = '<table><tbody><tr><th>Heading</th><td style="vertical-align: top">one</td><td style="vertical-align: top">two</td><td>outside</td></tr></tbody></table>'
+    const cells = document.querySelectorAll("td")
+    editor.features.table.selectCells(cells[0], cells[1])
+    const state = editor.features.manipulation.getSelectedElementTypes(["vertical-align"])
+      .find(state => state.element.localName === "td")!
+    expect(state.count).toBe(2)
+    expect(state.style.inline["vertical-align"]?.value).toBe("top")
+    editor.features.manipulation.actions.setSelectedElementStyles({type: "setSelectedElementStyles",
+      selectionType: {localName: "td", namespaceURI: "http://www.w3.org/1999/xhtml"}, styles: {"vertical-align": "middle"}})
+    expect(Array.from(cells, cell => cell.style.verticalAlign)).toEqual(["middle", "middle", ""])
+    expect(document.querySelector("th")).not.toHaveAttribute("style")
+    expect(document.querySelector("table")).not.toHaveAttribute("style")
+  })
+  it.each([false, true])("styles the whole table without spreading layout styles to cells (Edit toolbox: %s)", topLevel => {
+    document.body.innerHTML = '<section><!--keep--><table><caption>Title</caption><thead><tr><th>Heading</th><th>Other</th></tr></thead><tbody><tr><td style="background: white">one<table><tbody><tr><td>Nested</td></tr></tbody></table></td><td><demo-widget><table><tbody><tr><td>Private</td></tr></tbody></table></demo-widget></td></tr></tbody></table></section>'
+    const table = document.querySelector("table")!
+    const cells = Array.from(table.querySelectorAll<HTMLTableCellElement>(":scope > thead > tr > th, :scope > tbody > tr > td"))
+    const descendants = Array.from(table.querySelectorAll("*"))
+    $.selectElement(table)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel, styles: {
+      "background-color": "gold", color: "blue", "border-color": "red", padding: "8px", margin: "12px", width: "500px", "box-shadow": "0 4px 8px #0003", "border-radius": "4px",
+    }})
+    expect(table).toHaveStyle({backgroundColor: "gold", margin: "12px", width: "500px"})
+    for(const cell of cells) {
+      expect(cell).toHaveStyle({backgroundColor: "gold", color: "blue", borderColor: "red", padding: "8px"})
+      for(const property of ["margin", "width", "box-shadow", "border-radius"]) expect(cell.style.getPropertyValue(property)).toBe("")
+    }
+    for(const element of descendants) {
+      if(!cells.includes(element as HTMLTableCellElement)) expect(element).not.toHaveAttribute("style")
+    }
+    expect(table.parentElement).not.toHaveAttribute("style")
+    expect(Array.from(table.querySelectorAll("*"))).toEqual(descendants)
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel}).target?.localName).toBe("table")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("table")?.getAttribute("style")).toBeNull()
+    expect(document.querySelector("tbody td")?.getAttribute("style")).toBe("background: white")
+    editor.doc.redo()
+    expect(document.querySelector("table")?.style.backgroundColor).toBe("gold")
+  })
+  it("styles the current cell from a caret inside nested cell content", () => {
+    document.body.innerHTML = '<section><table><tbody><tr><td><p><b>one</b></p></td><td>two</td></tr></tbody></table></section>'
+    $.move(document.querySelector("b")!.firstChild!, 1)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    expect(document.querySelector("td")).toHaveStyle({backgroundColor: "gold"})
+    for(const element of document.querySelectorAll("section, table, p, b, td + td")) expect(element).not.toHaveAttribute("style")
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("td")
+  })
+  it("resolves the selected rectangle again after direct cell replacement", () => {
+    document.body.innerHTML = '<table><tbody><tr><td>one</td><td>two</td><td>three</td></tr></tbody></table>'
+    const [first, middle, last] = Array.from(document.querySelectorAll("td"))
+    editor.features.table.selectCells(first, last)
+    const replacement = document.createElement("th")
+    replacement.textContent = "replacement"
+    middle.replaceWith(replacement)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    expect(replacement).toHaveStyle({backgroundColor: "gold"})
+    expect(middle).not.toHaveAttribute("style")
+    first.remove()
+    editor.features.table.selectCells(replacement)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {color: "blue"}})
+    expect(replacement.style.color).toBe("blue")
+    expect(last.style.color).toBe("")
+  })
   it("styles the body without a live selection", () => {
     document.body.innerHTML = "<p>hello</p>"
     const paragraph = document.body.firstElementChild!
