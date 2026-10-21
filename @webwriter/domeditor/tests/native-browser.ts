@@ -3805,6 +3805,70 @@ await check("modifier clicks select table cells and outer borders", async () => 
   }
 })
 
+await check("table insertion controls follow rotated edges and preview lines", async () => {
+  const parent = document.createElement("div")
+  parent.style.cssText = "width:480px;margin:180px auto"
+  parent.innerHTML = '<table style="width:320px;border-spacing:8px;border:2px solid black"><caption>Rotated table</caption><tbody><tr><th colspan="2">Merged heading</th></tr><tr><td>Left cell</td><td>Right cell</td></tr></tbody></table>'
+  const table = parent.querySelector("table")!
+  table.querySelectorAll<HTMLElement>("td, th").forEach(cell => cell.style.cssText = "height:48px;padding:12px;border:1px solid black;background:#f1f5f9")
+  fixture.append(parent)
+  const near = (actual: number, expected: number, label: string) => assert(Math.abs(actual - expected) < 1.5, `${label}: ${actual} != ${expected}`)
+  try {
+    for(const rtl of [false, true]) for(const angle of [0, 45, 90, 135, -75]) {
+      table.style.direction = rtl ? "rtl" : "ltr"
+      table.style.rotate = "none"
+      parent.style.transform = "none"
+      await layoutFrame()
+      const original = table.getBoundingClientRect()
+      const rows = Array.from(table.rows, row => row.getBoundingClientRect())
+      const cells = Array.from(table.rows[1].cells, cell => cell.getBoundingClientRect())
+      const columns = rtl ? [cells[0].right, (cells[0].left + cells[1].right) / 2, cells[1].left]
+        : [cells[0].left, (cells[0].right + cells[1].left) / 2, cells[1].right]
+      const boundaries = [...columns.map(x => ({x, y: rows[0].top - 8})),
+        ...[rows[0].top, (rows[0].bottom + rows[1].top) / 2, rows[1].bottom].map(y => ({x: original.left - 8, y}))]
+      const scale = rtl ? 1.25 : 1
+      table.style.rotate = `${angle}deg`
+      parent.style.transform = `scale(${scale})`
+      $.selectElement(table)
+      editor.features.selection.processSelection()
+      table.scrollIntoView({block: "center"})
+      table.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true}))
+      await layoutFrame()
+      const live = table.getBoundingClientRect()
+      const radians = angle * Math.PI / 180
+      const a = Math.cos(radians) * scale, b = Math.sin(radians) * scale
+      const project = (point: {x: number, y: number}) => {
+        const x = point.x - original.left - original.width / 2, y = point.y - original.top - original.height / 2
+        return {x: live.left + live.width / 2 + a * x - b * y, y: live.top + live.height / 2 + b * x + a * y}
+      }
+      const overlay = editor.appendix.querySelector<HTMLElement>(".◆table-gaps")!
+      const buttons = Array.from(overlay.querySelectorAll<HTMLButtonElement>("button"))
+      assert(!overlay.hidden && buttons.length === 6, `${angle}: insertion controls are missing`)
+      buttons.forEach((button, index) => {
+        const expected = project(boundaries[index]), rect = button.getBoundingClientRect()
+        near(rect.left + rect.width / 2, expected.x, `${angle}/${rtl}/${index} x`)
+        near(rect.top + rect.height / 2, expected.y, `${angle}/${rtl}/${index} y`)
+        button.focus({preventScroll: true})
+        const line = button.querySelector("span")!.getBoundingClientRect()
+        const end = project(index < 3 ? {x: boundaries[index].x, y: rows[1].bottom}
+          : {x: original.right, y: boundaries[index].y})
+        near(line.left + line.width / 2, (expected.x + end.x) / 2, `${angle}/${rtl}/${index} preview x`)
+        near(line.top + line.height / 2, (expected.y + end.y) / 2, `${angle}/${rtl}/${index} preview y`)
+      })
+      assert(!table.querySelector("button, span"), "insertion UI leaked into authored content")
+      assert(!editor.toHTML(true).includes("table-gaps"), "insertion UI leaked into serialization")
+    }
+    const before = table.rows.length
+    editor.appendix.querySelector<HTMLButtonElement>('.◆table-gaps button[aria-label="Insert row 2"]')!.click()
+    assert(table.rows.length === before + 1, "rotated row control did not insert a row")
+  }
+  finally {
+    parent.remove()
+    $.selectDocumentStart()
+    editor.features.selection.processSelection()
+  }
+})
+
 await check("selection feature treats custom element as atomic", async () => {
   const widget = fixture.querySelector("native-audit-widget")!
   $.selectElement(widget)

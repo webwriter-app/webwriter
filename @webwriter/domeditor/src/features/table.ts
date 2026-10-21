@@ -244,8 +244,10 @@ export class TableFeature extends EditorFeature {
       return
     }
     const map = buildTableMap(table)
-    const rect = table.getBoundingClientRect()
-    if(!map.rows.length || !map.width || !rect.width || !rect.height) {
+    const geometry = this.editor.features.transformation.boxGeometry(table)
+    const {matrix, corners: [origin], width, height} = geometry
+    if(!map.rows.length || !map.width || !width || !height
+      || !matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) {
       if(this.gapOverlay) this.gapOverlay.hidden = true
       return
     }
@@ -258,8 +260,19 @@ export class TableFeature extends EditorFeature {
     const overlay = this.gapOverlay ?? this.createGapOverlay()
     overlay.hidden = false
     const rtl = getComputedStyle(table).direction === "rtl"
-    const cellRects = new Map(map.placements.map(placement => [placement, placement.cell.getBoundingClientRect()]))
-    const rowRects = map.rows.map(row => row.getBoundingClientRect())
+    // Measure boundaries in the table's axes. Client bounding boxes lose the
+    // edge positions at steep rotations; reuse the selection overlay geometry.
+    const inverse = matrix.inverse()
+    const localRect = (element: HTMLElement) => {
+      const points = this.editor.features.transformation.boxGeometry(element).corners.map(point => {
+        const x = point.x - origin.x, y = point.y - origin.y
+        return {x: inverse.a * x + inverse.c * y, y: inverse.b * x + inverse.d * y}
+      })
+      const left = Math.min(...points.map(point => point.x)), right = Math.max(...points.map(point => point.x))
+      return {left, right, width: right - left, top: Math.min(...points.map(point => point.y)), bottom: Math.max(...points.map(point => point.y))}
+    }
+    const cellRects = new Map(map.placements.map(placement => [placement, localRect(placement.cell)]))
+    const rowRects = map.rows.map(localRect)
     const top = rowRects[0].top
     const bottom = rowRects.at(-1)!.bottom
     let controlIndex = 0
@@ -299,9 +312,12 @@ export class TableFeature extends EditorFeature {
         Object.assign(control, {axis, index, map})
         control.button.dataset.axis = axis
         control.button.setAttribute("aria-label", `Insert ${axis} ${index + 1}`)
-        control.button.style.left = `${fixedClientX(axis === "column" ? position : rect.left - tableGapOffset)}px`
-        control.button.style.top = `${axis === "row" ? position : top - tableGapOffset}px`
-        control.button.style.setProperty("--gap-length", `${axis === "column" ? bottom - top + tableGapOffset : rect.width + tableGapOffset}px`)
+        const x = axis === "column" ? position : -tableGapOffset
+        const y = axis === "row" ? position : top - tableGapOffset
+        control.button.style.left = `${fixedClientX(origin.x + matrix.a * x + matrix.c * y)}px`
+        control.button.style.top = `${origin.y + matrix.b * x + matrix.d * y}px`
+        control.button.style.transform = `translate(-50%, -50%) ${geometry.styles.transform}`
+        control.button.style.setProperty("--gap-length", `${axis === "column" ? bottom - top + tableGapOffset : width + tableGapOffset}px`)
       }
     }
     this.gapControls.splice(controlIndex).forEach(control => control.button.remove())

@@ -1201,6 +1201,64 @@ describe("table gap controls", () => {
   })
 
   it.each([
+    {angle: 45, rtl: false, parentScale: 1},
+    {angle: 90, rtl: false, parentScale: 1},
+    {angle: 135, rtl: false, parentScale: 1},
+    {angle: -90, rtl: true, parentScale: 1},
+    {angle: 75, rtl: true, parentScale: 1.5},
+  ])("follows a $angle degree table (rtl: $rtl, ancestor scale: $parentScale)", async ({angle, rtl, parentScale}) => {
+    document.body.innerHTML = '<div><table><tbody><tr><td colspan="2">A</td></tr><tr><td>B</td><td>C</td></tr></tbody></table></div>'
+    const table = document.querySelector("table")!
+    table.id = "rotated-table"
+    table.style.setProperty("rotate", `${angle}deg`)
+    table.style.direction = rtl ? "rtl" : "ltr"
+    table.parentElement!.style.transform = `scale(${parentScale})`
+    const radians = angle * Math.PI / 180
+    const a = Math.cos(radians) * parentScale, b = Math.sin(radians) * parentScale
+    const point = (x: number, y: number) => ({x: 300 + a * x - b * y, y: 250 + b * x + a * y})
+    const mockBox = (element: HTMLElement, x: number, y: number, width: number, height: number) => {
+      Object.assign(element.style, {width: `${width}px`, height: `${height}px`, boxSizing: "border-box"})
+      const points = [point(x, y), point(x + width, y), point(x + width, y + height), point(x, y + height)]
+      element.getBoundingClientRect = () => box(Math.min(...points.map(p => p.x)), Math.min(...points.map(p => p.y)),
+        Math.max(...points.map(p => p.x)), Math.max(...points.map(p => p.y)))
+    }
+    mockBox(table, 0, 0, 200, 80)
+    Array.from(table.rows).forEach((row, index) => mockBox(row, 0, index * 40, 200, 40))
+    mockBox(table.rows[0].cells[0], 0, 0, 200, 40)
+    Array.from(table.rows[1].cells).forEach((cell, index) => mockBox(cell, (rtl ? 1 - index : index) * 100, 40, 100, 40))
+    const authored = table.outerHTML
+
+    const buttons = await renderGaps(table)
+
+    const boundaries = [...[0, 100, 200].map(x => point(rtl ? 200 - x : x, -8)),
+      ...[0, 40, 80].map(y => point(-8, y))]
+    Array.from(buttons).forEach((button, index) => {
+      expect(parseFloat(button.style.left)).toBeCloseTo(boundaries[index].x)
+      expect(parseFloat(button.style.top)).toBeCloseTo(boundaries[index].y)
+      const transform = new DOMMatrix(button.style.transform.replace("translate(-50%, -50%)", "").trim())
+      expect(transform.a).toBeCloseTo(a)
+      expect(transform.b).toBeCloseTo(b)
+      expect(transform.c).toBeCloseTo(-b)
+      expect(transform.d).toBeCloseTo(a)
+      expect(parseFloat(button.style.getPropertyValue("--gap-length"))).toBeCloseTo(index < 3 ? 88 : 208)
+    })
+    expect(table.outerHTML).toBe(authored)
+    expect(editor.toHTML(true)).not.toContain("table-gaps")
+    expect(editor.doc.body.toString()).not.toContain("table-gaps")
+  })
+
+  it("hides controls for a table with a singular transform", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    mockTableGeometry(table, [table.rows[0]], [Array.from(table.rows[0].cells)])
+    await renderGaps(table)
+    table.style.transform = "scaleX(0)"
+    window.dispatchEvent(new Event("resize"))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(editor.appendix.querySelector<HTMLElement>(".◆table-gaps")!.hidden).toBe(true)
+  })
+
+  it.each([
     ["inner column", "Insert column 2", () => {
       const table = document.querySelector("table")!
       return table.querySelectorAll("tr")[0].querySelectorAll("td").length
