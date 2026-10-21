@@ -1018,8 +1018,8 @@ export class DomEditor extends LitElement {
     .document-layouts-bar .layout-preset { min-height: 0; }
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
-    .document-layouts-documents {margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
-    .document-layouts-documents ul {display: grid; grid-template-rows: repeat(5, 1.6rem); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-flow: column; gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
+    .document-layouts-documents {position: relative; align-self: stretch; margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
+    .document-layouts-documents ul {position: absolute; inset: 0; overflow-y: auto; display: grid; grid-auto-rows: 1.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
     .document-layouts-documents li {min-width: 0}
     .document-layout-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
     .document-layout-document svg {width: .9rem; height: .9rem; flex-shrink: 0; color: #526b86}

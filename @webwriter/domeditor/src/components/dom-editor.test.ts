@@ -4360,6 +4360,9 @@ describe("DomEditor file actions", () => {
     const entries = [...nav.querySelectorAll<HTMLButtonElement>(".document-layout-document")]
     expect(entries.map(button => button.title)).toEqual(documents.slice(0, 10).map(document => document.title))
     expect(nav.previousElementSibling?.classList.contains("document-layout-cards")).toBe(true)
+    expect(getComputedStyle(nav).position).toBe("relative")
+    expect(getComputedStyle(nav.querySelector("ul")!).position).toBe("absolute")
+    expect(getComputedStyle(nav.querySelector("ul")!).overflowY).toBe("auto")
     expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-full-title")?.textContent).toBe("Recently opened")
     expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-short-title")?.textContent).toBe("Recent")
     expect(nav.querySelector("h2")).toBeNull()
