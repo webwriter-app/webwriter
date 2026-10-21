@@ -804,6 +804,7 @@ const isMediaSelection = (media: UnknownRecord) => {
     && isOptional(media.sources, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.tracks, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.fallbackHTML, isString)
+    && isOptional(media.videoPlaybackWarning, value => media.type === "video" && (value === "unsupported" || value === "no-video"))
     && isOptional(media.imageMap, isImageMap)
     && (media.type === "audio" || media.type === "video" || (media.sources === undefined && media.tracks === undefined && media.fallbackHTML === undefined))
     && (media.type === "picture" || media.type === "img" || media.imageMap === undefined)

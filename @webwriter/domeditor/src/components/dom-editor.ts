@@ -5850,9 +5850,9 @@ export class DomEditor extends LitElement {
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
   }
 
-  private openEditToolbox() {
+  private openEditToolbox(expand = false) {
     if(!this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.expanded) return
-    this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit")
+    this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit", expand)
   }
 
   private async refreshHTMLSource() {
@@ -7060,6 +7060,7 @@ export class DomEditor extends LitElement {
     }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
+      const previousSelectionPath = this.selectionPath.at(-1)?.path
       const path = event.data.detail.path.map(item => ({
         ...item,
         path: [...item.path],
@@ -7106,9 +7107,22 @@ export class DomEditor extends LitElement {
       this.figure = event.data.detail.figure ? {...event.data.detail.figure} : null
       this.captionPosition = event.data.detail.captionPosition ?? null
       this.captionAlignment = event.data.detail.captionAlignment ?? null
+      const previousMedia = this.mediaSelection
       this.mediaSelection = event.data.detail.media
         ? {...event.data.detail.media, attributes: {...event.data.detail.media.attributes}}
         : null
+      const playbackWarning = this.mediaSelection?.type === "video" ? this.mediaSelection.videoPlaybackWarning : undefined
+      if(playbackWarning) {
+        const mediaKey = (media: MediaSelectionState | null, selectionPath?: number[]) => JSON.stringify({
+          selectionPath,
+          type: media?.type,
+          source: media?.attributes.src,
+          sources: media?.sources?.map(source => source.attributes.src),
+        })
+        const previousWarning = previousMedia?.type === "video" ? previousMedia.videoPlaybackWarning : undefined
+        const selectionChanged = mediaKey(previousMedia, previousSelectionPath) !== mediaKey(this.mediaSelection, path.at(-1)?.path)
+        if(!previousWarning || selectionChanged) this.openEditToolbox(true)
+      }
       this.dialogSelection = event.data.detail.dialog ? {
         ...event.data.detail.dialog,
         attributes: {...event.data.detail.dialog.attributes},

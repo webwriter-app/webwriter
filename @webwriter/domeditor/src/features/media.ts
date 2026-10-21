@@ -1585,6 +1585,23 @@ export class MediaFeature extends EditorFeature {
     this.scheduleRefresh()
   }
 
+  private handleVideoPlaybackChange = (event: Event) => {
+    // Media events do not bubble. Inspect their authored origin before routing
+    // captured events, including failures on a direct child SOURCE.
+    const target = event.target
+    const video = target instanceof HTMLSourceElement ? target.parentElement : target
+    if(!(video instanceof HTMLVideoElement) || !document.body.contains(video)
+      || isWidgetShadowInteraction(event, this.editor.schema) || sourceEditingBlocked(video, this.editor.schema)) return
+    const post = () => {
+      if(this.isEnabled && document.body.contains(video) && !sourceEditingBlocked(video, this.editor.schema)
+        && this.selectedMedia() === video) this.editor.postSelectionPath()
+    }
+    // The browser finishes advancing through SOURCE candidates after firing
+    // their error event, before NETWORK_NO_SOURCE becomes observable.
+    if(target instanceof HTMLSourceElement) queueMicrotask(post)
+    else post()
+  }
+
   passiveListeners = {
     selectionchange: () => this.scheduleRefresh(),
     pointerover: (event: PointerEvent) => this.popovers.handleEvent(event),
@@ -1629,6 +1646,12 @@ export class MediaFeature extends EditorFeature {
   }
 
   captureListeners = {
+    loadedmetadata: this.handleVideoPlaybackChange,
+    loadeddata: this.handleVideoPlaybackChange,
+    resize: this.handleVideoPlaybackChange,
+    error: this.handleVideoPlaybackChange,
+    emptied: this.handleVideoPlaybackChange,
+    loadstart: this.handleVideoPlaybackChange,
     pointerdown: (event: PointerEvent) => {
       this.pointerDown = event.button === 0
       this.pendingUrlFocus = null
@@ -2043,6 +2066,7 @@ export class MediaFeature extends EditorFeature {
         : `${provenance.kind === "capture" ? "Capture" : "Recording"} ${peers.indexOf(element) + 1}`
     }
     if(element.matches("video")) {
+      state.videoPlaybackWarning = this.videoPlaybackWarning(element as HTMLVideoElement)
       const poster = element.getAttribute("poster") ?? ""
       const cover = this.sourceLabels.get(element)?.get(poster)
       state.cover = {size: this.editor.mediaSourceSize(poster), ...cover,
@@ -2063,6 +2087,29 @@ export class MediaFeature extends EditorFeature {
       } : null
     }
     return state
+  }
+
+  private videoPlaybackWarning(video: HTMLVideoElement): MediaSelectionState["videoPlaybackWarning"] {
+    if(isEmptyMedia(video)) return
+    const sources = video.hasAttribute("src") ? [video.src]
+      : Array.from(video.children).filter((child): child is HTMLSourceElement => child instanceof HTMLSourceElement && Boolean(child.getAttribute("src")?.trim()))
+        .map(source => source.src)
+    // A DOM or remote edit can replace a URL before the browser resets its
+    // previous metadata/error. Do not attribute that status to the new source.
+    // When child candidates are exhausted, currentSrc can still name the
+    // previous load even though the browser has finished rejecting the new set.
+    const exhaustedSources = !video.hasAttribute("src") && video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE
+    if(video.currentSrc && !sources.includes(video.currentSrc) && !exhaustedSources) return
+    if(video.error) {
+      if(video.error.code === 3 || video.error.code === 4) return "unsupported"
+      return // Aborted requests and network errors do not identify a codec issue.
+    }
+    if(video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      if(video.videoWidth === 0 && video.videoHeight === 0) return "no-video"
+    }
+    // Exhausting child SOURCE candidates fires errors on the sources, and can
+    // leave video.error null even when no format can be played.
+    else if(video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) return "unsupported"
   }
 
   private selectedMedia() {

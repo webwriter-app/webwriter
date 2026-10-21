@@ -5287,6 +5287,67 @@ describe("DomEditor.execute()", () => {
 
   })
 
+  it("opens Edit when a video playback warning appears and avoids reopening unchanged warnings", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool("AI")
+    const selectVideo = (path: number[], media: object) => window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path, name: "Video"}],
+        nodeSelected: true,
+        media,
+      }},
+      source: editorWindow,
+    }))
+    const warnedVideo = {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"}
+
+    selectVideo([0], warnedVideo)
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectVideo([0], warnedVideo)
+    expect(toolbox.activeTool).toBeNull()
+
+    selectVideo([0], {type: "video", attributes: {src: "movie.mp4"}})
+    selectVideo([0], {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "no-video"})
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectVideo([0], {type: "video", attributes: {src: "new-movie.mp4"}, videoPlaybackWarning: "no-video"})
+    expect(toolbox.activeTool).toBe("Edit")
+
+    toolbox.selectTool(null)
+    selectVideo([1], {type: "video", attributes: {src: "new-movie.mp4"}, videoPlaybackWarning: "no-video"})
+    expect(toolbox.activeTool).toBe("Edit")
+  })
+
+  it("expands an already active Edit toolbox when a video warning appears", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const host = editor as any
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    host.narrowLayout = true
+    host.mathSelection = {active: true, display: "inline"}
+    toolbox.selectTool("Edit")
+    await editor.updateComplete
+    await toolbox.updateComplete
+    expect(toolbox.collapsed).toBe(true)
+
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {
+        path: [{path: [], name: "Document"}, {path: [0], name: "Video"}],
+        nodeSelected: true,
+        media: {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"},
+      }},
+      source: editorWindow,
+    }))
+    await editor.updateComplete
+    await toolbox.updateComplete
+
+    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolbox.collapsed).toBe(false)
+    expect(host.mathKeyboardHidden).toBe(true)
+  })
+
   it("does not auto-open contextual tools while collapsed, even with the breadcrumb shown", async () => {
     const {editor, editorWindow} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!

@@ -85,6 +85,8 @@ export type MediaSelectionState = {
   sourceLabel?: string
   sourceKind?: "file" | "capture" | "recording"
   cover?: {label?: string, kind?: "file" | "capture" | "recording", size?: number}
+  /** Local browser playback status; never part of the authored document. */
+  videoPlaybackWarning?: "unsupported" | "no-video"
   /** Direct child resources, present only for AUDIO and VIDEO. */
   sources?: TimedMediaResourceState[]
   tracks?: TimedMediaResourceState[]

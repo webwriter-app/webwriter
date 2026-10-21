@@ -122,6 +122,7 @@ export class DomEditorToolbox extends EditingControls {
     .large-source-warning-bubble {position: absolute; z-index: 10; left: 0; right: 0; bottom: calc(100% + .45rem); display: none; padding: .45rem .6rem; border: 1px solid #d6b44a; border-radius: .35rem; background: #fff3bf; color: #493900; box-shadow: 0 3px 10px #0002; font: .72rem/1.35 system-ui, sans-serif; text-align: left;}
     .large-source-warning-bubble::after {position: absolute; top: 100%; left: 2.7rem; width: .5rem; height: .5rem; border-right: 1px solid #d6b44a; border-bottom: 1px solid #d6b44a; background: #fff3bf; content: ""; transform: translateY(-50%) rotate(45deg);}
     .large-source-warning:hover .large-source-warning-bubble, .large-source-warning:focus .large-source-warning-bubble, .large-source-warning:focus-visible .large-source-warning-bubble {display: block;}
+    .video-playback-warning {box-sizing: border-box; width: 100%; margin: .35rem 0; padding: .4rem .5rem; border: 1px solid #d6b44a; border-radius: .3rem; background: #fff3bf; color: #493900; font: .72rem/1.35 system-ui, sans-serif; overflow-wrap: anywhere;}
 
 
 
@@ -1162,6 +1163,9 @@ export class DomEditorToolbox extends EditingControls {
       </div></div>` : nothing}
       ${this.media && (!group || singleTarget) ? html`
         ${this.renderMediaSource()}
+        ${this.media.type === "video" && this.media.videoPlaybackWarning ? html`<div class="video-playback-warning" role="status">${this.media.videoPlaybackWarning === "unsupported"
+          ? "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."
+          : "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."}</div>` : nothing}
         ${this.media.type === "video" ? this.renderMediaSource(true) : nothing}
         <div class="media-toolbox-controls media-primary-options">
           ${mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))

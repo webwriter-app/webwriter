@@ -27,6 +27,11 @@ function fileTransfer(file: File) {
 }
 
 beforeEach(() => {
+  // Happy DOM omits these standard native media constants.
+  Object.defineProperties(HTMLMediaElement, {
+    HAVE_METADATA: {value: 1, configurable: true},
+    NETWORK_NO_SOURCE: {value: 3, configurable: true},
+  })
   // Source-attribute tests should not request real iframe pages.
   fetchSettings.interceptor = {beforeAsyncRequest: async ({window}) => new window.Response("")}
   document.body.replaceChildren()
@@ -40,6 +45,84 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each([
+    {readyState: 0},
+    {readyState: 1, videoWidth: 640, videoHeight: 360},
+    {error: {code: 1}},
+    {error: {code: 2}},
+  ])("does not report a codec problem for loading, healthy or network-failed video: %j", status => {
+    document.body.innerHTML = '<video controls src="movie.webm"></video>'
+    const video = document.querySelector("video")!
+    Object.entries(status).forEach(([name, value]) => Object.defineProperty(video, name, {value, configurable: true}))
+    editor.features.selection.captureElement(video)
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+  })
+
+  it.each([
+    [{error: {code: 3}}, "unsupported"],
+    [{error: {code: 4}}, "unsupported"],
+    [{networkState: 3}, "unsupported"],
+    [{networkState: 3, currentSrc: "https://example.test/previous.webm"}, "unsupported"],
+    [{readyState: 1, videoWidth: 0, videoHeight: 0}, "no-video"],
+  ] as const)("reports native video playback failure %j", (status, expected) => {
+    document.body.innerHTML = '<figure><!--keep--><video controls><source src="movie.ogv"><track src="captions.vtt"></video><figcaption>Bird</figcaption></figure>'
+    const video = document.querySelector("video")!
+    Object.entries(status).forEach(([name, value]) => Object.defineProperty(video, name, {value, configurable: true}))
+    editor.features.selection.captureElement(video)
+    const html = editor.toHTML(true)
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBe(expected)
+    expect(editor.toHTML(true)).toBe(html)
+    expect(editor.doc.body.toString()).not.toContain("videoPlaybackWarning")
+  })
+
+  it("refreshes warnings on non-bubbling playback events and clears recovered or replaced sources", () => {
+    document.body.innerHTML = '<video controls src="movie.ogv"></video>'
+    const video = document.querySelector("video")!
+    const status = {currentSrc: video.src, readyState: 1, videoWidth: 0, videoHeight: 0}
+    for(const name of Object.keys(status) as Array<keyof typeof status>) Object.defineProperty(video, name, {get: () => status[name]})
+    editor.features.selection.captureElement(video)
+    const post = vi.spyOn(editor, "postSelectionPath")
+    for(const type of ["loadedmetadata", "loadeddata", "resize", "error", "emptied", "loadstart"]) {
+      post.mockClear()
+      video.dispatchEvent(new Event(type))
+      expect(post).toHaveBeenCalledOnce()
+    }
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBe("no-video")
+    status.videoWidth = 640
+    status.videoHeight = 360
+    video.dispatchEvent(new Event("resize"))
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+    status.videoWidth = status.videoHeight = 0
+    video.src = "replacement.webm"
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+    video.removeAttribute("src")
+    expect(editor.features.media.getState()?.videoPlaybackWarning).toBeUndefined()
+    post.mockClear()
+    editor.features.media.disable()
+    video.dispatchEvent(new Event("loadedmetadata"))
+    expect(post).not.toHaveBeenCalled()
+  })
+
+  it("observes child source errors and ignores disconnected, replaced and widget-owned video", async () => {
+    document.body.innerHTML = '<video controls><source src="movie.ogv"></video><custom-widget></custom-widget>'
+    const video = document.querySelector("video")!, source = video.querySelector("source")!
+    editor.features.selection.captureElement(video)
+    const post = vi.spyOn(editor, "postSelectionPath")
+    source.dispatchEvent(new Event("error"))
+    await Promise.resolve()
+    expect(post).toHaveBeenCalledOnce()
+    post.mockClear()
+    document.querySelector("custom-widget")!.append(video)
+    video.dispatchEvent(new Event("loadedmetadata"))
+    const shadow = document.querySelector("custom-widget")!.attachShadow({mode: "open"})
+    shadow.innerHTML = '<video src="widget.ogv"></video>'
+    shadow.querySelector("video")!.dispatchEvent(new Event("loadedmetadata", {composed: true}))
+    expect(post).not.toHaveBeenCalled()
+    video.replaceWith(document.createElement("video"))
+    video.dispatchEvent(new Event("loadedmetadata"))
+    expect(post).not.toHaveBeenCalled()
+  })
+
   it.each([
     '<picture><!--keep--><img></picture>', '<img>', '<audio controls=""></audio>',
     '<video controls=""></video>', '<iframe></iframe>', '<embed>', '<object></object>',

@@ -7,6 +7,50 @@ import {DomEditorToolbox} from "./toolbox"
 beforeEach(() => document.body.replaceChildren())
 
 describe("media ribbon drawer", () => {
+  it.each([
+    ["unsupported", "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."],
+    ["no-video", "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."],
+  ] as const)("shows an accessible video playback warning for %s", async (warning, message) => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: warning}
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const status = toolbox.shadowRoot!.querySelector<HTMLElement>('[role="status"]')!
+    expect(status.classList.contains("video-playback-warning")).toBe(true)
+    expect(status.textContent?.trim()).toBe(message)
+  })
+
+  it("omits playback warnings for healthy video and other media", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".video-playback-warning")).toBeNull()
+
+    toolbox.media = {type: "audio", attributes: {src: "sound.ogg"}, videoPlaybackWarning: "unsupported"}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".video-playback-warning")).toBeNull()
+  })
+
+  it("removes a playback warning when media state updates", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"}
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".video-playback-warning")).not.toBeNull()
+
+    toolbox.media = {type: "video", attributes: {src: "movie.mp4"}}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector(".video-playback-warning")).toBeNull()
+  })
+
   it("warns about source files larger than 50 MiB with a focusable tooltip", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.media = {type: "video", attributes: {src: "movie.mp4"}, sourceSize: 50 * 1024 * 1024 + 1}
