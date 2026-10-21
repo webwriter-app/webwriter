@@ -3,7 +3,7 @@ import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
-import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType} from "../graphic"
+import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType, type GraphicShapeType} from "../graphic"
 import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
@@ -1165,6 +1165,12 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private ribbonDropPosition(event: DragEvent, source?: Element): RibbonDropPosition | null {
+    const graphic = this.editor.features.graphic.dropPosition(event)
+    if(graphic) {
+      this.editor.doc.syncFromDOM()
+      const anchor = this.editor.doc.relativePositionFromDOMPoint(graphic.graphic, 0)
+      return anchor ? {anchor: relativePositionToJSON(anchor), layout: "graphic", x: graphic.x, y: graphic.y} : null
+    }
     const target = this.ribbonDropTarget(event)
     if(this.editor.features.slides.active && !target) return null
     const tag = event.dataTransfer && this.ribbonDragTag(event.dataTransfer)
@@ -1265,6 +1271,10 @@ export class ManipulationFeature extends EditorFeature {
     const generation = this.insertionGeneration
     const migrated = this.editor.features.migration.needsMigration(html) ? await this.editor.features.migration.migrate(html) : html
     if(migrated === null || generation !== this.insertionGeneration || this.editor.isEditingLocked) return false
+    if(position.layout === "graphic") {
+      const {fragment} = this.editor.parseHTMLFragment(migrated, false, false)
+      return this.insertGraphicDrop(position, Array.from(fragment.childNodes))
+    }
     return this.insertAtRibbonDrop(position, () => {
       if(position.layout === "document") this.insertHTML(migrated, false, false)
       else {
@@ -1553,6 +1563,22 @@ export class ManipulationFeature extends EditorFeature {
 
   private insertRibbonCommand(action: string, position: RibbonDropPosition) {
     if(!ribbonElementInsertionAction(action)) return false
+    if(position.layout === "graphic") {
+      if(action.startsWith("insert-graphic-shape:")) {
+        const shape = action.slice("insert-graphic-shape:".length)
+        return isGraphicShapeType(shape) && this.insertGraphicDrop(position, [], shape)
+      }
+      if(action === "element:picture") return this.insertGraphicDrop(position, [], "image")
+      if(action.startsWith("element:")) return this.insertGraphicDrop(position, [this.ribbonElement(action.slice("element:".length))])
+      if(action.startsWith("insert-math:")) {
+        const math = this.editor.features.math.create(action.slice("insert-math:".length))
+        return Boolean(math && this.insertGraphicDrop(position, [math]))
+      }
+      const [, tag, style] = action.split(":")
+      const list = this.ribbonElement(tag) as HTMLElement
+      list.style.listStyleType = style
+      return this.insertGraphicDrop(position, [list])
+    }
     return this.insertAtRibbonDrop(position, () => {
       if(action.startsWith("element:")) this.createRibbonElement(action.slice("element:".length))
       else if(action.startsWith("insert-graphic-shape:")) {
@@ -1571,6 +1597,19 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     })
+  }
+
+  private insertGraphicDrop(position: RibbonDropPosition, nodes: Node[], shape?: GraphicShapeType) {
+    if(!this.isEnabled || this.editor.isEditingLocked || position.layout !== "graphic"
+      || !Number.isFinite(position.x) || !Number.isFinite(position.y)) return false
+    let point: ReturnType<typeof this.editor.doc.domPointFromRelativePosition>
+    try { point = this.editor.doc.domPointFromRelativePosition(createRelativePositionFromJSON(position.anchor as Parameters<typeof createRelativePositionFromJSON>[0])) }
+    catch { return false }
+    const graphic = point?.node
+    if(!(graphic instanceof SVGSVGElement)) return false
+    const location = {x: position.x!, y: position.y!}
+    return shape ? this.editor.features.graphic.insertDroppedShape(graphic, shape, location)
+      : this.editor.features.graphic.insertDroppedContent(graphic, nodes, location)
   }
 
   private drop(event: DragEvent) {
@@ -1608,7 +1647,8 @@ export class ManipulationFeature extends EditorFeature {
       const ribbonTag = this.ribbonDragTag(data)
       if(ribbonTag) {
         const position = this.ribbonDropPosition(event)
-        if(position) dropped = this.insertAtRibbonDrop(position, () => this.createRibbonElement(ribbonTag))
+        if(position) dropped = position.layout === "graphic" ? this.insertRibbonCommand(`element:${ribbonTag}`, position)
+          : this.insertAtRibbonDrop(position, () => this.createRibbonElement(ribbonTag))
         return
       }
       // Only this live drag session can bypass import processing. An external
@@ -3355,9 +3395,9 @@ export class ManipulationFeature extends EditorFeature {
       this.insertBreak("br")
     },
     "dragover": event => {
-      // Keyboard shapes can land on appendix chrome. Give the graphic beneath
+      // Ribbon content can land on appendix chrome. Give the graphic beneath
       // it first refusal before resolving a document insertion point.
-      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+      if(event.dataTransfer?.types.includes(graphicShapeDragType) || this.ribbonSurfaceDrag(event)) {
         this.editor.features.graphic.captureListeners.dragover?.(event)
         if(!isWidgetShadowInteraction(event, this.editor.schema)) this.dragOver(event)
         return
@@ -3365,7 +3405,7 @@ export class ManipulationFeature extends EditorFeature {
       if(this.ribbonSurfaceDrag(event) || this.nodeDrag && (isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event))) this.dragOver(event)
     },
     "drop": event => {
-      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+      if(event.dataTransfer?.types.includes(graphicShapeDragType) || this.ribbonSurfaceDrag(event)) {
         this.editor.features.graphic.captureListeners.drop?.(event)
         if(!isWidgetShadowInteraction(event, this.editor.schema)) this.drop(event)
         return

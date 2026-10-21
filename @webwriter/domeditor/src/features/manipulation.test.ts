@@ -15,7 +15,7 @@ import {mathElement} from "../math"
 import {graphicShapeDragType} from "../graphic"
 import {elementAttributeState} from "../element-attributes"
 import {floatSideFromStyles} from "../element-styles"
-import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
+import {elementDragType, insertionMenuItems, ribbonInsertionDragType} from "../components/insertion-menu"
 import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type SelectionChangeDetail} from "../editor-bridge"
 
 let editor: DOMEditor
@@ -4355,6 +4355,107 @@ describe("unified content transfer", () => {
     expect(graphic.querySelector("rect")).toBe(original)
     expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
     expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  })
+
+  it.each(insertionMenuItems.filter(item => item.tag).map(item => item.tag!))("drops ribbon %s inside the hovered graphic without replacing authored content", tag => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const original = graphic.lastChild
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
+    editor.features.selection.selectElement(graphic)
+    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    const data = ribbonData(tag)
+    const read = vi.spyOn(data, "getData").mockReturnValue("")
+    surface.dispatchEvent(transferEvent("dragover", data, {clientX: 500, clientY: 350}))
+    read.mockRestore()
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 500, clientY: 350}))
+    expect(graphic.childNodes[1]).toBe(original)
+    expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    const inserted = graphic.lastElementChild!
+    if(tag === "picture") expect(inserted.localName).toBe("image")
+    else {
+      expect(inserted.localName).toBe("foreignObject")
+      expect(inserted.firstElementChild!.localName).toBe(tag)
+      expect(inserted).toHaveAttribute("x", "40")
+      expect(inserted).toHaveAttribute("y", tag === "audio" ? "123" : "60")
+      if(tag === "table") expect(inserted.querySelectorAll("td")).toHaveLength(4)
+      if(tag === "math") expect(inserted.querySelector("mrow")).not.toBeNull()
+    }
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each([
+    ["insert-graphic-shape:ellipse", "ellipse"],
+    ["insert-math:frac", "foreignObject math mfrac"],
+    ["list-style:ol:lower-alpha", "foreignObject ol"],
+    ["element:table", "foreignObject table"],
+  ])("drops the ribbon action %s into the graphic with undo and redo", (action, selector) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, action)
+    graphic.dispatchEvent(transferEvent("drop", data))
+    expect(graphic.querySelector(selector)).not.toBeNull()
+    if(action.startsWith("list-style:")) expect(graphic.querySelector("ol")!.style.listStyleType).toBe("lower-alpha")
+    editor.doc.syncFromDOM()
+    const after = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    editor.doc.undo()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(before)
+    editor.doc.redo()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(after)
+  })
+
+  it.each([false, true])("anchors delayed ribbon widget insertion to the graphic (target replaced: %s)", async replaced => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "package-member:demo")
+    const post = vi.spyOn(editor, "postHostMessage")
+    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 250, clientY: 160}))
+    const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0] as {position: RibbonDropPosition}
+    expect(message.position.layout).toBe("graphic")
+    if(replaced) {
+      graphic.replaceWith(document.createElement("p"))
+      editor.doc.syncFromDOM()
+    }
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<!--snippet--><demo-widget title="keep"><p>Nested</p></demo-widget>', position: message.position})).toBe(!replaced)
+    if(replaced) expect(document.querySelector("demo-widget")).toBeNull()
+    else {
+      expect(graphic.querySelector("foreignObject demo-widget")).toHaveAttribute("title", "keep")
+      expect(graphic.querySelector("demo-widget p")).toHaveTextContent("Nested")
+      expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+      expect(editor.toHTML(true)).not.toContain("◆")
+    }
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+  })
+
+  it("retains a ribbon graphic target across a package reload", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "package:demo")
+    const post = vi.spyOn(editor, "postHostMessage")
+    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 250, clientY: 160}))
+    const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0] as {position: RibbonDropPosition}
+    const initialState = editor.doc.snapshot()
+    editor.destroy()
+    document.body.innerHTML = '<p></p>'
+    editor = new DOMEditor({initialState})
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<p>Loaded content</p>', position: message.position})).toBe(true)
+    expect(document.querySelector("svg foreignObject p")).toHaveTextContent("Loaded content")
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
   })
 
   it.each(["drop", "dragend"])("finishes a keyboard shape %s on the document's shadow slot", eventType => {

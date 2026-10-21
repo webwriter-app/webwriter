@@ -43,7 +43,7 @@ export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 /** Relative DOM positions survive package installation replacing the iframe. */
 export type RibbonDropPosition = {
   anchor: unknown
-  layout: "document" | "canvas" | "slides" | "board"
+  layout: "document" | "canvas" | "slides" | "board" | "graphic"
   x?: number
   y?: number
   float?: "left" | "right"

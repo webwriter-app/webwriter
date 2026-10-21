@@ -6973,6 +6973,55 @@ await check("document shape drops use float lanes and ordinary content flow", as
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("ribbon elements drop inside captured graphics with native content and cleanup", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1200px;max-width:none;height:800px;border:0"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "ribbon graphic fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const events = view as unknown as {DragEvent: typeof DragEvent, DataTransfer: typeof DataTransfer}
+    for(const [action, selector] of [["element:table", "foreignObject table"], ["element:video", "foreignObject video"],
+      ["element:picture", "image"], ["element:math", "foreignObject math"], ["insert-math:frac", "foreignObject math mfrac"],
+      ["insert-graphic-shape:ellipse", "ellipse"], ["list-style:ol:lower-alpha", "foreignObject ol"], ["package-member:demo", "foreignObject demo-widget"]]) {
+      doc.body.innerHTML = '<svg viewBox="100 50 600 300" style="display:block;width:600px;height:300px;margin:60px auto"><!--keep--><rect x="130" y="80" width="100" height="80" fill="skyblue"/></svg><p>After</p>'
+      const graphic = doc.querySelector("svg")!, original = graphic.querySelector("rect")!, after = doc.body.lastElementChild!
+      editor.features.selection.selectElement(graphic)
+      await layoutFrame()
+      const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+      const data = new events.DataTransfer()
+      data.setData("application/x-webwriter-ribbon-insertion", action)
+      if(action === "package-member:demo") data.setData("text/html", '<demo-widget><p>Nested content</p></demo-widget>')
+      const event = (type: string) => new events.DragEvent(type, {bubbles:true, cancelable:true, composed:true, dataTransfer:data, clientX:x, clientY:y})
+      const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+      const over = event("dragover")
+      surface.dispatchEvent(over)
+      assert(over.defaultPrevented && editor.features.selection.captureSelectedElement === graphic, `${action}: hover did not capture the graphic`)
+      for(let attempt = 0; attempt < 3; attempt++) {
+        await layoutFrame()
+        graphic.dispatchEvent(event("dragover"))
+        assert(!surface.isConnected && editor.features.selection.captureSelectedElement === graphic, `${action}: hover flickered`)
+      }
+      graphic.dispatchEvent(event("drop"))
+      await layoutFrame()
+      assert(graphic.querySelector(selector) && graphic.querySelector("rect") === original, `${action}: dropped content replaced the graphic or disappeared`)
+      assert(graphic.firstChild?.nodeType === Node.COMMENT_NODE && after.isConnected && after.textContent === "After", `${action}: unrelated content changed: ${doc.body.innerHTML}`)
+      const foreign = graphic.querySelector("foreignObject")
+      if(foreign) {
+        assert(Math.abs(Number(foreign.getAttribute("x")) + Number(foreign.getAttribute("width")) / 2 - 400) < 1, `${action}: incorrect SVG x coordinate`)
+        assert(Math.abs(Number(foreign.getAttribute("y")) + Number(foreign.getAttribute("height")) / 2 - 200) < 1, `${action}: incorrect SVG y coordinate`)
+        assert(foreign.getBoundingClientRect().width > 0 && foreign.getBoundingClientRect().height > 0, `${action}: content has no rendered area`)
+      }
+      assert(editor.features.selection.captureSelectedElement === graphic && !editor.appendix.querySelector("#◆float-drop-preview"), `${action}: drop left stale placement state`)
+      assert(!editor.toHTML(true).includes("◆"), `${action}: serialized editor chrome`)
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("keyboard shape drags capture graphics and finish drops through appendix surfaces", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:850px;border:0"

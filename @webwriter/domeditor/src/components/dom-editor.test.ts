@@ -5732,13 +5732,13 @@ describe("DomEditor.execute()", () => {
     expect(loadAppSettings().userSnippets).toEqual([])
   })
 
-  it("inserts ribbon drops from authenticated snippet messages and ignores invalid requests", async () => {
+  it.each(["canvas", "graphic"] as const)("inserts ribbon %s drops from authenticated snippet messages and ignores invalid requests", async layout => {
     const {editor} = await mountEditor()
     const host = editor as any
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const authenticated = vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
     host.settings = {...host.settings, userSnippets: [{id: "saved", label: "Saved", html: '<p>Saved</p>'}]}
-    const position = {anchor: {type: "body", tname: "root"}, layout: "canvas", x: 200, y: 100}
+    const position = {anchor: {type: "body", tname: "root"}, layout, x: 200, y: 100}
     const drop = (action: string, target = position) => host.handleEditorMessage(new MessageEvent("message", {
       data: {type: "editor-ribbon-drop", action, position: target},
     }))

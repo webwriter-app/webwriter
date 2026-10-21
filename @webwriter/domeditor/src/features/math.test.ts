@@ -1010,6 +1010,20 @@ describe("DOM MathML editing", () => {
     expect(clean()).toBe("<p>unchanged</p>")
   })
 
+  it.each(mathStructureOptions)("creates a detached $title for graphic drops without changing the selection", option => {
+    const text = document.querySelector("p")!.firstChild ?? document.querySelector("p")!
+    $.move(text, 0)
+    const selection = document.getSelection()!
+    const before = clean(), anchor = selection.anchorNode, offset = selection.anchorOffset
+    const math = editor.features.math.create(option.command.slice("structure:".length))!
+    expect(math.isConnected).toBe(false)
+    expect(math.namespaceURI).toBe("http://www.w3.org/1998/Math/MathML")
+    expect(math.firstElementChild!.childElementCount).toBeGreaterThan(0)
+    expect(selection.anchorNode).toBe(anchor)
+    expect(selection.anchorOffset).toBe(offset)
+    expect(clean()).toBe(before)
+  })
+
   it("undoes a prefilled formula insertion as one operation", () => {
     document.body.innerHTML = "<p>beforeafter</p>"
     $.move(document.querySelector("p")!.firstChild!, 6)

@@ -464,6 +464,19 @@ export class MathFeature extends EditorFeature {
     return true
   }
 
+  create(structure?: string) {
+    if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return null
+    const math = mathElement("math", mathElement("mrow"))
+    math.setAttribute("display", "block")
+    if(structure) {
+      const range = document.createRange()
+      range.selectNodeContents(math.firstChild!)
+      range.collapse(true)
+      this.insertStructure(range, structure, false)
+    }
+    return math
+  }
+
   insert(structure?: string) {
     if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return false
     const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
@@ -471,8 +484,7 @@ export class MathFeature extends EditorFeature {
       document.body.focus({preventScroll: true})
       if(!document.body.contains(selected)) return false
       this.editor.features.selection.selectElement(selected)
-      const math = mathElement("math", mathElement("mrow"))
-      math.setAttribute("display", "block")
+      const math = this.create()!
       this.editor.features.manipulation.insert(math)
       if(!math.isConnected) return false
       $.move(math.firstChild!, 0)
@@ -739,7 +751,7 @@ export class MathFeature extends EditorFeature {
     return true
   }
 
-  private insertStructure(range: Range, name: string): boolean {
+  private insertStructure(range: Range, name: string, select = true): boolean {
     const extra = ["sqrt", "cbrt", "coprod", "norm", "floor", "ceil", "angle", "cancel", "bcancel", "xcancel", "box", "overbrace", "underbrace", "overbracket", "underbracket", "overparen", "underparen", "text"]
     if(!mathStructureOptions.some(option => option.command === `structure:${name}`) && !extra.includes(name)) return false
     // Preserve selected nodes by moving them, retaining identity and attributes.
@@ -818,9 +830,11 @@ export class MathFeature extends EditorFeature {
     else node = mathElement(name === "int" ? "msubsup" : "munderover", mathElement("mo", operators[name]), first, second)
     parent.insertBefore(node, operand[0]?.parentNode === parent ? operand[0] : parent.childNodes[offset] ?? null)
     first.append(...operand)
-    if(name === "text") $.move(node.firstChild ?? node, node.firstChild instanceof Text ? node.firstChild.length : 0)
-    else if(name === "square" && operand.length) $.move(...after(node))
-    else $.move(target, target.childNodes.length)
+    if(select) {
+      if(name === "text") $.move(node.firstChild ?? node, node.firstChild instanceof Text ? node.firstChild.length : 0)
+      else if(name === "square" && operand.length) $.move(...after(node))
+      else $.move(target, target.childNodes.length)
+    }
     return true
   }
 

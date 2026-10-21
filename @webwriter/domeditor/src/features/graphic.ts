@@ -5,6 +5,7 @@ import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormCo
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
 import {getDocumentRoot} from "../document-template"
 import {
   graphicShapeDragType,
@@ -1048,11 +1049,51 @@ export class GraphicFeature extends EditorFeature {
     return true
   }
 
+  /** Resolve the authored graphic beneath editing chrome at execution time. */
+  dropPosition(event: DragEvent) {
+    const graphic = this.#imageDropGraphic(event)
+    if(!graphic) return null
+    return {graphic, ...applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})}
+  }
+
+  insertDroppedShape(graphic: SVGSVGElement, shape: GraphicShapeType, point: Point) {
+    if(!this.#canInsertText(graphic) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false
+    const end = this.editor.doc.beginUndoGroup()
+    try { this.#insertShape(graphic, shape, undefined, point) }
+    finally { end() }
+    return true
+  }
+
+  /** HTML and widgets retain their authored structure inside native SVG HTML. */
+  insertDroppedContent(graphic: SVGSVGElement, nodes: Node[], point: Point) {
+    if(!nodes.length || !this.#canInsertText(graphic) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false
+    const container = document.createElementNS(SVG_NAMESPACE, "foreignObject")
+    const media = nodes.length === 1 && nodes[0] instanceof Element && nodes[0].matches("audio, video, iframe") ? nodes[0] : null
+    const width = 320, height = media?.localName === "audio" ? 54 : 180
+    container.setAttribute("x", cleanNumber(point.x - width / 2))
+    container.setAttribute("y", cleanNumber(point.y - height / 2))
+    container.setAttribute("width", String(width))
+    container.setAttribute("height", String(height))
+    if(media instanceof HTMLElement) {
+      media.style.width = "100%"
+      media.style.height = "100%"
+    }
+    container.append(...nodes)
+    const end = this.editor.doc.beginUndoGroup()
+    try { graphic.append(container) }
+    finally { end() }
+    this.editor.features.selection.captureElement(graphic)
+    this.#clearShapeSelection()
+    this.#refresh()
+    this.editor.postSelectionPath()
+    return true
+  }
+
   // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
     dragover: event => {
       if(event.defaultPrevented) return
-      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+      if(event.dataTransfer && [graphicShapeDragType, elementDragType, ribbonInsertionDragType].some(type => event.dataTransfer!.types.includes(type))) {
         const graphic = this.#imageDropGraphic(event)
         if(!graphic) return
         if(document.body.classList.contains("◆drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
@@ -1076,6 +1117,7 @@ export class GraphicFeature extends EditorFeature {
     },
     drop: event => {
       if(event.defaultPrevented) return
+      if(event.dataTransfer && [elementDragType, ribbonInsertionDragType].some(type => event.dataTransfer!.types.includes(type))) return
       if(this.#dropShape(event)) return
       this.#dropImage(event)
       if(event.defaultPrevented) return
