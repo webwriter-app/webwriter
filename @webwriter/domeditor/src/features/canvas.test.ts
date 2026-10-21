@@ -106,15 +106,14 @@ describe("canvas document layout", () => {
   })
 
   it.each([
-    {html: "", selection: "background"}, {html: "", selection: "document"},
-    {html: "<p></p>", selection: "background"}, {html: "<p></p>", selection: "document"},
+    {html: "", selection: "background"},
+    {html: "<p></p>", selection: "background"},
     {html: "<p><br></p>", selection: "background"}, {html: "<p><br></p>", selection: "paragraph"},
   ])("restores a text caret when converting an empty canvas ($html, $selection) to Document", async ({html, selection}) => {
     document.body.classList.add(canvasClass)
     document.body.innerHTML = html
     editor.doc.syncFromDOM()
-    if(selection === "document") editor.features.selection.actions.selectNode({type: "selectNode", path: []})
-    else if(selection === "paragraph") editor.features.selection.selectElement(document.body.firstElementChild!)
+    if(selection === "paragraph") editor.features.selection.selectElement(document.body.firstElementChild!)
     else {
       $.move(document.body, 0)
       editor.features.selection.processSelection()
@@ -136,6 +135,27 @@ describe("canvas document layout", () => {
     for(const marker of ["◆node-selection-active", "◆gap-caret-visible", "◆element-selected"]) {
       expect(document.body.classList.contains(marker)).toBe(false)
     }
+  })
+
+  it.each(["", "<p></p>", "<p><br></p>", "<h2></h2>", "<section><p>Content</p><!--keep--></section>"])("retains the document selection when converting Canvas to Document (%s)", async html => {
+    document.body.classList.add(canvasClass)
+    document.body.innerHTML = html
+    editor.doc.syncFromDOM()
+    editor.features.selection.actions.selectNode({type: "selectNode", path: []})
+
+    expect(editor.setDocumentLayout("document", "canvas")).toBe(true)
+    await settle()
+
+    expect($.selectedElement).toBe(document.body)
+    expect(document.body.classList.contains("◆element-selected")).toBe(true)
+    expect(document.body.classList.contains("◆node-selection-active")).toBe(true)
+    const post = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+    editor.postSelectionPath()
+    expect(post.mock.calls.at(-1)![0].detail).toMatchObject({
+      nodeSelected: true,
+      path: [{path: [], name: "Document", icon: "Document"}],
+    })
+    expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it("posts Canvas as the breadcrumb root and restores Document after conversion", () => {

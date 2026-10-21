@@ -8107,6 +8107,41 @@ await check("recent documents fit one layout card when space is limited", async 
   finally { frame.remove() }
 })
 
+await check("toolbox Canvas to Document conversion retains the document selection", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
+  frame.src = "/editor/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if(app && (app as any).editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "app editor did not initialize")
+    await (app as any).waitForEditorWindow()
+    const toolbox = app!.shadowRoot!.querySelector<import("../src/components/toolbox").DomEditorToolbox>("dom-editor-toolbox")!
+    assert(String(await app!.execute({type: "serializeDocument"})).includes("<p></p>"), "document did not start empty")
+    assert(await app!.execute({type: "setDocumentLayout", mode: "canvas", expectedMode: "document"}), "Canvas conversion failed")
+    await app!.execute({type: "selectNode", path: []})
+    await layoutFrame(); await app!.updateComplete
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const card = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('.document-layout-change[data-mode="document"]')!
+    assert(card && !card.disabled, "Document toolbox layout card is unavailable")
+    card.click()
+    for(let attempt = 0; toolbox.documentLayout.mode !== "document" && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+    await new Promise(resolve => setTimeout(resolve, 150))
+    await app!.updateComplete; await toolbox.updateComplete
+    assert(toolbox.documentLayout.mode === "document", "toolbox conversion did not finish")
+    assert(toolbox.documentSelected && toolbox.activeTool === "Edit", "conversion lost the Document toolbox selection")
+    assert((app as any).nodeSelection && (app as any).selectionPath.length === 1, "conversion lost the root node selection")
+    assert(app!.shadowRoot!.activeElement === (app as any).editorIframe(), "conversion lost editor focus")
+  }
+  finally {frame.remove()}
+})
+
 await check("bottom layout cards retain native editing focus after rendering", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
