@@ -519,19 +519,21 @@ describe("table cell selection", () => {
   it("does not refresh recursively from its own selection markers", async () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     await new Promise(resolve => setTimeout(resolve, 0))
-    const postSelectionPath = vi.spyOn(editor, "postSelectionPath")
+    const table = editor.features.table
+    const scheduleRefresh = vi.spyOn(table as unknown as {scheduleRefresh: () => void}, "scheduleRefresh")
 
-    editor.features.table.selectCells(cells()[0])
-    const synchronousCalls = postSelectionPath.mock.calls.length
+    table.selectCells(cells()[0])
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(postSelectionPath).toHaveBeenCalledTimes(synchronousCalls)
+    // Marker-only class mutations must not schedule a breadcrumb refresh. The
+    // native selectionchange raised by selectCells may independently post it.
+    expect(scheduleRefresh).not.toHaveBeenCalled()
 
     cells()[0].setAttribute("title", "authored change")
     await vi.waitFor(() => {
-      expect(postSelectionPath.mock.calls.length).toBeGreaterThan(synchronousCalls)
+      expect(scheduleRefresh).toHaveBeenCalled()
     }, {timeout: 5_000})
-    postSelectionPath.mockRestore()
+    scheduleRefresh.mockRestore()
   })
 
   it("expands a drag-style selection around merged cells and removes markers from serialization", () => {

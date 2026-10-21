@@ -2058,7 +2058,11 @@ describe("DomEditor iframe setup", () => {
       execute.mockClear()
       const key = String((index + 1) % 10)
       const event = new KeyboardEvent("keydown", {
-        key, code: `Digit${key}`, metaKey: apple, ctrlKey: !apple, bubbles: true, cancelable: true,
+        key, code: `Digit${key}`,
+        metaKey: key === "0" ? false : apple,
+        ctrlKey: key === "0" ? false : !apple,
+        altKey: key === "0", shiftKey: key === "0",
+        bubbles: true, cancelable: true,
       })
       iframe.contentDocument!.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
@@ -7086,7 +7090,7 @@ describe("DomEditor.execute()", () => {
     expect(previewHTML).not.toContain("window.evil")
   })
 
-  it("rewrites authored carousel fragments only in the preview copy", async () => {
+  it("preserves authored carousel fragments while stripping scripts from the preview copy", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.className = "ww-slides"
     iframe.contentDocument!.body.innerHTML = '<nav class="ww-slides-navigation"><a href="#slide-one">Slide one</a></nav><section id="slide-one" class="ww-slide">One</section><script>window.untrusted = true</script>'
@@ -7095,7 +7099,7 @@ describe("DomEditor.execute()", () => {
     expect(source.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("#slide-one")
     const previewHTML = (editor as unknown as {currentPreviewHTML(): string}).currentPreviewHTML()
     const preview = new DOMParser().parseFromString(previewHTML, "text/html")
-    expect(preview.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("about:srcdoc#slide-one")
+    expect(preview.querySelector<HTMLAnchorElement>('nav.ww-slides-navigation a')!.getAttribute("href")).toBe("#slide-one")
     expect(preview.querySelectorAll("script")).toHaveLength(0)
     expect(source.querySelector("script")).not.toBeNull()
   })

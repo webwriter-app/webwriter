@@ -397,8 +397,8 @@ export class FontCombobox extends StyleCombobox {
     this.searchLimits = [0, 0]
     super.close(reset)
     this.options = standardFontOptions
-    this.renderRoot.querySelector(".control")?.removeAttribute("data-connected")
-    const popup = this.renderRoot.querySelector<HTMLElement>(".listbox")
+    this.renderRoot?.querySelector(".control")?.removeAttribute("data-connected")
+    const popup = this.renderRoot?.querySelector<HTMLElement>(".listbox")
     for(const property of ["width", "height", "grid-template-columns"]) popup?.style.removeProperty(property)
   }
 

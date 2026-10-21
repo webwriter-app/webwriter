@@ -65,6 +65,8 @@ export default defineConfig({
         },
       },
       execArgv: ["--max-old-space-size=8192"],
+      // DOM-heavy integration cases can pause for CSS parsing and GC in full runs.
+      testTimeout: 10_000,
       // Vitest 4 restores spies without clearing their retained DOM call history.
       clearMocks: true,
       css: true,

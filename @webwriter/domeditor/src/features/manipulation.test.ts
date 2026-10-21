@@ -6140,6 +6140,7 @@ describe("unified content transfer", () => {
     editor.features.collaboration.disable()
     editor.features.graphic.disable()
     editor.features.attribution.disable()
+    editor.features.layout.disable()
     const callbacks = new Map<number, FrameRequestCallback>()
     let nextFrame = 0
     const requestFrame = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(callback => {
@@ -6169,6 +6170,7 @@ describe("unified content transfer", () => {
     editor.features.collaboration.enable()
     editor.features.graphic.enable()
     editor.features.attribution.enable()
+    editor.features.layout.enable()
   })
 
   it.each(["dragend", "dragleave", "disable"])("cleans up the drop indicator and handles %s", ending => {

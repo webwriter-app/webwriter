@@ -2028,8 +2028,16 @@ export class SelectionFeature extends EditorFeature {
         : kind === "element" ? $.selectedElement ?? null : null
     if(selectedElement) this.#revealDetails(selectedElement.parentNode)
     else {
-      this.#revealDetails(sel?.anchorNode ?? null)
-      this.#revealDetails(sel?.focusNode ?? null)
+      const range = sel?.rangeCount === 1 ? sel.getRangeAt(0) : null
+      const selectedChild = range && range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
+        ? range.startContainer.childNodes.item(range.startOffset) : null
+      // A native range around SUMMARY has endpoints in DETAILS, but only
+      // selects the summary's visible content. Reveal its ancestors instead.
+      if(isElement(selectedChild) && selectedChild.matches("details > summary")) this.#revealDetails(selectedChild)
+      else {
+        this.#revealDetails(sel?.anchorNode ?? null)
+        this.#revealDetails(sel?.focusNode ?? null)
+      }
     }
     // Geometry refreshes read layout below. Keep an unchanged node's anchor
     // and outline installed while those reads flush styles during a gesture.

@@ -26,6 +26,21 @@ function search(input: HTMLInputElement, value: string) {
 }
 
 describe("font search combobox", () => {
+  it("can close before connecting and reopen with its configured value", async () => {
+    const combo = new FontCombobox()
+    combo.value = "Georgia, serif"
+    expect(() => combo.close()).not.toThrow()
+    document.body.append(combo)
+    await combo.updateComplete
+    const input = combo.shadowRoot!.querySelector("input")!
+    expect(input.value).toBe("Georgia")
+    expect(input.getAttribute("aria-expanded")).toBe("false")
+    input.click()
+    await settle(combo)
+    expect(input.getAttribute("aria-expanded")).toBe("true")
+    expect(combo.value).toBe("Georgia, serif")
+  })
+
   it("abbreviates Times New Roman while applying its full font family", async () => {
     const {combo, input} = await mount()
     const option = combo.shadowRoot!.querySelector<HTMLButtonElement>('[title="Times New Rom."]')!

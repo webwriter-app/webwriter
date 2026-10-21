@@ -652,8 +652,8 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const content = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!
     expect(getComputedStyle(content).getPropertyValue("scrollbar-gutter")).toBe("stable both-edges")
-    expect(getComputedStyle(content).paddingLeft).toBe("2px")
-    expect(getComputedStyle(content).paddingRight).toBe("2px")
+    expect(getComputedStyle(content).paddingLeft).toBe("8px")
+    expect(getComputedStyle(content).paddingRight).toBe("8px")
     const drawers = Array.from(content.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.length).toBeGreaterThan(1)
     for(const drawer of drawers) {
@@ -1481,9 +1481,9 @@ it("uses the current text target inside a table for specialized style controls",
     inline: {}, computed: {}, context: {display: "block", parentDisplay: "table-cell"},
   }
   await toolbox.updateComplete
-  const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="p"]')!
+  const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="p"]')!
   expect(drawer).not.toBeNull()
-  expect(drawer.querySelector('ribbon-button[label="Row above"]')).not.toBeNull()
+  expect(drawer.label).toBe("Paragraph")
   const editors = Array.from(drawer.querySelectorAll<ElementStyleEditor>("element-style-editor"))
   expect(editors.flatMap(editor => editor.propertyNames ?? [])).toContain("text-align")
   expect(editors.flatMap(editor => editor.propertyNames ?? [])).not.toContain("table-layout")

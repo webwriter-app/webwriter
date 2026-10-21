@@ -4095,6 +4095,16 @@ await check("clicks below closed details keep hidden media collapsed", async () 
     details.open = false
     await layoutFrame()
     assert(!frameEditor.appendix.querySelector(".◆media-interaction-shield"), "closing details retained its media shield")
+    const summary = details.querySelector("summary")!
+    for(const backward of [false, true]) {
+      summary.textContent = "Heading"
+      doc.getSelection()!.setBaseAndExtent(details, Number(backward), details, Number(!backward))
+      frameEditor.features.selection.processSelection()
+      assert(!details.open, "selecting the summary's parent range opened the disclosure")
+      frameEditor.features.manipulation.delete()
+      assert(!details.open && details.querySelector("summary") === summary && !summary.textContent,
+        "clearing the selected summary opened or replaced the disclosure")
+    }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })

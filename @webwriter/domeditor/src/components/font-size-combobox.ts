@@ -56,7 +56,7 @@ export class FontSizeCombobox extends StyleCombobox {
   close(reset = true) {
     this.hasInput = false
     super.close(reset)
-    this.renderRoot.querySelector(".control")?.removeAttribute("data-connected")
+    this.renderRoot?.querySelector(".control")?.removeAttribute("data-connected")
   }
 
   protected setOpen(open: boolean) {

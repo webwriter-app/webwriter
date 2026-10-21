@@ -2646,12 +2646,12 @@ describe("drop, cancellation, and document ownership", () => {
     Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn(() => [paragraph])})
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 150, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: x, clientY: 110, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(preview).not.toBeNull()
     expect(preview.getAttribute("part")).toContain(`float-drop-preview-${side}`)
     expect(parseFloat(preview.style.left)).toBeCloseTo(300 + (side === "left" ? 0 : 60))
-    expect(preview.style.top).toBe("105px")
+    expect(preview.style.top).toBe("100px")
     expect(parseFloat(preview.style.width)).toBeCloseTo(40)
     expect(preview.style.height).toBe("50px")
     expect(paragraph).not.toHaveClass("◆drop-caret-before", "◆drop-caret-after")
@@ -2673,9 +2673,9 @@ describe("drop, cancellation, and document ownership", () => {
     selectNode(target)
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
 
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 150, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 310, clientY: 110, ctrlKey: true}))
     expect(editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!.style.left).toBe("300px")
-    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 150, ctrlKey: true}))
+    feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 390, clientY: 110, ctrlKey: true}))
     const preview = editor.appendix.querySelector<HTMLElement>("#◆float-drop-preview")!
     expect(editor.appendix.querySelectorAll("#◆float-drop-preview")).toHaveLength(1)
     expect(parseFloat(preview.style.left)).toBeCloseTo(360)

@@ -726,6 +726,22 @@ describe("revealing selections inside details", () => {
     }
   })
 
+  it.each([false, true])("keeps a disclosure closed for a native range around its summary (backward: %s)", backward => {
+    document.body.innerHTML = '<details><summary>Outer</summary><details><!--keep--><summary title="keep"><b>Inner</b></summary><p>Body</p></details></details>'
+    const [outer, inner] = document.querySelectorAll("details")
+    const summary = inner.querySelector("summary")!
+    const index = Array.from(inner.childNodes).indexOf(summary)
+    document.getSelection()!.setBaseAndExtent(inner, index + Number(backward), inner, index + Number(!backward))
+
+    feature.processSelection()
+
+    expect(outer.open).toBe(true)
+    expect(inner.open).toBe(false)
+    expect(inner.querySelector("summary")).toBe(summary)
+    expect(summary.getAttribute("title")).toBe("keep")
+    expect(document.getSelection()!.toString()).toBe("Inner")
+  })
+
   it("opens details at both endpoints of a native text selection", () => {
     document.body.innerHTML = '<details><summary>First</summary><p>First body</p></details><details><summary>Last</summary><p>Last body</p></details>'
     const [first, last] = document.querySelectorAll("details")
