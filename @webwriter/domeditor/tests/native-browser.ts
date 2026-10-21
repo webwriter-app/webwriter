@@ -14,6 +14,7 @@ import {SharedDOMDoc} from "../src/domdoc"
 import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
 import localFontURL from "temml/dist/Temml.woff2?url"
+import {checkMediaAutoplay} from "./media-autoplay"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -27,6 +28,8 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
 
 await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
   const frame = document.createElement("iframe")

@@ -2,7 +2,9 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import type {Window as TestWindow} from "happy-dom"
 import "@testing-library/jest-dom/vitest"
+import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
+import {sharedDOMBody} from "../domdoc"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
 import {createImageMapPopoverController, imageMapHotspotBounds} from "../media"
@@ -1271,6 +1273,122 @@ describe("media editing", () => {
 
     player.setAttribute("muted", "")
     await vi.waitFor(() => expect(player.muted).toBe(true))
+  })
+
+  it.each(["audio", "video"] as const)("suppresses %s autoplay without changing authored HTML", async media => {
+    document.body.innerHTML = `<section><!--keep--><${media} controls autoplay="autoplay"><source src="recording.mp3"><p>Fallback</p></${media}></section>`
+    const player = document.querySelector(media)!
+    const pause = vi.spyOn(player, "pause")
+    await vi.waitFor(() => expect(pause).toHaveBeenCalled())
+    editor.features.media.disable()
+    const before = document.body.innerHTML
+    pause.mockClear()
+    editor.features.media.enable()
+    expect(pause).toHaveBeenCalledOnce()
+    expect(document.body.innerHTML).toBe(before)
+    expect(player.autoplay).toBe(true)
+
+    pause.mockClear()
+    player.dispatchEvent(new Event("loadstart"))
+    expect(pause).toHaveBeenCalledOnce()
+    expect(editor.toHTML()).toContain('autoplay="autoplay"')
+
+    // Changing the authored setting must also disarm a loaded player.
+    pause.mockClear()
+    player.removeAttribute("autoplay")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    player.setAttribute("autoplay", "")
+    await vi.waitFor(() => expect(pause).toHaveBeenCalled())
+
+    editor.features.media.disable()
+    pause.mockClear()
+    player.dispatchEvent(new Event("loadstart"))
+    player.setAttribute("autoplay", "autoplay")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(pause).not.toHaveBeenCalled()
+    pause.mockRestore()
+  })
+
+  it("suppresses autoplay in nested widget light DOM while leaving shadow media and explicit playback alone", async () => {
+    const widget = document.createElement("media-autoplay-widget")
+    widget.innerHTML = '<section><audio controls autoplay></audio></section>'
+    const audio = widget.querySelector("audio")!
+    const pause = vi.spyOn(audio, "pause")
+    const shadow = widget.attachShadow({mode: "open"})
+    shadow.innerHTML = '<video autoplay></video><slot></slot>'
+    const shadowVideo = shadow.querySelector("video")!
+    const shadowPause = vi.spyOn(shadowVideo, "pause")
+    document.body.append(widget)
+    await vi.waitFor(() => expect(pause).toHaveBeenCalled())
+    shadowVideo.dispatchEvent(new Event("loadstart", {composed: true}))
+    expect(shadowPause).not.toHaveBeenCalled()
+
+    // A direct mutation inside an already connected widget is also covered.
+    const video = document.createElement("video")
+    video.autoplay = true
+    const videoPause = vi.spyOn(video, "pause")
+    widget.append(video)
+    await vi.waitFor(() => expect(videoPause).toHaveBeenCalled())
+
+    pause.mockClear()
+    Object.defineProperty(audio, "paused", {configurable: true, value: false})
+    audio.dispatchEvent(new Event("loadstart"))
+    audio.setAttribute("autoplay", "autoplay")
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(pause).not.toHaveBeenCalled()
+    audio.remove()
+    audio.dispatchEvent(new Event("loadstart"))
+    expect(pause).not.toHaveBeenCalled()
+    pause.mockRestore()
+    shadowPause.mockRestore()
+    videoPause.mockRestore()
+  })
+
+  it("preserves collaborated autoplay attributes and their local undo history", async () => {
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause")
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+      const sharedVideo = new Y.XmlElement("video")
+      sharedVideo.setAttribute("autoplay", "autoplay")
+      sharedVideo.setAttribute("controls", "")
+      const body = sharedDOMBody(remote)
+      body.insert(body.length, [sharedVideo])
+      const canUndo = editor.doc.canUndo
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+      await vi.waitFor(() => expect(document.querySelector("video")).not.toBeNull())
+      const video = document.querySelector("video")!
+      await vi.waitFor(() => expect(pause.mock.instances).toContain(video))
+      expect(video).toHaveAttribute("autoplay", "autoplay")
+      expect(editor.doc.canUndo).toBe(canUndo)
+      expect(sharedVideo.getAttribute("autoplay")).toBe("autoplay")
+      expect(editor.toHTML()).toContain('autoplay="autoplay"')
+
+      $.selectElement(video)
+      editor.doc.stopCapturing()
+      editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "autoplay", value: null})
+      editor.doc.syncFromDOM()
+      expect(video).not.toHaveAttribute("autoplay")
+      editor.doc.undo()
+      expect(document.querySelector("video")).toHaveAttribute("autoplay", "autoplay")
+      editor.doc.redo()
+      expect(document.querySelector("video")).not.toHaveAttribute("autoplay")
+    }
+    finally { pause.mockRestore(); remote.destroy() }
+  })
+
+  it("leaves unfamiliar media namespaces intact while suppressing autoplay", async () => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    const audio = document.createElementNS("urn:example", "audio")
+    audio.setAttribute("autoplay", "")
+    svg.append(audio)
+    document.body.append(svg)
+    const html = svg.outerHTML
+    await new Promise(resolve => setTimeout(resolve, 0))
+    editor.features.media.disable()
+    expect(() => editor.features.media.enable()).not.toThrow()
+    expect(svg.outerHTML).toBe(html)
   })
 
   it("syncs the muted property for newly added media subtrees", async () => {

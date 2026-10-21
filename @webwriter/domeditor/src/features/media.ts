@@ -1476,10 +1476,18 @@ export class MediaFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    document.body.querySelectorAll("audio, video").forEach(media => {
+      if(media instanceof HTMLMediaElement) media.pause()
+    })
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
         for(const record of records) {
+          if(record.type === "attributes" && record.attributeName === "autoplay") this.suppressAutoplay(record.target)
+          if(record.type === "childList") record.addedNodes.forEach(node => {
+            this.suppressAutoplay(node)
+            if(node instanceof Element) node.querySelectorAll("audio, video").forEach(media => this.suppressAutoplay(media))
+          })
           if(record.type === "attributes" && record.attributeName === "muted"
             && record.target instanceof Element && !sourceEditingBlocked(record.target, this.editor.schema)) syncMutedProperty(record.target)
           if(record.type === "childList") {
@@ -1580,6 +1588,13 @@ export class MediaFeature extends EditorFeature {
     else post()
   }
 
+  private suppressAutoplay(target: Node) {
+    // pause() clears the native can-autoplay flag without changing authored
+    // attributes. This document policy also covers widget light DOM, but never
+    // enters widget shadow trees. Leave explicit playback running.
+    if(target instanceof HTMLMediaElement && document.body.contains(target) && target.paused) target.pause()
+  }
+
   passiveListeners = {
     selectionchange: () => this.scheduleRefresh(),
     pointerover: (event: PointerEvent) => this.popovers.handleEvent(event),
@@ -1629,7 +1644,11 @@ export class MediaFeature extends EditorFeature {
     resize: this.handleVideoPlaybackChange,
     error: this.handleVideoPlaybackChange,
     emptied: this.handleVideoPlaybackChange,
-    loadstart: this.handleVideoPlaybackChange,
+    loadstart: (event: Event) => {
+      // Source changes and load() reset the native can-autoplay flag.
+      if(event.target instanceof Node) this.suppressAutoplay(event.target)
+      this.handleVideoPlaybackChange(event)
+    },
     pointerdown: (event: PointerEvent) => {
       this.pointerDown = event.button === 0
       this.pendingUrlFocus = null

@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "editing suppresses native autoplay while preserving attributes and explicit playback",
   "rotated figure captions flow upright and their transformation frames fit the content",
   "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",
@@ -280,7 +281,8 @@ try {
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
-    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
+    // Exercise editor autoplay suppression even when Chrome permits playback.
+    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", "--autoplay-policy=no-user-gesture-required", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
   browser = spawn(command, args, {
     stdio: ["ignore", "ignore", "pipe"],
     ...(browserName === "webkit" && swiftDeveloperDir
