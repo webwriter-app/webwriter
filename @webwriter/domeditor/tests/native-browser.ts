@@ -4562,6 +4562,62 @@ await check("canvas and slide element selections keep Delete borderless", async 
   }
 })
 
+await check("canvas and slide captions remain available through toolbox commands", async () => {
+  for(const mode of ["canvas", "slides"] as const) for(const tag of ["picture", "p"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "position:fixed;left:0;top:0;width:900px;height:700px"
+    frame.srcdoc = `<!doctype html><body><${tag} id="caption-item">${tag === "picture" ? "<img>" : "Text"}</${tag}><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, `${mode}: editor did not initialize: ${view.editorError}`)
+      const editor = view.editor!, doc = frame.contentDocument!, target = doc.querySelector<HTMLElement>("#caption-item")!
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
+      Object.assign(target.style, {position: "absolute", left: "200px", top: "200px", width: "240px", height: "100px", margin: "0"})
+      editor.features.selection.selectElement(target)
+      await layoutFrame()
+      const overlay = editor.features.transformation.overlay
+      const control = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
+      assert(control.hidden && view.getComputedStyle(control).display === "none", `${mode}: caption affordance is still visible`)
+      control.click()
+      assert(!target.parentElement!.querySelector("figcaption"), `${mode}: hidden caption control still adds captions`)
+      // Keep the new editable caption in view so focus does not scroll the
+      // viewport while comparing the content's rendered placement.
+      const rect = target.getBoundingClientRect(), scale = rect.height / 100
+      target.style.top = `${parseFloat(target.style.top) + (120 - rect.top) / scale}px`
+      await layoutFrame()
+      const before = target.getBoundingClientRect()
+      assert(editor.features.manipulation.actions.setCaption({type: "setCaption", position: "below", alignment: "left"}), `${mode}: toolbox caption command failed`)
+      await layoutFrame()
+      const figure = target.parentElement!, caption = figure.querySelector<HTMLElement>(":scope > figcaption")!
+      assert(figure.localName === "figure" && caption && figure.lastElementChild === caption, `${mode}: caption was not added to the layout item`)
+      const after = target.getBoundingClientRect()
+      assert((["left", "top", "width", "height"] as const).every(key => Math.abs(after[key] - before[key]) < 1), `${mode}: adding a caption moved or resized the image: ${JSON.stringify({before, after})}`)
+      assert(editor.features.transformation.target === figure && control.hidden, `${mode}: captioning lost the selected layout item`)
+      assert(doc.execCommand("insertText", false, "Image caption") && caption.textContent?.includes("Image caption"), `${mode}: caption is not natively editable`)
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+      await layoutFrame()
+      assert(overlay.getAttribute("part")!.includes("transform-overlay-content-selected"), `${mode}: caption typing did not use grey content selection`)
+      for(const action of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-button, [part~=transform-overlay-crop]")) {
+        assert(view.getComputedStyle(action).visibility === "hidden", `${mode}: grey content selection exposes ${action.id || action.getAttribute("part")}`)
+      }
+      const resize = overlay.querySelector<HTMLElement>(".◆transform-overlay-scale:not([hidden])")!
+      assert(resize && view.getComputedStyle(resize).visibility === "visible", `${mode}: grey content selection hid the resize handles`)
+      for(const captured of [false, true]) {
+        if(captured) editor.features.selection.captureElement(figure)
+        else editor.features.selection.selectElement(figure)
+        await layoutFrame()
+        assert(control.hidden && view.getComputedStyle(control).display === "none", `${mode}: selected element restored caption affordance (capture: ${captured})`)
+        const deleter = overlay.querySelector<HTMLElement>("#◆transform-overlay-delete")!
+        assert(view.getComputedStyle(deleter).visibility === "visible", `${mode}: selected element did not restore other affordances`)
+      }
+      assert(!editor.toHTML(true).includes("transform-overlay"), `${mode}: caption control leaked into authored HTML`)
+    }
+    finally {frame.contentWindow?.editor?.destroy(); frame.remove()}
+  }
+})
+
 await check("canvas and slide copyright controls share freeform placement", async () => {
   for(const mode of ["canvas", "slides"] as const) {
     const frame = document.createElement("iframe")

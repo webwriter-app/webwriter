@@ -403,7 +403,8 @@ export class TransformationFeature extends EditorFeature {
     if(this.#gesture) return
     if(element && this.#canTransform(element)) this.startTransform(element)
     else this.clearTransform()
-    setPart(this.overlay, "transform-overlay-content-selected", Boolean(this.target && within))
+    setPart(this.overlay, "transform-overlay-content-selected", Boolean(this.target && within
+      && !$.isElementSelection && !this.editor.features.selection.isCaptureSelection))
   }
 
   startTransform(element: Element) {

@@ -454,12 +454,29 @@ describe("resize alignment", () => {
 describe("caption affordance", () => {
   const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
 
-  it.each(["p", "caption-widget", "table"].flatMap(tag => [false, true].map(captured => ({tag, captured}))))("adds a bottom-left caption to $tag and preserves capture=$captured selection", ({tag, captured}) => {
+  it.each((["document", "canvas", "slides"] as const).flatMap(mode =>
+    ["p", "caption-widget", "table"].flatMap(tag => [false, true].map(captured => ({mode, tag, captured})))))("adds a bottom-left caption to $tag in $mode and preserves capture=$captured selection", async ({mode, tag, captured}) => {
     const target = targetElement(tag)
     if(tag === "table") target.innerHTML = '<tbody><tr><td>Content</td></tr></tbody>'
+    if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
     mockRect(target)
-    captured ? captureNode(target) : selectNode(target)
-    expect(button().hidden).toBe(false)
+    if(mode === "canvas") {
+      // Retire the initial canvas caret placeholder before creating a node range;
+      // Happy DOM collapses parent ranges when that preceding paragraph is removed.
+      $.move(target.firstChild ?? target, 0)
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+    }
+    if(captured) captureNode(target)
+    else {
+      // Happy DOM delivers selectionchange synchronously while ranges are set.
+      $.isSettingRanges = true
+      try { $.selectElement(target) }
+      finally { $.isSettingRanges = false }
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+    }
+    expect(button().hidden).toBe(mode !== "document")
     expect(button().getAttribute("part")).toContain("transform-overlay-button")
     expect(button().getAttribute("aria-label")).toBe("Add caption")
     const addIcon = decodeURIComponent(button().style.getPropertyValue("--icon"))
@@ -468,15 +485,17 @@ describe("caption affordance", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const original = editor.toHTML(true)
-    button().click()
+    if(mode === "document") button().click()
+    else editor.features.manipulation.actions.cycleCaption({type: "cycleCaption"})
     const caption = document.querySelector<HTMLElement>("figcaption, caption")!
     expect(caption.style.textAlign).toBe("left")
     expect(editor.features.manipulation.getCaptionPosition()).toBe("below")
     expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
     if(!captured) expect($.selectedElement).toBe(tag === "table" ? target : target.parentElement)
     expect(document.getSelection()!.anchorNode).not.toBe(caption)
-    expect(button().hidden).toBe(false)
-    button().click()
+    expect(button().hidden).toBe(mode !== "document")
+    if(mode === "document") button().click()
+    else editor.features.manipulation.actions.cycleCaption({type: "cycleCaption"})
     expect(caption.style.textAlign).toBe("center")
     expect(editor.features.selection.captureSelectedElement).toBe(captured ? target : null)
     expect(document.body.querySelector("#◆transform-overlay-caption")).toBeNull()
@@ -1242,9 +1261,11 @@ describe("selection-owned transformation", () => {
       selectNode(paragraph)
       expect($.selectedElement).toBe(paragraph)
       expect(feature.target).toBe(article)
+      expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-content-selected")
       captureNode(widget)
       expect(editor.features.selection.captureSelectedElement).toBe(widget)
       expect(feature.target).toBe(article)
+      expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-content-selected")
       const next = document.createElement("p"); next.textContent = "Next"
       article.after(next)
       editor.features.selection.selectDropRange((() => { const range = document.createRange(); range.setStart(next.firstChild!, 1); range.collapse(true); return range })())

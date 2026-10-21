@@ -1709,6 +1709,7 @@ body::part(transform-overlay-hidden) {
 body::part(transform-overlay-content-selected) {
   --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
   --ww-transform-hover-color: var(--sl-color-gray-300, #cbd5e1);
+  --ww-transform-action-visibility: hidden;
 }
 body::part(transform-overlay-freeform) {
   outline: 2px dotted var(--ww-transform-color);
@@ -1956,6 +1957,10 @@ body::part(transform-overlay-button) {
   border-radius: 100%;
   background: none;
   cursor: pointer;
+}
+body::part(transform-overlay-button),
+body::part(transform-overlay-crop) {
+  visibility: var(--ww-transform-action-visibility, visible);
 }
 body::part(transform-overlay-button)::before {
     content: "";
