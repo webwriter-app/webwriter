@@ -90,7 +90,7 @@ export const appCommands: readonly AppCommand[] = [
     description: `Insert ${label.toLocaleLowerCase()} content`,
     icon,
     action,
-    defaultShortcut: key ? primary(key) : undefined,
+    defaultShortcut: key ? id === "formula" ? alternate(key) : primary(key) : undefined,
   })),
   ...[
     ["rowAbove", "Row above", "TableRowAbove", "table-row-above"],
@@ -264,6 +264,13 @@ export function loadAppSettings(): AppSettings {
         if(!shortcuts[id] && !Object.values(shortcuts).includes(shortcut)) shortcuts[id] = shortcut
       }
     }
+    // Replace the old zoom-reset binding without taking another command's shortcut.
+    if((value.shortcutsVersion ?? 0) < 3
+      && (shortcuts["insert.formula"] === "Ctrl+0" || shortcuts["insert.formula"] === "Meta+0")) {
+      const shortcut = defaults.shortcuts["insert.formula"]
+      shortcuts["insert.formula"] = Object.entries(shortcuts)
+        .some(([id, assigned]) => id !== "insert.formula" && assigned === shortcut) ? "" : shortcut
+    }
     const cloudServices = storedCloudServices(value.cloudServices)
     const settings: AppSettings = {
       localUsername: typeof value.localUsername === "string" ? value.localUsername
@@ -309,7 +316,7 @@ export function loadAppSettings(): AppSettings {
         ? value.autosaveCloudOnBundleChange : defaults.autosaveCloudOnBundleChange,
       shortcuts,
     }
-    if((value.shortcutsVersion ?? 0) < 2 || "offlineUsername" in value) persistAppSettings(settings)
+    if((value.shortcutsVersion ?? 0) < 3 || "offlineUsername" in value) persistAppSettings(settings)
     return settings
   }
   catch {
@@ -320,7 +327,7 @@ export function loadAppSettings(): AppSettings {
 export function persistAppSettings(settings: AppSettings) {
   try {
     globalThis.localStorage?.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings,
-      cloudServices: storedCloudServices(settings.cloudServices), shortcutsVersion: 2}))
+      cloudServices: storedCloudServices(settings.cloudServices), shortcutsVersion: 3}))
   }
   catch {
     // Settings remain active for this session when storage is unavailable.
@@ -375,12 +382,12 @@ export function formatShortcut(shortcut: string, applePlatform = isOnApple()) {
 export function reservedShortcutReason(shortcut: string, applePlatform = isOnApple()) {
   const common = new Set(["F1", "F5", "F6", "F11", "F12", "Alt+F4"])
   const apple = new Set([
-    "Meta+L", "Meta+N", "Meta+Q", "Meta+R", "Meta+T", "Meta+W",
+    "Meta+0", "Meta+L", "Meta+N", "Meta+Q", "Meta+R", "Meta+T", "Meta+W",
     "Meta+Shift+N", "Meta+Shift+R", "Meta+Shift+T", "Meta+Shift+W",
     "Meta+Alt+C", "Meta+Alt+I", "Meta+Alt+J", "Meta+Tab", "Meta+Shift+Tab",
   ])
   const other = new Set([
-    "Ctrl+L", "Ctrl+N", "Ctrl+R", "Ctrl+T", "Ctrl+W",
+    "Ctrl+0", "Ctrl+L", "Ctrl+N", "Ctrl+R", "Ctrl+T", "Ctrl+W",
     "Ctrl+Shift+I", "Ctrl+Shift+J", "Ctrl+Shift+N", "Ctrl+Shift+T",
     "Ctrl+Tab", "Ctrl+Shift+Tab", "Ctrl+Alt+Delete",
   ])

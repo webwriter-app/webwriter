@@ -30,6 +30,33 @@ afterEach(() => {
   document.documentElement.removeAttribute("lang")
 })
 
+describe("history shortcut modifiers", () => {
+  it.each([true, false])("requires exact primary modifiers and supports standard redo (Apple: %s)", apple => {
+    const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue(apple ? "MacIntel" : "Win32")
+    const undo = vi.spyOn(editor.doc, "undo").mockImplementation(() => {})
+    const redo = vi.spyOn(editor.doc, "redo").mockImplementation(() => {})
+    const primary = apple ? {metaKey: true} : {ctrlKey: true}
+    try {
+      const press = (key: string, modifiers: KeyboardEventInit) => {
+        const event = new KeyboardEvent("keydown", {key, cancelable: true, ...modifiers})
+        editor.features.history.activeListeners.keydown!(event)
+        return event.defaultPrevented
+      }
+      expect(press("z", primary)).toBe(true)
+      expect(press("Z", {...primary, shiftKey: true})).toBe(true)
+      if(!apple) expect(press("y", primary)).toBe(true)
+      for(const letter of ["z", "y"]) {
+        expect(press(letter, {...primary, altKey: true})).toBe(false)
+        expect(press(letter, {metaKey: true, ctrlKey: true})).toBe(false)
+      }
+      expect(press("y", {...primary, shiftKey: true})).toBe(false)
+      expect(undo).toHaveBeenCalledOnce()
+      expect(redo).toHaveBeenCalledTimes(apple ? 1 : 2)
+    }
+    finally { platform.mockRestore(); undo.mockRestore(); redo.mockRestore() }
+  })
+})
+
 describe("collaborative version history", () => {
   it("publishes local undo availability immediately without serializing checkpoints, and cleans up", async () => {
     const history = editor.features.history

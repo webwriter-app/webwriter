@@ -4,6 +4,8 @@ The Formula ribbon button inserts an empty formula. Its dropdown lists all struc
 
 Insert **Formula** from the insertion menu, or click an existing `<math>` formula. A virtual keyboard overlays the bottom of the document column, beside the right toolbox. Its height stays fixed across layouts; all keys are visible without scrolling. A 90% opacity background and a drop shadow separate it from the document. It replaces the Formula toolbox and provides numbers, operators, functions, structures, Latin letters, and Greek letters in four layouts. Shift shows alternatives and uppercase letters; it resets after inserting a symbol, and stays active while extending the selection with arrow keys. Inline/block controls remain in the keyboard header. Close it with × and reopen it using the keyboard button in the document corner.
 
+Insert a formula with **Alt+Shift+0** on Windows and macOS.
+
 Typing a name offers completions at the formula caret, including functions, Greek letters, sets, fences, radicals, annotations, and matrix templates. Up/Down cycle through suggestions, Enter or Tab accepts, and Escape dismisses the popup. Clicking a suggestion preserves the formula caret. A single letter defaults to a variable; arbitrary variable and function names are also available. Space commits a word, and `(` creates a call for a function name. Backslash commands use the same suggestions.
 
 Keyboard and autocomplete code is imported statically alongside the editor. The separate **Handwriting** tab loads the algebra-term stroke recognizer only when opened. Its model, ONNX/WASM inference, and LaTeX-to-MathML conversion run in a web worker. Write with a mouse, pen, or touch; after a short pause the recognized fragment appears as a button in a double-height row above the drawing. Click the formula to insert it at the current formula selection. Right-click or right-drag over ink to erase touched strokes; pen eraser tips and barrel buttons work the same way. Recognition updates from the remaining ink after release. The trash button in the drawing surface’s top-right corner clears the drawing and its recognized option. Leaving the tab or closing the keyboard discards the drawing, terminates its worker, and ignores pending results. The first use downloads the model; strokes are processed locally.
@@ -29,6 +31,7 @@ Empty and filled formulas have 2px of padding inside their background. Text care
 | Tab / Shift + Tab | Accept a completion / move between arguments |
 | Home / End | Move to the start or end of the formula |
 | Backspace / Delete | Delete text; select an adjacent structure before deleting it |
+| Modified Backspace / Delete | Preserve native word/line deletion and alternate Cut shortcuts |
 | Ctrl/Cmd + A | Select formula contents |
 | Enter / Escape | Accept / dismiss a completion, or finish editing when the popup is closed |
 | `\sqrt`, `\frac`, `\sin`, `\alpha`, etc., then Space | Insert a named structure, function, or symbol |

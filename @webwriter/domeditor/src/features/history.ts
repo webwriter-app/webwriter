@@ -97,9 +97,11 @@ export class HistoryFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     "keydown": ev => {
       const key = ev.key.toLowerCase()
+      if(ev.altKey || ev.getModifierState("AltGraph") || (isOnApple() ? ev.ctrlKey : ev.metaKey)) return
       const isUndo = key === "z" && modifierKeyDown(ev) && !ev.shiftKey
       const isMacRedo = isOnApple() && key === "z" && modifierKeyDown(ev) && ev.shiftKey
-      const isWinLinuxRedo = !isOnApple() && key === "y" && modifierKeyDown(ev)
+      const isWinLinuxRedo = !isOnApple() && modifierKeyDown(ev)
+        && (key === "y" && !ev.shiftKey || key === "z" && ev.shiftKey)
       if(isUndo) {
         ev.preventDefault()
         this.editor.doc.undo()

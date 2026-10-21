@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, fixedClientX, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, fixedClientX, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, parseMathFragment, type MathSelectionState} from "../math"
 
 import {styleMarkNames, type MarkName} from "../marks"
@@ -318,6 +318,12 @@ export class MathFeature extends EditorFeature {
       }
       if(!this.activeMath) return
       const deadPower = this.atDeadPowerPoint()
+      // Word/line deletion and alternate Cut bindings belong to the browser.
+      // Keep generic document commands from replacing their native semantics.
+      if(/^delete(?:Word|SoftLine|HardLine|EntireSoftLine)/.test(event.inputType) || event.inputType === "deleteByCut") {
+        event.stopImmediatePropagation()
+        return
+      }
       event.preventDefault()
       event.stopImmediatePropagation()
       if(deadPower && ["insertText", "insertCompositionText"].includes(event.inputType)) {
@@ -1024,26 +1030,39 @@ export class MathFeature extends EditorFeature {
     // A circumflex dead key can already carry isComposing on macOS. Resolve
     // the shortcut before the IME guard, and retain only its live script slot
     // so the following composed character is not silently discarded.
-    const deadPower = event.key === "Dead" && !event.metaKey && !event.ctrlKey
-      && (["Backquote", "IntlBackslash"].includes(event.code) && !event.altKey
-        || event.code === "KeyI" && event.altKey)
+    const deadPower = event.key === "Dead" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+      && ["Backquote", "IntlBackslash"].includes(event.code)
     const continuingDeadPower = this.atDeadPowerPoint()
     if(!root || event.isComposing && !deadPower && !continuingDeadPower) return
     this.marked.add(root)
-    if((event.metaKey || event.ctrlKey) && ["z", "y"].includes(event.key.toLowerCase())) {
+    const apple = isOnApple()
+    const primary = !event.altKey && !event.getModifierState("AltGraph")
+      && (apple ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)
+    const letter = event.key.toLowerCase()
+    if(primary && (letter === "z" || letter === "y" && !event.shiftKey && !apple)) {
       this.editor.features.history.activeListeners.keydown?.(event)
       if(event.defaultPrevented) { event.stopImmediatePropagation(); this.changed() }
       return
     }
-    if((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+    if(primary && !event.shiftKey && letter === "a") {
       event.preventDefault()
       event.stopImmediatePropagation()
       document.getSelection()?.setBaseAndExtent(root, 0, root, root.childNodes.length)
       this.changed()
       return
     }
-    if(!deadPower && (event.metaKey || event.ctrlKey || event.altKey) && !event.getModifierState("AltGraph")
-      && !["Backspace", "Delete", "Enter"].includes(event.key)) return
+    if(!deadPower && (event.metaKey || event.ctrlKey || event.altKey)
+      && !(event.getModifierState("AltGraph") && event.key.length === 1)) {
+      // Leave browser shortcuts and native editing defaults uncanceled, but
+      // prevent the general selection/history/deletion listeners claiming them.
+      if(["a", "z", "y", "backspace", "delete", "enter", "escape", "tab", "home", "end",
+        "arrowleft", "arrowright", "arrowup", "arrowdown"].includes(letter)) event.stopImmediatePropagation()
+      return
+    }
+    if(event.shiftKey && ["Backspace", "Delete", "Enter", "Escape"].includes(event.key)) {
+      event.stopImmediatePropagation()
+      return
+    }
     const key = deadPower ? "^" : continuingDeadPower ? event.key.normalize("NFD").replace(/\u0302/g, "") : event.key
     const directions: Record<string, string> = {ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", Home: "start", End: "end"}
     const handled = key.length === 1 || key in directions || ["Backspace", "Delete", "Tab", "Enter", "Escape"].includes(key)
@@ -1120,7 +1139,7 @@ export class MathFeature extends EditorFeature {
     input.addEventListener("compositionend", event => finish(event.data))
     input.addEventListener("blur", () => finish(null))
     input.addEventListener("keyup", event => {
-      if(event.key === "Dead" || ["Backquote", "IntlBackslash", "KeyI"].includes(event.code)) finish("")
+      if(event.key === "Dead" || ["Backquote", "IntlBackslash"].includes(event.code)) finish("")
     })
     // Chrome can finish a dead-key sequence with ordinary text input.
     input.addEventListener("input", event => {
