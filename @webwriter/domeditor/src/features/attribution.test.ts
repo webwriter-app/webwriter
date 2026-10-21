@@ -139,7 +139,7 @@ describe("element attribution editing", () => {
     expect(element.getAttribute(attributionAttributes.license)).toBe("MIT")
   })
 
-  it("shows the blue circle only for element selection, centered on the right edge", () => {
+  it.each([false, true])("aligns the copyright affordance below the delete control at the right midpoint (capture: %s)", captured => {
     const element = start()
     bounds(element)
     const original = element.innerHTML
@@ -153,13 +153,16 @@ describe("element attribution editing", () => {
     document.getSelection()!.setBaseAndExtent(text, 0, text, 3)
     document.dispatchEvent(new Event("selectionchange"))
     expect(bridge.hidden).toBe(true)
-    select(element)
+    if(captured) editor!.features.selection.captureElement(element)
+    else select(element)
+    document.dispatchEvent(new Event("selectionchange"))
     expect(bridge.hidden).toBe(false)
-    expect(bridge.style.left).toBe("293px")
+    expect(bridge.style.left).toBe("290px")
     expect(bridge.style.top).toBe("90px")
     expect(bridge.style.width).toBe("20px")
     expect(bridge.style.height).toBe("20px")
-    expect(parseFloat(bridge.style.left) + 10).toBe(element.getBoundingClientRect().right + 3)
+    expect(parseFloat(bridge.style.left) + 10).toBe(element.getBoundingClientRect().right)
+    expect(parseFloat(bridge.style.top) + 10).toBe((element.getBoundingClientRect().top + element.getBoundingClientRect().bottom) / 2)
     expect(button().getAttribute("part")).toBe("transform-overlay-button transform-overlay-attribution")
     expect(button().querySelector("svg")!.hasAttribute("hidden")).toBe(true)
     expect(button().classList.contains("empty-attribution")).toBe(true)
@@ -211,7 +214,7 @@ describe("element attribution editing", () => {
     ui().querySelector<HTMLButtonElement>(".close")!.click()
     element.removeAttribute(attributionAttributes.name)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(bridge.style.left).toBe("293px")
+    expect(bridge.style.left).toBe("290px")
     expect(button().classList.contains("empty-attribution")).toBe(true)
     document.getSelection()!.removeAllRanges()
     document.dispatchEvent(new Event("selectionchange"))

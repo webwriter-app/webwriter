@@ -2006,6 +2006,64 @@ await check("document resizing and graphic fitting preserve normal flow", async 
   finally { graphic.remove(); editor.features.transformation.clearTransform() }
 })
 
+await check("text containers resize horizontally and fit their content", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  document.body.append(frame)
+  try {
+    for(const mode of ["document", "canvas", "slides"] as const) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = '<!doctype html><body><p>Text</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+      await loaded
+      const view = frame.contentWindow! as Window & typeof globalThis
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, "text resizing fixture did not initialize")
+      const editor = view.editor!, doc = frame.contentDocument!, theme = doc.createElement("style")
+      theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+      if(mode !== "document") assert(editor.setDocumentLayout(mode, "document"), "text fixture did not convert")
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      for(const tag of ["p", "h2"]) {
+        const target = doc.createElement(tag)
+        target.textContent = "Text wraps naturally when its container becomes narrower. ".repeat(5)
+        target.style.cssText = "width:520px;height:50px;min-height:40px;max-height:60px;left:40px;top:40px"
+        doc.querySelector("p")!.replaceWith(target)
+        editor.features.selection.captureElement(target)
+        await layoutFrame()
+        const feature = editor.features.transformation, before = target.getBoundingClientRect()
+        if(mode === "document") {
+          const copyright = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui .copyright")!.getBoundingClientRect()
+          const deleter = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-delete")!.getBoundingClientRect()
+          assert(Math.abs(copyright.left + copyright.width / 2 - (deleter.left + deleter.width / 2)) < 1, `${tag}: copyright is not aligned below the delete control`)
+          assert(Math.abs(copyright.top + copyright.height / 2 - (before.top + before.bottom) / 2) < 1, `${tag}: copyright is not at the right midpoint`)
+        }
+        const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+        assert(handles.length === 1 && handles[0].dataset.resizeDirection === "down-right", `${mode}/${tag}: vertical handles remain visible`)
+        const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+        // Mouse handlers avoid synthetic pointer capture while exercising the native layout.
+        handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+        handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.top}))
+        feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: before.right - 160, clientY: before.top + 90, shiftKey: true}))
+        feature.handleScaleEnd()
+        await layoutFrame()
+        const resized = target.getBoundingClientRect()
+        assert(Math.abs(resized.width - before.width + 160) < 1, `${mode}/${tag}: width did not follow the handle (${before.width} -> ${resized.width}; ${target.style.cssText})`)
+        assert(target.style.height === "auto" && resized.height > before.height && target.scrollHeight <= target.clientHeight + 1, `${mode}/${tag}: text height is constrained`)
+        if(mode !== "document") assert(Math.abs(resized.top - before.top) < 1, `${mode}/${tag}: wrapping moved the top edge`)
+        target.textContent += "More text grows the container. ".repeat(20)
+        await layoutFrame()
+        assert(target.getBoundingClientRect().height > resized.height, `${mode}/${tag}: added text did not grow`)
+        target.textContent = "Short"
+        await layoutFrame()
+        assert(target.getBoundingClientRect().height < resized.height, `${mode}/${tag}: removed text did not shrink`)
+        if(tag === "p") target.replaceWith(doc.createElement("p"))
+      }
+      editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("iframes default to 16:9 and resize vertically in document flow", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:900px;height:1000px;border:0;max-width:none"

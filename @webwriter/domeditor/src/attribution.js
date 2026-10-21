@@ -417,9 +417,8 @@ export function createAttributionController(doc, options = {}) {
     if(empty) bridge.style.width = `${size}px`
     else bridge.style.removeProperty("width")
     const gutter = empty ? size : bridge.getBoundingClientRect().width || size
-    // Match the other affordances: the 2px outline with a 2px offset has
-    // its centerline 3px outside the authored border box.
-    const left = Math.max(offset, Math.min(rect.right + (empty ? 3 - size / 2 : 0), view.innerWidth - gutter - offset))
+    // Center the editing affordance on the right edge, below the delete control.
+    const left = Math.max(offset, Math.min(rect.right - (empty ? size / 2 : 0), view.innerWidth - gutter - offset))
     const top = Math.max(0, Math.min(view.innerHeight - size, (rect.top + rect.bottom) / 2 - size / 2))
     bridge.style.left = `${Math.max(0, left - offset)}px`
     bridge.style.top = `${top}px`

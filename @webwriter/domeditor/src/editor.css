@@ -1847,6 +1847,7 @@ body::part(transform-overlay-scale-up-up) { top: -7px; left: calc(50% - 4px); cu
 body::part(transform-overlay-scale-down-down) { bottom: -7px; left: calc(50% - 4px); cursor: ns-resize; }
 body::part(transform-overlay-scale-left-left) { left: -7px; top: calc(50% - 4px); cursor: ew-resize; }
 body::part(transform-overlay-scale-right-right) { right: -7px; top: calc(50% - 4px); cursor: ew-resize; }
+body::part(transform-overlay-scale-text) { cursor: ew-resize; }
 body::part(transform-overlay-scale) {
   position: absolute;
   pointer-events: auto;

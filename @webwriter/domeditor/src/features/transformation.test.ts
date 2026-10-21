@@ -83,6 +83,83 @@ function captureNode(target: Element) {
   editor.features.selection.captureElement(target)
 }
 
+describe("text container resizing", () => {
+  describe.each(["document", "canvas", "slides"] as const)("%s layout", mode => {
+    it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6"])("keeps the bottom-right handle horizontal for %s and lets height follow content", async tag => {
+      const target = targetElement(tag)
+      target.id = "text-container"
+      target.innerHTML = 'Text <em>with formatting</em><!--keep--><unfamiliar-inline>and content</unfamiliar-inline>'
+      const children = Array.from(target.childNodes)
+      if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      Object.assign(target.style, {width: "200px", height: "50px", minHeight: "40px", maxHeight: "60px"})
+      mockRect(target, {width: 200})
+      captureNode(target)
+      const visible = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"), handle => handle.dataset.resizeDirection)
+      expect(visible).toEqual(["down-right"])
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const initial = editor.toHTML(true)
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 125}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 260, clientY: 300, shiftKey: true}))
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+      expect(target.style.maxWidth).toBe("160px")
+      expect(target.style.height).toBe("auto")
+      expect(target.style.minHeight).toBe("0px")
+      expect(target.style.maxHeight).toBe("none")
+      expect(target.style.getPropertyValue("scale")).toBe("")
+      expect(Array.from(target.childNodes)).toEqual(children)
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const resized = editor.toHTML(true)
+      expect(resized).not.toContain("◆")
+      expect(editor.doc.body.toString()).not.toContain("◆")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(initial)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(resized)
+    })
+  })
+
+  it.each(["Escape", "pointercancel", "removed"])("restores height constraints and cleans markers on %s", cancellation => {
+    const target = targetElement("p")
+    Object.assign(target.style, {height: "50px", minHeight: "40px", maxHeight: "60px"})
+    const initial = target.style.cssText
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 125}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 300}))
+    expect(target.style.height).toBe("auto")
+    target.title = "Concurrent edit"
+    if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    else {
+      target.replaceWith(document.createElement("p"))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 160, clientY: 300}))
+    }
+    expect(target.style.cssText).toBe(initial)
+    expect(target.title).toBe("Concurrent edit")
+    expect(document.body.className).not.toContain("◆transform-scaling")
+  })
+
+  it("ignores vertical drags and preserves customized built-in widget resizing", () => {
+    const target = targetElement("h2")
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 150, clientY: 150}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 150, clientY: 190}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.hasAttribute("style")).toBe(false)
+    target.setAttribute("is", "heading-widget")
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
+    expect(handle.getAttribute("part")).not.toContain("transform-overlay-scale-text")
+  })
+})
+
 describe("caption affordance", () => {
   const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
 
@@ -666,7 +743,7 @@ describe("selection-owned transformation", () => {
     })
 
     it("restores dimensions on cancellation and supports undo/redo after resizing", async () => {
-      const target = targetElement()
+      const target = targetElement("figure")
       target.id = "resized-item"
       expect(editor.setDocumentLayout(mode, "document")).toBe(true)
       // These rect mocks model unscaled CSS pixels. Zoom has separate coverage.
@@ -1611,7 +1688,7 @@ describe("transform controls and geometry", () => {
   })
 
   it("handles scale through composed appendix pointer events", () => {
-    const target = targetElement()
+    const target = targetElement("figure")
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     selectNode(target)
     mockRect(target)
@@ -1678,7 +1755,7 @@ describe("transform controls and geometry", () => {
     expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
   })
 
-  describe.each(["p", "demo-widget"])("static %s resizing", tag => {
+  describe.each(["figure", "demo-widget"])("static %s resizing", tag => {
     it.each(["up-left", "up-right", "down-left", "down-right", "up-up", "right-right", "down-down", "left-left"])("keeps normal flow when dragging %s", direction => {
       const target = targetElement(tag)
       Object.assign(target.style, {width: "100px", height: "50px"})
@@ -1719,7 +1796,7 @@ describe("transform controls and geometry", () => {
       {edge: "up", x: 130, y: 100, dx: 13, dy: 20, width: "", height: "30px", left: "0px", top: "20px"},
       {edge: "down", x: 130, y: 150, dx: 13, dy: -20, width: "", height: "30px", left: "0px", top: "0px"},
     ])("resizes only the $edge axis without changing document insets", ({edge, x, y, dx, dy, width, height, left, top}) => {
-      const target = targetElement(captured ? "demo-widget" : "p")
+      const target = targetElement(captured ? "demo-widget" : "figure")
       const child = target.appendChild(document.createElement(captured ? "unfamiliar-content" : "mark"))
       target.appendChild(document.createComment("keep"))
       target.setAttribute("data-authored", "keep")
@@ -1758,7 +1835,7 @@ describe("transform controls and geometry", () => {
     {modifiers: {ctrlKey: true}, width: "130px", left: "0px", scale: ""},
     {modifiers: {shiftKey: true}, width: "", left: "0px", scale: "1.1 1"},
   ])("preserves resize modifiers at edges: $modifiers", ({modifiers, width, left, scale}) => {
-    const target = targetElement()
+    const target = targetElement("figure")
     Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
     mockRect(target)
     selectNode(target)

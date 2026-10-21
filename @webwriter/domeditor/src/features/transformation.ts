@@ -43,7 +43,8 @@ type Gesture = {
  * Canvas and slide items retain spatial positioning. Ctrl/Cmd previews a flow
  * gap; Shift constrains spatial movement to one axis; Alt disables snapping.
  *
- * Resize: document mode exposes only the bottom-right corner. Freeform
+ * Resize: text containers use the bottom-right handle horizontally and grow with content.
+ * Other elements in document mode expose only the bottom-right corner. Freeform
  * corners set max-inline/block-size; midpoints constrain one logical axis.
  * Existing dimensions and intrinsic content can keep the element smaller.
  * Iframes also set height so their viewport can grow vertically.
@@ -411,20 +412,27 @@ export class TransformationFeature extends EditorFeature {
       || this.editor.features.slides.active && isSlide(target.parentElement)
   }
 
+  #isTextContainer(target: Element) {
+    return target instanceof HTMLElement && target.matches("p:not([is]), h1:not([is]), h2:not([is]), h3:not([is]), h4:not([is]), h5:not([is]), h6:not([is])")
+  }
+
   #syncControlParts() {
     const overlay = this.overlay
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
+    const text = Boolean(this.target && this.#isTextContainer(this.target))
     setPart(overlay, "transform-overlay-freeform", freeform)
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      midpoint.hidden = !freeform
-      setPart(midpoint, "transform-overlay-scale-hidden", !freeform)
+      const hide = text || !freeform
+      midpoint.hidden = hide
+      setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = !freeform && scaler.id !== "◆transform-overlay-scale-down-right"
+      const hide = (text || !freeform) && scaler.id !== "◆transform-overlay-scale-down-right"
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
+      setPart(scaler, "transform-overlay-scale-text", text)
     }
     for(const edge of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
       edge.dataset.transformMode = "move"
@@ -982,28 +990,35 @@ export class TransformationFeature extends EditorFeature {
   handleScaleDrag(event: MouseEvent) {
     if(!this.#validGesture() || this.#gesture!.mode !== "scale") return
     const gesture = this.#gesture!
+    const target = gesture.target
+    const text = this.#isTextContainer(target)
+    const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
+    if(text && !direction.includes("left") && !direction.includes("right")) return
     const delta = this.#vector(gesture.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
-    if(!gesture.moved && Math.hypot(delta.x, delta.y) < 1) return
+    if(!gesture.moved && (text ? Math.abs(delta.x) : Math.hypot(delta.x, delta.y)) < 1) return
     gesture.moved = true
     this.#resetWritten()
-    const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
     const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
-    const y = direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
+    const y = text ? 0 : direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
     document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const symmetric = modifierKeyDown(event)
     const round = this.getRoundingFunc(event)
     const dw = x ? Math.max(1 - gesture.width, round(x * delta.x * (symmetric ? 2 : 1))) : 0
     const dh = y ? Math.max(1 - gesture.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
-    const target = gesture.target
     const crop = gesture.canvas && !event.altKey
     if(gesture.canvas) this.#writeCanvasViewBox(gesture.canvas.initial)
     const style = getComputedStyle(target)
     if(style.display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
     let actualDW = dw, actualDH = dh
-    if(event.shiftKey && !crop) {
+    if(event.shiftKey && !crop && !text) {
       this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
     }
     else {
+      if(text) {
+        this.#write("height", "auto")
+        this.#write("min-height", "0px")
+        this.#write("max-height", "none")
+      }
       if(gesture.canvas) {
         this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
@@ -1046,7 +1061,7 @@ export class TransformationFeature extends EditorFeature {
     // Only spatial items compensate offsets. Document resizing keeps authored
     // positioning and insets intact, including when fitting an SVG viewport.
     if(this.#isFreeformItem(target) && (getComputedStyle(target).position || "static") !== "static") {
-      const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, symmetric ? 0 : y * actualDH / 2)
+      const shift = this.#vector(gesture.matrix, symmetric ? 0 : x * actualDW / 2, text ? actualDH / 2 : symmetric ? 0 : y * actualDH / 2)
       const rect = this.targetRect
       this.#offsetBy(gesture.rect.left + gesture.rect.width / 2 + shift.x - (rect.left + rect.width / 2),
         gesture.rect.top + gesture.rect.height / 2 + shift.y - (rect.top + rect.height / 2))
