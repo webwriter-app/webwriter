@@ -4638,6 +4638,79 @@ describe("DomEditor file actions", () => {
     expect(iframe.sandbox.contains("allow-modals")).toBe(true)
   })
 
+  it.each(["Ctrl", "Meta", "Alt"])("prints the iframe from UI fields, widgets, and dialogs (%s)", async modifier => {
+    const {editor, editorWindow, iframe} = await mountEditor()
+    const host = editor as any
+    host.settings = {...host.settings, shortcuts: {...host.settings.shortcuts, "document.print": `${modifier}+P`}}
+    const print = vi.fn()
+    Object.defineProperty(editorWindow, "print", {configurable: true, value: print})
+    const outerPrint = vi.fn()
+    vi.stubGlobal("print", outerPrint)
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const source = document.createElement("textarea")
+    source.className = "html-source-input"
+    source.value = "Selected source"
+    const settings = document.createElement("settings-panel")
+    const settingsButton = settings.appendChild(document.createElement("button"))
+    editor.shadowRoot!.append(source, settings)
+    const frameDocument = iframe.contentDocument!
+    const input = frameDocument.body.appendChild(frameDocument.createElement("input"))
+    const widget = frameDocument.body.appendChild(frameDocument.createElement("test-widget"))
+    const widgetControl = widget.attachShadow({mode: "open"}).appendChild(frameDocument.createElement("button"))
+    const appendix = frameDocument.body.shadowRoot ?? frameDocument.body.attachShadow({mode: "open"})
+    const appendixControl = appendix.appendChild(frameDocument.createElement("input"))
+    const targets = [ribbon, ribbon.shadowRoot!.querySelector<HTMLInputElement>(".ai-prompt-input")!, source,
+      settingsButton, frameDocument.querySelector("p")!, input, widgetControl, appendixControl]
+    const keydown = (target: EventTarget, repeat = false) => {
+      const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: modifier === "Ctrl",
+        metaKey: modifier === "Meta", altKey: modifier === "Alt", bubbles: true, composed: true, cancelable: true, repeat})
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    for(const target of targets) {
+      expect(target).not.toBeNull()
+      ;(target as HTMLElement).focus()
+      if(target === source) source.select()
+      keydown(target)
+    }
+    expect(source.selectionStart).toBe(0)
+    expect(source.selectionEnd).toBe(source.value.length)
+    expect(print).toHaveBeenCalledTimes(targets.length)
+    keydown(source, true)
+    expect(print).toHaveBeenCalledTimes(targets.length)
+
+    const menu = editor.shadowRoot!.querySelector<OpenDocumentMenu>("open-document-menu")!
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector("dialog")!.open = true
+    keydown(menu)
+    expect(print).toHaveBeenCalledTimes(targets.length + 1)
+    expect(outerPrint).not.toHaveBeenCalled()
+
+    editor.remove()
+    const detached = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: modifier === "Ctrl",
+      metaKey: modifier === "Meta", altKey: modifier === "Alt", bubbles: true, cancelable: true})
+    document.dispatchEvent(detached)
+    expect(detached.defaultPrevented).toBe(false)
+    expect(print).toHaveBeenCalledTimes(targets.length + 1)
+  })
+
+  it("routes printing from a UI field to the cross-origin editor frame", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    const control = vi.spyOn(host, "postFrameControl")
+    const source = editor.shadowRoot!.appendChild(document.createElement("textarea"))
+    const shortcut = host.settings.shortcuts["document.print"]
+    const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", metaKey: shortcut.includes("Meta"),
+      ctrlKey: shortcut.includes("Ctrl"), bubbles: true, composed: true, cancelable: true})
+
+    source.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(control).toHaveBeenCalledWith("print")
+  })
+
   it("prints the active preview document", async () => {
     const {editor, editorWindow} = await mountEditor()
     const editorPrint = vi.fn()
@@ -4648,8 +4721,13 @@ describe("DomEditor file actions", () => {
     })
     ;(editor as any).previewActive = true
 
-    ;(editor as any).printDocument()
+    const source = editor.shadowRoot!.appendChild(document.createElement("textarea"))
+    const shortcut = (editor as any).settings.shortcuts["document.print"]
+    const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", metaKey: shortcut.includes("Meta"),
+      ctrlKey: shortcut.includes("Ctrl"), bubbles: true, composed: true, cancelable: true})
+    source.dispatchEvent(event)
 
+    expect(event.defaultPrevented).toBe(true)
     expect(previewPrint).toHaveBeenCalledTimes(1)
     expect(editorPrint).not.toHaveBeenCalled()
   })

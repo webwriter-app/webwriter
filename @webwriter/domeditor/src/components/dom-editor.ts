@@ -3034,18 +3034,21 @@ export class DomEditor extends LitElement {
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
-    if(isTextFieldInteraction(event, this.editorDocument?.body)
-      || event.currentTarget === this.editorDocument && isWidgetShadowInteraction(event)) return
-    const appendix = this.editorDocument?.body.shadowRoot
-    if(appendix && event.composedPath().includes(appendix)) return
-    if(event.composedPath().some(target => target instanceof HTMLElement
-      && target.classList.contains("html-source-input"))) return
-    if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
-    if(this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.shadowRoot?.querySelector("dialog")?.open) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => this.settings.shortcuts[candidate.id] === shortcut)
     if(!command && !builtinShortcuts().has(shortcut)) return
+    // Printing belongs to the document regardless of which UI control has focus.
+    if(command?.id !== "document.print") {
+      if(isTextFieldInteraction(event, this.editorDocument?.body)
+        || event.currentTarget === this.editorDocument && isWidgetShadowInteraction(event)) return
+      const appendix = this.editorDocument?.body.shadowRoot
+      if(appendix && event.composedPath().includes(appendix)) return
+      if(event.composedPath().some(target => target instanceof HTMLElement
+        && target.classList.contains("html-source-input"))) return
+      if(event.composedPath().some(target => target instanceof HTMLElement && target.localName === "settings-panel")) return
+      if(this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.shadowRoot?.querySelector("dialog")?.open) return
+    }
     event.preventDefault()
     event.stopImmediatePropagation()
     if(!command || event.repeat) return
