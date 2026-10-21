@@ -694,7 +694,8 @@ describe("toolbox", () => {
     expect(drawer.shadowRoot!.querySelector(".pane-icon .icon-tabler-palette")).not.toBeNull()
     const advanced = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
     await advanced.updateComplete
-    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "rotate", "scale", "opacity", "box-shadow", "filter"])
+    expect(advanced.propertyNames).toEqual(["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "rotate", "opacity", "box-shadow", "filter"])
+    expect(advanced.shadowRoot!.querySelector('[data-property="scale"]')).toBeNull()
     const compactCombos = advanced.shadowRoot!.querySelectorAll<HTMLElement>('style-combobox[id^="compact-"]')
     expect(compactCombos.length).toBeGreaterThan(0)
     expect(Array.from(compactCombos).every(combo => combo.shadowRoot?.querySelector("input"))).toBe(true)
@@ -1259,7 +1260,7 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
   expect(reset().disabled).toBe(true)
   toolbox.elementStyle = {
     target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
-    inline: {"font-family": {value: "serif", priority: ""}},
+    inline: {"font-family": {value: "serif", priority: ""}, scale: {value: "1.5", priority: ""}},
     computed: {width: "400px"}, context: {display: "block", parentDisplay: "block"},
   }
   await toolbox.updateComplete
