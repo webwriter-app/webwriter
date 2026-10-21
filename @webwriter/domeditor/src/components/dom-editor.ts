@@ -609,6 +609,7 @@ export class DomEditor extends LitElement {
   private fileName = ""
   private fileDirty = false
   private documentLayoutsDismissed = false
+  private documentLayoutsManuallyDismissed = false
   private sizeWarningDismissed = false
   private documentLayoutConversionCount = 0
   private fileError = ""
@@ -1951,7 +1952,7 @@ export class DomEditor extends LitElement {
           if(this.historyDocumentTransitionCount === 0) {
             if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
             else this.dirtyTrackingMutationPending = true
-            if(this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
+            this.updateDocumentLayoutsVisibility()
           }
           if(this.stylesVisible()) this.queueElementStyleRefresh()
         }
@@ -2121,7 +2122,7 @@ export class DomEditor extends LitElement {
         if(this.dirtyTrackingMutationPending) {
           this.dirtyTrackingMutationPending = false
           this.fileDirty = !this.isFreshDocumentUnchanged()
-          if(this.fileDirty && this.documentLayoutConversionCount === 0) this.documentLayoutsDismissed = true
+          this.updateDocumentLayoutsVisibility()
         }
         this.dirtyTrackingTimer = undefined
       }, 0)
@@ -2213,6 +2214,22 @@ export class DomEditor extends LitElement {
     }
     if(!resetEmptyLayoutContent(body)) return null
     return doc.documentElement.outerHTML
+  }
+
+  private updateDocumentLayoutsVisibility() {
+    if(!this.dirtyTrackingReady || this.documentLayoutConversionCount !== 0) return
+    if(this.documentLayoutsManuallyDismissed || this.consoleOpen || this.reviewOpen || this.settings.pinDeveloperConsole) {
+      this.documentLayoutsDismissed = true
+      return
+    }
+    if(!this.fileDirty) {
+      this.documentLayoutsDismissed = false
+      return
+    }
+    const body = this.editorDocument?.body.cloneNode(true) as HTMLElement | undefined
+    if(!body) return
+    clearEditorArtifacts(body)
+    this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
 
   private async retainFreshDocumentLayout(revision: number, initialSnapshot?: string | null) {
@@ -3174,6 +3191,7 @@ export class DomEditor extends LitElement {
     this.documentLayout = defaultDocumentLayoutState()
     this.documentLayoutError = ""
     this.documentLayoutsDismissed = !isNewDocument || this.settings.pinDeveloperConsole
+    this.documentLayoutsManuallyDismissed = false
     // Only successful widget initialization may reveal the incoming document.
     this.documentFramePending = true
     this.frameDocumentHTML = `${serializeDoctype(parsed.doctype)}${parsed.documentElement.outerHTML}`
@@ -6052,7 +6070,7 @@ export class DomEditor extends LitElement {
       this.documentLayoutError = error instanceof Error ? error.message : String(error)
     }).finally(() => {
       this.documentLayoutConversionCount--
-      if(revision === this.frameRevision && this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
+      if(revision === this.frameRevision) this.updateDocumentLayoutsVisibility()
     })
   }
 
@@ -6925,7 +6943,7 @@ export class DomEditor extends LitElement {
         if(this.historyDocumentTransitionCount === 0) {
           if(this.dirtyTrackingReady) this.fileDirty = !this.isFreshDocumentUnchanged()
           else this.dirtyTrackingMutationPending = true
-          if(this.documentLayoutConversionCount === 0 && this.dirtyTrackingReady && this.fileDirty) this.documentLayoutsDismissed = true
+          this.updateDocumentLayoutsVisibility()
         }
         if(this.stylesVisible()) this.queueElementStyleRefresh()
       }
@@ -7932,6 +7950,7 @@ export class DomEditor extends LitElement {
                   @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
                   @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
                   @click=${async () => {
+                    this.documentLayoutsManuallyDismissed = true
                     this.documentLayoutsDismissed = true
                     await this.updateComplete
                     this.focusEditor()

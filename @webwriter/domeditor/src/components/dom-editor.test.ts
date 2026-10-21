@@ -7929,6 +7929,7 @@ describe("DomEditor.execute()", () => {
     vi.spyOn(host, "waitForEditorWindow").mockResolvedValue(undefined)
     await host.reloadDocument("<p>Existing document</p>")
     host.settings = {...host.settings, pinDeveloperConsole: pinned}
+    host.documentLayoutsManuallyDismissed = true
 
     await host.newDocument("document")
     await editor.updateComplete
@@ -7966,7 +7967,7 @@ describe("DomEditor.execute()", () => {
     expect((editor as any).fileDirty).toBe(false)
   })
 
-  it("hides Layouts on the first authored edit and keeps it hidden after undoing that edit", async () => {
+  it("hides Layouts on the first authored edit and restores it after undoing that edit", async () => {
     const {editor, iframe} = await mountEditor()
     await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
     const body = iframe.contentDocument!.body
@@ -7982,7 +7983,61 @@ describe("DomEditor.execute()", () => {
     body.firstElementChild!.textContent = ""
     await new Promise(resolve => setTimeout(resolve, 0))
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).toBeNull()
+    expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).not.toBeNull()
+  })
+
+  it.each([false, true])("restores Layouts after clearing a saved document unless manually dismissed (isolated frame: %s)", async isolated => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    host.fileHandle = {}
+    const doc = iframe.contentDocument!
+    if(isolated) {
+      host.editorOpaque = true
+      vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    }
+    const change = async (html: string) => {
+      doc.body.innerHTML = html
+      if(isolated) window.dispatchEvent(new MessageEvent("message", {source: iframe.contentWindow,
+        data: {type: "editor-frame-snapshot", html: doc.documentElement.outerHTML, treeChanged: true}}))
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await editor.updateComplete
+      expect(doc.body.innerHTML).toBe(html)
+    }
+    const panel = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-panel")!
+    for(const html of ["", '<p class="◆ ◆empty-selected"><br></p>', "<h1></h1><p><br></p>"]) {
+      await change("<p>Content</p>")
+      expect(panel.inert).toBe(true)
+      await change(html)
+      expect(panel.inert).toBe(false)
+      expect(host.fileDirty).toBe(true)
+    }
+    for(const html of ["<custom-card></custom-card>", "<img src=\"example.png\">", "<!--keep-->", '<p id="anchor"></p>']) {
+      await change(html)
+      expect(panel.inert).toBe(true)
+    }
+    await change("")
+    editor.shadowRoot!.querySelector<HTMLButtonElement>(".document-layouts-close")!.click()
+    await change("<p>More content</p>")
+    await change("")
+    expect(panel.inert).toBe(true)
+  })
+
+  it.each([
+    ["canvas", '<p style="position: absolute; left: 0px; top: 0px; width: 320px;"><br></p>'],
+    ["slides", '<div class="ww-slides-viewport"><section class="ww-slide" tabindex="-1"><h1></h1><p><br></p></section></div>'],
+    ["board", '<section class="ww-board-column"><h2></h2><article class="ww-board-card"><p><br></p></article></section>'],
+  ])("restores Layouts when %s content returns to empty layout placeholders", async (mode, html) => {
+    const {editor, iframe} = await mountEditor()
+    await vi.waitFor(() => expect((editor as any).dirtyTrackingReady).toBe(true))
+    const body = iframe.contentDocument!.body
+    body.className = `ww-${mode}`
+    body.innerHTML = "<p>Content</p>"
+    await vi.waitFor(() => expect((editor as any).documentLayoutsDismissed).toBe(true))
+    body.innerHTML = html
+    await vi.waitFor(() => expect((editor as any).documentLayoutsDismissed).toBe(false))
+    expect(body.innerHTML).toBe(html)
+    expect((editor as any).fileDirty).toBe(true)
   })
 
   it.each([false, true])("keeps the initial layout clean and the pane open across repeated layout switches (isolated frame: %s)", async isolated => {
@@ -8068,7 +8123,7 @@ describe("DomEditor.execute()", () => {
       expect(doc.body.innerHTML).toBe(html)
     }
     for(const html of ['<p style="color: red"></p>', '<p id="anchor"></p>', '<p><br class="authored"></p>', '<!--keep-->',
-      '<custom-card></custom-card>', '<p></p><p></p>', '<p>Content</p>']) {
+      '<custom-card></custom-card>', '<p>Content</p>']) {
       doc.body.innerHTML = html
       snapshot()
       await vi.waitFor(() => expect(host.fileDirty).toBe(true))
