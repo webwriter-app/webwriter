@@ -2066,7 +2066,7 @@ await check("text containers resize horizontally and fit their content", async (
         // Mouse handlers avoid synthetic pointer capture while exercising the native layout.
         handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
         handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.top}))
-        feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: before.right - 160, clientY: before.top + 90, shiftKey: true}))
+        feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: before.right - (mode === "document" ? 80 : 160), clientY: before.top + 90, shiftKey: true}))
         feature.handleScaleEnd()
         await layoutFrame()
         const resized = target.getBoundingClientRect()
@@ -2082,6 +2082,125 @@ await check("text containers resize horizontally and fit their content", async (
         if(tag === "p") target.replaceWith(doc.createElement("p"))
       }
       editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("images stretch independently of their intrinsic aspect ratio", async () => {
+  for(const mode of ["document", "canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:700px"
+    document.body.append(frame)
+    try {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+      await loaded
+      const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, "image resize fixture did not initialize")
+      const editor = view.editor!, theme = doc.createElement("style")
+      theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+      if(mode !== "document") assert(editor.setDocumentLayout(mode, "document"), "image fixture did not convert")
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      for(const tag of ["img", "picture"]) {
+        const target = doc.createElement(tag)
+        const image = tag === "img" ? target as HTMLImageElement : target.appendChild(doc.createElement("img"))
+        image.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="skyblue"/><circle cx="100" cy="50" r="40" fill="navy"/></svg>')}`
+        image.style.objectFit = "contain"
+        target.style.cssText = "width:200px;height:auto;margin-inline:auto"
+        const parent = doc.querySelector(".ww-slide") ?? doc.body
+        parent.append(target)
+        await image.decode()
+        editor.features.selection.captureElement(target)
+        await layoutFrame()
+        const transform = editor.features.transformation
+        for(const [dx, dy] of [[60, -20], [-40, 30], [0, 40], [40, 0]]) {
+          const before = target.getBoundingClientRect()
+          const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+          handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once: true})
+          handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.bottom}))
+          transform.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: before.right + dx, clientY: before.bottom + dy, altKey: true}))
+          transform.handleScaleEnd()
+          await layoutFrame()
+          const after = target.getBoundingClientRect(), content = image.getBoundingClientRect()
+          const dw = mode === "document" ? 2 * dx : dx
+          assert(Math.abs(after.width - before.width - dw) < 1 && Math.abs(after.height - before.height - dy) < 1, `${tag}: image did not follow both dimensions (${before.width}×${before.height} -> ${after.width}×${after.height})`)
+          assert(Math.abs(content.width - after.width) < 1 && Math.abs(content.height - after.height) < 1, `${tag}: image did not fill its resized box`)
+          assert(getComputedStyle(image).objectFit === "fill", `${tag}: image retained its intrinsic ratio`)
+        }
+        for(const [dx, dy] of [[60, -20], [-40, -10], [0, 30]]) {
+          const before = target.getBoundingClientRect()
+          const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+          handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once: true})
+          handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.bottom}))
+          transform.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: before.right + dx, clientY: before.bottom + dy, shiftKey: true, altKey: true}))
+          transform.handleScaleEnd()
+          await layoutFrame()
+          const after = target.getBoundingClientRect(), content = image.getBoundingClientRect()
+          assert(Math.abs(after.width / after.height - before.width / before.height) < .01, `${mode}/${tag}: Shift changed the current aspect ratio`)
+          assert(Math.abs(after.width - before.width) > 1 && Math.abs(after.height - before.height) > 1, `${mode}/${tag}: Shift did not resize both dimensions`)
+          assert(Math.abs(content.width - after.width) < 1 && Math.abs(content.height - after.height) < 1, `${mode}/${tag}: Shift left the image outside its box`)
+          assert(!target.style.scale, `${mode}/${tag}: Shift used CSS scale instead of maximum dimensions`)
+        }
+        target.remove()
+        transform.clearTransform()
+      }
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
+await check("resize handles follow alignment and centered edges track the cursor", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1440px;height:800px;max-width:none"
+  document.body.append(frame)
+  try {
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
+    frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    await loaded
+    const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "aligned resize fixture did not initialize")
+    const editor = view.editor!, theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    for(const width of [1440, 900, 375]) {
+      frame.style.width = `${width}px`
+      for(const placement of ["left", "center", "right", "far-left", "far-right"] as const) {
+        const target = doc.createElement("picture"), image = target.appendChild(doc.createElement("img"))
+        image.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="skyblue"/><circle cx="100" cy="50" r="40" fill="navy"/></svg>')}`
+        target.style.cssText = "width:200px;height:auto"
+        doc.body.append(target)
+        await image.decode()
+        const floated = placement.startsWith("far-")
+        editor.features.manipulation.setFloat(target, floated ? placement as "far-left" | "far-right" : "none", floated ? undefined : placement as "left" | "center" | "right")
+        editor.features.selection.captureElement(target)
+        await layoutFrame()
+        const transform = editor.features.transformation
+        const effective = floated ? view.getComputedStyle(target).float : placement
+        const centered = effective === "center" || effective === "none"
+        const right = effective === "right"
+        const handles = Array.from(transform.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+        assert(handles.length === 1 && handles[0].dataset.resizeDirection === (right ? "down-left" : "down-right"), `${placement}: wrong resize corner`)
+        for(const distance of [30, -20]) {
+          const before = target.getBoundingClientRect(), handle = handles[0]
+          const startX = right ? before.left : before.right, dx = right ? -distance : distance
+          handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true})
+          handle.dispatchEvent(new view.MouseEvent("mousedown", {button:0, clientX:startX, clientY:before.bottom}))
+          transform.handleScaleDrag(new view.MouseEvent("mousemove", {clientX:startX + dx, clientY:before.bottom + 10, altKey:true}))
+          transform.handleScaleEnd()
+          await layoutFrame()
+          const after = target.getBoundingClientRect()
+          assert(Math.abs((right ? after.left : after.right) - startX - dx) < 1, `${placement}: dragged edge missed the cursor`)
+          assert(Math.abs(after.bottom - before.bottom - 10) < 1, `${placement}: bottom edge missed the cursor`)
+          if(centered) assert(Math.abs(after.left + after.width / 2 - before.left - before.width / 2) < 1, "centered resize moved its center")
+          else assert(Math.abs((right ? after.right : after.left) - (right ? before.right : before.left)) < 1, `${placement}: fixed edge moved`)
+          assert(!target.style.position && !target.style.left && !target.style.right, `${placement}: resizing left document flow`)
+        }
+        transform.clearTransform()
+        target.remove()
+      }
     }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }

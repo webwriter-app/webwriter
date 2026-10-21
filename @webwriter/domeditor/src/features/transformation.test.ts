@@ -160,6 +160,196 @@ describe("text container resizing", () => {
   })
 })
 
+describe.each(["img", "picture"])("%s stretching", tag => {
+  function imageTarget() {
+    const target = targetElement(tag)
+    if(tag === "picture") target.innerHTML = '<source srcset="alternate.png"><!--keep--><img alt="Keep description">'
+    const image = (tag === "picture" ? target.querySelector("img")! : target) as HTMLImageElement
+    image.style.objectFit = "contain"
+    Object.assign(target.style, {width: "200px", height: "100px"})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    return {target, image}
+  }
+
+  it.each([{dx: 60, dy: -20}, {dx: -40, dy: 30}, {dx: 0, dy: 40}, {dx: 40, dy: 0}])("changes dimensions independently by $dx/$dy and preserves undo", async ({dx, dy}) => {
+    const {target, image} = imageTarget()
+    const children = Array.from(target.childNodes)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe(`${200 + dx}px`)
+    expect(target.style.maxHeight).toBe(`${100 + dy}px`)
+    expect(target.style.width).toBe("100%")
+    expect(target.style.height).toBe("auto")
+    expect(target.style.aspectRatio).toBe(`${200 + dx} / ${100 + dy}`)
+    expect(image.style.objectFit).toBe("fill")
+    if(tag === "picture") {
+      expect(image.style.width).toBe("100%")
+      expect(image.style.height).toBe("100%")
+    }
+    expect(Array.from(target.childNodes)).toEqual(children)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const resized = editor.toHTML(true)
+    expect(resized).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(resized)
+  })
+
+  it.each([
+    {direction: "down-right", dx: 60, dy: -20, width: 260, height: 130},
+    {direction: "down-right", dx: -60, dy: -10, width: 140, height: 70},
+    {direction: "down-right", dx: 0, dy: 40, width: 280, height: 140},
+    {direction: "right-right", dx: 40, dy: 0, width: 240, height: 120},
+    {direction: "down-down", dx: 0, dy: -20, width: 160, height: 80},
+    {direction: "up-left", dx: -40, dy: 10, width: 240, height: 120},
+  ])("keeps proportions with Shift at $direction ($dx/$dy) and preserves undo", async ({direction, dx, dy, width, height}) => {
+    const {target} = imageTarget()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, shiftKey: true, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe(`${width}px`)
+    expect(target.style.maxHeight).toBe(`${height}px`)
+    expect(target.style.aspectRatio).toBe(`${width} / ${height}`)
+    expect(target.style.getPropertyValue("scale")).toBe("")
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const resized = editor.toHTML(true)
+    expect(resized).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(resized)
+  })
+
+  it("switches between proportional and free resizing during one gesture", () => {
+    const {target} = imageTarget()
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    const move = (shiftKey: boolean) => document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 360, clientY: 180, shiftKey, altKey: true}))
+    move(false)
+    expect(target.style.aspectRatio).toBe("260 / 80")
+    move(true)
+    expect(target.style.aspectRatio).toBe("260 / 130")
+    move(false)
+    expect(target.style.aspectRatio).toBe("260 / 80")
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(target.style.width).toBe("200px")
+    expect(target.style.height).toBe("100px")
+    expect(target.style.aspectRatio).toBe("")
+  })
+
+  it.each(["Escape", "pointercancel", "replace", "concurrent", "destroy"])("restores owned image styles on %s", cancellation => {
+    const {target, image} = imageTarget()
+    const original = target.style.cssText, imageOriginal = image.style.cssText
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 340, clientY: 180}))
+    image.title = "Concurrent edit"
+    if(cancellation === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(cancellation === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    else if(cancellation === "destroy") editor.destroy()
+    else {
+      if(cancellation === "replace") image.replaceWith(document.createElement("img"))
+      else image.style.objectFit = "cover"
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 350, clientY: 180}))
+    }
+    if(cancellation === "concurrent") {
+      expect(image.style.objectFit).toBe("cover")
+      image.style.objectFit = "contain"
+    }
+    expect(target.style.cssText).toBe(original)
+    expect(image.style.cssText).toBe(imageOriginal)
+    expect(image.title).toBe("Concurrent edit")
+    expect(document.body.className).not.toContain("◆transform-scaling")
+  })
+})
+
+describe("resize alignment", () => {
+  it.each([
+    {marginLeft: "0px", marginRight: "auto", float: "none", corner: "down-right", width: 230},
+    {marginLeft: "20px", marginRight: "20px", float: "none", corner: "down-right", width: 230},
+    {marginLeft: "auto", marginRight: "0px", float: "none", corner: "down-left", width: 230},
+    {marginLeft: "auto", marginRight: "auto", float: "none", corner: "down-right", width: 260},
+    {marginLeft: "auto", marginRight: "auto", float: "right", corner: "down-left", width: 230},
+    {marginLeft: "auto", marginRight: "auto", float: "left", corner: "down-right", width: 230},
+  ])("uses $corner for margins $marginLeft/$marginRight and float $float", ({marginLeft, marginRight, float, corner, width}) => {
+    const target = targetElement("img")
+    Object.assign(target.style, {width: "200px", height: "100px", marginLeft, marginRight, float})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+    expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual([corner])
+    handles[0].dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: corner === "down-left" ? 270 : 330, clientY: 220, altKey: true}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe(`${width}px`)
+    expect(target.style.maxHeight).toBe("120px")
+    expect(target.style.marginLeft).toBe(marginLeft)
+    expect(target.style.marginRight).toBe(marginRight)
+    expect(target.style.position).toBe("")
+  })
+
+  it.each(["p", "demo-widget", "picture", "img"])("refreshes %s handles after placement changes", tag => {
+    const target = targetElement(tag)
+    mockRect(target)
+    selectNode(target)
+    for(const alignment of ["right", "center", "left"] as const) {
+      editor.features.manipulation.setFloat(target, "none", alignment)
+      feature.updateInfo()
+      const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+      expect(handles.map(handle => handle.dataset.resizeDirection)).toEqual([alignment === "right" ? "down-left" : "down-right"])
+    }
+    target.classList.add("ww-float-right")
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!.hidden).toBe(false)
+    target.classList.replace("ww-float-right", "ww-float-left")
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
+  })
+
+  it("does not compound centered resizing with Ctrl/Cmd", () => {
+    const target = targetElement("img")
+    Object.assign(target.style, {width: "200px", height: "100px", margin: "auto"})
+    mockRect(target, {width: 200, height: 100})
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 330, clientY: 220, ctrlKey: true, altKey: true}))
+    expect(target.style.maxWidth).toBe("260px")
+    expect(target.style.maxHeight).toBe("140px")
+    document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+    expect(target.style.maxWidth).toBe("")
+    expect(target.style.maxHeight).toBe("")
+  })
+
+  it("follows responsive float placement instead of the authored side", () => {
+    const target = targetElement("img")
+    target.classList.add("ww-float-left")
+    target.style.setProperty("float", "right", "important")
+    mockRect(target)
+    selectNode(target)
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!.hidden).toBe(false)
+    target.style.setProperty("float", "none", "important")
+    target.style.setProperty("--ww-responsive-float", "none")
+    target.style.margin = "auto"
+    feature.updateInfo()
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
+  })
+})
+
 describe("caption affordance", () => {
   const button = () => feature.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
 

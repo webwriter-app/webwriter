@@ -21,7 +21,7 @@ import {
   type HeadingGroupSelectionState,
   type RibbonDropPosition,
 } from "../editor-bridge"
-import {floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
+import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
@@ -2478,8 +2478,7 @@ export class ManipulationFeature extends EditorFeature {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
         canMoveUp: movable && target.previousElementSibling !== null,
         canMoveDown: movable && target.nextElementSibling !== null,
-        alignment: style.marginLeft === "auto" && style.marginRight !== "auto" ? "right"
-          : style.marginRight === "auto" && style.marginLeft !== "auto" ? "left" : "center",
+        alignment: alignmentFromStyles(style),
         ...(target.matches(".ww-float-left, .ww-float-right, .ww-float-none")
           ? {float: floatSideFromStyles(computedStyle.float, style, target.classList)} : {}),
         ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},

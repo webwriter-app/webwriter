@@ -3,7 +3,7 @@ import { $, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingB
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
-import {floatSideFromStyles, type FloatSide} from "../element-styles"
+import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../element-styles"
 import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../ribbon-icons"
 
@@ -11,6 +11,7 @@ type TransformElement = HTMLElement | SVGSVGElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
 const cropDirections = ["up-left", "down-right"] as const
 type StyleValue = {value: string, priority: string}
+type GestureStyles = {target: TransformElement, initial: CSSStyleDeclaration, written: Map<string, StyleValue>}
 type Gesture = {
   target: TransformElement
   parent: Element | null
@@ -32,6 +33,7 @@ type Gesture = {
   written: Map<string, StyleValue>
   moved: boolean
   captured: boolean
+  image?: GestureStyles & {parent: Element | null}
   canvas?: {initial: string | null, written: string | null, x: number, y: number, width: number, height: number}
   crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
   endUndoGroup: () => void
@@ -43,15 +45,18 @@ type Gesture = {
  * Canvas and slide items retain spatial positioning. Ctrl/Cmd previews a flow
  * gap; Shift constrains spatial movement to one axis; Alt disables snapping.
  *
- * Resize: text containers use the bottom-right handle horizontally and grow with content.
- * Other elements in document mode expose only the bottom-right corner. Freeform
+ * Resize: text containers resize horizontally and grow with content.
+ * Document elements expose the bottom corner opposite their alignment; centered
+ * elements resize symmetrically along the horizontal axis. Freeform
  * corners set max-inline/block-size; midpoints constrain one logical axis.
  * Existing dimensions and intrinsic content can keep the element smaller.
+ * Images use an explicit aspect ratio to stretch within their maximum dimensions.
  * Iframes also set height so their viewport can grow vertically.
  * Canvas and slide items also set dimensions so they can grow with the handles.
  * Top/left handles keep the opposite edge fixed by adjusting offsets.
  * Ctrl/Cmd resizes about the center;
- * Shift stretches with CSS scale instead of reflowing content; Alt unsnaps.
+ * Shift preserves image proportions and stretches other elements with CSS scale
+ * instead of reflowing content; Alt unsnaps.
  * SVG canvases crop their viewport by default; Alt resizes their contents.
  * Native images and videos expose opposite crop corners that adjust CSS insets.
  * Rotate (absolute targets): drag about the center, snapping to 5 degrees
@@ -416,11 +421,29 @@ export class TransformationFeature extends EditorFeature {
     return target instanceof HTMLElement && target.matches("p:not([is]), h1:not([is]), h2:not([is]), h3:not([is]), h4:not([is]), h5:not([is]), h6:not([is])")
   }
 
+  #resizeAlignment(target: TransformElement) {
+    if(this.#isFreeformItem(target)) return "left"
+    const style = getComputedStyle(target)
+    const authoredFloat = floatSideFromStyles(style.float, target.style, target.classList)
+    const float = style.getPropertyValue("--ww-responsive-float").trim() === "none" ? "none"
+      : authoredFloat !== "none" && style.float === "right" ? "far-right" : authoredFloat
+    if(float !== "none") return float === "far-right" ? "right" : "left"
+    // Typed OM retains auto margins; getComputedStyle resolves them to pixels.
+    const margins = target.computedStyleMap?.()
+    const marginLeft = margins?.get("margin-left")?.toString() ?? (target.style.marginLeft === "auto" ? "auto" : style.marginLeft)
+    const marginRight = margins?.get("margin-right")?.toString() ?? (target.style.marginRight === "auto" ? "auto" : style.marginRight)
+    if(marginLeft === "auto" || marginRight === "auto") return alignmentFromStyles({marginLeft, marginRight})
+    if(margins || target.style.marginLeft || target.style.marginRight) return "left"
+    const left = parseFloat(marginLeft) || 0, right = parseFloat(marginRight) || 0
+    return left > 0 && Math.abs(left - right) < .5 ? "center" : left > right ? "right" : "left"
+  }
+
   #syncControlParts() {
     const overlay = this.overlay
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
     const text = Boolean(this.target && this.#isTextContainer(this.target))
+    const corner = this.target && this.#resizeAlignment(this.target) === "right" ? "down-left" : "down-right"
     setPart(overlay, "transform-overlay-freeform", freeform)
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
@@ -429,7 +452,7 @@ export class TransformationFeature extends EditorFeature {
       setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = (text || !freeform) && scaler.id !== "◆transform-overlay-scale-down-right"
+      const hide = (text || !freeform) && scaler.dataset.resizeDirection !== corner
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
       setPart(scaler, "transform-overlay-scale-text", text)
@@ -788,12 +811,16 @@ export class TransformationFeature extends EditorFeature {
     const initial = document.createElement("div").style
     initial.cssText = target.style.cssText
     const style = getComputedStyle(target)
+    const image = mode === "scale" && target.localName === "picture" ? this.editor.features.media.cropTargetFor(target) : null
+    const imageStyle = document.createElement("div").style
+    imageStyle.cssText = image?.style.cssText ?? ""
     this.#gesture = {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: target.getBoundingClientRect(), ...this.#size(target),
       matrix, parentMatrix: this.#matrix(renderedParentElement(target)), rotate: this.#angle(style.getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
       initial, written: new Map(), moved: false,
+      image: image instanceof HTMLImageElement ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
         matrix: cropBox.matrix, insets, edges: [...insets], sourceStyle} : undefined,
@@ -855,6 +882,9 @@ export class TransformationFeature extends EditorFeature {
           element.style.getPropertyValue(property) !== initial.getPropertyValue(property)
           || element.style.getPropertyPriority(property) !== initial.getPropertyPriority(property))))
       || gesture.canvas && gesture.target.getAttribute("viewBox") !== gesture.canvas.written
+      || gesture.image && (this.editor.features.media.cropTargetFor(gesture.target) !== gesture.image.target || gesture.image.parent !== gesture.image.target.parentElement
+        || [...gesture.image.written].some(([key, last]) => gesture.image!.target.style.getPropertyValue(key) !== last.value
+          || gesture.image!.target.style.getPropertyPriority(key) !== last.priority))
       || this.editor.isEditingLocked || gesture.target !== this.target || gesture.parent !== gesture.target.parentElement
       || [...gesture.written].some(([key, last]) => gesture.target.style.getPropertyValue(key) !== last.value
         || gesture.target.style.getPropertyPriority(key) !== last.priority)) {
@@ -864,8 +894,7 @@ export class TransformationFeature extends EditorFeature {
     return true
   }
 
-  #write(property: string, value: string, priority = "") {
-    const gesture = this.#gesture
+  #write(property: string, value: string, priority = "", gesture: GestureStyles | null = this.#gesture) {
     const target = gesture?.target ?? this.target
     if(!target) return
     if(value) target.style.setProperty(property, value, priority)
@@ -875,7 +904,9 @@ export class TransformationFeature extends EditorFeature {
 
   #resetWritten() {
     const gesture = this.#gesture!
-    for(const property of gesture.written.keys()) this.#write(property, gesture.initial.getPropertyValue(property), gesture.initial.getPropertyPriority(property))
+    for(const styles of [gesture, gesture.image]) if(styles) {
+      for(const property of styles.written.keys()) this.#write(property, styles.initial.getPropertyValue(property), styles.initial.getPropertyPriority(property), styles)
+    }
   }
 
   /** Adjust offsets by the measured viewport displacement. Measuring after a
@@ -992,6 +1023,7 @@ export class TransformationFeature extends EditorFeature {
     const gesture = this.#gesture!
     const target = gesture.target
     const text = this.#isTextContainer(target)
+    const image = Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
     const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
     if(text && !direction.includes("left") && !direction.includes("right")) return
     const delta = this.#vector(gesture.matrix.inverse(), event.clientX - gesture.x, event.clientY - gesture.y)
@@ -1002,15 +1034,21 @@ export class TransformationFeature extends EditorFeature {
     const y = text ? 0 : direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
     document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const symmetric = modifierKeyDown(event)
+    const centered = !this.#isFreeformItem(target) && this.#resizeAlignment(target) === "center"
     const round = this.getRoundingFunc(event)
-    const dw = x ? Math.max(1 - gesture.width, round(x * delta.x * (symmetric ? 2 : 1))) : 0
-    const dh = y ? Math.max(1 - gesture.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
+    let dw = x ? Math.max(1 - gesture.width, round(x * delta.x * (symmetric || centered ? 2 : 1))) : 0
+    let dh = y ? Math.max(1 - gesture.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
+    if(image && event.shiftKey) {
+      const change = x && (!y || Math.abs(dw / gesture.width) >= Math.abs(dh / gesture.height)) ? dw / gesture.width : dh / gesture.height
+      dw = gesture.cssWidth * change
+      dh = gesture.cssHeight * change
+    }
     const crop = gesture.canvas && !event.altKey
     if(gesture.canvas) this.#writeCanvasViewBox(gesture.canvas.initial)
     const style = getComputedStyle(target)
     if(style.display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
     let actualDW = dw, actualDH = dh
-    if(event.shiftKey && !crop && !text) {
+    if(event.shiftKey && !crop && !text && !image) {
       this.#write("scale", `${gesture.scale[0] * (gesture.width + dw) / gesture.width} ${gesture.scale[1] * (gesture.height + dh) / gesture.height}`)
     }
     else {
@@ -1019,7 +1057,20 @@ export class TransformationFeature extends EditorFeature {
         this.#write("min-height", "0px")
         this.#write("max-height", "none")
       }
-      if(gesture.canvas) {
+      if(image) {
+        const width = Math.max(1, gesture.cssWidth + dw), height = Math.max(1, gesture.cssHeight + dh)
+        this.#write("width", "100%")
+        this.#write("height", "auto")
+        this.#write("aspect-ratio", `${width} / ${height}`)
+        this.#write("max-width", `${width}px`)
+        this.#write("max-height", `${height}px`)
+        const styles = gesture.image ?? gesture
+        this.#write("object-fit", "fill", "", styles)
+        if(gesture.image) {
+          for(const property of ["width", "height", "max-width", "max-height"]) this.#write(property, "100%", "", styles)
+        }
+      }
+      else if(gesture.canvas) {
         this.#write("width", `${Math.max(1, gesture.cssWidth + dw)}px`)
         this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       }
@@ -1176,11 +1227,13 @@ export class TransformationFeature extends EditorFeature {
       if(gesture.canvas && target.getAttribute("viewBox") === gesture.canvas.written) this.#writeCanvasViewBox(gesture.canvas.initial)
       // Revert only properties still owned by this gesture. Concurrent changes
       // to other properties, or to these same properties, remain authoritative.
-      for(const [key, last] of gesture.written) {
-        if(target.style.getPropertyValue(key) === last.value && target.style.getPropertyPriority(key) === last.priority) {
-          const value = gesture.initial.getPropertyValue(key)
-          if(value) target.style.setProperty(key, value, gesture.initial.getPropertyPriority(key))
-          else target.style.removeProperty(key)
+      for(const styles of [gesture, gesture.image]) if(styles) {
+        for(const [key, last] of styles.written) {
+          if(styles.target.style.getPropertyValue(key) === last.value && styles.target.style.getPropertyPriority(key) === last.priority) {
+            const value = styles.initial.getPropertyValue(key)
+            if(value) styles.target.style.setProperty(key, value, styles.initial.getPropertyPriority(key))
+            else styles.target.style.removeProperty(key)
+          }
         }
       }
     }
@@ -1225,6 +1278,7 @@ export class TransformationFeature extends EditorFeature {
     }
     this.#suppressClick = gesture.moved ? gesture.handle : null
     if(!target.style.length) target.removeAttribute("style")
+    if(gesture.image && !gesture.image.target.style.length) gesture.image.target.removeAttribute("style")
     if(gesture.crop && !gesture.crop.target.style.length) gesture.crop.target.removeAttribute("style")
     if(gesture.pointerId !== undefined && gesture.handle.hasPointerCapture?.(gesture.pointerId)) gesture.handle.releasePointerCapture(gesture.pointerId)
     document.body.classList.remove("◆transform-moving", "◆transform-rotating", "◆transform-scaling-ew", "◆transform-scaling-ns", "◆transform-scaling-nwse", "◆transform-scaling-nesw")

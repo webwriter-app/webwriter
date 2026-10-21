@@ -47,6 +47,8 @@ const expectedChecks = [
   "document resizing and graphic fitting preserve normal flow",
   "text containers resize horizontally and fit their content",
   "iframes default to 16:9 and resize vertically in document flow",
+  "images stretch independently of their intrinsic aspect ratio",
+  "resize handles follow alignment and centered edges track the cursor",
   "cancelled resizing accepts the first delete activation",
   "media and graphics enforce minimum editing dimensions",
   "details remain intact after applying style presets",
