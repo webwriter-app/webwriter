@@ -2092,7 +2092,7 @@ await check("text containers resize horizontally and fit their content", async (
   frame.style.cssText = "width:900px;height:700px"
   document.body.append(frame)
   try {
-    for(const mode of ["document", "canvas", "slides"] as const) {
+    for(const mode of ["document"] as const) {
       const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
       frame.srcdoc = '<!doctype html><body><p>Text</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
       await loaded
@@ -2101,9 +2101,6 @@ await check("text containers resize horizontally and fit their content", async (
       assert(view.editor && !view.editorError, "text resizing fixture did not initialize")
       const editor = view.editor!, doc = frame.contentDocument!, theme = doc.createElement("style")
       theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
-      if(mode !== "document") assert(editor.setDocumentLayout(mode, "document"), "text fixture did not convert")
-      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
-      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
       for(const tag of ["p", "h2"]) {
         const target = doc.createElement(tag)
         target.textContent = "Text wraps naturally when its container becomes narrower. ".repeat(5)
@@ -2138,6 +2135,68 @@ await check("text containers resize horizontally and fit their content", async (
         await layoutFrame()
         assert(target.getBoundingClientRect().height < resized.height, `${mode}/${tag}: removed text did not shrink`)
         if(tag === "p") target.replaceWith(doc.createElement("p"))
+      }
+      editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("canvas and slide text exposes eight functional resize handles", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  document.body.append(frame)
+  try {
+    for(const mode of ["canvas", "slides"] as const) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = '<!doctype html><body><p>Text</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+      await loaded
+      const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, "eight-handle fixture did not initialize")
+      const editor = view.editor!, theme = doc.createElement("style")
+      theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+      assert(editor.setDocumentLayout(mode, "document"), "eight-handle fixture did not convert")
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+      else editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      for(const tag of ["p", "h2", "math", "resize-widget"]) {
+        const target = tag === "math" ? doc.createElementNS("http://www.w3.org/1998/Math/MathML", "math") : doc.createElement(tag)
+        if(tag === "math") { target.setAttribute("display", "block"); target.innerHTML = '<mi>x</mi>' }
+        else target.innerHTML = 'Text <em>with formatting</em><!--keep--><unfamiliar-inline>and content</unfamiliar-inline>'
+        doc.querySelector("p")!.replaceWith(target)
+        const children = Array.from(target.childNodes), feature = editor.features.transformation
+        for(const direction of ["up-left", "up-up", "up-right", "right-right", "down-right", "down-down", "down-left", "left-left"]) {
+          target.style.cssText = "display:block;width:320px;height:100px;left:480px;top:140px"
+          editor.features.selection.captureElement(target)
+          feature.updateInfo()
+          await layoutFrame()
+          const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+          const context = `${mode}/${tag}/${direction}`
+          assert(handles.length === 8, `${context}: missing resize handles`)
+          const before = target.getBoundingClientRect(), handle = handles.find(handle => handle.dataset.resizeDirection === direction)!
+          const rect = handle.getBoundingClientRect(), style = view.getComputedStyle(handle)
+          assert(rect.width === 8 && rect.height === 8 && style.visibility === "visible", `${context}: resize handle is not visible at its normal size`)
+          const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
+          const y = direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
+          assert(Math.abs(rect.left + rect.width / 2 - (x < 0 ? before.left : x > 0 ? before.right : (before.left + before.right) / 2)) < 4,
+            `${context}: handle does not follow its horizontal edge`)
+          assert(Math.abs(rect.top + rect.height / 2 - (y < 0 ? before.top : y > 0 ? before.bottom : (before.top + before.bottom) / 2)) < 4,
+            `${context}: handle does not follow its vertical edge`)
+          handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+          handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: rect.left + 4, clientY: rect.top + 4}))
+          feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: rect.left + 4 + x * 40, clientY: rect.top + 4 + y * 30}))
+          feature.handleScaleEnd()
+          await layoutFrame()
+          const after = target.getBoundingClientRect()
+          assert(Math.abs(after.width - before.width - (x ? 40 : 0)) < 1 && Math.abs(after.height - before.height - (y ? 30 : 0)) < 1,
+            `${context}: resize dimensions did not follow the pointer`)
+          assert(Math.abs((x < 0 ? after.right - before.right : after.left - before.left)) < 1
+            && Math.abs((y < 0 ? after.bottom - before.bottom : after.top - before.top)) < 1,
+            `${context}: opposite edges moved (${before.left},${before.top},${before.right},${before.bottom} -> ${after.left},${after.top},${after.right},${after.bottom}; ${target.style.cssText})`)
+          assert(Array.from(target.childNodes).every((child, index) => child === children[index]), `${context}: authored content changed`)
+          assert(!editor.toHTML(true).match(/◆|transform-overlay/), `${context}: editing artifacts leaked`)
+        }
+        target.replaceWith(doc.createElement("p"))
       }
       editor.destroy()
     }

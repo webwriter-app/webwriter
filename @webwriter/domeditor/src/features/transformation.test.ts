@@ -85,14 +85,12 @@ function captureNode(target: Element) {
 }
 
 describe("text container resizing", () => {
-  describe.each(["document", "canvas", "slides"] as const)("%s layout", mode => {
+  describe("document layout", () => {
     it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6"])("keeps the bottom-right handle horizontal for %s and lets height follow content", async tag => {
       const target = targetElement(tag)
       target.id = "text-container"
       target.innerHTML = 'Text <em>with formatting</em><!--keep--><unfamiliar-inline>and content</unfamiliar-inline>'
       const children = Array.from(target.childNodes)
-      if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
-      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
       Object.assign(target.style, {width: "200px", height: "50px", minHeight: "40px", maxHeight: "60px"})
       mockRect(target, {width: 200})
       captureNode(target)
@@ -116,6 +114,72 @@ describe("text container resizing", () => {
       const resized = editor.toHTML(true)
       expect(resized).not.toContain("◆")
       expect(editor.doc.body.toString()).not.toContain("◆")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(initial)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(resized)
+    })
+  })
+
+  describe.each(["canvas", "slides"] as const)("%s layout", mode => {
+    function freeformText(tag: string) {
+      let target: HTMLElement | MathMLElement = targetElement(tag === "math" ? "p" : tag)
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      if(tag === "math") {
+        const formula = document.createElementNS(MATH_NAMESPACE, "math")
+        target.replaceWith(formula)
+        target = formula
+        target.setAttribute("display", "block")
+        const identifier = document.createElementNS(MATH_NAMESPACE, "mi")
+        identifier.textContent = "x"
+        target.append(identifier)
+      }
+      else target.innerHTML = 'Text <em>with formatting</em><!--keep--><unfamiliar-inline>and content</unfamiliar-inline>'
+      if(mode === "slides") editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      Object.assign(target.style, {width: "200px", height: "100px", left: "0px", top: "0px"})
+      mockRect(target)
+      captureNode(target)
+      return target
+    }
+
+    it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6", "math"])("offers all corners and edge midpoints for %s", tag => {
+      freeformText(tag)
+      const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
+      expect(handles.map(handle => handle.dataset.resizeDirection).sort()).toEqual([
+        "down-down", "down-left", "down-right", "left-left", "right-right", "up-left", "up-right", "up-up",
+      ])
+      for(const handle of handles) expect(handle.getAttribute("part")).not.toContain("transform-overlay-scale-text")
+    })
+
+    it.each(["up-left", "up-up", "up-right", "right-right", "down-right", "down-down", "down-left", "left-left"])("resizes text with %s while anchoring the opposite edge", async direction => {
+      const target = freeformText("p"), children = Array.from(target.childNodes)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      const initial = editor.toHTML(true), before = target.getBoundingClientRect()
+      const x = direction.includes("left") ? -1 : direction.includes("right") ? 1 : 0
+      const y = direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
+      const drag = () => {
+        feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+          .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+        document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + x * 40, clientY: 150 + y * 30}))
+      }
+      drag()
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+      expect(editor.toHTML(true)).toBe(initial)
+      drag()
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+      const after = target.getBoundingClientRect()
+      expect(after.width).toBe(200 + (x ? 40 : 0))
+      expect(after.height).toBe(100 + (y ? 30 : 0))
+      expect(x < 0 ? after.right : after.left).toBe(x < 0 ? before.right : before.left)
+      expect(y < 0 ? after.bottom : after.top).toBe(y < 0 ? before.bottom : before.top)
+      expect(Array.from(target.childNodes)).toEqual(children)
+      expect(document.body.className).not.toContain("◆transform-scaling")
+      await mutationsDelivered()
+      editor.doc.syncFromDOM()
+      const resized = editor.toHTML(true)
+      expect(resized).not.toMatch(/◆|transform-overlay/)
+      expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
       editor.doc.undo()
       expect(editor.toHTML(true)).toBe(initial)
       editor.doc.redo()

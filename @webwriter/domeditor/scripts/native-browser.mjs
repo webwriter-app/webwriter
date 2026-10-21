@@ -47,6 +47,7 @@ const expectedChecks = [
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
   "text containers resize horizontally and fit their content",
+  "canvas and slide text exposes eight functional resize handles",
   "block formulas expose block controls and resize horizontally",
   "iframes default to 16:9 and resize vertically in document flow",
   "images stretch independently of their intrinsic aspect ratio",

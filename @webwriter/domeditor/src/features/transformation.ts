@@ -450,17 +450,17 @@ export class TransformationFeature extends EditorFeature {
     const overlay = this.overlay
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
-    const text = Boolean(this.target && this.#isTextContainer(this.target))
+    const text = Boolean(this.target && !freeform && this.#isTextContainer(this.target))
     const corner = this.target && this.#resizeAlignment(this.target) === "right" ? "down-left" : "down-right"
     setPart(overlay, "transform-overlay-freeform", freeform)
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      const hide = text || !freeform
+      const hide = !freeform
       midpoint.hidden = hide
       setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = (text || !freeform) && scaler.dataset.resizeDirection !== corner
+      const hide = !freeform && scaler.dataset.resizeDirection !== corner
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
       setPart(scaler, "transform-overlay-scale-text", text)
@@ -1032,7 +1032,7 @@ export class TransformationFeature extends EditorFeature {
     if(!this.#validGesture() || this.#gesture!.mode !== "scale") return
     const gesture = this.#gesture!
     const target = gesture.target
-    const text = this.#isTextContainer(target)
+    const text = !this.#isFreeformItem(target) && this.#isTextContainer(target)
     const image = Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
     const direction = gesture.handle.dataset.resizeDirection ?? gesture.handle.id.replace("◆transform-overlay-scale-", "")
     if(text && !direction.includes("left") && !direction.includes("right")) return
