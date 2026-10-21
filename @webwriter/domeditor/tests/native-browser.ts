@@ -4532,6 +4532,36 @@ await check("uploaded videos survive installing and removing packages", async ()
   finally {video.removeAttribute("src"); video.load(); frame.remove()}
 })
 
+await check("canvas and slide element selections keep Delete borderless", async () => {
+  for(const mode of ["canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:700px"
+    frame.srcdoc = '<!doctype html><body><picture id="selected-image"><img></picture><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, `${mode}: editor did not initialize: ${view.editorError}`)
+      const editor = view.editor!, doc = frame.contentDocument!, target = doc.querySelector<HTMLElement>("#selected-image")!
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
+      const range = doc.createRange()
+      range.selectNode(target)
+      doc.getSelection()!.removeAllRanges()
+      doc.getSelection()!.addRange(range)
+      editor.features.selection.processSelection(false, {scrollIntoView: false})
+      await layoutFrame()
+      assert(target.classList.contains("◆element-selected"), `${mode}: image is not element-selected`)
+      const deleter = editor.features.transformation.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!
+      const style = view.getComputedStyle(deleter)
+      assert(!deleter.hidden && style.display !== "none", `${mode}: Delete is hidden`)
+      for(const side of ["Top", "Right", "Bottom", "Left"] as const) {
+        assert(style[`border${side}Width`] === "0px", `${mode}: element selection paints a border around Delete`)
+      }
+    }
+    finally {frame.contentWindow?.editor?.destroy(); frame.remove()}
+  }
+})
+
 await check("canvas and slide delete affordances follow rotation placement", async () => {
   for(const mode of ["canvas", "slides"] as const) {
     const frame = document.createElement("iframe")
