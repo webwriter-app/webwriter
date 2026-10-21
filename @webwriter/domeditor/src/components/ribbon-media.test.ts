@@ -2,6 +2,7 @@
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import {AppRibbon} from "./ribbon"
 import type {RibbonButton} from "./ribbon-button"
+import type {ElementStyleEditor} from "./element-style-editor"
 import {DomEditorToolbox} from "./toolbox"
 
 beforeEach(() => document.body.replaceChildren())
@@ -82,12 +83,12 @@ describe("media ribbon drawer", () => {
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
     toolbox.media = {type, attributes: {}}
-    toolbox.elementStyle = {target: {localName: "figure", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+    toolbox.elementStyle = {target: {localName: type, namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
     document.body.append(toolbox)
     await toolbox.updateComplete
-    const editor = toolbox.shadowRoot!.querySelector("[data-specialized] element-style-editor")!
-    await (editor as unknown as {updateComplete: Promise<unknown>}).updateComplete
-    expect(editor.shadowRoot!.querySelectorAll('.crop-edges input').length).toBe(type === "audio" ? 0 : 4)
+    const editor = toolbox.shadowRoot!.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')
+    if(editor) await editor.updateComplete
+    expect(editor?.shadowRoot!.querySelectorAll('.crop-edges input').length ?? 0).toBe(type === "audio" ? 0 : 4)
   })
 
   it("dispatches the Image insertion command from a Start media button", async () => {
@@ -243,8 +244,8 @@ describe("media ribbon drawer", () => {
     const loading = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>("style-combobox"))
       .find(combo => (combo as HTMLElement & {label: string}).label === "Image: Loading") as (HTMLElement & {value: string}) | undefined
     expect(loading).toBeUndefined()
-    expect(alt.closest('[slot="more"]')).not.toBeNull()
-    expect(alt.closest('[slot="more"]')!.querySelector("element-style-editor")).toBeNull()
+    expect(alt.closest('[slot="more"]')).toBeNull()
+    expect(alt.closest(".media-toolbox-controls")).not.toBeNull()
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".media-type-switch"))
       .some(button => button.textContent?.includes("Use <"))).toBe(false)
     alt.value = "A photo"
@@ -412,17 +413,21 @@ describe("media ribbon drawer", () => {
       type: "img", action: "draw", shape: "rect",
     }}))
 
-    const href = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Link URL"]')!
-    expect(href.value).toBe("old.html")
-    href.value = "library.html"
-    href.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+    expect(toolbox.shadowRoot!.querySelector('input[aria-label="Hotspot: Link URL"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('button[aria-label="Open hotspot 1 popover"]')).toBeNull()
+    const border = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Border"]')!
+    const background = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Hotspot: Background"]')!
+    expect(border.checked).toBe(true)
+    expect(background.checked).toBe(true)
+    border.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
-      type: "img",
-      action: "set-area-attribute",
-      path: [0],
-      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"},
-      attribute: "href",
-      value: "library.html",
+      type: "img", action: "set-overlay", path: [0], part: "border",
+      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"}, value: false,
+    }}))
+    background.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {
+      type: "img", action: "set-overlay", path: [0], part: "background",
+      expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"}, value: false,
     }}))
 
     const trigger = toolbox.shadowRoot!.querySelector<HTMLSelectElement>('select[aria-label="Hotspot: Popover trigger"]')!
@@ -433,14 +438,41 @@ describe("media ribbon drawer", () => {
       type: "img", action: "set-popover-trigger", path: [0],
       expected: {shape: "rect", coords: "1,2,30,40", href: "old.html", popovertarget: "info"}, value: "hover",
     }}))
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Open hotspot 1 popover"]')!.click()
-    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({action: "open-popover", path: [0]})}))
-
     toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove hotspot 1"]')!.click()
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({
       type: "img", action: "remove-area", path: [0],
     })}))
     expect(toolbox.shadowRoot!.querySelector("button[aria-label='Remove map']")).toBeNull()
+  })
+
+  it("keeps link URLs for link-only hotspots and hides them for hover popovers", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "img", attributes: {src: "plan.png"}, imageMap: {
+      name: "plan", shared: false, areas: [
+        {path: [0], attributes: {shape: "rect", coords: "0,0,10,10", href: "page.html", class: "ww-hotspot-transparent"}},
+        {path: [1], attributes: {shape: "rect", coords: "10,10,20,20", href: "tip.html", interestfor: "tip", class: "ww-hotspot-no-border"}},
+        {path: [2], attributes: {shape: "rect", coords: "20,20,30,30", class: "ww-hotspot-no-background"}},
+        {path: [3], attributes: {shape: "rect", coords: "30,30,40,40", class: "ww-hotspot-no-border ww-hotspot-no-background"}},
+      ],
+    }}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const areas = toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".image-map-area")
+    expect(areas[0].querySelector('input[aria-label="Hotspot: Link URL"]')).not.toBeNull()
+    expect(areas[1].querySelector('input[aria-label="Hotspot: Link URL"]')).toBeNull()
+    expect(areas[0].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Border"]')!.checked).toBe(false)
+    expect(areas[0].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Background"]')!.checked).toBe(false)
+    expect(areas[1].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Border"]')!.checked).toBe(false)
+    expect(areas[1].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Background"]')!.checked).toBe(true)
+    expect(areas[2].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Border"]')!.checked).toBe(true)
+    expect(areas[2].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Background"]')!.checked).toBe(false)
+    expect(areas[3].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Border"]')!.checked).toBe(false)
+    expect(areas[3].querySelector<HTMLInputElement>('input[aria-label="Hotspot: Background"]')!.checked).toBe(false)
+    expect(areas[0].querySelector('button[aria-label="Add hotspot 1 popover"]')).not.toBeNull()
+    expect(areas[1].querySelector('button[aria-label="Add hotspot 2 popover"]')).toBeNull()
+    expect(areas[1].querySelector('button[aria-label="Open hotspot 2 popover"]')).toBeNull()
   })
 
   it("edits hotspot coordinates one numeric field at a time for each shape", async () => {
@@ -613,8 +645,8 @@ describe("primary media Source control", () => {
 })
 
 
-describe("advanced media alternative text", () => {
-  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("edits %s alternative text in Options", async type => {
+describe("primary media alternative text", () => {
+  it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("edits %s alternative text in primary options", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     const attribute = ["img", "picture"].includes(type) ? "alt" : "aria-label"
@@ -623,12 +655,38 @@ describe("advanced media alternative text", () => {
     await toolbox.updateComplete
     const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label$=": Alternative text"]')!
     expect(input.value).toBe("Description")
-    expect(input.closest('[slot="more"]')).not.toBeNull()
+    expect(input.closest('[slot="more"]')).toBeNull()
+    expect(input.closest(".media-toolbox-controls")).not.toBeNull()
     const listener = vi.fn()
     toolbox.addEventListener("media-attribute-change", listener)
     input.value = "New description"
     input.dispatchEvent(new Event("change", {bubbles: true}))
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type, attribute, value: "New description"}}))
+  })
+
+  it.each(["picture", "img", "video"] as const)("places crop and object controls in advanced options for %s", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {
+      type,
+      attributes: {src: "media.png"},
+      ...(type === "img" || type === "picture" ? {imageMap: {
+        name: "map", shared: false,
+        areas: [{path: [0], attributes: {shape: "rect", coords: "0,0,10,10"}}],
+      }} : {}),
+    }
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const primary = toolbox.shadowRoot!.querySelector<ElementStyleEditor>('element-style-editor:not([slot="more"])')!
+    const advanced = toolbox.shadowRoot!.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')!
+    expect(primary.propertyNames).not.toContain("object-view-box")
+    expect(primary.propertyNames).not.toContain("object-fit")
+    expect(primary.propertyNames).not.toContain("object-position")
+    expect(advanced.propertyNames).toEqual(["object-view-box", "object-fit", "object-position"])
+    if(type === "img" || type === "picture") {
+      expect(toolbox.shadowRoot!.querySelector(".image-map-area")!.compareDocumentPosition(advanced)
+        & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    }
   })
 
   it("keeps every child source as fallback when the media has its own src", async () => {

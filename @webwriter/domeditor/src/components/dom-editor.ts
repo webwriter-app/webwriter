@@ -5661,6 +5661,7 @@ export class DomEditor extends LitElement {
       path?: unknown
       expected?: unknown
       attribute?: unknown
+      part?: unknown
       value?: unknown
     }>).detail
     if((detail?.type !== "picture" && detail?.type !== "img") || typeof detail.action !== "string") {
@@ -5701,6 +5702,10 @@ export class DomEditor extends LitElement {
     }
     if(detail.action === "set-popover-trigger" && (detail.value === "click" || detail.value === "hover")) {
       void this.execute({type: "setImageMapPopoverTrigger", path, expected, value: detail.value})
+      return
+    }
+    if(detail.action === "set-overlay" && (detail.part === "border" || detail.part === "background") && typeof detail.value === "boolean") {
+      void this.execute({type: "setImageMapOverlay", path, expected, part: detail.part, value: detail.value})
       return
     }
     if(detail.action === "remove-area") {

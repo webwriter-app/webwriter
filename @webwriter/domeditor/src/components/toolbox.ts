@@ -21,7 +21,7 @@ import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutMod
 import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, listMarkerImageProperty, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
-import {mediaCaptureOptions, mediaSourceAttribute, mediaAttributeOptions, isMediaType, type MediaType, type MediaAttributeOption} from "../media"
+import {mediaCaptureOptions, mediaSourceAttribute, mediaAttributeOptions, type MediaType, type MediaAttributeOption} from "../media"
 import {MATH_NAMESPACE} from "../math"
 import {canonicalMarkName} from "../marks"
 import "./style-combobox"
@@ -1104,14 +1104,16 @@ export class DomEditorToolbox extends EditingControls {
     const profile = specializedElementStyle(localName)
     const widget = Boolean(widgetOptions || localName.includes("-"))
     if(!profile && !widget && !group) return nothing
-    const primary = profile?.primary ?? []
+    const mediaStyles = this.media && ["picture", "img", "video"].includes(localName)
+      ? ["object-view-box", "object-fit", "object-position"] : []
+    const primary = (profile?.primary ?? []).filter(name => !mediaStyles.includes(name))
     const advanced = this.media && ["picture", "img"].includes(this.media.type) ? [] : profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
-    const properties = [...new Set([...primary, ...advanced, ...(list ? [listMarkerImageProperty] : [])])]
+    const properties = [...new Set([...primary, ...advanced, ...mediaStyles, ...(list ? [listMarkerImageProperty] : [])])]
     const resetStyles = Object.fromEntries(properties.filter(name => Object.hasOwn(style.inline, name)).map(name => [name, null]))
     const groupedWidgetOptions = Boolean(widgetOptions?.groups?.length || [...widgetOptions?.options ?? [], ...widgetOptions?.actions ?? []].some(item => item.group))
     const configuredWidgetOptions = widgetOptions?.options.filter(option => !option.hidden && !option.disabled && !option.readOnly).filter(option => group ? group.configuredWidgetOptions.includes(option.name) : option.value !== null && option.value !== "") ?? []
-    const count = advanced.filter(name => Object.hasOwn(style.inline, name)).length
+    const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
@@ -1122,7 +1124,7 @@ export class DomEditorToolbox extends EditingControls {
     const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
-    const hasOptions = advanced.length > 0 || commands !== nothing
+    const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
@@ -1167,6 +1169,10 @@ export class DomEditorToolbox extends EditingControls {
           ? "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."
           : "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."}</div>` : nothing}
         ${this.media.type === "video" ? this.renderMediaSource(true) : nothing}
+        <div class="media-toolbox-controls">
+          ${mediaAttributeOptions[this.media.type].filter(option => ["alt", "aria-label"].includes(option.name))
+            .map(option => this.renderMediaAttribute(this.media!.type, option))}
+        </div>
         <div class="media-toolbox-controls media-primary-options">
           ${mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
@@ -1182,6 +1188,7 @@ export class DomEditorToolbox extends EditingControls {
       ${hasOptions ? html`<div slot="more" class="specialized-options">
         ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
+        ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
@@ -1270,10 +1277,7 @@ export class DomEditorToolbox extends EditingControls {
     }
     if(this.table?.active) return nothing
     if(this.media) {
-      const type = this.media.type
       return html`<div class="specialized-commands media-toolbox-controls">
-        ${isMediaType(type) ? mediaAttributeOptions[type].filter(option => ["alt", "aria-label"].includes(option.name))
-          .map(option => this.renderMediaAttribute(type, option)) : nothing}
         ${this.renderTimedMediaResources()}
         ${this.renderImageMapControls()}
       </div>`

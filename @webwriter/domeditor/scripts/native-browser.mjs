@@ -142,6 +142,8 @@ const expectedChecks = [
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
   "exported canvas runs its standalone viewer without editor dependencies",
+  "image hotspots scale and open popovers in preview and standalone reading mode",
+  "hotspot popovers use grey editing placeholders and compact controls",
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
 const mathVisual = process.argv.includes("--math-visual")

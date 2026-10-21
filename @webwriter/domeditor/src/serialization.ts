@@ -1,4 +1,4 @@
-import {createImageMapPopoverController, imageMapHotspotBounds} from "./media"
+import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotShape, mountImageMapReader} from "./media"
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
@@ -110,11 +110,11 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     head.append(style)
   }
   root.querySelectorAll('script[id="webwriter-image-map-popovers"]').forEach(script => script.remove())
-  if(root.querySelector("map area[popovertarget], map area[interestfor]")) {
+  if(root.querySelector("img[usemap]") && root.querySelector("map area")) {
     const script = root.createElement("script")
     script.id = "webwriter-image-map-popovers"
     script.type = "module"
-    script.textContent = `(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("resize", controller.refresh); document.addEventListener("scroll", controller.refresh, true); window.addEventListener("pagehide", () => controller.dispose(), {once:true}); })();`
+    script.textContent = `(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const imageMapHotspotShape = ${imageMapHotspotShape.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const mountImageMapReader = ${mountImageMapReader.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const reader = mountImageMapReader(document, controller, imageMapHotspotShape); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("pagehide", () => { document.removeEventListener("click", handle); document.removeEventListener("pointerover", handle); reader.dispose(); }, {once:true}); })();`.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())

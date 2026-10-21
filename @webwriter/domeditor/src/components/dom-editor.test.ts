@@ -6343,6 +6343,11 @@ describe("DomEditor.execute()", () => {
       name: "href",
       value: "library.html",
     })
+    toolbox.dispatchEvent(new CustomEvent("image-map-action", {
+      detail: {type:"img", action:"set-overlay", path:[1, 0], expected:{shape:"rect"}, part:"border", value:false},
+      bubbles:true, composed:true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type:"setImageMapOverlay", path:[1, 0], expected:{shape:"rect"}, part:"border", value:false})
     await Promise.resolve()
     expect(focusEditor).not.toHaveBeenCalled()
     for(const [label, action] of [

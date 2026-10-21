@@ -21,6 +21,7 @@ import {
   isImageMapHotspotShape,
   createImageMapPopoverController,
   imageMapHotspotBounds,
+  imageMapHotspotShape,
   isMediaType,
   isTimedMediaResourceType,
   isWebsiteType,
@@ -565,6 +566,9 @@ const imageMapOverlayStylesheet = createStylesheet(`
     vector-effect: non-scaling-stroke;
     pointer-events: none;
   }
+  .hotspot.ww-hotspot-transparent { fill: transparent; stroke: none; }
+  .hotspot.ww-hotspot-no-border { stroke: none; }
+  .hotspot.ww-hotspot-no-background { fill: transparent; }
   .preview {
     fill: rgb(245 158 11 / 22%);
     stroke: #f59e0b;
@@ -953,34 +957,7 @@ class ImageMapOverlay {
       const shape = area.getAttribute("shape")?.toLowerCase() || "rect"
       const coords = this.drag?.area === area ? this.drag.next
         : (area.getAttribute("coords") ?? "").split(",").map(value => Number(value.trim()))
-      if(coords.some(value => !Number.isFinite(value))) return []
-      let element: SVGElement | null = null
-      if(shape === "rect" && coords.length === 4) {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "rect")
-        element.setAttribute("x", String(Math.min(coords[0], coords[2])))
-        element.setAttribute("y", String(Math.min(coords[1], coords[3])))
-        element.setAttribute("width", String(Math.abs(coords[2] - coords[0])))
-        element.setAttribute("height", String(Math.abs(coords[3] - coords[1])))
-      }
-      else if(shape === "circle" && coords.length === 3) {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "circle")
-        element.setAttribute("cx", String(coords[0]))
-        element.setAttribute("cy", String(coords[1]))
-        element.setAttribute("r", String(Math.max(0, coords[2])))
-      }
-      else if(shape === "poly" && coords.length >= 6 && coords.length % 2 === 0) {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "polygon")
-        element.setAttribute("points", Array.from({length: coords.length / 2}, (_, index) => (
-          `${coords[index * 2]},${coords[index * 2 + 1]}`
-        )).join(" "))
-      }
-      else if(shape === "default") {
-        element = document.createElementNS("http://www.w3.org/2000/svg", "rect")
-        element.setAttribute("x", "0")
-        element.setAttribute("y", "0")
-        element.setAttribute("width", String(geometry.coordinateWidth))
-        element.setAttribute("height", String(geometry.coordinateHeight))
-      }
+      const element = imageMapHotspotShape(area, geometry.coordinateWidth, geometry.coordinateHeight, coords)
       if(!element) return []
       element.classList.add("hotspot")
       this.shapeAreas.set(element, area)
@@ -1574,6 +1551,7 @@ export class MediaFeature extends EditorFeature {
     this.graphicImagePlaceholders.clear()
     this.shieldReleasePending.clear()
     document.querySelectorAll(".◆media-empty").forEach(element => this.setEmptyMarker(element, false))
+    document.querySelectorAll(".◆hotspot-placeholder").forEach(element => removeEditorMarker(element, "◆hotspot-placeholder"))
     super.disable()
   }
 
@@ -1935,6 +1913,20 @@ export class MediaFeature extends EditorFeature {
       this.finishImageMapChange()
       return true
     },
+    setImageMapOverlay: ({path, expected, part, value}: {
+      type: "setImageMapOverlay", path: number[], expected: Record<string, string>, part: "border" | "background", value: boolean
+    }) => {
+      const area = this.selectedImageMapArea(path, expected)
+      if(!area || !["border", "background"].includes(part) || typeof value !== "boolean") return false
+      if(area.classList.contains("ww-hotspot-transparent")) {
+        area.classList.add("ww-hotspot-no-border", "ww-hotspot-no-background")
+        area.classList.remove("ww-hotspot-transparent")
+      }
+      area.classList.toggle(`ww-hotspot-no-${part}`, !value)
+      if(!area.getAttribute("class")) area.removeAttribute("class")
+      this.finishImageMapChange()
+      return true
+    },
     removeImageMapArea: ({path, expected}: {
       type: "removeImageMapArea"
       path: number[]
@@ -1972,7 +1964,6 @@ export class MediaFeature extends EditorFeature {
       content.id = id
       content.setAttribute("popover", "auto")
       const paragraph = document.createElement("p")
-      paragraph.textContent = "Popover content"
       content.append(paragraph)
       area.closest("map")!.after(content)
       area.setAttribute("popovertarget", id)
@@ -2501,6 +2492,23 @@ export class MediaFeature extends EditorFeature {
       if(element.classList.contains("◆media-empty") !== empty) this.setEmptyMarker(element, empty)
     })
     const selected = this.refreshPlaceholder()
+
+    const placeholders = new Set<Element>()
+    document.querySelectorAll("map area[popovertarget], map area[interestfor]").forEach(area => {
+      if(sourceEditingBlocked(area, this.editor.schema)) return
+      const id = area.getAttribute("popovertarget") ?? area.getAttribute("interestfor")
+      const content = id ? document.getElementById(id) : null
+      const paragraph = content?.firstElementChild
+      if(content?.hasAttribute("popover") && content.children.length === 1
+        && paragraph?.matches("p") && !paragraph.textContent
+        && (paragraph.children.length === 0 || paragraph.children.length === 1 && paragraph.firstElementChild?.matches("br"))) placeholders.add(paragraph)
+    })
+    document.querySelectorAll(".◆hotspot-placeholder").forEach(element => {
+      if(!placeholders.has(element)) removeEditorMarker(element, "◆hotspot-placeholder")
+    })
+    placeholders.forEach(element => {
+      if(!element.classList.contains("◆hotspot-placeholder")) element.classList.add("◆hotspot-placeholder")
+    })
 
     this.popoverController?.refresh()
     const selectedImage = selected?.matches("picture, img") ? this.imageForMedia(selected, false) : null

@@ -1626,9 +1626,72 @@ describe("media editing", () => {
     editor.doc.redo()
     await Promise.resolve()
     const content = document.querySelector<HTMLElement>("[popover]")!
-    expect(content.querySelector("p")!.textContent).toBe("Popover content")
+    expect(content.querySelector("p")!.textContent).toBe("")
     expect(document.querySelector("area")).toHaveAttribute("popovertarget", content.id)
     expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("uses an editing placeholder for empty hotspot content and cleans up its marker", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
+    const paragraph = document.querySelector("[popover] p")!
+    editor.features.media["refresh"]()
+    expect(paragraph.textContent).toBe("")
+    expect(paragraph).toHaveClass("◆hotspot-placeholder")
+    expect(editor.toHTML(true)).not.toMatch(/Hotspot content|Popover content|◆hotspot-placeholder/)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆hotspot-placeholder")
+    paragraph.textContent = "My content"
+    editor.features.media["refresh"]()
+    expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
+    paragraph.innerHTML = "<br>"
+    editor.features.media["refresh"]()
+    expect(paragraph).toHaveClass("◆hotspot-placeholder")
+    editor.features.media.disable()
+    expect(paragraph).not.toHaveClass("◆hotspot-placeholder")
+  })
+
+  it.each(["border", "background"] as const)("saves hotspot %s visibility, preserves classes, and supports undo and redo", async part => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area class="authored" shape="rect" coords="10,10,40,40" href="library.html"></map>'
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:area.path, expected:area.attributes, part, value:false})).toBe(true)
+    expect(document.querySelector("area")).toHaveClass("authored", `ww-hotspot-no-${part}`)
+    expect(editor.toHTML(true)).toContain(`ww-hotspot-no-${part}`)
+    expect(editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:area.path, expected:area.attributes, part, value:true})).toBe(false)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.querySelector("area")).toHaveClass("authored")
+    expect(document.querySelector("area")).not.toHaveClass(`ww-hotspot-no-${part}`)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(document.querySelector("area")).toHaveClass(`ww-hotspot-no-${part}`)
+    const current = editor.features.media.getState()!.imageMap!.areas[0]
+    expect(editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:current.path, expected:current.attributes, part, value:true})).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored")
+  })
+
+  it("changes border and background independently, including previously hidden overlays", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area class="authored ww-hotspot-transparent" shape="rect" coords="10,10,40,40"></map>'
+    editor.features.selection.captureElement(document.querySelector("img")!)
+    const set = (part: "border" | "background", value: boolean) => {
+      const area = editor.features.media.getState()!.imageMap!.areas[0]
+      return editor.features.media.actions.setImageMapOverlay({type:"setImageMapOverlay", path:area.path, expected:area.attributes, part, value})
+    }
+    expect(set("border", true)).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored ww-hotspot-no-background")
+    expect(set("border", false)).toBe(true)
+    expect(document.querySelector("area")).toHaveClass("ww-hotspot-no-background", "ww-hotspot-no-border")
+    expect(set("background", true)).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored ww-hotspot-no-border")
+    expect(set("border", true)).toBe(true)
+    expect(document.querySelector("area")).toHaveAttribute("class", "authored")
   })
 
   it.each(["Backspace", "Delete"])("removes the selected hotspot with %s without removing the image", key => {

@@ -1324,6 +1324,15 @@ summary::after {
   cursor: pointer;
 }
 
+.◆hotspot-placeholder:is(:empty, :has(> br:only-child))::before {
+  content: "Hotspot content";
+  visibility: visible;
+  display: inline-block;
+  color: darkgray;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* Reserve ::after for theme disclosure icons. The placeholder occupies the
  * text origin after the native marker, independently of a themed chevron. */
 summary:is(:empty, :has(> br:only-child))::before {

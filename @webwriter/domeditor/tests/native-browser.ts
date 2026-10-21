@@ -5670,6 +5670,109 @@ await check("a clean canvas retains its initial item when moving and typing with
   finally { canvasEditor?.destroy(); frame.remove() }
 })
 
+await check("hotspot popovers use grey editing placeholders and compact controls", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:450px;max-width:none"
+  frame.srcdoc = '<!doctype html><body><img src="/tests/fixtures/image-map.svg" width="360" height="210" usemap="#plan"><map name="plan"><area shape="rect" coords="500,40,680,340"></map><script type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  const toolbox = new DomEditorToolbox()
+  toolbox.style.width = "300px"
+  toolbox.activeTool = "Edit"; toolbox.activeMenu = "Edit"
+  fixture.append(toolbox)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "hotspot editor fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, image = doc.querySelector("img")!
+    editor.features.selection.captureElement(image)
+    const area = editor.features.media.getState()!.imageMap!.areas[0]
+    editor.features.media.actions.addImageMapPopover({type:"addImageMapPopover", path:area.path, expected:area.attributes})
+    await layoutFrame()
+    const paragraph = doc.querySelector("[popover] p")!
+    const hint = view.getComputedStyle(paragraph, "::before")
+    assert(hint.content === '"Hotspot content"' && hint.visibility === "visible" && hint.color === "rgb(169, 169, 169)", "empty hotspot placeholder is not visible grey text")
+    assert(paragraph.textContent === "" && !editor.toHTML(true).includes("Hotspot content"), "placeholder text leaked into authored HTML")
+    toolbox.media = {type:"img", attributes:{}, imageMap:{name:"plan", shared:false, areas:[{path:area.path, attributes:{shape:"rect", coords:"500,40,680,340", popovertarget:"details"}}]}}
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="img"]')!
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Show advanced image controls"]')!.click()
+    await layoutFrame()
+    assert(!toolbox.shadowRoot!.querySelector('[aria-label="Hotspot: Link URL"]'), "popover still exposes its Link URL")
+    assert(!toolbox.shadowRoot!.querySelector('[aria-label="Open hotspot 1 popover"]'), "popover still exposes an Open button")
+    const border = toolbox.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Hotspot: Border"]')!
+    const background = toolbox.shadowRoot!.querySelector<HTMLInputElement>('[aria-label="Hotspot: Background"]')!
+    assert(border?.checked && background?.checked, "overlay visibility checkboxes are not enabled by default")
+    const borderBox = border.parentElement!.getBoundingClientRect(), backgroundBox = background.parentElement!.getBoundingClientRect()
+    assert(borderBox.width > 0 && Math.abs(borderBox.top - backgroundBox.top) < 1 && backgroundBox.left > borderBox.right,
+      "Border and Background do not share one row")
+    assert(background.getBoundingClientRect().right <= toolbox.getBoundingClientRect().right, "hotspot checkbox overflows its controls")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }
+})
+
+await check("image hotspots scale and open popovers in preview and standalone reading mode", async () => {
+  const {appendSerializedAssets} = await import("../src/serialization")
+  const {previewFrameHTML} = await import("../src/frame-document")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:500px;max-width:none"
+  fixture.append(frame)
+  try {
+    for(const preview of [true, false]) {
+      const source = new DOMParser().parseFromString('<html><body><img src="/tests/fixtures/image-map.svg" width="360" height="210" usemap="#plan"><map name="plan"><span><!--keep--><area shape="rect" coords="500,40,680,340" href="#details" popovertarget="details" alt="Details"></span><area shape="circle" coords="100,100,40" href="#link" alt="Link"></map><div id="details" popover="auto">Hotspot content</div><p id="link">Link destination</p></body></html>', "text/html")
+      const authored = source.body.innerHTML
+      let html: string
+      if(preview) html = previewFrameHTML(source, {bridgeNonce:"hotspot-check", hostOrigin:location.origin, frameOrigin:location.origin,
+        entryURL:new URL("../src/preview-entry.ts", import.meta.url).href, packages:[], importMap:null, executeScripts:true})
+      else { appendSerializedAssets(source, []); html = source.documentElement.outerHTML }
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
+      frame.srcdoc = html
+      await loaded
+      await layoutFrame()
+      const doc = frame.contentDocument!, view = frame.contentWindow! as Window & typeof globalThis
+      const image = doc.querySelector("img")!
+      assert(image.naturalWidth === 720, "image fixture did not load at its intrinsic size")
+      const root = doc.body.shadowRoot!.querySelector(".◆image-map-reader")!.shadowRoot!
+      for(const width of [360, 180]) {
+        image.width = width
+        await layoutFrame()
+        const box = image.getBoundingClientRect()
+        const svg = root.querySelector("svg")!
+        assert(Math.abs(svg.getBoundingClientRect().width - box.width) < 1, "hotspot overlay did not resize with the image")
+        const hit = root.elementFromPoint(box.left + 590 * box.width / 720, box.top + 190 * box.height / 420)!
+        assert(hit.closest("a")?.getAttribute("aria-label") === "Details", "scaled hotspot is not the pointer hit target")
+        hit.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true}))
+        const popover = doc.querySelector<HTMLElement>("#details")!
+        assert(popover.matches(":popover-open"), "reading-mode hotspot did not open its popover")
+        assert(popover.getBoundingClientRect().right <= view.innerWidth, "hotspot popover overflowed the viewport")
+        popover.hidePopover()
+      }
+      const area = doc.querySelector("area")!
+      for(const part of ["border", "background", "both"]) {
+        area.className = part === "both" ? "ww-hotspot-no-border ww-hotspot-no-background" : `ww-hotspot-no-${part}`
+        await layoutFrame()
+        const hidden = root.querySelector('a[aria-label="Details"] rect')!
+        const painted = view.getComputedStyle(hidden)
+        assert((painted.stroke === "none") === (part !== "background"), "border visibility did not change independently")
+        assert((painted.fill === "rgba(0, 0, 0, 0)") === (part !== "border"), "background visibility did not change independently")
+        hidden.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true}))
+        assert(doc.querySelector("#details")!.matches(":popover-open"), "hiding overlay decoration disabled its popover")
+        doc.querySelector<HTMLElement>("#details")!.hidePopover()
+      }
+      area.removeAttribute("class")
+      await layoutFrame()
+      const link = root.querySelector('a[aria-label="Link"]')!
+      assert(link?.getAttribute("href") === "#link", "link-only hotspot was lost")
+      link.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true}))
+      await layoutFrame()
+      assert(view.location.hash === "#link", "link-only hotspot did not navigate to its destination")
+      image.width = 360
+      assert(doc.body.innerHTML === authored, "reading-mode hotspot UI changed the authored DOM")
+    }
+  }
+  finally { frame.remove() }
+})
+
 await check("exported canvas runs its standalone viewer without editor dependencies", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px;border:0"
