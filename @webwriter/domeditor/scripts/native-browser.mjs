@@ -120,6 +120,7 @@ const expectedChecks = [
   "local fonts embed selected bytes and load under the editor CSP",
   "shape labels retain capture while typing and selecting text",
   "iframe lifecycle reaches load and cleans up",
+  "New discards the previous canvas iframe and its document state",
   "uploaded videos survive installing and removing packages",
   "canvas and slide delete affordances follow rotation placement",
   "bundled layouts render under the strict editor CSP without widgets",

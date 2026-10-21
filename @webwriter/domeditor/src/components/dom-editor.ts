@@ -19,6 +19,7 @@ import {indentHTMLSource, tokenizeHTMLSource} from "./html-source-highlight"
 import { LitElement, css, html, noChange, nothing, type PropertyValues } from "lit"
 import {guard} from "lit/directives/guard.js"
 import {cache} from "lit/directives/cache.js"
+import {keyed} from "lit/directives/keyed.js"
 import {when} from "lit/directives/when.js"
 import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "./editing-ui-bindings"
 import {editorInteractionStyles} from "./editing-controls.styles"
@@ -600,6 +601,7 @@ export class DomEditor extends LitElement {
     },
   })
   private frameState: EditorStateSnapshot | undefined
+  // Key the iframe by revision so old windows and their queued messages are retired.
   private frameRevision = 0
   private frameStarted = false
   private frameStartTimer: ReturnType<typeof setTimeout> | undefined
@@ -1857,6 +1859,7 @@ export class DomEditor extends LitElement {
   }
 
   private initializeEditorFrame(iframe: HTMLIFrameElement) {
+    if(iframe !== this.editorIframe()) return
     this.guidedTourReady = false
     this.handleHostWindowFocus()
     for(const pending of this.frameRequests.values()) {
@@ -7810,7 +7813,7 @@ export class DomEditor extends LitElement {
             @load=${this.handlePreviewFrameLoad}
           ></iframe>
         ` : ""}
-        ${this.frameStarted ? html`<iframe
+        ${this.frameStarted ? keyed(this.frameRevision, html`<iframe
           class=${documentLoading || this.documentFramePending ? "editor-frame loading" : "editor-frame"}
           allow="camera; microphone; display-capture"
           title="DOM editor"
@@ -7825,7 +7828,7 @@ export class DomEditor extends LitElement {
           @pointerup=${this.relayFrameTouch} @pointercancel=${this.relayFrameTouch}
           @lostpointercapture=${this.relayFrameTouch} @touchstart=${this.handleFrameTouchStart}
           @dom-editor-ai-edit-review=${this.handleInlineAIEditReview}
-        ></iframe>` : ""}
+        ></iframe>`) : ""}
         ${this.ribbonDrag && !this.previewActive ? html`<div class="ribbon-drag-shield"
           @dragenter=${this.relayRibbonDrag} @dragover=${this.relayRibbonDrag}
           @dragleave=${this.relayRibbonDrag} @drop=${this.relayRibbonDrag}></div>` : ""}

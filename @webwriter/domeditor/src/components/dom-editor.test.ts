@@ -704,7 +704,7 @@ describe("DomEditor document loading", () => {
     read("<p>Loaded lesson</p>")
     await vi.waitFor(() => expect(host.frameRevision).toBe(1))
     await editor.updateComplete
-    iframe.dispatchEvent(new Event("load"))
+    editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!.dispatchEvent(new Event("load"))
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector(".document-loading")).not.toBeNull()
     completePendingPackageLoad(editor)
@@ -1155,7 +1155,9 @@ describe("DomEditor iframe setup", () => {
     finishLoading()
     await reload
     expect(focus).toHaveBeenCalledOnce()
-    expect(editor.shadowRoot!.activeElement).toBe(iframe)
+    const reloadedFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    expect(reloadedFrame).not.toBe(iframe)
+    expect(editor.shadowRoot!.activeElement).toBe(reloadedFrame)
   })
 
   it.each(["initial", "preview", "reload", "disconnected"])("focuses the initial selection after loading: %s", async mode => {
@@ -1642,6 +1644,68 @@ describe("DomEditor iframe setup", () => {
     expect(iframe.contentDocument!.head.querySelector('meta[name="generator"]')?.getAttribute("content"))
       .toBe(WEBWRITER_GENERATOR)
     expect(iframe.contentDocument!.documentElement.lang).toBe("en")
+  })
+
+  it("discards the entire iframe and ignores old document messages when creating a new document", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const host = editor as any
+    const oldDocument = iframe.contentDocument!
+    oldDocument.documentElement.setAttribute("data-authored", "old")
+    oldDocument.head.insertAdjacentHTML("beforeend", "<title>Old canvas</title><style>body {color: red}</style>")
+    oldDocument.body.className = "ww-canvas"
+    oldDocument.body.innerHTML = '<div><div><custom-widget answer="42"><!--keep--><p>Old canvas content</p></custom-widget></div></div>'
+    oldDocument.body.attachShadow({mode: "open"}).innerHTML = "<slot></slot><div>Old controls</div>"
+    const oldHTML = oldDocument.documentElement.outerHTML
+    await new Promise(resolve => setTimeout(resolve, 0))
+    vi.stubGlobal("confirm", vi.fn().mockReturnValue(true))
+    host.frameState = {update: [1, 2, 3]}
+    host.savedEditorSelection = {anchor: {}, focus: {}}
+    host.undoState = {canUndo: true, canRedo: true}
+    const initializeFrame = host.initializeEditorFrame.bind(host)
+    vi.spyOn(host as {initializeEditorFrame(frame: HTMLIFrameElement): void}, "initializeEditorFrame").mockImplementation(frame => {
+      if(frame === host.editorIframe()) wirePackageLoadCompletion(frame.contentWindow!)
+      initializeFrame(frame)
+    })
+
+    for(let iteration = 0; iteration < 2; iteration++) {
+      const previousFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+      await host.newDocument("document")
+      await editor.updateComplete
+      const freshFrame = editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+      expect(freshFrame).not.toBe(previousFrame)
+      expect(previousFrame.isConnected).toBe(false)
+      expect(freshFrame.contentWindow).not.toBe(editorWindow)
+      expect(host.editorDocument).toBe(freshFrame.contentDocument)
+      expect(host.editorDocument.documentElement.hasAttribute("data-authored")).toBe(false)
+      expect(host.editorDocument.title).toBe("")
+      expect(host.editorDocument.body.innerHTML).toBe("")
+      expect(host.editorDocument.body.shadowRoot).toBeNull()
+      expect(host.frameState).toBeUndefined()
+      expect(host.savedEditorSelection).toBeNull()
+      expect(host.undoState).toEqual({canUndo: false, canRedo: false})
+      expect(host.documentLayout).toMatchObject({mode: "document", canConvert: true})
+      expect(host.documentLayoutsDismissed).toBe(false)
+      expect(host.fileDirty).toBe(false)
+
+      initializeFrame(previousFrame)
+      host.editorOpaque = true
+      window.dispatchEvent(new MessageEvent("message", {
+        origin: window.location.origin, source: editorWindow,
+        data: {type: "editor-frame-snapshot", bridgeNonce: host.bridgeNonce, html: oldHTML, treeChanged: true},
+      }))
+      host.handleEditorMessage(new MessageEvent("message", {
+        origin: new URL(host.frameShellURL("editor", host.frameRevision)).origin, source: editorWindow,
+        data: {type: "webwriter-editor-frame-ready", bridgeNonce: host.bridgeNonce},
+      }))
+      expect(host.editorDocument).toBe(freshFrame.contentDocument)
+      expect(host.editorWindow).toBe(freshFrame.contentWindow)
+      expect(host.fileDirty).toBe(false)
+      host.editorOpaque = false
+
+      editor.requestUpdate()
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector("iframe.editor-frame")).toBe(freshFrame)
+    }
   })
 
   it("passes the saved-once accessibility gate into initial and restarted editor frames", async () => {

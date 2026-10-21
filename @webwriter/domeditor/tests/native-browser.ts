@@ -4596,6 +4596,63 @@ await check("canvas and slide delete affordances follow rotation placement", asy
   }
 })
 
+await check("New discards the previous canvas iframe and its document state", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1280px;height:900px"
+  frame.src = "/editor/"
+  fixture.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if((app as any)?.editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "editor did not initialize")
+    const host = app as any
+    await host.waitForEditorWindow()
+    frame.contentWindow!.confirm = () => true
+    await host.reloadDocument('<!doctype html><html lang="fr" data-old="yes"><head><title>Old canvas</title><style data-old>body {color:red}</style></head><body class="ww-canvas"><div><div><old-widget answer="42"><!--old--><p>Old canvas content</p></old-widget></div></div></body></html>')
+    const originalSource = await app!.execute({type: "serializeDocument"})
+    await host.reloadEditor([])
+    assert(host.frameState, "package reload did not retain the previous document state")
+    assert(await app!.execute({type: "serializeDocument"}) === originalSource, "package reload changed authored content")
+    host.fileDirty = true
+
+    for(let iteration = 0; iteration < 2; iteration++) {
+      const previousFrame = app!.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+      const previousWindow = previousFrame.contentWindow!
+      const previousOrigin = new URL(previousFrame.src).origin
+      await host.newDocument("document")
+      await app!.updateComplete
+      const freshFrame = app!.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+      assert(freshFrame !== previousFrame && !previousFrame.isConnected, "New reused the previous iframe")
+      assert(freshFrame.contentWindow !== previousWindow, "New retained the previous window identity")
+      host.handleEditorMessage(new MessageEvent("message", {
+        source: previousWindow, origin: previousOrigin,
+        data: {type: "editor-frame-snapshot", bridgeNonce: host.bridgeNonce, treeChanged: true,
+          html: '<html><body class="ww-canvas"><div><div>Old delayed content</div></div></body></html>'},
+      }))
+      await layoutFrame()
+      const source = await app!.execute({type: "serializeDocument"}) as string
+      const doc = new DOMParser().parseFromString(source, "text/html")
+      assert(!doc.querySelector("[data-old], old-widget, div") && !source.includes("Old canvas"), "previous authored content survived New")
+      assert(doc.body.className === "" && doc.body.textContent === "", "New retained the canvas layout or content")
+      assert(!host.frameState && !host.fileDirty, "New retained previous editor state or became dirty")
+      assert(host.documentLayout.mode === "document" && host.documentLayout.canConvert, "New cannot select a layout")
+      assert(app!.shadowRoot!.querySelector(".document-layouts-panel:not([inert])"), "New hid the layout controls")
+      await app!.execute({type: "undo"})
+      assert(!(await app!.execute({type: "serializeDocument"}) as string).includes("Old canvas"), "undo restored the discarded document")
+    }
+    await host.newDocument("canvas")
+    assert(host.documentLayout.mode === "canvas" && !host.fileDirty, "New could not initialize a clean canvas")
+    await host.newDocument("document")
+    assert(host.documentLayout.mode === "document" && host.documentLayout.canConvert && !host.fileDirty,
+      "New could not discard the generated canvas")
+  }
+  finally { frame.remove() }
+})
+
 await check("iframe lifecycle reaches load and cleans up", async () => {
   const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")!
   await new Promise<void>((resolve, reject) => {
@@ -8018,6 +8075,7 @@ await check("bottom layout cards retain native editing focus after rendering", a
     ;(app as any).savedEditorSelection = null
     const previousDocument = editingFrame!.contentDocument
     await (app as any).reloadEditor([])
+    editingFrame = app!.shadowRoot!.querySelector<HTMLIFrameElement>(".editor-frame")!
     assert(editingFrame!.contentDocument !== previousDocument, "package reload did not replace the document")
     assert(app!.shadowRoot!.activeElement === editingFrame && editingFrame!.contentDocument!.hasFocus(), "package reload did not restore iframe focus")
     assert(editingFrame!.contentDocument!.body.matches(":focus"), "package reload did not focus the native editable body")
