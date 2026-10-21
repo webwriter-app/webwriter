@@ -1141,13 +1141,11 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Modifier-click owns the entire activation sequence at the document
-   * boundary, except inside the element that currently owns capture. */
+   * boundary, including inside the element that currently owns capture. */
   readonly #handleModifierClick = (event: MouseEvent) => {
     if(event.type === "pointerdown") this.#modifierClick = false
     if(event.button !== 0 || (!this.#modifierClick && !modifierKeyDown(event)) || isAppendixInteraction(event)) return false
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
-    const captured = this.captureSelectedElement
-    if(!this.#modifierClick && captured && (widget === captured || (event.target instanceof Node && captured.contains(event.target)))) return false
     event.preventDefault()
     event.stopImmediatePropagation()
     if(event.type === "pointerdown") {
@@ -1157,6 +1155,7 @@ export class SelectionFeature extends EditorFeature {
       this.#releaseCaptureSelection()
       this.editor.features.table.finishResize()
       this.editor.features.table.clearCellSelection(false)
+      if(this.editor.features.table.selectCellAtPoint(widget ?? event.target, event.clientX, event.clientY)) return true
       const target = this.#modifierSelectionTarget(widget ?? event.target)
       if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
         const elements = $.selectedElements

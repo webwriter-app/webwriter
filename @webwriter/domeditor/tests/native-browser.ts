@@ -3473,6 +3473,63 @@ await check("touch caret and ranges use shared pointer selection", async () => {
   finally {paragraph.remove()}
 })
 
+await check("modifier clicks select table cells and outer borders", async () => {
+  const table = document.createElement("table")
+  table.innerHTML = '<tbody><tr><th rowspan="2"><button>Run</button></th><td>B</td></tr><tr><td>C</td></tr></tbody>'
+  table.style.cssText = "width:320px;border:2px solid black"
+  table.querySelectorAll<HTMLElement>("td, th").forEach(cell => cell.style.cssText = "padding:20px;border:1px solid black")
+  fixture.append(table)
+  const cell = table.querySelector("th")!
+  const button = cell.querySelector("button")!
+  let activations = 0
+  button.addEventListener("click", () => activations++)
+  const click = (target: Element, x: number, y: number) => {
+    for(const type of ["pointerdown", "pointerup", "click"]) {
+      const event = new PointerEvent(type, {button: 0, bubbles: true, composed: true, cancelable: true,
+        ctrlKey: true, metaKey: true, clientX: x, clientY: y})
+      target.dispatchEvent(event)
+      assert(event.defaultPrevented, `${type} reached native activation`)
+    }
+  }
+  try {
+    for(const collapse of ["collapse", "separate"]) for(const captionSide of ["none", "top", "bottom"]) {
+      table.style.borderCollapse = collapse
+      table.style.borderSpacing = "8px"
+      table.caption?.remove()
+      if(captionSide !== "none") {
+        const caption = table.createCaption()
+        caption.textContent = "Table caption"
+        caption.style.captionSide = captionSide
+      }
+      table.scrollIntoView()
+      await layoutFrame()
+      const rect = table.getBoundingClientRect(), box = cell.getBoundingClientRect()
+      const top = captionSide === "top" ? table.caption!.getBoundingClientRect().bottom : rect.top
+      const bottom = captionSide === "bottom" ? table.caption!.getBoundingClientRect().top : rect.bottom
+      click(button, box.left + box.width / 2, box.top + box.height / 2)
+      assert(editor.features.table.selectedCells.length === 1 && editor.features.table.selectedCells[0] === cell, `${collapse}: cell interior did not select its cell`)
+      const next = table.querySelector("td")!.getBoundingClientRect()
+      click(table, (box.right + next.left) / 2, next.top + next.height / 2)
+      assert(editor.features.table.hasCellSelection, `${collapse}: inner border selected the table`)
+      for(const [x, y] of [[rect.left + 1, (top + bottom) / 2], [rect.right - 1, (top + bottom) / 2],
+        [rect.left + rect.width / 2, top + 1], [rect.left + rect.width / 2, bottom - 1]]) {
+        click(table, x, y)
+        assert($.selectedElement === table && !editor.features.table.hasCellSelection, `${collapse}: outer border did not select the table`)
+      }
+      click(button, box.left + box.width / 2, box.top + box.height / 2)
+      assert(editor.features.table.selectedCells[0] === cell, `${collapse}: table selection prevented cell selection`)
+    }
+    assert(!activations, "modifier-click activated a cell control")
+    assert(!editor.toHTML(true).includes("◆"), "cell selection markers leaked into serialization")
+  }
+  finally {
+    editor.features.table.clearCellSelection(false)
+    table.remove()
+    $.selectDocumentStart()
+    editor.features.selection.processSelection()
+  }
+})
+
 await check("selection feature treats custom element as atomic", async () => {
   const widget = fixture.querySelector("native-audit-widget")!
   $.selectElement(widget)

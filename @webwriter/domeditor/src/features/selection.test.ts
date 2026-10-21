@@ -3532,30 +3532,61 @@ describe("document listeners", () => {
     }
     expect(received).not.toHaveBeenCalled()
   })
-  it("allows modifier interactions in a widget explicitly selected for capture", () => {
+  it.each(["open", "closed", "light-button", "light-control"] as const)("intercepts modifier interactions in a capture-selected %s widget", kind => {
     const widget = document.createElement("interactive-widget")
-    const button = document.createElement("button")
-    widget.attachShadow({mode: "open"}).append(button)
+    const target = kind === "light-control" ? document.createElement("input") : document.createElement("button")
+    if(kind === "open" || kind === "closed") widget.attachShadow({mode: kind}).append(target)
+    else widget.append(target)
     appendToBody(widget)
     feature.captureElement(widget)
+    target.focus()
     const received = vi.fn()
-    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) button.addEventListener(type, received)
+    for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) target.addEventListener(type, received, {capture: true})
 
     for(const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]) {
-      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, ctrlKey: true})
-      button.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(false)
+      const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, ctrlKey: true, metaKey: true})
+      target.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
     }
 
-    expect(received).toHaveBeenCalledTimes(6)
-    expect(feature.captureSelectedWidget).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(received).not.toHaveBeenCalled()
+    expect($.selectedElement).toBe(widget)
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
   })
-  it("suppresses activation even when the modifier is released before the click", () => {
+  it.each(["audio", "video", "iframe", "input", "button", "select", "textarea", "svg"])("intercepts modifier activation of a capture-selected <%s> before target handlers", tag => {
+    const target = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag)
+    if(target instanceof HTMLMediaElement) target.controls = true
+    appendToBody(target)
+    const received = vi.fn()
+    const types = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick"]
+    for(const type of types) target.addEventListener(type, received, {capture: true})
+
+    for(const modifier of ["ctrlKey", "metaKey"]) {
+      const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue(modifier === "metaKey" ? "MacIntel" : "Win32")
+      try {
+        feature.captureElement(target)
+        for(const type of types) {
+          const event = new MouseEvent(type, {bubbles: true, composed: true, cancelable: true, [modifier]: true})
+          target.dispatchEvent(event)
+          expect(event.defaultPrevented).toBe(true)
+        }
+        expect($.selectedElement).toBe(target)
+        expect(feature.isCaptureSelection).toBe(false)
+        expect(target).toHaveClass("◆element-selected")
+        expect(target).not.toHaveClass("◆element-capture-selected")
+      }
+      finally { platform.mockRestore() }
+    }
+    expect(received).not.toHaveBeenCalled()
+  })
+  it.each([false, true])("suppresses activation even when the modifier is released before the click (captured: %s)", captured => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(button)
     appendToBody(widget)
+    if(captured) feature.captureElement(widget)
     const activated = vi.fn()
     button.addEventListener("click", activated)
     button.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, ctrlKey: true}))

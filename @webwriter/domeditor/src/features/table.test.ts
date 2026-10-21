@@ -335,13 +335,17 @@ describe("table cell selection", () => {
     expect(cells().map(cell => cell.textContent)).toEqual(["A", "", "C", "D", "", "F", "G", "H", "I"])
   })
 
-  describe.each(["MacIntel", "Win32"])("modifier node selection on %s", platform => {
+  describe.each(["MacIntel", "Win32"])("modifier table selection on %s", platform => {
     const originalPlatform = navigator.platform
     const modifier = platform === "MacIntel" ? {metaKey: true} : {ctrlKey: true}
 
     beforeEach(() => {
       Object.defineProperty(navigator, "platform", {value: platform, configurable: true})
-      document.body.innerHTML = "<table><tbody><tr><td><strong>A</strong></td><td>B</td></tr></tbody></table>"
+      document.body.innerHTML = "<table><tbody><tr><th><strong>A</strong></th><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>"
+      document.querySelector("table")!.getBoundingClientRect = () => new DOMRect(0, 0, 200, 60)
+      cells().forEach((cell, index) => {
+        cell.getBoundingClientRect = () => new DOMRect(index % 2 * 100, Math.floor(index / 2) * 30, 100, 30)
+      })
     })
 
     afterEach(() => {
@@ -349,7 +353,7 @@ describe("table cell selection", () => {
       Object.defineProperty(navigator, "platform", {value: originalPlatform, configurable: true})
     })
 
-    it.each([false, true])("keeps the table selected after pointer movement (existing cell selection: %s)", existingSelection => {
+    it.each([false, true])("keeps the clicked cell selected after pointer movement (existing cell selection: %s)", existingSelection => {
       const table = document.querySelector("table")!
       if(existingSelection) editor.features.table.selectCells(cells()[0])
       const pointerdown = new PointerEvent("pointerdown", {
@@ -358,34 +362,29 @@ describe("table cell selection", () => {
       table.querySelector("strong")!.dispatchEvent(pointerdown)
 
       expect(pointerdown.defaultPrevented).toBe(true)
-      expect($.selectedElement).toBe(table)
-      expect(editor.features.table.hasCellSelection).toBe(false)
-      expect(table).toHaveClass("◆element-selected")
-      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
-      expect(document.body).not.toHaveClass("◆table-cell-selection")
+      expect(editor.features.table.selectedCells).toEqual([cells()[0]])
+      expect(table).not.toHaveClass("◆element-selected")
+      expect(document.body).toHaveClass("◆table-cell-selection")
       expect(document.body).not.toHaveClass("◆table-column-edge")
 
-      // Node selection disables hit testing on descendants, so even a small
-      // pointer movement can arrive on TABLE instead of the clicked cell.
       table.dispatchEvent(new PointerEvent("pointermove", {
         ...modifier, buttons: 1, clientX: 51, clientY: 15, bubbles: true, cancelable: true,
       }))
-      expect(editor.features.table.hasCellSelection).toBe(false)
+      expect(editor.features.table.selectedCells).toEqual([cells()[0]])
       // Releasing the modifier before the pointer must not arm a cell drag.
       cells()[1].dispatchEvent(new PointerEvent("pointermove", {
         buttons: 1, clientX: 150, clientY: 15, bubbles: true, cancelable: true,
       }))
       table.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
 
-      expect($.selectedElement).toBe(table)
-      expect(table).toHaveClass("◆element-selected")
-      expect(editor.features.table.hasCellSelection).toBe(false)
-      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
-      expect(document.body).not.toHaveClass("◆table-cell-selection")
+      expect(table).not.toHaveClass("◆element-selected")
+      expect(editor.features.table.selectedCells).toEqual([cells()[0]])
+      expect(document.querySelectorAll(".◆table-cell-selected")).toHaveLength(1)
+      expect(document.body).toHaveClass("◆table-cell-selection")
       expect(editor.features.selection.isInDragSelection).toBe(false)
     })
 
-    it("selects the table without resizing an armed column edge", () => {
+    it("selects the cell without resizing an armed inner column edge", () => {
       const table = document.querySelector("table")!
       const first = cells()[0]
       first.getBoundingClientRect = () => ({
@@ -406,9 +405,114 @@ describe("table cell selection", () => {
       expect(document.body).not.toHaveClass("◆table-column-resize")
       table.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
 
+      expect(editor.features.table.selectedCells).toEqual([first])
+      expect(editor.toHTML(true)).toBe(before)
+    })
+
+    it.each([
+      {selector: "th", x: 100, y: 15, index: 0},
+      {selector: "td", x: 100, y: 15, index: 1},
+      {selector: "tr", x: 100, y: 15, index: 0},
+      {selector: "tbody", x: 50, y: 30, index: 0},
+      {selector: "table", x: 150, y: 30, index: 1},
+    ])("selects the cell on an inner border targeting $selector at ($x, $y)", ({selector, x, y, index}) => {
+      const target = document.querySelector(selector)!
+      const received = vi.fn()
+      target.addEventListener("pointerdown", received, {capture: true})
+      target.addEventListener("click", received, {capture: true})
+      for(const type of ["pointerdown", "pointerup", "click"]) {
+        const event = new PointerEvent(type, {...modifier, clientX: x, clientY: y, bubbles: true, cancelable: true})
+        target.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+      expect(editor.features.table.selectedCells).toEqual([cells()[index]])
+      expect(received).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      {x: 1, y: 15}, {x: 199, y: 15}, {x: 50, y: 1}, {x: 50, y: 59},
+    ])("selects the whole table on its outer border at ($x, $y)", ({x, y}) => {
+      const table = document.querySelector("table")!
+      editor.features.table.selectCells(cells()[0], cells()[3])
+      cells()[0].dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: x, clientY: y, bubbles: true, cancelable: true}))
+      expect($.selectedElement).toBe(table)
+      expect(table).toHaveClass("◆element-selected")
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
+    })
+
+    it("selects a merged cell through its control and keeps selection artifacts out of HTML", () => {
+      document.querySelector("table")!.innerHTML = '<tbody><tr><th rowspan="2"><button>Run</button></th><td>B</td></tr><tr><td>C</td></tr></tbody>'
+      const cell = cells()[0]
+      const before = editor.toHTML(true)
+      const button = cell.querySelector("button")!
+      const activated = vi.fn()
+      button.addEventListener("click", activated)
+      for(const type of ["pointerdown", "click"]) button.dispatchEvent(new PointerEvent(type, {
+        ...modifier, clientX: 50, clientY: 15, bubbles: true, cancelable: true,
+      }))
+      expect(editor.features.table.selectedCells).toEqual([cell])
+      expect(activated).not.toHaveBeenCalled()
+      editor.doc.syncFromDOM()
+      expect(editor.toHTML(true)).toBe(before)
+      expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+      editor.features.table.clearCellSelection()
+      expect(document.querySelector(".◆table-cell-selected")).toBeNull()
+    })
+
+    it("releases capture and focused shadow controls inside a cell", () => {
+      const cell = cells()[0]
+      const widget = document.createElement("table-control-widget")
+      const button = document.createElement("button")
+      widget.attachShadow({mode: "open"}).append(button)
+      cell.append(widget)
+      editor.features.selection.captureElement(widget)
+      button.focus()
+      button.dispatchEvent(new PointerEvent("pointerdown", {
+        ...modifier, clientX: 50, clientY: 15, bubbles: true, composed: true, cancelable: true,
+      }))
+      expect(editor.features.table.selectedCells).toEqual([cell])
+      expect(editor.features.selection.isCaptureSelection).toBe(false)
+      expect(widget).not.toHaveClass("◆element-capture-selected")
+      expect(widget.shadowRoot!.activeElement).not.toBe(button)
+    })
+
+    it("selects the nearest cell in border spacing and honors thick outer borders", () => {
+      const table = document.querySelector("table")!
+      cells()[0].getBoundingClientRect = () => new DOMRect(10, 10, 80, 20)
+      cells()[1].getBoundingClientRect = () => new DOMRect(110, 10, 80, 20)
+      table.dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: 99, clientY: 15, bubbles: true, cancelable: true}))
+      expect(editor.features.table.selectedCells).toEqual([cells()[0]])
+      table.style.border = "10px solid black"
+      cells()[0].dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: 8, clientY: 15, bubbles: true, cancelable: true}))
       expect($.selectedElement).toBe(table)
       expect(editor.features.table.hasCellSelection).toBe(false)
-      expect(editor.toHTML(true)).toBe(before)
+    })
+
+    it("selects cells in the innermost table", () => {
+      const outer = document.querySelector("table")!
+      const nested = document.createElement("table")
+      nested.innerHTML = "<tr><td>Nested</td></tr>"
+      cells()[0].append(nested)
+      nested.getBoundingClientRect = () => new DOMRect(10, 10, 80, 40)
+      nested.querySelector("td")!.dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: 50, clientY: 25, bubbles: true, cancelable: true}))
+      expect(editor.features.table.selectedCells).toEqual([nested.querySelector("td")])
+      nested.dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: 11, clientY: 25, bubbles: true, cancelable: true}))
+      expect($.selectedElement).toBe(nested)
+      expect(outer).not.toHaveClass("◆element-selected")
+    })
+
+    it.each(["top", "bottom"])("selects the outer grid border beside a %s caption", side => {
+      const table = document.querySelector("table")!
+      const caption = table.createCaption()
+      caption.textContent = "Caption"
+      caption.style.captionSide = side
+      table.getBoundingClientRect = () => new DOMRect(0, 0, 200, 90)
+      caption.getBoundingClientRect = () => new DOMRect(0, side === "top" ? 0 : 60, 200, 30)
+      cells()[0].dispatchEvent(new PointerEvent("pointerdown", {...modifier, clientX: 50,
+        clientY: side === "top" ? 31 : 59, bubbles: true, cancelable: true}))
+      expect($.selectedElement).toBe(table)
+      expect(editor.features.table.hasCellSelection).toBe(false)
     })
   })
 

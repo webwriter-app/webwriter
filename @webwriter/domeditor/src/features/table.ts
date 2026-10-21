@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
+import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, focusEditorWindow, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
   normalizeTableStructure,
@@ -426,6 +426,34 @@ export class TableFeature extends EditorFeature {
     this.editor.features.selection.processSelection()
     this.editor.postSelectionPath()
     return true
+  }
+
+  /** Modifier-click selects a cell, reserving the table's outer border for
+   * whole-table selection. Border spacing can target a row or the table. */
+  selectCellAtPoint(target: EventTarget | null, x: number, y: number) {
+    if(!(target instanceof Node)) return false
+    const table = tableForNode(target)
+    if(!this.editableTable(table)) return false
+    const element = target instanceof Element ? target : target.parentElement
+    if(element?.closest("caption")?.parentElement === table) return false
+    const rect = table.getBoundingClientRect()
+    if(rect.width > 0 && rect.height > 0) {
+      const style = getComputedStyle(table)
+      const caption = table.caption
+      const captionRect = caption?.getBoundingClientRect()
+      const captionBelow = caption && getComputedStyle(caption).captionSide === "bottom"
+      const top = captionRect?.height && !captionBelow ? Math.max(rect.top, captionRect.bottom) : rect.top
+      const bottom = captionRect?.height && captionBelow ? Math.min(rect.bottom, captionRect.top) : rect.bottom
+      const border = (side: string) => Math.max(5, parseFloat(style.getPropertyValue(`border-${side}-width`)) || 0)
+      if(x <= rect.left + border("left") || x >= rect.right - border("right")
+        || y <= top + border("top") || y >= bottom - border("bottom")) return false
+    }
+    const cell = cellForNode(target)
+    const hit = cell && tableForNode(cell) === table ? cell
+      : rect.width > 0 && rect.height > 0 ? this.edgeCellAtPoint(table, x, y) : null
+    if(!hit) return false
+    focusEditorWindow()
+    return this.selectCells(hit)
   }
 
   private canToggleRowGroup(map: TableMap, type: "thead" | "tfoot") {
@@ -1210,7 +1238,7 @@ export class TableFeature extends EditorFeature {
       }
       if(isAppendixInteraction(event)) return
       const cell = cellForNode(event.target instanceof Node ? event.target : null)
-      // Modifier-click belongs to node selection; leave no cell drag or
+      // The selection capture handler owns modifier-click; leave no cell drag or
       // column resize pending for subsequent pointer movement.
       if(!cell || modifierKeyDown(event)) {
         this.setResizeHover(null)

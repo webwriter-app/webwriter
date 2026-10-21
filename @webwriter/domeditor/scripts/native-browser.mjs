@@ -102,6 +102,7 @@ const expectedChecks = [
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",
   "selection feature treats custom element as atomic",
+  "modifier clicks select table cells and outer borders",
   "touch caret and ranges use shared pointer selection",
   "layout based hit testing returns the rendered target",
   "clicks below closed details keep hidden media collapsed",
