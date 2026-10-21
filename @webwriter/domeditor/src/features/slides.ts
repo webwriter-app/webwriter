@@ -40,6 +40,7 @@ export class SlidesFeature extends EditorFeature {
     this.editor.features.transformation.updateInfo()
     this.editor.features.layout.refresh()
     this.editor.features.graphic.refresh()
+    this.editor.features.math.refresh()
     this.schedule()
     this.editor.postSelectionPath()
   }

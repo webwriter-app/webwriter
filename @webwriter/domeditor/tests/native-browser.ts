@@ -3220,6 +3220,86 @@ await check("structural formula carets match inserted text without duplicate cap
   finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
+await check("formula carets follow canvas and slide zoom", async () => {
+  for(const mode of ["canvas", "slides"]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:1100px;max-width:none;height:800px"
+    const content = `<p style="position:absolute;left:${mode === "slides" ? 500 : 120}px;top:100px;width:400px;font-size:32px"></p>`
+    frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body class="ww-${mode}">${mode === "slides" ? `<div class="ww-slides-viewport"><section class="ww-slide" id="slide">${content}</section></div>` : content}<script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    fixture.append(frame)
+    try {
+      const view = frame.contentWindow!
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, `${mode}: fixture did not initialize`)
+      const editor = view.editor!, doc = frame.contentDocument!, paragraph = doc.querySelector("p")!
+      await layoutFrame()
+      const navigate = (operation: "actual-size") => mode === "canvas"
+        ? editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation})
+        : editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation})
+      for(const deltaY of [350, -350, 0]) for(const display of ["inline", "block"]) for(const content of [
+        '<mrow><mfrac><mi>a</mi><mi>b</mi></mfrac><mi>z</mi></mrow>',
+        '<mrow><msup><mi>x</mi><mn>2</mn></msup><mi>z</mi></mrow>',
+      ]) {
+        navigate("actual-size")
+        paragraph.innerHTML = `<math display="${display}">${content}</math>`
+        const math = paragraph.querySelector("math")!, row = math.firstElementChild!
+        const positions: [Node, number][] = [[row, 0], [row, 1], [row, 2], [row.lastChild!.firstChild!, 0], [row.lastChild!.firstChild!, 1]]
+        if(display === "block") positions.push([math, 0], [math, 1])
+        for(const [index, [node, offset]] of positions.entries()) {
+          if(index === 0) {
+            const bounds = math.getBoundingClientRect()
+            math.dispatchEvent(new WheelEvent("wheel", {bubbles: true, cancelable: true, ctrlKey: true, deltaY,
+              clientX: bounds.left, clientY: bounds.top}))
+          }
+          doc.getSelection()!.setBaseAndExtent(node, offset, node, offset)
+          editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+          editor.features.math.refresh()
+          await layoutFrame()
+          const caretElement = editor.appendix.querySelector<HTMLElement>('[part="math-caret"]')!
+          assert(caretElement, `${mode}: missing caret`)
+          const container = node === math ? math : row
+          const caret = caretElement.getBoundingClientRect(), before = container.getBoundingClientRect()
+          const baseline = row.lastElementChild!.getBoundingClientRect()
+          assert(editor.features.math.execute("text:x"), `${mode}: insertion failed`)
+          const text = doc.getSelection()!.focusNode!, range = doc.createRange()
+          range.selectNodeContents(text)
+          const character = range.getBoundingClientRect()
+          range.collapse(true)
+          const context = `${mode}/${display}/${deltaY}/${node.nodeName}:${offset}`
+          assert(Math.abs(caret.height - character.height) < 1, `${context}: caret height ${caret.height} differs from text ${character.height}`)
+          assert(Math.abs(caret.top - baseline.top - (character.top - row.lastElementChild!.getBoundingClientRect().top)) < 1, `${context}: caret baseline is misaligned`)
+          assert(Math.abs(caret.left - before.left - (range.getBoundingClientRect().left - container.getBoundingClientRect().left)) < 1, `${context}: caret insertion position is misaligned`)
+          text.parentElement!.remove()
+        }
+      }
+      for(const deltaY of [350, -350, 0]) {
+        navigate("actual-size")
+        paragraph.innerHTML = '<math display="block"><mrow></mrow></math>'
+        const math = paragraph.firstElementChild!, row = math.firstElementChild!
+        doc.getSelection()!.setBaseAndExtent(row, 0, row, 0)
+        editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+        editor.features.math.refresh()
+        const authored = editor.toHTML(true), origin = math.getBoundingClientRect()
+        math.dispatchEvent(new WheelEvent("wheel", {bubbles: true, cancelable: true, ctrlKey: true, deltaY,
+          clientX: origin.left, clientY: origin.top}))
+        await layoutFrame()
+        const caret = editor.appendix.querySelector('[part="math-caret"]')!.getBoundingClientRect()
+        const bounds = math.getBoundingClientRect()
+        assert(Math.abs(caret.left - bounds.left - bounds.width / 2) < 1, `${mode}: empty caret is not horizontally centered after zoom`)
+        assert(Math.abs(caret.top + caret.height / 2 - bounds.top - bounds.height / 2) < 1, `${mode}: empty caret is not vertically centered after zoom`)
+        assert(editor.toHTML(true) === authored, `${mode}: zoom measurement changed authored content`)
+        editor.features.math.execute("text:x")
+        const range = doc.createRange()
+        range.selectNodeContents(doc.getSelection()!.focusNode!)
+        assert(Math.abs(caret.height - range.getBoundingClientRect().height) < 1, `${mode}: empty caret height does not follow zoom`)
+      }
+      editor.doc.syncFromDOM()
+      assert(!editor.toHTML(true).includes("math-caret") && !editor.doc.body.toString().includes("◆"), `${mode}: measurement artifacts leaked`)
+    }
+    finally {frame.contentWindow?.editor?.destroy(); frame.remove()}
+  }
+})
+
 await check("formula clicks distinguish script endings and select whole formulas", async () => {
   const paragraph = document.createElement("p")
   fixture.append(paragraph)

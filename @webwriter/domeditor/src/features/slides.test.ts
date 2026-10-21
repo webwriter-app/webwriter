@@ -31,6 +31,13 @@ afterEach(() => {
 })
 
 describe("CSS-only Slides layout", () => {
+  it("refreshes formula presentation when the slide zoom changes", () => {
+    convert("slides")
+    const refresh = vi.spyOn(editor.features.math, "refresh")
+    editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-in"})
+    expect(refresh).toHaveBeenCalled()
+  })
+
   it("retains breadcrumb document selection for the Document toolbox", async () => {
     convert("slides")
     const html = await editor.serializeHTML()

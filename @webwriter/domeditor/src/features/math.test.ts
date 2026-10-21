@@ -327,6 +327,23 @@ describe("DOM MathML editing", () => {
     expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
   })
 
+  it.each([0.5, 2])("scales placeholder padding into client coordinates at zoom %s", zoom => {
+    vi.spyOn(editor.features.canvas, "active", "get").mockReturnValue(true)
+    vi.spyOn(editor.features.canvas, "zoom", "get").mockReturnValue(zoom)
+    const math = load('<msup><mi>x</mi><mrow style="padding-left:10px;padding-right:4px"></mrow></msup>')
+    const slot = math.querySelector("mrow")!
+    vi.spyOn(slot, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 20, 24 * zoom, 12 * zoom))
+    $.move(slot, 0)
+    const authored = clean()
+    editor.features.math.refresh()
+    const guide = editor.appendix.querySelector<HTMLElement>(".◆math-overlay > span")!
+    expect([guide.style.left, guide.style.width]).toEqual([`${30 + 10 * zoom}px`, `${10 * zoom}px`])
+    expect(clean()).toBe(authored)
+    editor.features.math.disable()
+    expect(editor.appendix.querySelector(".◆math-overlay")).toBeNull()
+    expect(math.querySelector(".◆math-slot")).toBeNull()
+  })
+
   it("highlights only the hovered structure placeholder border and restores it on exit", () => {
     const math = load('<mroot><mrow></mrow><mrow></mrow></mroot>')
     const degree = math.querySelector("mroot")!.lastElementChild!

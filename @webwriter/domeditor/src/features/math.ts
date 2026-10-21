@@ -47,6 +47,8 @@ export class MathFeature extends EditorFeature {
   private input: MathCompletionInput | null = null
   private spelling = false
 
+  private get zoom() { return this.editor.features.canvas.active ? this.editor.features.canvas.zoom : this.editor.features.slides.zoom }
+
   private pendingStyles() {
     const selection = document.getSelection()
     if(!selection?.isCollapsed || !this.typingPoint?.[0].isConnected
@@ -1368,8 +1370,13 @@ export class MathFeature extends EditorFeature {
       copies[index].setAttribute("style", properties.map(key => `${key}:${style.getPropertyValue(key)}`).join(";"))
     })
     clone.setAttribute("style", `${clone.getAttribute("style")};display:inline math`)
+    const zoom = this.zoom
     const probe = document.createElement("span")
-    probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;white-space:nowrap"
+    // The appendix is outside the canvas transform and the slide's CSS zoom.
+    // Keep probe measurements in the same client coordinates as authored math.
+    probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;white-space:nowrap;transform-origin:0 0"
+    if(this.editor.features.slides.active) probe.style.zoom = String(zoom)
+    else probe.style.transform = `scale(${zoom})`
     probe.setAttribute("aria-hidden", "true")
     const baseline = document.createElement("span")
     baseline.style.cssText = "display:inline-block;width:0;height:0;padding:0;border:0;vertical-align:baseline"
@@ -1418,8 +1425,8 @@ export class MathFeature extends EditorFeature {
       const bounds = container.getBoundingClientRect()
       const fitPlaceholder = !outside && !element.childNodes.length && !this.isFencedPlaceholder(element)
       const style = getComputedStyle(element)
-      const paddingTop = node === root ? parseFloat(style.paddingTop) || 0 : 0
-      const paddingBottom = node === root ? parseFloat(style.paddingBottom) || 0 : 0
+      const paddingTop = node === root ? (parseFloat(style.paddingTop) || 0) * zoom : 0
+      const paddingBottom = node === root ? (parseFloat(style.paddingBottom) || 0) * zoom : 0
       const availableHeight = Math.max(0, bounds.height - paddingTop - paddingBottom)
       // Empty arguments reserve an inline-block box with no text descent.
       // Typing replaces that box and can change the structure's layout. Until then,
@@ -1432,7 +1439,7 @@ export class MathFeature extends EditorFeature {
       // edge spacing. Measure horizontal placement at the real block width;
       // retain the inline probe's baseline measurement for vertical placement.
       if(!outside && container === root && root.getAttribute("display") === "block") {
-        clone.setAttribute("style", `${clone.getAttribute("style")};display:block math;box-sizing:border-box;width:${actual.width}px`)
+        clone.setAttribute("style", `${clone.getAttribute("style")};display:block math;box-sizing:border-box;width:${actual.width / zoom}px`)
         return new DOMRect(bounds.left + range.getBoundingClientRect().left - row.getBoundingClientRect().left, top, 0, height)
       }
       return new DOMRect(bounds.left + start.left - row.getBoundingClientRect().left, top, 0, height)
@@ -1602,8 +1609,8 @@ export class MathFeature extends EditorFeature {
       const rect = element.getBoundingClientRect()
       const glyph = this.isFencedPlaceholder(element) ? this.structuralTextRect(element, 0) : null
       const style = getComputedStyle(element)
-      const paddingLeft = parseFloat(style.paddingLeft) || 0
-      const paddingRight = parseFloat(style.paddingRight) || 0
+      const paddingLeft = (parseFloat(style.paddingLeft) || 0) * this.zoom
+      const paddingRight = (parseFloat(style.paddingRight) || 0) * this.zoom
       const guide = document.createElement("span")
       // Fenced slots reserve only ink ascent for delimiter layout, but their
       // visible guide and caret use the full character box. Other slots keep

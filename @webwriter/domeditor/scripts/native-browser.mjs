@@ -88,6 +88,7 @@ const expectedChecks = [
   "empty formula carets fit their space and blink across presentation refreshes",
   "empty roots keep their baseline and one caret across focus and formula edges",
   "structural formula carets match inserted text without duplicate capture carets",
+  "formula carets follow canvas and slide zoom",
   "formula clicks distinguish script endings and select whole formulas",
   "inline formula edges use text selections and block formula edges use gaps",
   "inline formulas retain distinct inner and outer text insertion positions",
