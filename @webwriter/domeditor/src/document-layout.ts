@@ -1,4 +1,5 @@
 import {getDocumentRoot} from "./document-template"
+import {boardPrintContentStyles} from "./document-layout-print.js"
 
 export type DocumentLayoutMode = "document" | "canvas" | "slides" | "board"
 export type DocumentLayoutState = {
@@ -60,8 +61,10 @@ body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([i
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child { margin-bottom: 0; }
 @media print {
-  body.ww-board { width: 100%; min-height: 0; padding: 0; flex-wrap: wrap; background: white; }
-  body.ww-board > section.ww-board-column:not([is]) { flex-basis: 20rem; padding-bottom: 1rem; break-inside: avoid; }
+  @page ww-board { size: portrait; margin: 10mm; }
+  html:has(> body.ww-board) { height: auto; overflow: visible; background: none; }
+  body.ww-board { page: ww-board; caret-color: transparent; }
+  ${boardPrintContentStyles}
 }
 `
 
@@ -96,6 +99,11 @@ body.ww-canvas {
 body.ww-canvas > :not(style, script, link, meta, template) { position: absolute; }
 body.ww-canvas > p:not([is]) { inline-size: max-content; min-inline-size: 25px; max-inline-size: none; }
 body.ww-canvas details:not([is]) { background-color: white; }
+@media print {
+  @page ww-canvas { margin: 10mm; }
+  html:has(> body.ww-canvas) { min-height: 0; overflow: clip; background: none; }
+  body.ww-canvas { page: ww-canvas; width: 100vw; height: 100vh; min-height: 0; overflow: clip; caret-color: transparent; }
+}
 `
 
 export const slidesClass = "ww-slides"
@@ -168,8 +176,14 @@ body.ww-slides .ww-slide-directions > a:focus-visible { outline: 2px solid curre
   body.ww-slides > .ww-slides-viewport { scroll-behavior: auto; }
 }
 @media print {
+  @page ww-slides { size: landscape; margin: 10mm; }
+  html:has(> body.ww-slides) { height: auto; overflow: visible; background: none; }
+  body.ww-slides { page: ww-slides; display: block; width: auto; max-width: none; height: auto; min-height: 0; margin: 0; padding: 0; background: none; caret-color: transparent; }
   body.ww-slides > .ww-slides-viewport { position: static; display: block; width: 100%; height: auto; min-height: 0; overflow: visible; }
-  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) { width: ${slideWidth}px; height: ${slideHeight}px; margin: 0; aspect-ratio: 16 / 9; overflow: hidden; break-after: page; }
+  body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]) {
+    width: ${slideWidth}px; height: ${slideHeight}px; margin: 0; aspect-ratio: 16 / 9; overflow: hidden;
+    zoom: min(calc(100vw / ${slideWidth}px), calc(100vh / ${slideHeight}px)); break-inside: avoid; break-after: page;
+  }
   body.ww-slides > .ww-slides-viewport > section.ww-slide:not([is]):last-child { break-after: auto; }
   body.ww-slides > nav.ww-slides-navigation, body.ww-slides .ww-slide-directions { display: none; }
 }

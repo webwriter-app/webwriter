@@ -3,6 +3,7 @@ import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
 import figureLayoutSource from "./figure-layout.js?raw"
+import layoutPrintSource from "./document-layout-print.js?raw"
 import attributionSource from "./attribution.js?raw"
 import {attributionAttributes} from "./attribution.js"
 import listMarkerStyleSource from "./document-list-markers.css?raw"
@@ -131,6 +132,14 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   // Replace an earlier export's runtime, including after a template change.
   root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
   root.querySelectorAll('script[id="webwriter-document-viewer"]').forEach(script => script.remove())
+  root.querySelectorAll('script[id="webwriter-layout-print"]').forEach(script => script.remove())
+  if(documentLayoutMode(root.body) === "board") {
+    const script = root.createElement("script")
+    script.id = "webwriter-layout-print"
+    script.type = "module"
+    script.textContent = `${layoutPrintSource}\ncreateLayoutPrint(document)\n`
+    head.append(script)
+  }
   if(getDocumentRoot(root.body) === root.body && documentLayoutMode(root.body) === "document") {
     const script = root.createElement("script")
     script.id = "webwriter-document-viewer"
@@ -146,7 +155,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const script = root.createElement("script")
     script.id = "webwriter-canvas-viewer"
     script.type = "module"
-    script.textContent = `${canvasViewerSource}\nmountCanvasReader()\n`
+    script.textContent = `${layoutPrintSource}\n${canvasViewerSource}\nmountCanvasReader()\ncreateLayoutPrint(document)\n`
     head.append(script)
   }
   const tags = new Set<string>()

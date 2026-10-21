@@ -2,18 +2,23 @@ import {EditorFeature} from "."
 import type {FloatSide} from "../element-styles"
 import {$} from "../utility"
 import {createFigureLayout} from "../figure-layout.js"
+import {createLayoutPrint} from "../document-layout-print.js"
 
 /** Document arrangement uses native floats and sibling moves on the live DOM. */
 export class LayoutFeature extends EditorFeature {
   private figures: ReturnType<typeof createFigureLayout> | null = null
+  private print: ReturnType<typeof createLayoutPrint> | null = null
   enable() {
     if(this.isEnabled) return
     super.enable()
     this.figures = createFigureLayout(document)
+    this.print = createLayoutPrint(document)
   }
   disable() {
     this.figures?.destroy()
     this.figures = null
+    this.print?.destroy()
+    this.print = null
     super.disable()
   }
   refresh() { this.figures?.refresh() }

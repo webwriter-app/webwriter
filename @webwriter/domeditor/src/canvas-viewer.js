@@ -233,7 +233,7 @@ export function mountCanvasReader() {
   controls.setAttribute("aria-label", "Document canvas")
   const style = document.createElement("style")
   style.textContent = canvasControlsStyles + `
-    @media print { slot { transform: none !important; width: auto !important; height: auto !important; } [part=canvas-background] { display: none; } }
+    @media print { [part=canvas-background] { display: none; } }
   `
   appendix.append(background, controls, style)
   const viewer = new CanvasViewer(slot, background, controls)
