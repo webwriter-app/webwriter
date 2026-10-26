@@ -1753,6 +1753,43 @@ describe("processSelection()", () => {
     expect(atomicOverlays()).toHaveLength(1)
   })
 
+  it.each(["document", "board"] as const)("excludes an image at the native paragraph selection's end in %s", mode => {
+    if(mode === "board") editor.setDocumentLayout("board", "document")
+    const root = mode === "board" ? document.querySelector(".ww-board-card")! : document.body
+    for(const html of ['<img>', '<picture><source srcset="image.png"><img></picture>', '<figure><picture><img></picture></figure>']) {
+      root.innerHTML = `<section><!--keep--><p>Hello <b>world</b>!</p>\n${html}<p>After</p></section>`
+      const paragraph = root.querySelector("p")!
+      const text = paragraph.firstChild!
+      const media = root.querySelector("picture, img")!
+      const parent = media.parentNode!
+      const index = Array.from(parent.childNodes).indexOf(media)
+      const authored = editor.toHTML(true)
+      const selection = document.getSelection()!
+      for(const backward of [false, true]) {
+        // Chromium can put the paragraph break at the following media's start.
+        selection.setBaseAndExtent(backward ? media : text, 0, backward ? text : media, 0)
+        document.dispatchEvent(new Event("selectionchange"))
+        expect(selection.anchorNode).toBe(backward ? parent : text)
+        expect(selection.anchorOffset).toBe(backward ? index : 0)
+        expect(selection.focusNode).toBe(backward ? text : parent)
+        expect(selection.focusOffset).toBe(backward ? 0 : index)
+        expect(selection.toString().trim()).toBe("Hello world!")
+        expect(media).not.toHaveClass("◆element-selected", "◆element-capture-selected", "◆atomic-range-selected")
+        expect(atomicOverlays()).toHaveLength(0)
+        expect(feature.captureSelectedElement).toBeNull()
+        expect(editor.toHTML(true)).toBe(authored)
+      }
+      // Crossing the whole node still selects the image, and collapsing clears it.
+      selection.setBaseAndExtent(text, 0, parent, index + 1)
+      feature.processSelection()
+      expect(media).toHaveClass("◆atomic-range-selected")
+      $.move(text, 0)
+      feature.processSelection()
+      expect(media).not.toHaveClass("◆atomic-range-selected")
+      expect(atomicOverlays()).toHaveLength(0)
+    }
+  })
+
   it.each([false, true])("overlays a fully included table once in a mixed range (backward: %s)", backward => {
     document.body.innerHTML = '<p>before</p><table><tbody><tr><td><img><test-widget></test-widget></td></tr></tbody></table><p>after</p>'
     const before = document.body.firstElementChild!.firstChild!

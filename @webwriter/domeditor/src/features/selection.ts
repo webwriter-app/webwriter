@@ -578,6 +578,9 @@ export class SelectionFeature extends EditorFeature {
     const backward = $.isBackwards
     const outside = (element: Element | null, node: Node, offset: number, after: boolean): [Node, number] => {
       if(!element?.parentNode) return [node, offset]
+      // A native paragraph selection can end at the following media's start.
+      // Move that boundary before the host rather than selecting its contents.
+      if(node === element && offset === 0 && !selection.isCollapsed) after = false
       return [element.parentNode, Array.from(element.parentNode.childNodes).indexOf(element) + (after ? 1 : 0)]
     }
     selection.setBaseAndExtent(...outside(anchor, selection.anchorNode, selection.anchorOffset, backward),

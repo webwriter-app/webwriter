@@ -3035,6 +3035,28 @@ await check("triple clicks preserve native paragraph selections in Document and 
             && before.endOffset === after.endOffset, `${mode}: click ${detail} changed the native paragraph selection to ${JSON.stringify(selection.toString())}`)
         }
       }
+      const image = '<img width="200" height="100" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'100\'%3E%3Crect width=\'200\' height=\'100\' fill=\'skyblue\'/%3E%3C/svg%3E">'
+      for(const html of [`<picture>${image}</picture>`, `<figure><picture>${image}</picture></figure>`]) {
+        root.innerHTML = `<section><!--keep--><p>Before</p>\n<p><b>Te</b>st!</p>\n${html}<p>After</p></section>`
+        await layoutFrame()
+        const paragraph = root.querySelectorAll("p")[1]
+        const text = paragraph.querySelector("b")!.firstChild!
+        const picture = root.querySelector("picture")!
+        selection.collapse(text, 1)
+        selection.modify("move", "backward", "paragraphboundary")
+        // Like native triple-click, paragraph granularity includes the break
+        // and can place its end at offset zero inside the following picture.
+        selection.modify("extend", "forward", "paragraph")
+        assert(selection.toString().trim() === "Test!", `${mode}: image-adjacent paragraph setup failed`)
+        await layoutFrame()
+        const range = selection.getRangeAt(0)
+        const parent = picture.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(picture)
+        assert(selection.toString().trim() === "Test!" && range.comparePoint(parent, index + 1) === 1,
+          `${mode}: paragraph selection included the following image`)
+        assert(!picture.classList.contains("◆atomic-range-selected") && !editor.features.selection.captureSelectedElement,
+          `${mode}: paragraph selection highlighted or captured the following image`)
+      }
     }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
