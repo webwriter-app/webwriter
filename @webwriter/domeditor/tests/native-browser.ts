@@ -2998,6 +2998,48 @@ await check("paragraph boundary deletion reverses Enter in Document and Board", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("triple clicks preserve native paragraph selections in Document and Board", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><body><p>Ready</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "paragraph selection fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
+    for(const mode of ["document", "board"] as const) {
+      if(mode === "board") assert(editor.setDocumentLayout("board", "document"), "board did not convert")
+      const root = mode === "board" ? editor.features.board.cards(editor.features.board.columns()[0])[0] : doc.body
+      for(const html of ['<p>Hello world!</p><p>Test!</p>', '<div><!--keep--><p>Hello world!</p>\n<p><b>Te</b>st!</p>\n<p>After</p></div>']) {
+        root.innerHTML = html
+        await layoutFrame()
+        const paragraph = root.querySelectorAll("p")[1]
+        const text = paragraph.querySelector("b")?.firstChild ?? paragraph.firstChild!
+        const hit = doc.createRange()
+        hit.setStart(text, 1); hit.setEnd(text, 2)
+        const rect = hit.getBoundingClientRect()
+        for(const detail of [3, 4]) {
+          // Establish the browser's native paragraph boundaries before CLICK.
+          selection.collapse(text, 1)
+          selection.modify("move", "backward", "paragraphboundary")
+          selection.modify("extend", "forward", "paragraphboundary")
+          const before = selection.getRangeAt(0).cloneRange()
+          assert(selection.toString() === "Test!", `${mode}: native paragraph setup failed`)
+          paragraph.dispatchEvent(new view.MouseEvent("click", {bubbles: true, composed: true, cancelable: true,
+            detail, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2}))
+          await layoutFrame()
+          const after = selection.getRangeAt(0)
+          assert(selection.toString() === "Test!" && before.startContainer === after.startContainer
+            && before.startOffset === after.startOffset && before.endContainer === after.endContainer
+            && before.endOffset === after.endOffset, `${mode}: click ${detail} changed the native paragraph selection to ${JSON.stringify(selection.toString())}`)
+        }
+      }
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("character deletion preserves adjacent spaces", async () => {
   const paragraph = document.createElement("p")
   document.body.append(paragraph)

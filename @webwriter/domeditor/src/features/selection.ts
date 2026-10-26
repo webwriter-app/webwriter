@@ -914,7 +914,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Native caret hit testing snaps blank space to nearby text. Require an
-   * actual character box before expanding a repeated click to a word/line. */
+   * actual character box before allowing repeated word/paragraph selection. */
   #hitsText(event: MouseEvent) {
     const point = document.caretPositionFromPoint?.(event.clientX, event.clientY)
     if(!(point?.offsetNode instanceof Text) || !getDocumentRoot().contains(point.offsetNode)) return false
@@ -2250,7 +2250,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Pointer behavior: 
    * pointerdown starts a drag selection at the pointer (modifier-click selects the whole element instead), 
-   * double/triple click select the word/line, 
+   * double/triple click select the word/paragraph,
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "beforeinput": event => this.#scheduleSelectionReveal(event),
@@ -2358,8 +2358,8 @@ export class SelectionFeature extends EditorFeature {
       }
       else if(ev.detail >= 3) {
         this.hasDoubleClicked = true
-        $.moveBy("line", "backward")
-        $.extendBy("line")
+        // Keep the browser's paragraph selection. Moving by a line from its
+        // boundary can reach into the preceding (longer) paragraph.
       }
     },
     "pointerup": event => {

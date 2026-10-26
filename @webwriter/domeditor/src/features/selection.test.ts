@@ -4970,6 +4970,32 @@ describe("selection invariants", () => {
     expect(extend).toHaveBeenCalledWith("word")
   })
 
+  it.each([3, 4])("preserves the native paragraph selection after a click of detail %s", detail => {
+    document.body.innerHTML = '<section><!--keep--><p>Hello world!</p>\n<p><b>Te</b>st!</p>\n<p>After</p></section>'
+    const paragraph = document.querySelectorAll("p")[1]
+    const text = paragraph.querySelector("b")!.firstChild!
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1} as CaretPosition)
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(0, 20, 50, 20)] as unknown as DOMRectList)
+    const move = vi.spyOn($, "moveBy")
+    const extend = vi.spyOn($, "extendBy")
+    // Native triple-click selection may include the trailing paragraph break.
+    for(const endAtNextParagraph of [false, true]) {
+      const end = endAtNextParagraph ? paragraph.nextElementSibling!.firstChild! : paragraph.lastChild!
+      const offset = endAtNextParagraph ? 0 : end.textContent!.length
+      $.selectRange(text, 0, end, offset)
+      const selectedText = document.getSelection()!.toString()
+      expect(pointer(paragraph, "mousedown", 20, 25, {detail}).defaultPrevented).toBe(false)
+      pointer(paragraph, "click", 20, 25, {detail})
+      expect(document.getSelection()!.toString()).toBe(selectedText)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(0)
+      expect($.focus).toBe(end)
+      expect($.focusOffset).toBe(offset)
+    }
+    expect(move).not.toHaveBeenCalled()
+    expect(extend).not.toHaveBeenCalled()
+  })
+
   it("leaves double clicks in native form controls to the browser", () => {
     const paragraph = textDocument()
     const input = document.createElement("input")
