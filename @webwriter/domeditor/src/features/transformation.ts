@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, atomicEditingContainer, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
@@ -8,6 +8,7 @@ import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../ribbon-icons"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
+import type {RelativePosition} from "yjs"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
@@ -46,6 +47,7 @@ type Gesture = {
   crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
   endUndoGroup: () => void
   group?: {members: GroupMember[], transform: DOMMatrix}
+  textSelection?: {range: Range, backwards: boolean, start: RelativePosition | null, end: RelativePosition | null}
 }
 
 /** Selection-owned spatial controls in the shadow appendix.
@@ -957,6 +959,12 @@ export class TransformationFeature extends EditorFeature {
     const cropBox = media ? this.boxGeometry(media, false) : null
     if(mode === "crop" && (!media || !insets || !cropBox || cropBox.width <= 0 || cropBox.height <= 0
       || !cropBox.matrix.is2D || Math.abs(cropBox.matrix.a * cropBox.matrix.d - cropBox.matrix.b * cropBox.matrix.c) < 1e-8)) return false
+    const selection = document.getSelection()
+    const textSelection: Gesture["textSelection"] = mode === "move" && this.#isFreeformItem(target) && selection?.rangeCount === 1
+      && !this.editor.features.selection.isCaptureSelection && !this.editor.features.table.hasCellSelection
+      && $.isTextSelection && target.contains(selection.anchorNode) && target.contains(selection.focusNode)
+      && !atomicEditingContainer(selection.anchorNode, this.editor.schema) && !atomicEditingContainer(selection.focusNode, this.editor.schema)
+      ? {range: selection.getRangeAt(0).cloneRange(), backwards: $.isBackwards, start: null, end: null} : undefined
     if(this.#isFreeformItem(target)) {
       document.body.focus({preventScroll: true})
       this.editor.features.selection.selectElement(target)
@@ -971,18 +979,24 @@ export class TransformationFeature extends EditorFeature {
     const image = rotationTarget ?? (mode === "scale" && target.localName === "picture" ? this.editor.features.media.cropTargetFor(target) : null)
     const imageStyle = document.createElement("div").style
     imageStyle.cssText = image?.style.cssText ?? ""
+    const endUndoGroup = this.editor.doc.beginUndoGroup()
+    if(textSelection) {
+      const {range} = textSelection
+      textSelection.start = this.editor.doc.relativePositionFromDOMPoint(range.startContainer, range.startOffset)
+      textSelection.end = this.editor.doc.relativePositionFromDOMPoint(range.endContainer, range.endOffset)
+    }
     this.#gesture = {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: (rotationTarget ?? target).getBoundingClientRect(), ...this.#size(target),
       matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
-      initial, written: new Map(), moved: false,
+      initial, written: new Map(), moved: false, textSelection,
       image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
         matrix: cropBox.matrix, insets, edges: [...insets], sourceStyle} : undefined,
       captured: this.editor.features.selection.captureSelectedElement === target,
-      endUndoGroup: this.editor.doc.beginUndoGroup(),
+      endUndoGroup,
     }
     this.#suppressClick = null
     if(mode === "crop") {
@@ -1449,6 +1463,19 @@ export class TransformationFeature extends EditorFeature {
     document.body.classList.remove(...cropDirections.map(direction => `◆transform-cropping-${direction}`))
     this.#clearDrop()
     this.editor.features.manipulation.clearFloatDropTargets()
+    const textSelection = gesture.textSelection
+    if(valid && gesture.moved && textSelection && !this.editor.isEditingLocked && !this.editor.features.selection.isCaptureSelection && $.selectedElement === target
+      && target.contains(textSelection.range.startContainer) && target.contains(textSelection.range.endContainer)) {
+      // A border click selects the box; a drag lets typing continue in its
+      // text selection. Relative positions follow local and remote text edits.
+      this.editor.doc.syncFromDOM()
+      const start = textSelection.start && this.editor.doc.domPointFromRelativePosition(textSelection.start)
+      const end = textSelection.end && this.editor.doc.domPointFromRelativePosition(textSelection.end)
+      if(start && end && target.contains(start.node) && target.contains(end.node)) {
+        const [anchor, focus] = textSelection.backwards ? [end, start] : [start, end]
+        $.selectRange(anchor.node, anchor.offset, focus.node, focus.offset)
+      }
+    }
     gesture.endUndoGroup()
     if(valid) {
       if(gesture.captured && !cancel && !gesture.moved && (gesture.mode === "move" || gesture.mode === "scale")) {

@@ -148,6 +148,7 @@ const expectedChecks = [
   "ribbon elements drop on the blank canvas slot",
   "relayed ribbon elements drop onto the selected element beneath editor overlays",
   "ribbon snippets drop at the caret and center in freeform layouts",
+  "typing after moving a text box preserves its text and position",
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
   "exported canvas runs its standalone viewer without editor dependencies",

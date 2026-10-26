@@ -5917,6 +5917,65 @@ await check("ribbon snippets drop at the caret and center in freeform layouts", 
   }
 })
 
+await check("typing after moving a text box preserves its text and position", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  document.body.append(frame)
+  try {
+    for(const mode of ["canvas", "slides"] as const) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p id="moving-text">Before <em>formatted</em><!--keep--> text</p><p id="neighbor">Keep neighbor</p></body>'
+      await loaded
+      const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, `${mode}: text fixture did not initialize`)
+      const editor = view.editor!, feature = editor.features.transformation
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: conversion failed`)
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+      else editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      const paragraph = doc.querySelector<HTMLElement>("#moving-text")!, neighbor = doc.querySelector<HTMLElement>("#neighbor")!
+      paragraph.style.cssText = "position:absolute;left:400px;top:140px;width:240px;height:100px;margin:0"
+      neighbor.style.cssText = "position:absolute;left:700px;top:300px;width:180px;height:100px;margin:0"
+      const neighborHTML = neighbor.outerHTML, parent = paragraph.parentNode!, children = Array.from(parent.childNodes)
+      const selection = doc.getSelection()!, text = paragraph.lastChild!
+      selection.setPosition(text, text.textContent!.length)
+      assert(doc.execCommand("insertText", false, " first"), `${mode}: initial typing failed`)
+      await layoutFrame()
+      const caret = selection.anchorNode!, offset = selection.anchorOffset, before = paragraph.getBoundingClientRect()
+      const initial = editor.toHTML(true)
+      const edge = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+      edge.addEventListener("mousedown", event => feature.handleMoveStart(event), {once: true})
+      edge.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.top}))
+      feature.handleMoveDrag(new view.MouseEvent("mousemove", {altKey: true, clientX: before.right + 40, clientY: before.top + 30}))
+      feature.handleMoveEnd()
+      await layoutFrame()
+      assert(selection.anchorNode === caret && selection.anchorOffset === offset && selection.isCollapsed, `${mode}: moving replaced the text caret with a box selection`)
+      const moved = paragraph.getBoundingClientRect(), movedHTML = editor.toHTML(true), placement = paragraph.getAttribute("style")
+      assert(paragraph.style.left === "440px" && paragraph.style.top === "170px"
+        && Math.abs(moved.width - before.width) < 1, `${mode}: moving did not retain authored dimensions and offsets`)
+      const event = new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: " second"})
+      doc.body.dispatchEvent(event)
+      assert(!event.defaultPrevented, `${mode}: typing entered the structural replacement path`)
+      assert(doc.execCommand("insertText", false, " second"), `${mode}: typing after moving failed`)
+      await layoutFrame()
+      editor.doc.syncFromDOM()
+      const typed = editor.toHTML(true)
+      assert(paragraph.isConnected && paragraph.textContent === "Before formatted text first second", `${mode}: typing replaced existing content`)
+      assert(paragraph.getAttribute("style") === placement && Math.abs(paragraph.getBoundingClientRect().left - moved.left) < 1, `${mode}: typing reset placement`)
+      assert(neighbor.outerHTML === neighborHTML && Array.from(parent.childNodes).every((node, i) => node === children[i]), `${mode}: moving and typing changed a neighbor or rebuilt the box`)
+      assert(!typed.includes("◆") && !editor.doc.body.toString().includes("◆"), `${mode}: editing artifacts leaked`)
+      editor.doc.undo()
+      assert(editor.toHTML(true) === movedHTML, `${mode}: undo of typing lost the move`)
+      editor.doc.undo()
+      assert(editor.toHTML(true) === initial, `${mode}: undo of the move lost earlier typing`)
+      editor.doc.redo(); editor.doc.redo()
+      assert(editor.toHTML(true) === typed, `${mode}: redo lost typing or placement`)
+      editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("a clean canvas retains its initial item when moving and typing without inserting links", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
