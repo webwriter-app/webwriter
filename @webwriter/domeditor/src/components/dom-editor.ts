@@ -3620,24 +3620,29 @@ export class DomEditor extends LitElement {
   private async pickMediaFile(attribute?: "poster") {
     const media = this.mediaSelection
     if(!media || attribute && media.type !== "video") return
-    const pickerId = crypto.randomUUID()
-    const revision = this.frameRevision
-    const prepared = this.execute({type: "selectMediaFile", attribute, pickerId})
     const accept = attribute === "poster" || media.type === "picture" || media.type === "img" ? "image/*"
       : media.type === "audio" ? "audio/*" : media.type === "video" ? "video/*" : ".html,.htm,text/html"
+    return this.pickEditorFile({type: "selectMediaFile", attribute}, accept)
+  }
+
+  private async pickEditorFile(action: Extract<EditingAction, {type: "selectMediaFile" | "importGraphic"}>, accept: string) {
+    const pickerId = crypto.randomUUID()
+    const revision = this.frameRevision
+    const type = action.type === "importGraphic" ? "setGraphicFile" : "setMediaFile"
+    const prepared = this.execute({...action, pickerId})
     // Opening in the host click avoids depending on activation in another origin.
     const picked = this.pickFileInput(accept)
     const cancel = this.cancelFileInput
     try {
       const [ready, file] = await Promise.all([prepared, picked])
       if(ready && this.isConnected && revision === this.frameRevision) {
-        await this.execute({type: "setMediaFile", file, pickerId})
+        await this.execute({type, file, pickerId})
       }
     }
     catch(error) {
       if(this.cancelFileInput === cancel) cancel?.()
       if(this.isConnected && revision === this.frameRevision) {
-        await this.execute({type: "setMediaFile", file: null, pickerId}).catch(() => {})
+        await this.execute({type, file: null, pickerId}).catch(() => {})
       }
       this.reportFileError(error)
     }
@@ -4330,7 +4335,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "import-graphic") {
-      void this.execute({type: "importGraphic"}).catch(error => this.reportFileError(error))
+      void this.pickEditorFile({type: "importGraphic"}, ".svg,image/svg+xml")
       return
     }
     if(label === "save-graphic") {

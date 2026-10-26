@@ -438,6 +438,78 @@ describe("graphic editing", () => {
     expect(input.isConnected).toBe(false)
   })
 
+  it("imports a host-picked SVG at the original graphic with undo and redo", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const target = document.querySelector("svg")!
+    target.innerHTML = '<!--original--><path d="M0 0L5 5"/>'
+    await mutationsDelivered()
+    const click = vi.spyOn(HTMLInputElement.prototype, "click")
+    expect(editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "host"})).toBe(true)
+    expect(click).not.toHaveBeenCalled()
+    expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+    const sibling = document.createElementNS(SVG_NAMESPACE, "svg")
+    document.body.append(sibling)
+    editor.features.selection.captureElement(sibling)
+    await mutationsDelivered()
+    const file = new File(['<svg xmlns="http://www.w3.org/2000/svg"><!--keep--><g class="authored ◆selected"><circle r="7"/></g></svg>'], "drawing.svg")
+    await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file, pickerId: "host"})
+    await mutationsDelivered()
+    expect(target.isConnected).toBe(false)
+    expect(sibling.isConnected).toBe(true)
+    expect(document.querySelector("svg circle")).not.toBeNull()
+    const source = await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})
+    expect(source).toContain("<!--keep-->")
+    expect(source).toContain('class="authored"')
+    expect(source).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(document.querySelector("svg circle")).toBeNull()
+    expect(document.querySelector("svg path")).not.toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(document.querySelector("svg circle")).not.toBeNull()
+  })
+
+  it.each(["removed", "replaced", "disabled", "locked", "moved into widget", "cancelled", "superseded"])("guards a host graphic import when %s while reading", async condition => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const target = document.querySelector("svg")!
+    let finishRead!: (source: string) => void
+    const file = new File([""], "drawing.svg")
+    vi.spyOn(file, "text").mockImplementation(() => new Promise(resolve => { finishRead = resolve }))
+    editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "first"})
+    const pending = editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file, pickerId: "first"})
+    if(condition === "removed") target.remove()
+    else if(condition === "replaced") target.replaceWith(document.createElementNS(SVG_NAMESPACE, "svg"))
+    else if(condition === "disabled") editor.features.graphic.disable()
+    else if(condition === "locked") vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    else if(condition === "moved into widget") {
+      const widget = document.createElement("graphic-widget")
+      target.replaceWith(widget)
+      widget.append(target)
+    }
+    else if(condition === "cancelled") await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: null, pickerId: "first"})
+    else editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "next"})
+    finishRead('<svg xmlns="http://www.w3.org/2000/svg"><circle r="7"/></svg>')
+    await pending
+    expect(document.querySelector("svg circle")).toBeNull()
+    expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+    if(condition === "superseded") {
+      await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: null, pickerId: "first"})
+      await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: new File(['<svg xmlns="http://www.w3.org/2000/svg"><rect width="10"/></svg>'], "next.svg"), pickerId: "next"})
+      expect(document.querySelector("svg rect")).not.toBeNull()
+    }
+  })
+
+  it("rejects invalid host imports and allows another attempt", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const target = document.querySelector("svg")!
+    editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "bad"})
+    await expect(editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: new File(["<html/>"], "bad.svg"), pickerId: "bad"})).rejects.toThrow("valid SVG")
+    expect(target.isConnected).toBe(true)
+    editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "good"})
+    await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: new File(['<svg xmlns="http://www.w3.org/2000/svg"><circle/></svg>'], "good.svg"), pickerId: "good"})
+    expect(document.querySelector("svg circle")).not.toBeNull()
+  })
+
   it("strips active SVG content and root attributes on import while preserving safe namespaced content", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})

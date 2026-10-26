@@ -7997,6 +7997,69 @@ await check("canvas and slide gestures relay pointer dismissal before feature ca
   }
 })
 
+await check("graphic imports open host pickers synchronously and retry across the iframe bridge", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1280px;height:900px"
+  frame.src = "/editor/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if((app as any)?.editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "graphic bridge editor did not initialize")
+    await (app as any).waitForEditorWindow()
+    await app!.execute({type: "insertGraphic"})
+    const view = frame.contentWindow as Window & typeof globalThis
+    const click = view.HTMLInputElement.prototype.click
+    let opening = false
+    let clicks = 0
+    view.HTMLInputElement.prototype.click = function() {
+      assert(opening, "picker opened after the initiating event returned")
+      assert(this.ownerDocument === app!.ownerDocument, "picker opened in the document iframe")
+      clicks++
+    }
+    try {
+      const toolbox = app!.shadowRoot!.querySelector("dom-editor-toolbox")!
+      for(let attempt = 0; attempt < 3; attempt++) {
+        opening = true
+        toolbox.dispatchEvent(new CustomEvent("ribbon-button-click", {
+          detail: {label: "import-graphic"}, bubbles: true, composed: true,
+        }))
+        opening = false
+        assert(clicks === attempt + 1, "import click did not open a host picker synchronously")
+        const picker = app!.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+        assert(picker?.accept === ".svg,image/svg+xml", "graphic picker does not accept SVG files")
+        if(attempt < 2) picker.dispatchEvent(new Event("cancel"))
+        else {
+          const data = new DataTransfer()
+          data.items.add(new File(['<svg xmlns="http://www.w3.org/2000/svg"><!--imported--><circle r="12"/></svg>'], "drawing.svg", {type: "image/svg+xml"}))
+          picker.files = data.files
+          picker.dispatchEvent(new Event("change"))
+        }
+        assert(!picker.isConnected, "host picker was not removed after completion")
+        await layoutFrame()
+      }
+      let source = ""
+      for(let attempt = 0; attempt < 100; attempt++) {
+        source = await app!.execute({type: "serializeGraphic"}) as string
+        if(source?.includes("<circle")) break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      assert(source?.includes("<circle") && source.includes("<!--imported-->"), "host-picked file did not import across the bridge")
+      assert(!source.includes("◆"), "graphic import serialized editor markers")
+      await app!.execute({type: "undo"})
+      assert(!(await app!.execute({type: "serializeDocument"}) as string).includes("<circle"), "import could not be undone")
+      await app!.execute({type: "redo"})
+      assert((await app!.execute({type: "serializeDocument"}) as string).includes("<circle"), "import could not be redone")
+    }
+    finally { view.HTMLInputElement.prototype.click = click }
+  }
+  finally { frame.remove() }
+})
+
 await check("table commands complete across the real iframe bridge", async () => {
   const liveTable = document.createElement("table")
   liveTable.innerHTML = '<tbody><tr><td rowspan="2">A</td><td>B</td></tr><tr></tr></tbody>'

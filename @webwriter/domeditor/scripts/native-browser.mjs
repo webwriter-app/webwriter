@@ -107,6 +107,7 @@ const expectedChecks = [
   "ribbon collapses when vertical space is constrained",
   "iframe reactivation restores hit testing without changing the document or selection",
   "table commands complete across the real iframe bridge",
+  "graphic imports open host pickers synchronously and retry across the iframe bridge",
   "canvas and slide gestures relay pointer dismissal before feature capture",
   "link keyboard preserves iframe selections and applies document, web, and reference links",
   "editor command preserves a live selection",
