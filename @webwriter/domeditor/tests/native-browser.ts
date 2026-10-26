@@ -16,6 +16,7 @@ import * as Y from "yjs"
 import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
 import {checkParagraphCut} from "./paragraph-cut"
+import {checkGraphicPaint} from "./graphic-paint"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -29,6 +30,8 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)
 
 await check("canvas multiline text keeps partial selections after formatting", async () => {
   const frame = document.createElement("iframe")

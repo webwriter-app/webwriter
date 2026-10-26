@@ -1180,6 +1180,45 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).not.toContain("data-graphic-handle")
   })
 
+  it.each(["horizontal", "vertical", "diagonal"])("changes a %s line's paint without rewriting its viewport or geometry", async direction => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "line"})
+    const graphic = document.querySelector("svg")!
+    const line = graphic.querySelector("line")!
+    // Other DOM sources can resize or rotate a line without fitting its SVG.
+    if(direction === "vertical") line.setAttribute("x2", line.getAttribute("x1")!)
+    if(direction !== "horizontal") line.setAttribute("y2", "700")
+    line.setAttribute("transform", "rotate(30 800 450)")
+    graphic.style.width = "600px"
+    graphic.style.height = "200px"
+    const viewport = graphic.getAttribute("viewBox")
+    const styles = graphic.getAttribute("style")
+    const geometry = line.outerHTML
+    const stroke = line.getAttribute("stroke")
+    await mutationsDelivered()
+
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "stroke", value: "#ef4444"})
+    await mutationsDelivered()
+    expect(line).toHaveAttribute("stroke", "#ef4444")
+    expect(graphic).toHaveAttribute("viewBox", viewport)
+    expect(graphic.getAttribute("style")).toBe(styles)
+    expect(editor.features.graphic.selectedShape).toBe(line)
+    expect(editor.doc.body.toString()).toContain('stroke="#ef4444"')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).not.toContain("◆")
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(line.outerHTML).toBe(geometry)
+    expect(line).toHaveAttribute("stroke", stroke)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(line).toHaveAttribute("stroke", "#ef4444")
+    for(const [name, value] of [["fill", "none"], ["opacity", "0.5"]]) {
+      editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name, value})
+      expect(line).toHaveAttribute(name, value)
+      expect(graphic).toHaveAttribute("viewBox", viewport)
+      expect(graphic.getAttribute("style")).toBe(styles)
+    }
+  })
+
   it("stores multiline shape labels as native SVG text and keeps them centered", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
     const graphic = document.querySelector("svg")!

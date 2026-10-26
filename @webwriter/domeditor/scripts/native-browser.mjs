@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "SVG stroke colors preserve line placement and selection",
   "repeated canvas modifier selections preserve item placement and camera",
   "canvas multiline text keeps partial selections after formatting",
   "editing suppresses native autoplay while preserving attributes and explicit playback",

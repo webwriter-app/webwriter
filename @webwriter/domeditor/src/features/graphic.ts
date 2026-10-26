@@ -887,7 +887,9 @@ export class GraphicFeature extends EditorFeature {
         const primary = this.selectedShape
         this.#setShapeSelection(nextShapes, primary ? replacements.get(primary) as SVGGraphicsElement ?? primary : null)
       }
-      this.#fitSelectedStandaloneGraphic()
+      // Colors and opacity do not change bounds. Refitting a resized or
+      // navigated viewport here can change the shape's rendered placement.
+      if(name !== "fill" && name !== "stroke" && name !== "opacity") this.#fitSelectedStandaloneGraphic()
       this.editor.doc.stopCapturing()
       this.#refresh()
       this.editor.postSelectionPath()
