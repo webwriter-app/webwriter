@@ -1349,6 +1349,53 @@ await check("insertion and saved-reader controls align inside symmetric scrollba
   }
 })
 
+await check("standalone SVG arrowheads remain visible in canvas previews and exports", async () => {
+  const {previewFrameHTML} = await import("../src/frame-document")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:450px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  const readers: HTMLIFrameElement[] = []
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "arrow editing fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.setAttribute("data-ww-theme", "base"); theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    editor.setDocumentLayout("canvas", "document")
+    doc.body.replaceChildren()
+    for(const [index, shape] of (["line-start-arrow", "line-end-arrow", "line-both-arrows"] as const).entries()) {
+      const graphic = editor.features.graphic.createGraphic(shape)
+      Object.assign(graphic.style, {position: "absolute", left: "50px", top: `${80 + index * 100}px`, rotate: "5deg"})
+      doc.body.append(graphic)
+    }
+    const saved = editor.toHTML()
+    const preview = previewFrameHTML(new DOMParser().parseFromString(saved, "text/html"), {
+      bridgeNonce: "arrow-preview", hostOrigin: location.origin, frameOrigin: location.origin,
+      packages: [], importMap: null, entryURL: "", executeScripts: false,
+    })
+    for(const html of [preview, saved]) {
+      const reader = document.createElement("iframe")
+      readers.push(reader)
+      reader.style.cssText = frame.style.cssText
+      const loaded = new Promise<void>(resolve => reader.addEventListener("load", () => resolve(), {once: true}))
+      reader.srcdoc = html; fixture.append(reader); await loaded; await layoutFrame()
+      for(const graphic of reader.contentDocument!.querySelectorAll("svg")) {
+        const line = graphic.querySelector("line")!, marker = graphic.querySelector("marker")!
+        assert(line && marker, "reader lost an arrow or its definition")
+        assert(Number(marker.getAttribute("markerHeight")) * Number(line.getAttribute("stroke-width")) > graphic.height.baseVal.value,
+          "fixture no longer has arrowheads extending outside its fitted viewport")
+        assert(reader.contentWindow!.getComputedStyle(graphic).overflow === "visible", "document theme clips arrowheads to the line's thin viewport")
+      }
+    }
+  }
+  finally {
+    ;(frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    readers.forEach(reader => reader.remove()); frame.remove()
+  }
+})
+
 await check("SVG shape outlines and handles align inside symmetric scrollbar gutters", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:600px;border:0;max-width:none"

@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
+import {previewFrameHTML} from "../frame-document"
 import {$, clearEditorMarkerClasses} from "../utility"
 import {
   graphicShapeDragType,
@@ -704,6 +705,23 @@ describe("graphic editing", () => {
       const reference = serialized.querySelector("line")!.getAttribute(`marker-${endpoint}`)
       if(reference) expect(serialized.getElementById(reference.slice(5, -1))?.localName).toBe("marker")
     }
+  })
+
+  it.each(["line-start-arrow", "line-end-arrow", "line-both-arrows"] as const)("keeps standalone %s arrowheads outside its fitted viewport in preview", shape => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape})
+    const graphic = document.querySelector("svg")!
+    expect(graphic.style.overflow).toBe("visible")
+    const source = new DOMParser().parseFromString(editor.toHTML(), "text/html")
+    source.body.classList.add("ww-canvas")
+    const preview = new DOMParser().parseFromString(previewFrameHTML(source, {
+      bridgeNonce: "arrow-preview", hostOrigin: location.origin, frameOrigin: location.origin,
+      packages: [], importMap: null, entryURL: "", executeScripts: false,
+    }), "text/html")
+    const copy = preview.querySelector("svg")!
+    expect(copy.style.overflow).toBe("visible")
+    expect(copy.querySelector("line")?.outerHTML).toBe(graphic.querySelector("line")?.outerHTML)
+    expect(copy.querySelector("defs")?.outerHTML).toBe(graphic.querySelector("defs")?.outerHTML)
+    expect(copy.outerHTML).not.toContain("◆")
   })
 
   it("uses document flow when inserting a shape through its command", () => {

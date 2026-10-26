@@ -1661,10 +1661,11 @@ export class GraphicFeature extends EditorFeature {
     graphic.setAttribute("overflow", "visible")
     graphic.setAttribute("preserveAspectRatio", "none")
     // Theme rules for page content override SVG presentation attributes.
-    // Keep the fitted viewport dimensions authoritative for standalone shapes.
+    // Keep the fitted viewport dimensions and overflowing arrowheads authoritative.
     Object.assign(graphic.style, {
       width: `${cleanNumber(width+padding*2)}px`,
       height: `${cleanNumber(height+padding*2)}px`,
+      overflow: "visible",
     })
   }
 
