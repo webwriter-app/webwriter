@@ -1039,6 +1039,66 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     expect(paragraph.contains($.anchor)).toBe(true)
   })
 
+  it.each(["key", "insertParagraph", "insertLineBreak"])("keeps empty text containers intact across repeated %s breaks", input => {
+    for(const tag of ["p", "li", "dt", "dd"]) {
+      document.body.innerHTML = tag === "p" ? '<p></p><p>Neighbor</p>'
+        : tag === "li" ? '<ul><!--keep--><li></li><li>Neighbor</li></ul>'
+        : `<dl><!--keep--><dt></dt><dd></dd><dt>Neighbor</dt><dd>Keep</dd></dl>`
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const item = document.querySelector(tag)!, parent = item.parentElement!
+      const siblings = Array.from(parent.childNodes)
+      $.move(item)
+      for(let count = 1; count <= 3; count++) {
+        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+          : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
+        item.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+        expect(cloneWithoutEditorMarkers(item, true).innerHTML).toBe("<br>".repeat(count))
+        expect(Array.from(parent.childNodes)).toEqual(siblings)
+        expect(item.contains($.anchor)).toBe(true)
+      }
+      document.body.className = ""
+    }
+  })
+
+  it.each(["ul", "ol", "menu", "dl"])("inserts a break in a new %s without exiting the list", tag => {
+    for(const input of ["key", "insertParagraph", "insertLineBreak"]) {
+      document.body.innerHTML = `<${tag}><!--keep--></${tag}>`
+      expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+      const list = document.querySelector(tag)!, parent = list.parentElement!
+      const siblings = Array.from(parent.childNodes)
+      $.move(list, list.childNodes.length)
+      const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+        : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
+      list.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(cloneWithoutEditorMarkers(list, true).innerHTML).toBe(`<!--keep-->${tag === "dl" ? "<dt><br></dt><dd></dd>" : "<li><br></li>"}`)
+      expect(Array.from(parent.childNodes)).toEqual(siblings)
+      expect(list.contains($.anchor)).toBe(true)
+      document.body.className = ""
+    }
+  })
+
+  it("shares, serializes, undoes and redoes the first break in a new list", () => {
+    document.body.innerHTML = '<ul><!--keep--></ul>'
+    expect(editor.setDocumentLayout(mode, "document")).toBe(true)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    $.move(document.querySelector("ul")!, 1)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    editor.doc.syncFromDOM()
+    const inserted = editor.toHTML(true)
+    expect(inserted).toContain("<!--keep--><li><br></li>")
+    expect(inserted).not.toContain("◆")
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("<li><br></br></li>")
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(inserted)
+  })
+
   it("lets an inline formula own Enter inside a text root", () => {
     document.body.innerHTML = '<p>Before </p>'
     const math = mathElement("math", mathElement("mrow", mathElement("mi", "x")))

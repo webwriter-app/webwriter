@@ -5801,6 +5801,43 @@ await check("canvas Enter inserts a line break and conversion returns normal flo
 })
 
 
+await check("canvas and slide Enter preserves empty lists and repeated breaks", async () => {
+  for(const mode of ["canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:700px"
+    frame.srcdoc = '<!doctype html><body><ul><!--keep--></ul><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, `${mode}: list fixture did not initialize`)
+      const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: list fixture did not convert`)
+      const list = doc.querySelector("ul")!, parent = list.parentNode!
+      const siblings = Array.from(parent.childNodes), style = list.getAttribute("style")
+      selection.collapse(list, list.childNodes.length)
+      let firstHeight = 0
+      for(const [index, input] of ["key", "insertParagraph", "insertLineBreak"].entries()) {
+        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+          : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
+        list.dispatchEvent(event)
+        await layoutFrame()
+        const item = list.querySelector("li")!
+        assert(event.defaultPrevented, `${mode}: ${input} was not handled`)
+        assert(item && list.querySelectorAll("li").length === 1, `${mode}: ${input} exited or split the list`)
+        assert(item.querySelectorAll("br").length === index + 1 && !item.querySelector("p"), `${mode}: ${input} did not insert only a break`)
+        assert(item.contains(selection.anchorNode), `${mode}: ${input} moved the caret outside the item`)
+        assert(list.getAttribute("style") === style, `${mode}: ${input} changed list placement`)
+        assert(Array.from(parent.childNodes).length === siblings.length
+          && siblings.every((node, index) => parent.childNodes[index] === node), `${mode}: ${input} changed neighboring roots`)
+        if(index === 0) firstHeight = item.getBoundingClientRect().height
+        else assert(item.getBoundingClientRect().height > firstHeight, `${mode}: repeated breaks did not grow the text box`)
+      }
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
 let savedCanvasHTML = ""
 await check("ribbon elements drop on the blank canvas slot", async () => {
   const frame = document.createElement("iframe")

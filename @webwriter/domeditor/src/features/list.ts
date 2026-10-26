@@ -381,7 +381,7 @@ export class ListFeature extends EditorFeature {
     return previous?.matches("dt") ? "dd" : "dt"
   }
 
-  private materializeVirtualItem(point = this.virtualPoint) {
+  materializeVirtualItem(point = this.virtualPoint) {
     if(!point?.list.isConnected) return null
     const item = document.createElement(this.itemTypeAt(point))
     const reference = point.list.childNodes.item(point.offset)
