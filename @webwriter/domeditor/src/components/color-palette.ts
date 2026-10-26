@@ -40,7 +40,7 @@ export const colorPaletteStyles = css`
 
 /** Shared palette contents; the containing control owns popup placement and dismissal. */
 export function renderColorPalette(label: string, value: string, choose: (event: Event, value: string) => void, {automaticValue = "", disabled = false, persistent = false, swatches = [] as readonly string[]} = {}) {
-  const selected = colorHex(value)
+  const selected = colorHex(value, "")
   const swatch = (hex: string) => html`<button type="button" class="color-swatch" ?disabled=${disabled}
     style=${`background:#${hex}`} aria-label=${`Color #${hex}`} title=${`#${hex}`}
     aria-pressed=${selected === `#${hex}`} @click=${(event: Event) => choose(event, `#${hex}`)}></button>`
@@ -64,7 +64,7 @@ export function renderColorPalette(label: string, value: string, choose: (event:
         if(typeof input.showPicker === "function") input.showPicker()
         else input.click()
       }}>${ribbonIcon("Theme")}Custom…</button>
-      <input type="color" ?disabled=${disabled} tabindex="-1" ?data-ribbon-input-persistent=${persistent} aria-label=${`Custom ${label.toLowerCase()}`} .value=${selected}
+      <input type="color" ?disabled=${disabled} tabindex="-1" ?data-ribbon-input-persistent=${persistent} aria-label=${`Custom ${label.toLowerCase()}`} .value=${selected || "#000000"}
         @change=${(event: Event) => choose(event, (event.currentTarget as HTMLInputElement).value)}>
     </div>
   `

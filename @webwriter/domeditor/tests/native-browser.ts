@@ -1015,6 +1015,14 @@ await check("Ribbon text colors share the toolbox palette and commit chosen colo
       const custom = combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Custom"]')!
       const swatches = combo.shadowRoot!.querySelectorAll<HTMLElement>(".color-swatch")
       assert(swatches.length === 70, "palette does not match the toolbox colors")
+      for(const value of ["", "transparent", "rgba(0, 0, 0, 0)", "rgb(55, 60, 68)"]) {
+        combo.value = value
+        await combo.updateComplete
+        assert(!combo.shadowRoot!.querySelector('.color-swatch[aria-pressed="true"]'), `${name}: ${value || "default"} selected an unrelated swatch`)
+      }
+      combo.value = "rgb(0, 0, 0)"
+      await combo.updateComplete
+      assert(combo.shadowRoot!.querySelector('[aria-label="Color #000000"]')!.getAttribute("aria-pressed") === "true", `${name}: explicit black was not selected`)
       const swatch = swatches[0].getBoundingClientRect()
       assert(swatch.width > 10 && Math.abs(swatch.width - swatch.height) < .1, "palette swatches are not visible squares")
       const icon = custom.querySelector("svg")!.getBoundingClientRect()
