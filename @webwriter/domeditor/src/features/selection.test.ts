@@ -1753,6 +1753,43 @@ describe("processSelection()", () => {
     expect(atomicOverlays()).toHaveLength(1)
   })
 
+  it.each(["document", "board"] as const)("excludes an image at the native paragraph selection's end in %s", mode => {
+    if(mode === "board") editor.setDocumentLayout("board", "document")
+    const root = mode === "board" ? document.querySelector(".ww-board-card")! : document.body
+    for(const html of ['<img>', '<picture><source srcset="image.png"><img></picture>', '<figure><picture><img></picture></figure>']) {
+      root.innerHTML = `<section><!--keep--><p>Hello <b>world</b>!</p>\n${html}<p>After</p></section>`
+      const paragraph = root.querySelector("p")!
+      const text = paragraph.firstChild!
+      const media = root.querySelector("picture, img")!
+      const parent = media.parentNode!
+      const index = Array.from(parent.childNodes).indexOf(media)
+      const authored = editor.toHTML(true)
+      const selection = document.getSelection()!
+      for(const backward of [false, true]) {
+        // Chromium can put the paragraph break at the following media's start.
+        selection.setBaseAndExtent(backward ? media : text, 0, backward ? text : media, 0)
+        document.dispatchEvent(new Event("selectionchange"))
+        expect(selection.anchorNode).toBe(backward ? parent : text)
+        expect(selection.anchorOffset).toBe(backward ? index : 0)
+        expect(selection.focusNode).toBe(backward ? text : parent)
+        expect(selection.focusOffset).toBe(backward ? 0 : index)
+        expect(selection.toString().trim()).toBe("Hello world!")
+        expect(media).not.toHaveClass("◆element-selected", "◆element-capture-selected", "◆atomic-range-selected")
+        expect(atomicOverlays()).toHaveLength(0)
+        expect(feature.captureSelectedElement).toBeNull()
+        expect(editor.toHTML(true)).toBe(authored)
+      }
+      // Crossing the whole node still selects the image, and collapsing clears it.
+      selection.setBaseAndExtent(text, 0, parent, index + 1)
+      feature.processSelection()
+      expect(media).toHaveClass("◆atomic-range-selected")
+      $.move(text, 0)
+      feature.processSelection()
+      expect(media).not.toHaveClass("◆atomic-range-selected")
+      expect(atomicOverlays()).toHaveLength(0)
+    }
+  })
+
   it.each([false, true])("overlays a fully included table once in a mixed range (backward: %s)", backward => {
     document.body.innerHTML = '<p>before</p><table><tbody><tr><td><img><test-widget></test-widget></td></tr></tbody></table><p>after</p>'
     const before = document.body.firstElementChild!.firstChild!
@@ -2398,6 +2435,54 @@ describe("scrolling selections into view", () => {
   function setCaretRect(rect: DOMRect) {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(rect)
   }
+
+  it.each(["ul", "p", "canvas-widget"])("does not reveal BODY when modifier-click deselects a canvas %s", tag => {
+    document.body.className = "ww-canvas"
+    const item = el(tag)
+    item.innerHTML = tag === "ul" ? '<li>First<!--keep--></li><li>Second</li>' : 'Text<!--keep--><em>content</em>'
+    item.style.cssText = "position:absolute;left:160px;top:100px;width:320px"
+    const children = Array.from(item.childNodes), style = item.style.cssText
+    const reveal = vi.spyOn(editor.features.canvas, "reveal").mockImplementation(() => {})
+    try {
+      for(let i = 0; i < 3; i++) {
+        const options = {bubbles: true, composed: true, cancelable: true, ctrlKey: true, metaKey: true}
+        const click = () => {
+          item.dispatchEvent(new MouseEvent("pointerdown", options))
+          item.dispatchEvent(new MouseEvent("pointerup", options))
+          item.dispatchEvent(new MouseEvent("click", options))
+        }
+        click()
+        expect($.selectedElement).toBe(item)
+        reveal.mockClear()
+        click()
+        expect(document.getSelection()!.isCollapsed).toBe(true)
+        expect(document.getSelection()!.focusNode).toBe(document.body)
+        feature.processSelection()
+        expect(reveal).not.toHaveBeenCalled()
+        expect(item.style.cssText).toBe(style)
+        expect(Array.from(item.childNodes)).toEqual(children)
+        expect(item.className).not.toContain("◆element-selected")
+      }
+    }
+    finally { reveal.mockRestore() }
+  })
+
+  it("still reveals a real canvas text caret after a BODY fallback selection", () => {
+    document.body.className = "ww-canvas"
+    const paragraph = el("p", "Text"), text = paragraph.firstChild!
+    const reveal = vi.spyOn(editor.features.canvas, "reveal").mockImplementation(() => {})
+    const caret = vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(-100, -100, 0, 20))
+    try {
+      $.selectRange(document.body, 0)
+      feature.processSelection()
+      expect(reveal).not.toHaveBeenCalled()
+      $.selectRange(text, 2)
+      feature.processSelection()
+      expect(reveal).toHaveBeenCalledOnce()
+      expect(reveal).toHaveBeenCalledWith(expect.objectContaining({left: -100, right: -99}))
+    }
+    finally { reveal.mockRestore(); caret.mockRestore() }
+  })
 
   it("scrolls nested containers from the caret outward and reveals its predicted rect", () => {
     document.body.innerHTML = '<div class="outer"><div class="inner"><p>text</p></div></div>'
@@ -4920,6 +5005,32 @@ describe("selection invariants", () => {
     pointer(paragraph, "click", 20, 25, {detail: 2})
     expect(move).toHaveBeenCalledWith("word", "backward")
     expect(extend).toHaveBeenCalledWith("word")
+  })
+
+  it.each([3, 4])("preserves the native paragraph selection after a click of detail %s", detail => {
+    document.body.innerHTML = '<section><!--keep--><p>Hello world!</p>\n<p><b>Te</b>st!</p>\n<p>After</p></section>'
+    const paragraph = document.querySelectorAll("p")[1]
+    const text = paragraph.querySelector("b")!.firstChild!
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1} as CaretPosition)
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(0, 20, 50, 20)] as unknown as DOMRectList)
+    const move = vi.spyOn($, "moveBy")
+    const extend = vi.spyOn($, "extendBy")
+    // Native triple-click selection may include the trailing paragraph break.
+    for(const endAtNextParagraph of [false, true]) {
+      const end = endAtNextParagraph ? paragraph.nextElementSibling!.firstChild! : paragraph.lastChild!
+      const offset = endAtNextParagraph ? 0 : end.textContent!.length
+      $.selectRange(text, 0, end, offset)
+      const selectedText = document.getSelection()!.toString()
+      expect(pointer(paragraph, "mousedown", 20, 25, {detail}).defaultPrevented).toBe(false)
+      pointer(paragraph, "click", 20, 25, {detail})
+      expect(document.getSelection()!.toString()).toBe(selectedText)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(0)
+      expect($.focus).toBe(end)
+      expect($.focusOffset).toBe(offset)
+    }
+    expect(move).not.toHaveBeenCalled()
+    expect(extend).not.toHaveBeenCalled()
   })
 
   it("leaves double clicks in native form controls to the browser", () => {

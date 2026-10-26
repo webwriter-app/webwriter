@@ -691,7 +691,7 @@ export class GraphicFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
 
   protected handlesCapturedElementInteractions = true
-  #cancelImport: (() => void) | null = null
+  #pendingImport: {pickerId?: string, apply: (file: File | null) => Promise<void>, cancel: () => void} | null = null
   #selectedShapes = new Set<SVGGraphicsElement>()
   #primaryShape: SVGGraphicsElement | null = null
   #interaction: Interaction | null = null
@@ -730,7 +730,7 @@ export class GraphicFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
-    this.#cancelImport?.()
+    this.#pendingImport?.cancel()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
     document.removeEventListener("scroll", this.#scheduleRefresh, true)
@@ -769,66 +769,80 @@ export class GraphicFeature extends EditorFeature {
     setGraphicDrawPaint: ({paint}: {type: "setGraphicDrawPaint", paint: GraphicShapePaint}) => {
       if(paint && typeof paint === "object") this.#drawPaint = {...this.#drawPaint, ...paint}
     },
-    importGraphic: (_: {type: "importGraphic"}) => {
-      this.#cancelImport?.()
+    setGraphicFile: ({file, pickerId}: {type: "setGraphicFile", file: File | null, pickerId: string}) => {
+      return this.#pendingImport?.pickerId === pickerId ? this.#pendingImport.apply(file) : undefined
+    },
+    importGraphic: ({pickerId}: {type: "importGraphic", pickerId?: string}) => {
+      this.#pendingImport?.cancel()
+      if(!this.isEnabled || this.editor.isEditingLocked) return false
       const target = this.#activeGraphic()
       const range = document.getSelection()?.rangeCount ? document.getSelection()!.getRangeAt(0).cloneRange() : null
-      const input = document.createElement("input")
-      input.type = "file"
-      input.accept = ".svg,image/svg+xml"
-      input.hidden = true
-      this.editor.addAppendix(input)
-      return new Promise<void>((resolve, reject) => {
-        let cancelled = false
-        const cleanup = () => {
-          cancelled = true
+      let cancelled = false
+      let finish = () => {}
+      let input: HTMLInputElement | undefined
+      const cleanup = () => {
+        cancelled = true
+        if(input) {
+          input.onchange = null
+          input.removeEventListener("cancel", cancel)
           input.remove()
-          if(this.#cancelImport === cancel) this.#cancelImport = null
         }
-        const cancel = () => { cleanup(); resolve() }
-        this.#cancelImport = cancel
-        input.addEventListener("cancel", cancel, {once: true})
-        input.onchange = async () => {
-          try {
-            const file = input.files?.[0]
-            if(!file) return
-            if(!/\.svg$/i.test(file.name)) throw new TypeError("Choose an SVG file")
-            const source = await file.text()
-            if(cancelled || target && (!target.isConnected || !getDocumentRoot().contains(target)
-              || atomicEditingContainer(target.parentElement, this.editor.schema))) return
-            const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
-            const root = parsed.documentElement
-            if(parsed.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== SVG_NAMESPACE) {
-              throw new TypeError("The file does not contain valid SVG")
-            }
-            stripActiveContent(root)
-            clearEditorMarkerClasses(root)
-            const graphic = document.importNode(root, true) as unknown as SVGSVGElement
-            this.editor.doc.stopCapturing()
-            if(target) {
-              this.#cancelInteraction()
-              this.#closeLabelEditor(false, false)
-              this.#clearShapeSelection()
-              target.replaceWith(graphic)
-            }
-            else {
-              if(!range?.startContainer.isConnected || !range.endContainer.isConnected) return
-              const selection = document.getSelection()!
-              selection.removeAllRanges()
-              selection.addRange(range)
-              this.editor.features.manipulation.insert(graphic)
-            }
-            if(graphic.isConnected) {
-              this.editor.features.selection.captureElement(graphic)
-              this.#refresh()
-              this.editor.postSelectionPath(true)
-            }
-            this.editor.doc.stopCapturing()
+        if(this.#pendingImport === pending) this.#pendingImport = null
+      }
+      const cancel = () => { cleanup(); finish() }
+      const pending = {pickerId, cancel, apply: async (file: File | null) => {
+        try {
+          if(cancelled || !file) return
+          if(!/\.svg$/i.test(file.name)) throw new TypeError("Choose an SVG file")
+          const source = await file.text()
+          if(cancelled || !this.isEnabled || this.editor.isEditingLocked || target && !this.#canInsertText(target)) return
+          const parsed = new DOMParser().parseFromString(source, "image/svg+xml")
+          const root = parsed.documentElement
+          if(parsed.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== SVG_NAMESPACE) {
+            throw new TypeError("The file does not contain valid SVG")
           }
-          catch(error) { reject(error) }
-          finally { cleanup(); resolve() }
+          stripActiveContent(root)
+          clearEditorMarkerClasses(root)
+          const graphic = document.importNode(root, true) as unknown as SVGSVGElement
+          this.editor.doc.stopCapturing()
+          if(target) {
+            this.#cancelInteraction()
+            this.#closeLabelEditor(false, false)
+            this.#clearShapeSelection()
+            target.replaceWith(graphic)
+          }
+          else {
+            if(!range?.startContainer.isConnected || !range.endContainer.isConnected) return
+            const selection = document.getSelection()!
+            selection.removeAllRanges()
+            selection.addRange(range)
+            this.editor.features.manipulation.insert(graphic)
+          }
+          if(graphic.isConnected) {
+            this.editor.features.selection.captureElement(graphic)
+            this.#refresh()
+            this.editor.postSelectionPath(true)
+          }
+          this.editor.doc.stopCapturing()
         }
-        input.click()
+        finally { cleanup() }
+      }}
+      this.#pendingImport = pending
+      // Host controls open their picker in the originating click's user activation.
+      if(pickerId !== undefined) return true
+      const picker = input = document.createElement("input")
+      picker.type = "file"
+      picker.accept = ".svg,image/svg+xml"
+      picker.hidden = true
+      this.editor.addAppendix(picker)
+      return new Promise<void>((resolve, reject) => {
+        finish = resolve
+        picker.addEventListener("cancel", cancel, {once: true})
+        picker.onchange = () => {
+          void pending.apply(picker.files?.[0] ?? null).then(resolve, reject)
+        }
+        try { picker.click() }
+        catch(error) { reject(error); cancel() }
       })
     },
     serializeGraphic: async (_: {type: "serializeGraphic"}) => {
@@ -873,7 +887,9 @@ export class GraphicFeature extends EditorFeature {
         const primary = this.selectedShape
         this.#setShapeSelection(nextShapes, primary ? replacements.get(primary) as SVGGraphicsElement ?? primary : null)
       }
-      this.#fitSelectedStandaloneGraphic()
+      // Colors and opacity do not change bounds. Refitting a resized or
+      // navigated viewport here can change the shape's rendered placement.
+      if(name !== "fill" && name !== "stroke" && name !== "opacity") this.#fitSelectedStandaloneGraphic()
       this.editor.doc.stopCapturing()
       this.#refresh()
       this.editor.postSelectionPath()
@@ -1647,10 +1663,11 @@ export class GraphicFeature extends EditorFeature {
     graphic.setAttribute("overflow", "visible")
     graphic.setAttribute("preserveAspectRatio", "none")
     // Theme rules for page content override SVG presentation attributes.
-    // Keep the fitted viewport dimensions authoritative for standalone shapes.
+    // Keep the fitted viewport dimensions and overflowing arrowheads authoritative.
     Object.assign(graphic.style, {
       width: `${cleanNumber(width+padding*2)}px`,
       height: `${cleanNumber(height+padding*2)}px`,
+      overflow: "visible",
     })
   }
 
@@ -2928,13 +2945,34 @@ export class GraphicFeature extends EditorFeature {
       return
     }
     const rect = graphic.getBoundingClientRect()
+    const viewport = this.#viewport(graphic)
     Object.assign(preview.style, {
       left: `${fixedClientX(rect.left)}px`,
       top: `${rect.top}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
+      transform: "",
     })
-    const viewport = this.#viewport(graphic)
+    // Keep the SVG viewport at its untransformed size. A rotated bounding
+    // rectangle would enlarge the preview and lose the graphic's orientation.
+    try {
+      const ctm = graphic.getCTM?.()
+      if(ctm && graphic.clientWidth > 0 && graphic.clientHeight > 0) {
+        // getCTM omits the root's native pan/zoom, which the preview copies below.
+        const local = new DOMMatrix().translate(viewport.x, viewport.y).scale(viewport.scale).multiply(ctm)
+        const matrix = DOMMatrix.fromMatrix(this.#screenMatrix(graphic)).multiply(local.inverse())
+        if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
+          Object.assign(preview.style, {
+            left: `${fixedClientX(0)}px`, top: "0",
+            width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
+            transformOrigin: "0 0", transform: matrix.toString(),
+          })
+        }
+      }
+    }
+    catch {
+      // Detached/test SVGs may not expose an invertible viewport transform.
+    }
     try {
       preview.currentScale = viewport.scale
       const translate = preview.currentTranslate as unknown as {x: number, y: number}

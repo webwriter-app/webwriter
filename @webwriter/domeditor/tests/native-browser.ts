@@ -15,6 +15,9 @@ import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
 import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
+import {checkBoardMedia} from "./board-media"
+import {checkParagraphCut} from "./paragraph-cut"
+import {checkGraphicPaint} from "./graphic-paint"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -29,7 +32,78 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)
+
+await check("canvas multiline text keeps partial selections after formatting", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  frame.srcdoc = '<!doctype html><body><p>Before selected text across multiple wrapped lines after</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "multiline fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, paragraph = doc.querySelector("p")!
+    assert(editor.setDocumentLayout("canvas", "document"), "multiline fixture did not convert")
+    paragraph.style.width = "180px"
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    await layoutFrame()
+    const text = paragraph.firstChild!
+    const selectedText = text.textContent!.slice(7, 47)
+    doc.getSelection()!.setBaseAndExtent(text, 7, text, 47)
+    await layoutFrame()
+    for(const size of ["24px", "32px", "18px"]) {
+      assert(editor.features.mark.setStyleMark("font-size", size), `font size ${size} was not applied`)
+      await layoutFrame()
+      assert(doc.getSelection()!.toString() === selectedText, `selection changed after ${size}: ${doc.getSelection()!.toString()}`)
+      assert(editor.features.mark.getState().canMark, `font size ${size} lost mark state`)
+    }
+    for(const backwards of [false, true]) {
+      paragraph.innerHTML = "Heading<br><em>Selected line</em><br>After"
+      const line = paragraph.querySelector("em")!.firstChild!
+      doc.getSelection()!.setBaseAndExtent(line, backwards ? 13 : 0, line, backwards ? 0 : 13)
+      await layoutFrame()
+      for(const size of ["24px", "32px", "18px"]) {
+        assert(editor.features.mark.setStyleMark("font-size", size), `line font size ${size} was not applied`)
+        await layoutFrame()
+        assert(doc.getSelection()!.toString() === "Selected line", "formatting changed the selected line")
+        assert(editor.features.mark.getState().canMark, `line font size ${size} lost mark state`)
+        const range = doc.getSelection()!.getRangeAt(0)
+        assert(!Array.from(paragraph.querySelectorAll("br")).some(node => range.intersectsNode(node)), "selection acquired an adjacent line break")
+      }
+      paragraph.innerHTML = "Before<br><em>middle</em><br>After"
+      const first = paragraph.firstChild!, last = paragraph.lastChild!
+      const breaks = Array.from(paragraph.querySelectorAll("br"))
+      doc.getSelection()!.setBaseAndExtent(backwards ? last : first, backwards ? 3 : 2,
+        backwards ? first : last, backwards ? 2 : 3)
+      await layoutFrame()
+      const multilineText = doc.getSelection()!.toString()
+      assert(editor.features.mark.getState().canMark, "line breaks disabled formatting")
+      assert(editor.features.mark.toggleMark("b"), "bold across line breaks was not applied")
+      await layoutFrame()
+      for(const size of ["24px", "32px"]) {
+        assert(editor.features.mark.setStyleMark("font-size", size), `multiline font size ${size} was not applied`)
+        await layoutFrame()
+        assert(doc.getSelection()!.toString() === multilineText, `formatting changed the multiline selection: ${JSON.stringify(doc.getSelection()!.toString())}`)
+        assert(editor.features.mark.getState().canMark, "multiline formatting lost mark state")
+        const range = doc.getSelection()!.getRangeAt(0)
+        assert(breaks.every(node => range.intersectsNode(node)), "multiline selection lost its line breaks")
+      }
+      assert(editor.features.mark.toggleMark("b"), "bold across line breaks was not removed")
+      assert(editor.features.mark.removeMarks(), "multiline formatting was not cleared")
+      await layoutFrame()
+      assert(doc.getSelection()!.toString() === multilineText && editor.features.mark.getState().canMark,
+        "clearing multiline formatting lost the selection")
+      assert(paragraph.querySelectorAll("br").length === 2 && breaks.every(node => node.isConnected), "formatting replaced line breaks")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
+await check("Board media shrinks with card height in editing and standalone documents", checkBoardMedia)
 
 await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
   const frame = document.createElement("iframe")
@@ -1015,6 +1089,14 @@ await check("Ribbon text colors share the toolbox palette and commit chosen colo
       const custom = combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Custom"]')!
       const swatches = combo.shadowRoot!.querySelectorAll<HTMLElement>(".color-swatch")
       assert(swatches.length === 70, "palette does not match the toolbox colors")
+      for(const value of ["", "transparent", "rgba(0, 0, 0, 0)", "rgb(55, 60, 68)"]) {
+        combo.value = value
+        await combo.updateComplete
+        assert(!combo.shadowRoot!.querySelector('.color-swatch[aria-pressed="true"]'), `${name}: ${value || "default"} selected an unrelated swatch`)
+      }
+      combo.value = "rgb(0, 0, 0)"
+      await combo.updateComplete
+      assert(combo.shadowRoot!.querySelector('[aria-label="Color #000000"]')!.getAttribute("aria-pressed") === "true", `${name}: explicit black was not selected`)
       const swatch = swatches[0].getBoundingClientRect()
       assert(swatch.width > 10 && Math.abs(swatch.width - swatch.height) < .1, "palette swatches are not visible squares")
       const icon = custom.querySelector("svg")!.getBoundingClientRect()
@@ -1341,6 +1423,53 @@ await check("insertion and saved-reader controls align inside symmetric scrollba
   }
 })
 
+await check("standalone SVG arrowheads remain visible in canvas previews and exports", async () => {
+  const {previewFrameHTML} = await import("../src/frame-document")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:450px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  const readers: HTMLIFrameElement[] = []
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "arrow editing fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.setAttribute("data-ww-theme", "base"); theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    editor.setDocumentLayout("canvas", "document")
+    doc.body.replaceChildren()
+    for(const [index, shape] of (["line-start-arrow", "line-end-arrow", "line-both-arrows"] as const).entries()) {
+      const graphic = editor.features.graphic.createGraphic(shape)
+      Object.assign(graphic.style, {position: "absolute", left: "50px", top: `${80 + index * 100}px`, rotate: "5deg"})
+      doc.body.append(graphic)
+    }
+    const saved = editor.toHTML()
+    const preview = previewFrameHTML(new DOMParser().parseFromString(saved, "text/html"), {
+      bridgeNonce: "arrow-preview", hostOrigin: location.origin, frameOrigin: location.origin,
+      packages: [], importMap: null, entryURL: "", executeScripts: false,
+    })
+    for(const html of [preview, saved]) {
+      const reader = document.createElement("iframe")
+      readers.push(reader)
+      reader.style.cssText = frame.style.cssText
+      const loaded = new Promise<void>(resolve => reader.addEventListener("load", () => resolve(), {once: true}))
+      reader.srcdoc = html; fixture.append(reader); await loaded; await layoutFrame()
+      for(const graphic of reader.contentDocument!.querySelectorAll("svg")) {
+        const line = graphic.querySelector("line")!, marker = graphic.querySelector("marker")!
+        assert(line && marker, "reader lost an arrow or its definition")
+        assert(Number(marker.getAttribute("markerHeight")) * Number(line.getAttribute("stroke-width")) > graphic.height.baseVal.value,
+          "fixture no longer has arrowheads extending outside its fitted viewport")
+        assert(reader.contentWindow!.getComputedStyle(graphic).overflow === "visible", "document theme clips arrowheads to the line's thin viewport")
+      }
+    }
+  }
+  finally {
+    ;(frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    readers.forEach(reader => reader.remove()); frame.remove()
+  }
+})
+
 await check("SVG shape outlines and handles align inside symmetric scrollbar gutters", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:600px;border:0;max-width:none"
@@ -1382,6 +1511,77 @@ await check("SVG shape outlines and handles align inside symmetric scrollbar gut
   finally {
     (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
     frame.remove()
+  }
+})
+
+await check("SVG drag previews preserve rotated graphic viewports in canvas and slides", async () => {
+  for(const mode of ["canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:1000px;height:700px;border:0;max-width:none"
+    frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    fixture.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string, PointerEvent: typeof PointerEvent}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, `${mode}: preview fixture did not initialize`)
+      const editor = view.editor!, doc = frame.contentDocument!
+      doc.body.innerHTML = '<svg viewBox="100 50 1200 600" style="width:600px;height:360px"><!--keep--><rect x="400" y="250" width="160" height="100" fill="skyblue"/><ellipse cx="900" cy="400" rx="60" ry="40" fill="orange"/></svg>'
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
+      const graphic = doc.querySelector("svg")!, shape = graphic.querySelector("rect")!
+      Object.assign(graphic.style, {left: "200px", top: "200px", rotate: "30deg", scale: "1.1 0.9", transform: "translate(12px, 8px)", transformOrigin: "25% 75%"})
+      editor.features.selection.captureElement(graphic)
+      for(const aspect of ["xMidYMid meet", "none", "xMaxYMin slice"]) {
+        graphic.setAttribute("preserveAspectRatio", aspect)
+        for(const zoom of [100, 140]) {
+          editor.features.graphic.actions.navigateGraphic({type: "navigateGraphic", operation: "set-zoom", zoom})
+          const translate = graphic.currentTranslate as unknown as {x: number, y: number}
+          translate.x += 17
+          translate.y -= 11
+          shape.removeAttribute("transform")
+          shape.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 1}))
+          doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 1}))
+          await layoutFrame()
+          const before = editor.toHTML(true)
+          const rotate = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="rotate"]')!
+          const handle = rotate.getBoundingClientRect()
+          const start = {x: handle.left + handle.width / 2, y: handle.top + handle.height / 2}
+          const matrix = graphic.getScreenCTM()!
+          const local = new DOMPoint(start.x, start.y).matrixTransform(matrix.inverse())
+          rotate.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 2, clientX: start.x, clientY: start.y}))
+          for(const angle of [15, 45, 90]) {
+            const radians = angle * Math.PI / 180
+            const point = new DOMPoint(
+              480 + (local.x - 480) * Math.cos(radians) - (local.y - 300) * Math.sin(radians),
+              300 + (local.x - 480) * Math.sin(radians) + (local.y - 300) * Math.cos(radians),
+            ).matrixTransform(matrix)
+            doc.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 2, clientX: point.x, clientY: point.y}))
+            await layoutFrame()
+            const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
+            assert(preview, `${mode}/${aspect}/${zoom}: drag preview is missing`)
+            const actual = preview.getScreenCTM()!, expected = graphic.getScreenCTM()!
+            for(const key of ["a", "b", "c", "d", "e", "f"] as const) {
+              assert(Math.abs(actual[key] - expected[key]) < .01, `${mode}/${aspect}/${zoom}: preview ${key} drifted: ${actual[key]} vs ${expected[key]}`)
+            }
+            assert(preview.querySelector("rect")!.getAttribute("transform") === `rotate(${angle} 480 300)`, `${mode}: preview rotation is incorrect`)
+            assert(editor.toHTML(true) === before, `${mode}: dragging changed authored HTML`)
+          }
+          const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
+          const bounds = preview.querySelector("rect")!.getBoundingClientRect()
+          doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 2}))
+          await layoutFrame()
+          const committed = shape.getBoundingClientRect()
+          for(const key of ["x", "y", "width", "height"] as const) {
+            assert(Math.abs(committed[key] - bounds[key]) < .1, `${mode}/${aspect}/${zoom}: shape jumped on release (${key})`)
+          }
+          assert(!editor.appendix.querySelector(".◆graphic-preview") && !doc.querySelector(".◆graphic-preview-source"), `${mode}: preview artifacts survived release`)
+          assert(!editor.toHTML(true).includes("◆") && !editor.doc.body.toString().includes("◆"), `${mode}: preview artifacts entered saved or shared HTML`)
+        }
+      }
+    }
+    finally {
+      (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+      frame.remove()
+    }
   }
 })
 
@@ -2757,6 +2957,117 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
     else document.documentElement.setAttribute("lang", previousLanguage)
     await layoutFrame()
   }
+})
+
+await check("cut paragraphs retain a visible native caret position", checkParagraphCut)
+
+await check("paragraph boundary deletion reverses Enter in Document and Board", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><body><p>Ready</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "paragraph fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
+    for(const mode of ["document", "board"] as const) {
+      if(mode === "board") assert(editor.setDocumentLayout("board", "document"), "board did not convert")
+      const root = mode === "board" ? editor.features.board.cards(editor.features.board.columns()[0])[0] : doc.body
+      for(const html of ["helloworld", "hello<b>world</b>"]) for(const key of ["Backspace", "Delete"]) {
+        root.innerHTML = `<p class="authored">${html}</p>`
+        const paragraph = root.firstElementChild!
+        const walker = doc.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+        let text = walker.nextNode()!, offset = 5
+        while(offset > text.textContent!.length) { offset -= text.textContent!.length; text = walker.nextNode()! }
+        selection.collapse(text, offset)
+        paragraph.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+        assert(root.querySelectorAll("p").length === 2, `${mode}: Enter did not split ${html} before ${key}: ${root.innerHTML}`)
+        editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+        if(key === "Delete") selection.collapse(text, offset)
+        root.querySelectorAll("p")[key === "Backspace" ? 1 : 0]
+          .dispatchEvent(new view.KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+        assert(root.querySelectorAll("p").length === 1 && root.textContent === "helloworld",
+          `${mode}: ${key} did not join the split paragraphs: ${root.innerHTML}`)
+        const caret = selection.getRangeAt(0).cloneRange()
+        caret.selectNodeContents(root.querySelector("p")!)
+        caret.setEnd(selection.focusNode!, selection.focusOffset)
+        assert(caret.toString() === "hello", `${mode}: ${key} misplaced the join caret`)
+        assert(root.querySelector("b")?.textContent === (html.includes("<b>") ? "world" : undefined),
+          `${mode}: ${key} lost inline formatting`)
+        assert(root.querySelector("p")!.classList.contains("authored"), `${mode}: ${key} lost the paragraph's authored class`)
+        editor.doc.syncFromDOM(); editor.doc.undo()
+        assert(root.querySelectorAll("p").length === 2 && root.textContent === "helloworld", `${mode}: ${key} join did not undo`)
+        editor.doc.redo()
+        assert(root.querySelectorAll("p").length === 1 && root.textContent === "helloworld", `${mode}: ${key} join did not redo`)
+      }
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("triple clicks preserve native paragraph selections in Document and Board", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><body><p>Ready</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "paragraph selection fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
+    for(const mode of ["document", "board"] as const) {
+      if(mode === "board") assert(editor.setDocumentLayout("board", "document"), "board did not convert")
+      const root = mode === "board" ? editor.features.board.cards(editor.features.board.columns()[0])[0] : doc.body
+      for(const html of ['<p>Hello world!</p><p>Test!</p>', '<div><!--keep--><p>Hello world!</p>\n<p><b>Te</b>st!</p>\n<p>After</p></div>']) {
+        root.innerHTML = html
+        await layoutFrame()
+        const paragraph = root.querySelectorAll("p")[1]
+        const text = paragraph.querySelector("b")?.firstChild ?? paragraph.firstChild!
+        const hit = doc.createRange()
+        hit.setStart(text, 1); hit.setEnd(text, 2)
+        const rect = hit.getBoundingClientRect()
+        for(const detail of [3, 4]) {
+          // Establish the browser's native paragraph boundaries before CLICK.
+          selection.collapse(text, 1)
+          selection.modify("move", "backward", "paragraphboundary")
+          selection.modify("extend", "forward", "paragraphboundary")
+          const before = selection.getRangeAt(0).cloneRange()
+          assert(selection.toString() === "Test!", `${mode}: native paragraph setup failed`)
+          paragraph.dispatchEvent(new view.MouseEvent("click", {bubbles: true, composed: true, cancelable: true,
+            detail, clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2}))
+          await layoutFrame()
+          const after = selection.getRangeAt(0)
+          assert(selection.toString() === "Test!" && before.startContainer === after.startContainer
+            && before.startOffset === after.startOffset && before.endContainer === after.endContainer
+            && before.endOffset === after.endOffset, `${mode}: click ${detail} changed the native paragraph selection to ${JSON.stringify(selection.toString())}`)
+        }
+      }
+      const image = '<img width="200" height="100" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'200\' height=\'100\'%3E%3Crect width=\'200\' height=\'100\' fill=\'skyblue\'/%3E%3C/svg%3E">'
+      for(const html of [`<picture>${image}</picture>`, `<figure><picture>${image}</picture></figure>`]) {
+        root.innerHTML = `<section><!--keep--><p>Before</p>\n<p><b>Te</b>st!</p>\n${html}<p>After</p></section>`
+        await layoutFrame()
+        const paragraph = root.querySelectorAll("p")[1]
+        const text = paragraph.querySelector("b")!.firstChild!
+        const picture = root.querySelector("picture")!
+        selection.collapse(text, 1)
+        selection.modify("move", "backward", "paragraphboundary")
+        // Like native triple-click, paragraph granularity includes the break
+        // and can place its end at offset zero inside the following picture.
+        selection.modify("extend", "forward", "paragraph")
+        assert(selection.toString().trim() === "Test!", `${mode}: image-adjacent paragraph setup failed`)
+        await layoutFrame()
+        const range = selection.getRangeAt(0)
+        const parent = picture.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(picture)
+        assert(selection.toString().trim() === "Test!" && range.comparePoint(parent, index + 1) === 1,
+          `${mode}: paragraph selection included the following image`)
+        assert(!picture.classList.contains("◆atomic-range-selected") && !editor.features.selection.captureSelectedElement,
+          `${mode}: paragraph selection highlighted or captured the following image`)
+      }
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("character deletion preserves adjacent spaces", async () => {
@@ -5252,6 +5563,59 @@ await check("dead-key composition stays outside authored formulas", async () => 
   finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
+await check("repeated canvas modifier selections preserve item placement and camera", async () => {
+  for(const tag of ["ul", "p", "canvas-selection-widget"]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:600px"
+    const content = tag === "ul" ? '<li>First<!--keep--></li><li>Second <em>item</em></li>' : 'Text<!--keep--><em>content</em>'
+    frame.srcdoc = `<!doctype html><body class="ww-canvas"><${tag} style="position:absolute;left:160px;top:100px;width:320px">${content}</${tag}><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & typeof globalThis
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, "canvas editor did not initialize")
+      const editor = view.editor!, doc = frame.contentDocument!, item = doc.querySelector<HTMLElement>(tag)!
+      await layoutFrame()
+      const slot = editor.appendix.querySelector<HTMLSlotElement>("slot")!
+      const children = Array.from(item.childNodes), style = item.style.cssText
+      editor.doc.syncFromDOM()
+      const html = editor.toHTML(true), shared = editor.doc.body.toString()
+      for(const zoom of [1, 1.31]) {
+        if(zoom !== 1) {
+          slot.dispatchEvent(new view.WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true,
+            ctrlKey: true, deltaY: -Math.log(zoom) / .002, clientX: 300, clientY: 250}))
+          slot.dispatchEvent(new view.WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: 40, deltaY: 20}))
+          await layoutFrame()
+        }
+        const camera = slot.style.transform, initial = item.getBoundingClientRect()
+        for(let i = 0; i < 6; i++) {
+          const rect = item.getBoundingClientRect()
+          // The left padding selects the list itself, toggling the final item
+          // off on every second click, as in issue #256.
+          const options = {bubbles: true, composed: true, cancelable: true, pointerId: 91, button: 0,
+            ctrlKey: true, metaKey: true, clientX: rect.left + 10, clientY: rect.top + 10}
+          item.dispatchEvent(new view.PointerEvent("pointerdown", options))
+          item.dispatchEvent(new view.PointerEvent("pointerup", options))
+          item.dispatchEvent(new view.MouseEvent("click", options))
+          await layoutFrame()
+          assert((i % 2 === 0) === item.classList.contains("◆element-selected"), `${tag}: modifier click did not toggle selection`)
+          assert(slot.style.transform === camera, `${tag} at ${zoom}: selection ${i} moved the camera: ${camera} -> ${slot.style.transform}`)
+          const after = item.getBoundingClientRect()
+          assert(Math.abs(after.left - initial.left) < .01 && Math.abs(after.top - initial.top) < .01,
+            `${tag} at ${zoom}: selection ${i} moved the rendered item`)
+          assert(item.style.cssText === style && children.every((node, index) => item.childNodes[index] === node),
+            `${tag}: selection changed authored placement or content`)
+          editor.doc.syncFromDOM()
+          assert(editor.toHTML(true) === html && editor.doc.body.toString() === shared, `${tag}: selection changed serialized or shared HTML`)
+        }
+      }
+      editor.destroy()
+      assert(!doc.querySelector(".◆element-selected, .◆element-capture-selected, .◆transform-target"), `${tag}: selection markers survived teardown`)
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
 await check("canvas box selection retains disjoint ranges and stays in the document top layer", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
@@ -5288,6 +5652,81 @@ await check("canvas box selection retains disjoint ranges and stays in the docum
     assert(!canvasEditor.toHTML().includes("selection-box"), "marquee leaked into serialized content")
   }
   finally { canvasEditor?.destroy(); frame.remove() }
+})
+
+await check("freeform box selections transform as a group", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:700px"
+  document.body.append(frame)
+  try {
+    for(const mode of ["canvas", "slides"] as const) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = '<!doctype html><body><group-widget>Widget<!--keep--></group-widget><p>Outside</p><p>Last</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+      await loaded
+      const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, "group fixture did not initialize")
+      const editor = view.editor!, feature = editor.features.transformation
+      assert(editor.setDocumentLayout(mode, "document"), "group fixture did not convert")
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+      else editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-in"})
+      const first = doc.querySelector<HTMLElement>("group-widget")!, [outside, last] = Array.from(doc.querySelectorAll("p"))
+      first.attachShadow({mode: "open"}).innerHTML = "<span>Widget content</span>"
+      first.style.cssText = "position:absolute;display:block;left:200px;top:140px;width:100px;height:60px;margin:0;rotate:20deg;scale:1.1;transform:skewX(10deg);transform-origin:10px 5px"
+      last.style.cssText = "position:absolute;left:400px;top:200px;width:100px;height:60px;margin:0"
+      outside.style.cssText = "position:absolute;left:200px;top:450px;width:100px;height:60px;margin:0"
+      await layoutFrame()
+      const before = [first, last].map(element => element.getBoundingClientRect())
+      const left = Math.min(...before.map(rect => rect.left)) - 10, top = Math.min(...before.map(rect => rect.top)) - 10
+      const right = Math.max(...before.map(rect => rect.right)) + 10, bottom = Math.max(...before.map(rect => rect.bottom)) + 10
+      doc.body.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 91, button: 0, clientX: left, clientY: top}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
+      await layoutFrame()
+      assert(!feature.overlay.hasAttribute("visibility"), `${mode}: group controls are hidden`)
+      const bounds = feature.overlay.getBoundingClientRect()
+      assert(Math.abs(bounds.left - left - 10) < 1 && Math.abs(bounds.right - right + 10) < 1, `${mode}: frame does not surround the group`)
+      const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale"))
+      assert(handles.length === 8 && handles.every(handle => handle.hidden && view.getComputedStyle(handle).display === "none"), `${mode}: group resize handles are visible`)
+      const children = Array.from(first.parentNode!.childNodes), content = first.innerHTML, initial = editor.toHTML(true)
+      feature.handleMoveStart(new view.MouseEvent("mousedown", {button: 0, clientX: right, clientY: bottom}))
+      feature.handleMoveDrag(new view.MouseEvent("mousemove", {clientX: right + 40, clientY: bottom + 30, altKey: true}))
+      feature.handleMoveEnd()
+      for(const [i, element] of [first, last].entries()) {
+        const rect = element.getBoundingClientRect()
+        assert(Math.abs(rect.left - before[i].left - 40) < 1 && Math.abs(rect.top - before[i].top - 30) < 1, `${mode}: group move lost a member or zoom compensation`)
+      }
+      const moved = editor.toHTML(true)
+      editor.doc.undo()
+      assert(editor.toHTML(true) === initial, `${mode}: one undo did not restore the entire move`)
+      editor.doc.redo()
+      assert(editor.toHTML(true) === moved, `${mode}: redo did not restore the group move`)
+      await layoutFrame()
+      const resizeBefore = editor.toHTML(true), group = feature.overlay.getBoundingClientRect()
+      const handle = handles.find(handle => handle.dataset.resizeDirection === "down-right")!
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: group.right, clientY: group.bottom}))
+      feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: group.right + 60, clientY: group.bottom + 30, altKey: true}))
+      feature.handleScaleEnd()
+      assert(editor.toHTML(true) === resizeBefore, `${mode}: a hidden handle resized the group`)
+      const rotateBefore = [first, last].map(element => element.getBoundingClientRect())
+      const rotation = feature.overlay.getBoundingClientRect(), cx = rotation.left + rotation.width / 2, cy = rotation.top + rotation.height / 2
+      feature.handleRotateStart(new view.MouseEvent("mousedown", {button: 0, clientX: cx, clientY: cy - 50}))
+      feature.handleRotateDrag(new view.MouseEvent("mousemove", {clientX: cx + 50, clientY: cy, altKey: true}))
+      feature.handleRotateEnd()
+      for(const [i, element] of [first, last].entries()) {
+        const rect = element.getBoundingClientRect(), before = rotateBefore[i]
+        assert(Math.abs(rect.left + rect.width / 2 - (cx - (before.top + before.height / 2 - cy))) < 1
+          && Math.abs(rect.top + rect.height / 2 - (cy + (before.left + before.width / 2 - cx))) < 1, `${mode}: rotation did not orbit the group center`)
+      }
+      assert(Array.from(first.parentNode!.childNodes).every((node, i) => node === children[i]) && first.innerHTML === content, `${mode}: transforms changed authored structure`)
+      assert(outside.style.left === "200px" && outside.style.top === "450px", `${mode}: transforms affected an unselected item`)
+      assert(editor.doc.snapshot().selection?.ranges?.length === 2, `${mode}: gesture collapsed the group selection`)
+      assert(!editor.toHTML(true).match(/◆|transform-overlay/), `${mode}: group controls leaked into serialization`)
+      editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("canvas slot preserves hit testing and document coordinates at different zoom levels", async () => {
@@ -5487,6 +5926,43 @@ await check("canvas Enter inserts a line break and conversion returns normal flo
 })
 
 
+await check("canvas and slide Enter preserves empty lists and repeated breaks", async () => {
+  for(const mode of ["canvas", "slides"] as const) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:700px"
+    frame.srcdoc = '<!doctype html><body><ul><!--keep--></ul><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, `${mode}: list fixture did not initialize`)
+      const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: list fixture did not convert`)
+      const list = doc.querySelector("ul")!, parent = list.parentNode!
+      const siblings = Array.from(parent.childNodes), style = list.getAttribute("style")
+      selection.collapse(list, list.childNodes.length)
+      let firstHeight = 0
+      for(const [index, input] of ["key", "insertParagraph", "insertLineBreak"].entries()) {
+        const event = input === "key" ? new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+          : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
+        list.dispatchEvent(event)
+        await layoutFrame()
+        const item = list.querySelector("li")!
+        assert(event.defaultPrevented, `${mode}: ${input} was not handled`)
+        assert(item && list.querySelectorAll("li").length === 1, `${mode}: ${input} exited or split the list`)
+        assert(item.querySelectorAll("br").length === index + 1 && !item.querySelector("p"), `${mode}: ${input} did not insert only a break`)
+        assert(item.contains(selection.anchorNode), `${mode}: ${input} moved the caret outside the item`)
+        assert(list.getAttribute("style") === style, `${mode}: ${input} changed list placement`)
+        assert(Array.from(parent.childNodes).length === siblings.length
+          && siblings.every((node, index) => parent.childNodes[index] === node), `${mode}: ${input} changed neighboring roots`)
+        if(index === 0) firstHeight = item.getBoundingClientRect().height
+        else assert(item.getBoundingClientRect().height > firstHeight, `${mode}: repeated breaks did not grow the text box`)
+      }
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
 let savedCanvasHTML = ""
 await check("ribbon elements drop on the blank canvas slot", async () => {
   const frame = document.createElement("iframe")
@@ -5669,6 +6145,65 @@ await check("ribbon snippets drop at the caret and center in freeform layouts", 
     }
     finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
   }
+})
+
+await check("typing after moving a text box preserves its text and position", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  document.body.append(frame)
+  try {
+    for(const mode of ["canvas", "slides"] as const) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p id="moving-text">Before <em>formatted</em><!--keep--> text</p><p id="neighbor">Keep neighbor</p></body>'
+      await loaded
+      const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, `${mode}: text fixture did not initialize`)
+      const editor = view.editor!, feature = editor.features.transformation
+      assert(editor.setDocumentLayout(mode, "document"), `${mode}: conversion failed`)
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+      else editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+      const paragraph = doc.querySelector<HTMLElement>("#moving-text")!, neighbor = doc.querySelector<HTMLElement>("#neighbor")!
+      paragraph.style.cssText = "position:absolute;left:400px;top:140px;width:240px;height:100px;margin:0"
+      neighbor.style.cssText = "position:absolute;left:700px;top:300px;width:180px;height:100px;margin:0"
+      const neighborHTML = neighbor.outerHTML, parent = paragraph.parentNode!, children = Array.from(parent.childNodes)
+      const selection = doc.getSelection()!, text = paragraph.lastChild!
+      selection.setPosition(text, text.textContent!.length)
+      assert(doc.execCommand("insertText", false, " first"), `${mode}: initial typing failed`)
+      await layoutFrame()
+      const caret = selection.anchorNode!, offset = selection.anchorOffset, before = paragraph.getBoundingClientRect()
+      const initial = editor.toHTML(true)
+      const edge = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!
+      edge.addEventListener("mousedown", event => feature.handleMoveStart(event), {once: true})
+      edge.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: before.right, clientY: before.top}))
+      feature.handleMoveDrag(new view.MouseEvent("mousemove", {altKey: true, clientX: before.right + 40, clientY: before.top + 30}))
+      feature.handleMoveEnd()
+      await layoutFrame()
+      assert(selection.anchorNode === caret && selection.anchorOffset === offset && selection.isCollapsed, `${mode}: moving replaced the text caret with a box selection`)
+      const moved = paragraph.getBoundingClientRect(), movedHTML = editor.toHTML(true), placement = paragraph.getAttribute("style")
+      assert(paragraph.style.left === "440px" && paragraph.style.top === "170px"
+        && Math.abs(moved.width - before.width) < 1, `${mode}: moving did not retain authored dimensions and offsets`)
+      const event = new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: " second"})
+      doc.body.dispatchEvent(event)
+      assert(!event.defaultPrevented, `${mode}: typing entered the structural replacement path`)
+      assert(doc.execCommand("insertText", false, " second"), `${mode}: typing after moving failed`)
+      await layoutFrame()
+      editor.doc.syncFromDOM()
+      const typed = editor.toHTML(true)
+      assert(paragraph.isConnected && paragraph.textContent === "Before formatted text first second", `${mode}: typing replaced existing content`)
+      assert(paragraph.getAttribute("style") === placement && Math.abs(paragraph.getBoundingClientRect().left - moved.left) < 1, `${mode}: typing reset placement`)
+      assert(neighbor.outerHTML === neighborHTML && Array.from(parent.childNodes).every((node, i) => node === children[i]), `${mode}: moving and typing changed a neighbor or rebuilt the box`)
+      assert(!typed.includes("◆") && !editor.doc.body.toString().includes("◆"), `${mode}: editing artifacts leaked`)
+      editor.doc.undo()
+      assert(editor.toHTML(true) === movedHTML, `${mode}: undo of typing lost the move`)
+      editor.doc.undo()
+      assert(editor.toHTML(true) === initial, `${mode}: undo of the move lost earlier typing`)
+      editor.doc.redo(); editor.doc.redo()
+      assert(editor.toHTML(true) === typed, `${mode}: redo lost typing or placement`)
+      editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("a clean canvas retains its initial item when moving and typing without inserting links", async () => {
@@ -6090,6 +6625,26 @@ await check("Board columns and cards retain native editing and standalone layout
     assert(rects.every((rect, i) => !i || rect.left > rects[i - 1].right), "columns did not grow horizontally")
     assert(doc.documentElement.scrollWidth > frame.clientWidth, "board did not overflow horizontally")
     await checkOverflow(doc)
+    for(const column of columns.slice(1)) {
+      const heading = column.querySelector("h2")!
+      heading.scrollIntoView({block: "nearest", inline: "center"})
+      await layoutFrame()
+      const box = heading.getBoundingClientRect()
+      const pointer = {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 266, clientX: box.left + 12, clientY: box.top + box.height / 2}
+      heading.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", {...pointer, ctrlKey: true, metaKey: true}))
+      const selection = doc.getSelection()!
+      assert(selection.anchorNode === column && column.childNodes[selection.anchorOffset] === heading
+        && selection.focusNode === column && selection.focusOffset === selection.anchorOffset + 1,
+      "selecting a later column heading as an element moved selection to another column")
+      heading.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", pointer))
+      heading.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerup", pointer))
+      await layoutFrame()
+      assert(heading.contains(doc.getSelection()!.anchorNode), "clicking a later column heading moved selection to another column")
+      const otherHeadings = columns.filter(other => other !== column).map(other => other.querySelector("h2")!.textContent)
+      assert(doc.execCommand("insertText", false, "Edited "), "column heading did not accept typing")
+      assert(heading.textContent!.includes("Edited "), "typing did not change the clicked column heading")
+      assert(columns.filter(other => other !== column).every((other, i) => other.querySelector("h2")!.textContent === otherHeadings[i]), "typing changed another column heading")
+    }
     for(const column of columns) {
       const cards = board.cards(column).map(card => card.getBoundingClientRect())
       assert(cards.every((rect, i) => !i || rect.top > cards[i - 1].bottom), "cards did not stack vertically")
@@ -7987,6 +8542,69 @@ await check("canvas and slide gestures relay pointer dismissal before feature ca
       frame.remove()
     }
   }
+})
+
+await check("graphic imports open host pickers synchronously and retry across the iframe bridge", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1280px;height:900px"
+  frame.src = "/editor/"
+  document.body.append(frame)
+  try {
+    let app: DomEditor | null = null
+    for(let attempt = 0; attempt < 200; attempt++) {
+      app = frame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+      if((app as any)?.editorWindow) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    assert(app && (app as any).editorWindow, "graphic bridge editor did not initialize")
+    await (app as any).waitForEditorWindow()
+    await app!.execute({type: "insertGraphic"})
+    const view = frame.contentWindow as Window & typeof globalThis
+    const click = view.HTMLInputElement.prototype.click
+    let opening = false
+    let clicks = 0
+    view.HTMLInputElement.prototype.click = function() {
+      assert(opening, "picker opened after the initiating event returned")
+      assert(this.ownerDocument === app!.ownerDocument, "picker opened in the document iframe")
+      clicks++
+    }
+    try {
+      const toolbox = app!.shadowRoot!.querySelector("dom-editor-toolbox")!
+      for(let attempt = 0; attempt < 3; attempt++) {
+        opening = true
+        toolbox.dispatchEvent(new CustomEvent("ribbon-button-click", {
+          detail: {label: "import-graphic"}, bubbles: true, composed: true,
+        }))
+        opening = false
+        assert(clicks === attempt + 1, "import click did not open a host picker synchronously")
+        const picker = app!.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+        assert(picker?.accept === ".svg,image/svg+xml", "graphic picker does not accept SVG files")
+        if(attempt < 2) picker.dispatchEvent(new Event("cancel"))
+        else {
+          const data = new DataTransfer()
+          data.items.add(new File(['<svg xmlns="http://www.w3.org/2000/svg"><!--imported--><circle r="12"/></svg>'], "drawing.svg", {type: "image/svg+xml"}))
+          picker.files = data.files
+          picker.dispatchEvent(new Event("change"))
+        }
+        assert(!picker.isConnected, "host picker was not removed after completion")
+        await layoutFrame()
+      }
+      let source = ""
+      for(let attempt = 0; attempt < 100; attempt++) {
+        source = await app!.execute({type: "serializeGraphic"}) as string
+        if(source?.includes("<circle")) break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      assert(source?.includes("<circle") && source.includes("<!--imported-->"), "host-picked file did not import across the bridge")
+      assert(!source.includes("◆"), "graphic import serialized editor markers")
+      await app!.execute({type: "undo"})
+      assert(!(await app!.execute({type: "serializeDocument"}) as string).includes("<circle"), "import could not be undone")
+      await app!.execute({type: "redo"})
+      assert((await app!.execute({type: "serializeDocument"}) as string).includes("<circle"), "import could not be redone")
+    }
+    finally { view.HTMLInputElement.prototype.click = click }
+  }
+  finally { frame.remove() }
 })
 
 await check("table commands complete across the real iframe bridge", async () => {

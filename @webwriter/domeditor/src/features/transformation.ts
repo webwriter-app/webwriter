@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, atomicEditingContainer, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
@@ -8,12 +8,14 @@ import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../ribbon-icons"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
+import type {RelativePosition} from "yjs"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
 const cropDirections = ["up-left", "down-right"] as const
 type StyleValue = {value: string, priority: string}
 type GestureStyles = {target: TransformElement, initial: CSSStyleDeclaration, written: Map<string, StyleValue>}
+type GroupMember = GestureStyles & {parent: Element | null, rect: DOMRect, matrix: DOMMatrix, transform: DOMMatrix}
 type BoxGeometry = {
   rect: DOMRect, width: number, height: number, matrix: DOMMatrix
   styles: {width: string, height: string, left: string, top: string, transform: string}
@@ -44,6 +46,8 @@ type Gesture = {
   canvas?: {initial: string | null, written: string | null, x: number, y: number, width: number, height: number}
   crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
   endUndoGroup: () => void
+  group?: {members: GroupMember[], transform: DOMMatrix}
+  textSelection?: {range: Range, backwards: boolean, start: RelativePosition | null, end: RelativePosition | null}
 }
 
 /** Selection-owned spatial controls in the shadow appendix.
@@ -78,6 +82,7 @@ export class TransformationFeature extends EditorFeature {
   protected handlesAppendixInteractions = true
   protected handlesCapturedElementInteractions = true
   #target: TransformElement | null = null
+  #group: TransformElement[] = []
   #gesture: Gesture | null = null
   #floatValues: readonly FloatSide[] = ["none", "far-left", "far-right"]
   #observer: MutationObserver | null = null
@@ -392,7 +397,7 @@ export class TransformationFeature extends EditorFeature {
   get isNarrow() { return this.overlay.classList.contains("◆transform-overlay-narrow") }
 
   freeformControlContainer(element: Element) {
-    return this.target === element && this.#isFreeformItem(element) ? this.overlay : null
+    return !this.#group.length && this.target === element && this.#isFreeformItem(element) ? this.overlay : null
   }
 
   #canTransform(element: Element): element is TransformElement {
@@ -413,9 +418,29 @@ export class TransformationFeature extends EditorFeature {
       && !$.isElementSelection && !this.editor.features.selection.isCaptureSelection))
   }
 
+  /** Independent live ranges remain the selection; no authored group wrapper. */
+  syncGroupSelection(elements: Element[]) {
+    if(!this.isEnabled || this.#gesture) return
+    if(this.editor.isEditingLocked || elements.length < 2
+      || !elements.every((element): element is TransformElement => this.#canTransform(element) && this.#isFreeformItem(element))) {
+      this.clearTransform()
+      return
+    }
+    if(elements.length !== this.#group.length || elements.some((element, i) => element !== this.#group[i])) {
+      this.clearTransform()
+      this.#group = elements
+      this.#target = elements[0]
+    }
+    for(const element of this.#group) element.classList.add("◆transform-target")
+    this.overlay.removeAttribute("visibility")
+    setPart(this.overlay, "transform-overlay-content-selected", false)
+    this.updateInfo()
+    this.#scheduleFrame()
+  }
+
   startTransform(element: Element) {
     if(!this.#canTransform(element) || this.editor.isEditingLocked) return
-    if(this.#target !== element) {
+    if(this.#target !== element || this.#group.length) {
       this.clearTransform()
       this.#target = element
     }
@@ -461,12 +486,12 @@ export class TransformationFeature extends EditorFeature {
     setPart(overlay, "transform-overlay-freeform", freeform)
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      const hide = !freeform
+      const hide = !freeform || this.#group.length > 0
       midpoint.hidden = hide
       setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = !freeform && scaler.dataset.resizeDirection !== corner
+      const hide = this.#group.length > 0 || !freeform && scaler.dataset.resizeDirection !== corner
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
       setPart(scaler, "transform-overlay-scale-text", text)
@@ -484,7 +509,7 @@ export class TransformationFeature extends EditorFeature {
       setPart(control, `transform-overlay-${name}-hidden`, hide)
       control.hidden = hide
     }
-    hidden("rotator", !freeform || position !== "absolute")
+    hidden("rotator", !freeform || (this.#group.length ? !this.#group.every(element => getComputedStyle(element).position === "absolute") : position !== "absolute"))
     hidden("orderer", true)
     hidden("mover", freeform)
     const captionPosition = this.editor.features.manipulation.getCaptionPosition()
@@ -650,6 +675,22 @@ export class TransformationFeature extends EditorFeature {
   updateInfo() {
     const target = this.target
     if(!target) { if(this.#target) this.clearTransform(); return }
+    if(this.#group.length) {
+      if(!this.#validGroupSelection()) { this.clearTransform(); return }
+      const gesture = this.#gesture
+      const rect = gesture?.group ? gesture.rect : this.#groupRect()
+      const matrix = gesture?.group?.transform ?? new DOMMatrix()
+      const center = matrix.transformPoint({x: rect.left + rect.width / 2, y: rect.top + rect.height / 2})
+      Object.assign(this.overlay.style, {width: `${rect.width}px`, height: `${rect.height}px`,
+        left: `${fixedClientX(center.x - rect.width / 2)}px`, top: `${center.y - rect.height / 2}px`,
+        transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, 0, 0)`})
+      this.overlay.querySelector<HTMLElement>('[part="transform-overlay-crop-frame"]')!.hidden = true
+      this.#positionFlowControls(rect.width, rect.height, [])
+      this.overlay.classList.toggle("◆transform-overlay-narrow", rect.width < 120)
+      setPart(this.overlay, "transform-overlay-at-top", center.y - (Math.abs(matrix.b) * rect.width + Math.abs(matrix.d) * rect.height) / 2 < 50)
+      this.#syncControlParts()
+      return
+    }
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
     Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
@@ -811,9 +852,102 @@ export class TransformationFeature extends EditorFeature {
       : (n: number) => roundTo(n, 10)
   }
 
+  #validGroupSelection() {
+    const selected = $.selectedElements
+    return this.#group.length > 1 && selected.length === this.#group.length
+      && this.#group.every((element, i) => element === selected[i] && this.#canTransform(element) && this.#isFreeformItem(element))
+  }
+
+  #groupRect() {
+    const rects = this.#group.map(element => this.boxGeometry(element).rect)
+    const left = Math.min(...rects.map(rect => rect.left)), top = Math.min(...rects.map(rect => rect.top))
+    return new DOMRect(left, top, Math.max(...rects.map(rect => rect.right)) - left, Math.max(...rects.map(rect => rect.bottom)) - top)
+  }
+
+  #beginGroup(event: MouseEvent, mode: Mode, handle: HTMLElement) {
+    if(!this.#validGroupSelection() || !["move", "rotate"].includes(mode)
+      || mode === "rotate" && !this.#group.every(element => getComputedStyle(element).position === "absolute")) return false
+    const rect = this.#groupRect()
+    const members = this.#group.map(target => {
+      const initial = document.createElement("div").style
+      initial.cssText = target.style.cssText
+      const transform = getComputedStyle(target).transform
+      return {target, parent: target.parentElement, rect: target.getBoundingClientRect(), initial, written: new Map<string, StyleValue>(),
+        matrix: this.#matrix(target), transform: new DOMMatrix(transform && transform !== "none" ? transform : undefined)}
+    })
+    if(rect.width <= 0 || rect.height <= 0 || members.some(({matrix}) => !matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8)) return false
+    event.preventDefault()
+    document.body.focus({preventScroll: true})
+    if(!this.#validGroupSelection()) return false
+    const first = members[0]
+    this.#gesture = {...first, mode, handle, pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
+      x: event.clientX, y: event.clientY, rect, width: rect.width, height: rect.height, cssWidth: rect.width, cssHeight: rect.height,
+      matrix: new DOMMatrix(), parentMatrix: this.#matrix(renderedParentElement(first.target)), rotate: 0, scale: [1, 1],
+      moved: false, captured: false, group: {members, transform: new DOMMatrix()}, endUndoGroup: this.editor.doc.beginUndoGroup()}
+    this.#suppressClick = null
+    if(event instanceof PointerEvent) {
+      try { handle.setPointerCapture?.(event.pointerId) }
+      catch { this.#finish(true); return false }
+    }
+    return true
+  }
+
+  #dragGroup(event: MouseEvent) {
+    const gesture = this.#gesture!, group = gesture.group!
+    const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y
+    if(!gesture.moved && Math.hypot(dx, dy) < (gesture.mode === "move" ? 8 : 1)) return
+    gesture.moved = true
+    this.#resetWritten()
+    const round = this.getRoundingFunc(event)
+    const cx = gesture.rect.left + gesture.width / 2, cy = gesture.rect.top + gesture.height / 2
+    let transform = new DOMMatrix()
+    if(gesture.mode === "move") {
+      const delta = this.#vector(gesture.parentMatrix.inverse(), dx, dy)
+      if(event.shiftKey) {
+        if(Math.abs(dx) >= Math.abs(dy)) delta.y = 0
+        else delta.x = 0
+      }
+      const offset = this.#vector(gesture.parentMatrix, round(delta.x), round(delta.y))
+      transform = transform.translate(offset.x, offset.y)
+      document.body.classList.add("◆transform-moving")
+    }
+    else {
+      const degrees = (Math.atan2(event.clientY - cy, event.clientX - cx) - Math.atan2(gesture.y - cy, gesture.x - cx)) * 180 / Math.PI
+      transform = transform.translate(cx, cy).rotate(round(degrees)).translate(-cx, -cy)
+      document.body.classList.add("◆transform-rotating")
+    }
+    group.transform = transform
+    const linear = new DOMMatrix([transform.a, transform.b, transform.c, transform.d, 0, 0])
+    for(const member of group.members) {
+      if(gesture.mode !== "move") {
+        // Post-compose in the element's own axes. Individual CSS transforms,
+        // ancestor zoom and authored origins are included in its live matrix.
+        const local = member.matrix.inverse().multiply(linear).multiply(member.matrix)
+        this.#write("transform", member.transform.multiply(local).toString(), "", member)
+      }
+      const center = transform.transformPoint({x: member.rect.left + member.rect.width / 2, y: member.rect.top + member.rect.height / 2})
+      const current = member.target.getBoundingClientRect()
+      this.#offsetBy(center.x - current.left - current.width / 2, center.y - current.top - current.height / 2, member)
+    }
+    this.updateInfo()
+    if(gesture.mode === "move") this.#schedulePan(event)
+  }
+
+  #schedulePan(event: MouseEvent) {
+    this.#panEvent = event
+    if(this.editor.features.canvas.active && this.#panFrame === null) {
+      this.#panFrame = requestAnimationFrame(() => {
+        this.#panFrame = null
+        const pointer = this.#panEvent
+        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
+      })
+    }
+  }
+
   #begin(event: MouseEvent, mode: Mode, handle: HTMLElement) {
     const target = this.target
     if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
+    if(this.#group.length) return this.#beginGroup(event, mode, handle)
     if(mode === "crop" && !cropDirections.some(direction => direction === handle.dataset.cropDirection)) return false
     if(mode === "rotate" && (!this.#isFreeformItem(target) || getComputedStyle(target).position !== "absolute")) return false
     const matrix = this.#matrix(target)
@@ -825,6 +959,12 @@ export class TransformationFeature extends EditorFeature {
     const cropBox = media ? this.boxGeometry(media, false) : null
     if(mode === "crop" && (!media || !insets || !cropBox || cropBox.width <= 0 || cropBox.height <= 0
       || !cropBox.matrix.is2D || Math.abs(cropBox.matrix.a * cropBox.matrix.d - cropBox.matrix.b * cropBox.matrix.c) < 1e-8)) return false
+    const selection = document.getSelection()
+    const textSelection: Gesture["textSelection"] = mode === "move" && this.#isFreeformItem(target) && selection?.rangeCount === 1
+      && !this.editor.features.selection.isCaptureSelection && !this.editor.features.table.hasCellSelection
+      && $.isTextSelection && target.contains(selection.anchorNode) && target.contains(selection.focusNode)
+      && !atomicEditingContainer(selection.anchorNode, this.editor.schema) && !atomicEditingContainer(selection.focusNode, this.editor.schema)
+      ? {range: selection.getRangeAt(0).cloneRange(), backwards: $.isBackwards, start: null, end: null} : undefined
     if(this.#isFreeformItem(target)) {
       document.body.focus({preventScroll: true})
       this.editor.features.selection.selectElement(target)
@@ -839,18 +979,24 @@ export class TransformationFeature extends EditorFeature {
     const image = rotationTarget ?? (mode === "scale" && target.localName === "picture" ? this.editor.features.media.cropTargetFor(target) : null)
     const imageStyle = document.createElement("div").style
     imageStyle.cssText = image?.style.cssText ?? ""
+    const endUndoGroup = this.editor.doc.beginUndoGroup()
+    if(textSelection) {
+      const {range} = textSelection
+      textSelection.start = this.editor.doc.relativePositionFromDOMPoint(range.startContainer, range.startOffset)
+      textSelection.end = this.editor.doc.relativePositionFromDOMPoint(range.endContainer, range.endOffset)
+    }
     this.#gesture = {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: (rotationTarget ?? target).getBoundingClientRect(), ...this.#size(target),
       matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
-      initial, written: new Map(), moved: false,
+      initial, written: new Map(), moved: false, textSelection,
       image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
         matrix: cropBox.matrix, insets, edges: [...insets], sourceStyle} : undefined,
       captured: this.editor.features.selection.captureSelectedElement === target,
-      endUndoGroup: this.editor.doc.beginUndoGroup(),
+      endUndoGroup,
     }
     this.#suppressClick = null
     if(mode === "crop") {
@@ -899,6 +1045,12 @@ export class TransformationFeature extends EditorFeature {
   #validGesture() {
     const gesture = this.#gesture
     if(!gesture) return false
+    if(gesture.group && (!this.#validGroupSelection() || gesture.group.members.some(member =>
+      member.parent !== member.target.parentElement || [...member.written].some(([key, last]) =>
+        member.target.style.getPropertyValue(key) !== last.value || member.target.style.getPropertyPriority(key) !== last.priority)))) {
+      this.#finish(true)
+      return false
+    }
     if(gesture.crop && (this.editor.features.media.cropTargetFor(gesture.target) !== gesture.crop.target || gesture.crop.parent !== gesture.crop.target.parentElement
       || gesture.crop.target.style.getPropertyValue("object-view-box") !== gesture.crop.sourceStyle.getPropertyValue("object-view-box")
       || gesture.crop.target.style.getPropertyPriority("object-view-box") !== gesture.crop.sourceStyle.getPropertyPriority("object-view-box")
@@ -930,27 +1082,28 @@ export class TransformationFeature extends EditorFeature {
 
   #resetWritten() {
     const gesture = this.#gesture!
-    for(const styles of [gesture, gesture.image]) if(styles) {
+    for(const styles of gesture.group?.members ?? [gesture, gesture.image]) if(styles) {
       for(const property of styles.written.keys()) this.#write(property, styles.initial.getPropertyValue(property), styles.initial.getPropertyPriority(property), styles)
     }
   }
 
   /** Adjust offsets by the measured viewport displacement. Measuring after a
    * mode/size change accounts for margins, borders, scrollers and CSS origins. */
-  #offsetBy(dx: number, dy: number) {
+  #offsetBy(dx: number, dy: number, styles: GestureStyles | null = this.#gesture) {
     if(!this.editor.features.canvas.active && !this.editor.features.slides.active) return
-    const target = this.target!
+    const target = styles?.target ?? this.target!
     if(Math.abs(dx) < .01 && Math.abs(dy) < .01) return
     const delta = this.#vector(this.#matrix(renderedParentElement(target)).inverse(), dx, dy)
-    if(getComputedStyle(target).position === "static") this.#write("position", "relative")
+    const write = (property: string, value: string) => this.#write(property, value, "", styles)
+    if(getComputedStyle(target).position === "static") write("position", "relative")
     const style = getComputedStyle(target)
     const x = parseFloat(style.left), y = parseFloat(style.top)
     const left = Number.isFinite(x) ? x : -(parseFloat(style.right) || 0)
     const top = Number.isFinite(y) ? y : -(parseFloat(style.bottom) || 0)
-    this.#write("right", "auto")
-    this.#write("bottom", "auto")
-    this.#write("left", `${left + delta.x}px`)
-    this.#write("top", `${top + delta.y}px`)
+    write("right", "auto")
+    write("bottom", "auto")
+    write("left", `${left + delta.x}px`)
+    write("top", `${top + delta.y}px`)
   }
 
   #setPosition(position: string) {
@@ -995,7 +1148,7 @@ export class TransformationFeature extends EditorFeature {
 
   handleMoveStart(event: MouseEvent) {
     this.#begin(event, "move", this.anchor)
-    if(this.#gesture && this.target) this.editor.features.manipulation.prepareFloatDropTargets(this.target)
+    if(this.#gesture && !this.#gesture.group && this.target) this.editor.features.manipulation.prepareFloatDropTargets(this.target)
   }
   handleScaleStart(event: MouseEvent) {
     const handle = event.composedPath()[0] ?? event.target
@@ -1007,6 +1160,7 @@ export class TransformationFeature extends EditorFeature {
     if(!this.#validGesture()) return
     const gesture = this.#gesture!
     if(gesture.mode !== "move" && gesture.mode !== "anchor") return
+    if(gesture.group) { this.#dragGroup(event); return }
     const dx = event.clientX - gesture.x, dy = event.clientY - gesture.y
     if(!gesture.moved && Math.hypot(dx, dy) < 8) return
     gesture.moved = true
@@ -1034,19 +1188,13 @@ export class TransformationFeature extends EditorFeature {
     const current = this.targetRect
     this.#offsetBy(gesture.rect.left + viewportDelta.x - current.left, gesture.rect.top + viewportDelta.y - current.top)
     this.updateInfo()
-    this.#panEvent = event
-    if(this.editor.features.canvas.active && this.#panFrame === null) {
-      this.#panFrame = requestAnimationFrame(() => {
-        this.#panFrame = null
-        const pointer = this.#panEvent
-        if(pointer && this.#validGesture() && this.editor.features.canvas.panAtEdge({x: pointer.clientX, y: pointer.clientY})) this.handleMoveDrag(pointer)
-      })
-    }
+    this.#schedulePan(event)
   }
 
   handleScaleDrag(event: MouseEvent) {
     if(!this.#validGesture() || this.#gesture!.mode !== "scale") return
     const gesture = this.#gesture!
+    if(gesture.group) { this.#dragGroup(event); return }
     const target = gesture.target
     const text = !this.#isFreeformItem(target) && this.#isTextContainer(target)
     const image = Boolean(gesture.image || target instanceof HTMLImageElement && !target.hasAttribute("is"))
@@ -1177,6 +1325,7 @@ export class TransformationFeature extends EditorFeature {
   handleRotateDrag(event: MouseEvent) {
     if(!this.#validGesture() || this.#gesture!.mode !== "rotate") return
     const gesture = this.#gesture!
+    if(gesture.group) { this.#dragGroup(event); return }
     if(Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) < 1 && !gesture.moved) return
     gesture.moved = true
     document.body.classList.add("◆transform-rotating")
@@ -1248,13 +1397,13 @@ export class TransformationFeature extends EditorFeature {
     this.#panEvent = null
     const gesture = this.#gesture
     if(!gesture) return
-    const valid = gesture.target === this.target && gesture.parent === gesture.target.parentElement
+    const valid = gesture.group ? this.#validGroupSelection() : gesture.target === this.target && gesture.parent === gesture.target.parentElement
     const target = gesture.target
     if(cancel || !valid) {
       if(gesture.canvas && target.getAttribute("viewBox") === gesture.canvas.written) this.#writeCanvasViewBox(gesture.canvas.initial)
       // Revert only properties still owned by this gesture. Concurrent changes
       // to other properties, or to these same properties, remain authoritative.
-      for(const styles of [gesture, gesture.image]) if(styles) {
+      for(const styles of gesture.group?.members ?? [gesture, gesture.image]) if(styles) {
         for(const [key, last] of styles.written) {
           if(styles.target.style.getPropertyValue(key) === last.value && styles.target.style.getPropertyPriority(key) === last.priority) {
             const value = styles.initial.getPropertyValue(key)
@@ -1305,6 +1454,7 @@ export class TransformationFeature extends EditorFeature {
       preview.height = 0
     }
     this.#suppressClick = gesture.moved ? gesture.handle : null
+    for(const member of gesture.group?.members ?? []) if(!member.target.style.length) member.target.removeAttribute("style")
     if(!target.style.length) target.removeAttribute("style")
     if(gesture.image && !gesture.image.target.style.length) gesture.image.target.removeAttribute("style")
     if(gesture.crop && !gesture.crop.target.style.length) gesture.crop.target.removeAttribute("style")
@@ -1313,6 +1463,19 @@ export class TransformationFeature extends EditorFeature {
     document.body.classList.remove(...cropDirections.map(direction => `◆transform-cropping-${direction}`))
     this.#clearDrop()
     this.editor.features.manipulation.clearFloatDropTargets()
+    const textSelection = gesture.textSelection
+    if(valid && gesture.moved && textSelection && !this.editor.isEditingLocked && !this.editor.features.selection.isCaptureSelection && $.selectedElement === target
+      && target.contains(textSelection.range.startContainer) && target.contains(textSelection.range.endContainer)) {
+      // A border click selects the box; a drag lets typing continue in its
+      // text selection. Relative positions follow local and remote text edits.
+      this.editor.doc.syncFromDOM()
+      const start = textSelection.start && this.editor.doc.domPointFromRelativePosition(textSelection.start)
+      const end = textSelection.end && this.editor.doc.domPointFromRelativePosition(textSelection.end)
+      if(start && end && target.contains(start.node) && target.contains(end.node)) {
+        const [anchor, focus] = textSelection.backwards ? [end, start] : [start, end]
+        $.selectRange(anchor.node, anchor.offset, focus.node, focus.offset)
+      }
+    }
     gesture.endUndoGroup()
     if(valid) {
       if(gesture.captured && !cancel && !gesture.moved && (gesture.mode === "move" || gesture.mode === "scale")) {
@@ -1384,8 +1547,10 @@ export class TransformationFeature extends EditorFeature {
     this.#finish(true)
     this.#suppressClick = null
     this.editor.features.selection.clearTransformCaret()
-    if(this.#target) removeEditorMarker(this.#target, "◆transform-target")
+    const targets = new Set([...this.#group, ...(this.#target ? [this.#target] : []), ...document.querySelectorAll(".◆transform-target")])
+    for(const target of targets) removeEditorMarker(target, "◆transform-target")
     this.#target = null
+    this.#group = []
     this.#positionFlowControls(0, 0, [])
     if(this.#frame !== null) cancelAnimationFrame(this.#frame)
     this.#frame = null
@@ -1420,6 +1585,13 @@ export class TransformationFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    pointerdown: event => {
+      const origin = event.composedPath()[0]
+      if(!this.#group.length || event.defaultPrevented || event.button !== 0 || event.detail >= 2
+        || modifierKeyDown(event) || event.shiftKey || !(origin instanceof Node)
+        || !getDocumentRoot().contains(origin) || !this.#group.some(element => element.contains(origin))) return
+      if(this.#begin(event, "move", this.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right")!)) event.stopImmediatePropagation()
+    },
     keydown: event => {
       if(event.key === "Escape" && this.#gesture) {
         event.preventDefault()
@@ -1494,6 +1666,17 @@ export class TransformationFeature extends EditorFeature {
       if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-delete" && this.overlay.contains(handle)) {
         const target = this.target
         if(target && !this.#gesture && !this.editor.isEditingLocked) {
+          if(this.#group.length) {
+            if(this.#validGroupSelection()) {
+              const end = this.editor.doc.beginUndoGroup()
+              try { $.delete() }
+              finally { end() }
+              this.clearTransform()
+              this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+            }
+            event.stopPropagation()
+            return
+          }
           this.editor.features.selection.selectElement(target)
           if(this.target === target && $.selectedElement === target) {
             $.delete()

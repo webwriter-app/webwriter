@@ -4,6 +4,39 @@ import {RibbonCombobox} from "./ribbon-combobox"
 
 afterEach(() => document.body.replaceChildren())
 
+it.each(["color", "background-color"])("does not select black for default or transparent %s values", async name => {
+  const combo = new RibbonCombobox()
+  combo.name = name
+  combo.variant = "color"
+  document.body.append(combo)
+  await combo.updateComplete
+  const changes = vi.fn()
+  combo.addEventListener("ribbon-combobox-change", changes)
+  const trigger = combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!
+  trigger.click()
+  await combo.updateComplete
+
+  for(const value of ["", "transparent", "rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0.5)", "rgb(55, 60, 68)"]) {
+    combo.value = value
+    await combo.updateComplete
+    expect(combo.shadowRoot!.querySelector('.color-swatch[aria-pressed="true"]')).toBeNull()
+    expect(combo.value).toBe(value)
+  }
+  expect(changes).not.toHaveBeenCalled()
+
+  combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Color #000000"]')!.click()
+  await combo.updateComplete
+  trigger.click()
+  await combo.updateComplete
+  expect(combo.shadowRoot!.querySelector('[aria-label="Color #000000"]')!.getAttribute("aria-pressed")).toBe("true")
+  combo.shadowRoot!.querySelector<HTMLButtonElement>(".palette-automatic")!.click()
+  await combo.updateComplete
+  trigger.click()
+  await combo.updateComplete
+  expect(combo.value).toBe("")
+  expect(combo.shadowRoot!.querySelector('.color-swatch[aria-pressed="true"]')).toBeNull()
+})
+
 it("can close before its first render and reopen without changing its value", async () => {
   const combo = new RibbonCombobox()
   combo.variant = "color"

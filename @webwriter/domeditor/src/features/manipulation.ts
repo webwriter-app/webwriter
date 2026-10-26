@@ -3154,8 +3154,11 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Inserts a break only when it is valid at the current selection. */
-  private insertBreak(type: "br" | "wbr") {
-    this.ensureTextBlock()
+  private insertBreak(type: "br" | "wbr", preserveContainer = false) {
+    // Freeform carets between breaks stay in their existing text container.
+    // An empty list still needs its first real item before it can hold a break.
+    if(preserveContainer) this.editor.features.list.materializeVirtualItem()
+    else this.ensureTextBlock()
     const element = document.createElement(type)
     if(this.canInsertAtSelection(element)) this.insertAtSelection(element)
   }
@@ -3164,7 +3167,7 @@ export class ManipulationFeature extends EditorFeature {
     if(event.defaultPrevented || this.editor.isEditingLocked || this.editor.features.selection.isCaptureSelection
       || this.editor.features.mark.isSVGTextSelection || isAppendixInteraction(event)
       || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)
-      || !($.isTextSelection || $.isEmptySelection)) return false
+      || !($.isTextSelection || $.isEmpty)) return false
     const range = $.range
     if(!document.body.contains(range.startContainer) || !document.body.contains(range.endContainer)
       || atomicEditingContainer(range.startContainer, this.editor.schema)
@@ -3401,13 +3404,13 @@ export class ManipulationFeature extends EditorFeature {
       if(event.key !== "Enter" || event.isComposing || !this.freeformTextBreak(event)) return
       event.preventDefault()
       event.stopImmediatePropagation()
-      this.insertBreak(event.altKey && event.shiftKey ? "wbr" : "br")
+      this.insertBreak(event.altKey && event.shiftKey ? "wbr" : "br", true)
     },
     "beforeinput": event => {
-      if(event.inputType !== "insertParagraph" || !this.freeformTextBreak(event)) return
+      if(!["insertParagraph", "insertLineBreak"].includes(event.inputType) || !this.freeformTextBreak(event)) return
       event.preventDefault()
       event.stopImmediatePropagation()
-      this.insertBreak("br")
+      this.insertBreak("br", true)
     },
     "dragover": event => {
       // Ribbon content can land on appendix chrome. Give the graphic beneath

@@ -578,6 +578,9 @@ export class SelectionFeature extends EditorFeature {
     const backward = $.isBackwards
     const outside = (element: Element | null, node: Node, offset: number, after: boolean): [Node, number] => {
       if(!element?.parentNode) return [node, offset]
+      // A native paragraph selection can end at the following media's start.
+      // Move that boundary before the host rather than selecting its contents.
+      if(node === element && offset === 0 && !selection.isCollapsed) after = false
       return [element.parentNode, Array.from(element.parentNode.childNodes).indexOf(element) + (after ? 1 : 0)]
     }
     selection.setBaseAndExtent(...outside(anchor, selection.anchorNode, selection.anchorOffset, backward),
@@ -914,7 +917,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   /** Native caret hit testing snaps blank space to nearby text. Require an
-   * actual character box before expanding a repeated click to a word/line. */
+   * actual character box before allowing repeated word/paragraph selection. */
   #hitsText(event: MouseEvent) {
     const point = document.caretPositionFromPoint?.(event.clientX, event.clientY)
     if(!(point?.offsetNode instanceof Text) || !getDocumentRoot().contains(point.offsetNode)) return false
@@ -1863,6 +1866,10 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(!selection?.focusNode || !["virtual", "gap", "text", "empty"].includes(kind)) return
+    // Deselecting the last canvas item leaves a fallback caret in BODY.
+    // BODY is outside the camera's transformed slot, so revealing its page
+    // origin would pan the camera again on every deselection.
+    if(this.editor.features.canvas.active && selection.focusNode === document.body) return
 
     const rect = caretRect(selection.focusNode, selection.focusOffset)
     const margin = 1.25 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16)
@@ -1969,7 +1976,7 @@ export class SelectionFeature extends EditorFeature {
       this.#clearSelections()
       this.editor.features.list.clearSelectionPresentation()
       this.editor.features.canvas.syncSelection(null)
-      this.editor.features.transformation.syncSelection(null)
+      this.editor.features.transformation.syncGroupSelection($.selectedElements)
       this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
       document.body.classList.add("◆", "◆node-selection-active")
@@ -2246,7 +2253,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Pointer behavior: 
    * pointerdown starts a drag selection at the pointer (modifier-click selects the whole element instead), 
-   * double/triple click select the word/line, 
+   * double/triple click select the word/paragraph,
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "beforeinput": event => this.#scheduleSelectionReveal(event),
@@ -2354,8 +2361,8 @@ export class SelectionFeature extends EditorFeature {
       }
       else if(ev.detail >= 3) {
         this.hasDoubleClicked = true
-        $.moveBy("line", "backward")
-        $.extendBy("line")
+        // Keep the browser's paragraph selection. Moving by a line from its
+        // boundary can reach into the preceding (longer) paragraph.
       }
     },
     "pointerup": event => {

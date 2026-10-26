@@ -21,7 +21,7 @@ import {
   type StyleMarkName,
   type StyleMarkValues,
 } from "../marks"
-import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
@@ -2042,7 +2042,7 @@ export class MarkFeature extends EditorFeature {
       if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
         || !this.editor.schema.isPhrasing(element)
         || !element.textContent
-          && canonicalMarkName(element.localName) === null
+          && !isParagraphContent(element)
           && !this.editor.schema.findValidContentTypes(element).includes("#text")) return null
     }
 
@@ -2100,7 +2100,7 @@ export class MarkFeature extends EditorFeature {
   }
 
   private restoreSelection(context: MarkSelection) {
-    const start = this.textPoint(context.block, context.start)
+    const start = textPointAtOffset(context.block, context.start, undefined, "forward")
     const end = this.textPoint(context.block, context.end)
     const [anchor, focus] = context.backwards? [end, start]: [start, end]
     context.selection.setBaseAndExtent(anchor[0], anchor[1], focus[0], focus[1])

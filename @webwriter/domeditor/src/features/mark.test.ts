@@ -143,6 +143,62 @@ describe("MarkFeature DOM state", () => {
 })
 
 describe("MarkFeature toggles", () => {
+  it.each([
+    "Before<br>middle<br>After",
+    '<em>Before<br>middle</em><!--keep--><br><span>After</span>',
+    "Before<br><br>middle<wbr>After",
+  ])("formats text across authored line breaks: %s", html => {
+    for(const backwards of [false, true]) {
+      const paragraph = setContent(`<p>${html}</p>`)
+      const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+      const text: Text[] = []
+      while(walker.nextNode()) text.push(walker.currentNode as Text)
+      const start: [Node, number] = [text[0], 2]
+      const end: [Node, number] = [text.at(-1)!, 3]
+      $.selectRange(...(backwards ? end : start), ...(backwards ? start : end))
+      const selected = document.getSelection()!.toString()
+      const breaks = Array.from(paragraph.querySelectorAll("br, wbr"))
+
+      expect(feature.getState().canMark).toBe(true)
+      expect($.isTextSelection).toBe(true)
+      expect(feature.toggleMark("b")).toBe(true)
+      expect(feature.getState().marks).toContain("b")
+      expect(feature.setStyleMark("font-size", "24px")).toBe(true)
+      expect(feature.getStyleState()["font-size"]).toBe("24px")
+      expect(feature.toggleMark("b")).toBe(true)
+      expect(feature.getState().marks).not.toContain("b")
+      expect(feature.removeMarks()).toBe(true)
+      expect(feature.getState().canMark).toBe(true)
+      expect($.isTextSelection).toBe(true)
+      expect($.isBackwards).toBe(backwards)
+      expect(document.getSelection()!.toString()).toBe(selected)
+      expect(Array.from(paragraph.querySelectorAll("br, wbr"))).toEqual(breaks)
+      expect(paragraph.textContent).toBe("BeforemiddleAfter")
+      expect(cleanHTML()).not.toMatch(/◆|data-domeditor-mark-boundary/)
+    }
+  })
+
+  it("synchronizes multiline marks and supports undo and redo", () => {
+    const paragraph = setContent("<p>one<br>two</p>")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.selectRange(paragraph.firstChild!, 1, paragraph.lastChild!, 2)
+    editor.doc.updateLocalSelection()
+
+    expect(feature.toggleMark("b")).toBe(true)
+    editor.doc.syncFromDOM()
+    const formatted = "<p>o<b>ne</b><br><b>tw</b>o</p>"
+    expect(cleanHTML()).toBe(formatted)
+    expect(editor.doc.body.toString()).toBe("<body><p>o<b>ne</b><br></br><b>tw</b>o</p></body>")
+
+    editor.doc.undo()
+    expect(cleanHTML()).toBe("<p>one<br>two</p>")
+    editor.doc.redo()
+    expect(cleanHTML()).toBe(formatted)
+    expect(feature.getState().canMark).toBe(true)
+    expect(document.getSelection()!.toString()).toBe("netw")
+  })
+
   it("individually adds and removes every primary and secondary mark", () => {
     for(const mark of markNames) {
       const paragraph = setContent("<p>Text</p>")
@@ -422,6 +478,30 @@ describe("MarkFeature toggles", () => {
 })
 
 describe("MarkFeature span styles", () => {
+  it.each([false, true])("keeps a selected canvas line after repeated formatting (backwards: %s)", backwards => {
+    const paragraph = setContent('<p style="position: absolute">Heading<br><!--keep--><em>Selected line</em><br>After</p>')
+    const text = paragraph.querySelector("em")!.firstChild as Text
+    $.selectRange(text, backwards ? text.length : 0, text, backwards ? 0 : text.length)
+    const breaks = Array.from(paragraph.querySelectorAll("br"))
+
+    for(const size of ["24px", "32px", "18px"]) {
+      expect(feature.setStyleMark("font-size", size)).toBe(true)
+      expect(document.getSelection()!.toString()).toBe("Selected line")
+      expect(feature.getState()).toEqual({canMark: true, marks: ["i"]})
+      expect(feature.getStyleState()["font-size"]).toBe(size)
+      expect($.isTextSelection).toBe(true)
+      expect($.isBackwards).toBe(backwards)
+      const range = document.getSelection()!.getRangeAt(0)
+      expect(breaks.some(node => range.intersectsNode(node))).toBe(false)
+      expect(Array.from(paragraph.querySelectorAll("br"))).toEqual(breaks)
+    }
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.removeMarks()).toBe(true)
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
+    expect(document.getSelection()!.toString()).toBe("Selected line")
+    expect(cleanHTML()).toBe('<p style="position: absolute">Heading<br><!--keep-->Selected line<br>After</p>')
+  })
+
   it("sets each style mark on a span and derives uniform values from the DOM", () => {
     const paragraph = setContent("<p>Text</p>")
     selectText(paragraph.firstChild as Text)

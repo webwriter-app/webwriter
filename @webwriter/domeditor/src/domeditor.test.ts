@@ -141,6 +141,12 @@ describe("DOMEditor stylesheets", () => {
     expect(rule.style.cursor).toBe("text")
   })
 
+  it("leaves empty block caret placeholders visible without adding authored text", () => {
+    const placeholder = editorStyleString.match(/:is\(\s*address,[\s\S]*?\):empty::before\s*\{([^}]+)\}/)?.[1]
+    expect(placeholder).toContain('content: "\\200B"')
+    expect(placeholder).not.toMatch(/visibility:\s*hidden/)
+  })
+
   it("uses the main-DOM stylesheet to style exposed shadow parts", () => {
     const appendix = editor.appendix
     const overlay = editor.features.transformation.overlay

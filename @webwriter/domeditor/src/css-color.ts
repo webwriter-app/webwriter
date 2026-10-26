@@ -34,14 +34,14 @@ export function safeCssColor(value: unknown, fallback = "#64748b"): string {
   return isCssColor(value) ? value.trim() : fallback
 }
 
-/** Normalize the hex and RGB values used by native color inputs. */
-export const colorHex = (value: string) => {
+/** Normalize opaque hex and RGB values, with a fallback for native color inputs. */
+export const colorHex = (value: string, fallback = "#000000") => {
   const normalized = value.trim().toLowerCase()
   if(/^#[0-9a-f]{6}$/.test(normalized)) return normalized
   if(/^#[0-9a-f]{3}$/.test(normalized)) {
     return `#${normalized.slice(1).split("").map(character => character.repeat(2)).join("")}`
   }
-  const rgb = normalized.match(/^rgba?\(\s*(\d+)\D+(\d+)\D+(\d+)/)
-  if(!rgb) return "#000000"
+  const rgb = normalized.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:\s*[,/]\s*(\d*\.?\d+%?))?\s*\)$/)
+  if(!rgb || rgb[4] !== undefined && Number.parseFloat(rgb[4]) !== (rgb[4].endsWith("%") ? 100 : 1)) return fallback
   return `#${rgb.slice(1, 4).map(channel => Math.min(255, Number(channel)).toString(16).padStart(2, "0")).join("")}`
 }

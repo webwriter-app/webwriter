@@ -4,6 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
+import {previewFrameHTML} from "../frame-document"
 import {$, clearEditorMarkerClasses} from "../utility"
 import {
   graphicShapeDragType,
@@ -438,6 +439,78 @@ describe("graphic editing", () => {
     expect(input.isConnected).toBe(false)
   })
 
+  it("imports a host-picked SVG at the original graphic with undo and redo", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const target = document.querySelector("svg")!
+    target.innerHTML = '<!--original--><path d="M0 0L5 5"/>'
+    await mutationsDelivered()
+    const click = vi.spyOn(HTMLInputElement.prototype, "click")
+    expect(editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "host"})).toBe(true)
+    expect(click).not.toHaveBeenCalled()
+    expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+    const sibling = document.createElementNS(SVG_NAMESPACE, "svg")
+    document.body.append(sibling)
+    editor.features.selection.captureElement(sibling)
+    await mutationsDelivered()
+    const file = new File(['<svg xmlns="http://www.w3.org/2000/svg"><!--keep--><g class="authored ◆selected"><circle r="7"/></g></svg>'], "drawing.svg")
+    await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file, pickerId: "host"})
+    await mutationsDelivered()
+    expect(target.isConnected).toBe(false)
+    expect(sibling.isConnected).toBe(true)
+    expect(document.querySelector("svg circle")).not.toBeNull()
+    const source = await editor.features.graphic.actions.serializeGraphic({type: "serializeGraphic"})
+    expect(source).toContain("<!--keep-->")
+    expect(source).toContain('class="authored"')
+    expect(source).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(document.querySelector("svg circle")).toBeNull()
+    expect(document.querySelector("svg path")).not.toBeNull()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(document.querySelector("svg circle")).not.toBeNull()
+  })
+
+  it.each(["removed", "replaced", "disabled", "locked", "moved into widget", "cancelled", "superseded"])("guards a host graphic import when %s while reading", async condition => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const target = document.querySelector("svg")!
+    let finishRead!: (source: string) => void
+    const file = new File([""], "drawing.svg")
+    vi.spyOn(file, "text").mockImplementation(() => new Promise(resolve => { finishRead = resolve }))
+    editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "first"})
+    const pending = editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file, pickerId: "first"})
+    if(condition === "removed") target.remove()
+    else if(condition === "replaced") target.replaceWith(document.createElementNS(SVG_NAMESPACE, "svg"))
+    else if(condition === "disabled") editor.features.graphic.disable()
+    else if(condition === "locked") vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    else if(condition === "moved into widget") {
+      const widget = document.createElement("graphic-widget")
+      target.replaceWith(widget)
+      widget.append(target)
+    }
+    else if(condition === "cancelled") await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: null, pickerId: "first"})
+    else editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "next"})
+    finishRead('<svg xmlns="http://www.w3.org/2000/svg"><circle r="7"/></svg>')
+    await pending
+    expect(document.querySelector("svg circle")).toBeNull()
+    expect(editor.appendix.querySelector('input[type="file"]')).toBeNull()
+    if(condition === "superseded") {
+      await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: null, pickerId: "first"})
+      await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: new File(['<svg xmlns="http://www.w3.org/2000/svg"><rect width="10"/></svg>'], "next.svg"), pickerId: "next"})
+      expect(document.querySelector("svg rect")).not.toBeNull()
+    }
+  })
+
+  it("rejects invalid host imports and allows another attempt", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const target = document.querySelector("svg")!
+    editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "bad"})
+    await expect(editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: new File(["<html/>"], "bad.svg"), pickerId: "bad"})).rejects.toThrow("valid SVG")
+    expect(target.isConnected).toBe(true)
+    editor.features.graphic.actions.importGraphic({type: "importGraphic", pickerId: "good"})
+    await editor.features.graphic.actions.setGraphicFile({type: "setGraphicFile", file: new File(['<svg xmlns="http://www.w3.org/2000/svg"><circle/></svg>'], "good.svg"), pickerId: "good"})
+    expect(document.querySelector("svg circle")).not.toBeNull()
+  })
+
   it("strips active SVG content and root attributes on import while preserving safe namespaced content", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const pending = editor.features.graphic.actions.importGraphic({type: "importGraphic"})
@@ -632,6 +705,23 @@ describe("graphic editing", () => {
       const reference = serialized.querySelector("line")!.getAttribute(`marker-${endpoint}`)
       if(reference) expect(serialized.getElementById(reference.slice(5, -1))?.localName).toBe("marker")
     }
+  })
+
+  it.each(["line-start-arrow", "line-end-arrow", "line-both-arrows"] as const)("keeps standalone %s arrowheads outside its fitted viewport in preview", shape => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape})
+    const graphic = document.querySelector("svg")!
+    expect(graphic.style.overflow).toBe("visible")
+    const source = new DOMParser().parseFromString(editor.toHTML(), "text/html")
+    source.body.classList.add("ww-canvas")
+    const preview = new DOMParser().parseFromString(previewFrameHTML(source, {
+      bridgeNonce: "arrow-preview", hostOrigin: location.origin, frameOrigin: location.origin,
+      packages: [], importMap: null, entryURL: "", executeScripts: false,
+    }), "text/html")
+    const copy = preview.querySelector("svg")!
+    expect(copy.style.overflow).toBe("visible")
+    expect(copy.querySelector("line")?.outerHTML).toBe(graphic.querySelector("line")?.outerHTML)
+    expect(copy.querySelector("defs")?.outerHTML).toBe(graphic.querySelector("defs")?.outerHTML)
+    expect(copy.outerHTML).not.toContain("◆")
   })
 
   it("uses document flow when inserting a shape through its command", () => {
@@ -1090,6 +1180,45 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).not.toContain("data-graphic-handle")
   })
 
+  it.each(["horizontal", "vertical", "diagonal"])("changes a %s line's paint without rewriting its viewport or geometry", async direction => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "line"})
+    const graphic = document.querySelector("svg")!
+    const line = graphic.querySelector("line")!
+    // Other DOM sources can resize or rotate a line without fitting its SVG.
+    if(direction === "vertical") line.setAttribute("x2", line.getAttribute("x1")!)
+    if(direction !== "horizontal") line.setAttribute("y2", "700")
+    line.setAttribute("transform", "rotate(30 800 450)")
+    graphic.style.width = "600px"
+    graphic.style.height = "200px"
+    const viewport = graphic.getAttribute("viewBox")
+    const styles = graphic.getAttribute("style")
+    const geometry = line.outerHTML
+    const stroke = line.getAttribute("stroke")
+    await mutationsDelivered()
+
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "stroke", value: "#ef4444"})
+    await mutationsDelivered()
+    expect(line).toHaveAttribute("stroke", "#ef4444")
+    expect(graphic).toHaveAttribute("viewBox", viewport)
+    expect(graphic.getAttribute("style")).toBe(styles)
+    expect(editor.features.graphic.selectedShape).toBe(line)
+    expect(editor.doc.body.toString()).toContain('stroke="#ef4444"')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).not.toContain("◆")
+
+    editor.features.history.actions.undo({type: "undo"})
+    expect(line.outerHTML).toBe(geometry)
+    expect(line).toHaveAttribute("stroke", stroke)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(line).toHaveAttribute("stroke", "#ef4444")
+    for(const [name, value] of [["fill", "none"], ["opacity", "0.5"]]) {
+      editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name, value})
+      expect(line).toHaveAttribute(name, value)
+      expect(graphic).toHaveAttribute("viewBox", viewport)
+      expect(graphic.getAttribute("style")).toBe(styles)
+    }
+  })
+
   it("stores multiline shape labels as native SVG text and keeps them centered", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
@@ -1392,6 +1521,68 @@ describe("graphic editing", () => {
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
     expect(rectangle).toHaveAttribute("transform", `rotate(${expected} 800 450)`)
+  })
+
+  it.each(["pointerup", "pointercancel"])("maps rotation previews through the graphic viewport and cleans up on %s", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const rectangle = graphic.querySelector("rect")!
+    const local = new DOMMatrix().scale(.5)
+    const viewport = new DOMMatrix().translate(17, -11).scale(1.4)
+    let outer = new DOMMatrix().translate(300, 120).rotate(30).scale(1.1, .9)
+    Object.defineProperties(graphic, {
+      getCTM: {value: () => local},
+      getScreenCTM: {value: () => outer.multiply(viewport).multiply(local)},
+      clientWidth: {value: 800},
+      clientHeight: {value: 450},
+      currentScale: {value: 1.4},
+      currentTranslate: {value: {x: 17, y: -11}},
+    })
+    clickShape(rectangle)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const screen = graphic.getScreenCTM()!
+    const start = screen.transformPoint({x: 800, y: 306})
+    const end = screen.transformPoint({x: 944, y: 450})
+    const rotate = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="rotate"]')!
+    rotate.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, composed: true, button: 0, clientX: start.x, clientY: start.y,
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, buttons: 1, clientX: end.x, clientY: end.y,
+    }))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
+    expect(preview.querySelector("rect")).toHaveAttribute("transform", "rotate(90 800 450)")
+    expect(preview.style.width).toBe("800px")
+    expect(preview.style.height).toBe("450px")
+    const expectTransform = () => {
+      const matrix = new DOMMatrix(preview.style.transform)
+      for(const key of ["a", "b", "c", "d", "e", "f"] as const) expect(matrix[key]).toBeCloseTo(outer[key], 4)
+    }
+    expectTransform()
+    outer = new DOMMatrix().translate(40, 60).multiply(outer)
+    document.dispatchEvent(new Event("scroll"))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expectTransform()
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).toBe(before)
+    document.dispatchEvent(new PointerEvent(outcome, {bubbles: true, button: 0}))
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(document.querySelector(".◆graphic-preview-source, .◆graphic-manipulating")).toBeNull()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    if(outcome === "pointercancel") expect(editor.toHTML(true)).toBe(before)
+    else {
+      expect(rectangle).toHaveAttribute("transform", "rotate(90 800 450)")
+      await mutationsDelivered()
+      const after = editor.toHTML(true)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(after)
+    }
   })
 
   it("resizes a rotated shape in its local axes", () => {

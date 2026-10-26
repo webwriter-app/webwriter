@@ -6468,6 +6468,67 @@ describe("DomEditor.execute()", () => {
     expect(report).toHaveBeenCalledTimes(condition === "picker failure" ? 1 : 0)
   })
 
+  it.each(["app-ribbon", "dom-editor-toolbox"])("opens graphic imports synchronously from %s and retries after cancellation", async surface => {
+    const {editor} = await mountEditor()
+    let ready!: (value: boolean) => void
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+      .mockImplementationOnce(() => new Promise(resolve => { ready = resolve }))
+    const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {})
+    const focus = vi.spyOn(editor as any, "focusEditor")
+    const open = () => editor.shadowRoot!.querySelector(surface)!.dispatchEvent(new CustomEvent("ribbon-button-click", {
+      detail: {label: "import-graphic"}, bubbles: true, composed: true,
+    }))
+
+    open()
+    const first = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(first.accept).toBe(".svg,image/svg+xml")
+    expect(click).toHaveBeenCalledOnce()
+    expect(focus).not.toHaveBeenCalled()
+    const pickerId = (execute.mock.calls[0][0] as any).pickerId
+    expect(execute).toHaveBeenCalledWith({type: "importGraphic", pickerId})
+    first.dispatchEvent(new Event("cancel"))
+    ready(true)
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setGraphicFile", file: null, pickerId}))
+    expect(first.isConnected).toBe(false)
+
+    focus.mockClear()
+    open()
+    const second = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')!
+    expect(second).not.toBe(first)
+    expect(click).toHaveBeenCalledTimes(2)
+    expect(focus).not.toHaveBeenCalled()
+    const nextId = (execute.mock.calls[2][0] as any).pickerId
+    expect(nextId).not.toBe(pickerId)
+    const file = new File(['<svg xmlns="http://www.w3.org/2000/svg"/>'], "drawing.svg", {type: "image/svg+xml"})
+    Object.defineProperty(second, "files", {value: [file]})
+    second.dispatchEvent(new Event("change"))
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setGraphicFile", file, pickerId: nextId}))
+    expect(second.isConnected).toBe(false)
+  })
+
+  it.each(["disconnect", "reload", "picker failure", "bridge failure"])("cleans up a host graphic picker after %s", async condition => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    if(condition === "bridge failure") execute.mockRejectedValueOnce(new Error("Frame unavailable"))
+    const report = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {
+      if(condition === "picker failure") throw new Error("Picker unavailable")
+    })
+    const picking = host.pickEditorFile({type: "importGraphic"}, ".svg,image/svg+xml")
+    const input = editor.shadowRoot!.querySelector<HTMLInputElement>('input[type="file"]')
+    if(condition === "disconnect") editor.remove()
+    if(condition === "reload") {
+      host.frameRevision++
+      input!.dispatchEvent(new Event("cancel"))
+    }
+    await picking
+    expect(input?.isConnected ?? false).toBe(false)
+    const failed = condition.endsWith("failure")
+    expect(execute).toHaveBeenCalledTimes(failed ? 2 : 1)
+    expect(report).toHaveBeenCalledTimes(failed ? 1 : 0)
+  })
+
   it.each([
     ["table-header", "toggleTableHeader"],
     ["table-footer", "toggleTableFooter"],

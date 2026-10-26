@@ -733,6 +733,19 @@ describe("isGapSelection", () => {
     $.selectGap(document.body.firstElementChild!)
     expect($.isGapSelection).toBe(true)
   })
+  it("is true between paragraphs within a board card", () => {
+    document.body.classList.add("ww-board")
+    try {
+      setBody('<section class="ww-board-column"><article class="ww-board-card"><p>hello</p><p>world</p></article></section>')
+      const paragraphs = document.querySelectorAll("p")
+      $.selectRange(paragraphs[0].firstChild!, 5, paragraphs[1].firstChild!, 0)
+      $.delete()
+      expect($.isGapSelection).toBe(true)
+      expect($.elementBefore).toBe(paragraphs[0])
+      expect($.elementAfter).toBe(paragraphs[1])
+    }
+    finally { document.body.classList.remove("ww-board") }
+  })
   it("is true before the first body element", () => {
     setBody("\n<p>a</p>")
     $.selectGap(document.body.firstElementChild!, "before")
@@ -843,7 +856,9 @@ describe("isTextSelection", () => {
   it.each([
     ['<b>hello</b><!--keep--><i>world</i>', true],
     ['<b></b><!--no text--><i></i>', false],
-    ['hello<br>world', false],
+    ['hello<br>world', true],
+    ['hello<br><br><wbr>world', true],
+    ['hello<br is="break-widget">world', false],
     ['hello<inline-widget></inline-widget>world', false],
     ['hello<svg><text>world</text></svg>', false],
     ['<section>hello</section><span>world</span>', true],
@@ -1351,6 +1366,21 @@ describe("elementBefore/elementAfter", () => {
 })
 
 describe("delete()", () => {
+  it.each([false, true])("retains the deleted range's paragraph gap (backward=%s)", backward => {
+    setBody('<section><p><b>hello</b></p><p><em>world</em></p></section>')
+    const section = document.querySelector("section")!
+    const left = document.querySelector("b")!.firstChild!, right = document.querySelector("em")!.firstChild!
+    if(backward) $.selectRange(right, 0, left, 5)
+    else $.selectRange(left, 5, right, 0)
+
+    $.delete()
+
+    expect(section.innerHTML).toBe('<p><b>hello</b></p><p><em>world</em></p>')
+    expect($.isEmpty).toBe(true)
+    expect($.anchor).toBe(section)
+    expect($.anchorOffset).toBe(1)
+  })
+
   it("removes the selected content", () => {
     setBody("<p>hello world</p>")
     $.selectRange(firstText(), 0, firstText(), 6)
@@ -1907,6 +1937,19 @@ describe("DOM path and text point helpers", () => {
     expect(textOffsetIn(root, document.createTextNode("outside"), 2)).toBeNull()
     expect(textPointAtOffset(root, 4)).toEqual([root.lastElementChild!.firstChild, 1])
     expect(textPointAtOffset(root, 99)).toEqual([root.lastElementChild!.firstChild, 3])
+  })
+
+  it("resolves either side of a text boundary without adding intervening line breaks", () => {
+    setBody("<p>Heading<br><!--keep--><em>Selected line</em><br>After</p>")
+    const root = document.querySelector("p")!
+    const line = root.querySelector("em")!.firstChild!
+    root.insertBefore(document.createTextNode(""), root.querySelector("em"))
+
+    expect(textPointAtOffset(root, 7)).toEqual([root.firstChild, 7])
+    expect(textPointAtOffset(root, 7, undefined, "forward")).toEqual([line, 0])
+    expect(textPointAtOffset(root, 20)).toEqual([line, 13])
+    expect(textPointAtOffset(root, 20, undefined, "forward")).toEqual([root.lastChild, 0])
+    expect(textPointAtOffset(root, 25, undefined, "forward")).toEqual([root.lastChild, 5])
   })
 })
 
