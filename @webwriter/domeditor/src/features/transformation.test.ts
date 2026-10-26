@@ -675,6 +675,180 @@ async function mutationsDelivered() {
   await Promise.resolve()
 }
 
+describe("freeform group transformation", () => {
+  function group(mode: "canvas" | "slides" = "canvas") {
+    document.body.className = `ww-${mode}`
+    const parent = mode === "canvas" ? document.body : append(document.createElement("div"))
+      .appendChild(Object.assign(document.createElement("section"), {className: "ww-slide"}))
+    if(mode === "slides") parent.parentElement!.className = "ww-slides-viewport"
+    const first = parent.appendChild(document.createElement("group-widget"))
+    first.innerHTML = '<span>Authored content</span><!--keep-->'
+    first.attachShadow({mode: "open"}).innerHTML = '<button>Widget input</button>'
+    const outside = parent.appendChild(document.createElement("p"))
+    outside.textContent = "Unselected"
+    const last = parent.appendChild(document.createElement("p"))
+    last.textContent = "Last"
+    for(const [target, x] of [[first, 0], [last, 200]] as const) {
+      target.style.cssText = `position:absolute;left:${x}px;top:0px;width:100px;height:50px`
+      vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => {
+        const matrix = new DOMMatrix(target.style.transform || undefined)
+        const width = Math.abs(matrix.a) * 100 + Math.abs(matrix.c) * 50
+        const height = Math.abs(matrix.b) * 100 + Math.abs(matrix.d) * 50
+        return new DOMRect(100 + parseFloat(target.style.left) + 50 - width / 2,
+          100 + parseFloat(target.style.top) + 25 - height / 2, width, height)
+      })
+    }
+    if(mode === "slides") editor.features.slides.ensureContent()
+    $.selectElements([first, last])
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    return {first, last, outside, parent}
+  }
+
+  function start(control: string, x = 400, y = 150) {
+    feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${control}`)!
+      .dispatchEvent(pointer("pointerdown", {pointerId: 31, clientX: x, clientY: y}))
+  }
+  const move = (x: number, y: number, modifiers: PointerEventInit = {}) => document.dispatchEvent(pointer("pointermove", {
+    pointerId: 31, clientX: x, clientY: y, ...modifiers,
+  }))
+  const end = () => document.dispatchEvent(pointer("pointerup", {pointerId: 31}))
+
+  it.each(["canvas", "slides"] as const)("offers a %s group frame without resize handles and moves every selected item from its border", async mode => {
+    const {first, last, outside, parent} = group(mode)
+    const children = Array.from(parent.childNodes), content = first.innerHTML
+    expect(feature.overlay).not.toHaveAttribute("visibility")
+    expect(feature.overlay.style.left).toBe("100px")
+    expect(feature.overlay.style.width).toBe("300px")
+    expect(feature.overlay.style.height).toBe("50px")
+    expect(feature.overlay.querySelectorAll(".◆transform-overlay-scale:not([hidden])")).toHaveLength(0)
+    expect(feature.overlay.querySelector("#◆transform-overlay-rotator")).not.toHaveAttribute("hidden")
+    expect(feature.freeformControlContainer(first)).toBeNull()
+    editor.doc.syncFromDOM()
+    const initial = editor.toHTML(true)
+    start("scale-right", 400, 125)
+    move(440, 155)
+    end()
+    expect(first.style.left).toBe("40px")
+    expect(last.style.left).toBe("240px")
+    expect(first.style.top).toBe("30px")
+    expect(last.style.top).toBe("30px")
+    expect($.selectedElements).toEqual([first, last])
+    expect(Array.from(parent.childNodes)).toEqual(children)
+    expect(first.innerHTML).toBe(content)
+    expect(outside.style.cssText).toBe("")
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const moved = editor.toHTML(true)
+    expect(moved).not.toMatch(/◆|transform-overlay/)
+    expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(moved)
+  })
+
+  it("moves the group when dragging a selected item's authored content", () => {
+    const {first, last} = group()
+    first.firstElementChild!.dispatchEvent(pointer("pointerdown", {pointerId: 31, clientX: 150, clientY: 125}))
+    move(180, 145, {shiftKey: true})
+    end()
+    expect(first.style.left).toBe("30px")
+    expect(last.style.left).toBe("230px")
+    expect(first.style.top).toBe("0px")
+    expect($.selectedElements).toEqual([first, last])
+  })
+
+  it("ignores incidental widget shadow input", () => {
+    const {first, last} = group()
+    first.shadowRoot!.querySelector("button")!.dispatchEvent(pointer("pointerdown", {pointerId: 31, clientX: 150, clientY: 125}))
+    move(190, 155)
+    end()
+    expect(first.style.left).toBe("0px")
+    expect(last.style.left).toBe("200px")
+  })
+
+  describe.each(["canvas", "slides"] as const)("%s group resizing", mode => {
+    it.each(["up-left", "up-up", "up-right", "right-right", "down-right", "down-down", "down-left", "left-left"])("hides and ignores the %s resize handle", direction => {
+      const {first, last} = group(mode)
+      const initial = [first.style.cssText, last.style.cssText]
+      const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+      expect(handle).toHaveAttribute("hidden")
+      expect(handle.getAttribute("part")).toContain("transform-overlay-scale-hidden")
+      start(`scale-${direction}`)
+      move(460, 170, {ctrlKey: true, metaKey: true, shiftKey: true})
+      end()
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new MouseEvent("mousedown", {button: 0, clientX: 400, clientY: 150}))
+      feature.handleScaleDrag(new MouseEvent("mousemove", {clientX: 460, clientY: 170}))
+      feature.handleScaleEnd()
+      expect([first.style.cssText, last.style.cssText]).toEqual(initial)
+      expect($.selectedElements).toEqual([first, last])
+      expect(document.body.className).not.toContain("◆transform-scaling")
+    })
+
+    it("restores individual resize handles after selecting one item", () => {
+      const {first} = group(mode)
+      editor.features.selection.selectElement(first)
+      expect(feature.overlay.querySelectorAll(".◆transform-overlay-scale:not([hidden])")).toHaveLength(8)
+    })
+  })
+
+  it("rotates all members around the group center", () => {
+    const {first, last} = group()
+    start("rotator", 250, 75)
+    move(300, 125)
+    end()
+    for(const target of [first, last]) expect(new DOMMatrix(target.style.transform).b).toBeCloseTo(1)
+    expect(first.getBoundingClientRect().top).toBeCloseTo(-25)
+    expect(last.getBoundingClientRect().top - first.getBoundingClientRect().top).toBeCloseTo(200)
+    expect(first.getBoundingClientRect().left).toBeCloseTo(last.getBoundingClientRect().left)
+    expect($.selectedElements).toEqual([first, last])
+  })
+
+  it.each(["Escape", "pointercancel", "removed", "replaced", "remote", "concurrent", "disable", "destroy"])("cancels every member and cleans markers on %s", async outcome => {
+    const {first, last} = group()
+    const initial = first.style.cssText
+    start("scale-right", 400, 125)
+    move(440, 155)
+    first.title = "Concurrent unrelated edit"
+    if(outcome === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+    else if(outcome === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 31}))
+    else if(outcome === "disable") feature.disable()
+    else if(outcome === "destroy") editor.destroy()
+    else {
+      if(outcome === "removed") last.remove()
+      else if(outcome === "replaced") last.replaceWith(last.cloneNode(true))
+      else if(outcome === "remote") {
+        editor.doc.syncFromDOM()
+        editor.doc.doc.transact(() => editor.doc.body.delete(editor.doc.body.length - 1, 1), "remote-test")
+      }
+      else last.style.left = "500px"
+      move(460, 165)
+    }
+    await mutationsDelivered()
+    expect(first.style.cssText).toBe(initial)
+    expect(first.title).toBe("Concurrent unrelated edit")
+    expect(last.style.left).toBe(outcome === "concurrent" ? "500px" : "200px")
+    expect(document.body).not.toHaveClass("◆transform-moving")
+    editor.features.selection.selectElement(first)
+    expect(last).not.toHaveClass("◆transform-target")
+    expect(document.querySelectorAll(".◆transform-target")).toHaveLength(outcome === "disable" || outcome === "destroy" ? 0 : 1)
+  })
+
+  it("deletes all selected members in one undo step", () => {
+    const {first, last, outside} = group()
+    editor.doc.syncFromDOM()
+    const initial = editor.toHTML(true)
+    feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-delete")!.click()
+    expect(first.isConnected).toBe(false)
+    expect(last.isConnected).toBe(false)
+    expect(outside.isConnected).toBe(true)
+    expect(feature.overlay).toHaveAttribute("visibility", "hidden")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+  })
+})
+
 describe("selection-owned transformation", () => {
   it.each(["img", "video"])("reveals and restores previously cropped %s content outside its frame", tag => {
     const media = targetElement(tag) as HTMLImageElement | HTMLVideoElement

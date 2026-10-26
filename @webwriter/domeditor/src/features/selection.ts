@@ -1969,7 +1969,7 @@ export class SelectionFeature extends EditorFeature {
       this.#clearSelections()
       this.editor.features.list.clearSelectionPresentation()
       this.editor.features.canvas.syncSelection(null)
-      this.editor.features.transformation.syncSelection(null)
+      this.editor.features.transformation.syncGroupSelection($.selectedElements)
       this.editor.features.board.refresh()
       this.editor.features.manipulation.refreshNodeDragTarget(null)
       document.body.classList.add("◆", "◆node-selection-active")

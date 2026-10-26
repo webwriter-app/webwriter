@@ -140,6 +140,7 @@ const expectedChecks = [
   "bundled layouts render under the strict editor CSP without widgets",
   "editing frame blocks meta refresh and retains same-document navigation",
   "canvas box selection retains disjoint ranges and stays in the document top layer",
+  "freeform box selections transform as a group",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
   "canvas Enter inserts a line break and conversion returns normal flow",
   "paragraphs grow with content and retain explicit sizes in canvas",

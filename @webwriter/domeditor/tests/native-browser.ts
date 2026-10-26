@@ -5461,6 +5461,81 @@ await check("canvas box selection retains disjoint ranges and stays in the docum
   finally { canvasEditor?.destroy(); frame.remove() }
 })
 
+await check("freeform box selections transform as a group", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:1000px;height:700px"
+  document.body.append(frame)
+  try {
+    for(const mode of ["canvas", "slides"] as const) {
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = '<!doctype html><body><group-widget>Widget<!--keep--></group-widget><p>Outside</p><p>Last</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+      await loaded
+      const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, "group fixture did not initialize")
+      const editor = view.editor!, feature = editor.features.transformation
+      assert(editor.setDocumentLayout(mode, "document"), "group fixture did not convert")
+      if(mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+      else editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-in"})
+      const first = doc.querySelector<HTMLElement>("group-widget")!, [outside, last] = Array.from(doc.querySelectorAll("p"))
+      first.attachShadow({mode: "open"}).innerHTML = "<span>Widget content</span>"
+      first.style.cssText = "position:absolute;display:block;left:200px;top:140px;width:100px;height:60px;margin:0;rotate:20deg;scale:1.1;transform:skewX(10deg);transform-origin:10px 5px"
+      last.style.cssText = "position:absolute;left:400px;top:200px;width:100px;height:60px;margin:0"
+      outside.style.cssText = "position:absolute;left:200px;top:450px;width:100px;height:60px;margin:0"
+      await layoutFrame()
+      const before = [first, last].map(element => element.getBoundingClientRect())
+      const left = Math.min(...before.map(rect => rect.left)) - 10, top = Math.min(...before.map(rect => rect.top)) - 10
+      const right = Math.max(...before.map(rect => rect.right)) + 10, bottom = Math.max(...before.map(rect => rect.bottom)) + 10
+      doc.body.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 91, button: 0, clientX: left, clientY: top}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 91, clientX: right, clientY: bottom}))
+      await layoutFrame()
+      assert(!feature.overlay.hasAttribute("visibility"), `${mode}: group controls are hidden`)
+      const bounds = feature.overlay.getBoundingClientRect()
+      assert(Math.abs(bounds.left - left - 10) < 1 && Math.abs(bounds.right - right + 10) < 1, `${mode}: frame does not surround the group`)
+      const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale"))
+      assert(handles.length === 8 && handles.every(handle => handle.hidden && view.getComputedStyle(handle).display === "none"), `${mode}: group resize handles are visible`)
+      const children = Array.from(first.parentNode!.childNodes), content = first.innerHTML, initial = editor.toHTML(true)
+      feature.handleMoveStart(new view.MouseEvent("mousedown", {button: 0, clientX: right, clientY: bottom}))
+      feature.handleMoveDrag(new view.MouseEvent("mousemove", {clientX: right + 40, clientY: bottom + 30, altKey: true}))
+      feature.handleMoveEnd()
+      for(const [i, element] of [first, last].entries()) {
+        const rect = element.getBoundingClientRect()
+        assert(Math.abs(rect.left - before[i].left - 40) < 1 && Math.abs(rect.top - before[i].top - 30) < 1, `${mode}: group move lost a member or zoom compensation`)
+      }
+      const moved = editor.toHTML(true)
+      editor.doc.undo()
+      assert(editor.toHTML(true) === initial, `${mode}: one undo did not restore the entire move`)
+      editor.doc.redo()
+      assert(editor.toHTML(true) === moved, `${mode}: redo did not restore the group move`)
+      await layoutFrame()
+      const resizeBefore = editor.toHTML(true), group = feature.overlay.getBoundingClientRect()
+      const handle = handles.find(handle => handle.dataset.resizeDirection === "down-right")!
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: group.right, clientY: group.bottom}))
+      feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: group.right + 60, clientY: group.bottom + 30, altKey: true}))
+      feature.handleScaleEnd()
+      assert(editor.toHTML(true) === resizeBefore, `${mode}: a hidden handle resized the group`)
+      const rotateBefore = [first, last].map(element => element.getBoundingClientRect())
+      const rotation = feature.overlay.getBoundingClientRect(), cx = rotation.left + rotation.width / 2, cy = rotation.top + rotation.height / 2
+      feature.handleRotateStart(new view.MouseEvent("mousedown", {button: 0, clientX: cx, clientY: cy - 50}))
+      feature.handleRotateDrag(new view.MouseEvent("mousemove", {clientX: cx + 50, clientY: cy, altKey: true}))
+      feature.handleRotateEnd()
+      for(const [i, element] of [first, last].entries()) {
+        const rect = element.getBoundingClientRect(), before = rotateBefore[i]
+        assert(Math.abs(rect.left + rect.width / 2 - (cx - (before.top + before.height / 2 - cy))) < 1
+          && Math.abs(rect.top + rect.height / 2 - (cy + (before.left + before.width / 2 - cx))) < 1, `${mode}: rotation did not orbit the group center`)
+      }
+      assert(Array.from(first.parentNode!.childNodes).every((node, i) => node === children[i]) && first.innerHTML === content, `${mode}: transforms changed authored structure`)
+      assert(outside.style.left === "200px" && outside.style.top === "450px", `${mode}: transforms affected an unselected item`)
+      assert(editor.doc.snapshot().selection?.ranges?.length === 2, `${mode}: gesture collapsed the group selection`)
+      assert(!editor.toHTML(true).match(/◆|transform-overlay/), `${mode}: group controls leaked into serialization`)
+      editor.destroy()
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("canvas slot preserves hit testing and document coordinates at different zoom levels", async () => {
   const paragraph = document.createElement("p")
   paragraph.textContent = "Canvas text"
