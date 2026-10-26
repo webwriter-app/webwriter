@@ -907,7 +907,7 @@ export class EditingSelection {
       || selected.localName === "figure" || !isMarkElement(selected) && !isSectionElement(selected))
   }
 
-  /** Whether the selection consists only of text and mark wrappers within one
+  /** Whether the selection consists only of text, line breaks and mark wrappers within one
    * editing container. Also true for a collapsed caret inside either. */
   static get isTextSelection() {
     const formulaBoundary = this.mathBoundary
@@ -932,7 +932,8 @@ export class EditingSelection {
       acceptNode: node => this.includesNode(node) && range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT,
     })
     while(walker.nextNode()) {
-      if(!isMarkElement(walker.currentNode) && !isSectionElement(walker.currentNode) && !inlineMathRoot(walker.currentNode)) return false
+      if(!isMarkElement(walker.currentNode) && !isSectionElement(walker.currentNode)
+        && !inlineMathRoot(walker.currentNode) && !isParagraphContent(walker.currentNode)) return false
     }
     return Boolean(range.toString())
   }
@@ -1539,15 +1540,17 @@ export function textOffsetIn(root: Element, node: Node, offset: number): number 
   }
 }
 
-/** Resolves a plain-text offset within root, falling back to its final text point. */
-export function textPointAtOffset(root: Element, offset: number, fallback?: [Node, number]): [Node, number] {
+/** Resolves a plain-text offset within root, falling back to its final text point.
+ * Forward affinity uses the next text node at a boundary, skipping intervening
+ * non-text content such as a line break before a selected line. */
+export function textPointAtOffset(root: Element, offset: number, fallback?: [Node, number], affinity: "backward" | "forward" = "backward"): [Node, number] {
   let remaining = offset
   let lastText: Text | null = null
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT)
   while(walker.nextNode()) {
     const text = walker.currentNode as Text
     lastText = text
-    if(remaining <= text.length) return [text, remaining]
+    if(remaining < text.length || remaining === text.length && affinity === "backward") return [text, remaining]
     remaining -= text.length
   }
   return fallback ?? (lastText ? [lastText, lastText.length] : [root, 0])

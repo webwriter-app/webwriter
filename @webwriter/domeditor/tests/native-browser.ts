@@ -29,6 +29,74 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("canvas multiline text keeps partial selections after formatting", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:700px"
+  frame.srcdoc = '<!doctype html><body><p>Before selected text across multiple wrapped lines after</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "multiline fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, paragraph = doc.querySelector("p")!
+    assert(editor.setDocumentLayout("canvas", "document"), "multiline fixture did not convert")
+    paragraph.style.width = "180px"
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    await layoutFrame()
+    const text = paragraph.firstChild!
+    const selectedText = text.textContent!.slice(7, 47)
+    doc.getSelection()!.setBaseAndExtent(text, 7, text, 47)
+    await layoutFrame()
+    for(const size of ["24px", "32px", "18px"]) {
+      assert(editor.features.mark.setStyleMark("font-size", size), `font size ${size} was not applied`)
+      await layoutFrame()
+      assert(doc.getSelection()!.toString() === selectedText, `selection changed after ${size}: ${doc.getSelection()!.toString()}`)
+      assert(editor.features.mark.getState().canMark, `font size ${size} lost mark state`)
+    }
+    for(const backwards of [false, true]) {
+      paragraph.innerHTML = "Heading<br><em>Selected line</em><br>After"
+      const line = paragraph.querySelector("em")!.firstChild!
+      doc.getSelection()!.setBaseAndExtent(line, backwards ? 13 : 0, line, backwards ? 0 : 13)
+      await layoutFrame()
+      for(const size of ["24px", "32px", "18px"]) {
+        assert(editor.features.mark.setStyleMark("font-size", size), `line font size ${size} was not applied`)
+        await layoutFrame()
+        assert(doc.getSelection()!.toString() === "Selected line", "formatting changed the selected line")
+        assert(editor.features.mark.getState().canMark, `line font size ${size} lost mark state`)
+        const range = doc.getSelection()!.getRangeAt(0)
+        assert(!Array.from(paragraph.querySelectorAll("br")).some(node => range.intersectsNode(node)), "selection acquired an adjacent line break")
+      }
+      paragraph.innerHTML = "Before<br><em>middle</em><br>After"
+      const first = paragraph.firstChild!, last = paragraph.lastChild!
+      const breaks = Array.from(paragraph.querySelectorAll("br"))
+      doc.getSelection()!.setBaseAndExtent(backwards ? last : first, backwards ? 3 : 2,
+        backwards ? first : last, backwards ? 2 : 3)
+      await layoutFrame()
+      const multilineText = doc.getSelection()!.toString()
+      assert(editor.features.mark.getState().canMark, "line breaks disabled formatting")
+      assert(editor.features.mark.toggleMark("b"), "bold across line breaks was not applied")
+      await layoutFrame()
+      for(const size of ["24px", "32px"]) {
+        assert(editor.features.mark.setStyleMark("font-size", size), `multiline font size ${size} was not applied`)
+        await layoutFrame()
+        assert(doc.getSelection()!.toString() === multilineText, `formatting changed the multiline selection: ${JSON.stringify(doc.getSelection()!.toString())}`)
+        assert(editor.features.mark.getState().canMark, "multiline formatting lost mark state")
+        const range = doc.getSelection()!.getRangeAt(0)
+        assert(breaks.every(node => range.intersectsNode(node)), "multiline selection lost its line breaks")
+      }
+      assert(editor.features.mark.toggleMark("b"), "bold across line breaks was not removed")
+      assert(editor.features.mark.removeMarks(), "multiline formatting was not cleared")
+      await layoutFrame()
+      assert(doc.getSelection()!.toString() === multilineText && editor.features.mark.getState().canMark,
+        "clearing multiline formatting lost the selection")
+      assert(paragraph.querySelectorAll("br").length === 2 && breaks.every(node => node.isConnected), "formatting replaced line breaks")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
 
 await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {

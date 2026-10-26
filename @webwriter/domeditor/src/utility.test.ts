@@ -856,7 +856,9 @@ describe("isTextSelection", () => {
   it.each([
     ['<b>hello</b><!--keep--><i>world</i>', true],
     ['<b></b><!--no text--><i></i>', false],
-    ['hello<br>world', false],
+    ['hello<br>world', true],
+    ['hello<br><br><wbr>world', true],
+    ['hello<br is="break-widget">world', false],
     ['hello<inline-widget></inline-widget>world', false],
     ['hello<svg><text>world</text></svg>', false],
     ['<section>hello</section><span>world</span>', true],
@@ -1935,6 +1937,19 @@ describe("DOM path and text point helpers", () => {
     expect(textOffsetIn(root, document.createTextNode("outside"), 2)).toBeNull()
     expect(textPointAtOffset(root, 4)).toEqual([root.lastElementChild!.firstChild, 1])
     expect(textPointAtOffset(root, 99)).toEqual([root.lastElementChild!.firstChild, 3])
+  })
+
+  it("resolves either side of a text boundary without adding intervening line breaks", () => {
+    setBody("<p>Heading<br><!--keep--><em>Selected line</em><br>After</p>")
+    const root = document.querySelector("p")!
+    const line = root.querySelector("em")!.firstChild!
+    root.insertBefore(document.createTextNode(""), root.querySelector("em"))
+
+    expect(textPointAtOffset(root, 7)).toEqual([root.firstChild, 7])
+    expect(textPointAtOffset(root, 7, undefined, "forward")).toEqual([line, 0])
+    expect(textPointAtOffset(root, 20)).toEqual([line, 13])
+    expect(textPointAtOffset(root, 20, undefined, "forward")).toEqual([root.lastChild, 0])
+    expect(textPointAtOffset(root, 25, undefined, "forward")).toEqual([root.lastChild, 5])
   })
 })
 
