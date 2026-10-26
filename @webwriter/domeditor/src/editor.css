@@ -1241,6 +1241,9 @@ body.◆transform-rotating, body.◆transform-rotating * {
   }
 }
 
+/* Empty blocks need a visible inline box for Chromium's native caret after
+ * cutting their text. The zero-width content adds no authored DOM nodes;
+ * hiding it can send caret paint to a later editing position. */
 :is(
   address,
   article,
@@ -1276,7 +1279,6 @@ body.◆transform-rotating, body.◆transform-rotating * {
   th
 ):empty::before {
   content: "\200B";
-  visibility: hidden;
 }
 
 /* A low-priority caret fallback lets authored numbering supply the content. */

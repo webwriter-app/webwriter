@@ -15,6 +15,7 @@ import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
 import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
+import {checkParagraphCut} from "./paragraph-cut"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -2952,6 +2953,8 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
     await layoutFrame()
   }
 })
+
+await check("cut paragraphs retain a visible native caret position", checkParagraphCut)
 
 await check("paragraph boundary deletion reverses Enter in Document and Board", async () => {
   const frame = document.createElement("iframe")

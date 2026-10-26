@@ -48,6 +48,7 @@ const expectedChecks = [
   "Style dropdowns draw a single border and focus ring",
   "marker image uploads preview before applying",
   "character deletion preserves adjacent spaces",
+  "cut paragraphs retain a visible native caret position",
   "paragraph boundary deletion reverses Enter in Document and Board",
   "triple clicks preserve native paragraph selections in Document and Board",
   "Elements pullout reserves matching padding after its opening animation",
