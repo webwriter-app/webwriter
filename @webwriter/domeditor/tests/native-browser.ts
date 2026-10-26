@@ -15,6 +15,7 @@ import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
 import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
+import {checkBoardMedia} from "./board-media"
 import {checkParagraphCut} from "./paragraph-cut"
 import {checkGraphicPaint} from "./graphic-paint"
 
@@ -102,6 +103,7 @@ await check("canvas multiline text keeps partial selections after formatting", a
 })
 
 await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
+await check("Board media shrinks with card height in editing and standalone documents", checkBoardMedia)
 
 await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
   const frame = document.createElement("iframe")

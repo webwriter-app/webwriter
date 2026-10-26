@@ -741,6 +741,45 @@ describe("Board layout", () => {
     expect(document.body.className).not.toContain("◆transform-scaling-")
   })
 
+  it("keeps media authored dimensions intact through card resize, undo, redo and remote resizing", async () => {
+    convert("board"); await settle()
+    const card = cards()[0]
+    card.innerHTML = '<!--keep--><figure title="Authored"><picture><source srcset="image.png"><img src="image.png" alt="Keep" width="800" height="600" style="width: 100%; height: auto"></picture><figcaption>Caption</figcaption></figure><custom-card answer="42"></custom-card>'
+    const content = card.innerHTML, children = Array.from(card.childNodes)
+    geometry(); editor.features.selection.selectElement(card); board().refresh()
+    await settle(); editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const handle = board().transformOverlay(card)!.querySelector<HTMLElement>("[part~='transform-overlay-board-resize-card']")!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 33, clientX: 160, clientY: 190}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, buttons: 1, pointerId: 33, clientX: 160, clientY: 150}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 33}))
+    await settle()
+    expect(Array.from(card.childNodes)).toEqual(children)
+    const resized = card.getAttribute("style")
+    expect(card.style.height).not.toBe("")
+    const authoredCard = () => new DOMParser().parseFromString(editor.toHTML(true), "text/html").querySelector(".ww-board-card")!
+    expect(authoredCard().innerHTML).toBe(content)
+    editor.doc.undo(); await settle()
+    expect(cards()[0].style.height).toBe("")
+    expect(authoredCard().innerHTML).toBe(content)
+    editor.doc.redo(); await settle()
+    expect(cards()[0].getAttribute("style")).toBe(resized)
+    expect(authoredCard().innerHTML).toBe(content)
+
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const column = sharedDOMBody(remote).toArray().find(node => node instanceof Y.XmlElement && node.nodeName === "section") as Y.XmlElement
+      const remoteCard = column.toArray().find(node => node instanceof Y.XmlElement && node.nodeName === "article") as Y.XmlElement
+      remoteCard.setAttribute("style", "height: 140px; max-height: 140px")
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client"); await settle()
+      expect(cards()[0].style.height).toBe("140px")
+      expect(authoredCard().innerHTML).toBe(content)
+      expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+      expect(editor.toHTML(true)).not.toContain("◆")
+    }
+    finally { remote.destroy() }
+  })
+
   it("keeps card and heading boundaries intact for deletion, deep splits, and cross-card edits", () => {
     convert("board"); const column = columns()[0], first = cards()[0]
     first.querySelector("p")!.textContent = "First"

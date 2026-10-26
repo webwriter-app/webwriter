@@ -56,7 +56,29 @@ body.ww-board > section.ww-board-column:not([is]) > h2:not([is]) {
 }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) {
   box-sizing: border-box; flex: 0 0 auto; min-width: 0; width: 100%; margin: 0; padding: .75rem;
-  border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere;
+  border: 1px solid #dbe3ec; border-radius: .5rem; background: white; box-shadow: 0 2px 4px #26374a0a; overflow-wrap: anywhere; overflow: auto;
+
+  /* A definite card height constrains native media without rewriting its
+   * authored dimensions. Text, captions and atomic widgets keep their space. */
+  &:not([hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is]), > figure:not([is]) > :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+    display: flex; flex-direction: column;
+    > * { flex-shrink: 0; }
+    > :is(picture, img, video, iframe, embed, object, svg):not([is]),
+    > figure:not([is]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+    }
+    > picture:not([is], [hidden]), > figure:not([is], [hidden]):has(> :is(picture, img, video, iframe, embed, object, svg):not([is])) {
+      display: flex; flex-direction: column;
+      > * { flex-shrink: 0; }
+      > :is(picture, img, video, iframe, embed, object, svg):not([is]) {
+        flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain;
+      }
+      > picture:not([is], [hidden]) {
+        display: flex; flex-direction: column;
+        > img:not([is]) { flex-shrink: 1; min-width: 0; min-height: 0; max-width: 100%; object-fit: contain; }
+      }
+    }
+  }
 }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :first-child { margin-top: 0; }
 body.ww-board > section.ww-board-column:not([is]) > article.ww-board-card:not([is]) > :last-child { margin-bottom: 0; }

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Board media resizing</title>
+<style>body { font: 16px system-ui; margin: 1rem; } iframe { margin-block: 1rem; }</style>
+<h1>Board media resizing</h1>
+<p id="status">Checking editing and standalone layouts…</p>
+<script type="module">
+  import {checkBoardMedia} from "./board-media.ts"
+  try {
+    await checkBoardMedia(true)
+    document.querySelector("#status").textContent = "Passed. Editing board above, standalone export below. Scroll inside each board to inspect media and captions."
+  }
+  catch(error) { document.querySelector("#status").textContent = String(error) }
+</script>
+</html>

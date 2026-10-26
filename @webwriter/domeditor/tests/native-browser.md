@@ -8,6 +8,10 @@ npm run test:native-browser
 
 The command serves `tests/native-browser.html` on `127.0.0.1` and runs it in headless Chrome. It covers native selection preservation, custom-element editing boundaries, `elementFromPoint` layout hit testing, and iframe load/removal lifecycle. Canvas checks exercise conversion with authored transforms, negative coordinates, zoom-aware movement, edge panning and release, text splitting, serialization, and return to normal flow. It exits nonzero if a check fails. Set `CHROME_BIN` to use another installed Chromium based browser.
 
+For focused board media resizing checks, run `node scripts/native-browser.mjs --filter='Board media'`.
+For visual inspection, open `/tests/board-media.html` on the loopback development server.
+It retains the editing board and script-free export after checking native media, captions, direct DOM resizing and overflow.
+
 Formula checks verify native inline MathML rendering, preserved operand identity, empty argument dimensions, pointer placement followed by typing, editing-only backgrounds, and shadow appendix cleanup. They also exercise distinct text insertion positions before, at the start, at the end, and after inline formulas in different text-block positions, plus gaps around block formulas.
 
 ## Live widget aggregation checks

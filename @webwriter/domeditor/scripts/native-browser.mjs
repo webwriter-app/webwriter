@@ -54,6 +54,7 @@ const expectedChecks = [
   "triple clicks preserve native paragraph selections in Document and Board",
   "Elements pullout reserves matching padding after its opening animation",
   "Board columns and cards retain native editing and standalone layout",
+  "Board media shrinks with card height in editing and standalone documents",
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
   "text containers resize horizontally and fit their content",
