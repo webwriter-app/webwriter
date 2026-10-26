@@ -44,6 +44,7 @@ const expectedChecks = [
   "Style dropdowns draw a single border and focus ring",
   "marker image uploads preview before applying",
   "character deletion preserves adjacent spaces",
+  "paragraph boundary deletion reverses Enter in Document and Board",
   "Elements pullout reserves matching padding after its opening animation",
   "Board columns and cards retain native editing and standalone layout",
   "tiny images open media inputs in a speech bubble",

@@ -733,6 +733,19 @@ describe("isGapSelection", () => {
     $.selectGap(document.body.firstElementChild!)
     expect($.isGapSelection).toBe(true)
   })
+  it("is true between paragraphs within a board card", () => {
+    document.body.classList.add("ww-board")
+    try {
+      setBody('<section class="ww-board-column"><article class="ww-board-card"><p>hello</p><p>world</p></article></section>')
+      const paragraphs = document.querySelectorAll("p")
+      $.selectRange(paragraphs[0].firstChild!, 5, paragraphs[1].firstChild!, 0)
+      $.delete()
+      expect($.isGapSelection).toBe(true)
+      expect($.elementBefore).toBe(paragraphs[0])
+      expect($.elementAfter).toBe(paragraphs[1])
+    }
+    finally { document.body.classList.remove("ww-board") }
+  })
   it("is true before the first body element", () => {
     setBody("\n<p>a</p>")
     $.selectGap(document.body.firstElementChild!, "before")
@@ -1351,6 +1364,21 @@ describe("elementBefore/elementAfter", () => {
 })
 
 describe("delete()", () => {
+  it.each([false, true])("retains the deleted range's paragraph gap (backward=%s)", backward => {
+    setBody('<section><p><b>hello</b></p><p><em>world</em></p></section>')
+    const section = document.querySelector("section")!
+    const left = document.querySelector("b")!.firstChild!, right = document.querySelector("em")!.firstChild!
+    if(backward) $.selectRange(right, 0, left, 5)
+    else $.selectRange(left, 5, right, 0)
+
+    $.delete()
+
+    expect(section.innerHTML).toBe('<p><b>hello</b></p><p><em>world</em></p>')
+    expect($.isEmpty).toBe(true)
+    expect($.anchor).toBe(section)
+    expect($.anchorOffset).toBe(1)
+  })
+
   it("removes the selected content", () => {
     setBody("<p>hello world</p>")
     $.selectRange(firstText(), 0, firstText(), 6)

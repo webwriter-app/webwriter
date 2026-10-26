@@ -815,6 +815,7 @@ export class EditingSelection {
     if(this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
     if(!isElement(anchor)) return false
     const inSlide = slideLayoutRole(anchor) === "slide"
+    const inBoardCard = boardLayoutRole(anchor) === "card"
     const root = inSlide ? anchor : getDocumentRoot()
     let isRootBoundaryBeforeFirstElement = false
     if(anchor === root) {
@@ -851,7 +852,7 @@ export class EditingSelection {
         }
       }
     }
-    return (!isSectionElement(anchor) || inSlide) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
+    return (!isSectionElement(anchor) || inSlide || inBoardCard) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
       (!hasTextOrMarkChild
         || isRootBoundaryBeforeFirstElement
         || isNestedListBoundary)
@@ -1215,15 +1216,17 @@ export class EditingSelection {
 
   /** Deletes the selected content (a no-op for collapsed selections). */
   static delete() {
-    const multi = this.isMultiElementSelection
     const range = this.range
     const root = getDocumentRoot()
     const selectsRoot = this.selectedElement === root || this.selectedElement === document.body
-    for(const part of this.flowRanges.reverse()) part.deleteContents()
+    const parts = this.flowRanges.reverse()
+    for(const part of parts) part.deleteContents()
     if(selectsRoot) this.#selection.setPosition(root, 0)
     else {
-      range.collapse(true)
-      if(multi) this.selectRange(range.startContainer, range.startOffset)
+      // Deleting across blocks collapses the edited Range into their gap.
+      // The original selection's live endpoints do not retain that position.
+      const caret = parts.at(-1) ?? range
+      this.selectRange(caret.startContainer, caret.startOffset)
     }
     window.focus()
   }

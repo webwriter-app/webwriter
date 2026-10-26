@@ -2767,6 +2767,51 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
   }
 })
 
+await check("paragraph boundary deletion reverses Enter in Document and Board", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><body><p>Ready</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "paragraph fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
+    for(const mode of ["document", "board"] as const) {
+      if(mode === "board") assert(editor.setDocumentLayout("board", "document"), "board did not convert")
+      const root = mode === "board" ? editor.features.board.cards(editor.features.board.columns()[0])[0] : doc.body
+      for(const html of ["helloworld", "hello<b>world</b>"]) for(const key of ["Backspace", "Delete"]) {
+        root.innerHTML = `<p class="authored">${html}</p>`
+        const paragraph = root.firstElementChild!
+        const walker = doc.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT)
+        let text = walker.nextNode()!, offset = 5
+        while(offset > text.textContent!.length) { offset -= text.textContent!.length; text = walker.nextNode()! }
+        selection.collapse(text, offset)
+        paragraph.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+        assert(root.querySelectorAll("p").length === 2, `${mode}: Enter did not split ${html} before ${key}: ${root.innerHTML}`)
+        editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+        if(key === "Delete") selection.collapse(text, offset)
+        root.querySelectorAll("p")[key === "Backspace" ? 1 : 0]
+          .dispatchEvent(new view.KeyboardEvent("keydown", {key, bubbles: true, cancelable: true}))
+        assert(root.querySelectorAll("p").length === 1 && root.textContent === "helloworld",
+          `${mode}: ${key} did not join the split paragraphs: ${root.innerHTML}`)
+        const caret = selection.getRangeAt(0).cloneRange()
+        caret.selectNodeContents(root.querySelector("p")!)
+        caret.setEnd(selection.focusNode!, selection.focusOffset)
+        assert(caret.toString() === "hello", `${mode}: ${key} misplaced the join caret`)
+        assert(root.querySelector("b")?.textContent === (html.includes("<b>") ? "world" : undefined),
+          `${mode}: ${key} lost inline formatting`)
+        assert(root.querySelector("p")!.classList.contains("authored"), `${mode}: ${key} lost the paragraph's authored class`)
+        editor.doc.syncFromDOM(); editor.doc.undo()
+        assert(root.querySelectorAll("p").length === 2 && root.textContent === "helloworld", `${mode}: ${key} join did not undo`)
+        editor.doc.redo()
+        assert(root.querySelectorAll("p").length === 1 && root.textContent === "helloworld", `${mode}: ${key} join did not redo`)
+      }
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("character deletion preserves adjacent spaces", async () => {
   const paragraph = document.createElement("p")
   document.body.append(paragraph)
