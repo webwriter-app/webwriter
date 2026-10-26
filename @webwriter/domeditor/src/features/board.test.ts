@@ -47,6 +47,36 @@ afterEach(() => {
 })
 
 describe("Board layout", () => {
+  it.each(["breadcrumb", "modifier-click"])("selects and formats each column heading independently through %s", async source => {
+    convert("board"); board().addColumn(); board().addColumn()
+    const headings = columns().map((column, i) => {
+      const heading = column.querySelector("h2")!
+      heading.innerHTML = `<!--keep ${i}--><em>Column ${i + 1}</em>`
+      heading.setAttribute("title", `Heading ${i + 1}`)
+      return heading
+    })
+    await settle(); editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    for(const [index, heading] of headings.entries()) {
+      if(!index) continue
+      const content = Array.from(heading.childNodes)
+      if(source === "breadcrumb") editor.features.selection.actions.selectNode({type: "selectNode", path: pathFromNode(document.body, heading)!})
+      else heading.querySelector("em")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true}))
+      expect($.selectedElement).toBe(heading)
+      expect(board().allowsSelection()).toBe(true)
+      editor.features.manipulation.setStyle({color: "red"})
+      expect(heading.style.color).toBe("red")
+      expect(headings.filter(other => other !== heading).every(other => !other.style.color)).toBe(true)
+      expect(Array.from(heading.childNodes)).toEqual(content)
+      await settle(); editor.doc.undo(); await settle()
+      expect(columns()[index].querySelector("h2")!.hasAttribute("style")).toBe(false)
+      editor.doc.redo(); await settle()
+      expect(columns()[index].querySelector("h2")!.getAttribute("style")).toContain("color: red")
+      editor.doc.undo(); await settle()
+    }
+    expect(await editor.serializeHTML()).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+  })
+
   it("retains breadcrumb document selection for the Document toolbox", async () => {
     convert("board")
     const html = await editor.serializeHTML()

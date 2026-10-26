@@ -6190,6 +6190,26 @@ await check("Board columns and cards retain native editing and standalone layout
     assert(rects.every((rect, i) => !i || rect.left > rects[i - 1].right), "columns did not grow horizontally")
     assert(doc.documentElement.scrollWidth > frame.clientWidth, "board did not overflow horizontally")
     await checkOverflow(doc)
+    for(const column of columns.slice(1)) {
+      const heading = column.querySelector("h2")!
+      heading.scrollIntoView({block: "nearest", inline: "center"})
+      await layoutFrame()
+      const box = heading.getBoundingClientRect()
+      const pointer = {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 266, clientX: box.left + 12, clientY: box.top + box.height / 2}
+      heading.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", {...pointer, ctrlKey: true, metaKey: true}))
+      const selection = doc.getSelection()!
+      assert(selection.anchorNode === column && column.childNodes[selection.anchorOffset] === heading
+        && selection.focusNode === column && selection.focusOffset === selection.anchorOffset + 1,
+      "selecting a later column heading as an element moved selection to another column")
+      heading.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", pointer))
+      heading.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerup", pointer))
+      await layoutFrame()
+      assert(heading.contains(doc.getSelection()!.anchorNode), "clicking a later column heading moved selection to another column")
+      const otherHeadings = columns.filter(other => other !== column).map(other => other.querySelector("h2")!.textContent)
+      assert(doc.execCommand("insertText", false, "Edited "), "column heading did not accept typing")
+      assert(heading.textContent!.includes("Edited "), "typing did not change the clicked column heading")
+      assert(columns.filter(other => other !== column).every((other, i) => other.querySelector("h2")!.textContent === otherHeadings[i]), "typing changed another column heading")
+    }
     for(const column of columns) {
       const cards = board.cards(column).map(card => card.getBoundingClientRect())
       assert(cards.every((rect, i) => !i || rect.top > cards[i - 1].bottom), "cards did not stack vertically")

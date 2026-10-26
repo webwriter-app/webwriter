@@ -49,7 +49,7 @@ export class BoardFeature extends EditorFeature {
     if(!this.columns().length) return range.collapsed && range.startContainer === document.body
     const selected = range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
       ? range.startContainer.childNodes[range.startOffset] : null
-    if(isBoardColumn(selected) || isBoardCard(selected)) return true
+    if(isBoardColumn(selected) || isBoardCard(selected) || selected && this.editingScope(selected) === selected) return true
     const start = this.editingScope(range.startContainer)
     return Boolean(start && start === this.editingScope(range.endContainer))
   }
