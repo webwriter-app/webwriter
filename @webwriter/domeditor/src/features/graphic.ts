@@ -2943,13 +2943,34 @@ export class GraphicFeature extends EditorFeature {
       return
     }
     const rect = graphic.getBoundingClientRect()
+    const viewport = this.#viewport(graphic)
     Object.assign(preview.style, {
       left: `${fixedClientX(rect.left)}px`,
       top: `${rect.top}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
+      transform: "",
     })
-    const viewport = this.#viewport(graphic)
+    // Keep the SVG viewport at its untransformed size. A rotated bounding
+    // rectangle would enlarge the preview and lose the graphic's orientation.
+    try {
+      const ctm = graphic.getCTM?.()
+      if(ctm && graphic.clientWidth > 0 && graphic.clientHeight > 0) {
+        // getCTM omits the root's native pan/zoom, which the preview copies below.
+        const local = new DOMMatrix().translate(viewport.x, viewport.y).scale(viewport.scale).multiply(ctm)
+        const matrix = DOMMatrix.fromMatrix(this.#screenMatrix(graphic)).multiply(local.inverse())
+        if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
+          Object.assign(preview.style, {
+            left: `${fixedClientX(0)}px`, top: "0",
+            width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
+            transformOrigin: "0 0", transform: matrix.toString(),
+          })
+        }
+      }
+    }
+    catch {
+      // Detached/test SVGs may not expose an invertible viewport transform.
+    }
     try {
       preview.currentScale = viewport.scale
       const translate = preview.currentTranslate as unknown as {x: number, y: number}

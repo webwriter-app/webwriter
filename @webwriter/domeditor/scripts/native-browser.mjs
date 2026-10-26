@@ -22,6 +22,7 @@ const expectedChecks = [
   "gap carets track their authored boundary",
   "insertion and saved-reader controls align inside symmetric scrollbar gutters",
   "SVG shape outlines and handles align inside symmetric scrollbar gutters",
+  "SVG drag previews preserve rotated graphic viewports in canvas and slides",
   "SVG overflow fades while retaining native shape selection",
   "standalone SVG arrowheads remain visible in canvas previews and exports",
   "editing affordances align with media inside symmetric scrollbar gutters",

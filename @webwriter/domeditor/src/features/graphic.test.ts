@@ -1484,6 +1484,68 @@ describe("graphic editing", () => {
     expect(rectangle).toHaveAttribute("transform", `rotate(${expected} 800 450)`)
   })
 
+  it.each(["pointerup", "pointercancel"])("maps rotation previews through the graphic viewport and cleans up on %s", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const rectangle = graphic.querySelector("rect")!
+    const local = new DOMMatrix().scale(.5)
+    const viewport = new DOMMatrix().translate(17, -11).scale(1.4)
+    let outer = new DOMMatrix().translate(300, 120).rotate(30).scale(1.1, .9)
+    Object.defineProperties(graphic, {
+      getCTM: {value: () => local},
+      getScreenCTM: {value: () => outer.multiply(viewport).multiply(local)},
+      clientWidth: {value: 800},
+      clientHeight: {value: 450},
+      currentScale: {value: 1.4},
+      currentTranslate: {value: {x: 17, y: -11}},
+    })
+    clickShape(rectangle)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const screen = graphic.getScreenCTM()!
+    const start = screen.transformPoint({x: 800, y: 306})
+    const end = screen.transformPoint({x: 944, y: 450})
+    const rotate = editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="rotate"]')!
+    rotate.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, composed: true, button: 0, clientX: start.x, clientY: start.y,
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, buttons: 1, clientX: end.x, clientY: end.y,
+    }))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
+    expect(preview.querySelector("rect")).toHaveAttribute("transform", "rotate(90 800 450)")
+    expect(preview.style.width).toBe("800px")
+    expect(preview.style.height).toBe("450px")
+    const expectTransform = () => {
+      const matrix = new DOMMatrix(preview.style.transform)
+      for(const key of ["a", "b", "c", "d", "e", "f"] as const) expect(matrix[key]).toBeCloseTo(outer[key], 4)
+    }
+    expectTransform()
+    outer = new DOMMatrix().translate(40, 60).multiply(outer)
+    document.dispatchEvent(new Event("scroll"))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expectTransform()
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).toBe(before)
+    document.dispatchEvent(new PointerEvent(outcome, {bubbles: true, button: 0}))
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+    expect(document.querySelector(".◆graphic-preview-source, .◆graphic-manipulating")).toBeNull()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    if(outcome === "pointercancel") expect(editor.toHTML(true)).toBe(before)
+    else {
+      expect(rectangle).toHaveAttribute("transform", "rotate(90 800 450)")
+      await mutationsDelivered()
+      const after = editor.toHTML(true)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(before)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(after)
+    }
+  })
+
   it("resizes a rotated shape in its local axes", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
