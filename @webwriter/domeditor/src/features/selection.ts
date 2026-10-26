@@ -1863,6 +1863,10 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(!selection?.focusNode || !["virtual", "gap", "text", "empty"].includes(kind)) return
+    // Deselecting the last canvas item leaves a fallback caret in BODY.
+    // BODY is outside the camera's transformed slot, so revealing its page
+    // origin would pan the camera again on every deselection.
+    if(this.editor.features.canvas.active && selection.focusNode === document.body) return
 
     const rect = caretRect(selection.focusNode, selection.focusOffset)
     const margin = 1.25 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16)

@@ -2399,6 +2399,54 @@ describe("scrolling selections into view", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(rect)
   }
 
+  it.each(["ul", "p", "canvas-widget"])("does not reveal BODY when modifier-click deselects a canvas %s", tag => {
+    document.body.className = "ww-canvas"
+    const item = el(tag)
+    item.innerHTML = tag === "ul" ? '<li>First<!--keep--></li><li>Second</li>' : 'Text<!--keep--><em>content</em>'
+    item.style.cssText = "position:absolute;left:160px;top:100px;width:320px"
+    const children = Array.from(item.childNodes), style = item.style.cssText
+    const reveal = vi.spyOn(editor.features.canvas, "reveal").mockImplementation(() => {})
+    try {
+      for(let i = 0; i < 3; i++) {
+        const options = {bubbles: true, composed: true, cancelable: true, ctrlKey: true, metaKey: true}
+        const click = () => {
+          item.dispatchEvent(new MouseEvent("pointerdown", options))
+          item.dispatchEvent(new MouseEvent("pointerup", options))
+          item.dispatchEvent(new MouseEvent("click", options))
+        }
+        click()
+        expect($.selectedElement).toBe(item)
+        reveal.mockClear()
+        click()
+        expect(document.getSelection()!.isCollapsed).toBe(true)
+        expect(document.getSelection()!.focusNode).toBe(document.body)
+        feature.processSelection()
+        expect(reveal).not.toHaveBeenCalled()
+        expect(item.style.cssText).toBe(style)
+        expect(Array.from(item.childNodes)).toEqual(children)
+        expect(item.className).not.toContain("◆element-selected")
+      }
+    }
+    finally { reveal.mockRestore() }
+  })
+
+  it("still reveals a real canvas text caret after a BODY fallback selection", () => {
+    document.body.className = "ww-canvas"
+    const paragraph = el("p", "Text"), text = paragraph.firstChild!
+    const reveal = vi.spyOn(editor.features.canvas, "reveal").mockImplementation(() => {})
+    const caret = vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(-100, -100, 0, 20))
+    try {
+      $.selectRange(document.body, 0)
+      feature.processSelection()
+      expect(reveal).not.toHaveBeenCalled()
+      $.selectRange(text, 2)
+      feature.processSelection()
+      expect(reveal).toHaveBeenCalledOnce()
+      expect(reveal).toHaveBeenCalledWith(expect.objectContaining({left: -100, right: -99}))
+    }
+    finally { reveal.mockRestore(); caret.mockRestore() }
+  })
+
   it("scrolls nested containers from the caret outward and reveals its predicted rect", () => {
     document.body.innerHTML = '<div class="outer"><div class="inner"><p>text</p></div></div>'
     const outer = document.querySelector<HTMLElement>(".outer")!

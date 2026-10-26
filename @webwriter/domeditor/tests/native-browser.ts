@@ -5491,6 +5491,59 @@ await check("dead-key composition stays outside authored formulas", async () => 
   finally { paragraph.remove(); editor.features.math.refresh() }
 })
 
+await check("repeated canvas modifier selections preserve item placement and camera", async () => {
+  for(const tag of ["ul", "p", "canvas-selection-widget"]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "width:900px;height:600px"
+    const content = tag === "ul" ? '<li>First<!--keep--></li><li>Second <em>item</em></li>' : 'Text<!--keep--><em>content</em>'
+    frame.srcdoc = `<!doctype html><body class="ww-canvas"><${tag} style="position:absolute;left:160px;top:100px;width:320px">${content}</${tag}><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & typeof globalThis
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor, "canvas editor did not initialize")
+      const editor = view.editor!, doc = frame.contentDocument!, item = doc.querySelector<HTMLElement>(tag)!
+      await layoutFrame()
+      const slot = editor.appendix.querySelector<HTMLSlotElement>("slot")!
+      const children = Array.from(item.childNodes), style = item.style.cssText
+      editor.doc.syncFromDOM()
+      const html = editor.toHTML(true), shared = editor.doc.body.toString()
+      for(const zoom of [1, 1.31]) {
+        if(zoom !== 1) {
+          slot.dispatchEvent(new view.WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true,
+            ctrlKey: true, deltaY: -Math.log(zoom) / .002, clientX: 300, clientY: 250}))
+          slot.dispatchEvent(new view.WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: 40, deltaY: 20}))
+          await layoutFrame()
+        }
+        const camera = slot.style.transform, initial = item.getBoundingClientRect()
+        for(let i = 0; i < 6; i++) {
+          const rect = item.getBoundingClientRect()
+          // The left padding selects the list itself, toggling the final item
+          // off on every second click, as in issue #256.
+          const options = {bubbles: true, composed: true, cancelable: true, pointerId: 91, button: 0,
+            ctrlKey: true, metaKey: true, clientX: rect.left + 10, clientY: rect.top + 10}
+          item.dispatchEvent(new view.PointerEvent("pointerdown", options))
+          item.dispatchEvent(new view.PointerEvent("pointerup", options))
+          item.dispatchEvent(new view.MouseEvent("click", options))
+          await layoutFrame()
+          assert((i % 2 === 0) === item.classList.contains("◆element-selected"), `${tag}: modifier click did not toggle selection`)
+          assert(slot.style.transform === camera, `${tag} at ${zoom}: selection ${i} moved the camera: ${camera} -> ${slot.style.transform}`)
+          const after = item.getBoundingClientRect()
+          assert(Math.abs(after.left - initial.left) < .01 && Math.abs(after.top - initial.top) < .01,
+            `${tag} at ${zoom}: selection ${i} moved the rendered item`)
+          assert(item.style.cssText === style && children.every((node, index) => item.childNodes[index] === node),
+            `${tag}: selection changed authored placement or content`)
+          editor.doc.syncFromDOM()
+          assert(editor.toHTML(true) === html && editor.doc.body.toString() === shared, `${tag}: selection changed serialized or shared HTML`)
+        }
+      }
+      editor.destroy()
+      assert(!doc.querySelector(".◆element-selected, .◆element-capture-selected, .◆transform-target"), `${tag}: selection markers survived teardown`)
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
 await check("canvas box selection retains disjoint ranges and stays in the document top layer", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
