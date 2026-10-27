@@ -25,6 +25,7 @@ export type RibbonMenuButton = string | {
   iconUrl?: string
   /** Optional metadata used by visual galleries such as graphic shapes. */
   galleryColumns?: number
+  galleryRowStart?: boolean
   category?: string
   path?: string
   pathFill?: string
@@ -430,7 +431,7 @@ export class RibbonMenu extends LitElement {
 
     .shape-gallery {
       display: grid;
-      grid-template-columns: repeat(10, minmax(0, 1fr));
+      grid-template-columns: repeat(11, minmax(0, 1fr));
       gap: 0.2rem;
       width: 100%;
       box-sizing: border-box;
@@ -453,6 +454,8 @@ export class RibbonMenu extends LitElement {
       text-align: center;
     }
 
+    .shape-gallery .gallery-row-start { grid-column-start: 1; }
+
     .shape-gallery .gallery-wide {
       grid-column: -4 / -1;
       border: 1px solid #d8dee6;
@@ -474,9 +477,9 @@ export class RibbonMenu extends LitElement {
     }
 
     .shape-gallery .item-icon {
-      flex-basis: 2.1rem;
-      width: 2.1rem;
-      height: 2.1rem;
+      flex-basis: 1.85rem;
+      width: 1.85rem;
+      height: 1.85rem;
       margin-inline: auto;
     }
 
@@ -823,7 +826,7 @@ export class RibbonMenu extends LitElement {
           itemIndex++
           return html`${divider}
             <button
-              class=${`item${typeof submenuButton !== "string" && submenuButton.selected ? " selected" : ""}${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
+              class=${`item${typeof submenuButton !== "string" && submenuButton.selected ? " selected" : ""}${gallery ? " gallery-item" : ""}${typeof submenuButton !== "string" && submenuButton.galleryRowStart ? " gallery-row-start" : ""}${typeof submenuButton !== "string" && submenuButton.galleryColumns === 3 ? " gallery-wide" : ""}`}
               type="button"
               draggable=${String(Boolean(this.dragTag(submenuButton) || this.packageInsertionAction(submenuButton)) && !(typeof submenuButton !== "string" && submenuButton.disabled))}
               role="menuitem"

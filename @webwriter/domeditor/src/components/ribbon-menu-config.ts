@@ -1,5 +1,5 @@
 import type {AIEffort} from "../ai-client"
-import {graphicShapeOptions} from "../graphic"
+import {graphicShapeSections} from "../graphic"
 import {mathStructureOptions} from "../math"
 import {
   headingInsertionTags,
@@ -28,18 +28,20 @@ export type StorageLocation = typeof storageLocations[number]["value"]
 
 type InsertionSection = "Text" | "Lists" | "Media"
 
-const groupedGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(option => ({
-  label: option.label,
-  action: `insert-graphic-shape:${option.type}`,
-  icon: option.icon,
-  category: option.category,
-  path: option.path,
-  pathFill: option.pathFill,
-}))
-groupedGraphicShapeButtons.splice(
-  graphicShapeOptions.filter(option => option.category === graphicShapeOptions[0].category).length, 0,
-  {label: "Import graphic", action: "import-graphic", icon: "Upload", category: graphicShapeOptions[0].category, galleryColumns: 3},
-)
+const groupedGraphicShapeButtons: RibbonMenuButton[] = graphicShapeSections.flatMap(section => section.rows.flatMap((row, rowIndex) => [
+  ...row.map((option, column) => ({
+    label: option.label,
+    action: `insert-graphic-shape:${option.type}`,
+    icon: option.icon,
+    category: section.label,
+    path: option.path,
+    pathFill: option.pathFill,
+    galleryRowStart: column === 0,
+  })),
+  ...(section.label === "Basic" && rowIndex === 0
+    ? [{label: "Import graphic", action: "import-graphic", icon: "Upload", category: section.label, galleryColumns: 3}]
+    : []),
+]))
 
 export const insertMathStructureButtons: RibbonMenuButton[] = mathStructureOptions.map(option => ({
   label: option.title,

@@ -40,6 +40,17 @@ export const initializeEditorMessage = "initialize-editor"
 export const loadWidgetsMessage = "load-widgets"
 export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
+export const shapeKeyboardInputEvent = "dom-editor-shape-keyboard-input"
+
+export type ShapeKeyboardInput = {
+  type: "keydown" | "keyup"
+  key: string
+  code: string
+  altKey: boolean
+  shiftKey: boolean
+  capsLock: boolean
+  repeat: boolean
+}
 
 /** Relative DOM positions survive package installation replacing the iframe. */
 export type RibbonDropPosition = {
