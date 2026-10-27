@@ -167,6 +167,9 @@ export class DomEditorToolbox extends EditingControls {
     .float-placement-label {font-size: .65rem; color: var(--sl-color-neutral-600, #666)}
     .float-placement-label > .field-label {justify-content: flex-start}
     .float-placement-label .field-label .field-clear {margin-left: 0; min-height: 0}
+    .caption-label-row {display: flex; align-items: center; justify-content: space-between; gap: .35rem; margin-top: .4rem}
+    .caption-top {display: inline-flex; align-items: center; gap: .2rem; font: inherit; color: inherit; white-space: nowrap}
+    .caption-top input {width: .7rem; height: .7rem; margin: 0}
     .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem; font: .68rem/1.2 system-ui, sans-serif}
     .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5}
     .float-button-group {display: flex; width: 100%; gap: 0}
@@ -182,13 +185,10 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
     .float-button-group[aria-label="Placement"] button {padding-inline: .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
-    .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, auto)}
+    .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr))}
     .caption-button-group button {min-height: 1.55rem; padding: .1rem .25rem; margin: 0; border-radius: 0}
     .caption-button-group button + button {margin-left: -.5px}
-    .caption-button-group .caption-none {grid-row: 1 / 3; padding: .15rem .1rem; border-radius: .2rem 0 0 .2rem}
-    .caption-button-group button.caption-above-right {border-radius: 0 .2rem 0 0}
-    .caption-button-group button.caption-below-right {border-radius: 0 0 .2rem 0}
-    .caption-button-group [class^="caption-below"] {margin-top: -.5px}
+    .caption-button-group .caption-none {padding: .15rem .1rem; border-radius: .2rem 0 0 .2rem}
 
 
     .history-timeline {
@@ -1449,6 +1449,7 @@ export class DomEditorToolbox extends EditingControls {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     const captionPosition = this.captionPosition ?? (this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
+    const captionPlacement = captionPosition === "above" ? "above" : "below"
     const alignment = target?.alignment ?? "center"
     const placements: {side: FloatSide, alignment?: "left" | "center" | "right", label: string}[] = [
       {side: "far-left", label: "Float left"},
@@ -1502,10 +1503,16 @@ export class DomEditorToolbox extends EditingControls {
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>
           ` : nothing}
-          <span class="float-placement-label">${this.renderFieldLabel("Caption", captionPosition !== "none",
+          <span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
             () => this.dispatchEvent(new CustomEvent("layout-action", {
               detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
-            })), undefined, this.historyState.preview !== null || this.htmlPending)}</span>
+            })), undefined, this.historyState.preview !== null || this.htmlPending)}
+            <label class="caption-top"><input type="checkbox" .checked=${captionPosition === "above"}
+              ?disabled=${captionPosition === "none" || this.historyState.preview !== null || this.htmlPending}
+              @change=${(event: Event) => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setCaption", position: (event.currentTarget as HTMLInputElement).checked ? "above" : "below"}, bubbles: true, composed: true,
+              }))}>Top</label>
+          </span>
           <div class="float-button-group caption-button-group" role="group" aria-label="Caption">
             <button type="button" class="caption-none" aria-label="No caption" title="No caption" aria-pressed=${captionPosition === "none"}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
@@ -1513,15 +1520,15 @@ export class DomEditorToolbox extends EditingControls {
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
               }))}>${this.captionIcon("none")}</button>
-            ${(["above", "below"] as const).map(position => (["left", "center", "right"] as const).map(alignment => html`<button type="button"
-              class=${`caption-${position}-${alignment}`}
-              aria-label=${`Caption ${position}, align ${alignment}`} title=${`Caption ${position}, align ${alignment}`}
-              aria-pressed=${captionPosition === position && (this.captionAlignment ?? "left") === alignment}
+            ${(["left", "center", "right"] as const).map(alignment => html`<button type="button"
+              class=${`caption-${captionPlacement}-${alignment}`}
+              aria-label=${`Caption ${captionPlacement}, align ${alignment}`} title=${`Caption ${captionPlacement}, align ${alignment}`}
+              aria-pressed=${captionPosition !== "none" && (this.captionAlignment ?? "left") === alignment}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
-                detail: {type: "setCaption", position, alignment}, bubbles: true, composed: true,
-              }))}>${this.captionIcon(position, alignment)}</button>`))}
+                detail: {type: "setCaption", position: captionPlacement, alignment}, bubbles: true, composed: true,
+              }))}>${this.captionIcon(captionPlacement, alignment)}</button>`)}
           </div>
           ${this.renderAttributionField()}
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}

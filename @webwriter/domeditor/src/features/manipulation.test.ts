@@ -6502,6 +6502,23 @@ it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("disallows %s within a section nes
 
 
 describe("caption alignment", () => {
+  it.each(["figure", "table"])("preserves %s caption content and alignment when only placement changes", kind => {
+    document.body.innerHTML = kind === "figure"
+      ? '<figure><!--keep--><custom-diagram data-value="7"></custom-diagram><figcaption style="text-align: right"><em>Keep</em></figcaption></figure>'
+      : '<table><caption style="text-align: right"><em>Keep</em></caption><!--keep--><tbody><tr><td>Content</td></tr></tbody></table>'
+    const target = document.body.firstElementChild!, caption = target.querySelector("figcaption, caption") as HTMLElement
+    const content = caption.firstChild
+    $.selectElement(target)
+    for(const position of ["above", "below"] as const) {
+      editor.features.manipulation.actions.setCaption({type: "setCaption", position})
+      expect(editor.features.manipulation.getCaptionPosition()).toBe(position)
+      expect(editor.features.manipulation.getCaptionAlignment()).toBe("right")
+      expect(caption.firstChild).toBe(content)
+      expect(target.innerHTML).toContain("<!--keep-->")
+    }
+    if(kind === "figure") expect(target.querySelector("custom-diagram")?.getAttribute("data-value")).toBe("7")
+  })
+
   const states = (["figure", "table"] as const).flatMap(kind => (["above", "below"] as const)
     .flatMap(position => (["left", "center", "right"] as const).map(alignment => ({kind, position, alignment}))))
   it.each(states)("applies $position/$alignment to a $kind caption", ({kind, position, alignment}) => {

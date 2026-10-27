@@ -1465,6 +1465,70 @@ describe("widget sharing toolbox", () => {
   })
 })
 
+it("defaults caption choices to below and switches their icons with the Top checkbox", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  const actions = vi.fn()
+  toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const controls = toolbox.shadowRoot!.querySelector(".float-action-controls")!
+  const top = controls.querySelector<HTMLInputElement>('.caption-top input')!
+  const buttons = () => [...controls.querySelectorAll<HTMLButtonElement>('.caption-button-group button')]
+  expect(top.closest("label")!.textContent).toBe("Top")
+  expect(top.checked).toBe(false)
+  expect(top.disabled).toBe(true)
+  expect(buttons()).toHaveLength(4)
+  expect(buttons()[0].getAttribute("aria-pressed")).toBe("true")
+  buttons()[3].click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setCaption", position: "below", alignment: "right"})
+  toolbox.captionPosition = "below"
+  toolbox.captionAlignment = "right"
+  await toolbox.updateComplete
+  expect(top.disabled).toBe(false)
+  expect(buttons()[3].getAttribute("aria-pressed")).toBe("true")
+  top.click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setCaption", position: "above"})
+  toolbox.captionPosition = "above"
+  await toolbox.updateComplete
+  expect(top.checked).toBe(true)
+  expect(buttons()[3].getAttribute("aria-label")).toBe("Caption above, align right")
+  expect(buttons()[3].querySelector("svg line")!.getAttribute("y1")).toBe("3")
+  buttons()[2].click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setCaption", position: "above", alignment: "center"})
+  top.click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setCaption", position: "below"})
+  toolbox.captionPosition = "below"
+  await toolbox.updateComplete
+  expect(top.checked).toBe(false)
+  expect(buttons()[3].querySelector("svg line")!.getAttribute("y1")).toBe("21")
+  toolbox.htmlPending = true
+  await toolbox.updateComplete
+  expect(top.disabled).toBe(true)
+  expect(buttons().every(button => button.disabled)).toBe(true)
+  toolbox.htmlPending = false
+  toolbox.historyState = {...emptyVersionHistoryState(), preview: {checkpointId: "version", isCurrent: false, added: 0, removed: 0, modified: 0}}
+  await toolbox.updateComplete
+  expect(top.disabled).toBe(true)
+  toolbox.historyState = emptyVersionHistoryState()
+  toolbox.captionPosition = "none"
+  await toolbox.updateComplete
+  expect(top.checked).toBe(false)
+  expect(top.disabled).toBe(true)
+})
+
+it("reflects an existing table caption's top placement", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName: "table", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "table", parentDisplay: "block"}}
+  toolbox.table = {active: true, cellSelection: false, rows: 1, columns: 1, selectedCells: 1,
+    canMerge: false, canSplit: false, hasCaption: true, hasHeader: false, hasFooter: false}
+  await toolbox.updateComplete
+  const top = toolbox.shadowRoot!.querySelector<HTMLInputElement>('.caption-top input')!
+  expect(top.checked).toBe(true)
+  expect(top.disabled).toBe(false)
+})
+
 it("opens attribution below Caption and clears a configured caption with its label action", async () => {
   const toolbox = await mountToolbox()
   toolbox.selectTool("Edit")
