@@ -172,8 +172,8 @@ export class DomEditorToolbox extends EditingControls {
     .caption-label-row {display: flex; align-items: center; justify-content: space-between; gap: .35rem; margin-top: .4rem}
     .caption-top {display: inline-flex; align-items: center; gap: .2rem; font: inherit; color: inherit; white-space: nowrap}
     .caption-top input {width: .7rem; height: .7rem; margin: 0}
-    .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem; font: .68rem/1.2 system-ui, sans-serif}
-    .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5}
+    .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem}
+    .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5; font: .68rem/1.2 system-ui, sans-serif}
     .float-button-group {display: flex; width: 100%; gap: 0}
     .float-button-group button {position: relative; display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
     .float-button-group float-info {position: absolute; top: -3px; right: -2px; z-index: 2}
@@ -1542,7 +1542,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderAttributionField() {
     return html`<div class="attribution-field">
-      <span id="attribution-label">Attribution</span>
+      <span id="attribution-label" class="float-placement-label">Attribution</span>
       <button type="button" aria-label="Edit attribution" aria-describedby="attribution-label" aria-haspopup="dialog"
         ?disabled=${this.historyState.preview !== null || this.htmlPending}
         @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
