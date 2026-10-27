@@ -58,8 +58,8 @@ describe("shape keyboard", () => {
 
     const pages = ["Basic", "Advanced", "Flowchart"]
     const belongsTo = (category: string, page: string) => page === "Flowchart" ? category === "Flowchart"
-      : page === "Basic" ? ["Lines", "Rectangles", "Basic shapes"].includes(category)
-        : !["Lines", "Rectangles", "Basic shapes", "Flowchart"].includes(category)
+      : page === "Basic" ? ["Lines", "Triangles", "Rectangles", "Basic shapes"].includes(category)
+        : !["Lines", "Triangles", "Rectangles", "Basic shapes", "Flowchart"].includes(category)
     expect(tabs.map(tab => tab.getAttribute("aria-label"))).toEqual(pages)
     expect(tabs.filter(tab => tab.getAttribute("aria-pressed") === "true")).toHaveLength(1)
 

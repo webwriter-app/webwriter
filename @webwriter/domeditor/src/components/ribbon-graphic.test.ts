@@ -42,6 +42,15 @@ describe("graphic ribbon", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
   })
 
+  it("orders triangles before squares, followed by other polygons and the circle", () => {
+    const shapes = graphicShapeOptions.filter(option => option.category !== "Lines")
+    expect(shapes.slice(0, 2).map(option => option.type)).toEqual(["triangle", "right-triangle"])
+    expect(shapes.slice(2, 12).every(option => option.category === "Rectangles")).toBe(true)
+    expect(graphicShapeOptions.filter(option => option.category === "Basic shapes").slice(0, 10).map(option => option.type)).toEqual([
+      "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon", "dodecagon", "ellipse",
+    ])
+  })
+
   it("keeps graphic styling and shape insertion in one specialized drawer", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

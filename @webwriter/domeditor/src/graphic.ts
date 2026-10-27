@@ -99,12 +99,17 @@ const basicGraphicShapeOptions = [
   {type: "connector", label: "Connector", icon: "Connector", category: "Lines"},
 ] as const
 
-export const graphicShapeCategories = ["Lines", "Rectangles", "Basic shapes", "Block arrows", "Equation shapes", "Flowchart", "Stars and banners", "Callouts"]
+export const graphicShapeCategories = ["Lines", "Triangles", "Rectangles", "Basic shapes", "Block arrows", "Equation shapes", "Flowchart", "Stars and banners", "Callouts"]
 const lineArrowOptions = [
   {type: "line-start-arrow", label: "Narrow left arrow", icon: "Shape", category: "Lines", path: "M 0 50 L 100 50 M 0 50 L 18 41 L 18 59 Z", pathFill: "currentColor"},
   {type: "line-end-arrow", label: "Narrow right arrow", icon: "Shape", category: "Lines", path: "M 0 50 L 100 50 M 100 50 L 82 41 L 82 59 Z", pathFill: "currentColor"},
   {type: "line-both-arrows", label: "Narrow left-right arrow", icon: "Shape", category: "Lines", path: "M 0 50 L 100 50 M 0 50 L 18 41 L 18 59 Z M 100 50 L 82 41 L 82 59 Z", pathFill: "currentColor"},
 ] as const
+
+const basicShapeOrder: Record<string, number> = {
+  parallelogram: 0, trapezoid: 1, diamond: 2, pentagon: 3, hexagon: 4,
+  heptagon: 5, octagon: 6, decagon: 7, dodecagon: 8, ellipse: 9,
+}
 
 export const graphicShapeOptions = [
   ...graphicPresetOptions.filter(option => option.type === "text-box").map(option => ({...option, category: "Lines"})),
@@ -116,11 +121,13 @@ export const graphicShapeOptions = [
     && !["text-box", "not-equal", "multidocument", "line-callout-2"].includes(option.type)),
 ]
   .map(option => ({...option,
+    category: option.type === "triangle" || option.type === "right-triangle" ? "Triangles" : option.category,
     path: "path" in option ? option.path : basicGraphicShapePaths[option.type],
     pathFill: "pathFill" in option ? option.pathFill : undefined,
     fillRule: isGraphicPresetType(option.type) ? graphicPresetFillRule(option.type) : "nonzero",
   }))
-  .sort((a, b) => graphicShapeCategories.indexOf(a.category) - graphicShapeCategories.indexOf(b.category))
+  .sort((a, b) => graphicShapeCategories.indexOf(a.category) - graphicShapeCategories.indexOf(b.category)
+    || (a.category === "Basic shapes" ? (basicShapeOrder[a.type] ?? 14) - (basicShapeOrder[b.type] ?? 14) : 0))
 
 export type GraphicShapeType = typeof basicGraphicShapeOptions[number]["type"] | typeof graphicPresetOptions[number]["type"] | typeof lineArrowOptions[number]["type"] | "freehand" | "polyline" | "bezier"
 

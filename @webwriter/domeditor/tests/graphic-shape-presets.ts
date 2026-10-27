@@ -43,6 +43,19 @@ export function checkGraphicShapeFills() {
       const point = type === "prohibited" ? new DOMPoint(40, 60) : new DOMPoint(50, 50)
       assert(!path.isPointInFill(point), `${type}: intentional hole filled`)
     }
+    const prohibited = svg.querySelector("path")!
+    for(const radius of [20, 35, 40]) {
+      prohibited.setAttribute("d", graphicPresetPath("prohibited", {x: 0, y: 0, width: 100, height: 100}, [radius]))
+      assert(prohibited.isPointInFill(new DOMPoint(50, 50)), `prohibited ${radius}: diagonal bar is missing`)
+      for(const point of [new DOMPoint(40, 60), new DOMPoint(60, 40)]) {
+        assert(!prohibited.isPointInFill(point), `prohibited ${radius}: inner cutout is filled`)
+      }
+      for(let x = 2.75; x < 100; x += 5) for(let y = 3.25; y < 100; y += 5) {
+        const filled = prohibited.isPointInFill(new DOMPoint(x, y))
+        assert(filled === prohibited.isPointInFill(new DOMPoint(100 - x, 100 - y)), `prohibited ${radius}: asymmetric at ${x},${y}`)
+        assert(filled === prohibited.isPointInFill(new DOMPoint(y, x)), `prohibited ${radius}: diagonal bar is off-center at ${x},${y}`)
+      }
+    }
   }
   finally { svg.remove() }
 }

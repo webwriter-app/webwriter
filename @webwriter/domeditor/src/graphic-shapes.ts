@@ -96,6 +96,10 @@ function getTemplates() {
     // edit writes the corrected contour without changing its visible outline.
     const drawings = [(values: number[]) => presetDrawing(option.type, values)]
     if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
+    if(option.type === "prohibited") {
+      const outer = definition.draw([0]).split(/(?=M)/)[0]
+      drawings.push(([r]) => `${outer} M ${50-r*.7} ${50-r*.7} C ${50-r*1.5} ${50+r*.2} ${50-r*.2} ${50+r*1.5} ${50+r*.7} ${50+r*.7} Z M ${50+r*.7} ${50+r*.7-12} C ${50+r*1.5} ${50-r*.2} ${50+r*.2} ${50-r*1.5} ${50-r*.7+12} ${50-r*.7} Z`)
+    }
     for(const draw of drawings) {
       const zero = definition.adjustments.map(() => 0)
       const path = draw(zero)

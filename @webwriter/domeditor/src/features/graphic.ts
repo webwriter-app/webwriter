@@ -221,6 +221,29 @@ const isPolygonShape = (shape: Element | null) => {
 
 const shapeGeometry = (shape: Element) => graphicShapeGeometry(shape) ?? shape as SVGGraphicsElement
 
+const vertexPresetTypes = new Set([
+  "square-rectangle",
+  "right-triangle", "pentagon", "heptagon", "octagon", "decagon", "dodecagon",
+])
+
+/** Reuse native path editing for vertex-editable presets. Other presets
+ * retain their parameter handles; edited polygons remain ordinary SVG paths. */
+function editableShapePath(shape: Element) {
+  const geometry = shapeGeometry(shape)
+  const preset = readGraphicPreset(geometry)
+  if(preset) {
+    if(!vertexPresetTypes.has(preset.type)) return null
+    if(preset.type === "square-rectangle") {
+      if(preset.values.some(value => Math.abs(value) > 1e-6)) return null
+      const {x, y, width, height} = preset.bounds
+      return {kind: "lines" as const, closed: true, points: [
+        {x, y}, {x: x + width, y}, {x: x + width, y: y + height}, {x, y: y + height},
+      ]}
+    }
+  }
+  return graphicPathGeometry(geometry)
+}
+
 const graphicViewBox = (graphic: SVGSVGElement) => {
   const values = (graphic.getAttribute("viewBox") ?? "0 0 1600 900").match(new RegExp(numberPattern, "g"))?.map(Number) ?? []
   const [x = 0, y = 0, width = 1600, height = 900] = values
@@ -510,13 +533,13 @@ const visualBounds = (shape: Element) => {
   ].map(point => rotateAround(point, shapeCenter(shape), rotationOf(shape))))
 }
 
-const shapePoints = (shape: Element) => graphicShapeType(shape) === "freehand" ? graphicStrokePoints(shapeGeometry(shape))!
+const shapePoints = (shape: Element): Point[] => editableShapePath(shape)?.points ?? (graphicShapeType(shape) === "freehand" ? graphicStrokePoints(shapeGeometry(shape))!
   : ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") ? graphicPathGeometry(shapeGeometry(shape))!.points
   : isPolygonShape(shape) || graphicShapeType(shape) === "connector" ? parsePoints(shapeGeometry(shape))
   : graphicShapeType(shape) === "line" ? [
     {x: attributeNumber(shapeGeometry(shape), "x1"), y: attributeNumber(shapeGeometry(shape), "y1")},
     {x: attributeNumber(shapeGeometry(shape), "x2"), y: attributeNumber(shapeGeometry(shape), "y2")},
-  ] : []
+  ] : [])
 
 const shapePorts = (shape: Element): Record<PortDirection, Point> => {
   const bounds = shapeBounds(shape)
@@ -1383,7 +1406,7 @@ export class GraphicFeature extends EditorFeature {
       if(movement) {
         this.#claimKeyboardEvent(event)
         const active = this.#activePathPoint
-        const path = active && this.selectedShapes.includes(active.shape) ? graphicPathGeometry(shapeGeometry(active.shape)) : null
+        const path = active && this.selectedShapes.includes(active.shape) ? editableShapePath(active.shape) : null
         if(active && path?.points[active.index] && !this.#isLocked(active.shape)) {
           const point = path.points[active.index]
           const points = movePathPoint(path.points, active.index, {x: point.x + movement.x, y: point.y + movement.y}, path.kind === "curves", path.closed, event.altKey)
@@ -3139,7 +3162,7 @@ export class GraphicFeature extends EditorFeature {
       return {}
     }
     if(interaction.kind === "roundness") {
-      const radius = Math.max(0, Math.min(interaction.bounds.height / 2, point.x - interaction.bounds.x))
+      const radius = Math.max(0, Math.min(interaction.bounds.width / 2, point.x - interaction.bounds.x))
       geometry.setAttribute("rx", cleanNumber(radius))
       return {}
     }
@@ -3182,7 +3205,7 @@ export class GraphicFeature extends EditorFeature {
       return {}
     }
     if(interaction.kind === "path-point" && interaction.vertex !== undefined) {
-      const path = graphicPathGeometry(geometry)
+      const path = editableShapePath(shape)
       if(!path) return {}
       const index = interaction.vertex
       const origin = interaction.points[index]
@@ -3192,6 +3215,7 @@ export class GraphicFeature extends EditorFeature {
       const points = movePathPoint(interaction.points, index, snapped.point, path.kind === "curves", path.closed, latest.altKey)
       geometry.setAttribute("d", editablePath(points, path.kind, path.closed))
       setRotation(shape, interaction.rotation)
+      syncShapeText(shape)
       return snapped.guides
     }
     if(interaction.kind === "vertex" && interaction.vertex !== undefined) {
@@ -4137,7 +4161,7 @@ export class GraphicFeature extends EditorFeature {
   #ensureSpecificHandles(overlay: HTMLElement, shape: Element | null) {
     const container = overlay.querySelector<HTMLElement>(".◆graphic-specific-handles")!
     const type = graphicShapeType(shape)
-    const path = shape && graphicPathGeometry(shapeGeometry(shape))
+    const path = shape && editableShapePath(shape)
     const joined = path && path.closed && path.points[0].x === path.points.at(-1)!.x && path.points[0].y === path.points.at(-1)!.y
     const signature = (path ? `${type}:${path.points.length}:${joined}`
       : shape && isPolygonShape(shape) ? `${type}:${parsePoints(shapeGeometry(shape)).length}` : type ?? "")
@@ -4147,7 +4171,7 @@ export class GraphicFeature extends EditorFeature {
     container.replaceChildren()
     if(!shape) return
     const preset = readGraphicPreset(shapeGeometry(shape))
-    if(preset) {
+    if(preset && !path) {
       container.append(...graphicPresetHandles(preset).map(handle => this.#createHandle(
         handle.name, `Adjust ${handle.label.toLowerCase()}`, "graphic-affordance graphic-affordance-adjustment",
       )))
@@ -4173,7 +4197,7 @@ export class GraphicFeature extends EditorFeature {
         this.#createHandle("connector-end", "Reconnect end", "graphic-affordance graphic-affordance-connector-end"),
       )
     }
-    else if(path && (type === "polyline" || type === "bezier")) {
+    else if(path) {
       const tangents = document.createElementNS(SVG_NAMESPACE, "svg")
       tangents.setAttribute("part", "graphic-outline")
       tangents.classList.add("◆graphic-tangents")
@@ -4181,7 +4205,8 @@ export class GraphicFeature extends EditorFeature {
       path.points.forEach((_, index) => {
         if(path.kind === "curves" && joined && index === path.points.length - 1) return
         const anchor = path.kind === "lines" || index % 3 === 0
-        container.append(this.#createHandle(`path-point-${index}`, anchor ? `Move vertex ${path.kind === "lines" ? index + 1 : index / 3 + 1}` : `Adjust curve control ${index}`, anchor ? "graphic-anchor" : "graphic-control-point"))
+        const part = path.kind === "lines" && path.closed ? "graphic-affordance graphic-affordance-vertex" : anchor ? "graphic-anchor" : "graphic-control-point"
+        container.append(this.#createHandle(`path-point-${index}`, anchor ? `Move vertex ${path.kind === "lines" ? index + 1 : index / 3 + 1}` : `Adjust curve control ${index}`, part))
       })
     }
     else if(isPolygonShape(shape)) {
@@ -4205,7 +4230,8 @@ export class GraphicFeature extends EditorFeature {
       if(handle) this.#positionHandle(handle, toClient(point))
     }
     const preset = readGraphicPreset(geometry)
-    if(preset) graphicPresetHandles(preset).forEach(handle => position(handle.name, handle.point))
+    const path = editableShapePath(shape)
+    if(preset && !path) graphicPresetHandles(preset).forEach(handle => position(handle.name, handle.point))
     else if(type === "rectangle") position("roundness", {x: bounds.x + attributeNumber(geometry, "rx"), y: bounds.y})
     else if(type === "ellipse") {
       const center = shapeCenter(shape)
@@ -4221,9 +4247,7 @@ export class GraphicFeature extends EditorFeature {
       if(points[0]) position("connector-start", points[0])
       if(points.length > 1) position("connector-end", points.at(-1)!)
     }
-    else if(type === "polyline" || type === "bezier") {
-      const path = graphicPathGeometry(geometry)
-      if(!path) return
+    else if(path) {
       path.points.forEach((point, index) => {
         position(`path-point-${index}`, point)
         const handle = overlay.querySelector(`[data-graphic-handle="path-point-${index}"]`)
@@ -4522,7 +4546,7 @@ export class GraphicFeature extends EditorFeature {
     else if(name === "font-size" && text) text.setAttribute(name, cleanNumber(Math.max(1, numeric)))
     else if(name === "rotation" && graphicShapeType(shape) !== "connector") setRotation(shape, numeric)
     else if(name === "corner-radius" && graphicShapeType(shape) === "rectangle") {
-      geometry.setAttribute("rx", cleanNumber(Math.max(0, Math.min(shapeBounds(shape).height / 2, numeric))))
+      geometry.setAttribute("rx", cleanNumber(Math.max(0, Math.min(shapeBounds(shape).width / 2, numeric))))
     }
     else if(name === "inset" && graphicShapeType(shape) === "hexagon") {
       setPoints(geometry, hexagonPoints(shapeBounds(shape), numeric))

@@ -8,7 +8,7 @@ const shapePageIcons = {Basic: "Geometry", Advanced: "ArrowBigRight", Flowchart:
 const brushSizes = [1, 2, 4, 8]
 type CustomBrush = Pick<Required<GraphicShapePaint>, "stroke" | "stroke-width">
 const shapePage = (category: string) => category === "Flowchart" ? "Flowchart"
-  : ["Lines", "Rectangles", "Basic shapes"].includes(category) ? "Basic" : "Advanced"
+  : ["Lines", "Triangles", "Rectangles", "Basic shapes"].includes(category) ? "Basic" : "Advanced"
 
 /** Insertion paint belongs to the keyboard, independently of selected shapes. */
 export class ShapeKeyboard extends LitElement {

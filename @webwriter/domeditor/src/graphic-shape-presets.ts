@@ -26,7 +26,16 @@ const polygon = (points: number[][]) => `M ${points.map(p => `${p[0]} ${p[1]}`).
 const ellipse = (cx = 50, cy = 50, rx = 50, ry = 50) => `M ${cx-rx} ${cy} C ${cx-rx} ${cy-ry*.5523} ${cx-rx*.5523} ${cy-ry} ${cx} ${cy-ry} C ${cx+rx*.5523} ${cy-ry} ${cx+rx} ${cy-ry*.5523} ${cx+rx} ${cy} C ${cx+rx} ${cy+ry*.5523} ${cx+rx*.5523} ${cy+ry} ${cx} ${cy+ry} C ${cx-rx*.5523} ${cy+ry} ${cx-rx} ${cy+ry*.5523} ${cx-rx} ${cy} Z`
 const rect = (r = 0, inset = 0) => { const q = r; return `M ${inset+q} ${inset} L ${100-inset-q} ${inset} Q ${100-inset} ${inset} ${100-inset} ${inset+q} L ${100-inset} ${100-inset-q} Q ${100-inset} ${100-inset} ${100-inset-q} ${100-inset} L ${inset+q} ${100-inset} Q ${inset} ${100-inset} ${inset} ${100-inset-q} L ${inset} ${inset+q} Q ${inset} ${inset} ${inset+q} ${inset} Z` }
 const base = (label: string, category: string, draw: (values: number[]) => string, adjustments: GraphicShapeAdjustment[]) => ({label, category, adjustments, draw})
-const adjR = (label = "Corner radius") => [a("radius", label, 12, 0, 45)]
+const cornerControl = (name: string, corner: "top-left" | "top-right" | "bottom-right" | "bottom-left", index: number, value: number): GraphicShapeAdjustment => ({
+  name, label: `${corner.replace("-", " ")} corner`, default: value, min: 0, max: 50, axis: "x",
+  point: values => ({x: corner.endsWith("right") ? 100 - values[index] : values[index], y: corner.startsWith("bottom") ? 100 : 0}),
+})
+const roundedCorners = ([tl = 12, tr = tl, br = tl, bl = tl]: number[]) =>
+  `M ${tl} 0 L ${100-tr} 0 Q 100 0 100 ${tr} L 100 ${100-br} Q 100 100 ${100-br} 100 L ${bl} 100 Q 0 100 0 ${100-bl} L 0 ${tl} Q 0 0 ${tl} 0 Z`
+const roundedCornerControls = (value: number) => [
+  cornerControl("radius", "top-left", 0, value), cornerControl("radius-top-right", "top-right", 1, value),
+  cornerControl("radius-bottom-right", "bottom-right", 2, value), cornerControl("radius-bottom-left", "bottom-left", 3, value),
+]
 const star = (n: number, inner = 38) => (values: number[]) => { const ri = v(values, 0, inner); const p: number[][] = []; for (let i=0; i<n*2; i++) { const r = i%2 ? ri : 48; const t = -Math.PI/2 + i*Math.PI/n; p.push([50+r*Math.cos(t), 50+r*Math.sin(t)]) } return polygon(p) }
 
 
@@ -42,6 +51,14 @@ const turn = (path: string, quarters: number) => {
   }
   let i = 0
   return path.replace(numbers, () => String(values[i++]))
+}
+
+const prohibitedPath = (radius: number) => {
+  // Two equal circular segments leave a centered diagonal bar between them.
+  const q = Math.SQRT1_2, k = 4 / 3 * Math.tan((Math.PI / 4 + Math.atan2(.6, .8)) / 4)
+  const point = (x: number, y: number) => `${50 + radius * x} ${50 + radius * y}`
+  const hole = `M ${point(-.8, -.6)} C ${point(-.8 - .6*k, -.6 + .8*k)} ${point(-q*(1+k), q*(1-k))} ${point(-q, q)} C ${point(-q*(1-k), q*(1+k))} ${point(.6 - .8*k, .8 + .6*k)} ${point(.6, .8)} Z`
+  return `${ellipse()} ${hole} ${turn(hole, 2)}`
 }
 
 const blockArrow = (label: string, direction: number) => base(label, "Block arrows", ([d]) => turn(polygon([
@@ -104,22 +121,22 @@ export const graphicShapePresets = {
   "curved-connector-arrow": {...base("Curved connector arrow", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100 M 85 85 L 100 100 L 82 100`, [poi("bend", "Bend", 80, 10, 90, p => ({x:p,y:0}))]), open:true},
   "curved-connector-double-arrow": {...base("Curved connector double arrow", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100 M 85 85 L 100 100 L 82 100 M 15 15 L 0 0 L 18 0`, [poi("bend", "Bend", 80, 10, 90, p => ({x:p,y:0}))]), open:true},
   "curve": {...base("Curve", "Lines", ([p]) => `M 0 70 C 20 0 ${p} 0 50 50 C ${100-p} 100 80 100 100 70`, [poi("curve", "Curve control", 40, 10, 60, p => ({x:p,y:0}))]), open:true},
-  "square-rectangle": base("Square rectangle", "Rectangles", ([r]) => rect(r), [poi("radius", "Corner radius", 0, 0, 45, p => ({x:p,y:0}))]),
-  "rounded-rectangle": base("Rounded rectangle", "Rectangles", values => rect(v(values,0,12)), adjR()),
-  "snip-one": base("Snip one corner", "Rectangles", values => polygon([[v(values,0,15),0],[100,0],[100,100],[0,100],[0,v(values,0,15)]]), [a("snip", "Snip",15,0,45)]),
-  "snip-same-side": base("Snip same side", "Rectangles", values => polygon([[v(values,0,15),0],[100-v(values,0,15),0],[100, v(values,0,15)],[100,100],[0,100],[0,v(values,0,15)]]), [a("snip", "Snip",15,0,45)]),
-  "snip-diagonal": base("Snip diagonal", "Rectangles", values => polygon([[v(values,0,15),0],[100,0],[100,100-v(values,0,15)],[100-v(values,0,15),100],[0,100],[0,v(values,0,15)]]), [a("snip", "Snip",15,0,45)]),
-  "snip-round": base("Snip round", "Rectangles", values => `M ${v(values,0,15)} 0 L 100 0 L 100 ${100-v(values,0,15)} Q 100 100 ${100-v(values,0,15)} 100 L 0 100 L 0 ${v(values,0,15)} Z`, [a("snip", "Snip",15,0,45)]),
-  "round-one": base("Round one corner", "Rectangles", values => `M ${v(values,0,20)} 0 L 100 0 L 100 100 L 0 100 L 0 ${v(values,0,20)} Q 0 0 ${v(values,0,20)} 0 Z`, adjR()),
-  "round-same-side": base("Round same side", "Rectangles", values => `M ${v(values,0,20)} 0 L ${100-v(values,0,20)} 0 Q 100 0 100 ${v(values,0,20)} L 100 100 L 0 100 L 0 ${v(values,0,20)} Q 0 0 ${v(values,0,20)} 0 Z`, adjR()),
-  "round-diagonal": base("Round diagonal", "Rectangles", values => `M ${v(values,0,20)} 0 L 100 0 L 100 ${100-v(values,0,20)} Q 100 100 ${100-v(values,0,20)} 100 L 0 100 L 0 ${v(values,0,20)} Q 0 0 ${v(values,0,20)} 0 Z`, adjR()),
+  "square-rectangle": base("Square rectangle", "Rectangles", roundedCorners, roundedCornerControls(0)),
+  "rounded-rectangle": base("Rounded rectangle", "Rectangles", roundedCorners, roundedCornerControls(12)),
+  "snip-one": base("Snip one corner", "Rectangles", ([tl = 15]) => polygon([[tl,0],[100,0],[100,100],[0,100],[0,tl]]), [cornerControl("snip", "top-left", 0, 15)]),
+  "snip-same-side": base("Snip same side", "Rectangles", ([tl = 15, tr = tl]) => polygon([[tl,0],[100-tr,0],[100,tr],[100,100],[0,100],[0,tl]]), [cornerControl("snip", "top-left", 0, 15), cornerControl("snip-top-right", "top-right", 1, 15)]),
+  "snip-diagonal": base("Snip diagonal", "Rectangles", ([tl = 15, br = tl]) => polygon([[tl,0],[100,0],[100,100-br],[100-br,100],[0,100],[0,tl]]), [cornerControl("snip", "top-left", 0, 15), cornerControl("snip-bottom-right", "bottom-right", 1, 15)]),
+  "snip-round": base("Snip round", "Rectangles", ([tl = 15, br = tl]) => `M ${tl} 0 L 100 0 L 100 ${100-br} Q 100 100 ${100-br} 100 L 0 100 L 0 ${tl} Z`, [cornerControl("snip", "top-left", 0, 15), cornerControl("radius-bottom-right", "bottom-right", 1, 15)]),
+  "round-one": base("Round one corner", "Rectangles", ([tl = 12]) => `M ${tl} 0 L 100 0 L 100 100 L 0 100 L 0 ${tl} Q 0 0 ${tl} 0 Z`, [cornerControl("radius", "top-left", 0, 12)]),
+  "round-same-side": base("Round same side", "Rectangles", ([tl = 12, tr = tl]) => `M ${tl} 0 L ${100-tr} 0 Q 100 0 100 ${tr} L 100 100 L 0 100 L 0 ${tl} Q 0 0 ${tl} 0 Z`, [cornerControl("radius", "top-left", 0, 12), cornerControl("radius-top-right", "top-right", 1, 12)]),
+  "round-diagonal": base("Round diagonal", "Rectangles", ([tl = 12, br = tl]) => `M ${tl} 0 L 100 0 L 100 ${100-br} Q 100 100 ${100-br} 100 L 0 100 L 0 ${tl} Q 0 0 ${tl} 0 Z`, [cornerControl("radius", "top-left", 0, 12), cornerControl("radius-bottom-right", "bottom-right", 1, 12)]),
   "text-box": base("Text box", "Basic shapes", values => rect(v(values,0,4), 3), [a("radius", "Radius",4,0,15)]),
   "right-triangle": base("Right triangle", "Basic shapes", ([p]) => polygon([[p,0],[100,100],[0,100]]), [poi("apex", "Apex position", 0, 0, 100, p => ({x:p,y:0}))]),
-  "parallelogram": base("Parallelogram", "Basic shapes", values => { const d=v(values,0,18); return polygon([[d,0],[100,0],[100-d,100],[0,100]]) }, [a("slant", "Slant",18,0,45)]),
-  "trapezoid": base("Trapezoid", "Basic shapes", values => { const d=v(values,0,25); return polygon([[d,0],[100-d,0],[100,100],[0,100]]) }, [a("top-inset", "Top inset",25,0,45)]),
+  "parallelogram": base("Parallelogram", "Basic shapes", values => { const d=v(values,0,18); return polygon([[d,0],[100,0],[100-d,100],[0,100]]) }, [a("slant", "Slant",18,0,50)]),
+  "trapezoid": base("Trapezoid", "Basic shapes", values => { const d=v(values,0,25); return polygon([[d,0],[100-d,0],[100,100],[0,100]]) }, [a("top-inset", "Top inset",25,0,50)]),
   "pentagon": base("Pentagon", "Basic shapes", values => { const d=v(values,0,38); return polygon([[50,0],[100,d],[82,100],[18,100],[0,d]]) }, [poi("shoulder", "Shoulder height",38,15,48,p => ({x:100,y:p}),"y")]),
   "heptagon": base("Heptagon", "Basic shapes", values => { const d=v(values,0,19); return polygon([[50,0],[89,d],[98,62],[72,100],[28,100],[2,62],[11,d]]) }, [poi("shoulder", "Shoulder height",19,8,35,p => ({x:89,y:p}),"y")]),
-  "octagon": base("Octagon", "Basic shapes", values => { const d=v(values,0,25); return polygon([[d,0],[100-d,0],[100, d],[100,100-d],[100-d,100],[d,100],[0,100-d],[0,d]]) }, [a("corner", "Corner",25,5,45)]),
+  "octagon": base("Octagon", "Basic shapes", values => { const d=v(values,0,25); return polygon([[d,0],[100-d,0],[100, d],[100,100-d],[100-d,100],[d,100],[0,100-d],[0,d]]) }, [a("corner", "Corner",25,0,50)]),
   "decagon": base("Decagon", "Basic shapes", values => { const d=v(values,0,7); return polygon([[50,0],[79,d],[98,35],[98,65],[79,93],[50,100],[21,93],[2,65],[2,35],[21,d]]) }, [poi("shoulder", "Shoulder height",7,0,20,p => ({x:79,y:p}),"y")]),
   "dodecagon": base("Dodecagon", "Basic shapes", values => { const d=v(values,0,13); return polygon([[37,0],[63,0],[87,d],[100,37],[100,63],[87,87],[63,100],[37,100],[13,87],[0,63],[0,37],[13,d]]) }, [poi("shoulder", "Shoulder height",13,2,25,p => ({x:87,y:p}),"y")]),
   "pie": base("Pie", "Basic shapes", ([p]) => `M 50 50 L 100 ${p} C 100 78 78 100 50 100 C 22 100 0 78 0 50 C 0 22 22 0 50 0 L 50 50 Z`, [poi("sweep", "Sector edge", 50, 5, 75, p => ({x:100,y:p}), "y")]),
@@ -130,11 +147,11 @@ export const graphicShapePresets = {
   "corner": base("L corner", "Basic shapes", ([d]) => polygon([[0,0],[d,0],[d,100-d],[100,100-d],[100,100],[0,100]]), [poi("thickness", "Arm thickness", 35, 5, 65, p => ({x:p,y:0}))]),
   "diagonal-stripe": base("Diagonal stripe", "Basic shapes", ([d]) => polygon([[100-d,0],[100,0],[0,100],[0,100-d]]), [poi("width", "Stripe width", 40, 5, 80, p => ({x:100-p,y:0}))]),
   "plus": base("Plus", "Basic shapes", values => { const d=v(values,0,30); return polygon([[d,0],[100-d,0],[100-d,d],[100,d],[100,100-d],[100-d,100-d],[100-d,100],[d,100],[d,100-d],[0,100-d],[0,d],[d,d]]) }, [a("arm", "Arm width",30,5,45)]),
-  "plaque": base("Plaque", "Basic shapes", ([r]) => `M ${r} 0 L ${100-r} 0 Q ${100-r} ${r} 100 ${r} L 100 ${100-r} Q ${100-r} ${100-r} ${100-r} 100 L ${r} 100 Q ${r} ${100-r} 0 ${100-r} L 0 ${r} Q ${r} ${r} ${r} 0 Z`, [poi("radius", "Corner cutout", 18, 3, 40, p => ({x:p,y:0}))]),
+  "plaque": base("Plaque", "Basic shapes", ([r]) => `M ${r} 0 L ${100-r} 0 Q ${100-r} ${r} 100 ${r} L 100 ${100-r} Q ${100-r} ${100-r} ${100-r} 100 L ${r} 100 Q ${r} ${100-r} 0 ${100-r} L 0 ${r} Q ${r} ${r} ${r} 0 Z`, [poi("radius", "Corner cutout", 18, 0, 50, p => ({x:p,y:0}))]),
   "cylinder": base("Cylinder", "Basic shapes", values => { const d=v(values,0,16); return `M 5 ${d+2} C 5 2 95 2 95 ${d+2} L 95 ${100-d} C 95 98 5 98 5 ${100-d} Z M 5 ${d+2} C 5 ${d*2+2} 95 ${d*2+2} 95 ${d+2}` }, [poi("depth", "Cap depth",16,4,35,p => ({x:5,y:p+2}),"y")]),
-  "cube": base("Cube", "Basic shapes", ([d]) => `M ${d} 0 L 100 0 L 100 ${100-d} L ${100-d} 100 L 0 100 L 0 ${d} Z M 0 ${d} L ${100-d} ${d} L 100 0 M ${100-d} ${d} L ${100-d} 100`, [poi("depth", "Depth", 25, 5, 45, p => ({x:p,y:0}))]),
+  "cube": base("Cube", "Basic shapes", ([d]) => `M ${d} 0 L 100 0 L 100 ${100-d} L ${100-d} 100 L 0 100 L 0 ${d} Z M 0 ${d} L ${100-d} ${d} L 100 0 M ${100-d} ${d} L ${100-d} 100`, [poi("depth", "Depth", 25, 0, 50, p => ({x:p,y:0}))]),
   "donut": base("Donut", "Basic shapes", values => `${ellipse()} ${ellipse(50,50,v(values,0,25),v(values,0,25))}`, [poi("hole", "Hole radius",25,5,45,p => ({x:50+p,y:50}))]),
-  "prohibited": base("No / prohibited", "Basic shapes", ([r]) => `${ellipse()} M ${50-r*.7} ${50-r*.7} C ${50-r*1.5} ${50+r*.2} ${50-r*.2} ${50+r*1.5} ${50+r*.7} ${50+r*.7} Z M ${50+r*.7} ${50+r*.7-12} C ${50+r*1.5} ${50-r*.2} ${50+r*.2} ${50-r*1.5} ${50-r*.7+12} ${50-r*.7} Z`, [poi("hole", "Inner radius", 35, 20, 40, p => ({x:50-p*.7,y:50-p*.7}))]),
+  "prohibited": base("No / prohibited", "Basic shapes", ([r]) => prohibitedPath(r), [poi("hole", "Inner radius", 35, 20, 40, p => ({x:50-p*Math.SQRT1_2,y:50+p*Math.SQRT1_2}))]),
   "block-arc": base("Block arc", "Basic shapes", ([r]) => `M 0 100 C 0 -33.333 100 -33.333 100 100 L ${50+r} 100 C ${50+r} ${100-r*2.66666} ${50-r} ${100-r*2.66666} ${50-r} 100 Z`, [poi("inner", "Inner radius", 30, 8, 43, p => ({x:50+p,y:100}))]),
   "folded-corner": base("Folded corner", "Basic shapes", ([d]) => `M 0 0 L 100 0 L 100 ${100-d} L ${100-d} 100 L 0 100 Z M 100 ${100-d} L ${100-d} ${100-d} L ${100-d} 100`, [poi("fold", "Fold size", 18, 5, 45, p => ({x:100-p,y:100}))]),
   "heart": base("Heart", "Basic shapes", values => { const d=v(values,0,22); return `M 50 90 C 42 80 5 55 5 28 C 5 5 35 0 50 ${d} C 65 0 95 5 95 28 C 95 55 58 80 50 90 Z` }, [poi("cleft", "Cleft depth",22,5,40,p => ({x:50,y:p}),"y")]),
@@ -181,16 +198,16 @@ export const graphicShapePresets = {
   "divide": base("Divide", "Equation shapes", ([r]) => `M 0 40 L 100 40 L 100 60 L 0 60 Z ${ellipse(50,15,r,r)} ${ellipse(50,85,r,r)}`, [poi("dot", "Dot radius", 10, 4, 14, p => ({x:50+p,y:15}))]),
   "equal": base("Equal", "Equation shapes", ([t]) => `M 0 15 L 100 15 L 100 ${15+t} L 0 ${15+t} Z M 0 ${85-t} L 100 ${85-t} L 100 85 L 0 85 Z`, [poi("thickness", "Bar thickness", 20, 8, 30, p => ({x:50,y:15+p}), "y")]),
   "not-equal": {...base("Not equal", "Equation shapes", ([s]) => `M 0 25 L ${50-s} 25 L ${65-s} 0 L 80 0 L 65 25 L 100 25 L 100 42 L 55 42 L 45 58 L 100 58 L 100 75 L 35 75 L 20 100 L ${5+s} 100 L ${20+s} 75 L 0 75 L 0 58 L ${30+s} 58 L ${40+s} 42 L 0 42 Z`, [poi("slash", "Slash width", 0, -5, 5, p => ({x:50-p,y:25}))]),},
-  "process": base("Process", "Flowchart", ([r]) => rect(r), [poi("roundness", "Corner roundness", 0, 0, 12, p => ({x:p,y:0}))]),
-  "alternate-process": base("Alternate process", "Flowchart", ([r]) => rect(r), [poi("radius", "Corner radius", 15, 0, 45, p => ({x:p,y:0}))]),
+  "process": base("Process", "Flowchart", ([r]) => rect(r), [poi("roundness", "Corner roundness", 0, 0, 50, p => ({x:p,y:0}))]),
+  "alternate-process": base("Alternate process", "Flowchart", ([r]) => rect(r), [poi("radius", "Corner radius", 15, 0, 50, p => ({x:p,y:0}))]),
   "decision": base("Decision", "Flowchart", ([p]) => polygon([[p,0],[100,50],[p,100],[0,50]]), [poi("apex", "Apex position", 50, 15, 85, p => ({x:p,y:0}))]),
-  "data": base("Data", "Flowchart", ([s]) => polygon([[s,0],[100,0],[100-s,100],[0,100]]), [poi("slant", "Slant", 20, 0, 45, p => ({x:p,y:0}))]),
+  "data": base("Data", "Flowchart", ([s]) => polygon([[s,0],[100,0],[100-s,100],[0,100]]), [poi("slant", "Slant", 20, 0, 50, p => ({x:p,y:0}))]),
   "predefined-process": base("Predefined process", "Flowchart", ([m]) => `${rect()} M ${m} 0 L ${m} 100 M ${100-m} 0 L ${100-m} 100`, [poi("margin", "Side margin", 12, 3, 35, p => ({x:p,y:0}))]),
   "internal-storage": base("Internal storage", "Flowchart", ([m]) => `${rect()} M ${m} 0 L ${m} 100 M 0 ${m} L 100 ${m}`, [poi("margin", "Header margin", 15, 5, 40, p => ({x:p,y:p}))]),
   "document": base("Document", "Flowchart", ([d]) => `M 0 0 L 100 0 L 100 85 C 65 ${85-d} 35 ${85+d} 0 85 Z`, [poi("wave", "Wave depth", 20, 3, 35, p => ({x:35,y:85+p}), "y")]),
   "multidocument": base("Multiple documents", "Flowchart", ([d]) => `M 0 15 L 85 15 L 85 85 C 55 ${85-d} 30 ${85+d} 0 85 Z M 8 8 L 93 8 L 93 78 M 15 0 L 100 0 L 100 70`, [poi("wave", "Wave depth", 15, 3, 30, p => ({x:30,y:85+p}), "y")]),
   "terminator": base("Terminator", "Flowchart", ([r]) => `M ${r} 25 L ${100-r} 25 C 100 25 100 75 ${100-r} 75 L ${r} 75 C 0 75 0 25 ${r} 25 Z`, [poi("roundness", "End roundness", 25, 5, 45, p => ({x:p,y:25}))]),
-  "preparation": base("Preparation", "Flowchart", ([p]) => polygon([[p,0],[100-p,0],[100,50],[100-p,100],[p,100],[0,50]]), [poi("point", "Point depth", 22, 5, 40, p => ({x:p,y:0}))]),
+  "preparation": base("Preparation", "Flowchart", ([p]) => polygon([[p,0],[100-p,0],[100,50],[100-p,100],[p,100],[0,50]]), [poi("point", "Point depth", 22, 0, 50, p => ({x:p,y:0}))]),
   "manual-input": base("Manual input", "Flowchart", ([s]) => polygon([[0,s],[100,0],[100,100],[0,100]]), [poi("slope", "Top slope", 22, 0, 60, p => ({x:0,y:p}), "y")]),
   "manual-operation": base("Manual operation", "Flowchart", ([s]) => polygon([[0,0],[100,0],[100-s,100],[s,100]]), [poi("inset", "Bottom inset", 20, 0, 45, p => ({x:p,y:100}))]),
   "flowchart-connector": base("Connector", "Flowchart", ([r]) => roundFlow(r), [poi("curvature", "Curvature", 27.615, 15, 38, p => ({x:50+p,y:0}))]),

@@ -1111,6 +1111,189 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
+  it.each([[300, 100], [100, 300]])("moves a native rectangle's rounding POI from its left corner to its top midpoint at %s × %s", async (width, height) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const rectangle = graphic.querySelector("rect")!
+    for(const [name, value] of Object.entries({x: 100, y: 100, width, height})) rectangle.setAttribute(name, String(value))
+    clickShape(rectangle)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const handle = editor.appendix.querySelector('[data-graphic-handle="roundness"]')!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: 112, clientY: 100}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 100 + width, clientY: 100}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    await mutationsDelivered()
+    expect(rectangle).toHaveAttribute("rx", String(width / 2))
+    expect((handle as HTMLElement).style.left).toBe(`${100 + width / 2}px`)
+    editor.doc.undo()
+    expect(rectangle).toHaveAttribute("rx", "12")
+    editor.doc.redo()
+    expect(rectangle).toHaveAttribute("rx", String(width / 2))
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "corner-radius", value: "-20"})
+    expect(rectangle).toHaveAttribute("rx", "0")
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "corner-radius", value: "1000"})
+    expect(rectangle).toHaveAttribute("rx", String(width / 2))
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each([
+    ["square-rectangle", 4],
+    ["right-triangle", 3], ["pentagon", 5],
+    ["heptagon", 7], ["octagon", 8], ["decagon", 10], ["dodecagon", 12],
+  ] as const)("gives each %s vertex an independent POI", async (type, count) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: type})
+    const shape = graphic.querySelector("path")!
+    const name = shape.getAttribute("aria-label")
+    const container = () => editor.appendix.querySelector('.◆graphic-specific-handles')!
+    expect(container().querySelectorAll('[data-graphic-handle^="adjust-"]')).toHaveLength(0)
+    expect(container().querySelectorAll('[data-graphic-handle^="path-point-"]')).toHaveLength(count)
+    for(let index = 0; index < count; index++) {
+      const handles = [...container().querySelectorAll<HTMLElement>('[data-graphic-handle^="path-point-"]')]
+      const before = handles.map(handle => ({x: parseFloat(handle.style.left), y: parseFloat(handle.style.top)}))
+      expect(handles[index].getAttribute("part")).toContain("graphic-affordance")
+      // Distinct moves avoid turning the square into a recognized parallelogram.
+      const dx = 11 * (index + 1), dy = 17 * (index + 1)
+      handles[index].dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: before[index].x, clientY: before[index].y}))
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, altKey: true, clientX: before[index].x + dx, clientY: before[index].y + dy}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+      const points = graphicPathGeometry(shape)!.points
+      expect(points).toHaveLength(count)
+      points.forEach((point, i) => {
+        expect(point.x).toBeCloseTo(before[i].x + (i === index ? dx : 0), 4)
+        expect(point.y).toBeCloseTo(before[i].y + (i === index ? dy : 0), 4)
+      })
+      expect(graphic.querySelector("path")).toBe(shape)
+      expect(shape).toHaveAttribute("aria-label", name!)
+      await mutationsDelivered()
+    }
+    const source = new DOMParser().parseFromString(editor.toHTML(true), "text/html")
+    expect(graphicPathGeometry(source.querySelector("path")!)!.points).toHaveLength(count)
+    expect(source.body.innerHTML).not.toContain("◆")
+  })
+
+  it.each([
+    ["rounded-rectangle", 4], ["snip-one", 1], ["snip-same-side", 2], ["snip-diagonal", 2],
+    ["snip-round", 2], ["round-one", 1], ["round-same-side", 2], ["round-diagonal", 2],
+  ] as const)("gives %s one independent POI per rounded or slanted corner", async (type, count) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: type})
+    const shape = graphic.querySelector("path")!
+    const container = () => editor.appendix.querySelector('.◆graphic-specific-handles')!
+    expect(container().querySelectorAll('[data-graphic-handle]')).toHaveLength(count)
+    expect(container().querySelector('[data-graphic-handle^="path-point-"]')).toBeNull()
+    for(let index = 0; index < count; index++) {
+      await mutationsDelivered()
+      editor.doc.stopCapturing()
+      const before = readGraphicPreset(shape)!, original = shape.getAttribute("d")!
+      const adjustment = before.definition.adjustments[index]
+      const values = [...before.values]; values[index] = 30 + index
+      const point = adjustment.point(values)
+      const handle = container().querySelector<HTMLElement>(`[data-graphic-handle="adjust-${adjustment.name}"]`)!
+      handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: parseFloat(handle.style.left), clientY: parseFloat(handle.style.top)}))
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: before.bounds.x + point.x / 100 * before.bounds.width, clientY: before.bounds.y + point.y / 100 * before.bounds.height}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+      await mutationsDelivered()
+      const after = readGraphicPreset(shape)!, edited = shape.getAttribute("d")!
+      expect(after.type).toBe(type)
+      after.values.forEach((value, i) => expect(value).toBeCloseTo(values[i], 3))
+      expect(container().querySelectorAll('[data-graphic-handle]')).toHaveLength(count)
+      editor.doc.undo()
+      expect(shape).toHaveAttribute("d", original)
+      editor.doc.redo()
+      expect(shape).toHaveAttribute("d", edited)
+      expect(graphic.querySelector("path")).toBe(shape)
+    }
+    const source = new DOMParser().parseFromString(editor.toHTML(true), "text/html")
+    const reloaded = readGraphicPreset(source.querySelector("path")!)!
+    reloaded.values.forEach((value, i) => expect(value).toBeCloseTo(30 + i, 3))
+    expect(source.body.innerHTML).not.toContain("◆")
+  })
+
+  it.each(["parallelogram", "trapezoid"] as const)("adjusts %s slant with one POI from the left corner to the top midpoint", async type => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: type})
+    const shape = graphic.querySelector("path")!, {bounds} = readGraphicPreset(shape)!
+    const name = type === "parallelogram" ? "adjust-slant" : "adjust-top-inset"
+    for(const [input, expected] of [[100, 50], [-20, 0], [25, 25]]) {
+      await mutationsDelivered()
+      editor.doc.stopCapturing()
+      const original = shape.getAttribute("d")!
+      const container = editor.appendix.querySelector('.◆graphic-specific-handles')!
+      expect(container.querySelectorAll('[data-graphic-handle]')).toHaveLength(1)
+      const handle = container.querySelector<HTMLElement>(`[data-graphic-handle="${name}"]`)!
+      handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: parseFloat(handle.style.left), clientY: parseFloat(handle.style.top)}))
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: bounds.x + bounds.width * input / 100, clientY: bounds.y + 40}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+      await mutationsDelivered()
+      expect(readGraphicPreset(shape)?.values[0]).toBeCloseTo(expected)
+      expect(parseFloat(handle.style.left)).toBeCloseTo(bounds.x + bounds.width * expected / 100)
+      expect(parseFloat(handle.style.top)).toBeCloseTo(bounds.y)
+      const offset = bounds.width * expected / 100
+      expect(graphicPathGeometry(shape)!.points).toEqual([
+        {x: bounds.x + offset, y: bounds.y},
+        {x: bounds.x + bounds.width - (type === "trapezoid" ? offset : 0), y: bounds.y},
+        {x: bounds.x + bounds.width - (type === "parallelogram" ? offset : 0), y: bounds.y + bounds.height},
+        {x: bounds.x, y: bounds.y + bounds.height},
+      ])
+      const edited = shape.getAttribute("d")!
+      editor.doc.undo()
+      expect(shape).toHaveAttribute("d", original)
+      editor.doc.redo()
+      expect(shape).toHaveAttribute("d", edited)
+      expect(graphic.querySelector("path")).toBe(shape)
+    }
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["commit", "cancel", "replace", "remote"])("edits a polygon vertex safely on %s, with undo and redo", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "pentagon"})
+    const shape = graphic.querySelector("path")!, original = shape.getAttribute("d")!
+    const comment = document.createComment("keep")
+    graphic.append(comment)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="path-point-0"]')!
+    const x = parseFloat(handle.style.left), y = parseFloat(handle.style.top)
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: x, clientY: y}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, altKey: true, clientX: x + 23, clientY: y + 11}))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(shape).toHaveAttribute("d", original)
+    if(outcome === "cancel") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+    if(outcome === "replace") shape.replaceWith(shape.cloneNode(true))
+    const remote = "M 30 30 L 300 30 L 300 300 Z"
+    if(outcome === "remote") shape.setAttribute("d", remote)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    await mutationsDelivered()
+    expect(graphic.lastChild).toBe(comment)
+    expect(editor.appendix.querySelector('.◆graphic-preview')).toBeNull()
+    expect(document.querySelector('.◆graphic-preview-source')).toBeNull()
+    if(outcome === "commit") {
+      const edited = shape.getAttribute("d")!
+      expect(edited).not.toBe(original)
+      expect(graphicPathGeometry(shape)!.points).toHaveLength(5)
+      editor.doc.undo()
+      expect(shape).toHaveAttribute("d", original)
+      expect(readGraphicPreset(shape)?.type).toBe("pentagon")
+      editor.doc.redo()
+      expect(shape).toHaveAttribute("d", edited)
+    }
+    else expect(graphic.querySelector("path")).toHaveAttribute("d", outcome === "remote" ? remote : original)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("recognizes serialized standalone shapes while preserving unfamiliar or expanded SVG content", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
