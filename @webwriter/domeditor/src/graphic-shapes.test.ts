@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
 import {graphicShapePresets, type GraphicShapePreset} from "./graphic-shape-presets"
-import {adjustGraphicPreset, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
+import {adjustGraphicPreset, graphicPresetFillRule, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
 
 const bounds = {x: -137.25, y: 219.75, width: 273.5, height: 146.25}
 
@@ -53,6 +53,32 @@ describe("native SVG shape presets", () => {
     expect(after.type).toBe(option.type)
     before.values.forEach((value, i) => expect(after.values[i]).toBeCloseTo(value, 3))
     for(const key of ["x", "y", "width", "height"] as const) expect(after.bounds[key]).toBeCloseTo(moved[key], 3)
+  })
+
+  it.each(["cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down", "magnetic-disk", "direct-access-storage", "sequential-access-storage"] as const)("retains saved %s paths and upgrades their fill when edited", type => {
+    const definition = graphicShapePresets[type]
+    const values = definition.adjustments.map(adjustment => (adjustment.min + adjustment.max) / 2)
+    let index = 0
+    const legacy = definition.draw(values).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g, value => {
+      const horizontal = index++ % 2 === 0
+      return String((horizontal ? bounds.x : bounds.y) + Number(value) / 100 * (horizontal ? bounds.width : bounds.height))
+    })
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("d", legacy)
+    element.setAttribute("aria-label", definition.label)
+    element.setAttribute("fill-rule", "evenodd")
+    const state = readGraphicPreset(element)!
+    expect(state.type).toBe(type)
+    expect(state.values[0]).toBeCloseTo(values[0], 3)
+    writeGraphicPreset(element, state)
+    expect(element.getAttribute("d")).not.toBe(legacy)
+    expect(element.getAttribute("fill-rule")).toBe("nonzero")
+    expect(readGraphicPreset(element)?.type).toBe(type)
+    expect(readGraphicPreset(element)!.values[0]).toBeCloseTo(values[0], 3)
+  })
+
+  it("keeps the intentional cutouts in frames, donuts and prohibited signs", () => {
+    for(const type of ["frame", "donut", "prohibited"] as const) expect(graphicPresetFillRule(type)).toBe("evenodd")
   })
 
   it("does not reinterpret an unrelated or externally changed path using its accessible name", () => {

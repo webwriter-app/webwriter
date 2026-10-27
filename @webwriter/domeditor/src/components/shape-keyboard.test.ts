@@ -73,6 +73,10 @@ describe("shape keyboard", () => {
       const keys = [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>(".grid button")]
       const expected = graphicShapeOptions.filter(option => belongsTo(option.category, pages[index]))
       expect(keys.map(key => key.title)).toEqual(expected.map(option => option.label))
+      keys.forEach((key, i) => {
+        expect(key.querySelector("path")!.getAttribute("d")).toBe(expected[i].path)
+        expect(key.querySelector("g")!.getAttribute("fill-rule")).toBe(expected[i].fillRule)
+      })
       shown.push(...keys.map(key => key.title))
     }
 
@@ -113,6 +117,30 @@ describe("shape keyboard", () => {
     await keyboard.updateComplete
     expect(keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.grid button[title="Line"] svg g')!.getAttribute("fill"))
       .toBe("none")
+  })
+
+  it("offers narrow arrows after Connector with stroke-colored heads and unfilled shafts", async () => {
+    const keyboard = await mountKeyboard()
+    keyboard.paint = {fill: "#12ab34", stroke: "#ab1234", "stroke-width": "6", opacity: "0.5"}
+    await keyboard.updateComplete
+    const keys = [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>(".grid .key")]
+    expect(keys.slice(0, 7).map(key => key.title)).toEqual([
+      "Text box", "Image", "Line", "Connector", "Narrow left arrow", "Narrow right arrow", "Narrow left-right arrow",
+    ])
+    const commands: string[] = []
+    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
+    for(const key of keys.slice(4, 7)) {
+      expect(key.querySelector("g")!.getAttribute("fill")).toBe("none")
+      expect(key.querySelector("path")!.getAttribute("fill")).toBe("#ab1234")
+      key.click()
+    }
+    expect(commands).toEqual(["line-start-arrow", "line-end-arrow", "line-both-arrows"])
+    const data = new DataTransfer()
+    const event = new Event("dragstart", {bubbles: true, composed: true})
+    Object.assign(event, {dataTransfer: data})
+    vi.spyOn(data, "setDragImage").mockImplementation(() => undefined)
+    keys[6].dispatchEvent(event)
+    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "line-both-arrows", paint: keyboard.paint})
   })
 
   it("shows width rows and color columns, and applies a preset as one paint update", async () => {

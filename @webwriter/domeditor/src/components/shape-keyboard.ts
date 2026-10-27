@@ -1,4 +1,4 @@
-import {LitElement, css, html, svg, type PropertyValues} from "lit"
+import {LitElement, css, html, type PropertyValues} from "lit"
 import {graphicShapeDragType, defaultGraphicShapePaint, graphicShapeIsOpen, graphicShapeOptions, type GraphicShapePaint, type GraphicMode} from "../graphic"
 import {ribbonIcon} from "../ribbon-icons"
 import {themeColorColumns, colorHex} from "../css-color"
@@ -169,8 +169,8 @@ export class ShapeKeyboard extends LitElement {
           }))}>
           <svg viewBox="-10 -10 120 120" aria-hidden="true" focusable="false">
             <g fill=${graphicShapeIsOpen(option.type) ? "none" : this.paint.fill} stroke=${this.paint.stroke}
-              stroke-width=${this.paint["stroke-width"]} opacity=${this.paint.opacity} stroke-linejoin="round" fill-rule="evenodd">
-              ${this.preview(option)}
+              stroke-width=${this.paint["stroke-width"]} opacity=${this.paint.opacity} stroke-linejoin="round" fill-rule=${option.fillRule}>
+              <path d=${option.path} fill=${option.pathFill === "currentColor" ? this.paint.stroke : "inherit"}></path>
             </g>
           </svg>
         </button>`)}
@@ -282,22 +282,6 @@ export class ShapeKeyboard extends LitElement {
     const preview = (event.currentTarget as HTMLElement).querySelector("svg")!
     const bounds = preview.getBoundingClientRect()
     data.setDragImage(preview, bounds.width / 2, bounds.height / 2)
-  }
-
-  private preview(option: typeof graphicShapeOptions[number]) {
-    if(option.path) return svg`<path d=${option.path}></path>`
-    switch(option.type) {
-      case "rectangle": return svg`<rect width="100" height="100" rx="5"></rect>`
-      case "ellipse": return svg`<ellipse cx="50" cy="50" rx="50" ry="50"></ellipse>`
-      case "triangle": return svg`<polygon points="50,0 100,100 0,100"></polygon>`
-      case "diamond": return svg`<polygon points="50,0 100,50 50,100 0,50"></polygon>`
-      case "hexagon": return svg`<polygon points="25,0 75,0 100,50 75,100 25,100 0,50"></polygon>`
-      case "star": return svg`<polygon points="50,0 61,35 98,35 68,57 79,92 50,70 21,92 32,57 2,35 39,35"></polygon>`
-      case "arrow": return svg`<polygon points="0,30 60,30 60,0 100,50 60,100 60,70 0,70"></polygon>`
-      case "line": return svg`<path d="M 0 50 L 100 50"></path>`
-      case "connector": return svg`<path d="M 0 0 L 50 0 L 50 100 L 100 100"></path>`
-      case "image": return svg`<rect width="100" height="100"></rect><circle cx="72" cy="25" r="10"></circle><path d="M 0 80 L 30 45 L 60 80 L 80 60 L 100 80" fill="none"></path>`
-    }
   }
 
   protected updated() {

@@ -17,6 +17,8 @@ import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
 import {checkBoardMedia} from "./board-media"
 import {checkParagraphCut} from "./paragraph-cut"
+import {checkGraphicShapeFills} from "./graphic-shape-presets"
+import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
 
 const checks: Check[] = []
@@ -31,6 +33,9 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 const fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
+await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)
 
 await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)
 
@@ -1444,6 +1449,12 @@ await check("standalone SVG arrowheads remain visible in canvas previews and exp
       Object.assign(graphic.style, {position: "absolute", left: "50px", top: `${80 + index * 100}px`, rotate: "5deg"})
       doc.body.append(graphic)
     }
+    await layoutFrame()
+    for(const graphic of doc.querySelectorAll("svg")) {
+      const matrix = graphic.querySelector("polyline")!.getScreenCTM()!
+      assert(Math.abs(Math.hypot(matrix.a, matrix.b) - Math.hypot(matrix.c, matrix.d)) < .001,
+        "minimum editing dimensions distort narrow arrowheads")
+    }
     const saved = editor.toHTML()
     const preview = previewFrameHTML(new DOMParser().parseFromString(saved, "text/html"), {
       bridgeNonce: "arrow-preview", hostOrigin: location.origin, frameOrigin: location.origin,
@@ -1456,10 +1467,10 @@ await check("standalone SVG arrowheads remain visible in canvas previews and exp
       const loaded = new Promise<void>(resolve => reader.addEventListener("load", () => resolve(), {once: true}))
       reader.srcdoc = html; fixture.append(reader); await loaded; await layoutFrame()
       for(const graphic of reader.contentDocument!.querySelectorAll("svg")) {
-        const line = graphic.querySelector("line")!, marker = graphic.querySelector("marker")!
+        const line = graphic.querySelector("polyline")!, marker = graphic.querySelector("marker")!
         assert(line && marker, "reader lost an arrow or its definition")
-        assert(Number(marker.getAttribute("markerHeight")) * Number(line.getAttribute("stroke-width")) > graphic.height.baseVal.value,
-          "fixture no longer has arrowheads extending outside its fitted viewport")
+        assert(Number(marker.getAttribute("markerHeight")) * Number(line.getAttribute("stroke-width")) <= graphic.height.baseVal.value,
+          "standalone viewport excludes the arrowheads")
         assert(reader.contentWindow!.getComputedStyle(graphic).overflow === "visible", "document theme clips arrowheads to the line's thin viewport")
       }
     }
@@ -4988,7 +4999,18 @@ await check("ribbon shapes retain their aspect ratio under the document theme", 
         await layoutFrame()
         const rect = graphic.getBoundingClientRect()
         const width = Number(graphic.getAttribute("width")), height = Number(graphic.getAttribute("height"))
-        assert(Math.abs(rect.width - width) < 1 && Math.abs(rect.height - height) < 1,
+        if(shape === "line") {
+          // The editor gives flat shapes a 32px minimum editing viewport. The
+          // line keeps its authored viewBox dimensions and fits uniformly in
+          // that taller viewport instead of being stretched to fill it.
+          const matrix = graphic.getScreenCTM()!
+          const scaleX = Math.hypot(matrix.a, matrix.b), scaleY = Math.hypot(matrix.c, matrix.d)
+          assert(rect.width >= width - 1 && rect.height >= 32
+            && Math.abs(scaleX - scaleY) < .01
+            && graphic.getAttribute("preserveAspectRatio") === "xMidYMid meet",
+          `line did not preserve its aspect ratio in the minimum editing viewport (${width} × ${height} → ${rect.width} × ${rect.height})`)
+        }
+        else assert(Math.abs(rect.width - width) < 1 && Math.abs(rect.height - height) < 1,
           `${shape} stretched from ${width} × ${height} to ${rect.width} × ${rect.height}`)
       }
       finally { graphic.remove() }

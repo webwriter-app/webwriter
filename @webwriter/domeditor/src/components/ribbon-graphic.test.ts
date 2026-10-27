@@ -35,9 +35,9 @@ describe("graphic ribbon", () => {
 
   it("offers the requested text and line presets and omits removed shapes", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Lines").map(option => option.type)).toEqual([
-      "text-box", "image", "line", "connector",
+      "text-box", "image", "line", "connector", "line-start-arrow", "line-end-arrow", "line-both-arrows",
     ])
-    expect(graphicShapeOptions.some(option => ["polygon", "not-equal", "multidocument", "line-callout-2", "line-start-arrow", "line-end-arrow", "line-both-arrows"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions.some(option => ["polygon", "not-equal", "multidocument", "line-callout-2"].includes(option.type))).toBe(false)
     expect(graphicShapeOptions.find(option => option.type === "image")).toMatchObject({label: "Image", icon: "Image", category: "Lines"})
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
   })
@@ -251,7 +251,14 @@ describe("graphic ribbon", () => {
     expect(importButton).toHaveClass("gallery-wide")
     expect(importButton.nextElementSibling).toHaveAttribute("role", "separator")
     expect(importButton.querySelector(".icon-tabler-upload")).not.toBeNull()
-    expect(gallery.querySelector('button[aria-label="Heart"] path')).not.toBeNull()
+    expect([...gallery.querySelectorAll('button[role="menuitem"]')].slice(0, 8).map(button => button.getAttribute("aria-label"))).toEqual([
+      "Text box", "Image", "Line", "Connector", "Narrow left arrow", "Narrow right arrow", "Narrow left-right arrow", "Import graphic",
+    ])
+    const shapeButtons = [...gallery.querySelectorAll('button[role="menuitem"]')].filter(button => button !== importButton)
+    shapeButtons.forEach((button, i) => {
+      expect(button.querySelector(".shape-preview path")).toHaveAttribute("d", graphicShapeOptions[i].path)
+      expect(button.querySelector(".shape-preview path")).toHaveAttribute("fill", graphicShapeOptions[i].pathFill ?? "none")
+    })
     expect(gallery.querySelector('button[aria-label="Arc"] path')).toHaveAttribute("fill", "none")
 
   })

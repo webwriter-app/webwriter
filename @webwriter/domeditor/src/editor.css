@@ -1122,6 +1122,7 @@ body::part(graphic-affordance) {
 body::part(graphic-affordance-roundness) { cursor: ew-resize; }
 body::part(graphic-affordance-radius-x) { cursor: ew-resize; }
 body::part(graphic-affordance-radius-y) { cursor: ns-resize; }
+body::part(graphic-affordance-arrowhead) { cursor: nwse-resize; }
 body::part(graphic-affordance-line-start),
 body::part(graphic-affordance-line-end),
 body::part(graphic-affordance-connector-start),

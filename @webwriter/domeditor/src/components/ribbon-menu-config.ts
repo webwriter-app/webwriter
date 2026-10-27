@@ -34,6 +34,7 @@ const groupedGraphicShapeButtons: RibbonMenuButton[] = graphicShapeOptions.map(o
   icon: option.icon,
   category: option.category,
   path: option.path,
+  pathFill: option.pathFill,
 }))
 groupedGraphicShapeButtons.splice(
   graphicShapeOptions.filter(option => option.category === graphicShapeOptions[0].category).length, 0,

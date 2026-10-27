@@ -1,4 +1,4 @@
-import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
+import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, graphicPresetFillRule, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
@@ -9,6 +9,11 @@ import {elementDragType, ribbonInsertionDragType} from "../components/insertion-
 import {getDocumentRoot} from "../document-template"
 import {
   graphicShapeDragType,
+  boundsForPoints,
+  regularPolygonPoints,
+  starPoints,
+  hexagonPoints,
+  arrowPoints,
   readGraphicShapeDrag,
   SVG_NAMESPACE,
   graphicContainerForNode,
@@ -66,7 +71,7 @@ type InteractionItem = {
 }
 
 type Interaction = {
-  kind: "path-point" | "adjust" | "move" | "resize" | "rotate" | "roundness" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
+  kind: "path-point" | "adjust" | "arrowhead" | "move" | "resize" | "rotate" | "roundness" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
   handle: string
   start: Point
   startClient: Point
@@ -84,6 +89,7 @@ type Interaction = {
   frameRotation?: number
   previewRoot?: SVGSVGElement
   vertex?: number
+  arrowhead?: {endpoint: ConnectorEndpoint, size: number, step: Point}
   attachedConnectors: AttachedConnector[]
   portTarget?: PortTarget | null
 }
@@ -381,66 +387,6 @@ const setPoints = (element: Element, points: Array<{x: number, y: number}>) => {
   element.setAttribute("points", points.map(point => `${cleanNumber(point.x)},${cleanNumber(point.y)}`).join(" "))
 }
 
-const regularPolygonPoints = (bounds: Bounds, count: number, startAngle = -90) => Array.from({length: count}, (_, index) => {
-  const angle = (startAngle + index * 360 / count) * Math.PI / 180
-  return {
-    x: bounds.x + bounds.width / 2 + Math.cos(angle) * bounds.width / 2,
-    y: bounds.y + bounds.height / 2 + Math.sin(angle) * bounds.height / 2,
-  }
-})
-
-const starPoints = (bounds: Bounds, innerRadius = 0.45) => {
-  const raw = Array.from({length: 10}, (_, index) => {
-    const radius = index % 2 ? innerRadius : 1
-    const angle = (-90 + index * 36) * Math.PI / 180
-    return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius,
-    }
-  })
-  const source = boundsForPoints(raw)
-  return raw.map(point => ({
-    x: bounds.x + (point.x - source.x) / source.width * bounds.width,
-    y: bounds.y + (point.y - source.y) / source.height * bounds.height,
-  }))
-}
-
-const hexagonPoints = (bounds: Bounds, inset = bounds.width * 0.25) => {
-  const safeInset = Math.min(bounds.width / 2, Math.max(0, inset))
-  return [
-    {x: bounds.x + safeInset, y: bounds.y},
-    {x: bounds.x + bounds.width - safeInset, y: bounds.y},
-    {x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2},
-    {x: bounds.x + bounds.width - safeInset, y: bounds.y + bounds.height},
-    {x: bounds.x + safeInset, y: bounds.y + bounds.height},
-    {x: bounds.x, y: bounds.y + bounds.height / 2},
-  ]
-}
-
-const arrowPoints = (bounds: Bounds, headRatio = 0.36, tailRatio = 0.42) => {
-  const headStart = bounds.x + bounds.width * (1 - Math.min(0.8, Math.max(0.15, headRatio)))
-  const tailHalf = bounds.height * Math.min(0.9, Math.max(0.1, tailRatio)) / 2
-  const centerY = bounds.y + bounds.height / 2
-  return [
-    {x: bounds.x, y: centerY - tailHalf},
-    {x: headStart, y: centerY - tailHalf},
-    {x: headStart, y: bounds.y},
-    {x: bounds.x + bounds.width, y: centerY},
-    {x: headStart, y: bounds.y + bounds.height},
-    {x: headStart, y: centerY + tailHalf},
-    {x: bounds.x, y: centerY + tailHalf},
-  ]
-}
-
-const boundsForPoints = (points: Array<{x: number, y: number}>): Bounds => {
-  if(!points.length) return {x: 0, y: 0, width: 0, height: 0}
-  const xs = points.map(point => point.x)
-  const ys = points.map(point => point.y)
-  const x = Math.min(...xs)
-  const y = Math.min(...ys)
-  return {x, y, width: Math.max(...xs) - x, height: Math.max(...ys) - y}
-}
-
 const starInnerRadius = (points: Point[]) => {
   if(points.length !== 10) return 45
   const center = points.reduce((sum, point) => ({x: sum.x + point.x, y: sum.y + point.y}), {x: 0, y: 0})
@@ -520,7 +466,49 @@ const rotatedBounds = (bounds: Bounds, rotation: number) => {
   ].map(point => rotateAround(point, center, rotation)))
 }
 
-const visualBounds = (shape: Element) => rotatedBounds(shapeBounds(shape), rotationOf(shape))
+const arrowMarkerPath = "M 0 0 L 10 5 L 0 10 z"
+
+function arrowhead(shape: Element, endpoint: ConnectorEndpoint) {
+  const geometry = shapeGeometry(shape)
+  const id = geometry.getAttribute(`marker-${endpoint}`)?.match(/^url\(#([^\s)]+)\)$/)?.[1]
+  const graphic = graphicContainerForNode(shape)
+  const marker = id && Array.from(graphic?.querySelectorAll("marker") ?? []).find(marker => marker.id === id)
+  if(!marker || !/^graphic-arrow-\d+$/.test(marker.id) || marker.getAttribute("viewBox") !== "0 0 10 10"
+    || marker.getAttribute("orient") !== "auto-start-reverse" || ![null, "strokeWidth"].includes(marker.getAttribute("markerUnits"))
+    || marker.querySelector("path")?.getAttribute("d") !== arrowMarkerPath) return null
+  const points = shapePoints(shape)
+  const tip = endpoint === "start" ? points[0] : points.at(-1)
+  if(!tip) return null
+  const neighbor = (endpoint === "start" ? points : [...points].reverse()).find(point => Math.hypot(point.x - tip.x, point.y - tip.y) > 1e-8)
+  if(!neighbor) return null
+  const length = Math.hypot(tip.x - neighbor.x, tip.y - neighbor.y)
+  const direction = {x: (tip.x - neighbor.x) / length, y: (tip.y - neighbor.y) / length}
+  const computedStroke = geometry.isConnected ? Number.parseFloat(getComputedStyle(geometry).strokeWidth) : NaN
+  const stroke = Number.isFinite(computedStroke) ? computedStroke : attributeNumber(geometry, "stroke-width", 1)
+  const width = attributeNumber(marker, "markerWidth", 3) * stroke / 10
+  const height = attributeNumber(marker, "markerHeight", 3) * stroke / 10
+  if(width <= 0 || height <= 0) return null
+  const vertices = [[0, 0], [10, 5], [0, 10]].map(([x, y]) => {
+    const along = (x - attributeNumber(marker, "refX")) * width
+    const across = (y - attributeNumber(marker, "refY")) * height
+    return {x: tip.x + along * direction.x - across * direction.y, y: tip.y + along * direction.y + across * direction.x}
+  })
+  return {marker, tip, points: vertices, size: attributeNumber(marker, "markerWidth", 3)}
+}
+
+const arrowheads = (shape: Element) => (["start", "end"] as const).flatMap(endpoint => {
+  const head = arrowhead(shape, endpoint)
+  return head ? [{...head, endpoint}] : []
+})
+
+const selectionBounds = (shape: Element) => unionBounds([shapeBounds(shape), ...arrowheads(shape).map(head => boundsForPoints(head.points))])
+const visualBounds = (shape: Element) => {
+  const bounds = selectionBounds(shape)
+  return boundsForPoints([
+    {x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y},
+    {x: bounds.x + bounds.width, y: bounds.y + bounds.height}, {x: bounds.x, y: bounds.y + bounds.height},
+  ].map(point => rotateAround(point, shapeCenter(shape), rotationOf(shape))))
+}
 
 const shapePoints = (shape: Element) => graphicShapeType(shape) === "freehand" ? graphicStrokePoints(shapeGeometry(shape))!
   : ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") ? graphicPathGeometry(shapeGeometry(shape))!.points
@@ -1521,10 +1509,12 @@ export class GraphicFeature extends EditorFeature {
 
   #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement): SVGGraphicsElement {
     if(type === "line-start-arrow" || type === "line-end-arrow" || type === "line-both-arrows") {
-      const line = this.#createShape("line", index, graphic)
-      if(type !== "line-end-arrow") this.#setConnectorArrow(line, "start", true, graphic)
-      if(type !== "line-start-arrow") this.#setConnectorArrow(line, "end", true, graphic)
-      return line
+      const connector = this.#createShape("connector", index, graphic)
+      const bounds = this.#shapeInsertionBounds("line", index, graphic)
+      setConnectorEndpoints(connector, {x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y}, "straight")
+      if(type !== "line-end-arrow") this.#setConnectorArrow(connector, "start", true, graphic)
+      if(type !== "line-start-arrow") this.#setConnectorArrow(connector, "end", true, graphic)
+      return connector
     }
     const bounds = this.#shapeInsertionBounds(type, index, graphic)
     let shape: SVGGraphicsElement
@@ -1533,7 +1523,7 @@ export class GraphicFeature extends EditorFeature {
       shape = document.createElementNS(SVG_NAMESPACE, "path")
       shape.setAttribute("d", graphicPresetPath(type, bounds))
       shape.setAttribute("aria-label", definition.label)
-      shape.setAttribute("fill-rule", "evenodd")
+      shape.setAttribute("fill-rule", graphicPresetFillRule(type))
       shape.setAttribute("fill", definition.open ? "none" : "#ffffff")
       shape.setAttribute("stroke", "#334155")
       shape.setAttribute("stroke-width", definition.open ? "6" : "4")
@@ -1648,7 +1638,8 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #fitStandaloneGraphic(graphic: SVGSVGElement, shape: SVGGraphicsElement) {
-    const bounds = shapeBounds(shape)
+    const bounds = selectionBounds(shape)
+    const geometryBounds = shapeBounds(shape)
     const padding = attributeNumber(shapeGeometry(shape), "stroke-width") / 2
     const width = Math.max(1, bounds.width)
     const height = Math.max(1, bounds.height)
@@ -1661,7 +1652,9 @@ export class GraphicFeature extends EditorFeature {
     graphic.setAttribute("width", cleanNumber(width + padding * 2))
     graphic.setAttribute("height", cleanNumber(height + padding * 2))
     graphic.setAttribute("overflow", "visible")
-    graphic.setAttribute("preserveAspectRatio", "none")
+    // Flat connectors need uniform scaling so the minimum editing height
+    // does not stretch their arrowheads vertically.
+    graphic.setAttribute("preserveAspectRatio", !geometryBounds.width || !geometryBounds.height ? "xMidYMid meet" : "none")
     // Theme rules for page content override SVG presentation attributes.
     // Keep the fitted viewport dimensions and overflowing arrowheads authoritative.
     Object.assign(graphic.style, {
@@ -2099,7 +2092,10 @@ export class GraphicFeature extends EditorFeature {
       }
       if(!event.composedPath().includes(this.editor.appendix)) this.#closeLabelEditor(true)
     }
-    const pointerGraphic = event.target instanceof Node ? graphicContainerForNode(event.target) : null
+    let pointerGraphic = event.target instanceof Node ? graphicContainerForNode(event.target) : null
+    const headShape = !isAppendixInteraction(event) && !isWidgetShadowInteraction(event) && !isFormControlInteraction(event)
+      && !graphicShapeForNode(target) ? this.#arrowheadAtPoint(pointerGraphic, {x: event.clientX, y: event.clientY}) : null
+    if(headShape) pointerGraphic = graphicContainerForNode(headShape)
     // The first click selects a standalone graphic as a document element.
     // Further clicks enter its contents through the normal capture path below.
     if(pointerGraphic && standaloneGraphicShape(pointerGraphic)
@@ -2145,7 +2141,7 @@ export class GraphicFeature extends EditorFeature {
     event.preventDefault()
     event.stopImmediatePropagation()
     if(this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
-    const shape = graphicShapeForNode(event.target instanceof Node ? event.target : null)
+    const shape = headShape ?? graphicShapeForNode(event.target instanceof Node ? event.target : null)
     if(shape && !this.#isLocked(shape) && shape.getAttribute("visibility") !== "hidden") {
       if(event.shiftKey) this.#toggleShapeSelection(shape)
       else if(!this.#selectedShapes.has(shape)) this.#selectShape(shape)
@@ -2166,7 +2162,7 @@ export class GraphicFeature extends EditorFeature {
     if(!shape || !graphic || !shapes.length) return
     const point = this.#clientPoint(graphic, event.clientX, event.clientY)
     const captureTarget = event.composedPath().find(target => target instanceof Element) as Element | undefined
-    const kind = handle.startsWith("adjust-") ? "adjust"
+    const kind = handle.startsWith("arrowhead-") ? "arrowhead" : handle.startsWith("adjust-") ? "adjust"
       : handle.startsWith("resize-") ? "resize"
       : handle.startsWith("path-point-") ? "path-point"
       : handle.startsWith("vertex-") ? "vertex"
@@ -2185,6 +2181,9 @@ export class GraphicFeature extends EditorFeature {
       signature: this.#geometrySignature(source),
     }))
     const multi = items.length > 1
+    const endpoint = handle === "arrowhead-start" ? "start" : "end"
+    const head = kind === "arrowhead" ? arrowhead(shape, endpoint) : null
+    if(kind === "arrowhead" && !head) return
     this.#interaction = {
       kind,
       handle,
@@ -2203,6 +2202,10 @@ export class GraphicFeature extends EditorFeature {
       attachedConnectors: this.#captureAttachedConnectors(graphic, shapes),
       ...(kind === "path-point" ? {vertex: Number(handle.slice("path-point-".length))} : {}),
       ...(kind === "vertex" ? {vertex: Number.parseInt(handle.slice("vertex-".length))} : {}),
+      ...(head ? {arrowhead: {endpoint, size: head.size, step: {
+        x: (head.points[0].x - head.tip.x) / head.size,
+        y: (head.points[0].y - head.tip.y) / head.size,
+      }}} : {}),
     }
     this.#capturePointer(captureTarget, event.pointerId)
   }
@@ -2887,6 +2890,12 @@ export class GraphicFeature extends EditorFeature {
     previewRoot.setAttribute("viewBox", graphic.getAttribute("viewBox") ?? "0 0 1600 900")
     const preserveAspectRatio = graphic.getAttribute("preserveAspectRatio")
     if(preserveAspectRatio) previewRoot.setAttribute("preserveAspectRatio", preserveAspectRatio)
+    const markers = new Set([...interaction.items, ...interaction.attachedConnectors].flatMap(item => arrowheads(item.source).map(head => head.marker)))
+    if(markers.size) {
+      const definitions = document.createElementNS(SVG_NAMESPACE, "defs")
+      markers.forEach(marker => definitions.append(marker.cloneNode(true)))
+      previewRoot.append(definitions)
+    }
     this.#positionPreviewRoot(previewRoot, graphic)
     interaction.attachedConnectors.forEach(item => {
       const preview = item.source.cloneNode(true) as SVGPolylineElement
@@ -2992,6 +3001,11 @@ export class GraphicFeature extends EditorFeature {
     interaction.previewRoot?.remove()
     interaction.items.forEach(item => removeEditorMarker(item.source, "◆graphic-preview-source"))
     interaction.attachedConnectors.forEach(item => removeEditorMarker(item.source, "◆graphic-preview-source"))
+    // Direct DOM replacements can copy temporary classes from the source.
+    document.querySelectorAll(".◆graphic-preview-source").forEach(element => removeEditorMarker(element, "◆graphic-preview-source"))
+    document.querySelectorAll(".◆graphic-shape-selected").forEach(element => {
+      if(!this.selectedShapes.includes(element as SVGGraphicsElement)) removeEditorMarker(element, "◆graphic-shape-selected")
+    })
     removeEditorMarker(document.body, "◆graphic-manipulating")
     this.#setGuides({})
     this.#setPortTarget(null)
@@ -3115,6 +3129,13 @@ export class GraphicFeature extends EditorFeature {
       const preset = readGraphicPreset(geometry)
       if(preset) adjustGraphicPreset(geometry, preset, interaction.handle, point)
       syncShapeText(shape)
+      return {}
+    }
+    if(interaction.kind === "arrowhead" && interaction.arrowhead) {
+      const {endpoint, size, step} = interaction.arrowhead
+      const start = rotateAround(interaction.start, shapeCenter(shape), -interaction.rotation)
+      const length = step.x * step.x + step.y * step.y
+      if(length > 1e-8) this.#setArrowheadSize(shape, endpoint, size + ((point.x - start.x) * step.x + (point.y - start.y) * step.y) / length)
       return {}
     }
     if(interaction.kind === "roundness") {
@@ -3474,7 +3495,7 @@ export class GraphicFeature extends EditorFeature {
     return [shape, ...(geometry === shape ? [] : [geometry])].map(element => attributes
       .map(name => `${name}=${element.getAttribute(name) ?? ""}`)
       .join(";"),
-    ).join("|")
+    ).join("|") + arrowheads(shape).map(head => `${head.endpoint}:${head.marker.outerHTML}:${head.points.map(point => `${point.x},${point.y}`).join(" ")}`).join("|")
   }
 
   #viewport(graphic: SVGSVGElement): GraphicViewport {
@@ -4035,9 +4056,9 @@ export class GraphicFeature extends EditorFeature {
     const shape = shapes[0]
     const bounds = multi
       ? interaction?.frameBounds ?? unionBounds(shapes.map(current => visualBounds(current)))
-      : shapeBounds(shape)
+      : selectionBounds(shape)
     const rotation = multi ? interaction?.frameRotation ?? 0 : rotationOf(shape)
-    const center = {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2}
+    const center = multi ? {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2} : shapeCenter(shape)
     const toClient = (point: Point) => applyMatrix(matrix, rotateAround(point, center, rotation))
     const corners = {
       nw: toClient({x: bounds.x, y: bounds.y}),
@@ -4064,11 +4085,8 @@ export class GraphicFeature extends EditorFeature {
     }
     while(individualOutlines.children.length > (multi ? shapes.length : 0)) individualOutlines.lastElementChild?.remove()
     if(multi) shapes.forEach((current, index) => {
-      const itemBounds = shapeBounds(current)
-      const itemCenter = {
-        x: itemBounds.x + itemBounds.width / 2,
-        y: itemBounds.y + itemBounds.height / 2,
-      }
+      const itemBounds = selectionBounds(current)
+      const itemCenter = shapeCenter(current)
       const itemRotation = rotationOf(current)
       const points = [
         {x: itemBounds.x, y: itemBounds.y},
@@ -4121,8 +4139,9 @@ export class GraphicFeature extends EditorFeature {
     const type = graphicShapeType(shape)
     const path = shape && graphicPathGeometry(shapeGeometry(shape))
     const joined = path && path.closed && path.points[0].x === path.points.at(-1)!.x && path.points[0].y === path.points.at(-1)!.y
-    const signature = path ? `${type}:${path.points.length}:${joined}`
-      : shape && isPolygonShape(shape) ? `${type}:${parsePoints(shapeGeometry(shape)).length}` : type ?? ""
+    const signature = (path ? `${type}:${path.points.length}:${joined}`
+      : shape && isPolygonShape(shape) ? `${type}:${parsePoints(shapeGeometry(shape)).length}` : type ?? "")
+      + (shape ? arrowheads(shape).map(head => `:${head.endpoint}`).join("") : "")
     if(container.dataset.signature === signature) return
     container.dataset.signature = signature
     container.replaceChildren()
@@ -4172,6 +4191,9 @@ export class GraphicFeature extends EditorFeature {
         "graphic-affordance graphic-affordance-vertex",
       )))
     }
+    arrowheads(shape).forEach(head => container.append(this.#createHandle(
+      `arrowhead-${head.endpoint}`, `Adjust ${head.endpoint} arrowhead size`, "graphic-affordance graphic-affordance-arrowhead",
+    )))
   }
 
   #positionSpecificHandles(overlay: HTMLElement, shape: Element, toClient: (point: Point) => Point) {
@@ -4221,6 +4243,13 @@ export class GraphicFeature extends EditorFeature {
       }
     }
     else if(isPolygonShape(shape)) parsePoints(geometry).forEach((point, index) => position(`vertex-${index}`, point))
+    arrowheads(shape).forEach(head => {
+      const origin = toClient(head.tip), corner = toClient(head.points[0])
+      const distance = Math.hypot(corner.x - origin.x, corner.y - origin.y)
+      const scale = distance > 0 ? Math.max(1, 16 / distance) : 1
+      const handle = overlay.querySelector<HTMLElement>(`[data-graphic-handle="arrowhead-${head.endpoint}"]`)
+      if(handle) this.#positionHandle(handle, {x: origin.x + (corner.x - origin.x) * scale, y: origin.y + (corner.y - origin.y) * scale})
+    })
   }
 
   #updatePorts(overlay: HTMLElement, shape: Element | null, matrix: Matrix) {
@@ -4448,6 +4477,7 @@ export class GraphicFeature extends EditorFeature {
         "tail-width": cleanNumber(bounds.height ? Math.abs((points[6]?.y ?? bounds.y) - (points[0]?.y ?? bounds.y)) / bounds.height * 100 : 42),
       } : {}),
       ...(["polyline", "bezier"].includes(type ?? "") ? {closed: String(graphicPathGeometry(geometry)?.closed ?? false)} : {}),
+      ...Object.fromEntries(arrowheads(shape).map(head => [`${head.endpoint}-arrow-size`, cleanNumber(head.size)])),
       ...(type === "connector" ? {
         routing: connectorRouting(shape),
         "start-arrow": String(shape.hasAttribute("marker-start")),
@@ -4476,6 +4506,8 @@ export class GraphicFeature extends EditorFeature {
     }
     if(name === "fill" && (graphicShapeType(shape) === "freehand" || ["polyline", "bezier"].includes(graphicShapeType(shape) ?? "") && !graphicPathGeometry(geometry)?.closed)) return shape
     if(name === "fill" || name === "stroke") {
+      const preset = name === "fill" ? readGraphicPreset(geometry) : null
+      if(preset) writeGraphicPreset(geometry, preset)
       if(value) geometry.setAttribute(name, value)
       else geometry.removeAttribute(name)
       return shape
@@ -4483,7 +4515,8 @@ export class GraphicFeature extends EditorFeature {
     const numeric = Number.parseFloat(value)
     if(!Number.isFinite(numeric)) return shape
     const preset = readGraphicPreset(geometry)
-    if(preset && name.startsWith("adjust-")) adjustGraphicPreset(geometry, preset, name, numeric)
+    if(name === "start-arrow-size" || name === "end-arrow-size") this.#setArrowheadSize(shape, name === "start-arrow-size" ? "start" : "end", numeric)
+    else if(preset && name.startsWith("adjust-")) adjustGraphicPreset(geometry, preset, name, numeric)
     else if(name === "stroke-width") geometry.setAttribute(name, cleanNumber(Math.max(0, numeric)))
     else if(name === "opacity") shape.setAttribute(name, cleanNumber(Math.min(1, Math.max(0, numeric))))
     else if(name === "font-size" && text) text.setAttribute(name, cleanNumber(Math.max(1, numeric)))
@@ -4515,6 +4548,56 @@ export class GraphicFeature extends EditorFeature {
     return shape
   }
 
+  #arrowheadAtPoint(graphic: SVGSVGElement | null, client: Point) {
+    const graphics = graphic ? [graphic] : Array.from(getDocumentRoot().querySelectorAll<SVGSVGElement>("svg:not(svg *)")).reverse()
+    for(const owner of graphics) {
+      if(getComputedStyle(owner).display === "none" || getComputedStyle(owner).visibility === "hidden") continue
+      const point = this.#clientPoint(owner, client.x, client.y)
+      for(const shape of graphicShapeRoots(owner).reverse()) {
+        if(this.#isLocked(shape) || shape.getAttribute("visibility") === "hidden" || atomicEditingContainer(owner.parentElement, this.editor.schema)) continue
+        const local = rotateAround(point, shapeCenter(shape), -rotationOf(shape))
+        for(const head of arrowheads(shape)) {
+          const signs = head.points.map((a, i) => {
+            const b = head.points[(i + 1) % 3]
+            return (b.x - a.x) * (local.y - a.y) - (b.y - a.y) * (local.x - a.x)
+          })
+          if(signs.every(value => value >= 0) || signs.every(value => value <= 0)) return shape
+        }
+      }
+    }
+    return null
+  }
+
+  #arrowMarkerId(graphic: SVGSVGElement) {
+    let index = 1
+    while(document.getElementById(`graphic-arrow-${index}`)
+      || graphic.querySelector(`[id="graphic-arrow-${index}"]`)
+      || this.editor.appendix.querySelector(`[id="graphic-arrow-${index}"]`)) index++
+    return `graphic-arrow-${index}`
+  }
+
+  #setArrowheadSize(shape: Element, endpoint: ConnectorEndpoint, input: number) {
+    const head = arrowhead(shape, endpoint), graphic = graphicContainerForNode(shape)
+    if(!head || !graphic || !Number.isFinite(input) || head.size <= 0) return
+    const size = Math.max(2, Math.min(24, input))
+    if(Math.abs(size - head.size) < 1e-6 && head.marker.getAttribute("refX") === "5" && shapeGeometry(shape).getAttribute("stroke-linecap") === "butt") return
+    let marker = head.marker
+    const reference = `url(#${marker.id})`
+    const uses = Array.from(graphic.querySelectorAll("[marker-start], [marker-end]")).flatMap(element =>
+      ["marker-start", "marker-end"].filter(attribute => element.getAttribute(attribute) === reference),
+    ).length
+    if(uses > 1) {
+      marker = marker.cloneNode(true) as SVGMarkerElement
+      marker.id = this.#arrowMarkerId(graphic)
+      head.marker.parentNode!.appendChild(marker)
+      shapeGeometry(shape).setAttribute(`marker-${endpoint}`, `url(#${marker.id})`)
+    }
+    marker.setAttribute("markerHeight", cleanNumber(size * attributeNumber(marker, "markerHeight", 3) / head.size))
+    marker.setAttribute("markerWidth", cleanNumber(size))
+    marker.setAttribute("refX", "5")
+    shapeGeometry(shape).setAttribute("stroke-linecap", "butt")
+  }
+
   #setConnectorArrow(connector: SVGGraphicsElement, endpoint: ConnectorEndpoint, enabled: boolean, graphic = graphicContainerForNode(connector)) {
     const attribute = endpoint === "start" ? "marker-start" : "marker-end"
     if(!enabled) {
@@ -4536,23 +4619,24 @@ export class GraphicFeature extends EditorFeature {
       return
     }
     if(!graphic) return
-    const markerPath = "M 0 0 L 10 5 L 0 10 z"
     let marker = Array.from(graphic.querySelectorAll<SVGMarkerElement>("marker")).find(candidate =>
-      candidate.id && candidate.querySelector("path")?.getAttribute("d") === markerPath,
+      /^graphic-arrow-\d+$/.test(candidate.id) && candidate.querySelector("path")?.getAttribute("d") === arrowMarkerPath
+      && candidate.getAttribute("refX") === "5" && candidate.getAttribute("refY") === "5"
+      && candidate.getAttribute("viewBox") === "0 0 10 10" && candidate.getAttribute("orient") === "auto-start-reverse"
+      && candidate.getAttribute("markerWidth") === "6" && candidate.getAttribute("markerHeight") === "6"
+      && [null, "strokeWidth"].includes(candidate.getAttribute("markerUnits")),
     )
     if(!marker) {
-      let index = 1
-      while(document.getElementById(`graphic-arrow-${index}`)) index++
       marker = document.createElementNS(SVG_NAMESPACE, "marker")
-      marker.id = `graphic-arrow-${index}`
+      marker.id = this.#arrowMarkerId(graphic)
       marker.setAttribute("viewBox", "0 0 10 10")
-      marker.setAttribute("refX", "9")
+      marker.setAttribute("refX", "5")
       marker.setAttribute("refY", "5")
       marker.setAttribute("markerWidth", "6")
       marker.setAttribute("markerHeight", "6")
       marker.setAttribute("orient", "auto-start-reverse")
       const path = document.createElementNS(SVG_NAMESPACE, "path")
-      path.setAttribute("d", markerPath)
+      path.setAttribute("d", arrowMarkerPath)
       path.setAttribute("fill", "context-stroke")
       path.setAttribute("stroke", "none")
       marker.append(path)
@@ -4564,5 +4648,6 @@ export class GraphicFeature extends EditorFeature {
       definitions.append(marker)
     }
     connector.setAttribute(attribute, `url(#${marker.id})`)
+    connector.setAttribute("stroke-linecap", "butt")
   }
 }

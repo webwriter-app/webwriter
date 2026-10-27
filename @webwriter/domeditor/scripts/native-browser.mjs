@@ -7,6 +7,8 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "SVG arrowheads select their connector, fit its outline and resize independently",
+  "SVG shape fills keep overlaps solid and intentional holes open",
   "SVG stroke colors preserve line placement and selection",
   "repeated canvas modifier selections preserve item placement and camera",
   "canvas multiline text keeps partial selections after formatting",

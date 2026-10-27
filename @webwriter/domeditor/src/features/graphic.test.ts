@@ -2,7 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
-import {isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
+import {graphicPresetFillRule, isGraphicPresetType, readGraphicPreset} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
 import {previewFrameHTML} from "../frame-document"
 import {$, clearEditorMarkerClasses} from "../utility"
@@ -688,29 +688,61 @@ describe("graphic editing", () => {
     ["line-start-arrow", true, false],
     ["line-end-arrow", false, true],
     ["line-both-arrows", true, true],
-  ] as const)("inserts %s as a native line with arrow markers", (type, start, end) => {
+  ] as const)("inserts %s as a straight connector with arrow markers, paint and undo", async (type, start, end) => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
-    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: type})
-    const line = graphic.querySelector("line")!
-    expect(graphicShapeRoots(graphic)).toEqual([line])
-    expect(line.getAttribute("y1")).toBe(line.getAttribute("y2"))
-    expect(line.getAttribute("x1")).not.toBe(line.getAttribute("x2"))
-    expect(line.hasAttribute("marker-start")).toBe(start)
-    expect(line.hasAttribute("marker-end")).toBe(end)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: type, paint: {fill: "#ff0000", stroke: "#123456", "stroke-width": "8"}})
+    const connector = graphic.querySelector("polyline")!
+    expect(graphicShapeRoots(graphic)).toEqual([connector])
+    const points = connector.getAttribute("points")!.split(/\s+/).map(point => point.split(",").map(Number))
+    expect(points).toHaveLength(2)
+    expect(points[0][1]).toBe(points[1][1])
+    expect(points[0][0]).toBeLessThan(points[1][0])
+    expect(connector).toHaveAttribute("fill", "none")
+    expect(connector).toHaveAttribute("stroke", "#123456")
+    expect(connector).toHaveAttribute("stroke-width", "8")
+    expect(connector.hasAttribute("marker-start")).toBe(start)
+    expect(connector.hasAttribute("marker-end")).toBe(end)
     expect(graphic.querySelectorAll("marker")).toHaveLength(1)
     expect(graphic.querySelector("marker")).toHaveAttribute("orient", "auto-start-reverse")
+    expect(graphic.querySelector("marker")).toHaveAttribute("refX", "5")
+    expect(connector).toHaveAttribute("stroke-linecap", "butt")
+    expect(graphic.querySelector("marker path")).toHaveAttribute("fill", "context-stroke")
+    expect(editor.features.graphic.getState()).toMatchObject({
+      shape: "connector", parameters: {routing: "straight", "start-arrow": String(start), "end-arrow": String(end)},
+    })
+    expect(editor.appendix.querySelector('[data-graphic-handle="connector-start"]')).not.toBeNull()
+    expect(editor.appendix.querySelector('[data-graphic-handle="connector-end"]')).not.toBeNull()
+    expect(Boolean(editor.appendix.querySelector('[data-graphic-handle="arrowhead-start"]'))).toBe(start)
+    expect(Boolean(editor.appendix.querySelector('[data-graphic-handle="arrowhead-end"]'))).toBe(end)
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "routing", value: "orthogonal"})
+    expect(connector.getAttribute("points")!.split(/\s+/)).toHaveLength(4)
+    expect(connector.hasAttribute("marker-start")).toBe(start)
+    expect(connector.hasAttribute("marker-end")).toBe(end)
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "routing", value: "straight"})
     const serialized = new DOMParser().parseFromString(editor.toHTML(true), "text/html")
+    expect(graphicShapeType(serialized.querySelector("polyline"))).toBe("connector")
     for(const endpoint of ["start", "end"]) {
-      const reference = serialized.querySelector("line")!.getAttribute(`marker-${endpoint}`)
+      const reference = serialized.querySelector("polyline")!.getAttribute(`marker-${endpoint}`)
       if(reference) expect(serialized.getElementById(reference.slice(5, -1))?.localName).toBe("marker")
     }
+    await mutationsDelivered()
+    editor.doc.undo()
+    expect(graphic.querySelector("polyline, defs")).toBeNull()
+    editor.doc.redo()
+    expect(graphic.querySelector("polyline")!.hasAttribute("marker-start")).toBe(start)
+    expect(graphic.querySelector("polyline")!.hasAttribute("marker-end")).toBe(end)
+    expect(graphic.querySelectorAll("marker")).toHaveLength(1)
   })
 
-  it.each(["line-start-arrow", "line-end-arrow", "line-both-arrows"] as const)("keeps standalone %s arrowheads outside its fitted viewport in preview", shape => {
+  it.each(["line-start-arrow", "line-end-arrow", "line-both-arrows"] as const)("includes standalone %s arrowheads in its fitted viewport and preview", shape => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape})
     const graphic = document.querySelector("svg")!
     expect(graphic.style.overflow).toBe("visible")
+    expect(graphic).toHaveAttribute("preserveAspectRatio", "xMidYMid meet")
+    expect(Number(graphic.getAttribute("height"))).toBeGreaterThanOrEqual(36)
     const source = new DOMParser().parseFromString(editor.toHTML(), "text/html")
     source.body.classList.add("ww-canvas")
     const preview = new DOMParser().parseFromString(previewFrameHTML(source, {
@@ -719,9 +751,113 @@ describe("graphic editing", () => {
     }), "text/html")
     const copy = preview.querySelector("svg")!
     expect(copy.style.overflow).toBe("visible")
-    expect(copy.querySelector("line")?.outerHTML).toBe(graphic.querySelector("line")?.outerHTML)
+    expect(copy.querySelector("polyline")!.outerHTML).toBe(graphic.querySelector("polyline")!.outerHTML)
     expect(copy.querySelector("defs")?.outerHTML).toBe(graphic.querySelector("defs")?.outerHTML)
     expect(copy.outerHTML).not.toContain("◆")
+  })
+
+  it("sizes arrowheads independently without changing shared heads or connector endpoints", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "line-both-arrows"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "line-both-arrows"})
+    const [first, other] = [...graphic.querySelectorAll("polyline")]
+    clickShape(first)
+    const points = first.getAttribute("points")
+    const marker = (shape: Element, end: string) => graphic.querySelector(`[id="${shape.getAttribute(`marker-${end}`)!.slice(5, -1)}"]`)!
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "start-arrow-size", value: "12"})
+    await mutationsDelivered()
+    expect(marker(first, "start")).toHaveAttribute("markerWidth", "12")
+    expect(marker(first, "start")).toHaveAttribute("markerHeight", "12")
+    for(const shape of [first, other]) expect(marker(shape, "end")).toHaveAttribute("markerWidth", "6")
+    expect(marker(other, "start")).toHaveAttribute("markerWidth", "6")
+    expect(first).toHaveAttribute("points", points!)
+    expect(editor.features.graphic.getState()!.parameters).toMatchObject({"start-arrow-size": "12", "end-arrow-size": "6"})
+    editor.doc.undo()
+    expect(graphic.querySelectorAll("marker")).toHaveLength(1)
+    expect(marker(graphic.querySelector("polyline")!, "start")).toHaveAttribute("markerWidth", "6")
+    editor.doc.redo()
+    const reloaded = new DOMParser().parseFromString(editor.toHTML(true), "text/html")
+    expect(reloaded.querySelectorAll("marker")).toHaveLength(2)
+    expect(reloaded.body.innerHTML).not.toContain("◆")
+    clickShape(graphic.querySelector("polyline")!)
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-arrow-size", value: "-10"})
+    expect(marker(graphic.querySelector("polyline")!, "end")).toHaveAttribute("markerWidth", "2")
+    expect(marker(graphic.querySelector("polyline")!, "start")).toHaveAttribute("markerWidth", "12")
+  })
+
+  it("preserves unfamiliar authored arrowhead definitions when a size command cannot edit them", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<defs><marker id="custom-head" viewBox="0 0 10 10" markerWidth="6" markerHeight="6" refX="9" refY="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="purple"/></marker></defs><polyline points="100,100 300,100" marker-end="url(#custom-head)"/>'
+    const marker = graphic.querySelector("marker")!, original = marker.outerHTML
+    clickShape(graphic.querySelector("polyline")!)
+    expect(editor.appendix.querySelector('[data-graphic-handle="arrowhead-end"]')).toBeNull()
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "end-arrow-size", value: "12"})
+    expect(marker.outerHTML).toBe(original)
+    expect(graphic.querySelector("polyline")).toHaveAttribute("marker-end", "url(#custom-head)")
+  })
+
+  it.each(["commit", "cancel", "replace", "remote", "destroy"])("previews arrowhead sizing only in the appendix and cleans up on %s", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "line-both-arrows"})
+    const connector = graphic.querySelector("polyline")!
+    connector.setAttribute("points", "100,100 300,100")
+    clickShape(connector)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const handle = editor.appendix.querySelector('[data-graphic-handle="arrowhead-end"]')!
+    expect(handle).not.toBeNull()
+    expect(handle.getAttribute("part")).toContain("graphic-affordance")
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: 282, clientY: 82}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, clientX: 264, clientY: 64}))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(graphic.querySelectorAll("marker")).toHaveLength(1)
+    expect(graphic.querySelector("marker")).toHaveAttribute("markerWidth", "6")
+    expect(editor.appendix.querySelector('.◆graphic-preview marker[markerWidth="12"]')).not.toBeNull()
+    if(outcome === "cancel") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
+    if(outcome === "replace") connector.replaceWith(connector.cloneNode(true))
+    if(outcome === "remote") graphic.querySelector("marker")!.setAttribute("markerWidth", "8")
+    if(outcome === "destroy") editor.features.graphic.disable()
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    await mutationsDelivered()
+    expect(graphic.querySelectorAll("marker")).toHaveLength(outcome === "commit" ? 2 : 1)
+    expect(editor.appendix.querySelector('.◆graphic-preview')).toBeNull()
+    expect(document.querySelector('.◆graphic-preview-source')).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    if(outcome === "commit") {
+      expect(graphic.querySelector('marker[markerWidth="12"]')).not.toBeNull()
+      expect(connector).toHaveAttribute("points", "100,100 300,100")
+      editor.doc.undo()
+      expect(graphic.querySelectorAll("marker")).toHaveLength(1)
+      editor.doc.redo()
+      expect(graphic.querySelectorAll("marker")).toHaveLength(2)
+    }
+    if(outcome === "remote") expect(graphic.querySelector("marker")).toHaveAttribute("markerWidth", "8")
+  })
+
+  it.each([false, true])("selects a connector through its arrowhead and includes both heads in its outline (rotated: %s)", rotated => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "line-both-arrows"})
+    const connector = graphic.querySelector("polyline")!
+    connector.setAttribute("points", "100,100 300,100")
+    if(rotated) connector.setAttribute("transform", "rotate(90 200 100)")
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 700, clientY: 700}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    expect(editor.features.graphic.selectedShape).toBeNull()
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: rotated ? 200 : 315, clientY: rotated ? 215 : 100}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
+    expect(editor.features.graphic.selectedShape).toBe(connector)
+    expect(editor.appendix.querySelector('.◆graphic-selection-outline')).toHaveAttribute("points", rotated
+      ? "218,-18 218,218 182,218 182,-18"
+      : "82,82 318,82 318,118 82,118")
+    expect(editor.appendix.querySelectorAll('[data-graphic-handle^="arrowhead-"]')).toHaveLength(2)
   })
 
   it("uses document flow when inserting a shape through its command", () => {
@@ -765,7 +901,7 @@ describe("graphic editing", () => {
     expect(graphic.getAttribute("viewBox")).not.toBe("0 0 1600 900")
     expect(shape.namespaceURI).toBe(SVG_NAMESPACE)
     const polygonal = ["triangle", "diamond", "hexagon", "star", "arrow", "polygon"].includes(option.type)
-    expect(shape.localName).toBe(option.type === "text-box" ? "g" : isGraphicPresetType(option.type) ? "path" : option.type === "rectangle" ? "rect" : option.type === "connector" ? "polyline" : polygonal ? "polygon" : option.type.startsWith("line-") ? "line" : option.type)
+    expect(shape.localName).toBe(option.type === "text-box" ? "g" : isGraphicPresetType(option.type) ? "path" : option.type === "rectangle" ? "rect" : option.type === "connector" || option.type.startsWith("line-") ? "polyline" : polygonal ? "polygon" : option.type)
     if(option.type !== "image") expect(shape.localName === "g" ? shape.firstElementChild : shape).toHaveAttribute("stroke")
     expect($.selectedElement).toBe(graphic)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
@@ -781,7 +917,35 @@ describe("graphic editing", () => {
     expect(editor.appendix.querySelector('.◆graphic-ports')?.children).toHaveLength(0)
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(document.body.querySelector('[data-graphic-handle]')).toBeNull()
+    if(isGraphicPresetType(option.type)) expect(shape.localName === "g" ? shape.firstElementChild : shape).toHaveAttribute("fill-rule", graphicPresetFillRule(option.type))
     if(option.type === "text-box") expect(shape.querySelector("text")).toHaveTextContent("Text")
+  })
+
+  it("repairs an existing cylinder when filled and restores its old geometry on undo", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<!--keep--><path aria-label="Cylinder" d="M 5 18 C 5 2 95 2 95 18 L 95 84 C 95 98 5 98 5 84 Z M 5 18 C 5 34 95 34 95 18" fill="#fff" fill-rule="evenodd"/><g><title>Other content</title></g>'
+    const path = graphic.querySelector("path")!
+    const original = path.getAttribute("d")!
+    const sibling = graphic.lastElementChild!
+    clickShape(path)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "fill", value: "#ef4444"})
+    await mutationsDelivered()
+    expect(path).toHaveAttribute("fill-rule", "nonzero")
+    expect(path).toHaveAttribute("fill", "#ef4444")
+    expect(path.getAttribute("d")).not.toBe(original)
+    expect(readGraphicPreset(path)?.type).toBe("cylinder")
+    expect(graphic.lastElementChild).toBe(sibling)
+    expect(graphic.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.doc.undo()
+    expect(graphic.querySelector("path")).toHaveAttribute("d", original)
+    expect(graphic.querySelector("path")).toHaveAttribute("fill-rule", "evenodd")
+    editor.doc.redo()
+    expect(graphic.querySelector("path")).toHaveAttribute("fill-rule", "nonzero")
+    expect(graphic.querySelector("path")).toHaveAttribute("fill", "#ef4444")
   })
 
   it.each(["commit", "cancel", "replace", "mutate"])("adjusts preset handles safely on %s", async outcome => {
@@ -2273,15 +2437,16 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).not.toContain("data-graphic")
   })
 
-  it("keeps inferred connector endpoints attached while shapes move and resize", () => {
+  it.each(["connector", "line-start-arrow", "line-end-arrow", "line-both-arrows"] as const)("keeps inferred %s endpoints attached while shapes move and resize", type => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0}))
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
-    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "connector"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: type})
     const [first, second] = Array.from(graphic.querySelectorAll("rect"))
     const connector = graphic.querySelector("polyline")!
+    const arrows = [connector.getAttribute("marker-start"), connector.getAttribute("marker-end")]
     first.setAttribute("x", "100")
     first.setAttribute("y", "100")
     first.setAttribute("width", "100")
@@ -2309,6 +2474,7 @@ describe("graphic editing", () => {
     expect(connector).toHaveAttribute("points", "250,150 375,150 375,350 500,350")
     editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "x", value: "600"})
     expect(connector).toHaveAttribute("points", "250,150 425,150 425,350 600,350")
+    expect([connector.getAttribute("marker-start"), connector.getAttribute("marker-end")]).toEqual(arrows)
   })
 
   it("previews and commits attached connectors with a shape in one undo step", async () => {

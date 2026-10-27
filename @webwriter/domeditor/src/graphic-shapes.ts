@@ -10,13 +10,45 @@ export type GraphicPresetState = {
   values: number[]
 }
 
+const numberPattern = /[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g
+
+// These open detail contours run opposite to the silhouette. SVG closes
+// them for filling, so reverse their direction to keep the overlap solid.
+const reversedDetailPresets = new Set<GraphicPresetType>([
+  "cylinder", "cube", "folded-corner", "ribbon-up", "ribbon-down",
+  "magnetic-disk", "direct-access-storage", "sequential-access-storage",
+])
+
+function presetDrawing(type: GraphicPresetType, values: number[]) {
+  const path = graphicShapePresets[type].draw(values)
+  if(!reversedDetailPresets.has(type)) return path
+  return path.split(/(?=M)/).map(subpath => {
+    if(subpath.includes("Z")) return subpath.trim()
+    const commands = Array.from(subpath.matchAll(/([MLQC])([^MLQCZ]+)/g), match => ({
+      command: match[1], values: coordinates(match[2]),
+    }))
+    const end = commands.at(-1)!.values.slice(-2)
+    const reversed = commands.slice(1).map((command, i) => {
+      const start = commands[i].values.slice(-2)
+      const controls = command.values.slice(0, -2)
+      if(command.command === "C") controls.push(...controls.splice(0, 2))
+      return `${command.command} ${[...controls, ...start].join(" ")}`
+    }).reverse()
+    return `M ${end.join(" ")} ${reversed.join(" ")}`
+  }).join(" ")
+}
+
+export function graphicPresetFillRule(type: GraphicPresetType) {
+  return ["frame", "donut", "prohibited"].includes(type) ? "evenodd" : "nonzero"
+}
+
 export const graphicPresetOptions = (Object.keys(graphicShapePresets) as GraphicPresetType[]).map(type => {
   const definition: GraphicShapePreset = graphicShapePresets[type]
   return {
     type, label: definition.label, category: definition.category, icon: "Shape",
     path: type === "text-box"
       ? "M 0 0 L 100 0 L 100 100 L 0 100 Z M 12 50 L 25 15 L 38 50 M 17 38 L 33 38 M 48 20 L 88 20 M 48 40 L 88 40 M 12 65 L 88 65 M 12 82 L 88 82"
-      : definition.draw(definition.adjustments.map(adjustment => adjustment.default)),
+      : presetDrawing(type, definition.adjustments.map(adjustment => adjustment.default)),
   }
 })
 
@@ -24,22 +56,26 @@ export function isGraphicPresetType(type: string): type is GraphicPresetType {
   return Object.hasOwn(graphicShapePresets, type)
 }
 
-const numberPattern = /[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g
 const clean = (value: number) => String(Math.round(value * 1e6) / 1e6)
 const defaults = (definition: GraphicShapePreset) => definition.adjustments.map(adjustment => adjustment.default)
-const coordinates = (path: string) => Array.from(path.matchAll(numberPattern), match => Number(match[0]))
+function coordinates(path: string) { return Array.from(path.matchAll(numberPattern), match => Number(match[0])) }
 const signature = (path: string) => path.replace(numberPattern, "#").replace(/[\s,]+/g, "")
 
-export function graphicPresetPath(type: GraphicPresetType, bounds: Bounds, values = defaults(graphicShapePresets[type])) {
+function scalePath(path: string, bounds: Bounds) {
   let index = 0
-  return graphicShapePresets[type].draw(values).replace(numberPattern, value => {
+  return path.replace(numberPattern, value => {
     const horizontal = index++ % 2 === 0
     return clean((horizontal ? bounds.x : bounds.y) + Number(value) / 100 * (horizontal ? bounds.width : bounds.height))
   })
 }
 
+export function graphicPresetPath(type: GraphicPresetType, bounds: Bounds, values = defaults(graphicShapePresets[type])) {
+  return scalePath(presetDrawing(type, values), bounds)
+}
+
 export function writeGraphicPreset(element: Element, state: GraphicPresetState, bounds = state.bounds, values = state.values) {
   element.setAttribute("d", graphicPresetPath(state.type, bounds, values))
+  element.setAttribute("fill-rule", graphicPresetFillRule(state.type))
 }
 
 type Template = {
@@ -47,6 +83,7 @@ type Template = {
   definition: GraphicShapePreset
   base: number[]
   deltas: number[][]
+  draw: (values: number[]) => string
 }
 let templates: Map<string, Template[]> | undefined
 
@@ -55,15 +92,21 @@ function getTemplates() {
   templates = new Map()
   for(const option of graphicPresetOptions) {
     const definition: GraphicShapePreset = graphicShapePresets[option.type]
-    const zero = definition.adjustments.map(() => 0)
-    const path = definition.draw(zero)
-    const base = coordinates(path)
-    const deltas = zero.map((_, index) => coordinates(definition.draw(zero.map((_, i) => i === index ? 1 : 0)))
-      .map((value, i) => value - base[i]))
-    const key = signature(path)
-    const candidates = templates.get(key) ?? []
-    candidates.push({type: option.type, definition, base, deltas})
-    templates.set(key, candidates)
+    // Retain recognition of previously serialized paths. The next geometry
+    // edit writes the corrected contour without changing its visible outline.
+    const drawings = [(values: number[]) => presetDrawing(option.type, values)]
+    if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
+    for(const draw of drawings) {
+      const zero = definition.adjustments.map(() => 0)
+      const path = draw(zero)
+      const base = coordinates(path)
+      const deltas = zero.map((_, index) => coordinates(draw(zero.map((_, i) => i === index ? 1 : 0)))
+        .map((value, i) => value - base[i]))
+      const key = signature(path)
+      const candidates = templates.get(key) ?? []
+      candidates.push({type: option.type, definition, base, deltas, draw})
+      templates.set(key, candidates)
+    }
   }
   return templates
 }
@@ -133,7 +176,7 @@ export function readGraphicPreset(element: Element | null): GraphicPresetState |
       || value < template.definition.adjustments[i].min - 1e-4
       || value > template.definition.adjustments[i].max + 1e-4)) continue
     const bounds = {x: horizontal[0]!, y: vertical[0]!, width: horizontal[1]! * 100, height: vertical[1]! * 100}
-    const expected = coordinates(graphicPresetPath(template.type, bounds, values))
+    const expected = coordinates(scalePath(template.draw(values), bounds))
     if(expected.length !== actual.length || expected.some((value, i) => Math.abs(value - actual[i]) > 0.0001)) continue
     state = {type: template.type, definition: template.definition, bounds, values}
     break

@@ -27,6 +27,7 @@ export type RibbonMenuButton = string | {
   galleryColumns?: number
   category?: string
   path?: string
+  pathFill?: string
   submenu?: RibbonMenuButton[]
   submenuGroups?: RibbonMenuGroup[]
   submenuHeader?: TemplateResult
@@ -635,7 +636,7 @@ export class RibbonMenu extends LitElement {
     if(path) return html`
       <span class="item-icon shape-preview" aria-hidden="true">
         <svg viewBox="-10 -10 120 120" focusable="false" aria-hidden="true">
-          <path d=${path} fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d=${path} fill=${typeof button === "string" ? "none" : button.pathFill ?? "none"} stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
       </span>
     `
