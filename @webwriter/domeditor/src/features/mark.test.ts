@@ -27,6 +27,28 @@ function selectText(node: Text, start = 0, end = node.length) {
 const cleanHTML = () => editor.toHTML(true)
 
 describe("MarkFeature DOM state", () => {
+  it("ignores selection presentation mutations while refreshing authored formatting", async () => {
+    const paragraph = setContent("<p>Text</p>")
+    selectText(paragraph.firstChild as Text)
+    const flush = () => new Promise(resolve => setTimeout(resolve, 20))
+    await flush()
+    const post = vi.spyOn(editor, "postMarkState")
+    paragraph.classList.add("◆", "◆text-selected")
+    document.body.classList.add("◆", "◆graphic-pan-ready")
+    await flush()
+    expect(post).not.toHaveBeenCalled()
+    paragraph.classList.remove("◆text-selected")
+    await flush()
+    expect(post).not.toHaveBeenCalled()
+    paragraph.classList.add("authored")
+    await flush()
+    expect(post).toHaveBeenCalled()
+    post.mockClear()
+    ;(paragraph as HTMLElement).style.fontWeight = "bold"
+    await flush()
+    expect(post).toHaveBeenCalled()
+  })
+
   it("uses semantic mark independently of background color and preserves nested authored marks", () => {
     const paragraph = setContent('<p><em data-source="remote">one <b>two</b></em> three</p>')
     const first = paragraph.querySelector("em")!.firstChild!

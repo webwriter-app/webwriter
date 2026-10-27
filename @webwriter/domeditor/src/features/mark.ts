@@ -23,6 +23,7 @@ import {
 } from "../marks"
 import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
+import {isAuthoredMutation} from "../editor-artifacts"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
 import {isLinkEdit, normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
@@ -601,18 +602,19 @@ export class MarkFeature extends EditorFeature {
     super.enable()
     const FrameMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
     const observer = new FrameMutationObserver(records => {
+      if(!records.some(isAuthoredMutation)) return
       this.queueAutomaticLinks(records)
       this.queueStateRefresh()
     })
     try {
       observer.observe(document.body, {
-        attributes: true,
+        attributes: true, attributeOldValue: true,
         attributeFilter: ["style", "class", "id", "title", "aria-label", "is", ...markAttributeNames, ...svgStyleNames],
         childList: true,
-        characterData: true,
+        characterData: true, characterDataOldValue: true,
         subtree: true,
       })
-      observer.observe(document.head, {attributes: true, childList: true, characterData: true, subtree: true})
+      observer.observe(document.head, {attributes: true, attributeOldValue: true, childList: true, characterData: true, characterDataOldValue: true, subtree: true})
       this.observer = observer
       this.syncFonts()
       this.editor.doc.doc.on("afterTransaction", this.handleHistoryTransaction)

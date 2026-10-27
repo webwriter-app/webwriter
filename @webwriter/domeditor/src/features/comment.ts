@@ -2,6 +2,7 @@ import {EditorFeature} from "."
 import {fixedClientX, isAppendixInteraction, isAtomicEditingElement, isWidgetShadowInteraction, setPart} from "../utility"
 import {commentReviewRequestEvent, type CommentState} from "../editor-bridge"
 import {documentLayoutMode} from "../document-layout"
+import {isAuthoredMutation} from "../editor-artifacts"
 import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 
 const markerPrefix = "webwriter:comment:"
@@ -190,12 +191,13 @@ export class CommentFeature extends EditorFeature {
     const FrameMutationObserver = document.defaultView?.MutationObserver
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
+        if(!records.some(isAuthoredMutation)) return
         if(records.some(record => record.type !== "attributes")) this.cachedMarkers = null
         this.queueStateRefresh()
       })
       try {
-        this.observer.observe(document.body, {childList: true, characterData: true, subtree: true,
-          attributes: true, attributeFilter: ["class", "style", "hidden", "open"]})
+        this.observer.observe(document.body, {childList: true, characterData: true, characterDataOldValue: true, subtree: true,
+          attributes: true, attributeOldValue: true, attributeFilter: ["class", "style", "hidden", "open"]})
       }
       catch {
         // Scoped-registry startup can briefly pair the iframe document with a

@@ -18,6 +18,23 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it("does not publish comment selection state for editor marker changes", async () => {
+  document.body.innerHTML = "<p>Text</p>"
+  const paragraph = document.querySelector("p")!
+  const flush = () => new Promise(resolve => setTimeout(resolve, 20))
+  await flush()
+  const post = vi.spyOn(editor, "postSelectionPath")
+  paragraph.classList.add("◆", "◆text-selected")
+  await flush()
+  expect(post).not.toHaveBeenCalled()
+  paragraph.classList.remove("◆text-selected")
+  await flush()
+  expect(post).not.toHaveBeenCalled()
+  paragraph.style.display = "none"
+  await flush()
+  expect(post).toHaveBeenCalled()
+})
+
 function setContent(html: string) {
   document.body.innerHTML = html
   return document.body.firstElementChild!
