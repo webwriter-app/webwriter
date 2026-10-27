@@ -33,6 +33,7 @@ import {checkGraphicLabels} from "./graphic-labels"
 import {checkGraphicLabelResizePerformance} from "./graphic-label-resize-performance"
 import {checkGraphicEmptyLabelCaret} from "./graphic-empty-label-caret"
 import {checkGraphicText} from "./graphic-text"
+import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
 import {checkSlideEditing} from "./slide-editing"
 
 const checks: Check[] = []
@@ -63,6 +64,7 @@ await check("SVG block arrow POIs independently edit shaft and arrowhead dimensi
 await check("SVG preset POIs stay on their actual contours through adjustments", checkGraphicPOIEdges)
 await check("SVG curved shape POIs follow contours while dragging and undoing", checkGraphicCurvedPOIs)
 await check("SVG speech bubbles attach their connector to the edge facing the tip", checkGraphicSpeechBubbles)
+await check("SVG rotated POI edits keep unedited geometry fixed on screen", checkGraphicPOIRotation)
 await check("shape keyboard drops stay within the captured graphic", checkGraphicKeyboardDrag)
 await check("SVG shape text entry keeps capture and native typing stable", checkGraphicText)
 await check("SVG shape text boxes fit content and wrap while preserving native editing", checkGraphicTextBox)

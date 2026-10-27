@@ -2807,6 +2807,58 @@ describe("graphic editing", () => {
     expect(editor.appendix.querySelector('[data-graphic-handle="arrow-shaft"]')).not.toBeNull()
   })
 
+  it.each([
+    {type:"square-rectangle",handle:"path-point-0"},
+    {type:"hexagon",handle:"vertex-0"},
+    {type:"line",handle:"line-start"},
+    {type:"bezier",handle:"path-point-1"},
+  ] as const)("keeps unedited $type points fixed when its POI crosses rotated bounds", async ({type,handle: name}) => {
+    editor.features.graphic.actions.insertGraphic({type:"insertGraphic"})
+    const graphic=document.querySelector("svg")!
+    Object.defineProperty(graphic,"getScreenCTM",{value:()=>({a:1,b:0,c:0,d:1,e:0,f:0})})
+    editor.features.graphic.actions.addGraphicShape({type:"addGraphicShape",shape:type})
+    const shape=editor.features.graphic.selectedShape!
+    editor.features.graphic.actions.setGraphicParameter({type:"setGraphicParameter",name:"rotation",value:"35"})
+    const screenPoints=(element:Element)=>{
+      const preset=readGraphicPreset(element)
+      const frame=preset?.type==="square-rectangle" ? preset.bounds : null
+      const points=(frame ? [{x:frame.x,y:frame.y},{x:frame.x+frame.width,y:frame.y},{x:frame.x+frame.width,y:frame.y+frame.height},{x:frame.x,y:frame.y+frame.height}] : graphicPathGeometry(element)?.points) ?? (element.localName==="line"
+        ? [1,2].map(i=>({x:Number(element.getAttribute(`x${i}`)),y:Number(element.getAttribute(`y${i}`))}))
+        : element.getAttribute("points")!.split(/\s+/).map(pair=>{const [x,y]=pair.split(",").map(Number);return {x,y}}))
+      const [angle,cx,cy]=element.getAttribute("transform")!.match(/[-+]?\d*\.?\d+/g)!.map(Number)
+      const radians=angle*Math.PI/180
+      return points.map(({x,y})=>({x:cx+(x-cx)*Math.cos(radians)-(y-cy)*Math.sin(radians),y:cy+(x-cx)*Math.sin(radians)+(y-cy)*Math.cos(radians)}))
+    }
+    const before=screenPoints(shape),original=shape.outerHTML,pointIndex=name==="path-point-1" ? 1 : 0
+    const handle=editor.appendix.querySelector<HTMLElement>(`[data-graphic-handle="${name}"]`)!
+    const start={x:parseFloat(handle.style.left),y:parseFloat(handle.style.top)}
+    const pointer={bubbles:true,composed:true,button:0,pointerId:83}
+    handle.dispatchEvent(new PointerEvent("pointerdown",{...pointer,clientX:start.x,clientY:start.y}))
+    for(const [dx,dy] of [[-200,-150],[-240,-180]]) {
+      document.dispatchEvent(new PointerEvent("pointermove",{...pointer,buttons:1,altKey:true,clientX:start.x+dx,clientY:start.y+dy}))
+      await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()))
+      const preview=editor.appendix.querySelector<SVGGraphicsElement>(".◆graphic-preview > :not(defs)")!
+      const actual=screenPoints(preview)
+      actual.forEach((point,index)=>{
+        expect(point.x).toBeCloseTo(index===pointIndex ? start.x+dx : before[index].x,1)
+        expect(point.y).toBeCloseTo(index===pointIndex ? start.y+dy : before[index].y,1)
+      })
+      expect(shape.outerHTML.replace(/ ◆graphic-preview-source/g,"")).toBe(original)
+    }
+    document.dispatchEvent(new PointerEvent("pointerup",pointer))
+    const committed=screenPoints(shape)
+    committed.forEach((point,index)=>{
+      if(index===pointIndex) return
+      expect(point.x).toBeCloseTo(before[index].x,1)
+      expect(point.y).toBeCloseTo(before[index].y,1)
+    })
+    await mutationsDelivered()
+    editor.doc.undo()
+    expect(screenPoints(graphic.firstElementChild!)).toEqual(before)
+    editor.doc.redo()
+    expect(screenPoints(graphic.firstElementChild!)).toEqual(committed)
+  })
+
   it.each(["cancel", "replace"] as const)("keeps arrow POI edits in local coordinates when rotated 35 degrees and cleans up on %s", async outcome => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!

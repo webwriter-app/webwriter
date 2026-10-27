@@ -3272,7 +3272,22 @@ export class GraphicFeature extends EditorFeature {
 
   #applyInteractionSet(shapes: Element[], interaction: Interaction): ActiveGuides {
     if(shapes.length === 1) {
+      const center = interaction.rotation && !["move", "resize", "rotate"].includes(interaction.kind)
+        ? shapeCenter(interaction.items[0].source) : null
+      const transform = center ? interaction.items[0].source.getAttribute("transform") : null
       const guides=this.#applyInteraction(shapes[0], interaction)
+      if(center && shapes[0].getAttribute("transform") !== transform) {
+        // A POI can expand the bounds and recenter rotate(). Compensate in
+        // authored coordinates so the unedited geometry stays fixed on screen.
+        const nextCenter = shapeCenter(shapes[0])
+        const fixed = rotateAround(nextCenter, center, interaction.rotation)
+        const dx = fixed.x-nextCenter.x, dy = fixed.y-nextCenter.y
+        if(Math.abs(dx) > .000001 || Math.abs(dy) > .000001) {
+          const bounds = shapeBounds(shapes[0])
+          setShapeBounds(shapes[0], {...bounds, x: bounds.x+dx, y: bounds.y+dy}, bounds, shapePoints(shapes[0]))
+          setRotation(shapes[0], interaction.rotation)
+        }
+      }
       this.#layoutShapeText(shapes[0])
       return guides
     }
@@ -3467,6 +3482,10 @@ export class GraphicFeature extends EditorFeature {
     if(interaction.kind === "line-start" || interaction.kind === "line-end") {
       const snapped = this.#snapPoint(point, interaction)
       const suffix = interaction.kind === "line-start" ? "1" : "2"
+      const opposite = interaction.kind === "line-start" ? "2" : "1"
+      const fixed = interaction.points[interaction.kind === "line-start" ? 1 : 0]
+      geometry.setAttribute(`x${opposite}`, cleanNumber(fixed.x))
+      geometry.setAttribute(`y${opposite}`, cleanNumber(fixed.y))
       geometry.setAttribute(`x${suffix}`, cleanNumber(snapped.point.x))
       geometry.setAttribute(`y${suffix}`, cleanNumber(snapped.point.y))
       setRotation(shape, interaction.rotation)
