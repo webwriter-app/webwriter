@@ -16,7 +16,7 @@ export class SlidesFeature extends EditorFeature {
 
   insertionSlide() {
     this.ensureContent()
-    return this.containingSlide(document.getSelection()?.anchorNode ?? null) ?? this.current()
+    return this.current()
   }
 
   clientPoint(slide: HTMLElement, x: number, y: number) {
@@ -157,7 +157,7 @@ export class SlidesFeature extends EditorFeature {
       if(this.isEnabled) this.selectStart(slide)
     })
   }
-  private current() {
+  current() {
     const viewport = this.viewport(), slides = this.slides()
     if(viewport?.clientWidth) {
       const left = viewport.getBoundingClientRect().left
@@ -434,10 +434,9 @@ export class SlidesFeature extends EditorFeature {
   }
   passiveListeners: DocumentListenerMap = {
     selectionchange: () => this.schedule(),
-    focusin: event => {
-      this.schedule()
-      if(this.active && isSlide(event.target as Node | null) && $.selectedElement !== event.target) this.scheduleNavigation(event.target as HTMLElement)
-    },
+    // Native text selection also focuses the slide. Only navigation may reset
+    // its caret; doing so on focus collapses every subsequent text selection.
+    focusin: () => this.schedule(),
   }
   private schedule = () => {
     if(this.isEnabled && this.frame === null) this.frame = requestAnimationFrame(() => { this.frame = null; this.refresh() })

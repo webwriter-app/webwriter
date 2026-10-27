@@ -62,7 +62,7 @@ export class SelectionFeature extends EditorFeature {
   #atomicExtension: {range: Range, backwards: boolean} | null = null
   #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string} | null = null
   #settingBoxSelection = false
-  #boxDrag: {x: number, y: number, pointerId?: number, pointerType: string, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
+  #boxDrag: {root: HTMLElement, x: number, y: number, pointerId?: number, pointerType: string, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
   #selectionMarkers = new Set<Element>()
   #atomicOverlays = new Map<Element, HTMLElement>()
   #atomicOverlayFrame: number | null = null
@@ -266,7 +266,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   selectElement(element: Element) {
-    if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    if(!element.isConnected || element === document.body || !document.body.contains(element) || slideLayoutRole(element)) return
     const focused = document.activeElement === document.body ? this.editor.appendix.activeElement : null
     if(focused instanceof HTMLElement) focused.blur()
     this.#releaseCaptureSelection()
@@ -744,7 +744,7 @@ export class SelectionFeature extends EditorFeature {
           this.#settingBoxSelection = true
           try {
             if(elements.length) $.selectElements(elements)
-            else $.selectRange(document.body, 0)
+            else $.selectRange(this.#boxDrag!.root, 0)
           }
           finally { this.#settingBoxSelection = false }
         }
@@ -844,8 +844,8 @@ export class SelectionFeature extends EditorFeature {
 
   /** Canvas and slide backgrounds select whole items rather than nearby text. */
   beginBoxSelection(event: PointerEvent) {
-    if(event.button !== 0 || this.editor.isEditingLocked
-      || !this.editor.features.canvas.active && !this.editor.features.slides.active) return
+    const root = this.editor.features.canvas.editingRoot
+    if(event.button !== 0 || this.editor.isEditingLocked || !root) return
     this.#endDrag()
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
@@ -861,7 +861,7 @@ export class SelectionFeature extends EditorFeature {
     // The top layer clears authored stacking contexts (including open dialogs).
     // It remains inside the document iframe, below the surrounding editor UI.
     overlay.showPopover?.()
-    this.#boxDrag = {x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
+    this.#boxDrag = {root, x: event.clientX + window.scrollX, y: event.clientY + window.scrollY,
       pointerId: event.pointerId, pointerType: event.pointerType, overlay, elements: [], previews: new Map()}
     this.isInDragSelection = true
     document.body.classList.add("◆", "◆selection-dragging")
@@ -871,19 +871,10 @@ export class SelectionFeature extends EditorFeature {
     this.#extendBoxSelection(event)
   }
 
-  #boxItems() {
-    if(this.editor.features.canvas.active) return Array.from(document.body.children)
-      .filter(element => !element.matches("style, script, link, meta, template"))
-    if(this.editor.features.slides.active) return Array.from(document.querySelectorAll("body > .ww-slides-viewport > section.ww-slide"))
-      .filter(isSlide).flatMap(slide => Array.from(slide.children)
-        .filter(element => !element.matches("style, script, link, meta, template, nav.ww-slide-directions")))
-    return []
-  }
-
   #extendBoxSelection(event: PointerEvent) {
     const drag = this.#boxDrag
     if(!drag || drag.pointerId !== undefined && event.pointerId !== drag.pointerId) return
-    if(!this.editor.features.canvas.active && !this.editor.features.slides.active || this.editor.isEditingLocked) {
+    if(!drag.root.isConnected || this.editor.features.canvas.editingRoot !== drag.root || this.editor.isEditingLocked) {
       this.#endDrag()
       return
     }
@@ -891,7 +882,7 @@ export class SelectionFeature extends EditorFeature {
     const left = Math.min(x, event.clientX), top = Math.min(y, event.clientY)
     const right = Math.max(x, event.clientX), bottom = Math.max(y, event.clientY)
     Object.assign(drag.overlay.style, {left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px`})
-    const elements = this.#boxItems().filter(element => {
+    const elements: Element[] = this.editor.features.canvas.items(drag.root).filter(element => {
       const geometry = element instanceof HTMLElement || element instanceof SVGSVGElement
         ? this.editor.features.transformation.boxGeometry(element) : null
       const rect = geometry?.rect ?? element.getBoundingClientRect()
@@ -941,7 +932,7 @@ export class SelectionFeature extends EditorFeature {
     const origin = ev.composedPath()[0] ?? ev.target
     if(this.editor.features.slides.active && (origin === document.body || origin === document.documentElement
       || origin instanceof Element && (isSlide(origin) || origin.matches("body > .ww-slides-viewport")))) {
-      this.beginBoxSelection(ev)
+      ev.preventDefault()
       return
     }
     this.#endDrag()
@@ -972,7 +963,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     this.#releaseCaptureSelection()
-    const canvasItem = this.editor.features.canvas.active
+    const canvasItem = this.editor.features.canvas.editingRoot
       ? this.editor.features.canvas.itemAtPoint(ev.clientX, ev.clientY) : null
     if($.isEmptyDocumentSelection && editingFlowRoot(ev.target instanceof Node ? ev.target : null) === getDocumentRoot()
       && !canvasItem) {
@@ -1251,6 +1242,7 @@ export class SelectionFeature extends EditorFeature {
       targetElement = parent
     }
     return isDocumentRoot(targetElement) || targetElement === document.body || targetElement === document.documentElement
+      || slideLayoutRole(targetElement)
       ? null : figureSelectionTarget(targetElement)
   }
 
@@ -1277,7 +1269,7 @@ export class SelectionFeature extends EditorFeature {
       if(path === null) return
 
       const pathElement = this.#elementAtPath(path)
-      if(inlineMathRoot(pathElement)) return
+      if(inlineMathRoot(pathElement) || slideLayoutRole(pathElement)) return
       const element = figureSelectionTarget(pathElement.closest("table") ?? pathElement)
       element.classList.add("◆", "◆element-hovered")
       this.#refreshHoverGeometry()
@@ -1289,6 +1281,7 @@ export class SelectionFeature extends EditorFeature {
 
       const section = this.#rawElementAtPath(path)
       if(!isSectionElement(section)) throw new TypeError("A section path must resolve to a section element")
+      if(slideLayoutRole(section)) return
       section.classList.add("◆", "◆element-hovered")
       this.#refreshHoverGeometry()
     },
@@ -1299,7 +1292,7 @@ export class SelectionFeature extends EditorFeature {
 
   showStyleTargetHover(target: Element | null) {
     this.#clearStyleTargetHover()
-    if(!target || !document.body.contains(target)) return
+    if(!target || !document.body.contains(target) || slideLayoutRole(target)) return
     this.#clearElementHover()
     target.classList.add("◆", "◆style-target-hovered")
     this.#refreshHoverGeometry()
@@ -1394,7 +1387,7 @@ export class SelectionFeature extends EditorFeature {
       : atomicEditingContainer(native, this.editor.schema) ?? (native ? mediaContainerForNode(native) ?? graphicContainerForNode(native) : null) ?? this.#modifierSelectionTarget(native))
     const target = candidate ? figureSelectionTarget(candidate) : null
     if(!this.isEnabled
-      || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target)) {
+      || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target) || slideLayoutRole(target)) {
       this.#clearHoverGeometry()
       return
     }
@@ -2063,7 +2056,7 @@ export class SelectionFeature extends EditorFeature {
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
     if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)
     const transformTarget = layoutItem ?? selectedElement
-    this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
+    this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) && !slideLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
     this.editor.features.board.refresh()
     this.editor.features.manipulation.refreshNodeDragTarget(this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
     this.editor.features.graphic.refresh()
@@ -2275,7 +2268,7 @@ export class SelectionFeature extends EditorFeature {
       this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
-        const root = getDocumentRoot()
+        const root = this.editor.features.canvas.editingRoot ?? getDocumentRoot()
         $.selectRange(root, 0, root, root.childNodes.length)
         this.processSelection()
       }

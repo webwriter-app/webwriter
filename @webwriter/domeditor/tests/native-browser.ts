@@ -20,6 +20,7 @@ import {checkParagraphCut} from "./paragraph-cut"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
+import {checkSlideEditing} from "./slide-editing"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -6972,6 +6973,8 @@ await check("Board columns and cards retain native editing and standalone layout
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
+
+await check("slide editing retains text and media selections after focus", checkSlideEditing)
 
 let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {

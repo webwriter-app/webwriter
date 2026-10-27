@@ -525,7 +525,7 @@ body::part(hover-caret) {
 }
 
 body::part(hover-caret-transformed),
-body:has(> *:is(:hover, .◆pointer-hovered))::part(hover-caret),
+body:not(.ww-slides):has(> *:is(:hover, .◆pointer-hovered))::part(hover-caret),
 body:has(.◆element-hovered)::part(hover-caret),
 body.◆element-hovered::part(hover-caret),
 body:has(.◆style-target-hovered)::part(hover-caret),
@@ -1480,10 +1480,12 @@ body::part(empty-document-caret) {
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
-/* A BODY boundary selection can paint a native caret inside a positioned
- * child. Use the appendix caret for document flow and no caret for canvas. */
+/* A body or slide boundary can paint a native caret inside a positioned child.
+ * Use the appendix caret for document flow and no caret for freeform layouts. */
 body.◆empty-selected,
-body.◆empty-selected * {
+body.◆empty-selected *,
+body.ww-slides > .ww-slides-viewport > section.ww-slide.◆empty-selected:not([is]),
+body.ww-slides > .ww-slides-viewport > section.ww-slide.◆empty-selected:not([is]) * {
   caret-color: transparent !important;
 }
 
