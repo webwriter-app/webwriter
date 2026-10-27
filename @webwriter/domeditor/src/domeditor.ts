@@ -756,7 +756,8 @@ export class DOMEditor {
         // Selection projections do not change the selection. Reposting it
         // starts another host read before this response arrives, creating a
         // feedback loop that also makes valid style/HTML responses stale.
-        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState") this.postSelectionPath()
+        // Attribution keeps its selection while focus moves to the appendix.
+        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState" && ev.data.type !== "openAttribution") this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }

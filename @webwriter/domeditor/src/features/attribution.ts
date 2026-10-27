@@ -42,7 +42,7 @@ export class AttributionFeature extends EditorFeature {
         return target ? atomicEditingContainer(target, this.editor.schema) ?? target : null
       },
       append: element => this.editor.addAppendix(element),
-      save: (element, values) => this.save(element, values),
+      save: (elements, values) => this.save(elements, values),
     })
     this.controller.refresh()
   }
@@ -75,11 +75,20 @@ export class AttributionFeature extends EditorFeature {
     }
   }
 
-  private save(element: Element, values: Partial<AttributionValues>) {
-    if(this.editor.isEditingLocked || element.parentElement !== this.root(element)) return false
+  actions = {
+    openAttribution: (_action: {type: "openAttribution"}) => {
+      if(this.editor.isEditingLocked) return false
+      const elements = this.editor.features.manipulation.selectedEditingElements()
+        .filter(element => element.parentElement === this.root(element))
+      return this.controller?.open(elements) ?? false
+    },
+  }
+
+  private save(elements: Element[], values: Partial<AttributionValues>) {
+    if(this.editor.isEditingLocked || elements.some(element => !element.isConnected || element.parentElement !== this.root(element))) return false
     const end = this.editor.doc.beginUndoGroup()
     try {
-      for(const [key, value] of Object.entries(values)) {
+      for(const element of elements) for(const [key, value] of Object.entries(values)) {
         const name = attributionAttributes[key as keyof AttributionValues]
         if(value) element.setAttribute(name, value)
         else element.removeAttribute(name)

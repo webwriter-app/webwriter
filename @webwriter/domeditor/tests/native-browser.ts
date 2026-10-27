@@ -3174,6 +3174,45 @@ await check("attribution is limited to top-level elements and follows nesting", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("toolbox attribution opens for multiple elements and deletes metadata together", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const frame = document.createElement("iframe"), toolbox = new DomEditorToolbox()
+  frame.style.cssText = "width:900px;height:600px;border:0"
+  frame.srcdoc = '<!doctype html><body><p>First</p><p>Second</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  toolbox.style.width = "220px"
+  fixture.append(frame, toolbox)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "toolbox attribution fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, elements = Array.from(doc.querySelectorAll("p"))
+    doc.getSelection()!.setBaseAndExtent(elements[0].firstChild!, 0, elements[1].firstChild!, 6)
+    toolbox.activeTool = "Edit"
+    toolbox.elementStyle = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true})
+    toolbox.selectedElementTypes = editor.features.manipulation.getSelectedElementTypes()
+    toolbox.addEventListener("layout-action", () => editor.features.attribution.actions.openAttribution({type: "openAttribution"}))
+    await toolbox.updateComplete
+    const ui = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui")!, popup = ui.querySelector<HTMLElement>(".popup")!
+    editor.addAppendix(doc.createElement("div"))
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Edit attribution"]')!.click()
+    await layoutFrame()
+    assert(!popup.hidden && popup.matches(":popover-open") && view.getComputedStyle(popup).display !== "none", "toolbox attribution did not remain visible")
+    assert(popup.querySelector(".selection-summary")!.textContent!.includes("2 elements"), "dialog lost the multiple selection")
+    const remove = popup.querySelector<HTMLButtonElement>(".delete")!, save = popup.querySelector<HTMLButtonElement>(".save")!
+    const removeBox = remove.getBoundingClientRect(), saveBox = save.getBoundingClientRect()
+    assert(removeBox.left < saveBox.left && Math.abs(removeBox.bottom - saveBox.bottom) < 1, "Delete and Save are not aligned at the bottom left and right")
+    popup.querySelector<HTMLInputElement>('input[name="name"]')!.value = "Shared author"
+    save.click()
+    assert(elements.every(element => element.getAttribute(attributionAttributes.name) === "Shared author"), "attribution was not saved to every selected element")
+    doc.getSelection()!.setBaseAndExtent(elements[0].firstChild!, 0, elements[1].firstChild!, 6)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Edit attribution"]')!.click()
+    remove.click()
+    assert(elements.every(element => !element.hasAttribute(attributionAttributes.name)), "Delete did not remove every selected attribution")
+    assert(!editor.toHTML(true).includes("◆attribution-ui"), "attribution controls leaked into authored HTML")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }
+})
+
 await check("attribution inputs keep visible carets during element and capture selection", async () => {
   const paragraph = document.createElement("p")
   paragraph.textContent = "Attributed element"
@@ -3204,7 +3243,7 @@ await check("attribution inputs keep visible carets during element and capture s
       await picker.updateComplete
       const controls = [popup.querySelector<HTMLInputElement>('input[name="name"]')!, popup.querySelector<HTMLInputElement>('input[name="year"]')!,
         picker.shadowRoot!.querySelector<HTMLInputElement>("input")!, popup.querySelector<HTMLInputElement>('input[name="contact"]')!,
-        popup.querySelector<HTMLButtonElement>(".save")!, popup.querySelector<HTMLButtonElement>(".close")!]
+        popup.querySelector<HTMLButtonElement>(".delete")!, popup.querySelector<HTMLButtonElement>(".save")!, popup.querySelector<HTMLButtonElement>(".close")!]
       controls[0].focus()
       for(const shiftKey of [false, true]) {
         for(let step = 0; step < controls.length; step++) {

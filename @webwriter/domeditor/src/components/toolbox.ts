@@ -165,6 +165,10 @@ export class DomEditorToolbox extends EditingControls {
     .layout-action-row {display: flex; flex-wrap: wrap; gap: .25rem}
     .float-action-controls {padding: .4rem 0; gap: .125rem}
     .float-placement-label {font-size: .65rem; color: var(--sl-color-neutral-600, #666)}
+    .float-placement-label > .field-label {justify-content: flex-start}
+    .float-placement-label .field-label .field-clear {margin-left: 0; min-height: 0}
+    .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem; font: .68rem/1.2 system-ui, sans-serif}
+    .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5}
     .float-button-group {display: flex; width: 100%; gap: 0}
     .float-button-group button {position: relative; display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
     .float-button-group float-info {position: absolute; top: -3px; right: -2px; z-index: 2}
@@ -1437,8 +1441,10 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderElementLayoutControls() {
     const target = this.elementStyle.target
-    if(this.activeTool !== "Edit"
-      || this.documentSelected || target?.documentRoot || ["body", "td", "th"].includes(target?.localName ?? "")) return nothing
+    if(this.activeTool !== "Edit" || this.documentSelected) return nothing
+    if(target?.documentRoot || target?.localName === "body") return this.selectedElementTypes.length
+      ? html`<div class="layout-action-controls float-action-controls">${this.renderAttributionField()}</div>` : nothing
+    if(["td", "th"].includes(target?.localName ?? "")) return nothing
     const float = target?.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
@@ -1496,7 +1502,10 @@ export class DomEditorToolbox extends EditingControls {
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>
           ` : nothing}
-          <span class="float-placement-label">Caption</span>
+          <span class="float-placement-label">${this.renderFieldLabel("Caption", captionPosition !== "none",
+            () => this.dispatchEvent(new CustomEvent("layout-action", {
+              detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
+            })), undefined, this.historyState.preview !== null || this.htmlPending)}</span>
           <div class="float-button-group caption-button-group" role="group" aria-label="Caption">
             <button type="button" class="caption-none" aria-label="No caption" title="No caption" aria-pressed=${captionPosition === "none"}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
@@ -1514,9 +1523,22 @@ export class DomEditorToolbox extends EditingControls {
                 detail: {type: "setCaption", position, alignment}, bubbles: true, composed: true,
               }))}>${this.captionIcon(position, alignment)}</button>`))}
           </div>
+          ${this.renderAttributionField()}
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
     `
+  }
+
+  private renderAttributionField() {
+    return html`<div class="attribution-field">
+      <span id="attribution-label">Attribution</span>
+      <button type="button" aria-label="Edit attribution" aria-describedby="attribution-label" aria-haspopup="dialog"
+        ?disabled=${this.historyState.preview !== null || this.htmlPending}
+        @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+        @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+          detail: {type: "openAttribution"}, bubbles: true, composed: true,
+        }))}>Edit…</button>
+    </div>`
   }
 
   private captionIcon(position: "none" | "above" | "below", alignment: "left" | "center" | "right" = "left") {

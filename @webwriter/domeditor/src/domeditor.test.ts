@@ -1063,6 +1063,27 @@ describe("bridge origin binding", () => {
     }
   })
 
+  it("opens attribution through the bridge without projecting its appendix input as a document selection", async () => {
+    document.body.innerHTML = "<p>Hello</p>"
+    const editor = new DOMEditor({bridgeNonce: "0123456789abcdef"})
+    const text = document.querySelector("p")!.firstChild!
+    document.getSelection()!.setBaseAndExtent(text, 0, text, 0)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      window.dispatchEvent(new MessageEvent("message", {data: {
+        type: "openAttribution", requestId: "attribution", bridgeNonce: editor.trustedScriptNonce,
+      }}))
+      await Promise.resolve()
+      expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        type: executeCompleteEvent, detail: {requestId: "attribution", result: true},
+      }), window.location.origin)
+      expect(postMessage.mock.calls.some(([message]) => message.type === selectionChangeEvent)).toBe(false)
+      expect(editor.appendix.querySelector<HTMLElement>(".popup")!.hidden).toBe(false)
+    }
+    finally { editor.destroy(); postMessage.mockRestore() }
+  })
+
   it("returns selected HTML without reposting an unchanged selection", async () => {
     document.body.innerHTML = "<p>Hello world</p>"
     const text = document.querySelector("p")!.firstChild!

@@ -1465,6 +1465,36 @@ describe("widget sharing toolbox", () => {
   })
 })
 
+it("opens attribution below Caption and clears a configured caption with its label action", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  const actions = vi.fn()
+  toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const controls = toolbox.shadowRoot!.querySelector(".float-action-controls")!
+  const clear = () => controls.querySelector<HTMLButtonElement>('[aria-label="Clear Caption"]')!
+  expect(clear().style.visibility).toBe("hidden")
+  const attribution = controls.querySelector<HTMLButtonElement>('[aria-label="Edit attribution"]')!
+  expect(controls.querySelector('[aria-label="Caption"]')!.compareDocumentPosition(attribution) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  attribution.click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "openAttribution"})
+  toolbox.captionPosition = "below"
+  await toolbox.updateComplete
+  expect(clear().style.visibility).toBe("")
+  clear().click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setCaption", position: "none"})
+  toolbox.htmlPending = true
+  await toolbox.updateComplete
+  expect(clear().disabled).toBe(true)
+  expect(attribution.disabled).toBe(true)
+  toolbox.htmlPending = false
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {localName: "body", namespaceURI: "http://www.w3.org/1999/xhtml", documentRoot: true}}
+  toolbox.selectedElementTypes = [{element: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", path: null, name: "Paragraph", attributes: {}}, count: 2, style: toolbox.elementStyle, styleProperties: [], configuredWidgetOptions: []}]
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector('[aria-label="Edit attribution"]')).not.toBeNull()
+})
+
 it("uses the current text target inside a table for specialized style controls", async () => {
   const toolbox = await mountToolbox()
   toolbox.activeTool = "Edit"

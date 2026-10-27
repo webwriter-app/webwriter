@@ -42,6 +42,82 @@ afterEach(() => {
 })
 
 describe("element attribution editing", () => {
+  it.each(["click", "Enter"])("deletes all metadata with %s without changing content and restores it with one undo", activation => {
+    const element = start()
+    const original = element.innerHTML
+    const metadata = {name: "Ada", year: "2026", license: "CC-BY-4.0", contact: "mailto:ada@example.com"}
+    for(const [key, value] of Object.entries(metadata)) element.setAttribute(attributionAttributes[key as keyof typeof metadata], value)
+    editor!.doc.syncFromDOM(); editor!.doc.stopCapturing()
+    bounds(element); select(element); notes()[0].click()
+    input("year").value = "invalid unsaved value"
+    const remove = ui().querySelector<HTMLButtonElement>(".delete")!
+    if(activation === "Enter") remove.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    else remove.click()
+    expect(popup().hidden).toBe(true)
+    for(const name of Object.values(attributionAttributes)) expect(element.hasAttribute(name)).toBe(false)
+    expect(element.innerHTML).toBe(original)
+    editor!.doc.syncFromDOM()
+    expect(editor!.toHTML(true)).not.toMatch(/data-ww-attribution|data-ww-license|◆/)
+    editor!.doc.undo()
+    for(const [key, value] of Object.entries(metadata)) expect(document.querySelector("p")!.getAttribute(attributionAttributes[key as keyof typeof metadata])).toBe(value)
+    editor!.doc.redo()
+    for(const name of Object.values(attributionAttributes)) expect(document.querySelector("p")!.hasAttribute(name)).toBe(false)
+  })
+
+  it.each(["document", "canvas", "slides"] as const)("applies toolbox attribution to multiple %s elements in one undo item", mode => {
+    start()
+    if(mode !== "document") editor!.setDocumentLayout(mode, "document")
+    const elements = Array.from(document.querySelectorAll("p"))
+    elements[0].setAttribute(attributionAttributes.name, "First")
+    elements[1].setAttribute(attributionAttributes.name, "Second")
+    editor!.doc.syncFromDOM(); editor!.doc.stopCapturing()
+    const selectAll = (elements: Element[]) => mode === "document"
+      ? document.getSelection()!.setBaseAndExtent(elements[0].firstChild!, 0, elements[1].firstChild!, 3)
+      : $.selectElements(elements)
+    selectAll(elements)
+    expect(editor!.features.attribution.actions.openAttribution({type: "openAttribution"})).toBe(true)
+    expect(input("name").value).toBe("")
+    input("license").value = "CC-BY-4.0"
+    submit()
+    expect(elements.map(element => element.getAttribute(attributionAttributes.license))).toEqual(["CC-BY-4.0", "CC-BY-4.0"])
+    expect(elements.map(element => element.getAttribute(attributionAttributes.name))).toEqual(["First", "Second"])
+    editor!.doc.syncFromDOM()
+    editor!.doc.undo()
+    expect(Array.from(document.querySelectorAll("p"), element => element.hasAttribute(attributionAttributes.license))).toEqual([false, false])
+    editor!.doc.redo()
+    const restored = Array.from(document.querySelectorAll("p"))
+    selectAll(restored)
+    editor!.features.attribution.actions.openAttribution({type: "openAttribution"})
+    ui().querySelector<HTMLButtonElement>(".delete")!.click()
+    expect(restored.every(element => Object.values(attributionAttributes).every(name => !element.hasAttribute(name)))).toBe(true)
+    if(mode !== "document") editor!.setDocumentLayout("document", mode)
+  })
+
+  it.each(["conflict", "replaced", "locked"])("refuses attribution deletion after a %s change", change => {
+    const element = start()
+    element.setAttribute(attributionAttributes.name, "Ada")
+    bounds(element); select(element); notes()[0].click()
+    if(change === "conflict") element.setAttribute(attributionAttributes.name, "Remote")
+    if(change === "replaced") element.replaceWith(element.cloneNode(true))
+    if(change === "locked") editor!.lockEditing("delete-test")
+    ui().querySelector<HTMLButtonElement>(".delete")!.click()
+    expect(document.querySelector("p")!.getAttribute(attributionAttributes.name)).toBe(change === "conflict" ? "Remote" : "Ada")
+    if(change === "locked") editor!.unlockEditing("delete-test")
+  })
+
+  it("rejects a conflicting batch edit before updating any element", () => {
+    start()
+    const elements = Array.from(document.querySelectorAll("p"))
+    for(const element of elements) element.setAttribute(attributionAttributes.name, "Original")
+    document.getSelection()!.setBaseAndExtent(elements[0].firstChild!, 0, elements[1].firstChild!, 3)
+    editor!.features.attribution.actions.openAttribution({type: "openAttribution"})
+    elements[1].setAttribute(attributionAttributes.name, "Remote")
+    input("name").value = "Local"
+    submit()
+    expect(elements.map(element => element.getAttribute(attributionAttributes.name))).toEqual(["Original", "Remote"])
+    expect(ui().querySelector<HTMLElement>(".error")!.hidden).toBe(false)
+  })
+
   it.each([false, true])("cycles through dialog controls with Tab and Shift+Tab (capture: %s)", async captured => {
     const element = start()
     element.setAttribute(attributionAttributes.name, "Ada")
@@ -53,7 +129,7 @@ describe("element attribution editing", () => {
     const picker = licensePicker()
     await picker.updateComplete
     const controls = [input("name"), input("year"), picker.shadowRoot!.querySelector<HTMLInputElement>("input")!,
-      input("contact"), ui().querySelector<HTMLButtonElement>(".save")!, ui().querySelector<HTMLButtonElement>(".close")!]
+      input("contact"), ui().querySelector<HTMLButtonElement>(".delete")!, ui().querySelector<HTMLButtonElement>(".save")!, ui().querySelector<HTMLButtonElement>(".close")!]
     const checkFocus = (control: HTMLElement) => expect((control.getRootNode() as ShadowRoot).activeElement).toBe(control)
     checkFocus(controls[0])
     for(const shiftKey of [false, true]) {

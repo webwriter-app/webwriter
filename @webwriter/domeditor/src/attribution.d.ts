@@ -4,7 +4,7 @@ export interface AttributionController {
   element: HTMLElement
   handleEvent(event: Event): void
   refresh(): void
-  open(element: Element): boolean
+  open(element: Element | Element[]): boolean
   destroy(): void
 }
 export function createAttributionController(doc: Document, options?: {
@@ -16,6 +16,6 @@ export function createAttributionController(doc: Document, options?: {
   affordanceContainer?: (element: Element) => HTMLElement | null
   resolveElement?: (element: Element) => Element
   append?: (element: HTMLElement) => void
-  save?: (element: Element, values: Partial<AttributionValues>) => boolean
+  save?: (elements: Element[], values: Partial<AttributionValues>) => boolean
 }): AttributionController
 export function mountAttributionReader(licenses?: ReadonlyArray<{code: string, name: string, url: string, description?: string}>): AttributionController | null

@@ -6599,6 +6599,8 @@ describe("DomEditor.execute()", () => {
     }))
     toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "setCaption", position: "above"}}))
     expect(execute).toHaveBeenCalledWith({type: "setCaption", position: "above"})
+    toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "openAttribution"}}))
+    expect(execute).toHaveBeenCalledWith({type: "openAttribution"})
     expect(execute).toHaveBeenCalledWith({type: "setStyle", topLevel: true, styles: {"text-align": "right"}})
     expect(execute).toHaveBeenCalledWith({type: "setSelectedElementAttribute", selectionType, name: "lang", value: "de"})
     expect(execute).toHaveBeenCalledWith({type: "setSelectedWidgetOption", selectionType: {localName: "course-quiz", namespaceURI: selectionType.namespaceURI}, name: "count", value: 3})
