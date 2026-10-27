@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {RibbonMenu} from "./ribbon-menu"
 import {insertMathStructureButtons} from "./ribbon-menu-config"
+import {graphicShapeOptions} from "../graphic"
 
 const opened = new Set<HTMLElement>()
 const showPopover = vi.fn(function(this: HTMLElement) {opened.add(this)})
@@ -45,6 +46,24 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("nested ribbon menus", () => {
+  it("lets shape galleries use the viewport height in button menus and submenus", async () => {
+    const buttons=graphicShapeOptions.map(shape=>({label:shape.label,category:shape.category,path:shape.path}))
+    const menu=new RibbonMenu()
+    menu.groups=[{label:"Shapes",buttons}]
+    document.body.append(menu)
+    await menu.updateComplete
+    const surface=menu.shadowRoot!.querySelector<HTMLElement>(".menu")!
+    expect(getComputedStyle(surface).maxHeight).toBe(`calc(${window.innerHeight}px - 16px)`)
+    expect(getComputedStyle(surface).boxSizing).toBe("border-box")
+    expect(getComputedStyle(surface).overflow).toBe("auto")
+    menu.groups=[{label:"Elements",buttons:[{label:"Shapes",submenu:buttons}]}]
+    await menu.updateComplete
+    const submenu=await open(menu,"Shapes")
+    expect(getComputedStyle(submenu).maxHeight).toBe(`calc(${window.innerHeight}px - 16px)`)
+    expect(getComputedStyle(submenu).boxSizing).toBe("border-box")
+    expect(getComputedStyle(submenu).overflow).toBe("auto")
+  })
+
   it("lets formula menus use the viewport height instead of the standard menu cap", async () => {
     const menu = new RibbonMenu()
     menu.groups = [{label: "Formula options", buttons: insertMathStructureButtons}]

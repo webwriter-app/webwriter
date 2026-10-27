@@ -4657,6 +4657,47 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
   }
 })
 
+await check("shape ribbon galleries scroll only when the viewport cannot fit their contents", async () => {
+  for(const height of [1000,620]) {
+    const frame=document.createElement("iframe")
+    frame.style.cssText=`width:1600px;height:${height}px;border:0;max-width:none`
+    frame.srcdoc='<!doctype html><style>body{margin:16px;font:16px system-ui}</style><app-ribbon></app-ribbon><script type="module" src="/src/components/ribbon.ts"></script>'
+    document.body.append(frame)
+    const view=frame.contentWindow as Window & typeof globalThis
+    try {
+      for(let attempt=0;!view.customElements.get("app-ribbon") && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
+      assert(view.customElements.get("app-ribbon"),"Shape gallery fixture did not initialize")
+      const doc=frame.contentDocument!
+      const ribbon=doc.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
+      ribbon.activeMenu="Start"
+      await ribbon.updateComplete
+      let graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      await graphic.updateComplete
+      await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
+      graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      await graphic.updateComplete
+      graphic.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!.click()
+      await graphic.updateComplete
+      const menu=graphic.shadowRoot!.querySelector<import("../src/components/ribbon-menu").RibbonMenu>("ribbon-menu")!
+      await menu.updateComplete
+      await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
+      const surface=menu.shadowRoot!.querySelector<HTMLElement>(".menu")!,bounds=menu.getBoundingClientRect()
+      assert(bounds.top>=7.9 && bounds.bottom<=height-7.9,`${height}: shape gallery leaves the viewport`)
+      assert(surface.scrollWidth<=surface.clientWidth+1,`${height}: shape gallery scrolls horizontally`)
+      if(height===1000) assert(surface.scrollHeight<=surface.clientHeight+1,"Shape gallery scrolls despite having enough vertical space")
+      else {
+        assert(surface.scrollHeight>surface.clientHeight+1,"Shape gallery does not scroll in a short viewport")
+        const items=surface.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
+        items[items.length-1].focus()
+        const last=items[items.length-1].getBoundingClientRect(),visible=surface.getBoundingClientRect()
+        assert(last.bottom<=visible.bottom && last.top>=visible.top,"Final shape is not reachable in the short gallery")
+      }
+      assert(menu.shadowRoot!.querySelectorAll('[role="separator"]').length===3,"Gallery section dividers changed")
+    }
+    finally {frame.remove()}
+  }
+})
+
 await check("font dropdowns join their white controls at viewport edges", async () => {
   const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
   const {RibbonDrawer} = await import("../src/components/ribbon-drawer")

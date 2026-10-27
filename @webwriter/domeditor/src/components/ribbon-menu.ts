@@ -425,8 +425,10 @@ export class RibbonMenu extends LitElement {
       object-fit: contain;
     }
 
-    :host([gallery]) .menu {
-      max-height: min(40rem, calc(100vh - 10rem));
+    :host([gallery]) .menu,
+    .submenu.shape-gallery {
+      box-sizing: border-box;
+      max-height: calc(100vh - 16px);
     }
 
     .shape-gallery {
