@@ -43,6 +43,48 @@ function el(tag = "p", text = "") {
 }
 
 describe("selection preservation across authored DOM shapes", () => {
+  it.each(["caret", "element", "gap"])("releases graphic capture when the native selection changes to %s", next => {
+    const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    graphic.setAttribute("viewBox", "0 0 100 100")
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside the graphic"
+    appendToBody(graphic, paragraph)
+    feature.captureElement(graphic)
+    expect(feature.captureSelectedElement).toBe(graphic)
+    if(next === "caret") document.getSelection()!.setPosition(paragraph.firstChild, 3)
+    else if(next === "element") $.selectElement(paragraph)
+    else document.getSelection()!.setPosition(document.body, 1)
+    const post = vi.spyOn(editor, "postHostMessage")
+    document.dispatchEvent(new Event("selectionchange"))
+    const update = post.mock.calls.at(-1)![0] as {type: string, detail: Record<string, unknown>}
+    expect(update.type).toBe(selectionChangeEvent)
+    expect(update.detail).not.toHaveProperty("graphic")
+    expect(update.detail).not.toHaveProperty("capture")
+    expect(feature.captureSelectedElement).toBeNull()
+    expect(editor.features.graphic.getState()).toBeUndefined()
+    expect(graphic).not.toHaveClass("◆element-capture-selected", "◆graphic-grid-visible")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["focus", "focusin"])("preserves graphic capture across temporary native selection loss during %s", type => {
+    const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    appendToBody(graphic)
+    feature.captureElement(graphic)
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside the graphic"
+    document.body.append(paragraph)
+    document.getSelection()!.removeAllRanges()
+    ;(type === "focus" ? window : document.body).dispatchEvent(new FocusEvent(type, {bubbles: type === "focusin"}))
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.captureSelectedElement).toBe(graphic)
+    expect($.selectedElement).toBe(graphic)
+    expect(editor.features.graphic.getState()).toMatchObject({capture: true})
+    // An actual caret in authored content still retires capture and shape input.
+    document.getSelection()!.setPosition(paragraph.firstChild, 3)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.captureSelectedElement).toBeNull()
+  })
+
   it("suppresses appendix context menus without suppressing authored or widget menus, and cleans up", () => {
     const authored = el("p", "Document text")
     const widget = el("menu-widget")
@@ -3130,6 +3172,21 @@ describe("document listeners", () => {
       },
     }, window.location.origin)
   })
+  it.each(["svg", "g", "text", "circle", "p", "test-widget"])("omits graphic children from the breadcrumb when selection is inside %s", selector => {
+    document.body.innerHTML='<section><!--keep--><svg viewBox="0 0 100 100"><g><rect width="100" height="100"></rect><text>Label</text><svg><circle r="5"></circle></svg><foreignObject><div><p>Embedded text</p><test-widget></test-widget></div></foreignObject></g></svg></section>'
+    const target=document.querySelector(selector)!
+    $.move(target.localName === "text" ? target.firstChild! : target,0)
+    const before=document.body.innerHTML
+    const post=vi.spyOn(editor,"postHostMessage")
+    editor.postSelectionPath()
+    const message=post.mock.lastCall![0] as {detail:{path:unknown[]}}
+    expect(message.detail.path).toEqual([
+      {path:[],name:"Document",icon:"Document"},
+      {path:[0,1],name:"Graphic",icon:"Graphic",sections:[{path:[0],type:"section",name:"Section",icon:"Section"}]},
+    ])
+    expect(document.body.innerHTML).toBe(before)
+  })
+
   it("posts the template instead of BODY as the top-level breadcrumb item", () => {
     document.body.innerHTML = '<demo-widget role="document"></demo-widget>'
     const template = document.body.firstElementChild!
@@ -4090,6 +4147,27 @@ describe("document listeners", () => {
     expect(document.querySelectorAll(".◆text-selected")).toHaveLength(0)
     expect(document.querySelectorAll(".◆element-selected")).toHaveLength(1)
   })
+  it("keeps canonical SVG capture ranges when the browser reports no direction", () => {
+    document.body.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0H100V100Z"/></svg>'
+    const graphic = document.querySelector("svg")!
+    feature.captureElement(graphic)
+    const selection = document.getSelection()!
+    Object.defineProperty(selection, "direction", {configurable: true, value: "none"})
+    const setRange = vi.spyOn(selection, "setBaseAndExtent")
+    try {
+      for(let refresh = 0; refresh < 3; refresh++) {
+        document.dispatchEvent(new Event("selectionchange"))
+        expect(feature.captureSelectedElement).toBe(graphic)
+        expect(graphic).toHaveClass("◆element-capture-selected")
+      }
+      expect(setRange).not.toHaveBeenCalled()
+      expect(selection.anchorNode).toBe(document.body)
+      expect(selection.anchorOffset).toBe(0)
+      expect(selection.focusOffset).toBe(1)
+    }
+    finally { Reflect.deleteProperty(selection, "direction") }
+  })
+
   it("normalizes an externally installed node range to exact forward parent offsets", () => {
     document.body.innerHTML = "<p>before</p><interactive-widget></interactive-widget>"
     const paragraph = document.querySelector("p")!

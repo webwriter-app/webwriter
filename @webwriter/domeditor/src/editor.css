@@ -935,7 +935,7 @@ svg[viewBox]:empty {
   display: block;
   box-sizing: border-box;
   aspect-ratio: 16 / 9;
-  border: 1px solid #cbd5e1;
+  outline: 1px solid #cbd5e1;
   border-radius: 0.2rem;
   background-color: #fff;
   box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
@@ -1082,6 +1082,11 @@ body::part(graphic-individual-outline) {
   vector-effect: non-scaling-stroke;
 }
 
+body::part(graphic-selection-outline) {
+  pointer-events: stroke;
+  cursor: move;
+}
+
 body::part(graphic-marquee) {
   fill: rgb(37 99 235 / 10%);
   stroke: #2563eb;
@@ -1102,6 +1107,12 @@ body::part(graphic-guide) {
   stroke-width: 1;
   stroke-dasharray: 4 3;
   vector-effect: non-scaling-stroke;
+}
+
+body::part(graphic-ellipse-guide) {
+  fill: none;
+  stroke: #94a3b8;
+  opacity: .65;
 }
 
 body::part(graphic-guide-canvas) {

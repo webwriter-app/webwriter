@@ -27,6 +27,7 @@ import {
   documentHeadStateChangeEvent,
   undoStateChangeEvent,
   selectionChangeEvent,
+  shapeKeyboardInputEvent,
   type VersionHistoryState,
 } from "../editor-bridge"
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
@@ -1113,6 +1114,17 @@ describe("DomEditor iframe setup", () => {
     expect(post).toHaveBeenCalledExactlyOnceWith("focus", {restoreSelection})
     expect(focus).not.toHaveBeenCalled()
     expect(host.savedEditorSelection).toBeNull()
+  })
+
+  it("refocuses an active graphic label without replacing its text range", async () => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const graphic = {textEditingRange: iframe.contentDocument!.createRange(), focusTextInput: vi.fn()}
+    Object.assign(editorWindow, {editor: {features: {graphic}}})
+    const focusBody = vi.spyOn(iframe.contentDocument!.body, "focus")
+    ;(editor as any).focusEditor(true)
+    expect(graphic.focusTextInput).toHaveBeenCalledOnce()
+    expect(focusBody).not.toHaveBeenCalled()
+    expect((editor as any).savedEditorSelection).toBeNull()
   })
 
   it("preserves the first widget's breadcrumb selection when refocusing the document", async () => {
@@ -5885,7 +5897,7 @@ describe("DomEditor.execute()", () => {
     expect(loadAppSettings().userSnippets).toEqual([])
   })
 
-  it.each(["canvas", "graphic"] as const)("inserts ribbon %s drops from authenticated snippet messages and ignores invalid requests", async layout => {
+  it.each(["document", "canvas", "slides"] as const)("inserts ribbon %s drops from authenticated snippet messages and ignores invalid requests", async layout => {
     const {editor} = await mountEditor()
     const host = editor as any
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -5900,10 +5912,22 @@ describe("DomEditor.execute()", () => {
     execute.mockClear()
     drop("user-snippet:missing")
     drop("delete")
-    drop("user-snippet:saved", {...position, x: Infinity})
+    if(layout !== "document") drop("user-snippet:saved", {...position, x: Infinity})
     authenticated.mockReturnValue(false)
     drop("user-snippet:saved")
     expect(execute).not.toHaveBeenCalled()
+  })
+
+  it("rejects authenticated ribbon drop messages targeting graphics", async () => {
+    const {editor}=await mountEditor()
+    const host=editor as any
+    vi.spyOn(host,"isEditorMessage").mockReturnValue(true)
+    const insert=vi.spyOn(host,"insertRibbonDropAction").mockResolvedValue(undefined)
+    const position={anchor:{type:"body",tname:"root"},layout:"graphic",x:200,y:100}
+    for(const action of ["user-snippet:saved","package:demo","package-member:demo"]) {
+      host.handleEditorMessage(new MessageEvent("message",{data:{type:"editor-ribbon-drop",action,position}}))
+    }
+    expect(insert).not.toHaveBeenCalled()
   })
 
   it("installs dropped packages and routes dropped package members to the captured position", async () => {
@@ -8547,6 +8571,19 @@ describe("DomEditor.execute()", () => {
     expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
   })
 
+  it("treats graphics as outline leaves while preserving surrounding authored paths", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body=iframe.contentDocument!.body
+    body.innerHTML='<section><!--keep--><figure><svg viewBox="0 0 100 100"><title>Drawing</title><defs><linearGradient id="paint"></linearGradient></defs><g><rect width="100" height="100"></rect><text>Label</text><svg><circle r="5"></circle></svg><foreignObject><div><p>Embedded text</p><test-widget></test-widget></div></foreignObject></g></svg><figcaption>Caption</figcaption></figure><p>After</p></section>'
+    const before=body.innerHTML
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children).toEqual([
+      {path:[0,1],name:"Graphic",icon:"Graphic",children:[],sections:[{path:[0],type:"section",name:"Section",icon:"Section"}]},
+      {path:[0,2],name:"Paragraph",icon:"Paragraph",children:[],sections:[{path:[0],type:"section",name:"Section",icon:"Section"}]},
+    ])
+    expect(body.innerHTML).toBe(before)
+  })
+
   it("preserves section, figure, and mark semantics in outline tree data", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<div><p><b>hello</b><img></p><section></section><figure><img><figcaption>Caption</figcaption></figure></div>"
@@ -8809,6 +8846,36 @@ describe("DomEditor.execute()", () => {
       expect(unmarkedItems[1].classList.contains("capture-selected")).toBe(false)
       expect(breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!.groups[0].buttons[0]).toMatchObject({selected: true})
     }
+  })
+
+  it("keeps graphic controls and text marks stable while editing an SVG label", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const selection = {path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
+      capture: true, graphic: {active: true, capture: true, mode: "select", selectionCount: 1}}
+    const post = async (type: string, detail: unknown) => {
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type, detail}}))
+      await editor.updateComplete
+    }
+    await post(selectionChangeEvent, selection)
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    for(let update = 0; update < 3; update++) {
+      await post(markStateChangeEvent, {canMark: true, svgText: true, marks: ["b"]})
+      expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBe(keyboard)
+      expect((editor as any).captureSelection).toBe(true)
+      expect(keyboard.insertionDisabled).toBe(true)
+      await post(selectionChangeEvent, selection)
+      expect(ribbon.canMark).toBe(true)
+      expect(ribbon.marks).toEqual(["b"])
+      expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBe(keyboard)
+    }
+    await post(markStateChangeEvent, {canMark: false, marks: []})
+    await post(selectionChangeEvent, selection)
+    expect(ribbon.canMark).toBe(false)
+    expect(keyboard.insertionDisabled).toBe(false)
+    await post(markStateChangeEvent, {canMark: true, marks: []})
+    expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBeNull()
+    expect((editor as any).captureSelection).toBe(false)
   })
 
   it("never applies text and node or gap selection states together", async () => {
@@ -9102,6 +9169,89 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
   })
 
+  it.each([1, 2])("ignores shape keyboard inputs for %s selected graphic elements while allowing button insertion", async selectionCount => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    const select = async (count: number) => {
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+        type: selectionChangeEvent, detail: {path: [], graphic: {active: true, capture: true, mode: "select", selectionCount: count}},
+      }}))
+      await editor.updateComplete
+      await editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!.updateComplete
+    }
+    await select(selectionCount)
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    expect(keyboard.insertionDisabled).toBe(false)
+    expect(keyboard.keyboardInputDisabled).toBe(true)
+    const detail = {type: "keydown", key: "1", code: "Digit1", altKey: true, shiftKey: true, capsLock: true, repeat: false}
+    const relay = () => window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: shapeKeyboardInputEvent, detail}}))
+    relay()
+    keyboard.dispatchEvent(new CustomEvent("shape-keyboard-command", {detail: {shape: "ellipse", paint: keyboard.paint, onlyIfUnselected: true}, bubbles: true, composed: true}))
+    const key = keyboard.shadowRoot!.querySelector<HTMLButtonElement>(".key")!
+    key.dispatchEvent(new KeyboardEvent("keydown", {key: "1", code: "Digit1", altKey: true, shiftKey: true, bubbles: true, composed: true}))
+    expect(keyboard.shifted).toBe(false)
+    expect(execute).not.toHaveBeenCalled()
+    const ellipse = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.key[title="Ellipse"]')!
+    expect(ellipse.disabled).toBe(false)
+    expect(ellipse.getAttribute("draggable")).toBe("true")
+    ellipse.click()
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "addGraphicShape", shape: "ellipse", paint: keyboard.paint})
+    execute.mockClear()
+    await select(0)
+    expect(keyboard.insertionDisabled).toBe(false)
+    expect(keyboard.keyboardInputDisabled).toBe(false)
+    relay()
+    expect(keyboard.shifted).toBe(true)
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "addGraphicShape", onlyIfUnselected: true}))
+  })
+
+  it("routes shape keys from the document bridge and host keyboard, respecting hidden and text editing states", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    window.dispatchEvent(new MessageEvent("message", {
+      data: {type: selectionChangeEvent, detail: {path: [], graphic: {active: true, capture: true, mode: "select"}}}, source: editorWindow,
+    }))
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    const detail = {type: "keydown", key: "q", code: "KeyQ", altKey: true, shiftKey: true, capsLock: false, repeat: false}
+    const relay = (input = detail, source: Window | null = editorWindow) => window.dispatchEvent(new MessageEvent("message", {
+      data: {type: shapeKeyboardInputEvent, detail: input}, source,
+    }))
+    relay()
+    await keyboard.updateComplete
+    const shape = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-keyshortcuts="Alt+Shift+q"]')!
+    shape.click()
+    expect(execute).toHaveBeenCalledTimes(2)
+    expect(execute.mock.calls[0]).toEqual([{...execute.mock.calls[1][0], onlyIfUnselected: true}])
+    execute.mockClear()
+    relay(detail, window)
+    expect(execute).not.toHaveBeenCalled()
+    relay({...detail, type: "keyup", shiftKey: false})
+    await keyboard.updateComplete
+    expect(keyboard.shifted).toBe(false)
+    shape.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", altKey: true, bubbles: true, composed: true, cancelable: true}))
+    expect(execute).toHaveBeenCalledTimes(1)
+    execute.mockClear()
+    const input = document.createElement("input")
+    editor.shadowRoot!.append(input)
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", altKey: true, bubbles: true, composed: true}))
+    expect(execute).not.toHaveBeenCalled()
+    keyboard.shifted = true
+    window.dispatchEvent(new Event("blur"))
+    expect(keyboard.shifted).toBe(false)
+    ;(editor as any).svgText = true
+    relay()
+    expect(execute).not.toHaveBeenCalled()
+    ;(editor as any).svgText = false
+    keyboard.dispatchEvent(new CustomEvent("shape-keyboard-close", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    relay()
+    expect(execute).not.toHaveBeenCalled()
+  })
+
   it.each(["select", "draw", "lines", "curves"] as const)("routes graphic %s mode through the editor action", async mode => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -9121,7 +9271,7 @@ describe("DomEditor.execute()", () => {
         .find(button => button.textContent?.trim() === (mode === "draw" ? "Freehand" : mode === "lines" ? "Lines" : "Curves"))!
     modeButton.click()
     expect(execute).toHaveBeenCalledWith(mode !== "select"
-      ? {type: "setGraphicMode", mode, paint: {fill: "#ffffff", stroke: "#334155", "stroke-width": "4", opacity: "1"}}
+      ? {type: "setGraphicMode", mode, paint: {fill: "#ffffff", stroke: "#000000", "stroke-width": "4", opacity: "1"}}
       : {type: "setGraphicMode", mode})
   })
 
@@ -9144,9 +9294,45 @@ describe("DomEditor.execute()", () => {
     opacity.value = "0.5"
     opacity.dispatchEvent(new Event("input", {bubbles: true, composed: true}))
     expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {...paint, opacity: "0.5"}})
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+      type: shapeKeyboardInputEvent,
+      detail: {type: "keydown", key: "œ", code: "KeyQ", altKey: true, shiftKey: false, capsLock: false, repeat: false},
+    }}))
+    expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {...paint, stroke: "#ffffff", "stroke-width": "2", opacity: "0.5"}})
+    const key = keyboard.shadowRoot!.querySelector<HTMLButtonElement>(".brush-grid .brush")!
+    const shortcut = new KeyboardEvent("keydown", {key: "º", code: "Digit0", altKey: true, bubbles: true, composed: true, cancelable: true})
+    key.dispatchEvent(shortcut)
+    expect(shortcut.defaultPrevented).toBe(true)
+    expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {...paint, stroke: "#70ad47", "stroke-width": "1", opacity: "0.5"}})
   })
 
-  it("keeps the completed drawing tab idle and rearms it with the newly selected brush", async () => {
+  it.each(["draw", "lines", "curves"] as const)("retains the selected %s brush after drawing completion updates", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const update = () => window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+      type: selectionChangeEvent, detail: {path: [], graphic: {active: true, capture: true, mode, selectionCount: 0}},
+    }}))
+    update()
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#5b9bd5, 8 px brush"]')!.click()
+    for(let completion = 0; completion < 2; completion++) {
+      update()
+      await editor.updateComplete
+      await keyboard.updateComplete
+      expect(keyboard.shadowRoot!.querySelector('.brush[aria-pressed="true"]')?.getAttribute("aria-label")).toBe("#5b9bd5, 8 px brush")
+      expect(keyboard.mode).toBe(mode)
+      expect(keyboard.keyboardInputDisabled).toBe(false)
+    }
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+      type: shapeKeyboardInputEvent, detail: {type: "keydown", key: "0", code: "Digit0", altKey: true, shiftKey: false, capsLock: false, repeat: false},
+    }}))
+    expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {fill: "#ffffff", stroke: "#70ad47", "stroke-width": "1", opacity: "1"}})
+    expect(execute.mock.calls.some(([action]) => action.type === "setGraphicMode")).toBe(false)
+  })
+
+  it("keeps the drawing tab idle after explicitly switching to selection and rearms it with a new brush", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     vi.spyOn(editor as unknown as {focusEditor(): void}, "focusEditor").mockImplementation(() => {})
@@ -9163,6 +9349,9 @@ describe("DomEditor.execute()", () => {
     await updateMode("curves")
     const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
     await keyboard.updateComplete
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "setGraphicDrawPaint",
+      paint: {fill: "#ffffff", stroke: "#000000", "stroke-width": "4", opacity: "1"}})
+    execute.mockClear()
     await updateMode("select")
     await keyboard.updateComplete
     expect(keyboard.shadowRoot!.querySelector(".drawing-panel")!.getAttribute("aria-label")).toBe("Curves drawing")

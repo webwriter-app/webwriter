@@ -4412,62 +4412,41 @@ describe("unified content transfer", () => {
     return data
   }
 
-  it("drops painted shapes inside nested document flow with one undo step", () => {
-    editor.schema.extendWidgets([{tagName: "test-widget"}])
-    document.body.innerHTML = '<section><!--keep--><p class="authored">one <b>abcd</b> end</p><test-widget>keep widget</test-widget></section>'
-    const section = document.querySelector("section")!, widget = section.lastChild
-    const original = section.innerHTML
-    const text = document.querySelector("b")!.firstChild!
-    vi.spyOn($, "pointFromCoords").mockReturnValue({node: text, offset: 2})
+  it.each(["document", "canvas", "slides"] as const)("rejects keyboard shape drops outside the captured graphic in %s", mode => {
+    if(mode !== "document") editor.setDocumentLayout(mode, "document")
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!, original = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "outside target"
+    document.body.append(paragraph)
+    const captured = editor.features.selection.captureSelectedElement
     const data = shapeData("ellipse")
-    // Native dragover hides data values, while still exposing their types.
     const read = vi.spyOn(data, "getData").mockReturnValue("")
-    section.dispatchEvent(transferEvent("dragover", data, {clientX: 400, clientY: 200}))
-    read.mockRestore()
-    expect(data.dropEffect).toBe("copy")
-    expect(document.body).toHaveClass("◆drop-selection-active")
-    section.dispatchEvent(transferEvent("drop", data, {clientX: 400, clientY: 200}))
-    const graphic = section.querySelector("svg")!
-    expect(Array.from(section.children).map(node => node.localName)).toEqual(["p", "svg", "p", "test-widget"])
-    expect(section.querySelectorAll("p")[0].innerHTML).toBe('one <b>ab</b>')
-    expect(section.querySelectorAll("p")[1].innerHTML).toBe('<b>cd</b> end')
-    expect(section.lastChild).toBe(widget)
-    expect(graphic.style.position).toBe("")
-    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
-    expect(graphic.querySelector("ellipse")).toHaveAttribute("stroke", "blue")
-    expect($.selectedElement).toBe(graphic)
+    paragraph.dispatchEvent(transferEvent("dragover", data, {clientX: 400, clientY: 200}))
+    expect(data.dropEffect).toBe("none")
     expect(document.body).not.toHaveClass("◆drop-selection-active")
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    editor.doc.syncFromDOM()
-    expect(editor.doc.body.toString()).not.toContain("◆")
-    expect(editor.toHTML(true)).not.toContain("◆")
-    editor.doc.undo()
-    expect(cloneWithoutEditorMarkers(section, true).innerHTML).toBe(original)
-    editor.doc.redo()
-    expect(section.querySelector("svg ellipse")).toHaveAttribute("fill", "red")
-    expect(section.querySelector("svg")!.style.position).toBe("")
+    expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
+    paragraph.dispatchEvent(transferEvent("drop", data, {clientX: 400, clientY: 200}))
+    read.mockRestore()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(original)
+    expect(document.querySelectorAll("svg")).toHaveLength(1)
+    expect(paragraph).toHaveTextContent("outside target")
+    expect(editor.features.selection.captureSelectedElement).toBe(captured)
   })
 
-  it.each([[125, "left"], [175, "right"]] as const)("floats shape drops on the %s side through the element insertion path", (x, side) => {
-    editor.schema.extendWidgets([{tagName: "test-widget"}])
-    document.body.innerHTML = '<article><!--keep--><p>target</p><test-widget>keep widget</test-widget></article>'
-    const target = document.querySelector("p")!, article = target.parentElement!, widget = article.lastChild
-    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
-    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 2})
+  it("rejects keyboard shape drops that would float into document flow", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!, paragraph = document.createElement("p")
+    paragraph.textContent = "flow target"
+    document.body.append(paragraph)
     const data = shapeData()
-    target.dispatchEvent(transferEvent("dragover", data, {clientX: x, clientY: 50}))
-    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
-    target.dispatchEvent(transferEvent("drop", data, {clientX: x, clientY: 50}))
-    const graphic = article.querySelector("svg")!
-    expect(graphic.nextElementSibling).toBe(target)
-    expectClassFloat(graphic, side)
-    expect(graphic.style.position).toBe("")
-    expect(graphic.querySelector("rect")).toHaveAttribute("fill", "red")
-    expect(article.lastChild).toBe(widget)
+    paragraph.dispatchEvent(transferEvent("dragover", data, {clientX: 125, clientY: 50}))
+    expect(data.dropEffect).toBe("none")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
-    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "100"})
-    expect(graphic.style.position).toBe("")
+    paragraph.dispatchEvent(transferEvent("drop", data, {clientX: 125, clientY: 50}))
+    expect(document.querySelectorAll("svg")).toHaveLength(1)
+    expect(graphic.querySelectorAll("rect")).toHaveLength(1)
+    expect(paragraph).toHaveTextContent("flow target")
   })
 
   it.each(["{", "null", '{"shape":"unknown"}'])("rejects malformed document shape payload %s and clears previews", payload => {
@@ -4482,93 +4461,100 @@ describe("unified content transfer", () => {
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
-  it("clears document previews when a shape drag enters an existing SVG", () => {
-    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
-    const graphic = document.querySelector("svg")!, paragraph = document.createElement("p")
-    paragraph.textContent = "target"
-    document.body.append(paragraph)
-    vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 1})
-    const data = shapeData("ellipse")
-    paragraph.dispatchEvent(transferEvent("dragover", data))
-    expect(document.body).toHaveClass("◆drop-selection-active")
-    graphic.dispatchEvent(transferEvent("dragover", data))
-    expect(document.body).not.toHaveClass("◆drop-selection-active")
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    graphic.dispatchEvent(transferEvent("drop", data))
-    expect(document.querySelectorAll("svg")).toHaveLength(1)
-    expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
-    expect(paragraph).toHaveTextContent("target")
-  })
-
-  it("capture-selects a graphic beneath its drag surface throughout a keyboard shape hover", () => {
+  it("accepts drops only while pointer remains inside the captured graphic viewport", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
-    const graphic = document.querySelector("svg")!, original = graphic.querySelector("rect")!
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
-    expect(surface).not.toBeNull()
-    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
-    const capture = vi.spyOn(editor.features.selection, "captureElement")
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("viewBox", "0 0 400 300")
+    editor.features.selection.captureElement(graphic)
+    Object.defineProperty(graphic, "getBoundingClientRect", {configurable: true, value: () => new DOMRect(0, 0, 400, 300)})
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    const outside = document.createElement("p")
+    outside.textContent = "outside"
+    document.body.append(outside)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    const captured = editor.features.selection.captureSelectedElement
+    expect(captured).toBe(graphic)
     const data = shapeData("ellipse")
     const read = vi.spyOn(data, "getData").mockReturnValue("")
-    const over = transferEvent("dragover", data)
-    surface.dispatchEvent(over)
-    expect(over.defaultPrevented).toBe(true)
-    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
-    expect(surface.isConnected).toBe(false)
-    // Subsequent events may hit authored content or SVG editing chrome.
-    const outline = document.createElementNS("http://www.w3.org/2000/svg", "svg")
-    editor.addAppendix(outline)
-    for(const target of [graphic, outline, graphic]) target.dispatchEvent(transferEvent("dragover", data))
-    expect(capture).toHaveBeenCalledTimes(1)
-    expect(graphic).toHaveClass("◆element-capture-selected")
+    outside.dispatchEvent(transferEvent("dragover", data, {clientX: 1100, clientY: 700}))
+    expect(data.dropEffect).toBe("none")
+    expect(editor.features.selection.captureSelectedElement).toBe(captured)
+    const rect = graphic.querySelector("rect")!
+    rect.dispatchEvent(transferEvent("dragover", data, {clientX: 200, clientY: 150}))
+    expect(data.dropEffect).toBe("copy")
+    expect(editor.features.selection.captureSelectedElement).toBe(captured)
+    outside.dispatchEvent(transferEvent("dragover", data, {clientX: 1100, clientY: 700}))
+    expect(data.dropEffect).toBe("none")
+    expect(editor.features.selection.captureSelectedElement).toBe(captured)
     expect(document.body).not.toHaveClass("◆drop-selection-active")
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(original)
     read.mockRestore()
-    outline.dispatchEvent(transferEvent("drop", data))
-    expect(document.querySelectorAll("svg")).toHaveLength(1)
-    expect(graphic.querySelector("rect")).toBe(original)
+    rect.dispatchEvent(transferEvent("drop", data, {clientX: 200, clientY: 150}))
     expect(graphic.querySelector("ellipse")).toHaveAttribute("fill", "red")
     expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.features.graphic.selectedShape).toBe(graphic.querySelector("ellipse"))
+    editor.doc.syncFromDOM()
+    const after = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    editor.doc.undo()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(original)
+    editor.doc.redo()
+    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(after)
   })
 
-  it.each(insertionMenuItems.filter(item => item.tag).map(item => item.tag!))("drops ribbon %s inside the hovered graphic without replacing authored content", tag => {
+  it("rejects keyboard shape drops onto an unselected SVG without changing capture", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const selected = document.querySelector("svg")!
+    editor.features.selection.captureElement(selected)
+    const other = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    other.setAttribute("viewBox", "0 0 100 100")
+    document.body.append(other)
+    const captured = editor.features.selection.captureSelectedElement
+    const data = shapeData("ellipse")
+    other.dispatchEvent(transferEvent("dragover", data, {clientX: 20, clientY: 20}))
+    expect(data.dropEffect).toBe("none")
+    other.dispatchEvent(transferEvent("drop", data, {clientX: 20, clientY: 20}))
+    expect(other.children).toHaveLength(0)
+    expect(selected.querySelector("ellipse")).toBeNull()
+    expect(editor.features.selection.captureSelectedElement).toBe(captured)
+  })
+
+  it.each(insertionMenuItems.filter(item => item.tag).map(item => item.tag!))("rejects ribbon %s inside a graphic without changing authored content", tag => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
     const original = graphic.lastChild
     Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
-    editor.features.selection.selectElement(graphic)
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    editor.features.selection.captureElement(graphic)
     vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
     const data = ribbonData(tag)
+    const post = vi.spyOn(editor,"postHostMessage")
     const read = vi.spyOn(data, "getData").mockReturnValue("")
-    surface.dispatchEvent(transferEvent("dragover", data, {clientX: 500, clientY: 350}))
+    graphic.dispatchEvent(transferEvent("dragover", data, {clientX: 500, clientY: 350}))
     read.mockRestore()
+    expect(data.dropEffect).toBe("none")
     expect(editor.features.selection.captureSelectedElement).toBe(graphic)
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 500, clientY: 350}))
+    const drop = transferEvent("drop", data, {clientX: 500, clientY: 350})
+    graphic.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
     expect(graphic.childNodes[1]).toBe(original)
     expect(graphic.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
-    const inserted = graphic.lastElementChild!
-    if(tag === "picture") expect(inserted.localName).toBe("image")
-    else {
-      expect(inserted.localName).toBe("foreignObject")
-      expect(inserted.firstElementChild!.localName).toBe(tag)
-      expect(inserted).toHaveAttribute("x", "40")
-      expect(inserted).toHaveAttribute("y", tag === "audio" ? "123" : "60")
-      if(tag === "table") expect(inserted.querySelectorAll("td")).toHaveLength(4)
-      if(tag === "math") expect(inserted.querySelector("mrow")).not.toBeNull()
-    }
+    expect(graphic.children).toHaveLength(1)
     expect(editor.features.selection.captureSelectedElement).toBe(graphic)
     expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
+    expect(post.mock.calls.some(([message]) => (message as {type?:string}).type === "editor-ribbon-drop")).toBe(false)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it.each([
-    ["insert-graphic-shape:ellipse", "ellipse"],
-    ["insert-math:frac", "foreignObject math mfrac"],
-    ["list-style:ol:lower-alpha", "foreignObject ol"],
-    ["element:table", "foreignObject table"],
-  ])("drops the ribbon action %s into the graphic with undo and redo", (action, selector) => {
+    "insert-graphic-shape:ellipse",
+    "insert-math:frac",
+    "list-style:ol:lower-alpha",
+    "element:table",
+  ])("rejects the ribbon action %s over a graphic", action => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
@@ -4577,61 +4563,84 @@ describe("unified content transfer", () => {
     const before = cloneWithoutEditorMarkers(graphic, true).innerHTML
     const data = new DataTransfer()
     data.setData(ribbonInsertionDragType, action)
-    graphic.dispatchEvent(transferEvent("drop", data))
-    expect(graphic.querySelector(selector)).not.toBeNull()
-    if(action.startsWith("list-style:")) expect(graphic.querySelector("ol")!.style.listStyleType).toBe("lower-alpha")
-    editor.doc.syncFromDOM()
-    const after = cloneWithoutEditorMarkers(graphic, true).innerHTML
-    editor.doc.undo()
+    const over = transferEvent("dragover", data)
+    graphic.dispatchEvent(over)
+    expect(data.dropEffect).toBe("none")
+    const drop = transferEvent("drop", data)
+    graphic.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
     expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(before)
-    editor.doc.redo()
-    expect(cloneWithoutEditorMarkers(graphic, true).innerHTML).toBe(after)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
   })
 
-  it.each([false, true])("anchors delayed ribbon widget insertion to the graphic (target replaced: %s)", async replaced => {
+  it.each([false, true])("rejects delayed ribbon widget insertion into graphic (target replaced: %s)", async replaced => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
-    const data = new DataTransfer()
-    data.setData(ribbonInsertionDragType, "package-member:demo")
+    const before = cloneWithoutEditorMarkers(graphic, true).innerHTML
+    editor.doc.syncFromDOM()
+    const position: RibbonDropPosition = {anchor:Y.relativePositionToJSON(editor.doc.relativePositionFromDOMPoint(graphic,0)!),layout:"graphic",x:250,y:160}
     const post = vi.spyOn(editor, "postHostMessage")
-    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 250, clientY: 160}))
-    const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0] as {position: RibbonDropPosition}
-    expect(message.position.layout).toBe("graphic")
+    const overData = new DataTransfer()
+    overData.setData(ribbonInsertionDragType, "package-member:demo")
+    graphic.dispatchEvent(transferEvent("dragover", overData, {clientX:250,clientY:160}))
+    expect(overData.dropEffect).toBe("none")
+    const drop = transferEvent("drop", overData, {clientX:250,clientY:160})
+    graphic.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(post).not.toHaveBeenCalled()
     if(replaced) {
       graphic.replaceWith(document.createElement("p"))
       editor.doc.syncFromDOM()
     }
-    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<!--snippet--><demo-widget title="keep"><p>Nested</p></demo-widget>', position: message.position})).toBe(!replaced)
-    if(replaced) expect(document.querySelector("demo-widget")).toBeNull()
-    else {
-      expect(graphic.querySelector("foreignObject demo-widget")).toHaveAttribute("title", "keep")
-      expect(graphic.querySelector("demo-widget p")).toHaveTextContent("Nested")
-      expect(editor.features.selection.captureSelectedElement).toBe(graphic)
-      expect(editor.toHTML(true)).not.toContain("◆")
-    }
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type:"insertRibbonDrop",html:'<demo-widget><p>Nested</p></demo-widget>',position})).toBe(false)
+    expect(document.querySelector("demo-widget")).toBeNull()
+    if(!replaced) expect(cloneWithoutEditorMarkers(graphic,true).innerHTML).toBe(before)
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
   })
 
-  it("retains a ribbon graphic target across a package reload", async () => {
+  it("rejects a delayed ribbon graphic target across a package reload", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     graphic.innerHTML = '<!--keep--><g><path d="M0 0L5 5"/></g>'
-    const data = new DataTransfer()
-    data.setData(ribbonInsertionDragType, "package:demo")
-    const post = vi.spyOn(editor, "postHostMessage")
-    graphic.dispatchEvent(transferEvent("drop", data, {clientX: 250, clientY: 160}))
-    const message = post.mock.calls.find(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")?.[0] as {position: RibbonDropPosition}
+    editor.doc.syncFromDOM()
+    const position: RibbonDropPosition = {anchor:Y.relativePositionToJSON(editor.doc.relativePositionFromDOMPoint(graphic,0)!),layout:"graphic",x:250,y:160}
     const initialState = editor.doc.snapshot()
     editor.destroy()
     document.body.innerHTML = '<p></p>'
     editor = new DOMEditor({initialState})
-    expect(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html: '<p>Loaded content</p>', position: message.position})).toBe(true)
-    expect(document.querySelector("svg foreignObject p")).toHaveTextContent("Loaded content")
-    expect(editor.toHTML(true)).toContain("<!--keep-->")
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({type:"insertRibbonDrop",html:"<p>Loaded content</p>",position})).toBe(false)
+    expect(document.querySelector("svg foreignObject p")).toBeNull()
   })
 
-  it.each(["drop", "dragend"])("finishes a keyboard shape %s on the document's shadow slot", eventType => {
+  it("rejects a saved document ribbon anchor moved inside a graphic after reload", async () => {
+    editor.features.graphic.actions.insertGraphic({type:"insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    const anchor = document.createElement("p")
+    anchor.textContent = "delayed target"
+    document.body.append(anchor)
+    editor.doc.syncFromDOM()
+    const position: RibbonDropPosition = {
+      anchor: Y.relativePositionToJSON(editor.doc.relativePositionFromDOMPoint(anchor.firstChild!,0)!),
+      layout:"document",
+    }
+    const initialState = editor.doc.snapshot()
+    editor.destroy()
+    document.body.innerHTML = ""
+    editor = new DOMEditor({initialState})
+    const reloadedGraphic = document.querySelector("svg")!
+    const reloadedAnchor = document.querySelector("p")!
+    reloadedGraphic.append(reloadedAnchor)
+    editor.doc.syncFromDOM()
+    expect(await editor.features.manipulation.actions.insertRibbonDrop({
+      type:"insertRibbonDrop", html:"<p>Loaded content</p>", position,
+    })).toBe(false)
+    expect(reloadedGraphic.querySelector("p")?.textContent).toBe("delayed target")
+    expect(reloadedGraphic.querySelector("p + p")).toBeNull()
+  })
+
+  it.each(["drop", "dragend"])("rejects a keyboard shape %s on the document's shadow slot", eventType => {
     document.body.innerHTML = '<p>keep</p>'
     const paragraph = document.querySelector("p")!, slot = editor.appendix.querySelector("slot")!
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
@@ -4639,18 +4648,13 @@ describe("unified content transfer", () => {
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: paragraph.firstChild!, offset: 2})
     const data = shapeData()
     slot.dispatchEvent(transferEvent("dragover", data, {clientX: 125, clientY: 50}))
-    expect(document.body).toHaveClass("◆drop-selection-active")
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).not.toBeNull()
+    expect(data.dropEffect).toBe("none")
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview")).toBeNull()
     const event = transferEvent(eventType, data, {clientX: 125, clientY: 50})
     slot.dispatchEvent(event)
-    if(eventType === "drop") {
-      expect(event.defaultPrevented).toBe(true)
-      const graphic = document.querySelector("svg")!
-      expect(graphic.querySelector("rect")).toHaveAttribute("fill", "red")
-      expect(graphic.querySelectorAll("rect")).toHaveLength(1)
-      expectClassFloat(graphic, "left")
-    }
-    else expect(document.querySelector("svg")).toBeNull()
+    if(eventType === "drop") expect(event.defaultPrevented).toBe(true)
+    expect(document.querySelector("svg")).toBeNull()
     expect(paragraph).toHaveTextContent("keep")
     expect(document.body).not.toHaveClass("◆drop-selection-active")
     expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
@@ -5056,6 +5060,10 @@ describe("unified content transfer", () => {
       const inserted = target.querySelector(selector)
       expect(inserted, `${action}: ${target.innerHTML}`).not.toBeNull()
       if(mode === "document" && action.startsWith("insert-graphic")) expect((inserted as SVGSVGElement).style.position).toBe("")
+      if(action.startsWith("insert-graphic-shape:")) {
+        expect(editor.features.selection.captureSelectedElement).toBe(inserted)
+        expect(editor.features.graphic.selectedShape).toBe(inserted!.querySelector("rect"))
+      }
       if(action.startsWith("list-style:")) expect((inserted as HTMLElement).style.listStyleType).toBe("lower-alpha")
       if(mode !== "document") {
         let root = inserted!

@@ -1,7 +1,7 @@
 import { DocumentListenerMap, EditorFeature } from "."
 import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
-import {graphicContainerForNode, standaloneGraphicShape} from "../graphic"
+import {SVG_NAMESPACE, graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
 import {boardLayoutRole, isSlide, slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
@@ -1110,7 +1110,7 @@ export class SelectionFeature extends EditorFeature {
   #preventCapturedDocumentInput(event: Event) {
     const captured = this.captureSelectedElement
     if(!captured || isAppendixInteraction(event) || isFormControlInteraction(event)
-      || isWidgetShadowInteraction(event, this.editor.schema)) return
+      || isWidgetShadowInteraction(event, this.editor.schema) || this.editor.features.graphic.textEditingRange) return
     if(captured instanceof HTMLMediaElement && captured.controls && event instanceof KeyboardEvent
       && (event.key === " " || event.key === "Enter") && event.composedPath().includes(captured)) return
     const selection = document.getSelection()
@@ -1138,6 +1138,7 @@ export class SelectionFeature extends EditorFeature {
    * boundary, including inside the element that currently owns capture. */
   readonly #handleModifierClick = (event: MouseEvent) => {
     if(event.type === "pointerdown") this.#modifierClick = false
+    if(this.editor.features.graphic.isPOIInteraction) return false
     if(event.button !== 0 || (!this.#modifierClick && !modifierKeyDown(event)) || isAppendixInteraction(event)) return false
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
     event.preventDefault()
@@ -1785,8 +1786,10 @@ export class SelectionFeature extends EditorFeature {
       && selection.focusOffset === index + 1
     // Selection.direction is separate browser state that can survive an
     // in-place Range mutation. Ordinary node selections use the forward parent
-    // range [index, index + 1].
-    const hasCanonicalDirection = selection.direction === undefined || selection.direction === "forward"
+    // range [index, index + 1]. Chromium reports "none" for ranges around
+    // non-text SVG content even after setBaseAndExtent; rewriting that valid
+    // range would trigger selectionchange indefinitely.
+    const hasCanonicalDirection = selection.direction !== "backward"
     if(!hasCanonicalEndpoints || !hasCanonicalDirection) {
       selection.setBaseAndExtent(parent, index, parent, index + 1)
     }
@@ -1957,11 +1960,13 @@ export class SelectionFeature extends EditorFeature {
     if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused
       || this.editor.features.graphic.textEditingRange) return
     // Chromium can clear its native range when focusing an SVG-only document.
-    // Preserve the ordinary node selection only while no new endpoints exist.
+    // Keep capture or ordinary node selection until actual new endpoints exist.
     if(!document.getSelection()?.rangeCount) {
-      const standalone = Array.from(this.#selectionMarkers).find(element => element.isConnected
-        && element.classList.contains("◆element-selected") && standaloneGraphicShape(element))
-      if(standalone) $.selectElement(standalone, false)
+      const captured = this.captureSelectedElement
+      const retained = captured?.namespaceURI === SVG_NAMESPACE && captured.localName === "svg" ? captured
+        : Array.from(this.#selectionMarkers).find(element => element.isConnected
+          && element.classList.contains("◆element-selected") && standaloneGraphicShape(element))
+      if(retained) $.selectElement(retained, false)
     }
     if($.isMultiElementSelection) {
       this.editor.doc.updateLocalSelection()
@@ -1997,6 +2002,15 @@ export class SelectionFeature extends EditorFeature {
     if(this.#capturedElement?.localName === "math" && (this.#capturedElement !== formula || inlineMathRoot(formula))) this.#releaseCaptureSelection()
     if(formula && inlineMathRoot(formula) && !focusedWidget) this.#releaseCaptureSelection()
     if(formula && this.editor.features.math.selectedMath !== formula && !inlineMathRoot(formula) && !this.captureSelectedElement) this.#capturedElement = formula
+    // SVG capture follows the live document selection. A native caret move
+    // outside the graphic may arrive without an ordinary editor pointer event.
+    const nativeSelection = document.getSelection()
+    if(this.#capturedElement?.namespaceURI === SVG_NAMESPACE && this.#capturedElement.localName === "svg"
+      && $.selectedElement !== figureSelectionTarget(this.#capturedElement)
+      && (!nativeSelection?.anchorNode || !nativeSelection.focusNode
+        || !this.#capturedElement.contains(nativeSelection.anchorNode) || !this.#capturedElement.contains(nativeSelection.focusNode))) {
+      this.#releaseCaptureSelection()
+    }
     const capturedElement = this.captureSelectedElement
     let sel: Selection | null
     if(capturedElement) {

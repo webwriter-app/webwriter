@@ -1,6 +1,8 @@
-import {adjustGraphicPreset, graphicPresetHandles, graphicPresetPath, graphicPresetFillRule, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
+import {adjustGraphicPreset, graphicPresetAngle, graphicPresetHandles, graphicPresetPath, graphicPresetFillRule, isGraphicPresetType, readGraphicPreset, writeGraphicPreset} from "../graphic-shapes"
+import {copyGraphicTextLayoutCache, wrapGraphicShapeLabel} from "../graphic-text-layout"
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
+import {shapeKeyboardInputEvent, type ShapeKeyboardInput} from "../editor-bridge"
 import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
@@ -71,7 +73,7 @@ type InteractionItem = {
 }
 
 type Interaction = {
-  kind: "path-point" | "adjust" | "arrowhead" | "move" | "resize" | "rotate" | "roundness" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
+  kind: "path-point" | "adjust" | "arrowhead" | "arrow-shaft" | "arrow-head-start" | "arrow-head-width" | "move" | "resize" | "rotate" | "roundness" | "inner-radius" | "radius-x" | "radius-y" | "vertex" | "line-start" | "line-end" | "connector-start" | "connector-end"
   handle: string
   start: Point
   startClient: Point
@@ -89,6 +91,7 @@ type Interaction = {
   frameRotation?: number
   previewRoot?: SVGSVGElement
   vertex?: number
+  adjustmentAngle?: number
   arrowhead?: {endpoint: ConnectorEndpoint, size: number, step: Point}
   attachedConnectors: AttachedConnector[]
   portTarget?: PortTarget | null
@@ -390,6 +393,27 @@ const movePathPoint = (points: Point[], index: number, point: Point, cubic: bool
   return next
 }
 
+/** Pair only POIs that are reflections in the original local frame. */
+const mirroredPointEdits = (points: Point[], index: number, point: Point, bounds: Bounds,
+  modifiers: Pick<PointerSnapshot, "shiftKey" | "metaKey" | "ctrlKey">, cubic = false) => {
+  const edits = [{index, point}]
+  const origin = points[index]
+  if(!origin) return edits
+  const vertical = modifiers.metaKey || modifiers.ctrlKey
+  const reflections = [[modifiers.shiftKey, false], [false, vertical], [modifiers.shiftKey, vertical]]
+  const tolerance = Math.max(1, bounds.width, bounds.height) * 1e-6
+  for(const [x, y] of reflections) {
+    if(!x && !y) continue
+    const reflect = (p: Point) => ({x: x ? 2 * bounds.x + bounds.width - p.x : p.x, y: y ? 2 * bounds.y + bounds.height - p.y : p.y})
+    const opposite = reflect(origin)
+    if(Math.hypot(opposite.x - origin.x, opposite.y - origin.y) <= tolerance) continue
+    const other = points.findIndex((p, i) => i !== index && (!cubic || (i % 3 === 0) === (index % 3 === 0))
+      && Math.hypot(p.x - opposite.x, p.y - opposite.y) <= tolerance)
+    if(other >= 0 && !edits.some(edit => edit.index === other)) edits.push({index: other, point: reflect(point)})
+  }
+  return edits
+}
+
 const attributeNumber = (element: Element, name: string, fallback = 0) => {
   const value = Number.parseFloat(element.getAttribute(name) ?? "")
   return Number.isFinite(value) ? value : fallback
@@ -410,21 +434,34 @@ const setPoints = (element: Element, points: Array<{x: number, y: number}>) => {
   element.setAttribute("points", points.map(point => `${cleanNumber(point.x)},${cleanNumber(point.y)}`).join(" "))
 }
 
-const starInnerRadius = (points: Point[]) => {
-  if(points.length !== 10) return 45
+const starFrame = (points: Point[]) => {
+  if(points.length !== 10) return null
   const center = points.reduce((sum, point) => ({x: sum.x + point.x, y: sum.y + point.y}), {x: 0, y: 0})
   center.x /= points.length
   center.y /= points.length
   const rx = Math.abs((points[2].x - center.x) / Math.cos(-18 * Math.PI / 180))
   const ry = Math.abs(points[0].y - center.y)
-  if(!rx || !ry) return 45
+  return rx && ry ? {center, rx, ry} : null
+}
+
+const starInnerRadius = (points: Point[]) => {
+  const frame = starFrame(points)
+  if(!frame) return 45
+  const {center, rx, ry} = frame
   return Math.hypot((points[1].x - center.x) / rx, (points[1].y - center.y) / ry) * 100
 }
 
 const shapeBounds = (shape: Element): Bounds => {
   const geometry = shapeGeometry(shape)
   const preset = readGraphicPreset(geometry)
-  if(preset) return preset.bounds
+  if(preset) {
+    try {
+      const {x, y, width, height} = geometry.getBBox()
+      if([x, y, width, height].every(Number.isFinite) && width >= 0 && height >= 0 && (width || height)) return {x, y, width, height}
+    }
+    catch { /* Detached SVGs and DOM shims may not expose native geometry. */ }
+    return preset.bounds
+  }
   switch(graphicShapeType(shape)) {
     case "image":
     case "rectangle": return {
@@ -465,7 +502,9 @@ const rotationOf = (shape: Element) => {
 }
 
 const shapeCenter = (shape: Element) => {
-  const bounds = shapeBounds(shape)
+  // Keep the preset's existing rotation/label origin independent of its
+  // silhouette, which can change as its adjustment handles move.
+  const bounds = readGraphicPreset(shapeGeometry(shape))?.bounds ?? shapeBounds(shape)
   return {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2}
 }
 
@@ -524,6 +563,28 @@ const arrowheads = (shape: Element) => (["start", "end"] as const).flatMap(endpo
   return head ? [{...head, endpoint}] : []
 })
 
+// Only expose proportion controls when the polygon still has the native arrow
+// topology. Irregular seven point polygons retain their vertex handles.
+function canonicalArrowPoints(shape: Element): Point[] | null {
+  if(graphicShapeType(shape) !== "arrow") return null
+  const points = parsePoints(shapeGeometry(shape))
+  if(points.length !== 7) return null
+  const {x, y, width, height} = boundsForPoints(points), cx = x + width / 2, cy = y + height / 2
+  const [a, b, c, d, e, f, g] = points
+  const expected = [
+    {x, y: a.y}, {x: b.x, y: a.y}, {x: b.x, y}, {x: x + width, y: cy},
+    {x: b.x, y: y + height}, {x: f.x, y: g.y}, {x, y: g.y},
+  ]
+  const scale = Math.max(1, width, height), epsilon = scale * 1e-5
+  if(Math.abs(a.y + g.y - 2 * cy) > epsilon || Math.abs(b.y - a.y) > epsilon
+    || Math.abs(f.y - g.y) > epsilon || Math.abs(b.x - f.x) > epsilon
+    || Math.abs(c.x - b.x) > epsilon || Math.abs(e.x - b.x) > epsilon
+    || Math.abs(c.y - y) > epsilon || Math.abs(e.y - (y + height)) > epsilon
+    || Math.abs(d.x - (x + width)) > epsilon || Math.abs(d.y - cy) > epsilon
+    || expected.some((p, i) => Math.abs(points[i].x - p.x) > epsilon || Math.abs(points[i].y - p.y) > epsilon)) return null
+  return points
+}
+
 const selectionBounds = (shape: Element) => unionBounds([shapeBounds(shape), ...arrowheads(shape).map(head => boundsForPoints(head.points))])
 const visualBounds = (shape: Element) => {
   const bounds = selectionBounds(shape)
@@ -545,11 +606,12 @@ const shapePorts = (shape: Element): Record<PortDirection, Point> => {
   const bounds = shapeBounds(shape)
   const center = {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2}
   const rotation = rotationOf(shape)
+  const origin = shapeCenter(shape)
   return {
-    n: rotateAround({x: center.x, y: bounds.y}, center, rotation),
-    e: rotateAround({x: bounds.x + bounds.width, y: center.y}, center, rotation),
-    s: rotateAround({x: center.x, y: bounds.y + bounds.height}, center, rotation),
-    w: rotateAround({x: bounds.x, y: center.y}, center, rotation),
+    n: rotateAround({x: center.x, y: bounds.y}, origin, rotation),
+    e: rotateAround({x: bounds.x + bounds.width, y: center.y}, origin, rotation),
+    s: rotateAround({x: center.x, y: bounds.y + bounds.height}, origin, rotation),
+    w: rotateAround({x: bounds.x, y: center.y}, origin, rotation),
   }
 }
 
@@ -603,6 +665,7 @@ const shapeLabel = (shape: Element) => {
 const syncShapeText = (shape: Element) => {
   const text = shapeText(shape)
   if(!text) return
+  if(readGraphicPreset(shapeGeometry(shape))?.definition.contentSize || text.style.whiteSpace === "pre-wrap" && text.style.inlineSize) return
   const center = shapeCenter(shape)
   text.setAttribute("x", cleanNumber(center.x))
   text.setAttribute("y", cleanNumber(center.y))
@@ -642,7 +705,29 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
   })
   const preset = readGraphicPreset(geometry)
   if(preset) {
-    writeGraphicPreset(geometry, preset, {...safe, width: Math.max(1, safe.width), height: Math.max(1, safe.height)})
+    const text = preset.definition.contentSize && shapeText(shape)
+    if(text) {
+      const current=shapeBounds(shape)
+      const resizing=Math.abs(safe.width-initial.width)>.01
+      const dx=safe.x-current.x, dy=safe.y+(resizing ? (initial.height-current.height)/2 : 0)-current.y
+      for(const [name,delta] of [["x",dx],["y",dy]] as const) {
+        const value=text.getAttribute(name)
+        if(value) text.setAttribute(name,value.replace(new RegExp(numberPattern,"g"), value => cleanNumber(Number(value)+delta)))
+      }
+      if(resizing) text.style.inlineSize = `${Math.max(1,safe.width-preset.definition.contentSize!.padding*2)}px`
+      writeGraphicPreset(geometry,preset,{...preset.bounds,x:preset.bounds.x+dx,y:preset.bounds.y+dy,width:resizing ? Math.max(1,safe.width) : preset.bounds.width})
+      return
+    }
+    // Resize the contour's bounds while retaining the preset's design frame.
+    // Use the current preview geometry so repeated frames do not compound.
+    const current = shapeBounds(shape)
+    const sx = current.width ? Math.max(1, safe.width) / current.width : 1
+    const sy = current.height ? Math.max(1, safe.height) / current.height : 1
+    writeGraphicPreset(geometry, preset, {
+      x: safe.x + (preset.bounds.x - current.x) * sx,
+      y: safe.y + (preset.bounds.y - current.y) * sy,
+      width: preset.bounds.width * sx, height: preset.bounds.height * sy,
+    })
     syncShapeText(shape)
     return
   }
@@ -716,6 +801,7 @@ export class GraphicFeature extends EditorFeature {
   #drawObserver: MutationObserver | null = null
   #drawGraphic: SVGSVGElement | null = null
   #drawPaint: GraphicShapePaint = {...defaultGraphicShapePaint}
+  #drawCursorStylesheet: CSSStyleSheet | null = null
   #labelEditor: LabelEditor | null = null
   #overlay: HTMLElement | null = null
   #refreshQueued = false
@@ -730,6 +816,7 @@ export class GraphicFeature extends EditorFeature {
   #viewportState = new WeakMap<SVGSVGElement, GraphicViewport>()
   #navigatedGraphics = new Set<SVGSVGElement>()
   #options: Record<GraphicOption, boolean> = {grid: true, snap: true, guides: true}
+  #insertionPointer: Point | null = null
 
   enable() {
     if(this.isEnabled) return
@@ -737,14 +824,17 @@ export class GraphicFeature extends EditorFeature {
     window.addEventListener("resize", this.#scheduleRefresh)
     window.addEventListener("blur", this.#handleWindowBlur)
     document.addEventListener("scroll", this.#scheduleRefresh, true)
+    document.fonts?.addEventListener("loadingdone",this.#scheduleRefresh)
   }
 
   disable() {
     if(!this.isEnabled) return
+    this.#insertionPointer = null
     this.#pendingImport?.cancel()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
     document.removeEventListener("scroll", this.#scheduleRefresh, true)
+    document.fonts?.removeEventListener("loadingdone",this.#scheduleRefresh)
     this.#cancelInteraction()
     this.#cancelConnector()
     this.#cancelMarquee()
@@ -771,14 +861,15 @@ export class GraphicFeature extends EditorFeature {
       this.#cancelPointer()
       this.#closeLabelEditor(true)
       this.#drawMode = mode === "select" ? "draw" : mode
-      this.#setDrawGraphic(mode !== "select" ? graphic : null)
       if(paint) this.#drawPaint = {...this.#drawPaint, ...paint}
+      this.#setDrawGraphic(mode !== "select" ? graphic : null)
       this.#clearShapeSelection()
       this.#refresh()
       this.editor.postSelectionPath()
     },
     setGraphicDrawPaint: ({paint}: {type: "setGraphicDrawPaint", paint: GraphicShapePaint}) => {
       if(paint && typeof paint === "object") this.#drawPaint = {...this.#drawPaint, ...paint}
+      this.#updateDrawCursor()
     },
     setGraphicFile: ({file, pickerId}: {type: "setGraphicFile", file: File | null, pickerId: string}) => {
       return this.#pendingImport?.pickerId === pickerId ? this.#pendingImport.apply(file) : undefined
@@ -867,18 +958,14 @@ export class GraphicFeature extends EditorFeature {
       if(shape !== undefined && !isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.createGraphic(shape)
       this.editor.features.manipulation.insert(graphic, 0, false, this.editor.features.canvas.active || this.editor.features.slides.active || undefined)
-      if(graphic.isConnected) {
-        if(shape) this.editor.features.selection.selectElement(graphic)
-        else this.editor.features.selection.captureElement(graphic)
-        this.#refresh()
-        this.editor.postSelectionPath(true)
-      }
+      this.captureInsertedGraphic(graphic)
     },
-    addGraphicShape: ({shape, paint}: {type: "addGraphicShape", shape: GraphicShapeType, paint?: GraphicShapePaint}) => {
+    addGraphicShape: ({shape, paint, onlyIfUnselected}: {type: "addGraphicShape", shape: GraphicShapeType, paint?: GraphicShapePaint, onlyIfUnselected?: boolean}) => {
       if(!isGraphicShapeType(shape)) throw new TypeError(`Unsupported graphic shape '${String(shape)}'`)
       const graphic = this.#capturedGraphic()
       if(!graphic) return
-      this.#insertShape(graphic, shape, paint)
+      if(onlyIfUnselected && (this.selectedShapes.length || this.editor.features.mark.isSVGTextSelection)) return
+      this.#insertShape(graphic, shape, paint, this.#shapeInsertionPoint(graphic))
     },
     setGraphicParameter: ({name, value}: {type: "setGraphicParameter", name: string, value: string}) => {
       const shapes = this.selectedShapes
@@ -948,6 +1035,8 @@ export class GraphicFeature extends EditorFeature {
     return this.#primaryShape && this.selectedShapes.includes(this.#primaryShape) ? this.#primaryShape : null
   }
 
+  get isPOIInteraction() { return Boolean(this.#interaction && ["adjust", "path-point", "vertex", "inner-radius", "arrow-shaft", "arrow-head-start", "arrow-head-width"].includes(this.#interaction.kind)) }
+
   getState(): GraphicSelectionState | undefined {
     const capture = this.#capturedGraphic()
     const selected = $.selectedElement
@@ -964,7 +1053,7 @@ export class GraphicFeature extends EditorFeature {
     const layers = roots.flatMap((root, index) => {
       const layerType = graphicShapeType(root)
       if(!layerType) return []
-      const fallback = graphicShapeOptions.find(option => option.type === layerType)?.label ?? "Shape"
+      const fallback = graphicShapeOptions.find(option => option.type === layerType)?.label ?? (layerType === "rectangle" ? "Rectangle" : "Shape")
       return [{
         index,
         label: shapeLabel(root).trim() || `${fallback} ${index + 1}`,
@@ -990,6 +1079,18 @@ export class GraphicFeature extends EditorFeature {
     }
   }
 
+  /** Finish insertion with the canvas captured and its initial shape selected. */
+  captureInsertedGraphic(graphic: SVGSVGElement) {
+    if(!this.#canInsertText(graphic)) return
+    this.#cancelPointer()
+    this.#clearShapeSelection()
+    this.editor.features.selection.captureElement(graphic)
+    const shape = standaloneGraphicShape(graphic)
+    if(shape) this.#selectShape(shape)
+    this.#refresh()
+    this.editor.postSelectionPath(true)
+  }
+
   /** Repositions direct-manipulation chrome after another editor feature has
    * reconciled authored or collaborative DOM changes. */
   refresh() {
@@ -1005,10 +1106,29 @@ export class GraphicFeature extends EditorFeature {
       const bounds = shapeBounds(element)
       this.#moveShape(element, point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2)
     }
-    if(point) this.editor.features.selection.captureElement(graphic)
+    if(point && this.#capturedGraphic() !== graphic) this.editor.features.selection.captureElement(graphic)
     this.#selectShape(element)
     this.#refresh()
     this.editor.postSelectionPath()
+  }
+
+  #rememberInsertionPointer(event: PointerEvent) {
+    this.#insertionPointer = event.pointerType === "touch" || isAppendixInteraction(event)
+      || isWidgetShadowInteraction(event, this.editor.schema) ? null : {x: event.clientX, y: event.clientY}
+  }
+
+  #shapeInsertionPoint(graphic: SVGSVGElement): Point {
+    const box = graphicViewBox(graphic)
+    const base = this.#baseScreenMatrix(graphic)
+    const pointer = this.#insertionPointer
+    if(pointer) {
+      const local = applyInverseMatrix(base, pointer)
+      const target = this.editor.hitTestBeneathAppendix(() => document.elementFromPoint?.(pointer.x, pointer.y))
+      if(local.x >= box.x && local.x <= box.x + box.width && local.y >= box.y && local.y <= box.y + box.height
+        && graphicContainerForNode(target ?? null) === graphic) return this.#clientPoint(graphic, pointer.x, pointer.y)
+    }
+    const center = applyMatrix(base, {x: box.x + box.width / 2, y: box.y + box.height / 2})
+    return this.#clientPoint(graphic, center.x, center.y)
   }
 
   #applyShapePaint(element: SVGGraphicsElement, shape: GraphicShapeType, paint?: GraphicShapePaint) {
@@ -1062,11 +1182,12 @@ export class GraphicFeature extends EditorFeature {
   #dropShape(event: DragEvent) {
     const data = event.dataTransfer
     if(!data?.types.includes(graphicShapeDragType)) return false
-    const graphic = this.#imageDropGraphic(event)
-    if(!graphic) return false
-    this.editor.features.manipulation.endNodeDrag()
     event.preventDefault()
     event.stopImmediatePropagation()
+    const graphic = this.#shapeDropGraphic(event)
+    data.dropEffect = graphic ? "copy" : "none"
+    if(!graphic) return true
+    this.editor.features.manipulation.endNodeDrag()
     const detail = readGraphicShapeDrag(data)
     if(!detail) return true
     const point = applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})
@@ -1076,6 +1197,16 @@ export class GraphicFeature extends EditorFeature {
     return true
   }
 
+  #shapeDropGraphic(event: DragEvent) {
+    const graphic = this.#capturedGraphic()
+    if(!graphic || !this.#canInsertText(graphic) || this.#imageDropGraphic(event) !== graphic) return null
+    // Ignore native pan/zoom when testing the canvas viewport. Visible overflow
+    // from a shape remains outside the drop area even if it is hit-testable.
+    const point = applyInverseMatrix(this.#baseScreenMatrix(graphic), {x:event.clientX,y:event.clientY})
+    const box = graphicViewBox(graphic)
+    return point.x >= box.x && point.x <= box.x+box.width && point.y >= box.y && point.y <= box.y+box.height ? graphic : null
+  }
+
   /** Resolve the authored graphic beneath editing chrome at execution time. */
   dropPosition(event: DragEvent) {
     const graphic = this.#imageDropGraphic(event)
@@ -1083,55 +1214,38 @@ export class GraphicFeature extends EditorFeature {
     return {graphic, ...applyInverseMatrix(this.#screenMatrix(graphic), {x: event.clientX, y: event.clientY})}
   }
 
-  insertDroppedShape(graphic: SVGSVGElement, shape: GraphicShapeType, point: Point) {
-    if(!this.#canInsertText(graphic) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false
-    const end = this.editor.doc.beginUndoGroup()
-    try { this.#insertShape(graphic, shape, undefined, point) }
-    finally { end() }
-    return true
-  }
-
-  /** HTML and widgets retain their authored structure inside native SVG HTML. */
-  insertDroppedContent(graphic: SVGSVGElement, nodes: Node[], point: Point) {
-    if(!nodes.length || !this.#canInsertText(graphic) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return false
-    const container = document.createElementNS(SVG_NAMESPACE, "foreignObject")
-    const media = nodes.length === 1 && nodes[0] instanceof Element && nodes[0].matches("audio, video, iframe") ? nodes[0] : null
-    const width = 320, height = media?.localName === "audio" ? 54 : 180
-    container.setAttribute("x", cleanNumber(point.x - width / 2))
-    container.setAttribute("y", cleanNumber(point.y - height / 2))
-    container.setAttribute("width", String(width))
-    container.setAttribute("height", String(height))
-    if(media instanceof HTMLElement) {
-      media.style.width = "100%"
-      media.style.height = "100%"
-    }
-    container.append(...nodes)
-    const end = this.editor.doc.beginUndoGroup()
-    try { graphic.append(container) }
-    finally { end() }
-    this.editor.features.selection.captureElement(graphic)
-    this.#clearShapeSelection()
-    this.#refresh()
-    this.editor.postSelectionPath()
+  #rejectRibbonDrop(event: DragEvent) {
+    const data = event.dataTransfer
+    if(!data || ![elementDragType, ribbonInsertionDragType].some(type => data.types.includes(type)) || !this.#imageDropGraphic(event)) return false
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    data.dropEffect = "none"
+    if(document.body.classList.contains("◆drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
     return true
   }
 
   // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
+    pointerdown: event => {
+      this.#rememberInsertionPointer(event)
+      if(!this.#labelEditor || event.button !== 0) return
+      const path = event.composedPath()
+      // The outer graphic's transform controls consume the event before our
+      // regular listener. Leave text editing before either set of controls acts.
+      if(this.#overlay && path.includes(this.#overlay)
+        || path.some(target => target instanceof Element && target.id === "◆transform-overlay")) this.#closeLabelEditor(true)
+    },
+    pointermove: event => this.#rememberInsertionPointer(event),
+    pointerout: event => { if(!event.relatedTarget) this.#insertionPointer = null },
+    pointercancel: () => this.#insertionPointer = null,
     dragover: event => {
-      if(event.defaultPrevented) return
-      if(event.dataTransfer && [graphicShapeDragType, elementDragType, ribbonInsertionDragType].some(type => event.dataTransfer!.types.includes(type))) {
-        const graphic = this.#imageDropGraphic(event)
-        if(!graphic) return
-        if(document.body.classList.contains("◆drop-selection-active")) this.editor.features.manipulation.endNodeDrag()
-        if(this.editor.features.selection.captureSelectedElement !== graphic) {
-          this.editor.features.selection.captureElement(graphic)
-          this.#refresh()
-          this.editor.postSelectionPath()
-        }
+      if(event.defaultPrevented || this.#rejectRibbonDrop(event)) return
+      if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
+        // Keyboard shapes belong to the current captured canvas. Claim even
+        // rejected hovers so document drop carets cannot release its capture.
         event.preventDefault()
         event.stopImmediatePropagation()
-        event.dataTransfer.dropEffect = "copy"
+        event.dataTransfer.dropEffect = this.#shapeDropGraphic(event) ? "copy" : "none"
         return
       }
       if(!this.#imageDropGraphic(event) || !event.dataTransfer) return
@@ -1143,7 +1257,7 @@ export class GraphicFeature extends EditorFeature {
       data.dropEffect = "copy"
     },
     drop: event => {
-      if(event.defaultPrevented) return
+      if(event.defaultPrevented || this.#rejectRibbonDrop(event)) return
       if(event.dataTransfer && [elementDragType, ribbonInsertionDragType].some(type => event.dataTransfer!.types.includes(type))) return
       if(this.#dropShape(event)) return
       this.#dropImage(event)
@@ -1290,6 +1404,7 @@ export class GraphicFeature extends EditorFeature {
     keydown: event => {
       if(isAppendixInteraction(event) && (!this.#labelEditor || !event.composedPath().includes(this.#labelEditor.element))) return
       if(this.#labelEditor && this.editor.features.mark.isSVGTextSelection) { this.#labelKeydown(event); return }
+      this.#updatePOIModifiers(event)
       if(event.key === "Escape" && this.#standaloneShape() && (this.#interaction || this.#labelEditor)) {
         this.#claimKeyboardEvent(event)
         this.#cancelPointer()
@@ -1298,6 +1413,7 @@ export class GraphicFeature extends EditorFeature {
       }
       const graphic = this.#capturedGraphic()
       if(!graphic) return
+      if(event.key === "Shift" || event.key === "CapsLock") this.#postShapeKeyboardInput(event)
       if(!event.altKey && modifierKeyDown(event) && ["z", "y"].includes(event.key.toLowerCase())) {
         this.#cancelPointer()
         this.editor.features.history.activeListeners.keydown?.(event)
@@ -1429,9 +1545,31 @@ export class GraphicFeature extends EditorFeature {
       }
       const isAltGraph = event.getModifierState("AltGraph")
       const isPrintable = event.key.length === 1 && !event.metaKey && (!event.ctrlKey || isAltGraph)
-      if(event.key === "Enter" || isPrintable) this.#claimKeyboardEvent(event)
+      if(event.key !== "Shift" && event.key !== "CapsLock" && !this.#interaction && !this.#connector && !this.#marquee && !this.#pan && !this.#stroke && !this.#path) this.#postShapeKeyboardInput(event)
+      if(event.key === "Enter" || event.key === "Dead" || isPrintable) this.#claimKeyboardEvent(event)
     },
-    keyup: event => this.#handleSpaceUp(event),
+    keyup: event => {
+      this.#handleSpaceUp(event)
+      this.#updatePOIModifiers(event)
+      if(this.#capturedGraphic() && !this.editor.features.mark.isSVGTextSelection) this.#postShapeKeyboardInput(event)
+    },
+  }
+
+  #updatePOIModifiers(event: KeyboardEvent) {
+    const interaction = this.#interaction
+    if(!interaction || !["adjust", "path-point", "vertex"].includes(interaction.kind)
+      || !["Shift", "Control", "Meta"].includes(event.key)) return
+    Object.assign(interaction.latest, {shiftKey: event.shiftKey, metaKey: event.metaKey, ctrlKey: event.ctrlKey})
+    if(interaction.active) this.#scheduleInteractionFrame()
+  }
+
+  #postShapeKeyboardInput(event: KeyboardEvent) {
+    if(event.isComposing || event.ctrlKey || event.metaKey || this.selectedShapes.length) return
+    const detail: ShapeKeyboardInput = {
+      type: event.type as ShapeKeyboardInput["type"], key: event.key, code: event.code,
+      altKey: event.altKey, shiftKey: event.shiftKey, capsLock: event.getModifierState("CapsLock"), repeat: event.repeat,
+    }
+    this.editor.postHostMessage({type: shapeKeyboardInputEvent, detail})
   }
 
   #blockCapturedEditingEvent(event: Event) {
@@ -1475,6 +1613,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #handleWindowBlur = () => {
+    this.#insertionPointer = null
     this.#spaceDown = false
     removeEditorMarker(document.body, "◆graphic-pan-ready")
     this.#cancelPan()
@@ -1524,8 +1663,22 @@ export class GraphicFeature extends EditorFeature {
       let element = this.#createShape(shape, 0, graphic)
       this.#applyShapePaint(element, shape, paint)
       graphic.append(element)
-      if(shape === "text-box") element = this.#setLabel(element, "Text")
-      this.#fitStandaloneGraphic(graphic, element)
+      // getBBox needs a rendered SVG, including for detached insertion previews.
+      const measurement = isGraphicPresetType(shape) ? document.createElement("div") : null
+      if(measurement) {
+        measurement.classList.add("◆", "◆editor-only", "◆graphic-measurement")
+        measurement.setAttribute("aria-hidden", "true")
+        measurement.style.cssText = "position:fixed;width:1px;height:1px;overflow:hidden;visibility:hidden;pointer-events:none;contain:strict"
+        measurement.append(graphic)
+        this.editor.addAppendix(measurement)
+      }
+      try {
+        if(shape === "text-box") element = this.#setLabel(element, "Text")
+        this.#fitStandaloneGraphic(graphic, element)
+      }
+      finally {
+        if(measurement) { graphic.remove(); measurement.remove() }
+      }
     }
     return graphic
   }
@@ -1547,8 +1700,8 @@ export class GraphicFeature extends EditorFeature {
       shape.setAttribute("d", graphicPresetPath(type, bounds))
       shape.setAttribute("aria-label", definition.label)
       shape.setAttribute("fill-rule", graphicPresetFillRule(type))
-      shape.setAttribute("fill", definition.open ? "none" : "#ffffff")
-      shape.setAttribute("stroke", "#334155")
+      shape.setAttribute("fill", definition.open || type === "text-box" ? "none" : "#ffffff")
+      shape.setAttribute("stroke", type === "text-box" ? "none" : "#334155")
       shape.setAttribute("stroke-width", definition.open ? "6" : "4")
       shape.setAttribute("stroke-linejoin", "round")
       shape.setAttribute("vector-effect", "non-scaling-stroke")
@@ -1892,7 +2045,13 @@ export class GraphicFeature extends EditorFeature {
   }
 
   focusTextInput() {
-    if(this.#labelEditor && this.textEditingRange) this.#labelEditor.element.focus({preventScroll: true})
+    if(!this.#labelEditor || !this.textEditingRange) return
+    const {element} = this.#labelEditor
+    element.focus({preventScroll: true})
+    // Updating the SVG Range can leave the textarea focused while its native
+    // caret belongs to the SVG. focus() alone then does nothing, and subsequent
+    // keystrokes produce no beforeinput. Restore the empty proxy's caret too.
+    if(!element.value) element.setSelectionRange(0, 0)
   }
 
   #labelKeydown(event: KeyboardEvent) {
@@ -1905,10 +2064,14 @@ export class GraphicFeature extends EditorFeature {
       this.#closeLabelEditor(true)
       return
     }
+    const navigation = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
+    // Printable keys belong to the native proxy. Moving the document range
+    // during keydown blurs it before the browser can deliver beforeinput.
+    if(!navigation && !(modifierKeyDown(event) && !event.altKey)
+      && !["Backspace", "Delete", "Enter"].includes(event.key)) return
     this.#restoreTextSelection()
     const selection = document.getSelection()
     if(!selection?.rangeCount || !text.contains(selection.anchorNode) || !text.contains(selection.focusNode)) return
-    const navigation = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
     if(!navigation && modifierKeyDown(event) && !event.altKey) {
       const mark = ({b: "b", i: "i", u: "u", k: "a"} as const)[event.key.toLowerCase() as "b" | "i" | "u" | "k"]
       if(mark) { event.preventDefault(); this.editor.features.mark.toggleMark(mark); this.focusTextInput(); return }
@@ -1998,6 +2161,7 @@ export class GraphicFeature extends EditorFeature {
     if(!editor) return
     const text = shapeText(editor.shape)
     if(!text?.isConnected) { this.#closeLabelEditor(true, false); return }
+    this.#layoutShapeText(editor.shape)
     const range = this.textEditingRange
     if(!range) { this.#closeLabelEditor(true, false); return }
     editor.caret.hidden = !range
@@ -2016,6 +2180,33 @@ export class GraphicFeature extends EditorFeature {
     editor.caret.style.animation = "var(--ww-ui-animation, blink 1s step-end infinite)"
     if(!range) return
     let rect = range.getBoundingClientRect()
+    const content=text.textContent ?? ""
+    const preset=readGraphicPreset(shapeGeometry(editor.shape))
+    if(!content && graphicShapeType(editor.shape)) {
+      const measured=this.#emptyTextCaretRect(text)
+      const bounds=shapeBounds(editor.shape)
+      const matrix=shapeGeometry(editor.shape).getScreenCTM?.() ?? text.getScreenCTM?.()
+      if(matrix) {
+        const center=applyMatrix(matrix,{x:bounds.x+bounds.width/2,y:bounds.y+bounds.height/2})
+        const height=measured?.height || 16
+        // The probe supplies the font's caret height, not its position: a
+        // placeholder glyph's bearings must not offset an empty label.
+        rect=new DOMRect(center.x-.5,center.y-height/2,1,height)
+      }
+    }
+    else if(range.collapsed && content.endsWith("\n") && text.style.whiteSpace === "pre-wrap" && text.style.inlineSize
+      && textOffsetIn(text,range.startContainer,range.startOffset) === content.length) {
+      const ys=(text.getAttribute("y") ?? "").split(/\s+/).map(Number).filter(Number.isFinite)
+      const rows=[...new Set(ys)].sort((a,b) => a-b)
+      const fontSize=parseFloat(getComputedStyle(text).fontSize) || attributeNumber(text,"font-size",48)
+      let glyphHeight=fontSize
+      try {glyphHeight=text.getBBox().height}
+      catch { /* Empty or temporarily unrendered text uses its font metrics. */ }
+      const lineHeight=rows.length>1 ? rows[1]-rows[0] : Math.max(fontSize*1.2,glyphHeight)
+      const frame=preset?.definition.contentSize ? preset.bounds : shapeBounds(editor.shape)
+      const x=preset?.definition.contentSize ? frame.x+preset.definition.contentSize.padding : frame.x+frame.width/2
+      rect=this.#emptyTextCaretRect(text,{x,y:(rows.at(-1) ?? frame.y)+lineHeight}) ?? rect
+    }
     if(!rect.height && !text.textContent) rect = this.#emptyTextCaretRect(text) ?? rect
     const fallback = text.getBoundingClientRect()
     const x = rect.height ? rect.left : fallback.left
@@ -2025,7 +2216,7 @@ export class GraphicFeature extends EditorFeature {
     Object.assign(editor.element.style, {left: `${fixedClientX(x)}px`, top: `${y}px`})
   }
 
-  #emptyTextCaretRect(text: SVGTextElement): DOMRect | null {
+  #emptyTextCaretRect(text: SVGTextElement, point?: Point): DOMRect | null {
     const matrix = text.getScreenCTM?.()
     if(!matrix) return null
     // Empty SVG text has no layout box. Measure a collapsed range in an
@@ -2044,6 +2235,7 @@ export class GraphicFeature extends EditorFeature {
       const lengths = text[name]?.baseVal
       sample.setAttribute(name, String(lengths?.numberOfItems ? lengths.getItem(0).value : parseFloat(text.getAttribute(name) ?? "0")))
     }
+    if(point) {sample.setAttribute("x",String(point.x));sample.setAttribute("y",String(point.y))}
     sample.style.textAnchor = "start"
     sample.textContent = "M"
     group.append(sample)
@@ -2053,7 +2245,8 @@ export class GraphicFeature extends EditorFeature {
       const range = document.createRange()
       range.setStart(sample.firstChild!, 0)
       range.collapse(true)
-      return range.getBoundingClientRect()
+      const rect=range.getBoundingClientRect()
+      return point || !rect.height ? sample.getBoundingClientRect() : rect
     }
     finally { probe.remove() }
   }
@@ -2113,7 +2306,7 @@ export class GraphicFeature extends EditorFeature {
         event.stopImmediatePropagation()
         return
       }
-      if(!event.composedPath().includes(this.editor.appendix)) this.#closeLabelEditor(true)
+      if(!isAppendixInteraction(event)) this.#closeLabelEditor(true)
     }
     let pointerGraphic = event.target instanceof Node ? graphicContainerForNode(event.target) : null
     const headShape = !isAppendixInteraction(event) && !isWidgetShadowInteraction(event) && !isFormControlInteraction(event)
@@ -2147,11 +2340,11 @@ export class GraphicFeature extends EditorFeature {
       this.#startConnector(this.selectedShape, port.dataset.graphicPort as PortDirection, event)
       return
     }
-    const handle = event.composedPath().find(target => target instanceof HTMLElement && target.hasAttribute("data-graphic-handle")) as HTMLElement | undefined
+    const handle = event.composedPath().find(target => target instanceof Element && target.hasAttribute("data-graphic-handle")) as Element | undefined
     if(handle && this.selectedShapes.length) {
       event.preventDefault()
       event.stopImmediatePropagation()
-      this.#startInteraction(handle.dataset.graphicHandle!, event)
+      this.#startInteraction(handle.getAttribute("data-graphic-handle")!, event)
       return
     }
 
@@ -2190,7 +2383,8 @@ export class GraphicFeature extends EditorFeature {
       : handle.startsWith("path-point-") ? "path-point"
       : handle.startsWith("vertex-") ? "vertex"
         : handle === "line-start" || handle === "line-end" || handle === "connector-start" || handle === "connector-end"
-          || handle === "roundness" || handle === "radius-x" || handle === "radius-y" || handle === "rotate"
+          || handle === "arrow-shaft" || handle === "arrow-head-start" || handle === "arrow-head-width"
+          || handle === "roundness" || handle === "inner-radius" || handle === "radius-x" || handle === "radius-y" || handle === "rotate"
           ? handle
           : "move"
     if(shapes.length > 1 && kind !== "move" && kind !== "resize" && kind !== "rotate") return
@@ -2230,6 +2424,7 @@ export class GraphicFeature extends EditorFeature {
         y: (head.points[0].y - head.tip.y) / head.size,
       }}} : {}),
     }
+    if(kind === "adjust" && readGraphicPreset(shapeGeometry(shape))?.type === "chord") this.#refresh()
     this.#capturePointer(captureTarget, event.pointerId)
   }
 
@@ -2362,6 +2557,21 @@ export class GraphicFeature extends EditorFeature {
     event.preventDefault()
     event.stopImmediatePropagation()
     interaction.latest = this.#pointerSnapshot(graphic, event)
+    // Keep every angular sample even when preview frames coalesce a fast drag.
+    if(interaction.kind === "adjust") {
+      const source = interaction.items[0].source, preset = readGraphicPreset(shapeGeometry(source))
+      const index = preset?.definition.adjustments.findIndex(adjustment => `adjust-${adjustment.name}` === interaction.handle) ?? -1
+      const adjustment = preset?.definition.adjustments[index]
+      if(preset && adjustment?.axis === "angle") {
+        const point = rotateAround(interaction.latest.point, shapeCenter(source), -interaction.rotation)
+        const chord = preset.type === "chord", start = chord ? preset.values[0] : 0
+        const previous = interaction.adjustmentAngle ?? preset.values[index] + (chord && index === 1 ? start : 0)
+        const angle = graphicPresetAngle(preset.bounds, point, previous)
+        const min = chord ? index === 0 ? start + preset.values[1] - 360 : start + .5 : adjustment.min
+        const max = chord ? index === 0 ? start + preset.values[1] - .5 : start + 360 : adjustment.max
+        if(angle !== undefined) interaction.adjustmentAngle = Math.max(min, Math.min(max, angle))
+      }
+    }
     if(!interaction.active) {
       const distance = Math.hypot(event.clientX - interaction.startClient.x, event.clientY - interaction.startClient.y)
       if(distance < 3) return
@@ -2396,6 +2606,7 @@ export class GraphicFeature extends EditorFeature {
     // Direct DOM replacements may have cloned a temporary marker as well.
     document.querySelectorAll(".◆graphic-drawing").forEach(element => removeEditorMarker(element, "◆graphic-drawing"))
     this.#drawGraphic = graphic
+    this.#updateDrawCursor()
     if(!graphic) return
     graphic.classList.add("◆", "◆graphic-drawing")
     document.body.classList.add("◆", "◆graphic-drawing")
@@ -2408,6 +2619,32 @@ export class GraphicFeature extends EditorFeature {
       }
     })
     this.#drawObserver.observe(document.body, {subtree: true, childList: true, attributes: true})
+  }
+
+  #updateDrawCursor() {
+    if(!this.#drawGraphic) {
+      if(this.#drawCursorStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.#drawCursorStylesheet)
+      this.#drawCursorStylesheet = null
+      return
+    }
+    if(!this.#drawCursorStylesheet) {
+      this.#drawCursorStylesheet = new CSSStyleSheet()
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.#drawCursorStylesheet]
+    }
+    // Drawing paths use non-scaling strokes, so the dot's diameter is already
+    // in screen pixels and stays the same through graphic pan and zoom.
+    const dot = document.createElementNS(SVG_NAMESPACE, "circle")
+    this.#setParameter(dot, "stroke-width", this.#drawPaint["stroke-width"] ?? defaultGraphicShapePaint["stroke-width"])
+    const width = Number(dot.getAttribute("stroke-width") ?? defaultGraphicShapePaint["stroke-width"])
+    const center = Math.ceil(width / 2 + 1)
+    dot.removeAttribute("stroke-width")
+    dot.setAttribute("cx", String(center)); dot.setAttribute("cy", String(center))
+    dot.setAttribute("r", String(width / 2))
+    dot.setAttribute("fill", this.#drawPaint.stroke ?? defaultGraphicShapePaint.stroke)
+    this.#setParameter(dot, "opacity", this.#drawPaint.opacity ?? defaultGraphicShapePaint.opacity)
+    const source = `<svg xmlns="${SVG_NAMESPACE}" width="${center * 2}" height="${center * 2}">${dot.outerHTML}</svg>`
+    const selector = "body:not(.◆graphic-pan-ready):not(.◆graphic-panning) svg.◆graphic-drawing"
+    this.#drawCursorStylesheet.replaceSync(`${selector}, ${selector} * { cursor: url("data:image/svg+xml,${encodeURIComponent(source)}") ${center} ${center}, crosshair !important; }`)
   }
 
   #createDrawingPreview(graphic: SVGSVGElement) {
@@ -2594,8 +2831,6 @@ export class GraphicFeature extends EditorFeature {
     const end = this.editor.doc.beginUndoGroup()
     try { draft.graphic.append(path) }
     finally { end() }
-    this.#setDrawGraphic(null)
-    this.#selectShape(path)
     document.body.focus({preventScroll: true})
     this.#refresh()
     this.editor.postSelectionPath()
@@ -2653,8 +2888,6 @@ export class GraphicFeature extends EditorFeature {
     const endUndoGroup = this.editor.doc.beginUndoGroup()
     try { stroke.graphic.append(path) }
     finally { endUndoGroup() }
-    this.#setDrawGraphic(null)
-    this.#selectShape(path)
     document.body.focus({preventScroll: true})
     this.#refresh()
     this.editor.postSelectionPath()
@@ -2753,6 +2986,7 @@ export class GraphicFeature extends EditorFeature {
     if(selectionOutline) selectionOutline.style.display = "none"
     if(rotationStem) rotationStem.style.display = "none"
     overlay.querySelectorAll<HTMLElement>(".◆graphic-handle").forEach(handle => handle.hidden = true)
+    this.#updatePorts(overlay, null, matrix)
     overlay.hidden = false
   }
 
@@ -2930,6 +3164,7 @@ export class GraphicFeature extends EditorFeature {
     interaction.items.forEach(item => {
       const preview = item.source.cloneNode(true) as SVGGraphicsElement
       this.#removeMarkerClasses(preview, true)
+      copyGraphicTextLayoutCache(item.source,preview)
       item.preview = preview
       previewRoot.append(preview)
       item.source.classList.add("◆", "◆graphic-preview-source")
@@ -3020,6 +3255,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #cleanupInteraction(interaction: Interaction) {
+    this.#overlay?.querySelector(".◆graphic-ellipse-guide")?.setAttribute("display", "none")
     this.#releasePointer(interaction.captureTarget, interaction.pointerId)
     interaction.previewRoot?.remove()
     interaction.items.forEach(item => removeEditorMarker(item.source, "◆graphic-preview-source"))
@@ -3035,7 +3271,11 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #applyInteractionSet(shapes: Element[], interaction: Interaction): ActiveGuides {
-    if(shapes.length === 1) return this.#applyInteraction(shapes[0], interaction)
+    if(shapes.length === 1) {
+      const guides=this.#applyInteraction(shapes[0], interaction)
+      this.#layoutShapeText(shapes[0])
+      return guides
+    }
     const point = interaction.latest.point
     if(interaction.kind === "move") {
       let dx = point.x - interaction.start.x
@@ -3057,6 +3297,7 @@ export class GraphicFeature extends EditorFeature {
           x: item.bounds.x + offset.x,
           y: item.bounds.y + offset.y,
         }, item.bounds, item.points)
+        this.#layoutShapeText(shape)
         setRotation(shape, item.rotation)
       })
       interaction.frameBounds = snapped.bounds
@@ -3082,6 +3323,7 @@ export class GraphicFeature extends EditorFeature {
           height: item.bounds.height * scaleY,
         }
         setShapeBounds(shape, mapped, item.bounds, item.points)
+        this.#layoutShapeText(shape)
         setRotation(shape, item.rotation)
       })
       interaction.frameBounds = snapped.bounds
@@ -3122,10 +3364,7 @@ export class GraphicFeature extends EditorFeature {
     const geometry = shapeGeometry(shape)
     let point = latest.point
     if(interaction.rotation && interaction.kind !== "move" && interaction.kind !== "rotate") {
-      const center = {
-        x: interaction.bounds.x + interaction.bounds.width / 2,
-        y: interaction.bounds.y + interaction.bounds.height / 2,
-      }
+      const center = shapeCenter(interaction.items[0].source)
       point = rotateAround(point, center, -interaction.rotation)
     }
     if(interaction.kind === "move") {
@@ -3141,7 +3380,7 @@ export class GraphicFeature extends EditorFeature {
       return snapped.guides
     }
     if(interaction.kind === "rotate") {
-      const center = {x: interaction.bounds.x + interaction.bounds.width / 2, y: interaction.bounds.y + interaction.bounds.height / 2}
+      const center = shapeCenter(interaction.items[0].source)
       const startAngle = Math.atan2(interaction.start.y - center.y, interaction.start.x - center.x) * 180 / Math.PI
       const currentAngle = Math.atan2(point.y - center.y, point.x - center.x) * 180 / Math.PI
       const angle = interaction.rotation + currentAngle - startAngle
@@ -3149,8 +3388,15 @@ export class GraphicFeature extends EditorFeature {
       return {}
     }
     if(interaction.kind === "adjust") {
-      const preset = readGraphicPreset(geometry)
-      if(preset) adjustGraphicPreset(geometry, preset, interaction.handle, point)
+      const preset = readGraphicPreset(shapeGeometry(interaction.items[0].source))
+      const index = preset?.definition.adjustments.findIndex(adjustment => `adjust-${adjustment.name}` === interaction.handle) ?? -1
+      const angular = preset?.definition.adjustments[index]?.axis === "angle"
+      if(preset && angular && interaction.adjustmentAngle !== undefined) {
+        const value = interaction.adjustmentAngle - (preset.type === "chord" && index === 1 ? preset.values[0] : 0)
+        adjustGraphicPreset(geometry, preset, interaction.handle, value)
+      }
+      else if(preset) adjustGraphicPreset(geometry, preset, interaction.handle, point,
+        {horizontal: latest.shiftKey, vertical: latest.metaKey || latest.ctrlKey})
       syncShapeText(shape)
       return {}
     }
@@ -3159,6 +3405,47 @@ export class GraphicFeature extends EditorFeature {
       const start = rotateAround(interaction.start, shapeCenter(shape), -interaction.rotation)
       const length = step.x * step.x + step.y * step.y
       if(length > 1e-8) this.#setArrowheadSize(shape, endpoint, size + ((point.x - start.x) * step.x + (point.y - start.y) * step.y) / length)
+      return {}
+    }
+    if(interaction.kind === "arrow-shaft" || interaction.kind === "arrow-head-start" || interaction.kind === "arrow-head-width") {
+      const points = canonicalArrowPoints(interaction.items[0].source)
+      if(!points) return {}
+      const next = points.map(({x, y}) => ({x, y}))
+      const centerY = (points[0].y + points[6].y) / 2
+      if(interaction.kind === "arrow-shaft") {
+        const headHalf = Math.max(.5, (points[4].y - points[2].y) / 2)
+        const half = Math.max(.5, Math.min(headHalf, Math.abs(point.y - centerY)))
+        next[0].y = next[1].y = centerY - half
+        next[5].y = next[6].y = centerY + half
+      }
+      else if(interaction.kind === "arrow-head-start") {
+        const start = Math.max(points[0].x + .5, Math.min(points[3].x - .5, point.x))
+        for(const index of [1, 2, 4, 5]) next[index].x = start
+      }
+      else {
+        const shaftHalf = Math.abs(points[0].y - centerY)
+        const half = Math.max(shaftHalf, Math.abs(point.y - centerY))
+        next[2].y = centerY - half
+        next[4].y = centerY + half
+      }
+      setPoints(geometry, next)
+      syncShapeText(shape)
+      setRotation(shape, interaction.rotation)
+      return {}
+    }
+    if(interaction.kind === "inner-radius") {
+      const frame = starFrame(interaction.points)
+      if(!frame) return {}
+      const {center, rx, ry} = frame
+      const radius = Math.max(0, Math.min(.9,
+        (point.x - center.x) / rx * Math.sin(Math.PI / 5) - (point.y - center.y) / ry * Math.cos(Math.PI / 5)))
+      setPoints(geometry, interaction.points.map((original, index) => {
+        if(index % 2 === 0) return original
+        const angle = (-90 + index * 36) * Math.PI / 180
+        return {x: center.x + rx * radius * Math.cos(angle), y: center.y + ry * radius * Math.sin(angle)}
+      }))
+      syncShapeText(shape)
+      setRotation(shape, interaction.rotation)
       return {}
     }
     if(interaction.kind === "roundness") {
@@ -3210,9 +3497,9 @@ export class GraphicFeature extends EditorFeature {
       const index = interaction.vertex
       const origin = interaction.points[index]
       if(!origin) return {}
-      if(latest.shiftKey) point = this.#constrainPathPoint(point, origin)
       const snapped = this.#snapPoint(point, interaction, true)
-      const points = movePathPoint(interaction.points, index, snapped.point, path.kind === "curves", path.closed, latest.altKey)
+      const points = mirroredPointEdits(interaction.points, index, snapped.point, interaction.bounds, latest, path.kind === "curves")
+        .reduce((points, edit) => movePathPoint(points, edit.index, edit.point, path.kind === "curves", path.closed, latest.altKey), interaction.points)
       geometry.setAttribute("d", editablePath(points, path.kind, path.closed))
       setRotation(shape, interaction.rotation)
       syncShapeText(shape)
@@ -3221,7 +3508,8 @@ export class GraphicFeature extends EditorFeature {
     if(interaction.kind === "vertex" && interaction.vertex !== undefined) {
       const snapped = this.#snapPoint(point, interaction)
       const points = [...interaction.points]
-      if(points[interaction.vertex]) points[interaction.vertex] = snapped.point
+      mirroredPointEdits(interaction.points, interaction.vertex, snapped.point, interaction.bounds, latest)
+        .forEach(edit => { if(points[edit.index]) points[edit.index] = edit.point })
       setPoints(geometry, points)
       syncShapeText(shape)
       setRotation(shape, interaction.rotation)
@@ -3275,23 +3563,24 @@ export class GraphicFeature extends EditorFeature {
    * rotated scale box from the fixed and dragged handles. */
   #stabilizeRotatedResize(next: Bounds, direction: string, interaction: Interaction) {
     const fromCenter = interaction.latest.metaKey || interaction.latest.ctrlKey
-    if(!interaction.rotation || fromCenter) return next
+    if(!interaction.rotation) return next
     const initial = interaction.bounds
-    const initialCenter = {
+    const boundsCenter = {
       x: initial.x + initial.width / 2,
       y: initial.y + initial.height / 2,
     }
+    const initialCenter = shapeCenter(interaction.items[0].source)
     const nextCenter = {
-      x: next.x + next.width / 2,
-      y: next.y + next.height / 2,
+      x: next.x + (initial.width ? (initialCenter.x - initial.x) * next.width / initial.width : initialCenter.x - initial.x),
+      y: next.y + (initial.height ? (initialCenter.y - initial.y) * next.height / initial.height : initialCenter.y - initial.y),
     }
     const anchor = {
-      x: direction.includes("w") ? initial.x + initial.width
+      x: fromCenter ? boundsCenter.x : direction.includes("w") ? initial.x + initial.width
         : direction.includes("e") ? initial.x
-          : initialCenter.x,
-      y: direction.includes("n") ? initial.y + initial.height
+          : boundsCenter.x,
+      y: fromCenter ? boundsCenter.y : direction.includes("n") ? initial.y + initial.height
         : direction.includes("s") ? initial.y
-          : initialCenter.y,
+          : boundsCenter.y,
     }
     const fixed = rotateAround(anchor, initialCenter, interaction.rotation)
     const displaced = rotateAround(anchor, nextCenter, interaction.rotation)
@@ -3956,6 +4245,8 @@ export class GraphicFeature extends EditorFeature {
     if(this.#stroke) this.#positionPreviewRoot(this.#stroke.previewRoot, this.#stroke.graphic)
     this.editor.features.media.refreshPlaceholder()
     if(!this.#activeGraphic()) this.#clearShapeSelection()
+    const contentGraphic=this.#activeGraphic()
+    if(contentGraphic) graphicShapeRoots(contentGraphic).forEach(shape => this.#layoutShapeText(shape))
     this.#syncCanvasPresentation()
     this.#positionLabelEditor()
     if(this.#connector?.active) this.#updateConnectorPreview(this.#connector)
@@ -3998,6 +4289,7 @@ export class GraphicFeature extends EditorFeature {
     const polygon = document.createElementNS(SVG_NAMESPACE, "polygon")
     polygon.classList.add("◆", "◆editor-only", "◆graphic-selection-outline")
     polygon.setAttribute("part", "graphic-selection-outline")
+    polygon.setAttribute("data-graphic-handle", "move")
     const individualOutlines = document.createElementNS(SVG_NAMESPACE, "g")
     individualOutlines.classList.add("◆", "◆editor-only", "◆graphic-individual-outlines")
     individualOutlines.setAttribute("part", "graphic-individual-outlines")
@@ -4027,7 +4319,13 @@ export class GraphicFeature extends EditorFeature {
     guideY.dataset.axis = "y"
     guideY.setAttribute("display", "none")
     guideY.setAttribute("hidden", "")
-    outline.append(guideX, guideY, individualOutlines, polygon, stem, marquee, portTarget)
+    const ellipseGuide = document.createElementNS(SVG_NAMESPACE, "ellipse")
+    ellipseGuide.classList.add("◆", "◆editor-only", "◆graphic-ellipse-guide")
+    ellipseGuide.setAttribute("part", "graphic-guide graphic-ellipse-guide")
+    ellipseGuide.setAttribute("cx", "0"); ellipseGuide.setAttribute("cy", "0")
+    ellipseGuide.setAttribute("rx", "1"); ellipseGuide.setAttribute("ry", "1")
+    ellipseGuide.setAttribute("display", "none")
+    outline.append(guideX, guideY, ellipseGuide, individualOutlines, polygon, stem, marquee, portTarget)
     const handles = ["nw", "n", "ne", "e", "se", "s", "sw", "w"].map(direction => this.#createHandle(`resize-${direction}`, `Resize ${direction}`, `graphic-resize graphic-resize-${direction}`))
     overlay.append(
       outline,
@@ -4129,10 +4427,11 @@ export class GraphicFeature extends EditorFeature {
     const rotate = {x: top.x + line.y / length * 24, y: top.y - line.x / length * 24}
     const type = multi ? null : graphicShapeType(shape)
     const endpointShape = type === "line" || type === "connector"
+    const contentSized=!multi && Boolean(readGraphicPreset(shapeGeometry(shape))?.definition.contentSize && shapeText(shape))
     overlay.dataset.shape = multi ? "multiple" : type ?? ""
     overlay.querySelectorAll<HTMLButtonElement>('[data-graphic-handle^="resize-"]').forEach(handle => {
-      handle.hidden = standalone || !multi && endpointShape
       const direction = handle.dataset.graphicHandle!.slice("resize-".length)
+      handle.hidden = standalone || !multi && endpointShape || contentSized && direction !== "e" && direction !== "w"
       this.#positionHandle(handle, positions[direction])
     })
     const rotateHandle = overlay.querySelector<HTMLButtonElement>('[data-graphic-handle="rotate"]')!
@@ -4146,6 +4445,8 @@ export class GraphicFeature extends EditorFeature {
     stem.setAttribute("x2", cleanNumber(rotate.x))
     stem.setAttribute("y2", cleanNumber(rotate.y))
     this.#ensureSpecificHandles(overlay, multi ? null : shape)
+    const ellipseGuide = overlay.querySelector<SVGEllipseElement>(".◆graphic-ellipse-guide")!
+    ellipseGuide.setAttribute("display", "none")
     if(!multi) this.#positionSpecificHandles(overlay, shape, toClient)
     this.#updatePorts(overlay, standalone || multi ? null : shape, matrix)
     overlay.hidden = false
@@ -4164,7 +4465,7 @@ export class GraphicFeature extends EditorFeature {
     const path = shape && editableShapePath(shape)
     const joined = path && path.closed && path.points[0].x === path.points.at(-1)!.x && path.points[0].y === path.points.at(-1)!.y
     const signature = (path ? `${type}:${path.points.length}:${joined}`
-      : shape && isPolygonShape(shape) ? `${type}:${parsePoints(shapeGeometry(shape)).length}` : type ?? "")
+      : shape && isPolygonShape(shape) ? `${type}:${parsePoints(shapeGeometry(shape)).length}:${type === "arrow" && Boolean(canonicalArrowPoints(shape))}` : type ?? "")
       + (shape ? arrowheads(shape).map(head => `:${head.endpoint}`).join("") : "")
     if(container.dataset.signature === signature) return
     container.dataset.signature = signature
@@ -4178,6 +4479,9 @@ export class GraphicFeature extends EditorFeature {
     }
     else if(type === "rectangle") {
       container.append(this.#createHandle("roundness", "Adjust corner radius", "graphic-affordance graphic-affordance-roundness"))
+    }
+    else if(type === "star") {
+      container.append(this.#createHandle("inner-radius", "Adjust inner radius", "graphic-affordance graphic-affordance-adjustment"))
     }
     else if(type === "ellipse") {
       container.append(
@@ -4209,6 +4513,13 @@ export class GraphicFeature extends EditorFeature {
         container.append(this.#createHandle(`path-point-${index}`, anchor ? `Move vertex ${path.kind === "lines" ? index + 1 : index / 3 + 1}` : `Adjust curve control ${index}`, part))
       })
     }
+    else if(type === "arrow" && canonicalArrowPoints(shape)) {
+      container.append(
+        this.#createHandle("arrow-shaft", "Adjust shaft thickness", "graphic-affordance graphic-affordance-vertex"),
+        this.#createHandle("arrow-head-start", "Adjust arrowhead start", "graphic-affordance graphic-affordance-vertex"),
+        this.#createHandle("arrow-head-width", "Adjust arrowhead thickness", "graphic-affordance graphic-affordance-vertex"),
+      )
+    }
     else if(isPolygonShape(shape)) {
       container.append(...parsePoints(shapeGeometry(shape)).map((_, index) => this.#createHandle(
         `vertex-${index}`,
@@ -4231,8 +4542,35 @@ export class GraphicFeature extends EditorFeature {
     }
     const preset = readGraphicPreset(geometry)
     const path = editableShapePath(shape)
-    if(preset && !path) graphicPresetHandles(preset).forEach(handle => position(handle.name, handle.point))
+    if(preset && !path) {
+      const handles = graphicPresetHandles(preset)
+      handles.forEach(handle => position(handle.name, handle.point))
+      if(preset.type === "chord") {
+        const frame = preset.bounds
+        const center = toClient({x: frame.x + frame.width / 2, y: frame.y + frame.height / 2})
+        const endpoints = handles.map(handle => toClient(handle.point))
+        if(Math.hypot(endpoints[1].x - endpoints[0].x, endpoints[1].y - endpoints[0].y) < 16) {
+          const middle = midpoint(endpoints[0], endpoints[1])
+          const length = Math.max(.0001, Math.hypot(middle.x - center.x, middle.y - center.y))
+          const offset = {x: (middle.x - center.x) / length * 10, y: (middle.y - center.y) / length * 10}
+          handles.forEach((handle, index) => {
+            const button = overlay.querySelector<HTMLElement>(`[data-graphic-handle="${handle.name}"]`)!
+            this.#positionHandle(button, {x: middle.x + (index ? 1 : -1) * offset.x, y: middle.y + (index ? 1 : -1) * offset.y})
+          })
+        }
+        const interaction = this.#interaction
+        if(interaction?.kind === "adjust" && interaction.items[0].source.isConnected
+          && graphicShapeType(interaction.items[0].source) === "chord") {
+          const x = toClient({x: frame.x + frame.width, y: frame.y + frame.height / 2})
+          const y = toClient({x: frame.x + frame.width / 2, y: frame.y + frame.height})
+          const guide = overlay.querySelector<SVGEllipseElement>(".◆graphic-ellipse-guide")!
+          guide.setAttribute("transform", `matrix(${x.x-center.x} ${x.y-center.y} ${y.x-center.x} ${y.y-center.y} ${center.x} ${center.y})`)
+          guide.removeAttribute("display")
+        }
+      }
+    }
     else if(type === "rectangle") position("roundness", {x: bounds.x + attributeNumber(geometry, "rx"), y: bounds.y})
+    else if(type === "star") position("inner-radius", parsePoints(geometry)[1])
     else if(type === "ellipse") {
       const center = shapeCenter(shape)
       position("radius-x", {x: bounds.x + bounds.width, y: center.y})
@@ -4266,6 +4604,12 @@ export class GraphicFeature extends EditorFeature {
         }
       }
     }
+    else if(type === "arrow" && canonicalArrowPoints(shape)) {
+      const points = canonicalArrowPoints(shape)!
+      position("arrow-shaft", points[0])
+      position("arrow-head-start", points[1])
+      position("arrow-head-width", points[2])
+    }
     else if(isPolygonShape(shape)) parsePoints(geometry).forEach((point, index) => position(`vertex-${index}`, point))
     arrowheads(shape).forEach(head => {
       const origin = toClient(head.tip), corner = toClient(head.points[0])
@@ -4286,7 +4630,8 @@ export class GraphicFeature extends EditorFeature {
     }
     if(container.children.length !== 4) container.replaceChildren(...(["n", "e", "s", "w"] as const).map(port => this.#createPort(port)))
     const ports = shapePorts(shape!)
-    const center = applyMatrix(matrix, shapeCenter(shape!))
+    const bounds = shapeBounds(shape!)
+    const center = applyMatrix(matrix, rotateAround({x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2}, shapeCenter(shape!), rotationOf(shape!)))
     ;(["n", "e", "s", "w"] as const).forEach(direction => {
       const point = applyMatrix(matrix, ports[direction])
       const vector = {x: point.x - center.x, y: point.y - center.y}
@@ -4419,6 +4764,11 @@ export class GraphicFeature extends EditorFeature {
     else removeEditorMarker(element, ...Array.from(element.classList).filter(name => name.startsWith("◆")))
   }
 
+  #layoutShapeText(shape: Element) {
+    if(shape.localName !== "g" || !shapeText(shape)) return false
+    return wrapGraphicShapeLabel(shape,this.editor.appendix,shapeBounds(shape))
+  }
+
   #setLabel(shape: SVGGraphicsElement, value: string) {
     const type = graphicShapeType(shape)
     if(!type || type === "line" || type === "connector" || type === "freehand" || type === "polyline" || type === "bezier") return shape
@@ -4455,16 +4805,9 @@ export class GraphicFeature extends EditorFeature {
       text.setAttribute("fill", "#0f172a")
       root.append(text)
     }
-    const lines = value.replace(/\r\n?/g, "\n").split("\n")
-    if(lines.length === 1) text.textContent = lines[0]
-    else text.replaceChildren(...lines.map(line => {
-      const span = document.createElementNS(SVG_NAMESPACE, "tspan")
-      span.setAttribute("x", cleanNumber(shapeCenter(root).x))
-      span.setAttribute("dy", "1.2em")
-      span.textContent = line
-      return span
-    }))
+    text.textContent = value.replace(/\r\n?/g,"\n")
     syncShapeText(root)
+    this.#layoutShapeText(root)
     return root
   }
 
@@ -4552,7 +4895,7 @@ export class GraphicFeature extends EditorFeature {
       setPoints(geometry, hexagonPoints(shapeBounds(shape), numeric))
     }
     else if(name === "inner-radius" && graphicShapeType(shape) === "star") {
-      setPoints(geometry, starPoints(shapeBounds(shape), Math.min(0.9, Math.max(0.05, numeric / 100))))
+      setPoints(geometry, starPoints(shapeBounds(shape), Math.min(0.9, Math.max(0, numeric / 100))))
     }
     else if((name === "head-size" || name === "tail-width") && graphicShapeType(shape) === "arrow") {
       const parameters = this.#parameters(shape)
@@ -4569,6 +4912,7 @@ export class GraphicFeature extends EditorFeature {
       setRotation(shape, rotation)
     }
     syncShapeText(shape)
+    this.#layoutShapeText(shape)
     return shape
   }
 

@@ -46,6 +46,7 @@ import {
   proofreadingDictionaryAddEvent,
   type ProofreadingState,
   selectionChangeEvent,
+  shapeKeyboardInputEvent,
   presenceChangeEvent,
   documentHeadStateChangeEvent,
   historyStateChangeEvent,
@@ -694,7 +695,7 @@ export class DOMEditor {
       return
     }
     // The frame host handles controls on the same window message target.
-    if(ev.data.type === selectionChangeEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent) {
+    if(ev.data.type === selectionChangeEvent || ev.data.type === shapeKeyboardInputEvent || ev.data.type === editorFrameControlMessage || ev.data.type === proofreadingDictionaryAddEvent || ev.data.type === commentReviewRequestEvent) {
       return
     }
 
@@ -757,7 +758,9 @@ export class DOMEditor {
         // starts another host read before this response arrives, creating a
         // feedback loop that also makes valid style/HTML responses stale.
         // Attribution keeps its selection while focus moves to the appendix.
-        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState" && ev.data.type !== "openAttribution") this.postSelectionPath()
+        // Shape insertion already publishes its final selection synchronously.
+        if(ev.data.type !== "beginHTMLSelectionEdit" && ev.data.type !== "getStyleState" && ev.data.type !== "openAttribution"
+          && ev.data.type !== "addGraphicShape") this.postSelectionPath()
         if(requestId) {
           this.postExecutionEvent(executeCompleteEvent, {requestId, result: value})
         }
@@ -917,6 +920,7 @@ export class DOMEditor {
     const path: SelectionPathItem[] = []
     let pendingSections: SelectionPathSection[] = []
     elements.forEach(currentElement => {
+      if(currentElement.parentElement?.closest("svg")) return
       const formula = mathRoot(currentElement)
       if(formula && (formula !== currentElement || formula.getAttribute("display") !== "block")
         || currentElement.matches("caption, figcaption, details > summary")) return

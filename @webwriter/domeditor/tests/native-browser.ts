@@ -20,6 +20,19 @@ import {checkParagraphCut} from "./paragraph-cut"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
+import {checkGraphicBounds, checkEmptyGraphicLayout} from "./graphic-bounds"
+import {checkGraphicPie} from "./graphic-pie"
+import {checkGraphicChord} from "./graphic-chord"
+import {checkGraphicArrowPOIs} from "./graphic-arrow-pois"
+import {checkGraphicPOIEdges} from "./graphic-poi-edges"
+import {checkGraphicCurvedPOIs} from "./graphic-curved-pois"
+import {checkGraphicSpeechBubbles} from "./graphic-speech-bubbles"
+import {checkGraphicKeyboardDrag} from "./graphic-keyboard-drag"
+import {checkGraphicTextBox} from "./graphic-text-box"
+import {checkGraphicLabels} from "./graphic-labels"
+import {checkGraphicLabelResizePerformance} from "./graphic-label-resize-performance"
+import {checkGraphicEmptyLabelCaret} from "./graphic-empty-label-caret"
+import {checkGraphicText} from "./graphic-text"
 import {checkSlideEditing} from "./slide-editing"
 
 const checks: Check[] = []
@@ -42,6 +55,20 @@ await check("SVG shape fills keep overlaps solid and intentional holes open", ch
 await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)
 
 await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)
+await check("SVG preset bounding boxes fit their native contours during insertion and editing", checkGraphicBounds)
+await check("SVG empty graphic layout stays stable when the first shape is inserted", checkEmptyGraphicLayout)
+await check("SVG Pie POI sweeps continuously from small slices to a full circle", checkGraphicPie)
+await check("SVG Chord endpoint POIs retain their ellipse through circular edits", checkGraphicChord)
+await check("SVG block arrow POIs independently edit shaft and arrowhead dimensions", checkGraphicArrowPOIs)
+await check("SVG preset POIs stay on their actual contours through adjustments", checkGraphicPOIEdges)
+await check("SVG curved shape POIs follow contours while dragging and undoing", checkGraphicCurvedPOIs)
+await check("SVG speech bubbles attach their connector to the edge facing the tip", checkGraphicSpeechBubbles)
+await check("shape keyboard drops stay within the captured graphic", checkGraphicKeyboardDrag)
+await check("SVG shape text entry keeps capture and native typing stable", checkGraphicText)
+await check("SVG shape text boxes fit content and wrap while preserving native editing", checkGraphicTextBox)
+await check("SVG shape text labels wrap and shrink within their geometry", checkGraphicLabels)
+await check("SVG shape text resize reuses glyph metrics and preserves undo", async()=>{await checkGraphicLabelResizePerformance()})
+await check("SVG shape text empty label carets stay centered through rotation and zoom", checkGraphicEmptyLabelCaret)
 
 await check("canvas multiline text keeps partial selections after formatting", async () => {
   const frame = document.createElement("iframe")
@@ -8213,7 +8240,7 @@ await check("empty graphics drag through their full capture outline into floats"
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("document shape drops use float lanes and ordinary content flow", async () => {
+await check("shape keyboard drops stay in captured graphics and ribbon shapes use document flow", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:700px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
@@ -8236,6 +8263,16 @@ await check("document shape drops use float lanes and ordinary content flow", as
         ? {"application/x-webwriter-graphic-shape": JSON.stringify({shape: "rectangle", paint: {fill: "#fbbf24", stroke: "#334155"}})}
         : {"application/x-webwriter-ribbon-insertion": "insert-graphic-shape:rectangle"}
       const box = anchor.getBoundingClientRect()
+      if(source === "keyboard") {
+        const before = main.innerHTML
+        assert(replayHostDrag({event: "dragover", x: box.left + box.width / 2, y: box.bottom + 8, data}, doc), "keyboard dragover was not claimed")
+        assert(!editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview"), "keyboard shape showed a document placement preview")
+        assert(replayHostDrag({event: "drop", x: box.left + box.width / 2, y: box.bottom + 8, data}, doc), "keyboard drop was not claimed")
+        await layoutFrame()
+        assert(!main.querySelector("svg") && main.innerHTML === before, "keyboard shape changed ordinary document content")
+        assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "rejected keyboard drop left a preview")
+        continue
+      }
       let x = box.left + box.width / 2, y = box.bottom + 8
       if(side !== "flow") {
         const graphic = editor.features.graphic.createGraphic("rectangle")
@@ -8259,7 +8296,6 @@ await check("document shape drops use float lanes and ordinary content flow", as
         assert(Math.abs(shapeBox.left + shapeBox.width / 2 - anchorBox.left - anchorBox.width / 2) < 1, `${source}: flow shape is outside the content column`)
       }
       else assert(graphic.nextElementSibling === anchor, `${source} ${side}: float is not beside its anchor`)
-      if(source === "keyboard") assert(graphic.querySelector("rect")?.getAttribute("fill") === "#fbbf24", "shape paint was lost")
       assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "shape drop left editing artifacts")
       assert(!editor.toHTML(true).includes("◆"), "serialized shape contains editing artifacts")
     }
@@ -8283,6 +8319,12 @@ await check("document shape drops use float lanes and ordinary content flow", as
       }
       await layoutFrame()
       const graphic = doc.querySelector("svg")!
+      if(source === "keyboard") {
+        assert(!graphic, `${width}: uncaptured keyboard drop inserted a graphic`)
+        assert(insertion.isConnected && after.isConnected && after.textContent === "After", `${width}: rejected keyboard drop changed document flow`)
+        assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `${width}: rejected keyboard drop left insertion chrome`)
+        continue
+      }
       assert(graphic && view.getComputedStyle(graphic).position === "static", `${source} ${width}: new shape is spatially positioned`)
       assert(!graphic.style.left && !graphic.style.top && !graphic.style.right && !graphic.style.bottom, `${source} ${width}: new shape has position offsets`)
       if(source === "command") assert(after.getBoundingClientRect().top >= graphic.getBoundingClientRect().bottom, `${width}: shape command removed the shape from document flow`)
@@ -8291,7 +8333,7 @@ await check("document shape drops use float lanes and ordinary content flow", as
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("ribbon elements drop inside captured graphics with native content and cleanup", async () => {
+await check("ribbon elements are rejected over captured graphics with native content and cleanup", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1200px;max-width:none;height:800px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
@@ -8302,45 +8344,55 @@ await check("ribbon elements drop inside captured graphics with native content a
     assert(view.editor, "ribbon graphic fixture did not initialize")
     const editor = view.editor!, doc = frame.contentDocument!
     const events = view as unknown as {DragEvent: typeof DragEvent, DataTransfer: typeof DataTransfer}
-    for(const [action, selector] of [["element:table", "foreignObject table"], ["element:video", "foreignObject video"],
-      ["element:picture", "image"], ["element:math", "foreignObject math"], ["insert-math:frac", "foreignObject math mfrac"],
-      ["insert-graphic-shape:ellipse", "ellipse"], ["list-style:ol:lower-alpha", "foreignObject ol"], ["package-member:demo", "foreignObject demo-widget"]]) {
+    const actions = ["element:table", "element:video", "element:picture", "element:math", "insert-math:frac", "insert-graphic-shape:ellipse", "list-style:ol:lower-alpha", "package-member:demo"]
+    for(const action of actions) {
       doc.body.innerHTML = '<svg viewBox="100 50 600 300" style="display:block;width:600px;height:300px;margin:60px auto"><!--keep--><rect x="130" y="80" width="100" height="80" fill="skyblue"/></svg><p>After</p>'
-      const graphic = doc.querySelector("svg")!, original = graphic.querySelector("rect")!, after = doc.body.lastElementChild!
-      editor.features.selection.selectElement(graphic)
+      const graphic = doc.querySelector("svg")!, original = graphic.innerHTML, rect = graphic.querySelector("rect")!, after = doc.body.lastElementChild!
+      editor.features.selection.captureElement(graphic)
       await layoutFrame()
-      const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
       const data = new events.DataTransfer()
       data.setData("application/x-webwriter-ribbon-insertion", action)
       if(action === "package-member:demo") data.setData("text/html", '<demo-widget><p>Nested content</p></demo-widget>')
-      const event = (type: string) => new events.DragEvent(type, {bubbles:true, cancelable:true, composed:true, dataTransfer:data, clientX:x, clientY:y})
-      const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
-      const over = event("dragover")
-      surface.dispatchEvent(over)
-      assert(over.defaultPrevented && editor.features.selection.captureSelectedElement === graphic, `${action}: hover did not capture the graphic`)
-      for(let attempt = 0; attempt < 3; attempt++) {
-        await layoutFrame()
-        graphic.dispatchEvent(event("dragover"))
-        assert(!surface.isConnected && editor.features.selection.captureSelectedElement === graphic, `${action}: hover flickered`)
+      const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+      const dispatch = (target: EventTarget, type: string) => {
+        const event = new events.DragEvent(type, {bubbles:true, cancelable:true, composed:true, dataTransfer:data, clientX:x, clientY:y})
+        target.dispatchEvent(event)
+        return event
       }
-      graphic.dispatchEvent(event("drop"))
+      const hostMessages: MessageEvent[] = []
+      const receive = (event: MessageEvent) => { if(event.source === view && event.data?.type === "editor-ribbon-drop") hostMessages.push(event) }
+      window.addEventListener("message",receive)
+      const rootOver = dispatch(graphic,"dragover")
+      assert(rootOver.defaultPrevented && data.dropEffect === "none", `${action}: root dragover offered a drop`)
+      const rootDrop = dispatch(graphic,"drop")
+      assert(rootDrop.defaultPrevented, `${action}: root drop was not claimed`)
+      const childOver = dispatch(rect,"dragover")
+      assert(childOver.defaultPrevented && data.dropEffect === "none", `${action}: child dragover offered a drop`)
+      const childDrop = dispatch(rect,"drop")
+      assert(childDrop.defaultPrevented, `${action}: child drop was not claimed`)
+      const overlay = editor.appendix.querySelector('[part~="transform-overlay"]') ?? editor.appendix.querySelector('[part="node-drag-surface"]') ?? editor.appendix.querySelector("slot")
+      assert(overlay, `${action}: no appendix overlay to test`)
+      if(!overlay) throw new Error(`${action}: no appendix overlay to test`)
+      const overlayOver = dispatch(overlay,"dragover")
+      assert(overlayOver.defaultPrevented && data.dropEffect === "none", `${action}: appendix dragover offered a drop`)
+      const overlayDrop = dispatch(overlay,"drop")
+      assert(overlayDrop.defaultPrevented, `${action}: appendix drop was not claimed`)
       await layoutFrame()
-      assert(graphic.querySelector(selector) && graphic.querySelector("rect") === original, `${action}: dropped content replaced the graphic or disappeared`)
-      assert(graphic.firstChild?.nodeType === Node.COMMENT_NODE && after.isConnected && after.textContent === "After", `${action}: unrelated content changed: ${doc.body.innerHTML}`)
-      const foreign = graphic.querySelector("foreignObject")
-      if(foreign) {
-        assert(Math.abs(Number(foreign.getAttribute("x")) + Number(foreign.getAttribute("width")) / 2 - 400) < 1, `${action}: incorrect SVG x coordinate`)
-        assert(Math.abs(Number(foreign.getAttribute("y")) + Number(foreign.getAttribute("height")) / 2 - 200) < 1, `${action}: incorrect SVG y coordinate`)
-        assert(foreign.getBoundingClientRect().width > 0 && foreign.getBoundingClientRect().height > 0, `${action}: content has no rendered area`)
-      }
-      assert(editor.features.selection.captureSelectedElement === graphic && !editor.appendix.querySelector("#◆float-drop-preview"), `${action}: drop left stale placement state`)
-      assert(!editor.toHTML(true).includes("◆"), `${action}: serialized editor chrome`)
+      window.removeEventListener("message",receive)
+      assert(hostMessages.length === 0, `${action}: rejected graphic drop emitted a host ribbon message`)
+      assert(graphic.innerHTML === original && graphic.querySelector("rect") === rect && after.isConnected && after.textContent === "After", `${action}: source DOM changed`)
+      assert(editor.features.selection.captureSelectedElement === graphic, `${action}: capture changed`)
+      assert(!doc.body.classList.contains("◆drop-selection-active"), `${action}: drop selection marker remained`)
+      const caret = editor.appendix.querySelector(".◆selection-caret")
+      assert(!editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview") && !caret?.getAttribute("part")?.includes("drop-caret"), `${action}: drop caret/preview remained`)
+      assert(!graphic.querySelector('[class*="◆drop-caret"]'), `${action}: authored drop caret remained`)
+      assert(!editor.toHTML(true).includes("◆"), `${action}: editor chrome leaked into serialization`)
     }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("keyboard shape drags capture graphics and finish drops through appendix surfaces", async () => {
+await check("shape keyboard drags retain capture through appendix surfaces", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:850px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
@@ -8353,7 +8405,7 @@ await check("keyboard shape drags capture graphics and finish drops through appe
     const events = view as unknown as {DragEvent: typeof DragEvent, DataTransfer: typeof DataTransfer}
     doc.body.innerHTML = '<svg viewBox="0 0 600 300" style="display:block;width:600px;height:300px"><!--keep--><rect x="100" y="80" width="160" height="120" fill="skyblue"/></svg><p id="anchor" style="height:140px">Document drop target</p>'
     const graphic = doc.querySelector("svg")!, original = graphic.querySelector("rect")!, paragraph = doc.querySelector("p")!
-    editor.features.selection.selectElement(graphic)
+    editor.features.selection.captureElement(graphic)
     await layoutFrame()
     const data = new events.DataTransfer()
     data.setData("application/x-webwriter-graphic-shape", JSON.stringify({shape:"ellipse", paint:{fill:"#fbbf24"}}))
@@ -8363,32 +8415,41 @@ await check("keyboard shape drags capture graphics and finish drops through appe
       return event
     }
     const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector(".◆transform-overlay") ?? editor.appendix.querySelector("slot")!
+    const foreign = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+    foreign.setAttribute("viewBox", "0 0 100 100")
+    foreign.style.cssText = "display:block;width:100px;height:100px"
+    doc.body.append(foreign)
+    await layoutFrame()
+    const paragraphBox = paragraph.getBoundingClientRect(), foreignBox = foreign.getBoundingClientRect()
+    for(const [target, point] of [[paragraph, {x:paragraphBox.left + 10, y:paragraphBox.top + 10}], [foreign, {x:foreignBox.left + 10, y:foreignBox.top + 10}]] as const) {
+      assert(dispatch(target, "dragover", point.x, point.y).defaultPrevented, "outside shape dragover was not claimed")
+      assert(data.dropEffect === "none" && editor.features.selection.captureSelectedElement === graphic, "outside hover changed drop eligibility or capture")
+      assert(dispatch(target, "drop", point.x, point.y).defaultPrevented, "outside shape drop was not claimed")
+      assert(doc.querySelectorAll("svg").length === 2 && editor.features.selection.captureSelectedElement === graphic, "outside drop changed the graphic or capture")
+    }
     assert(surface && dispatch(surface, "dragover", x, y).defaultPrevented, "shape hover was not accepted on the selected graphic surface")
     const outline = editor.appendix.querySelector(".◆selection-caret")
     for(let index = 0; index < 5; index++) {
       await layoutFrame()
-      assert(editor.features.selection.captureSelectedElement === graphic && !surface.isConnected, "graphic hover flickered back to element selection")
+      assert(editor.features.selection.captureSelectedElement === graphic && !editor.appendix.querySelector('[part="node-drag-surface"]'), "graphic hover flickered back to element selection")
       assert(!editor.appendix.querySelector("#◆float-drop-preview"), "graphic hover showed a document placement preview")
       dispatch(doc.elementFromPoint(x, y) ?? graphic, "dragover", x, y)
     }
     assert(editor.appendix.querySelector(".◆selection-caret") === outline, "graphic hover replaced its selection chrome")
     assert(dispatch(doc.elementFromPoint(x, y) ?? graphic, "drop", x, y).defaultPrevented, "graphic shape drop was rejected")
-    assert(doc.querySelectorAll("svg").length === 1 && graphic.querySelector("rect") === original && graphic.querySelector("ellipse"), "shape was not added to the existing graphic")
+    assert(doc.querySelectorAll("svg").length === 2 && graphic.querySelector("rect") === original && graphic.querySelector("ellipse"), "shape was not added to the existing graphic")
     // Native events in blank document space can originate on the appendix slot.
     for(const type of ["dragend", "drop"]) {
       const bounds = paragraph.getBoundingClientRect()
-      editor.features.manipulation.showFloatDropPreview(paragraph, "left", "transfer", editor.features.graphic.createGraphic("ellipse"))
-      const preview = editor.appendix.querySelector("#◆float-drop-preview")!.getBoundingClientRect()
-      const dropX = preview.left + preview.width / 2, dropY = Math.min(bounds.bottom - 10, preview.top + preview.height / 2)
-      editor.features.manipulation.clearFloatDropPreview("transfer")
+      const dropX = bounds.left + bounds.width / 2, dropY = bounds.top + bounds.height / 2
       const slot = editor.appendix.querySelector("slot")!
-      assert(dispatch(slot, "dragover", dropX, dropY).defaultPrevented, "slot hover was rejected")
-      assert(editor.appendix.querySelector("#◆float-drop-preview"), "slot hover did not show its float placement")
-      dispatch(slot, type, dropX, dropY)
+      assert(dispatch(slot, "dragover", dropX, dropY).defaultPrevented, "slot shape hover was not claimed")
+      assert(data.dropEffect === "none" && !editor.appendix.querySelector("#◆float-drop-preview"), "slot hover offered a document drop")
+      const ending = dispatch(slot, type, dropX, dropY)
+      if(type === "drop") assert(ending.defaultPrevented, "slot drop was not claimed")
       await layoutFrame()
-      assert(doc.querySelectorAll("svg").length === (type === "drop" ? 2 : 1), `slot ${type} inserted the wrong number of graphics`)
-      if(type === "drop") assert(doc.querySelectorAll("svg")[1].querySelectorAll("ellipse").length === 1, "document drop inserted the keyboard shape twice")
+      assert(doc.querySelectorAll("svg").length === 2, `slot ${type} inserted another graphic`)
       assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `slot ${type} left a float preview behind`)
     }
     assert(paragraph.textContent === "Document drop target" && !editor.toHTML(true).includes("◆"), "keyboard dragging altered document text or serialized editor chrome")

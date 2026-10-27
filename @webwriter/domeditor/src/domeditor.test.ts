@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, it, expect, vi } from "vitest"
 import '@testing-library/jest-dom/vitest'
 
 import { DOMEditor } from "./domeditor"
-import {editorFrameControlMessage, executeCompleteEvent, isSelectionChangeMessage, selectionChangeEvent, type SelectionChangeDetail} from "./editor-bridge"
+import {editorFrameControlMessage, executeCompleteEvent, isSelectionChangeMessage, selectionChangeEvent, shapeKeyboardInputEvent, type SelectionChangeDetail} from "./editor-bridge"
 import editorStyleString from "./editor.css?raw"
 import {$, cloneInert, getInertDocument} from "./utility"
 import * as Y from "yjs"
@@ -218,6 +218,16 @@ describe("DOMEditor stylesheets", () => {
       expect(style.minHeight).toBe(`${height}px`)
     }
     finally { element.remove() }
+  })
+
+  it("outlines empty graphics without adding a layout-affecting border", () => {
+    const stylesheet=new CSSStyleSheet()
+    stylesheet.replaceSync(editorStyleString)
+    const rule=Array.from(stylesheet.cssRules).find(rule=>(rule as CSSStyleRule).selectorText === "svg[viewBox]:empty") as CSSStyleRule
+    expect(rule.style.outlineWidth).toBe("1px")
+    expect(rule.style.outlineStyle).toBe("solid")
+    expect(rule.style.outlineColor).toBe("#cbd5e1")
+    expect(rule.style.border).toBe("")
   })
 
   it("allows the document background to paint the whole canvas", () => {
@@ -1030,6 +1040,28 @@ describe("bridge origin binding", () => {
     expect(postMessage).toHaveBeenCalledWith({type: "undo", bridgeNonce}, bridgeOrigin)
     editor.destroy()
     postMessage.mockRestore()
+  })
+
+  it("publishes one final selection for a shape insertion and ignores relayed keyboard input", async () => {
+    document.body.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400"></svg>'
+    const editor = new DOMEditor({bridgeNonce: "0123456789abcdef"})
+    editor.features.selection.captureElement(document.querySelector("svg")!)
+    await new Promise(resolve => setTimeout(resolve, 0))
+    const post = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      const capture = vi.spyOn(editor.features.selection, "captureElement")
+      window.dispatchEvent(new MessageEvent("message", {data: {
+        type: "addGraphicShape", shape: "rectangle", requestId: "shape", bridgeNonce: editor.trustedScriptNonce,
+      }}))
+      await Promise.resolve()
+      expect(capture).not.toHaveBeenCalled()
+      expect(post.mock.calls.filter(([message]) => message.type === selectionChangeEvent)).toHaveLength(1)
+      expect(post).toHaveBeenCalledWith(expect.objectContaining({type: executeCompleteEvent, detail: {requestId: "shape", result: undefined}}), window.location.origin)
+      expect(() => window.dispatchEvent(new MessageEvent("message", {data: {
+        type: shapeKeyboardInputEvent, bridgeNonce: editor.trustedScriptNonce,
+      }}))).not.toThrow()
+    }
+    finally { editor.destroy(); post.mockRestore() }
   })
 
   it("returns selected styles without reposting an unchanged selection", async () => {
