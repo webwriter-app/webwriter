@@ -95,6 +95,25 @@ describe("standalone canvas reader", () => {
     expect(replacement.hasAttribute("style")).toBe(false)
   })
 
+  it("ignores retargeted appendix focus while revealing authored controls", () => {
+    reader = mountCanvasReader()!
+    const reveal = vi.spyOn(reader.viewer, "reveal")
+    const appendix = document.body.shadowRoot!
+    const button = control("zoom-in")
+    const focus = new FocusEvent("focusin", {bubbles: true, composed: true})
+    // Native shadow focus reaches the document with BODY as its target.
+    vi.spyOn(focus, "composedPath").mockReturnValue([button, appendix, document.body, document.documentElement, document, window])
+    document.body.dispatchEvent(focus)
+    expect(reveal).not.toHaveBeenCalled()
+
+    const input = document.createElement("input")
+    document.body.append(input)
+    const bounds = new DOMRect(-40, -20, 100, 30)
+    vi.spyOn(input, "getBoundingClientRect").mockReturnValue(bounds)
+    input.focus()
+    expect(reveal).toHaveBeenCalledExactlyOnceWith(bounds)
+  })
+
   it.each([.5, 2])("centers transformed content bounds from a previous zoom of %s", previousZoom => {
     reader = mountCanvasReader()!
     const viewer = reader.viewer as CanvasViewer & {camera: {x: number, y: number, zoom: number}, items(): Element[]}

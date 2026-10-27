@@ -6563,6 +6563,54 @@ await check("image hotspots scale and open popovers in preview and standalone re
   finally { frame.remove() }
 })
 
+await check("canvas hotspot clicks preserve the camera in preview and standalone reading mode", async () => {
+  const {appendSerializedAssets} = await import("../src/serialization")
+  const {previewFrameHTML} = await import("../src/frame-document")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:500px;max-width:none"
+  fixture.append(frame)
+  try {
+    for(const preview of [true, false]) {
+      const source = new DOMParser().parseFromString(`<!doctype html><style>${canvasStyles}</style><body class="ww-canvas"><img src="/tests/fixtures/image-map.svg" width="360" height="210" style="position:absolute;left:200px;top:150px" usemap="#plan"><map name="plan"><area shape="rect" coords="500,40,680,340" popovertarget="details" alt="Details"></map><div id="details" popover="auto">Hotspot content</div></body>`, "text/html")
+      let html: string
+      if(preview) html = previewFrameHTML(source, {bridgeNonce:"canvas-hotspot-check", hostOrigin:location.origin, frameOrigin:location.origin,
+        entryURL:new URL("../src/preview-entry.ts", import.meta.url).href, packages:[], importMap:null, executeScripts:true})
+      else { appendSerializedAssets(source, []); html = source.documentElement.outerHTML }
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
+      frame.srcdoc = html
+      await loaded
+      await layoutFrame()
+      const doc = frame.contentDocument!, view = frame.contentWindow! as Window & typeof globalThis
+      const image = doc.querySelector("img")!
+      assert(image.naturalWidth === 720, "canvas image fixture did not load")
+      const appendix = doc.body.shadowRoot!, slot = appendix.querySelector("slot")!
+      const root = appendix.querySelector(".◆image-map-reader")!.shadowRoot!
+      const link = root.querySelector<SVGAElement>('a[aria-label="Details"]')!
+      const camera = slot.style.transform, before = image.getBoundingClientRect(), authored = doc.body.innerHTML
+      const hotspot = link.getBoundingClientRect()
+      const point = {clientX:hotspot.left + 4, clientY:hotspot.top + 4}
+      const down = root.elementFromPoint(point.clientX, point.clientY)!
+      assert(down.closest<SVGAElement>("a") === link, "canvas hotspot is not the initial pointer target")
+      down.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles:true, composed:true, cancelable:true, button:0, ...point}))
+      // A dispatched click alone skips the native focus that caused #288.
+      link.focus()
+      assert(root.activeElement === link && doc.activeElement === doc.body, "hotspot focus was not retargeted through the appendix")
+      await layoutFrame()
+      const after = image.getBoundingClientRect()
+      assert(slot.style.transform === camera && after.left === before.left && after.top === before.top,
+        "focusing the canvas hotspot moved the camera before pointerup")
+      const up = root.elementFromPoint(point.clientX, point.clientY)!
+      assert(up.closest<SVGAElement>("a") === link, "canvas hotspot moved away from the pointer")
+      up.dispatchEvent(new view.PointerEvent("pointerup", {bubbles:true, composed:true, cancelable:true, button:0, ...point}))
+      up.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true, button:0, ...point}))
+      assert(doc.querySelector("#details")!.matches(":popover-open"), "canvas hotspot click did not open its popover")
+      assert(slot.style.transform === camera, "opening the canvas hotspot popover moved the camera")
+      assert(doc.body.innerHTML === authored, "canvas hotspot interaction changed authored content")
+    }
+  }
+  finally { frame.remove() }
+})
+
 await check("exported canvas runs its standalone viewer without editor dependencies", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px;border:0"

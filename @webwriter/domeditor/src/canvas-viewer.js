@@ -283,6 +283,8 @@ export function mountCanvasReader() {
       release()
     },
     focusin: event => {
+      // Appendix and widget shadow focus is retargeted to their light-DOM host.
+      if(event.composedPath()[0] !== event.target) return
       if(event.target instanceof Element && body.contains(event.target)) viewer.reveal(event.target.getBoundingClientRect())
     },
   }
