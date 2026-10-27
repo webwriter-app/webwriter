@@ -2998,6 +2998,8 @@ export class GraphicFeature extends EditorFeature {
     const rotationStem = this.#overlay?.querySelector<SVGGraphicsElement>(".◆graphic-rotation-stem")
     if(selectionOutline) selectionOutline.style.removeProperty("display")
     if(rotationStem) rotationStem.style.removeProperty("display")
+    this.#overlay?.querySelectorAll<HTMLElement>(".◆graphic-specific-handles .◆graphic-handle")
+      .forEach(handle => handle.hidden = false)
   }
 
   #releasePointer(target: Element | null, pointerId: number) {

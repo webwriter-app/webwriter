@@ -3337,6 +3337,37 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).not.toContain("◆graphic-marquee")
   })
 
+  it.each(["rectangle", "rounded-rectangle", "square-rectangle", "line", "bezier"] as const)("restores normal %s POIs when a marquee selects only that shape", type => {
+    editor.features.graphic.actions.insertGraphic({type:"insertGraphic"})
+    const graphic=document.querySelector("svg")!
+    Object.defineProperty(graphic,"getScreenCTM",{value:()=>({a:1,b:0,c:0,d:1,e:0,f:0})})
+    editor.features.graphic.actions.addGraphicShape({type:"addGraphicShape",shape:type})
+    for(const [name,value] of [["x","100"],["y","100"],["width","200"],["height","120"]]) {
+      editor.features.graphic.actions.setGraphicParameter({type:"setGraphicParameter",name,value})
+    }
+    const shape=editor.features.graphic.selectedShape!
+    const controls=()=>[...editor.appendix.querySelectorAll<HTMLElement>(".◆graphic-specific-handles .◆graphic-handle")]
+    graphic.prepend(document.createComment("preserve authored sibling"))
+    const original=editor.toHTML(true)
+    const initial=controls().map(handle=>({name:handle.dataset.graphicHandle,left:handle.style.left,top:handle.style.top}))
+    expect(initial.length).toBeGreaterThan(0)
+    document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}))
+    expect(editor.features.graphic.selectedShapes).toHaveLength(0)
+    const pointer={bubbles:true,button:0,pointerId:46}
+    graphic.dispatchEvent(new PointerEvent("pointerdown",{...pointer,clientX:50,clientY:50}))
+    document.dispatchEvent(new PointerEvent("pointermove",{...pointer,buttons:1,clientX:350,clientY:250}))
+    expect(controls().every(handle=>handle.hidden)).toBe(true)
+    document.dispatchEvent(new PointerEvent("pointerup",pointer))
+    expect(editor.features.graphic.selectedShape).toBe(shape)
+    expect(editor.features.graphic.selectedShapes).toEqual([shape])
+    expect(controls().every(handle=>!handle.hidden)).toBe(true)
+    expect(controls().map(handle=>({name:handle.dataset.graphicHandle,left:handle.style.left,top:handle.style.top}))).toEqual(initial)
+    expect(editor.features.graphic.textEditingRange).toBeNull()
+    expect(editor.appendix.querySelector('[part="graphic-text-caret"]')).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
   it.each(["commit", "cancel"])("hides connection ports throughout a marquee and restores them on %s", outcome => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
@@ -3352,6 +3383,7 @@ describe("graphic editing", () => {
     rectangle.setAttribute("height", "100")
     clickShape(rectangle)
     expect(editor.appendix.querySelectorAll("[data-graphic-port]")).toHaveLength(4)
+    expect(editor.appendix.querySelector('[data-graphic-handle="roundness"]')).not.toHaveAttribute("hidden")
 
     const pointer = {bubbles: true, button: 0, pointerId: 42, shiftKey: outcome === "cancel"}
     graphic.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: 50, clientY: 50}))
@@ -3366,6 +3398,7 @@ describe("graphic editing", () => {
     expect(editor.features.graphic.selectedShapes).toEqual([rectangle])
     expect(editor.appendix.querySelector(".◆graphic-marquee")).toHaveAttribute("hidden")
     expect(editor.appendix.querySelectorAll("[data-graphic-port]")).toHaveLength(4)
+    expect(editor.appendix.querySelector('[data-graphic-handle="roundness"]')).not.toHaveAttribute("hidden")
     expect(document.body.querySelector("[data-graphic-port]")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("data-graphic-port")
   })

@@ -40,6 +40,19 @@ export async function checkGraphicPOIRotation() {
       await layout()
       const label=`${type}/${rotation}/${standalone ? "standalone" : "canvas"}`,pointIndex=name==="path-point-1" ? 1 : 0
       const original=screenPoints(shape)
+      if(!standalone) {
+        doc.dispatchEvent(new view.KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}))
+        assert(!editor.features.graphic.selectedShapes.length,`${label}: shape did not deselect`)
+        const box=shape.getBoundingClientRect(),pointer={bubbles:true,composed:true,button:0,pointerId:86}
+        graphic.dispatchEvent(new view.PointerEvent("pointerdown",{...pointer,clientX:box.left-15,clientY:box.top-15}))
+        doc.dispatchEvent(new view.PointerEvent("pointermove",{...pointer,buttons:1,clientX:box.right+15,clientY:box.bottom+15}))
+        doc.dispatchEvent(new view.PointerEvent("pointerup",pointer))
+        await layout()
+        assert(editor.features.graphic.selectedShape===shape && editor.features.graphic.selectedShapes.length===1,`${label}: box selection did not select the single shape`)
+        const handles=[...editor.appendix.querySelectorAll<HTMLElement>(".◆graphic-specific-handles .◆graphic-handle")]
+        assert(handles.length>0 && handles.every(handle=>!handle.hidden && handle.getBoundingClientRect().width>0),`${label}: box selection lost its visible POIs`)
+        assert(!editor.features.graphic.textEditingRange,`${label}: box selection entered text editing`)
+      }
       const drag=async(outcome:"commit"|"cancel")=>{
         const before=screenPoints(shape),handle=editor.appendix.querySelector<HTMLElement>(`[data-graphic-handle="${name}"]`)!
         assert(handle,`${label}: missing POI`)
