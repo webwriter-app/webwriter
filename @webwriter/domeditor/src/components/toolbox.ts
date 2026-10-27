@@ -1480,6 +1480,22 @@ export class DomEditorToolbox extends EditingControls {
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowUp")}</button>
           </div>
           ` : nothing}
+          ${["canvas", "slides"].includes(this.documentLayout.mode) ? html`
+          <span class="float-placement-label">Placement</span>
+          <div class="float-button-group" role="group" aria-label="Placement">
+            ${([
+              {direction: "front", label: "Move to front", icon: "Bring to front", enabled: target?.placement?.canMoveUp},
+              {direction: "up", label: "Move up", icon: "Bring forward", enabled: target?.placement?.canMoveUp},
+              {direction: "down", label: "Move down", icon: "Send backward", enabled: target?.placement?.canMoveDown},
+              {direction: "back", label: "Move to back", icon: "Send to back", enabled: target?.placement?.canMoveDown},
+            ] as const).map(({direction, label, icon, enabled}) => html`<button type="button" aria-label=${label} title=${label}
+              ?disabled=${!enabled || this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "movePlacement", direction}, bubbles: true, composed: true,
+              }))}>${ribbonIcon(icon)}</button>`)}
+          </div>
+          ` : nothing}
           <span class="float-placement-label">Caption</span>
           <div class="float-button-group caption-button-group" role="group" aria-label="Caption">
             <button type="button" class="caption-none" aria-label="No caption" title="No caption" aria-pressed=${captionPosition === "none"}

@@ -5872,8 +5872,8 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
-    if(!action || !["setFloat", "moveFloat", "setCaption"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
+    if(!action || !["setFloat", "moveFloat", "movePlacement", "setCaption"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
     const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption"
@@ -6650,6 +6650,8 @@ export class DomEditor extends LitElement {
             ? {alignment: value.target.alignment} : {}),
           ...(typeof value.target.canMoveUp === "boolean" ? {canMoveUp: value.target.canMoveUp} : {}),
           ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
+          ...(isRecord(value.target.placement) && typeof value.target.placement.canMoveUp === "boolean" && typeof value.target.placement.canMoveDown === "boolean"
+            ? {placement: {canMoveUp: value.target.placement.canMoveUp, canMoveDown: value.target.placement.canMoveDown}} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined

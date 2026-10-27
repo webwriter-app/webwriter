@@ -296,6 +296,47 @@ describe("layout host and toolbox integration", () => {
     expect(Array.from(group.querySelectorAll<HTMLButtonElement>("button")).every(button => button.disabled)).toBe(true)
   })
 
+  it.each(["canvas", "slides"] as const)("offers four Placement buttons in the %s Style drawer and routes their commands", async mode => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true), documentLayout: {mode, canConvert: true, zoom: 100}})
+    const toolbox = await settle(editor)
+    const state = {...styleState("flex"), target: {...styleState("flex").target!, placement: {canMoveUp: true, canMoveDown: true}}}
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(state)
+    await (editor as any).refreshElementStyleState()
+    await toolbox.updateComplete
+    const group = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"] [aria-label="Placement"]')!
+    expect(group.classList.contains("float-button-group")).toBe(true)
+    expect(group.previousElementSibling?.textContent).toBe("Placement")
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Move to front", "Move up", "Move down", "Move to back"])
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    execute.mockClear().mockResolvedValue(true)
+    for(const button of buttons) {
+      const pointer = new PointerEvent("pointerdown", {button: 0, cancelable: true})
+      button.dispatchEvent(pointer)
+      expect(pointer.defaultPrevented).toBe(true)
+      button.click()
+    }
+    expect(execute.mock.calls.map(([action]) => action)).toEqual(["front", "up", "down", "back"].map(direction => ({type: "movePlacement", direction, topLevel: true})))
+    for(const [placement, disabled] of [
+      [{canMoveUp: false, canMoveDown: true}, [true, true, false, false]],
+      [{canMoveUp: true, canMoveDown: false}, [false, false, true, true]],
+      [undefined, [true, true, true, true]],
+    ] as const) {
+      toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, placement}}
+      await toolbox.updateComplete
+      expect(buttons.map(button => button.disabled)).toEqual(disabled)
+    }
+    toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, placement: {canMoveUp: true, canMoveDown: true}}}
+    toolbox.htmlPending = true
+    await toolbox.updateComplete
+    expect(buttons.every(button => button.disabled)).toBe(true)
+    toolbox.htmlPending = false
+    toolbox.historyState = {...toolbox.historyState, preview: {checkpointId: "version", isCurrent: false, added: 0, removed: 0, modified: 0}}
+    await toolbox.updateComplete
+    expect(buttons.every(button => button.disabled)).toBe(true)
+  })
+
   it("places layout controls inside Style below the presets without a separate drawer", async () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
@@ -430,7 +471,9 @@ describe("layout host and toolbox integration", () => {
     toolbox.elementStyle = styleState("grid")
     toolbox.documentLayout = {...toolbox.documentLayout, mode}
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')).toBeNull()
+    const group = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Placement"]')!
+    expect(group).not.toBeNull()
+    expect(group.querySelector('[aria-label="Float left"]')).toBeNull()
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Block layout"]')).toBeNull()
   })
 })

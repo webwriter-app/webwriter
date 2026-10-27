@@ -337,6 +337,7 @@ export type ElementStyleState = {
     alignment?: "left" | "center" | "right"
     canMoveUp?: boolean
     canMoveDown?: boolean
+    placement?: {canMoveUp: boolean, canMoveDown: boolean}
     localName: string
     namespaceURI: string | null
   } | null

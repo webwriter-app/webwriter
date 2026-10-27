@@ -22,6 +22,128 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
+describe.each(["canvas", "slides"] as const)("%s stacking placement", mode => {
+  function seed() {
+    document.body.className = `ww-${mode}`
+    const content = '<!--before--><p style="position:absolute; z-index:1">First</p><custom-card style="position:absolute; z-index:2"><p style="z-index:99">Inside</p><!--keep--></custom-card><svg xmlns="http://www.w3.org/2000/svg" style="position:absolute; z-index:3"><circle r="5" /></svg><section style="position:absolute; z-index:4">Fourth</section><p style="position:absolute; z-index:5">Last</p><style>.authored {color:red}</style><template><p>Template</p></template>'
+    document.body.innerHTML = mode === "canvas" ? content : `<div class="ww-slides-viewport"><section class="ww-slide">${content}<nav class="ww-slide-directions">Directions</nav></section><section class="ww-slide"><p style="z-index:80">Other slide</p></section></div><nav class="ww-slides-navigation">Navigation</nav>`
+    const root = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    const items = Array.from(root.children).filter((item): item is HTMLElement | SVGSVGElement => !item.matches("style,template,nav"))
+    return {root, items}
+  }
+
+  it.each([
+    {direction: "front", expected: [1, 2, 5, 3, 4]},
+    {direction: "up", expected: [1, 2, 4, 3, 5]},
+    {direction: "down", expected: [1, 3, 2, 4, 5]},
+    {direction: "back", expected: [2, 3, 1, 4, 5]},
+  ] as const)("moves $direction with consecutive indices and preserves DOM order", ({direction, expected}) => {
+    const {root, items} = seed()
+    const nodes = Array.from(root.childNodes), contents = items.map(item => item.innerHTML)
+    $.selectElement(items[2])
+    expect(editor.features.layout.actions.movePlacement({type: "movePlacement", direction})).toBe(true)
+    expect(items.map(item => Number(item.style.zIndex))).toEqual(expected)
+    expect(Array.from(root.childNodes)).toEqual(nodes)
+    expect(items.map(item => item.innerHTML)).toEqual(contents)
+    expect($.selectedElement).toBe(items[2])
+    expect(document.querySelector<HTMLElement>(".ww-slide + .ww-slide > p")?.style.zIndex).toBe(mode === "slides" ? "80" : undefined)
+    expect(root.querySelector("style")!.hasAttribute("style")).toBe(false)
+    expect(root.querySelector("template")!.hasAttribute("style")).toBe(false)
+    expect(root.querySelector("nav")?.hasAttribute("style") ?? false).toBe(false)
+  })
+
+  it("normalizes auto, negative, duplicate and sparse indices using current paint order", () => {
+    const {items} = seed()
+    items.forEach((item, i) => item.style.zIndex = ["auto", "-4", "7", "7", "90"][i])
+    items[2].style.setProperty("z-index", "7", "important")
+    $.selectElement(items[2])
+    editor.features.layout.movePlacement("up")
+    expect(items.map(item => item.style.zIndex)).toEqual(["2", "1", "4", "3", "5"])
+    expect(items[2].style.getPropertyPriority("z-index")).toBe("important")
+    editor.features.layout.movePlacement("front")
+    const styles = items.map(item => item.getAttribute("style"))
+    editor.features.layout.movePlacement("front")
+    expect(items.map(item => item.getAttribute("style"))).toEqual(styles)
+  })
+
+  it("projects boundaries and limits commands to connected direct children", () => {
+    const {root, items} = seed()
+    const state = (target: Element) => editor.features.manipulation.getStyleState([], target, false).target?.placement
+    expect(state(items[0])).toEqual({canMoveUp: true, canMoveDown: false})
+    expect(state(items[4])).toEqual({canMoveUp: false, canMoveDown: true})
+    const nested = items[1].querySelector("p")!
+    expect(state(nested)).toBeUndefined()
+    $.selectElement(nested)
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+    $.selectElement(items[2])
+    items[2].remove()
+    expect(editor.features.layout.getPlacementState(items[2])).toBeUndefined()
+    expect(editor.features.layout.placeElement(items[2], "front")).toBe(false)
+    document.getSelection()!.removeAllRanges()
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+    $.selectElement(root)
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+    $.selectElement(items[0])
+    vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+  })
+
+  it("resolves the toolbox target below the current canvas or slide root", () => {
+    const {items} = seed()
+    const nested = items[1].querySelector("p")!
+    $.move(nested.firstChild!, 2)
+    expect(editor.features.manipulation.topLevelStyleTarget).toBe(items[1])
+    expect(editor.features.layout.actions.movePlacement({type: "movePlacement", direction: "front", topLevel: true})).toBe(true)
+    expect(items[1].style.zIndex).toBe("5")
+    expect(nested.style.zIndex).toBe("99")
+  })
+
+  it("synchronizes placement, excludes markers, and undoes and redoes as one command", () => {
+    const {items} = seed()
+    editor.features.selection.captureElement(items[1])
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    editor.features.layout.movePlacement("front")
+    const after = editor.toHTML(true)
+    expect(after).not.toContain("◆")
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const html = sharedDOMBody(remote).toString()
+      expect(html).toContain("z-index: 5")
+      expect(html).not.toContain("◆")
+    }
+    finally { remote.destroy() }
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("uses remotely changed indices and newly inserted peers on the next command", () => {
+    const {root, items} = seed()
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const body = sharedDOMBody(remote)
+      const parent = mode === "canvas" ? body : (body.get(0) as Y.XmlElement).get(0) as Y.XmlElement
+      ;(parent.get(2) as Y.XmlElement).setAttribute("style", "position:absolute; z-index:100")
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
+      const current = Array.from(root.children).filter((item): item is HTMLElement | SVGSVGElement => !item.matches("style,template,nav"))
+      expect(current[1].style.zIndex).toBe("100")
+      const added = document.createElement("custom-added")
+      added.style.zIndex = "50"
+      root.append(added)
+      $.selectElement(current[2])
+      editor.features.layout.movePlacement("up")
+      expect(current.map(item => item.style.zIndex)).toEqual(["1", "6", "3", "2", "4"])
+      expect(added.style.zIndex).toBe("5")
+    }
+    finally { remote.destroy() }
+  })
+})
+
 describe("document floats", () => {
   // Left/right use CSS math unsupported by Happy DOM; native-browser.ts checks
   // their rendered alignment and exported HTML at each document breakpoint.
@@ -488,7 +610,7 @@ describe("document floats", () => {
   })
 
   it("does not expose former column, flex or grid commands or selection controls", () => {
-    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFloat", "moveFloat"])
+    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFloat", "moveFloat", "movePlacement"])
     document.querySelector<HTMLElement>("section")!.style.display = "grid"
     $.selectElement(document.querySelector("section")!)
     editor.features.layout.refresh()

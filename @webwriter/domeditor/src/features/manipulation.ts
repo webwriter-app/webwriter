@@ -2280,7 +2280,8 @@ export class ManipulationFeature extends EditorFeature {
   /** Edit toolbox styles use the selected table/cell or the direct container
    * below Document. */
   get topLevelStyleTarget(): Element | null {
-    const root = getDocumentRoot()
+    const root = this.editor.features.slides.active
+      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
     // Table and cell selections keep their scope inside sections and templates.
@@ -2528,6 +2529,7 @@ export class ManipulationFeature extends EditorFeature {
     const movable = this.floatContainer(target) === target
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        placement: this.editor.features.layout.getPlacementState(target),
         canMoveUp: movable && target.previousElementSibling !== null,
         canMoveDown: movable && target.nextElementSibling !== null,
         alignment: alignmentFromStyles(style),
