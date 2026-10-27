@@ -1506,11 +1506,9 @@ export class TransformationFeature extends EditorFeature {
   moveZ(element: TransformElement | null, forward=true, toFrontOrBack=false, cycle=false) {
     if(!element || !this.#canTransform(element) || this.editor.isEditingLocked) return
     if(this.#isFreeformItem(element)) {
-      const placement = this.editor.features.layout.getPlacementState(element)
       const direction = toFrontOrBack ? forward ? "front" : "back"
-        : cycle && !(forward ? placement?.canMoveUp : placement?.canMoveDown) ? forward ? "back" : "front"
-          : forward ? "up" : "down"
-      this.editor.features.layout.placeElement(element, direction)
+        : forward ? "up" : "down"
+      this.editor.features.layout.placeElement(element, direction, cycle && !toFrontOrBack)
       this.updateInfo()
       return
     }

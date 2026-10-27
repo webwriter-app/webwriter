@@ -2276,7 +2276,7 @@ describe("transform controls and geometry", () => {
     expect(sibling).toHaveAttribute("data-after", "later")
   })
 
-  it.each(["canvas", "slides"].flatMap(mode => ["p", "demo-widget", "svg"].map(tag => ({mode, tag}))))("raises a $mode $tag on frame activation with consecutive indices and one undo step", async ({mode, tag}) => {
+  it.each(["canvas", "slides"].flatMap(mode => ["p", "demo-widget", "svg"].map(tag => ({mode, tag}))))("raises a $mode $tag on frame activation with one style mutation and one undo step", async ({mode, tag}) => {
     document.body.replaceChildren()
     const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
     const sibling = targetElement("section")
@@ -2300,8 +2300,13 @@ describe("transform controls and geometry", () => {
     editor.doc.stopCapturing()
     const startingHTML = editor.toHTML(true)
     const mover = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+    const siblingStyle = sibling.getAttribute("style")
+    const observer = new MutationObserver(() => {})
+    observer.observe(target.parentElement!, {attributes: true, subtree: true, attributeFilter: ["style"]})
 
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    expect(observer.takeRecords().map(record => record.target)).toEqual([target])
+    observer.disconnect()
     expect(Number(target.style.zIndex)).toBeGreaterThan(Number(sibling.style.zIndex))
     expect(target.style.left).toBe("20px")
     expect(target.style.top).toBe("30px")
@@ -2312,13 +2317,39 @@ describe("transform controls and geometry", () => {
     editor.doc.syncFromDOM()
     const finalHTML = editor.toHTML(true)
     expect(finalHTML).not.toBe(startingHTML)
-    expect(target.style.zIndex).toBe("2")
-    expect(sibling.style.zIndex).toBe("1")
+    expect(target.style.zIndex).toBe("6")
+    expect(sibling.getAttribute("style")).toBe(siblingStyle)
     expect(finalHTML).not.toContain("◆")
     editor.doc.undo()
     expect(editor.toHTML(true)).toBe(startingHTML)
     editor.doc.redo()
     expect(editor.toHTML(true)).toBe(finalHTML)
+  })
+
+  it.each(["canvas", "slides"].flatMap(mode => [
+    {forward: true, edge: true, cycle: true, selected: 1, expected: [10, 101, 100]},
+    {forward: false, edge: true, cycle: true, selected: 1, expected: [10, 9, 100]},
+    {forward: true, edge: false, cycle: false, selected: 1, expected: [10, 100, 50]},
+    {forward: false, edge: false, cycle: false, selected: 1, expected: [50, 10, 100]},
+    {forward: true, edge: false, cycle: true, selected: 2, expected: [10, 50, 9]},
+    {forward: false, edge: false, cycle: true, selected: 0, expected: [101, 50, 100]},
+  ].map(scenario => ({mode, ...scenario}))))("scans once for $mode frame stacking (forward=$forward, edge=$edge, cycle=$cycle)", ({mode, forward, edge, cycle, selected, expected}) => {
+    document.body.replaceChildren()
+    document.body.className = `ww-${mode}`
+    const items = [targetElement(), targetElement(), targetElement()]
+    items.forEach((item, i) => Object.assign(item.style, {position: "absolute", zIndex: String([10, 50, 100][i])}))
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(...items)
+    }
+    vi.spyOn(editor.doc, "beginUndoGroup").mockReturnValue(() => {})
+    vi.spyOn(feature, "updateInfo").mockImplementation(() => {})
+    const read = vi.spyOn(globalThis, "getComputedStyle")
+    feature.moveZ(items[selected], forward, edge, cycle)
+    expect(read.mock.calls).toHaveLength(items.length)
+    expect(new Set(read.mock.calls.map(([element]) => element))).toEqual(new Set(items))
+    expect(items.map(item => Number(item.style.zIndex))).toEqual(expected)
   })
 
   it.each(["canvas", "slides"])("keeps the last moved %s item in front throughout dragging and subsequent move starts", mode => {
@@ -2386,8 +2417,8 @@ describe("transform controls and geometry", () => {
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
-    expect(target.style.zIndex).toBe("2")
-    expect(sibling.style.zIndex).toBe("1")
+    expect(target.style.zIndex).toBe("3")
+    expect(sibling.style.zIndex).toBe("2")
     expect(target.style.left).toBe("0px")
     expect(document.body).not.toHaveClass("◆transform-moving")
 
