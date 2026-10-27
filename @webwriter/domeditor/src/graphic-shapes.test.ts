@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 import {adjustGraphicPreset, graphicPresetFillRule, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
 
 const bounds = {x: -137.25, y: 219.75, width: 273.5, height: 146.25}
@@ -23,6 +23,68 @@ const cubicSamples = (path: string) => {
 }
 
 describe("native SVG shape presets", () => {
+  it("uses one radial inner-radius POI for the cloud while preserving lobe midpoints", () => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", "Cloud")
+    element.setAttribute("d", graphicPresetPath("cloud", bounds))
+    const before = readGraphicPreset(element)!
+    expect(before.definition.adjustments.map(({name,label,default: value,min,max,axis}) => ({name,label,value,min,max,axis}))).toEqual([
+      {name:"inner",label:"Inner radius",value:30,min:8,max:38,axis:"x"},
+    ])
+    expect(graphicPresetHandles(before).map(handle=>handle.label)).toEqual(["Inner radius"])
+    const unadjustedPath = element.getAttribute("d")!
+    const unitCoordinates = (path:string) => path.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+    const defaultValues = unitCoordinates(graphicPresetPath("cloud", {x:0,y:0,width:100,height:100}))
+    const defaultSegments = Array.from({length:(defaultValues.length-2)/6},(_,i)=>defaultValues.slice(i*6,i*6+8))
+    const midpoint = (segment:number[]) => {
+      const [x0,y0,x1,y1,x2,y2,x3,y3]=segment
+      return {x:(x0+3*x1+3*x2+x3)/8,y:(y0+3*y1+3*y2+y3)/8}
+    }
+    const defaultMidpoints=defaultSegments.map(midpoint)
+    const nextPoint=before.definition.adjustments[0].point([36])
+    const target={x:before.bounds.x+nextPoint.x/100*before.bounds.width,y:before.bounds.y+nextPoint.y/100*before.bounds.height}
+    expect(adjustGraphicPreset(element,before,"adjust-inner",target)).toBe(true)
+    const after=readGraphicPreset(element)!
+    expect(after.values[0]).toBeCloseTo(36,4)
+    const scaled=unitCoordinates(element.getAttribute("d")!).map((value,index)=>index%2===0 ? (value-bounds.x)/bounds.width*100 : (value-bounds.y)/bounds.height*100)
+    const endpointIndices=Array.from({length:9},(_,i)=>i*6+6)
+    for(const index of endpointIndices) {
+      const x=defaultValues[index],y=defaultValues[index+1]
+      expect(scaled[index]).toBeCloseTo(50+(x-50)*1.2,3)
+      expect(scaled[index+1]).toBeCloseTo(40+(y-40)*1.2,3)
+    }
+    const adjustedSegments=Array.from({length:(scaled.length-2)/6},(_,i)=>scaled.slice(i*6,i*6+8))
+    adjustedSegments.forEach((segment,index)=>{
+      const actual=midpoint(segment)
+      expect(actual.x).toBeCloseTo(defaultMidpoints[index].x,3)
+      expect(actual.y).toBeCloseTo(defaultMidpoints[index].y,3)
+    })
+    const reloaded=new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg"><path aria-label="Cloud" d="${element.getAttribute("d")}"/></svg>`,"image/svg+xml").querySelector("path")!
+    expect(readGraphicPreset(reloaded)!.values[0]).toBeCloseTo(36,4)
+    expect(graphicPresetHandles(readGraphicPreset(reloaded)!)[0].point.x).toBeCloseTo(target.x,3)
+    expect(graphicPresetHandles(readGraphicPreset(reloaded)!)[0].point.y).toBeCloseTo(target.y,3)
+    expect(unadjustedPath).not.toBe(element.getAttribute("d"))
+  })
+
+  it.each([legacyCloudPreset.definition.adjustments[0].min,legacyCloudPreset.definition.adjustments[0].default,legacyCloudPreset.definition.adjustments[0].max])("recognizes legacy cloud puff value %s and upgrades it on edit", puff => {
+    const element=document.createElementNS("http://www.w3.org/2000/svg","path")
+    let index=0
+    const path=legacyCloudPreset.definition.draw([puff]).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g,value=>{
+      const axis=index++%2===0 ? "x" : "y"
+      return String(bounds[axis]+Number(value)/100*bounds[axis==="x"?"width":"height"])
+    })
+    element.setAttribute("aria-label","Cloud")
+    element.setAttribute("d",path)
+    const before=readGraphicPreset(element)!
+    expect(before.type).toBe("cloud")
+    expect(before.values[0]).toBeCloseTo(30,4)
+    expect(element.getAttribute("d")).toBe(path)
+    expect(graphicPresetHandles(before).map(handle=>handle.label)).toEqual(["Inner radius"])
+    expect(adjustGraphicPreset(element,before,"adjust-inner",graphicPresetHandles(before)[0].point)).toBe(true)
+    expect(readGraphicPreset(element)!.type).toBe("cloud")
+    expect(element.getAttribute("d")).not.toBe(path)
+  })
+
   it.each(graphicPresetOptions)("keeps $label geometry stable when grabbing a POI without moving", option => {
     const element=document.createElementNS("http://www.w3.org/2000/svg","path")
     element.setAttribute("aria-label",option.label)

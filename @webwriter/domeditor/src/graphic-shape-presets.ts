@@ -121,6 +121,26 @@ const ribbonPreset = (label: string, down: boolean, curved: boolean) => base(lab
 }, [poi("fold", curved ? "Ribbon curve" : "Fold depth", 15, 3, 28, p => ({x:50,y:down ? curved ? 85-p/2 : 80+p/2 : curved ? 15+p/2 : 20-p/2}), "y")])
 const scrollPath = (d: number) => `M 20 ${d} Q 20 0 30 0 L 95 0 Q 100 ${d} 90 ${d} L 80 ${d} L 80 ${100-d} Q 80 100 70 100 L 5 100 Q 0 ${100-d} 10 ${100-d} L 20 ${100-d} Z M 30 0 Q 40 ${d} 30 ${d} L 20 ${d} M 70 100 Q 60 ${100-d} 70 ${100-d} L 80 ${100-d}`
 const cloudBubble = () => "M 12 60 C -5 60 -3 38 10 35 C -2 18 12 10 25 15 C 28 -3 46 -3 50 10 C 63 -3 78 0 78 15 C 96 5 105 20 92 33 C 110 40 100 58 88 58 C 88 78 68 80 60 67 C 48 83 32 78 30 65 C 17 78 7 73 12 60 Z"
+const cloudCoordinates = cloudBubble().match(/-?\d+/g)!.map(Number)
+const cloudPoints = Array.from({length:cloudCoordinates.length/2}, (_,i) => ({x:cloudCoordinates[i*2],y:cloudCoordinates[i*2+1]}))
+const cloudPath = (inner:number) => {
+  const offset = (point:{x:number,y:number}) => ({x:(point.x-50)*(inner/30-1),y:(point.y-40)*(inner/30-1)})
+  const first=cloudPoints[0],delta=offset(first)
+  let path=`M ${first.x+delta.x} ${first.y+delta.y}`
+  for(let i=1;i<cloudPoints.length;i+=3) {
+    const [start,a,b,end]=cloudPoints.slice(i-1,i+3),from=offset(start),to=offset(end)
+    // Move every valley radially while retaining each puff's midpoint and
+    // tangent. The outer cloud stays in place as the indentations deepen.
+    path+=` C ${a.x+(-2*from.x+to.x)/3} ${a.y+(-2*from.y+to.y)/3} ${b.x+(from.x-2*to.x)/3} ${b.y+(from.y-2*to.y)/3} ${end.x+to.x} ${end.y+to.y}`
+  }
+  return `${path} Z`
+}
+export const legacyCloudPreset = {
+  definition:base("Cloud","Basic shapes",([p])=>cloudBubble().replace("46 -3",`46 ${p}`),[
+    poi("puff","Cloud lobe",-3,-10,10,p=>({x:37.125,y:2+.375*p}),"y"),
+  ]),
+  upgrade:(_values:number[])=>[30],
+}
 export const legacyChordPreset = {
   definition: base("Chord", "Basic shapes", ([p]) => `M ${p} 0 C 0 0 0 100 50 100 C 75 100 90 88 100 75 Z`,
     [poi("chord", "Chord endpoint", 50, 20, 80, p => ({x:p,y:0}))]),
@@ -401,7 +421,7 @@ const originalGraphicShapePresets = {
     const control = 50 + (phase - 50) * .5523
     return `M 50 0 C 22.385 0 0 22.385 0 50 C 0 77.615 22.385 100 50 100 C ${control} 100 ${phase} 77.615 ${phase} 50 C ${phase} 22.385 ${control} 0 50 0 Z`
   }, [poi("phase", "Moon phase",20,5,100,p => ({x:p,y:50}))]),
-  "cloud": base("Cloud", "Basic shapes", ([p]) => cloudBubble().replace("46 -3", `46 ${p}`), [poi("puff", "Cloud lobe", -3, -10, 10, p => ({x:37.125,y:2+.375*p}), "y")]),
+  "cloud": base("Cloud", "Basic shapes", ([inner]) => cloudPath(inner), [poi("inner", "Inner radius",30,8,38,p=>({x:50+28*p/30,y:40-25*p/30}))]),
   "arc": {...base("Arc", "Basic shapes", ([p]) => `M 0 0 C ${p} 0 100 ${100-p} 100 100`, [poi("curve", "Curve control", 55.23, 10, 90, p => ({x:50+.375*p,y:50-.375*p}))]), open:true},
   "parentheses": {...base("Parentheses pair", "Basic shapes", values => { const d=v(values,0,20); return `M 38 5 C ${38-d} 25 ${38-d} 75 38 95 M 62 5 C ${62+d} 25 ${62+d} 75 62 95` }, [poi("curve", "Curve",20,5,35,p => ({x:38-.75*p,y:50}))]), open:true},
   "braces": {...base("Braces pair", "Basic shapes", values => { const d=v(values,0,12); return `M 42 5 Q ${42-d} 5 32 25 L 32 40 Q 32 50 20 50 Q 32 50 32 60 L 32 75 Q ${42-d} 95 42 95 M 58 5 Q ${58+d} 5 68 25 L 68 40 Q 68 50 80 50 Q 68 50 68 60 L 68 75 Q ${58+d} 95 58 95` }, [poi("curve", "Curve",12,2,25,p => ({x:39.5-.5*p,y:10}))]), open:true},

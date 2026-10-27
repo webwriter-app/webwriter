@@ -1,4 +1,4 @@
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 
 export type GraphicPresetType = keyof typeof graphicShapePresets
 type Bounds = {x: number, y: number, width: number, height: number}
@@ -117,7 +117,7 @@ function getTemplates() {
       const outer = definition.draw([0]).split(/(?=M)/)[0]
       drawings.push(([r]) => `${outer} M ${50-r*.7} ${50-r*.7} C ${50-r*1.5} ${50+r*.2} ${50-r*.2} ${50+r*1.5} ${50+r*.7} ${50+r*.7} Z M ${50+r*.7} ${50+r*.7-12} C ${50+r*1.5} ${50-r*.2} ${50+r*.2} ${50-r*1.5} ${50-r*.7+12} ${50-r*.7} Z`)
     }
-    const legacy = option.type === "chord" ? legacyChordPreset : legacyCalloutPresets[option.type] ?? legacyArrowPresets[option.type]
+    const legacy = option.type === "cloud" ? legacyCloudPreset : option.type === "chord" ? legacyChordPreset : legacyCalloutPresets[option.type] ?? legacyArrowPresets[option.type]
     const variants = [...drawings.map(draw => ({draw, definition, upgrade: undefined as Template["upgrade"]})),
       ...(legacy ? [{draw: legacy.definition.draw, definition: legacy.definition, upgrade: legacy.upgrade}] : []),
       ...(legacySpeechBubblePresets[option.type] ? [{draw:legacySpeechBubblePresets[option.type].definition.draw,definition:legacySpeechBubblePresets[option.type].definition,upgrade:legacySpeechBubblePresets[option.type].upgrade}] : [])]
