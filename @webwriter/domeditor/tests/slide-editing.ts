@@ -101,6 +101,16 @@ export async function checkSlideEditing() {
       assert(!editor.appendix.querySelector('[part="selection-box"], [part~="box-selection-preview"]'), "marquee artifacts survived release")
       await clearOnBackground(true)
     }
+    editor.features.slides.actions.addSlide({type: "addSlide"})
+    await settle()
+    const emptySlide = doc.querySelectorAll<HTMLElement>("section.ww-slide")[1]
+    assert(!emptySlide.querySelector("h1, p"), "new slide contains automatic text boxes")
+    assert(selection.anchorNode === emptySlide && !editor.features.transformation.target, "blank slide retains text box controls")
+    const emptyRect = emptySlide.getBoundingClientRect()
+    emptySlide.dispatchEvent(new view.MouseEvent("dblclick", {bubbles: true, cancelable: true,
+      button: 0, clientX: emptyRect.left + 200, clientY: emptyRect.top + 150}))
+    await settle()
+    assert(emptySlide.querySelectorAll("p").length === 1 && selection.anchorNode === emptySlide.querySelector("p"), "blank slide does not accept a text box")
     assert(!editor.toHTML(true).includes("◆"), "slide editing serialized editor markers")
   }
   finally { view.editor?.destroy(); frame.remove() }

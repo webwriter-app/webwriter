@@ -80,20 +80,13 @@ export class SlidesFeature extends EditorFeature {
         : [child]) : [node])
   }
 
-  private createSlide(paragraph = document.createElement("p")) {
-    const slide = document.createElement("section"), heading = document.createElement("h1")
+  private createSlide() {
+    const slide = document.createElement("section")
     slide.className = "ww-slide"; slide.tabIndex = -1
-    // These are authored text boxes: their placement travels with the HTML.
-    for(const element of [heading, paragraph]) Object.assign(element.style, {
-      position: "absolute", left: "var(--ww-page-gutter, 1.25rem)",
-    })
-    Object.assign(heading.style, {top: "1.25rem", height: "20%", width: "calc(100% - 2 * var(--ww-page-gutter, 1.25rem))"})
-    Object.assign(paragraph.style, {top: "calc(20% + 2.5rem)"})
-    slide.append(heading, paragraph)
     return slide
   }
 
-  /** The same minimum-content repair used for documents, without rebuilding authored content. */
+  /** Keep a navigable carousel even when it has no authored slide content. */
   ensureContent() {
     if(!this.active) return null
     let viewport = this.viewport(), nav = this.navigation()
@@ -108,22 +101,16 @@ export class SlidesFeature extends EditorFeature {
       viewport.after(nav)
     }
     if(!this.slides().length) {
-      const slide = document.createElement("section"); slide.className = "ww-slide"; slide.tabIndex = -1
-      viewport.append(slide)
+      viewport.append(this.createSlide())
       updateNavigation = true
     }
     const selection = document.getSelection()
     const anchor = selection?.anchorNode, focus = selection?.focusNode
     let restored: HTMLElement | null = null
-    for(const slide of this.slides()) {
-      if(this.content(slide).length) continue
-      const paragraph = document.createElement("p")
-      slide.insertBefore(paragraph, slide.firstChild)
-      if(!restored && (!anchor?.isConnected || !focus?.isConnected || anchor === slide || focus === slide
-        || anchor === document.body || focus === document.body || anchor === viewport || focus === viewport)) {
-        $.move(paragraph)
-        restored = paragraph
-      }
+    if(!$.isElementSelection && (!anchor?.isConnected || !focus?.isConnected || anchor === document.body || focus === document.body
+      || anchor === viewport || focus === viewport)) {
+      const slide = this.current()
+      if(slide && !this.content(slide).length) { $.move(slide, 0); restored = slide }
     }
     if(updateNavigation) this.updateNavigation()
     return restored
@@ -134,10 +121,10 @@ export class SlidesFeature extends EditorFeature {
     if(!this.active || !slide.isConnected || !isSlide(slide) || this.editor.isEditingLocked) return false
     this.ensureContent()
     const first = this.content(slide)[0]
-    if(!first) return false
     slide.focus({preventScroll: true})
     this.cancelNavigation()
-    if(first instanceof Text || first instanceof Element && this.editor.features.manipulation.isTextBlock(first)
+    if(!first) $.move(slide, 0)
+    else if(first instanceof Text || first instanceof Element && this.editor.features.manipulation.isTextBlock(first)
       && !first.closest('[contenteditable="false" i], [inert]')) $.move(first)
     else if(first instanceof Element) $.selectGap(first, "before")
     this.editor.features.selection.selectDropRange($.range)
@@ -245,11 +232,16 @@ export class SlidesFeature extends EditorFeature {
           viewport.className = "ww-slides-viewport"
           nav.className = "ww-slides-navigation"; nav.setAttribute("aria-label", "Slides"); nav.contentEditable = "false"
           document.body.insertBefore(viewport, content[0] ?? null)
-          const slide = empty ? this.createSlide(empty as HTMLParagraphElement) : document.createElement("section")
-          slide.className = "ww-slide"; slide.tabIndex = -1
+          const slide = this.createSlide()
           viewport.append(slide)
-          for(const node of content) if(node.parentNode === document.body) slide.append(node)
-          if(!slide.childNodes.length) slide.append(document.createElement("p"))
+          for(const node of content) if(node.parentNode === document.body) {
+            // Discard only the unadorned initial paragraph, preserving authored attributes.
+            const placeholder = node === empty && [empty, ...empty.children].every(element =>
+              Array.from(element.attributes).every(attribute => attribute.name === "style" && !(element as HTMLElement).style.length
+                || attribute.name === "class" && Array.from(element.classList).every(name => name.startsWith("◆"))))
+            if(placeholder) node.remove()
+            else slide.append(node)
+          }
           viewport.after(nav)
         }
         for(const container of [this.viewport(), this.navigation()]) if(container) clearInlinePlacement(container)

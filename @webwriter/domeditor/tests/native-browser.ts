@@ -6995,7 +6995,12 @@ await check("CSS Slides use native fragment links while editing", async () => {
     assert(first.querySelectorAll("p").length === 2 && doc.querySelectorAll("section.ww-slide").length === 1, "Enter split slide boundary")
     slideEditor.features.slides.actions.addSlide({type: "addSlide"})
     const second = doc.querySelectorAll<HTMLElement>("section.ww-slide")[1]
-    second.firstElementChild!.textContent = "Second slide"
+    assert(!second.querySelector("h1, p"), "new slide contains automatic text boxes")
+    const heading = doc.createElement("h1"), paragraph = doc.createElement("p")
+    heading.textContent = "Second slide"
+    heading.style.cssText = "left:20px;top:20px;width:1200px;height:140px"
+    paragraph.style.cssText = "left:20px;top:180px"
+    second.prepend(heading, paragraph)
     const viewport = doc.querySelector<HTMLElement>(".ww-slides-viewport")!
     viewport.style.scrollBehavior = "auto"
     viewport.scrollLeft = 0
@@ -7033,7 +7038,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
       assert(getComputedStyle(item).position === "absolute" && (item as HTMLElement).offsetParent === second, "slide box is not positioned relative to the slide")
     }
     assert(Math.abs(headingRect.left - paragraphRect.left) < 1 && paragraphRect.width < headingRect.width
-      && paragraphRect.top > headingRect.bottom && paragraphRect.bottom < slideRect.bottom - 20, "slide preset paragraph is not aligned or content sized")
+      && paragraphRect.top > headingRect.bottom && paragraphRect.bottom < slideRect.bottom - 20, "authored slide paragraph is not aligned or content sized")
     assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= frame.clientHeight, "navigation is not overlaid at the bottom")
     assert(Math.abs(nav.getBoundingClientRect().left - 16) < 1, "slides pagination is not left aligned")
     assert(getComputedStyle(second).paddingTop === "20px" && getComputedStyle(second).paddingBottom === "20px"
@@ -7084,8 +7089,11 @@ await check("CSS Slides use native fragment links while editing", async () => {
     actions.querySelector<HTMLButtonElement>('[name="add"]')!.click()
     await layoutFrame()
     assert(doc.querySelectorAll("section.ww-slide").length === 3, "navigation add affordance failed")
-    const third = doc.querySelectorAll<HTMLElement>("section.ww-slide")[2], presetText = third.querySelector("p")!
-    const presetHeading = third.querySelector("h1")!, beforeMove = presetHeading.getBoundingClientRect()
+    const third = doc.querySelectorAll<HTMLElement>("section.ww-slide")[2]
+    assert(!third.querySelector("h1, p"), "added slide contains automatic text boxes")
+    const presetText = paragraph.cloneNode(false) as HTMLParagraphElement, presetHeading = heading.cloneNode(false) as HTMLHeadingElement
+    third.prepend(presetHeading, presetText)
+    const beforeMove = presetHeading.getBoundingClientRect()
     presetHeading.textContent = "Slide title"
     doc.getSelection()!.setBaseAndExtent(presetHeading.firstChild!, 0, presetHeading.firstChild!, 2)
     slideEditor.features.selection.processSelection()

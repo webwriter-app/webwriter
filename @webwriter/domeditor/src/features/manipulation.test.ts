@@ -4803,7 +4803,7 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(over)
     expect(over.defaultPrevented).toBe(true)
     surface.dispatchEvent(transferEvent("drop", data))
-    expect(target.querySelectorAll("h1")).toHaveLength(mode === "slides" ? 2 : 1)
+    expect(target.querySelectorAll("h1")).toHaveLength(1)
     expect(document.body).not.toHaveClass("◆drop-selection-active")
     surface.remove()
     Reflect.deleteProperty(document, "elementsFromPoint")
