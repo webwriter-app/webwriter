@@ -9219,6 +9219,29 @@ await check("recent documents fit one layout card when space is limited", async 
         assert(Math.abs(card.width - (10 * rem - 10)) < 1, "layout cards did not shrink by 10px")
       }
     }
+    const recentDocuments = host.recentDocuments
+    for(const height of [900, 500]) {
+      frame.style.height = `${height}px`
+      for(const width of [1200, 800, 400]) {
+        bar.style.width = `${width}px`
+        for(const count of [1, 2, 3]) {
+          host.recentDocuments = recentDocuments.slice(0, count)
+          await app!.updateComplete
+          await layoutFrame()
+          const entries = [...list.querySelectorAll<HTMLElement>("li")].map(entry => entry.getBoundingClientRect())
+          const last = entries.at(-1)!
+          const listBox = list.getBoundingClientRect()
+          assert(Math.abs(last.right - listBox.right) <= 2, `last recent entry did not reach the right edge at ${width}x${height} with ${count} entries`)
+          if(count % 2) assert(Math.abs(last.left - listBox.left) <= 2, "unpaired recent entry did not use the full row")
+          if(count > 1) assert(entries[0].right <= entries[1].left || entries[0].bottom <= entries[1].top, "recent entries overlapped")
+        }
+      }
+    }
+    host.recentDocuments = recentDocuments
+    await app!.updateComplete
+    frame.style.height = "900px"
+    bar.style.width = "1200px"
+    await layoutFrame()
     const fullHeight = bar.getBoundingClientRect().height
     frame.style.height = "500px"
     for(const width of [1200, 800, 400]) {

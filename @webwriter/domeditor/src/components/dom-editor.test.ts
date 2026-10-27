@@ -4370,6 +4370,7 @@ describe("DomEditor file actions", () => {
     expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-full-title")?.textContent).toBe("Recently opened")
     expect(editor.shadowRoot!.querySelector("#recent-documents-title .recent-documents-short-title")?.textContent).toBe("Recent")
     expect(nav.querySelector("h2")).toBeNull()
+    expect(getComputedStyle(nav.querySelector("li:last-child")!).gridColumn).not.toBe("1 / -1")
     expect(editor.shadowRoot!.querySelector(".document-layouts-combined-title")?.textContent).toBe(" & Recently opened")
     expect(editor.shadowRoot!.querySelectorAll(".document-layout-cards .layout-preset-icon svg")).toHaveLength(4)
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -4378,6 +4379,12 @@ describe("DomEditor file actions", () => {
     const open = vi.spyOn(host, "openBackendDocument").mockResolvedValue(undefined)
     entries[0].click()
     await vi.waitFor(() => expect(open).toHaveBeenCalledWith("doc-0"))
+    const recentDocuments = host.recentDocuments
+    host.recentDocuments = recentDocuments.slice(0, 1)
+    await editor.updateComplete
+    expect(getComputedStyle(nav.querySelector("li")!).gridColumn).toBe("1 / -1")
+    host.recentDocuments = recentDocuments
+    await editor.updateComplete
     host.fileOperationActive = true
     await editor.updateComplete
     expect([...nav.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true)
