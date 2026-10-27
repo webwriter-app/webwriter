@@ -183,7 +183,7 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
-    .float-button-group[aria-label="Placement"] button {padding-inline: .2rem}
+    .float-button-group[aria-label="Placement"] button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
     .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr))}
     .caption-button-group button {min-height: 1.55rem; padding: .1rem .25rem; margin: 0; border-radius: 0}
