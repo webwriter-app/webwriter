@@ -91,7 +91,7 @@ const basicGraphicShapeOptions = [
   {type: "triangle", label: "Triangle", icon: "Triangle", category: "Basic shapes"},
   {type: "diamond", label: "Diamond", icon: "Diamond", category: "Basic shapes"},
   {type: "hexagon", label: "Hexagon", icon: "Hexagon", category: "Basic shapes"},
-  {type: "star", label: "Star", icon: "Star", category: "Stars and banners"},
+  {type: "star", label: "5-point star", icon: "Star", category: "Stars and banners"},
   {type: "arrow", label: "Arrow", icon: "Arrow", category: "Block arrows"},
   {type: "polygon", label: "Polygon", icon: "Polygon", category: "Basic shapes"},
   {type: "line", label: "Line", icon: "Line", category: "Lines"},
@@ -115,10 +115,10 @@ export const graphicShapeOptions = [
   ...graphicPresetOptions.filter(option => option.type === "text-box").map(option => ({...option, category: "Lines"})),
   ...basicGraphicShapeOptions.filter(option => option.type === "image"),
   ...basicGraphicShapeOptions.filter(option => option.type === "line"),
-  ...basicGraphicShapeOptions.filter(option => option.type !== "line" && option.type !== "image" && option.type !== "polygon"),
+  ...basicGraphicShapeOptions.filter(option => option.type !== "line" && option.type !== "image" && option.type !== "polygon" && option.type !== "rectangle"),
   ...lineArrowOptions,
   ...graphicPresetOptions.filter(option => option.category !== "Lines"
-    && !["text-box", "not-equal", "multidocument", "line-callout-2"].includes(option.type)),
+    && !["text-box", "right-triangle", "arc", "not-equal", "multidocument", "line-callout-2"].includes(option.type)),
 ]
   .map(option => ({...option,
     category: option.type === "triangle" || option.type === "right-triangle" ? "Triangles" : option.category,
@@ -128,6 +128,40 @@ export const graphicShapeOptions = [
   }))
   .sort((a, b) => graphicShapeCategories.indexOf(a.category) - graphicShapeCategories.indexOf(b.category)
     || (a.category === "Basic shapes" ? (basicShapeOrder[a.type] ?? 14) - (basicShapeOrder[b.type] ?? 14) : 0))
+
+// The keyboard and ribbon gallery share section ordering and intentional row breaks.
+const starPointCount = (type: string) => type === "star" ? 5 : Number(type.slice(5))
+const basicShapeRows = [
+  graphicShapeOptions.filter(option => option.category === "Lines"),
+  graphicShapeOptions.filter(option => option.category === "Rectangles" || ["parallelogram", "trapezoid"].includes(option.type))
+    .sort((a, b) => Number(b.type === "square-rectangle") - Number(a.type === "square-rectangle")),
+  graphicShapeOptions.filter(option => option.category === "Triangles" || [
+    "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon", "dodecagon", "ellipse", "pie", "chord",
+  ].includes(option.type)),
+  graphicShapeOptions.filter(option => /^star(?:-|$)/.test(option.type))
+    .sort((a, b) => starPointCount(a.type) - starPointCount(b.type)),
+]
+const basicShapes = new Set(basicShapeRows.flat().map(option => option.type))
+
+const arrowRowTypes = [
+  ["arrow", "left-arrow", "up-arrow", "down-arrow", "left-right-arrow", "up-down-arrow", "quad-arrow", "left-right-up-arrow", "left-up-arrow", "bent-up-arrow"],
+  ["bent-arrow", "u-turn-arrow", "curved-left-arrow", "curved-right-arrow", "curved-up-arrow", "curved-down-arrow", "circular-arrow"],
+]
+const groupedArrows = new Set(arrowRowTypes.flat())
+const arrowShapeRows = [
+  ...arrowRowTypes.map(types => graphicShapeOptions.filter(option => types.includes(option.type))),
+  graphicShapeOptions.filter(option => option.category === "Block arrows" && !groupedArrows.has(option.type)),
+]
+
+export const graphicShapeSections = [
+  {label: "Basic" as const, rows: basicShapeRows},
+  ...(["Advanced", "Arrows", "Flowchart"] as const).map(label => {
+    if(label === "Arrows") return {label, rows: arrowShapeRows}
+    const options = graphicShapeOptions.filter(option => label === "Flowchart" ? option.category === "Flowchart"
+      : !basicShapes.has(option.type) && option.category !== "Block arrows" && option.category !== "Flowchart")
+    return {label, rows: Array.from({length: Math.ceil(options.length / 11)}, (_, index) => options.slice(index * 11, (index + 1) * 11))}
+  }),
+]
 
 export type GraphicShapeType = typeof basicGraphicShapeOptions[number]["type"] | typeof graphicPresetOptions[number]["type"] | typeof lineArrowOptions[number]["type"] | "freehand" | "polyline" | "bezier"
 
