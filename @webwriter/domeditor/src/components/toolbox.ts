@@ -107,7 +107,7 @@ export class DomEditorToolbox extends EditingControls {
     ${proofreadingCardStyles}
     ${EditingControls.styles}
     .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
-    .media-source .media-source-buttons {border-radius: 4px 4px 0 0;}
+    .media-source .media-source-buttons {border-radius: 4px 4px 0 0; background: transparent;}
     .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
     .media-source-controls {min-width: 0; border-radius: 4px;}
     .media-source-controls:focus-within {outline: 2px solid #b9d7f5; outline-offset: 0;}
@@ -706,6 +706,8 @@ export class DomEditorToolbox extends EditingControls {
 
     ${documentLayoutPreviewStyles}
     ${choiceGroupStyles}
+
+    .media-source-buttons button {background: transparent;}
 
     .document-layout-choices {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem;}
     .document-layout-choices .layout-preset {position: relative; aspect-ratio: 2 / 1; min-height: 0; padding: 0; gap: 0; overflow: hidden;}

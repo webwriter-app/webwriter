@@ -561,6 +561,25 @@ describe("media ribbon drawer", () => {
 
 
 describe("primary media Source control", () => {
+  it.each(["picture", "img", "audio", "video"] as const)("matches the %s source buttons to the URL field background", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const sources = toolbox.shadowRoot!.querySelectorAll(".media-source")
+    expect(sources).toHaveLength(type === "video" ? 2 : 1)
+    for(const source of sources) {
+      const field = source.querySelector(".media-source-field")!
+      const background = getComputedStyle(field).backgroundColor
+      expect(background).toBe("transparent")
+      for(const control of source.querySelectorAll(".media-source-buttons, .media-source-buttons button")) {
+        expect(getComputedStyle(control).backgroundColor).toBe(background)
+      }
+    }
+  })
+
   it("explains unsupported website URLs without dispatching a change and accepts a corrected HTTPS source", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
