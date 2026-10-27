@@ -280,7 +280,7 @@ describe("media ribbon drawer", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type, attribute: "loop", value: ""}}))
   })
 
-  it("offers a Caption button group below Placement in the media toolbox", async () => {
+  it("offers caption placement and alignment controls below Placement in the media toolbox", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -293,10 +293,16 @@ describe("media ribbon drawer", () => {
     const placement = toolbox.shadowRoot!.querySelector('[aria-label="Placement"]')!
     const caption = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Caption"]')!
     expect(caption.classList.contains("float-button-group")).toBe(true)
-    expect(placement.nextElementSibling?.textContent).toBe("Caption")
+    const captionLabel = placement.nextElementSibling!
+    expect(captionLabel.classList.contains("caption-label-row")).toBe(true)
+    expect(captionLabel.textContent).toContain("Caption")
+    const top = captionLabel.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(top.closest("label")?.textContent).toBe("Top")
+    expect(top.checked).toBe(false)
+    expect(top.disabled).toBe(true)
     expect(placement.nextElementSibling?.nextElementSibling).toBe(caption)
     const buttons = Array.from(caption.querySelectorAll<HTMLButtonElement>("button"))
-    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No caption", "Caption above, align left", "Caption above, align center", "Caption above, align right", "Caption below, align left", "Caption below, align center", "Caption below, align right"])
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No caption", "Caption below, align left", "Caption below, align center", "Caption below, align right"])
     expect(buttons[0].getAttribute("aria-pressed")).toBe("true")
     expect(buttons[0].querySelector("rect")).not.toBeNull()
     expect(buttons[0].querySelector("line")).toBeNull()
@@ -304,17 +310,35 @@ describe("media ribbon drawer", () => {
     for(const [index, button] of buttons.slice(1).entries()) {
       const line = button.querySelector("line")!
       expect(line.namespaceURI).toBe("http://www.w3.org/2000/svg")
-      expect(line.getAttribute("x1")).toBe(String(6 + index % 3 * 3))
-      expect(line.getAttribute("y1")).toBe(index < 3 ? "3" : "21")
+      expect(line.getAttribute("x1")).toBe(String(6 + index * 3))
+      expect(line.getAttribute("y1")).toBe("21")
       expect(button.querySelector("rect")!.getAttribute("width")).toBe("12")
     }
 
-    buttons[6].click()
+    buttons[3].click()
     expect(actions).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "setCaption", position: "below", alignment: "right"}}))
+    toolbox.captionPosition = "below"
+    toolbox.captionAlignment = "right"
+    await toolbox.updateComplete
+    expect(top.disabled).toBe(false)
+    actions.mockClear()
+    top.checked = true
+    top.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(actions.mock.calls[0][0].detail).toEqual({type: "setCaption", position: "above"})
+    actions.mockClear()
+    top.checked = false
+    top.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(actions.mock.calls[0][0].detail).toEqual({type: "setCaption", position: "below"})
+    actions.mockClear()
+    buttons[0].click()
+    expect(actions.mock.calls[0][0].detail).toEqual({type: "setCaption", position: "none"})
+    actions.mockClear()
     toolbox.captionPosition = "above"
     toolbox.captionAlignment = "center"
     await toolbox.updateComplete
-    expect(buttons[2].getAttribute("aria-pressed")).toBe("true")
+    expect(top.checked).toBe(true)
+    expect(top.disabled).toBe(false)
+    expect(caption.querySelector<HTMLButtonElement>('[aria-label="Caption above, align center"]')?.getAttribute("aria-pressed")).toBe("true")
     expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to figure"], ribbon-button[label^="Add caption"]')).toBeNull()
   })
 

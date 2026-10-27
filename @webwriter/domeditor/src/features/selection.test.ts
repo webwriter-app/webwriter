@@ -5011,7 +5011,7 @@ describe("selection invariants", () => {
     document.body.innerHTML = '<section><!--keep--><p>Hello world!</p>\n<p><b>Te</b>st!</p>\n<p>After</p></section>'
     const paragraph = document.querySelectorAll("p")[1]
     const text = paragraph.querySelector("b")!.firstChild!
-    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1} as CaretPosition)
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1, getClientRect: () => new DOMRect(0, 20, 50, 20)})
     vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(0, 20, 50, 20)] as unknown as DOMRectList)
     const move = vi.spyOn($, "moveBy")
     const extend = vi.spyOn($, "extendBy")

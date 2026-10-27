@@ -416,7 +416,7 @@ describe("specialized element toolbox", () => {
     await toolbox.updateComplete
     const changes = vi.fn()
     toolbox.addEventListener("widget-option-change", changes)
-    const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('[data-specialized="course-quiz"] .widget-option-checkbox input[type="checkbox"]')!
     input.checked = true
     input.dispatchEvent(new Event("change", {bubbles: true}))
     expect(changes.mock.calls[0][0].detail).toEqual({name: "enabled", value: true,

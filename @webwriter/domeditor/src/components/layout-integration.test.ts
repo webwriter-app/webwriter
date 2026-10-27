@@ -191,10 +191,8 @@ describe("layout host and toolbox integration", () => {
     expect(getComputedStyle(allButtons[0]).flexGrow).toBe("0")
     expect(getComputedStyle(allButtons[6]).flexGrow).toBe("0")
     for(const button of [allButtons[0], allButtons[6]]) {
-      expect(parseFloat(getComputedStyle(button).paddingLeft))
-        .toBeLessThan(parseFloat(getComputedStyle(allButtons[1]).paddingLeft))
-      expect(parseFloat(getComputedStyle(button).paddingRight))
-        .toBeLessThan(parseFloat(getComputedStyle(allButtons[1]).paddingRight))
+      // Happy DOM does not resolve logical padding into its physical sides.
+      expect(getComputedStyle(button).getPropertyValue("padding-inline")).toBe(".1rem")
       expect(getComputedStyle(button).minHeight).toBe(getComputedStyle(allButtons[1]).minHeight)
       const iconStyle = getComputedStyle(button.querySelector("svg")!)
       const placementIconStyle = getComputedStyle(allButtons[1].querySelector("svg")!)

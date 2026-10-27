@@ -210,11 +210,22 @@ const expectedImportMapChecks = [
   "offline bundling leaves out unused modules of side-effect-free packages",
 ]
 let reportResult
+let activeCheck
 const resultPromise = new Promise(resolve => { reportResult = resolve })
 const resultPlugin = {
   name: "native-result",
   configureServer(server) {
     server.middlewares.use((request, response, next) => {
+      if(request.url === "/__native-progress" && request.method === "POST") {
+        let name = ""
+        request.on("data", chunk => { name += chunk })
+        request.on("end", () => {
+          activeCheck = name
+          process.stdout.write(`Running: ${name}\n`)
+          response.end()
+        })
+        return
+      }
       if(request.url?.startsWith("/__webwriter/local-packages/live-fixture/")) {
         const name = request.url.slice("/__webwriter/local-packages/live-fixture/".length).split("?")[0]
         if(!["widget.js", "label.js", "widget.css", "icon.svg"].includes(name)) return next()
@@ -261,7 +272,7 @@ const port = await new Promise((resolve, reject) => {
 const vite = await createServer({
   ...(widgetStateMode || widgetStorageMode ? {logLevel: "silent"} : {}),
   plugins: [resultPlugin],
-  server: {host: "127.0.0.1", port, strictPort: true},
+  server: {host: "127.0.0.1", port, strictPort: true, hmr: false, watch: null},
 })
 const profile = await mkdtemp(join(tmpdir(), "domeditor-native-"))
 if(browserName === "firefox") {
@@ -312,8 +323,10 @@ try {
   }))
   const failedToStart = new Promise(resolve => browser.once("error", error => resolve({error: String(error)})))
   const timedOut = new Promise(resolve => {
-    const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
-    timeout = setTimeout(() => resolve({error: "Native browser timed out"}), timeoutMs)
+    // The full regression suite runs its iframe and layout checks serially.
+    const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000
+      : !smoke && !checkFilter && !performanceMode && !widgetAggregationMode ? 600000 : 30000
+    timeout = setTimeout(() => resolve({error: `Native browser timed out${activeCheck ? ` while running: ${activeCheck}` : ""}`}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)

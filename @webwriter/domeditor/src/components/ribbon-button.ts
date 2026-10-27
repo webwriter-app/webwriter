@@ -2,6 +2,7 @@ import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dro
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
+import {fixedClientX} from "../utility"
 import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
 import "./qr-code"
@@ -1254,19 +1255,20 @@ export class RibbonButton extends LitElement {
         this.showPopoverElement(submenu)
         const row = this.renderRoot.querySelector<HTMLElement>(".button-row")!
         const button = row.getBoundingClientRect()
-        submenu.style.minWidth = `${Math.min(button.width, window.innerWidth - 16)}px`
+        const viewportWidth = this.ownerDocument.documentElement.clientWidth || window.innerWidth
+        submenu.style.minWidth = `${Math.min(button.width, viewportWidth - 16)}px`
         const menu = submenu.getBoundingClientRect()
         const margin = 8
         const left = Math.min(
           Math.max(margin, button.left),
-          Math.max(margin, window.innerWidth - menu.width - margin),
+          Math.max(margin, viewportWidth - menu.width - margin),
         )
         const below = button.bottom - 1
         const opensBelow = below + menu.height <= window.innerHeight - margin
         const top = opensBelow
           ? below
           : Math.max(margin, button.top - menu.height + 1)
-        submenu.style.left = `${left}px`
+        submenu.style.left = `${fixedClientX(left, this.ownerDocument)}px`
         submenu.style.top = `${top}px`
         submenu.focusEditingLabel()
         if(opensBelow || top + menu.height === button.top + 1) {
