@@ -1008,8 +1008,8 @@ export class TransformationFeature extends EditorFeature {
       try { handle.setPointerCapture?.(event.pointerId) }
       catch { this.#finish(true); return false }
     }
-    // Activating a canvas move raises the item even without displacement.
-    if(mode === "move" && this.editor.features.canvas.active && target.parentElement === document.body) {
+    // Activating a canvas or slide move raises the item even without displacement.
+    if(mode === "move" && this.#isFreeformItem(target)) {
       this.moveZ(target, true, true)
     }
     return true
@@ -1505,6 +1505,13 @@ export class TransformationFeature extends EditorFeature {
    * inside nested contexts and widget internals are never renumbered. */
   moveZ(element: TransformElement | null, forward=true, toFrontOrBack=false, cycle=false) {
     if(!element || !this.#canTransform(element) || this.editor.isEditingLocked) return
+    if(this.#isFreeformItem(element)) {
+      const direction = toFrontOrBack ? forward ? "front" : "back"
+        : forward ? "up" : "down"
+      this.editor.features.layout.placeElement(element, direction, cycle && !toFrontOrBack)
+      this.updateInfo()
+      return
+    }
     const container = findStackingContainer(element as HTMLElement)
     const peers = getDescendantsInStackingOrder(container).filter(candidate => {
       if(isDocumentRoot(candidate)) return false

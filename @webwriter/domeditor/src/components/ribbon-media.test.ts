@@ -280,7 +280,7 @@ describe("media ribbon drawer", () => {
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type, attribute: "loop", value: ""}}))
   })
 
-  it("offers a Caption button group below Placement in the media toolbox", async () => {
+  it("offers caption placement and alignment controls below Placement in the media toolbox", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -293,10 +293,16 @@ describe("media ribbon drawer", () => {
     const placement = toolbox.shadowRoot!.querySelector('[aria-label="Placement"]')!
     const caption = toolbox.shadowRoot!.querySelector('[role="group"][aria-label="Caption"]')!
     expect(caption.classList.contains("float-button-group")).toBe(true)
-    expect(placement.nextElementSibling?.textContent).toBe("Caption")
+    const captionLabel = placement.nextElementSibling!
+    expect(captionLabel.classList.contains("caption-label-row")).toBe(true)
+    expect(captionLabel.textContent).toContain("Caption")
+    const top = captionLabel.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(top.closest("label")?.textContent).toBe("Top")
+    expect(top.checked).toBe(false)
+    expect(top.disabled).toBe(true)
     expect(placement.nextElementSibling?.nextElementSibling).toBe(caption)
     const buttons = Array.from(caption.querySelectorAll<HTMLButtonElement>("button"))
-    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No caption", "Caption above, align left", "Caption above, align center", "Caption above, align right", "Caption below, align left", "Caption below, align center", "Caption below, align right"])
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No caption", "Caption below, align left", "Caption below, align center", "Caption below, align right"])
     expect(buttons[0].getAttribute("aria-pressed")).toBe("true")
     expect(buttons[0].querySelector("rect")).not.toBeNull()
     expect(buttons[0].querySelector("line")).toBeNull()
@@ -304,17 +310,35 @@ describe("media ribbon drawer", () => {
     for(const [index, button] of buttons.slice(1).entries()) {
       const line = button.querySelector("line")!
       expect(line.namespaceURI).toBe("http://www.w3.org/2000/svg")
-      expect(line.getAttribute("x1")).toBe(String(6 + index % 3 * 3))
-      expect(line.getAttribute("y1")).toBe(index < 3 ? "3" : "21")
+      expect(line.getAttribute("x1")).toBe(String(6 + index * 3))
+      expect(line.getAttribute("y1")).toBe("21")
       expect(button.querySelector("rect")!.getAttribute("width")).toBe("12")
     }
 
-    buttons[6].click()
+    buttons[3].click()
     expect(actions).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "setCaption", position: "below", alignment: "right"}}))
+    toolbox.captionPosition = "below"
+    toolbox.captionAlignment = "right"
+    await toolbox.updateComplete
+    expect(top.disabled).toBe(false)
+    actions.mockClear()
+    top.checked = true
+    top.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(actions.mock.calls[0][0].detail).toEqual({type: "setCaption", position: "above"})
+    actions.mockClear()
+    top.checked = false
+    top.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(actions.mock.calls[0][0].detail).toEqual({type: "setCaption", position: "below"})
+    actions.mockClear()
+    buttons[0].click()
+    expect(actions.mock.calls[0][0].detail).toEqual({type: "setCaption", position: "none"})
+    actions.mockClear()
     toolbox.captionPosition = "above"
     toolbox.captionAlignment = "center"
     await toolbox.updateComplete
-    expect(buttons[2].getAttribute("aria-pressed")).toBe("true")
+    expect(top.checked).toBe(true)
+    expect(top.disabled).toBe(false)
+    expect(caption.querySelector<HTMLButtonElement>('[aria-label="Caption above, align center"]')?.getAttribute("aria-pressed")).toBe("true")
     expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to figure"], ribbon-button[label^="Add caption"]')).toBeNull()
   })
 
@@ -561,6 +585,25 @@ describe("media ribbon drawer", () => {
 
 
 describe("primary media Source control", () => {
+  it.each(["picture", "img", "audio", "video"] as const)("matches the %s source buttons to the URL field background", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const sources = toolbox.shadowRoot!.querySelectorAll(".media-source")
+    expect(sources).toHaveLength(type === "video" ? 2 : 1)
+    for(const source of sources) {
+      const field = source.querySelector(".media-source-field")!
+      const background = getComputedStyle(field).backgroundColor
+      expect(background).toBe("transparent")
+      for(const control of source.querySelectorAll(".media-source-buttons, .media-source-buttons button")) {
+        expect(getComputedStyle(control).backgroundColor).toBe(background)
+      }
+    }
+  })
+
   it("explains unsupported website URLs without dispatching a change and accepts a corrected HTTPS source", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
@@ -646,6 +689,20 @@ describe("primary media Source control", () => {
 
 
 describe("primary media alternative text", () => {
+  it.each(["picture", "img"] as const)("separates %s alternative text from Language using the standard field spacing", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {alt: "Description"}}
+    toolbox.elementAttributes = {path: [0], localName: type, namespaceURI: "http://www.w3.org/1999/xhtml", name: "Image", attributes: {lang: "en"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector(`ribbon-drawer[data-specialized="${type}"]`)!
+    const alt = drawer.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
+    const attributes = drawer.querySelector("element-attribute-editor")!
+    expect(alt.compareDocumentPosition(attributes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(getComputedStyle(attributes).marginTop).toBe("6.4px")
+  })
+
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("edits %s alternative text in primary options", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
@@ -699,14 +756,15 @@ describe("primary media alternative text", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Source: Source URL"]')!.value).toBe("fallback.ogg")
   })
 
-  it("offers image inputs for video covers and edits only poster", async () => {
+  it("offers image inputs for video covers in advanced options and edits only poster", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.media = {type: "video", attributes: {src: "movie.mp4", poster: "cover.png"}}
     document.body.append(toolbox)
     await toolbox.updateComplete
     const cover = toolbox.shadowRoot!.querySelector('[data-cover="true"]')!
-    expect(cover.closest('[slot="more"]')).toBeNull()
+    expect(cover.closest('[slot="more"]')).not.toBeNull()
+    expect(cover.parentElement!.lastElementChild).toBe(cover)
     expect(cover.querySelector("label")!.textContent).toBe("Cover image")
     const actions = vi.fn()
     const edits = vi.fn()
@@ -717,6 +775,11 @@ describe("primary media alternative text", () => {
       "selected-media-cover-file", "selected-media-cover-capture:screen-image", "selected-media-cover-capture:camera-image",
     ])
     const input = cover.querySelector<HTMLInputElement>("input")!
+    const source = toolbox.shadowRoot!.querySelector<HTMLInputElement>("#media-source-url")!
+    const coverStyle = getComputedStyle(input), sourceStyle = getComputedStyle(source)
+    for(const property of ["background-color", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width", "border-radius", "padding", "height", "font-size", "line-height", "box-shadow"]) {
+      expect(coverStyle.getPropertyValue(property), property).toBe(sourceStyle.getPropertyValue(property))
+    }
     expect(input.value).toBe("cover.png")
     input.value = "new-cover.png"
     input.dispatchEvent(new Event("change", {bubbles: true}))

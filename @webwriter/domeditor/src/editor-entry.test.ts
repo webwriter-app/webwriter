@@ -4,10 +4,17 @@ import {editorFrameControlMessage, initializeEditorMessage} from "./editor-bridg
 import {observeFrameDocument, shouldCaptureFrameShortcut} from "./editor-entry"
 
 const {providerDisconnect} = vi.hoisted(() => ({providerDisconnect: vi.fn()}))
+const {graphicInputState} = vi.hoisted(() => ({graphicInputState: {
+  graphic: {textEditingRange: null as Range | null, focusTextInput: vi.fn()},
+  mark: {isSVGTextSelection: false}, selection: {captureSelectedElement: null as Element | null},
+}}))
 vi.mock("./domeditor", () => ({
   DOMEditor: class {
     doc = {disconnectCollaboration: providerDisconnect}
     features = {
+      graphic: graphicInputState.graphic,
+      mark: graphicInputState.mark,
+      selection: graphicInputState.selection,
       proofreading: {setChecking: vi.fn(), setDocumentChecking: vi.fn(), setDictionary: vi.fn()},
       comment: {setCommentHighlighting: vi.fn()},
     }
@@ -151,6 +158,27 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
   const prints = () => postMessage.mock.calls.map(([message]) => message as {type?: string, action?: string})
     .filter(message => message.type === "editor-frame-shortcut" && message.action === "Print")
   expect(prints()).toHaveLength(4)
+
+  window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "shortcuts", shortcuts: {"editor.undo": "Alt+Shift+1", "document.print": "Ctrl+P"},
+  }}))
+  const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+  document.body.append(graphic)
+  graphicInputState.selection.captureSelectedElement = graphic
+  const shapeShortcut = () => {
+    const event = new KeyboardEvent("keydown", {key: "1", code: "Digit1", altKey: true, shiftKey: true, bubbles: true, cancelable: true})
+    graphic.dispatchEvent(event)
+    return event
+  }
+  const undoCount = () => postMessage.mock.calls.filter(([message]) => message.type === "editor-frame-shortcut" && message.action === "Undo").length
+  const beforeShape = undoCount()
+  expect(shapeShortcut().defaultPrevented).toBe(false)
+  expect(undoCount()).toBe(beforeShape)
+  graphicInputState.mark.isSVGTextSelection = true
+  expect(shapeShortcut().defaultPrevented).toBe(true)
+  expect(undoCount()).toBe(beforeShape + 1)
+  graphicInputState.mark.isSVGTextSelection = false
+  graphicInputState.selection.captureSelectedElement = null
   for(const extra of [{repeat: true}, {isComposing: true}]) {
     const event = new KeyboardEvent("keydown", {key: "p", code: "KeyP", ctrlKey: true,
       bubbles: true, composed: true, cancelable: true, ...extra})
@@ -158,6 +186,19 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
     expect(event.defaultPrevented).toBe(extra.repeat === true)
   }
   expect(prints()).toHaveLength(4)
+
+  const focusBody = vi.spyOn(document.body, "focus")
+  graphicInputState.graphic.textEditingRange = document.createRange()
+  window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "focus",
+  }}))
+  expect(graphicInputState.graphic.focusTextInput).toHaveBeenCalledOnce()
+  expect(focusBody).not.toHaveBeenCalled()
+  graphicInputState.graphic.textEditingRange = null
+  window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "focus",
+  }}))
+  expect(focusBody).toHaveBeenCalledOnce()
 
   window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
     type: editorFrameControlMessage, bridgeNonce: nonce, command: "disconnect-collaboration",

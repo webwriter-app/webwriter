@@ -107,11 +107,13 @@ export class DomEditorToolbox extends EditingControls {
     ${proofreadingCardStyles}
     ${EditingControls.styles}
     .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
-    .media-source .media-source-buttons {border-radius: 4px 4px 0 0;}
+    .specialized-options > .media-source {margin-bottom: 0;}
+    ribbon-drawer:is([data-specialized="picture"], [data-specialized="img"]) > element-attribute-editor {margin-top: .4rem;}
+    .media-source .media-source-buttons {border-radius: 4px 4px 0 0; background: transparent;}
     .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
     .media-source-controls {min-width: 0; border-radius: 4px;}
     .media-source-controls:focus-within {outline: 2px solid #b9d7f5; outline-offset: 0;}
-    .media-source-field input {box-sizing: border-box; flex: 1; width: 0; min-width: 0; height: 100%; border: 0; padding: .3rem .4rem; background: transparent; color: inherit; font: inherit; outline: none; box-shadow: none;}
+    .media-source .media-source-field input {box-sizing: border-box; flex: 1; width: 0; min-width: 0; height: 100%; border: 0; border-radius: 0; padding: .3rem .4rem; background: transparent; color: inherit; font: inherit; outline: none; box-shadow: none;}
     .media-source-field > svg {width: 1rem; height: 1rem; flex: none; margin-left: .35rem;}
     .media-source-field button {display: flex; align-items: center; justify-content: center; flex: none; width: 1.4rem; height: 100%; padding: 0; border: 0; border-radius: 0 0 4px 0; background: transparent; color: inherit; font: inherit; cursor: pointer;}
     .media-source-field button:hover {background: #edf3f9;}
@@ -165,6 +167,13 @@ export class DomEditorToolbox extends EditingControls {
     .layout-action-row {display: flex; flex-wrap: wrap; gap: .25rem}
     .float-action-controls {padding: .4rem 0; gap: .125rem}
     .float-placement-label {font-size: .65rem; color: var(--sl-color-neutral-600, #666)}
+    .float-placement-label > .field-label {justify-content: flex-start}
+    .float-placement-label .field-label .field-clear {margin-left: 0; min-height: 0}
+    .caption-label-row {display: flex; align-items: center; justify-content: space-between; gap: .35rem; margin-top: .4rem}
+    .caption-top {display: inline-flex; align-items: center; gap: .2rem; font: inherit; color: inherit; white-space: nowrap}
+    .caption-top input {width: .7rem; height: .7rem; margin: 0}
+    .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem}
+    .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5; font: .68rem/1.2 system-ui, sans-serif}
     .float-button-group {display: flex; width: 100%; gap: 0}
     .float-button-group button {position: relative; display: grid; place-items: center; flex: 1 1 0; min-width: 0; padding: .35rem; border-width: var(--editor-control-border-width, .5px); border-radius: 0}
     .float-button-group float-info {position: absolute; top: -3px; right: -2px; z-index: 2}
@@ -176,15 +185,12 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
-    .float-button-group[aria-label="Placement"] button {padding-inline: .2rem}
+    .float-button-group[aria-label="Placement"] button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
-    .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, auto)}
+    .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr))}
     .caption-button-group button {min-height: 1.55rem; padding: .1rem .25rem; margin: 0; border-radius: 0}
     .caption-button-group button + button {margin-left: -.5px}
-    .caption-button-group .caption-none {grid-row: 1 / 3; padding: .15rem .1rem; border-radius: .2rem 0 0 .2rem}
-    .caption-button-group button.caption-above-right {border-radius: 0 .2rem 0 0}
-    .caption-button-group button.caption-below-right {border-radius: 0 0 .2rem 0}
-    .caption-button-group [class^="caption-below"] {margin-top: -.5px}
+    .caption-button-group .caption-none {padding: .15rem .1rem; border-radius: .2rem 0 0 .2rem}
 
 
     .history-timeline {
@@ -703,6 +709,8 @@ export class DomEditorToolbox extends EditingControls {
     ${documentLayoutPreviewStyles}
     ${choiceGroupStyles}
 
+    .media-source-buttons button {background: transparent;}
+
     .document-layout-choices {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem;}
     .document-layout-choices .layout-preset {position: relative; aspect-ratio: 2 / 1; min-height: 0; padding: 0; gap: 0; overflow: hidden;}
     .document-layout-choices .document-layout-preview {position: absolute; inset: 0; width: 100%; height: 100%; min-height: 0; border: 0; border-radius: inherit;}
@@ -1168,7 +1176,6 @@ export class DomEditorToolbox extends EditingControls {
         ${this.media.type === "video" && this.media.videoPlaybackWarning ? html`<div class="video-playback-warning" role="status">${this.media.videoPlaybackWarning === "unsupported"
           ? "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."
           : "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."}</div>` : nothing}
-        ${this.media.type === "video" ? this.renderMediaSource(true) : nothing}
         <div class="media-toolbox-controls">
           ${mediaAttributeOptions[this.media.type].filter(option => ["alt", "aria-label"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
@@ -1189,6 +1196,7 @@ export class DomEditorToolbox extends EditingControls {
         ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
         ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
+        ${this.media?.type === "video" && (!group || singleTarget) ? this.renderMediaSource(true) : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
@@ -1437,12 +1445,15 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderElementLayoutControls() {
     const target = this.elementStyle.target
-    if(this.activeTool !== "Edit"
-      || this.documentSelected || target?.documentRoot || ["body", "td", "th"].includes(target?.localName ?? "")) return nothing
+    if(this.activeTool !== "Edit" || this.documentSelected) return nothing
+    if(target?.documentRoot || target?.localName === "body") return this.selectedElementTypes.length
+      ? html`<div class="layout-action-controls float-action-controls">${this.renderAttributionField()}</div>` : nothing
+    if(["td", "th"].includes(target?.localName ?? "")) return nothing
     const float = target?.float ?? floatSideFromStyles(this.elementStyle.computed.float || "none", {
       getPropertyValue: name => this.elementStyle.inline[name]?.value ?? "",
     })
     const captionPosition = this.captionPosition ?? (this.table?.hasCaption ? "above" : this.figure?.hasCaption ? "below" : "none")
+    const captionPlacement = captionPosition === "above" ? "above" : "below"
     const alignment = target?.alignment ?? "center"
     const placements: {side: FloatSide, alignment?: "left" | "center" | "right", label: string}[] = [
       {side: "far-left", label: "Float left"},
@@ -1480,7 +1491,32 @@ export class DomEditorToolbox extends EditingControls {
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "moveFloat", direction: "up"}, bubbles: true, composed: true}))}>${ribbonIcon("ArrowUp")}</button>
           </div>
           ` : nothing}
-          <span class="float-placement-label">Caption</span>
+          ${["canvas", "slides"].includes(this.documentLayout.mode) ? html`
+          <span class="float-placement-label">Placement</span>
+          <div class="float-button-group" role="group" aria-label="Placement">
+            ${([
+              {direction: "front", label: "Move to front", icon: "Bring to front", enabled: target?.placement?.canMoveUp},
+              {direction: "up", label: "Move up", icon: "Bring forward", enabled: target?.placement?.canMoveUp},
+              {direction: "down", label: "Move down", icon: "Send backward", enabled: target?.placement?.canMoveDown},
+              {direction: "back", label: "Move to back", icon: "Send to back", enabled: target?.placement?.canMoveDown},
+            ] as const).map(({direction, label, icon, enabled}) => html`<button type="button" aria-label=${label} title=${label}
+              ?disabled=${!enabled || this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "movePlacement", direction}, bubbles: true, composed: true,
+              }))}>${ribbonIcon(icon)}</button>`)}
+          </div>
+          ` : nothing}
+          <span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
+            () => this.dispatchEvent(new CustomEvent("layout-action", {
+              detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
+            })), undefined, this.historyState.preview !== null || this.htmlPending)}
+            <label class="caption-top"><input type="checkbox" .checked=${captionPosition === "above"}
+              ?disabled=${captionPosition === "none" || this.historyState.preview !== null || this.htmlPending}
+              @change=${(event: Event) => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setCaption", position: (event.currentTarget as HTMLInputElement).checked ? "above" : "below"}, bubbles: true, composed: true,
+              }))}>Top</label>
+          </span>
           <div class="float-button-group caption-button-group" role="group" aria-label="Caption">
             <button type="button" class="caption-none" aria-label="No caption" title="No caption" aria-pressed=${captionPosition === "none"}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
@@ -1488,19 +1524,32 @@ export class DomEditorToolbox extends EditingControls {
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
               }))}>${this.captionIcon("none")}</button>
-            ${(["above", "below"] as const).map(position => (["left", "center", "right"] as const).map(alignment => html`<button type="button"
-              class=${`caption-${position}-${alignment}`}
-              aria-label=${`Caption ${position}, align ${alignment}`} title=${`Caption ${position}, align ${alignment}`}
-              aria-pressed=${captionPosition === position && (this.captionAlignment ?? "left") === alignment}
+            ${(["left", "center", "right"] as const).map(alignment => html`<button type="button"
+              class=${`caption-${captionPlacement}-${alignment}`}
+              aria-label=${`Caption ${captionPlacement}, align ${alignment}`} title=${`Caption ${captionPlacement}, align ${alignment}`}
+              aria-pressed=${captionPosition !== "none" && (this.captionAlignment ?? "left") === alignment}
               ?disabled=${this.historyState.preview !== null || this.htmlPending}
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
-                detail: {type: "setCaption", position, alignment}, bubbles: true, composed: true,
-              }))}>${this.captionIcon(position, alignment)}</button>`))}
+                detail: {type: "setCaption", position: captionPlacement, alignment}, bubbles: true, composed: true,
+              }))}>${this.captionIcon(captionPlacement, alignment)}</button>`)}
           </div>
+          ${this.renderAttributionField()}
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
     `
+  }
+
+  private renderAttributionField() {
+    return html`<div class="attribution-field">
+      <span id="attribution-label" class="float-placement-label">Attribution</span>
+      <button type="button" aria-label="Edit attribution" aria-describedby="attribution-label" aria-haspopup="dialog"
+        ?disabled=${this.historyState.preview !== null || this.htmlPending}
+        @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+        @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+          detail: {type: "openAttribution"}, bubbles: true, composed: true,
+        }))}>Edit…</button>
+    </div>`
   }
 
   private captionIcon(position: "none" | "above" | "below", alignment: "left" | "center" | "right" = "left") {

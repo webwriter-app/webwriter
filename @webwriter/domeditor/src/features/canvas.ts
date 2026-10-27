@@ -35,9 +35,14 @@ export class CanvasFeature extends EditorFeature {
   get active() { return documentLayoutMode() === "canvas" }
   get zoom() { return this.active ? this.viewer?.zoom ?? 1 : 1 }
 
-  private items(): Item[] {
-    return Array.from(document.body.children).filter((el): el is Item =>
-      (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template"))
+  /** Canvas editing uses BODY; finite slide editing uses the visible slide. */
+  get editingRoot() {
+    return this.active ? document.body : this.editor.features.slides.active ? this.editor.features.slides.current() : null
+  }
+
+  items(root: HTMLElement | null = this.editingRoot ?? document.body): Item[] {
+    return Array.from(root?.children ?? []).filter((el): el is Item =>
+      (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template") && !slideLayoutRole(el))
   }
 
   itemAtPoint(x: number, y: number): Item | null {
@@ -297,27 +302,41 @@ export class CanvasFeature extends EditorFeature {
       && !isFormControlInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
   }
 
-  private backgroundInteraction(event: MouseEvent) {
+  private backgroundInteraction(event: MouseEvent, withinSlide = false) {
     const target = event.composedPath()[0]
-    if(target !== document.body && target !== document.documentElement && target !== this.slot) return false
+    const root = this.editingRoot
+    if(!root) return false
+    if(this.active) {
+      if(target !== document.body && target !== document.documentElement && target !== this.slot) return false
+    }
+    else if(target !== root) {
+      // BODY pointer capture can retarget the final click/double click. Grey
+      // margins also clear selection, but text insertion stays on the slide.
+      if(target !== document.body && target !== document.documentElement && target !== root.parentElement) return false
+      if(withinSlide) {
+        const rect = root.getBoundingClientRect()
+        if(event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) return false
+      }
+    }
     return !this.itemAtPoint(event.clientX, event.clientY)
   }
 
   private readonly preventBackgroundSelection = (event: MouseEvent) => {
-    if(!this.active || event.button !== 0 || !this.backgroundInteraction(event)) return
+    if(event.button !== 0 || !this.backgroundInteraction(event)) return
     event.preventDefault()
     event.stopImmediatePropagation()
   }
 
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
-      if(!this.active || !this.ownEvent(event)) return
+      if(!this.editingRoot || !this.ownEvent(event)) return
+      if(!this.active && event.button === 0) this.editor.features.slides.cancelNavigation()
       if(event.button === 0 && !this.hand && !this.spaceHand && this.backgroundInteraction(event)) {
         this.editor.features.selection.beginBoxSelection(event)
         event.stopImmediatePropagation()
         return
       }
-      if(event.button !== 1 && !(event.button === 0 && (this.hand || this.spaceHand))) return
+      if(!this.active || event.button !== 1 && !(event.button === 0 && (this.hand || this.spaceHand))) return
       this.viewer?.startPan(event)
     },
     mousedown: this.preventBackgroundSelection,
@@ -354,22 +373,23 @@ export class CanvasFeature extends EditorFeature {
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
     },
     dblclick: event => {
-      if(!this.active || this.editor.isEditingLocked || !this.backgroundInteraction(event)) return
+      if(this.editor.isEditingLocked || !this.backgroundInteraction(event, true)) return
       event.preventDefault()
       this.insertText({x: event.clientX, y: event.clientY})
     },
   }
 
   private insertText(point: Point) {
-    if(!this.active || this.editor.isEditingLocked) return
-    const world = this.clientPoint(point.x, point.y)
+    const root = this.editingRoot
+    if(!root || this.editor.isEditingLocked) return
+    const world = this.active ? this.clientPoint(point.x, point.y) : this.editor.features.slides.clientPoint(root, point.x, point.y)
     const end = this.editor.doc.beginUndoGroup()
     try {
       const paragraph = document.createElement("p")
       Object.assign(paragraph.style, {position: "absolute", left: `${world.x}px`, top: `${world.y}px`})
-      document.body.append(paragraph)
+      root.append(paragraph)
       $.move(paragraph)
-      this.editor.features.selection.processSelection()
+      this.editor.features.selection.selectDropRange($.range)
     }
     finally { end() }
   }

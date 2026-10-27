@@ -10,6 +10,7 @@ import "./developer-console"
 import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
 import "./shape-keyboard"
+import type {ShapeKeyboard} from "./shape-keyboard"
 import "./link-keyboard"
 import "./guided-tour"
 import type {LinkKeyboard} from "./link-keyboard"
@@ -112,6 +113,8 @@ import {
   historyStateChangeEvent,
   loadWidgetsMessage,
   selectionChangeEvent,
+  shapeKeyboardInputEvent,
+  type ShapeKeyboardInput,
   type ElementStyleMutation,
   type ElementStyleState,
   type SelectedElementTypeState,
@@ -1019,6 +1022,7 @@ export class DomEditor extends LitElement {
     .document-layouts-documents {position: relative; align-self: stretch; margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
     .document-layouts-documents ul {position: absolute; inset: 0; overflow-y: auto; display: grid; grid-auto-rows: 1.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
     .document-layouts-documents li {min-width: 0}
+    .document-layouts-documents li:last-child:nth-child(odd) {grid-column: 1 / -1}
     .document-layout-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
     .document-layout-document svg {width: .9rem; height: .9rem; flex-shrink: 0; color: #526b86}
     .document-layout-document span {overflow: hidden; text-overflow: ellipsis; white-space: nowrap}
@@ -2423,6 +2427,8 @@ export class DomEditor extends LitElement {
   private restoreFrameHitTesting?: () => void
 
   private handleHostWindowBlur = () => {
+    const keyboard = this.renderRoot.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")
+    if(keyboard) keyboard.shifted = false
     // Entering a child frame also blurs the host Window. Check the completed
     // focus change before treating it as a switch to another app/window.
     queueMicrotask(() => {
@@ -2524,6 +2530,13 @@ export class DomEditor extends LitElement {
       // here can collapse it before an asynchronous save-selection arrives.
       this.postFrameControl("focus", {restoreSelection})
       this.savedEditorSelection = null
+      return
+    }
+    const graphic = (this.editorWindow as Window & {editor?: DOMEditor} | null)?.editor?.features.graphic
+    if(graphic?.textEditingRange) {
+      this.savedEditorSelection = null
+      this.editorWindow?.focus()
+      graphic.focusTextInput()
       return
     }
     // Activating designMode can collapse the range established by a command.
@@ -3032,6 +3045,9 @@ export class DomEditor extends LitElement {
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
+    if(event.currentTarget !== this.editorDocument && this.handleHostShapeKey(event)) return
+    if(event.currentTarget === this.editorDocument && this.graphicSelection?.capture && !this.svgText
+      && event.altKey && !event.ctrlKey && !event.metaKey) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => this.settings.shortcuts[candidate.id] === shortcut)
@@ -3053,6 +3069,32 @@ export class DomEditor extends LitElement {
     this.handleRibbonButtonClick(new CustomEvent("ribbon-button-click", {
       detail: {label: command.action},
     }))
+  }
+
+  private readonly handleHostShapeKey = (event: KeyboardEvent) => {
+    if(event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey) return false
+    const keyboard = this.shapeInputKeyboard
+    if(!keyboard || isTextFieldInteraction(event) || !event.composedPath().includes(keyboard) && event.target !== document.body) return false
+    const handled = keyboard.handleInput({
+      type: event.type as ShapeKeyboardInput["type"], key: event.key, code: event.code,
+      altKey: event.altKey, shiftKey: event.shiftKey, capsLock: event.getModifierState("CapsLock"), repeat: event.repeat,
+    })
+    if(handled) { event.preventDefault(); event.stopImmediatePropagation() }
+    return handled
+  }
+
+  private get shapeInputKeyboard() {
+    return this.hasGraphicElementSelection ? null : this.activeShapeKeyboard
+  }
+
+  private get activeShapeKeyboard() {
+    if(!this.graphicSelection?.capture || this.shapeKeyboardHidden || this.previewActive || this.liveSessionActive || this.svgText) return null
+    return this.renderRoot.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")
+  }
+
+  private get hasGraphicElementSelection() {
+    return (this.graphicSelection?.selectionCount ?? 0) > 0 || Boolean(this.graphicSelection?.shape)
+      || this.graphicSelection?.layers?.some(layer => layer.selected) === true
   }
 
   private filePickerWindow() {
@@ -5872,11 +5914,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "setCaption", position: "none" | "above" | "below"}>).detail
-    if(!action || !["setFloat", "moveFloat", "setCaption"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"}>).detail
+    if(!action || !["setFloat", "moveFloat", "movePlacement", "setCaption", "openAttribution"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption"
+    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution"
     void this.execute(topLevel ? {...action, topLevel: true} : action).then(changed => {
       if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
@@ -6319,11 +6361,12 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private handleShapeKeyboardCommand = (event: CustomEvent<{shape: GraphicShapeType, paint: GraphicShapePaint}>) => {
-    if(!this.graphicSelection?.capture || this.previewActive || this.liveSessionActive || !isGraphicShapeType(event.detail?.shape)) return
-    void this.execute({type: "addGraphicShape", shape: event.detail.shape, paint: event.detail.paint})
+  private handleShapeKeyboardCommand = (event: CustomEvent<{shape: GraphicShapeType, paint: GraphicShapePaint, onlyIfUnselected?: boolean}>) => {
+    if(!(event.detail?.onlyIfUnselected ? this.shapeInputKeyboard : this.activeShapeKeyboard) || !isGraphicShapeType(event.detail?.shape)) return
+    void this.execute({type: "addGraphicShape", shape: event.detail.shape, paint: event.detail.paint,
+      ...(event.detail.onlyIfUnselected ? {onlyIfUnselected: true} : {})})
       .catch(() => { /* Concurrent edits may remove the active canvas. */ })
-      .finally(() => this.focusEditor())
+      .finally(() => { if(this.ownerDocument.activeElement !== this.editorIframe()) this.focusEditor() })
   }
 
   private handleShapePaintChange = (event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
@@ -6549,7 +6592,7 @@ export class DomEditor extends LitElement {
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
-      if(element.matches("table, math")) return item
+      if(element.matches("table, math, svg")) return item
 
       const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[]) => {
         Array.from(container.childNodes).forEach((child, index) => {
@@ -6650,6 +6693,8 @@ export class DomEditor extends LitElement {
             ? {alignment: value.target.alignment} : {}),
           ...(typeof value.target.canMoveUp === "boolean" ? {canMoveUp: value.target.canMoveUp} : {}),
           ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
+          ...(isRecord(value.target.placement) && typeof value.target.placement.canMoveUp === "boolean" && typeof value.target.placement.canMoveDown === "boolean"
+            ? {placement: {canMoveUp: value.target.placement.canMoveUp, canMoveDown: value.target.placement.canMoveDown}} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined
@@ -6831,7 +6876,7 @@ export class DomEditor extends LitElement {
       if(!this.isEditorMessage(event) || typeof event.data.action !== "string" || !ribbonInsertionAction(event.data.action)) return
       const position = event.data.position as RibbonDropPosition | undefined
       if(!position || !position.anchor || typeof position.anchor !== "object"
-        || !["document", "canvas", "slides", "graphic"].includes(position.layout)
+        || !["document", "canvas", "slides"].includes(position.layout)
         || position.layout !== "document" && (!Number.isFinite(position.x) || !Number.isFinite(position.y))) return
       void this.insertRibbonDropAction(event.data.action, position)
       return
@@ -6991,6 +7036,15 @@ export class DomEditor extends LitElement {
       }))
       return
     }
+    if(event.data?.type === shapeKeyboardInputEvent) {
+      if(!this.isEditorMessage(event)) return
+      const input = event.data.detail as Partial<ShapeKeyboardInput> | undefined
+      if(input && (input.type === "keydown" || input.type === "keyup") && typeof input.key === "string" && typeof input.code === "string"
+        && typeof input.altKey === "boolean" && typeof input.shiftKey === "boolean" && typeof input.capsLock === "boolean" && typeof input.repeat === "boolean") {
+        this.shapeInputKeyboard?.handleInput(input as ShapeKeyboardInput)
+      }
+      return
+    }
     if(isAIEditReviewMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
       this.routeAIEditReview(event.data.detail)
@@ -7000,10 +7054,9 @@ export class DomEditor extends LitElement {
       if(!this.isEditorMessage(event)) return
       this.svgText = event.data.detail.svgText === true
       this.canMark = event.data.detail.canMark
-      // Markability identifies a text selection. Selection and mark state are
-      // delivered as separate messages, so retire any older node/gap state as
-      // soon as the newer text state arrives.
-      if(this.canMark) {
+      // SVG label text remains inside a captured graphic. Keep its controls
+      // mounted while mark and selection messages arrive independently.
+      if(this.canMark && !this.svgText) {
         this.nodeSelection = false
         this.captureSelection = false
         this.selectionGap = null
@@ -7112,10 +7165,10 @@ export class DomEditor extends LitElement {
       this.nodeSelection = event.data.detail.nodeSelected === true || event.data.detail.capture === true
       this.captureSelection = event.data.detail.capture === true
       this.selectionGap = selectionGap
-      // A node or gap selection cannot simultaneously be a markable text
-      // selection. Clear the independently delivered mark state immediately
-      // so rendering never applies both selection kinds.
-      if(this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection) {
+      // A captured graphic can contain the active SVG text selection. Other
+      // node/gap selections retire the independently delivered mark state.
+      const graphicText = this.svgText && event.data.detail.graphic?.capture
+      if(!graphicText && (this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection)) {
         this.canMark = false
         this.marks = []
         this.markStyles = {}
@@ -7399,6 +7452,7 @@ export class DomEditor extends LitElement {
     this.addEventListener("dragend", this.handleRibbonDragEnd)
     this.addEventListener("contextmenu", this.handleUIContextMenu, true)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
+    document.addEventListener("keyup", this.handleHostShapeKey, true)
     const liveSessionId = this.liveSessionIdFromURL()
     const open = new URL(location.href).searchParams.get("open")
     const reference = open === null ? null : parseDocumentOpenReference(open)
@@ -7479,6 +7533,7 @@ export class DomEditor extends LitElement {
     this.removeEventListener("contextmenu", this.handleUIContextMenu, true)
     this.ribbonDrag = null
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
+    document.removeEventListener("keyup", this.handleHostShapeKey, true)
     this.localPackageManager.disconnect()
     if(this.dirtyTrackingTimer !== undefined) clearTimeout(this.dirtyTrackingTimer)
     this.dirtyTrackingTimer = undefined
@@ -7865,6 +7920,7 @@ export class DomEditor extends LitElement {
             @click=${() => { this.shapeKeyboardHidden = false; this.focusEditor() }}>${ribbonIcon("Graphic")}</button>` : nothing}
           <section class="shape-keyboard-area" aria-label="Shape input" ?hidden=${this.shapeKeyboardHidden}>
             <dom-editor-shape-keyboard .paint=${this.shapePaint} .mode=${this.graphicSelection.mode ?? "select"}
+              .insertionDisabled=${this.svgText} .keyboardInputDisabled=${this.hasGraphicElementSelection}
               @shape-keyboard-command=${this.handleShapeKeyboardCommand}
               @ribbon-button-click=${this.handleRibbonButtonClick}
               @shape-paint-change=${this.handleShapePaintChange}
@@ -7914,7 +7970,6 @@ export class DomEditor extends LitElement {
         @shape-paint-change=${this.handleShapePaintChange}
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
-        .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}

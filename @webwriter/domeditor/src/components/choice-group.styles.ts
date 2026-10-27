@@ -8,7 +8,7 @@ export const choiceGroupStyles = css`
     grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr));
     gap: 1px;
     padding: 0;
-    background: #f2f2f2;
+    background: #f7f7f7;
     min-width: 0;
     border: 1px solid #c5ccd5;
     border-radius: 4px;
@@ -23,7 +23,7 @@ export const choiceGroupStyles = css`
     border: 0;
     border-radius: 0;
     box-shadow: 0 0 0 1px #c5ccd5;
-    background: #f2f2f2;
+    background: #f7f7f7;
     color: inherit;
     cursor: pointer;
   }

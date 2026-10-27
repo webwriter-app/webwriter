@@ -6,6 +6,7 @@ import {sharedDOMBody} from "../domdoc"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {slidesStyles} from "../document-layout"
 import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
+import editorStyleString from "../editor.css?raw"
 
 let editor: DOMEditor
 const head = document.head.cloneNode(true)
@@ -19,8 +20,8 @@ const seed = () => {
   expect(convert("slides")).toBe(true)
   editor.features.slides.actions.addSlide({type: "addSlide"})
   const [one, two] = slides()
-  two.querySelector("h1")!.remove()
-  two.firstElementChild!.textContent = "Second"
+  const paragraph = document.createElement("p"); paragraph.textContent = "Second"
+  two.prepend(paragraph)
   $.move(one.querySelector("p")!.firstChild!, 2)
   return [one, two]
 }
@@ -31,6 +32,169 @@ afterEach(() => {
 })
 
 describe("CSS-only Slides layout", () => {
+  it.each(["slide", "viewport", "body", "html"].flatMap(surface =>
+    ["text", "element", "media", "slide"].map(kind => ({surface, kind}))))("clears $kind selection on a $surface background click without a visible caret", async ({surface, kind}) => {
+    const [slide] = seed(), paragraph = slide.querySelector("p")!
+    vi.spyOn(editor.features.slides, "current").mockReturnValue(slide)
+    const style = document.createElement("style"); style.textContent = editorStyleString; document.head.append(style)
+    if(kind === "text") $.selectRange(paragraph.firstChild!, 1, paragraph.firstChild!, 4)
+    else if(kind === "element") editor.features.selection.selectElement(paragraph)
+    else if(kind === "slide") editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 0]})
+    else {
+      const picture = document.createElement("picture")
+      picture.append(document.createElement("img")); slide.append(picture)
+      editor.features.selection.captureElement(picture)
+    }
+    editor.features.selection.processSelection()
+    vi.spyOn(slide, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 100, 640, 360))
+    const target = surface === "slide" ? slide : surface === "viewport" ? slide.parentElement!
+      : surface === "body" ? document.body : document.documentElement
+    for(const type of ["pointerdown", "pointerup", "click"]) target.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, button: 0, pointerId: 3, clientX: surface === "slide" ? 600 : 20, clientY: surface === "slide" ? 400 : 20,
+    }))
+    await settle()
+    editor.features.selection.processSelection()
+    expect($.selectedElements).toEqual([])
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(editor.features.transformation.target).toBeNull()
+    expect(document.querySelector(".◆element-selected, .◆text-selected, .◆gap-before-selected, .◆gap-after-selected")).toBeNull()
+    expect(slide.classList.contains("◆empty-selected")).toBe(true)
+    expect(getComputedStyle(slide).caretColor).toBe("transparent")
+    expect(getComputedStyle(paragraph).caretColor).toBe("transparent")
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    $.move(paragraph.firstChild!, 2)
+    editor.features.selection.processSelection()
+    expect(slide.classList.contains("◆empty-selected")).toBe(false)
+    expect(getComputedStyle(paragraph).caretColor).not.toBe("transparent")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["caret", "range", "backward", "media"])("retains %s selection when native editing focuses the slide", async kind => {
+    const [slide] = seed()
+    await settle()
+    const paragraph = slide.querySelector("p")!, text = paragraph.firstChild!
+    if(kind === "media") {
+      const picture = document.createElement("picture")
+      picture.append(document.createElement("img")); slide.append(picture)
+      editor.features.selection.captureElement(picture)
+    }
+    else $.selectRange(text, kind === "backward" ? 4 : 1, text, kind === "caret" ? 1 : kind === "backward" ? 1 : 4)
+    const selection = document.getSelection()!, range = selection.getRangeAt(0).cloneRange()
+    const anchor = selection.anchorNode, offset = selection.anchorOffset
+    slide.dispatchEvent(new FocusEvent("focusin", {bubbles: true}))
+    await settle()
+    expect(selection.anchorNode).toBe(anchor)
+    expect(selection.anchorOffset).toBe(offset)
+    expect(selection.getRangeAt(0).startContainer).toBe(range.startContainer)
+    expect(selection.getRangeAt(0).endOffset).toBe(range.endOffset)
+    if(kind === "media") expect(editor.features.selection.captureSelectedElement?.localName).toBe("picture")
+  })
+
+  it("uses the shared canvas text insertion on the current slide at slide zoom", async () => {
+    const [one, two] = seed()
+    vi.spyOn(editor.features.slides, "current").mockReturnValue(two)
+    vi.spyOn(two, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 50, 640, 360))
+    editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
+    editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-out"})
+    const oneHTML = cloneWithoutEditorMarkers(one, true).innerHTML
+    const doubleClick = (target: Element, clientX = 400, clientY = 300) => target.dispatchEvent(new MouseEvent("dblclick", {
+      bubbles: true, cancelable: true, composed: true, clientX, clientY, button: 0,
+    }))
+    doubleClick(one)
+    doubleClick(document.body, 20, 20)
+    expect(two.querySelectorAll("p")).toHaveLength(1)
+    doubleClick(document.body)
+    const added = two.lastElementChild as HTMLElement
+    expect(added.localName).toBe("p")
+    expect(added.style.position).toBe("absolute")
+    expect(parseFloat(added.style.left)).toBeCloseTo(360)
+    expect(parseFloat(added.style.top)).toBeCloseTo(300)
+    expect($.anchor).toBe(added)
+    expect(cloneWithoutEditorMarkers(one, true).innerHTML).toBe(oneHTML)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    await settle()
+  })
+
+  it("ignores slide containers for modifier selection and style/outline highlighting", () => {
+    const [slide] = seed()
+    const text = slide.querySelector("p")!.firstChild!
+    $.move(text, 2)
+    slide.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, ctrlKey: true, metaKey: true}))
+    expect($.selectedElement).not.toBe(slide)
+    editor.features.selection.selectElement(slide)
+    expect($.selectedElement).not.toBe(slide)
+    for(const type of ["hoverNode", "hoverSection"] as const) {
+      editor.features.selection.actions[type]({type, path: [0, 0]} as never)
+      expect(slide.classList.contains("◆element-hovered")).toBe(false)
+    }
+    editor.features.selection.showStyleTargetHover(slide)
+    expect(slide.classList.contains("◆style-target-hovered")).toBe(false)
+    editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 0]})
+    expect($.selectedElement).toBe(slide)
+  })
+
+  it.each(["slide", "viewport", "body", "html"])("box-selects only items on the visible slide from the %s background", surface => {
+    const [one, two] = seed()
+    vi.spyOn(editor.features.slides, "current").mockReturnValue(two)
+    for(const slide of [one, two]) for(const item of Array.from(slide.children)) {
+      vi.spyOn(item, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 60, 60))
+    }
+    const origin = surface === "slide" ? two : surface === "viewport" ? two.parentElement!
+      : surface === "body" ? document.body : document.documentElement
+    vi.spyOn(two, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 1280, 720))
+    const pointer = (type: string, x: number, y: number) => (type === "pointerdown" ? origin : document.body).dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, button: 0, pointerId: 5, clientX: x, clientY: y,
+    }))
+    pointer("pointerdown", 0, 0)
+    pointer("pointermove", 100, 100)
+    expect(editor.features.selection.isInDragSelection).toBe(true)
+    expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(1)
+    expect(two.querySelector("p")!.classList.contains("◆element-selected")).toBe(false)
+    pointer("pointerup", 100, 100)
+    expect($.selectedElements).toEqual([two.querySelector("p")])
+    expect(one.querySelector(".◆element-selected")).toBeNull()
+    expect(two.classList.contains("◆element-selected")).toBe(false)
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="box-selection-preview"]')).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("selects the current slide's contents with the shared Select All command", () => {
+    const [one, two] = seed()
+    vi.spyOn(editor.features.slides, "current").mockReturnValue(two)
+    one.querySelector("p")!.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "a", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true,
+    }))
+    expect(document.getSelection()!.isCollapsed).toBe(false)
+    expect($.anchor).toBe(two)
+    expect($.focus).toBe(two)
+    expect(two.classList.contains("◆element-selected")).toBe(false)
+    expect(document.getSelection()!.toString()).toContain("Second")
+    expect(document.getSelection()!.toString()).not.toContain("First")
+  })
+
+  it.each(["navigate", "remove"])("cancels box selection when its slide changes: %s", operation => {
+    const [one, two] = seed()
+    const current = vi.spyOn(editor.features.slides, "current").mockReturnValue(one)
+    const item = one.querySelector("p")!
+    vi.spyOn(item, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 60, 60))
+    const pointer = (type: string, x: number) => document.body.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, button: 0, pointerId: 5, clientX: x, clientY: x,
+    }))
+    one.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 5}))
+    pointer("pointermove", 100)
+    expect(editor.appendix.querySelector('[part~="box-selection-preview"]')).not.toBeNull()
+    if(operation === "remove") one.remove()
+    current.mockReturnValue(two)
+    pointer("pointerup", 100)
+    expect(editor.features.selection.isInDragSelection).toBe(false)
+    expect(editor.appendix.querySelector('[part="selection-box"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="box-selection-preview"]')).toBeNull()
+    expect(item.classList.contains("◆element-selected")).toBe(false)
+    expect(two.classList.contains("◆element-selected")).toBe(false)
+  })
+
   it("refreshes formula presentation when the slide zoom changes", () => {
     convert("slides")
     const refresh = vi.spyOn(editor.features.math, "refresh")
@@ -228,7 +392,7 @@ describe("CSS-only Slides layout", () => {
     expect(convert("slides")).toBe(true)
     const slide = slides()[0], viewport = slide.parentElement!
     expect(getComputedStyle(viewport).display).toBe("flex")
-    $.move(slide.querySelector("p")!)
+    $.move(slide)
     expect(editor.features.layout.getState()).toBeNull()
     const before = viewport.getAttribute("style")
     expect(editor.features.layout.actions.setFloat({type: "setFloat", side: "left"})).toBe(false)
@@ -240,25 +404,27 @@ describe("CSS-only Slides layout", () => {
     expect(editor.features.layout.getState()).toBeNull()
   })
 
-  it("initializes empty documents and added slides with aligned heading and paragraph boxes", async () => {
-    const original = document.body.firstElementChild!
+  it("initializes empty documents and added slides without text boxes", async () => {
     expect(convert("slides")).toBe(true)
-    expect(slides()[0].querySelector("p")).toBe(original)
     editor.features.slides.actions.addSlide({type: "addSlide"})
+    await settle()
     for(const slide of slides()) {
-      expect(Array.from(slide.children, child => child.localName)).toEqual(["h1", "p", "nav"])
-      const heading = slide.querySelector("h1")!, paragraph = slide.querySelector("p")!
-      expect(heading.style.position).toBe("absolute")
-      expect(paragraph.style.position).toBe("absolute")
-      expect(heading.style.height).toBe("20%")
-      expect(paragraph.style.top).toBe("calc(20% + 2.5rem)")
-      expect(paragraph.style.width).toBe("")
-      expect(paragraph.style.height).toBe("")
+      expect(Array.from(slide.children, child => child.localName)).toEqual(["nav"])
     }
-    expect($.anchor).toBe(slides()[1].querySelector("h1"))
+    expect($.anchor).toBe(slides()[1])
+    expect(editor.features.transformation.target).toBeNull()
     const saved = new DOMParser().parseFromString(await editor.serializeHTML(true), "text/html")
-    expect(saved.querySelector<HTMLElement>("section.ww-slide > p")!.style.height).toBe("")
+    expect(saved.querySelector("section.ww-slide > h1, section.ww-slide > p")).toBeNull()
     expect(saved.body.innerHTML).not.toContain("◆")
+  })
+
+  it("retains explicit selection of a blank slide", async () => {
+    expect(convert("slides")).toBe(true)
+    editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 0]})
+    await settle()
+    expect($.selectedElement).toBe(slides()[0])
+    expect(slides()[0].querySelector("h1, p")).toBeNull()
+    expect(editor.features.transformation.target).toBeNull()
   })
 
   it("positions existing flow content on opening a deck and leaves later authored placements intact", async () => {
@@ -367,7 +533,7 @@ describe("CSS-only Slides layout", () => {
     expect(documentPath.flatMap(item => item.sections ?? []).map(section => section.type)).toEqual(["article"])
   })
 
-  it("selects and hovers the whole slide from its breadcrumb without entering its text", async () => {
+  it("selects the whole slide only explicitly and ignores its hover", async () => {
     const [, two] = seed()
     links()[0].click()
     editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 1]})
@@ -375,11 +541,12 @@ describe("CSS-only Slides layout", () => {
     two.parentElement!.dispatchEvent(new Event("scrollend"))
     await settle()
     expect($.selectedElement).toBe(two)
+    expect(editor.features.transformation.target).toBeNull()
     expect($.isElementSelection).toBe(true)
     expect(editor.features.selection.selectedSectionElement).toBeNull()
     expect(editor.features.selection.selectSectionElement(two)).toBe(false)
     editor.features.selection.actions.hoverNode({type: "hoverNode", path: [0, 1]})
-    expect(two.classList.contains("◆element-hovered")).toBe(true)
+    expect(two.classList.contains("◆element-hovered")).toBe(false)
     editor.features.selection.actions.hoverNode({type: "hoverNode", path: null})
     expect(two.classList.contains("◆element-hovered")).toBe(false)
   })
@@ -444,13 +611,13 @@ describe("CSS-only Slides layout", () => {
     expect($.anchor).toBe(two.firstElementChild)
   })
 
-  it("repairs an initially empty slides document before editing or serialization", () => {
+  it("opens an initially empty slides document without adding text boxes", () => {
     editor.destroy()
     document.body.className = "ww-slides"
     document.body.replaceChildren()
     editor = new DOMEditor()
     expect(slides()).toHaveLength(1)
-    expect(slides()[0].firstElementChild?.matches("p:empty")).toBe(true)
+    expect(slides()[0].querySelector("h1, p")).toBeNull()
     expect(links()).toHaveLength(1)
   })
 
@@ -463,61 +630,63 @@ describe("CSS-only Slides layout", () => {
     expect(original.isConnected).toBe(true)
     expect(original.querySelector("p")?.textContent).toBe("Keep this")
     expect(slides()).toHaveLength(1)
-    expect(slides()[0].firstElementChild?.matches("p:empty")).toBe(true)
+    expect(slides()[0].querySelector("h1, p")).toBeNull()
     expect(links()).toHaveLength(1)
   })
 
-  it("restores an empty slide after command and native deletions while retaining navigation", async () => {
-    const [, two] = seed(), paragraph = two.firstElementChild!, directions = two.querySelector("nav")!
+  it("leaves a slide blank after command and native deletions while retaining navigation", async () => {
+    const [, two] = seed(), paragraph = two.querySelector("p")!, directions = two.querySelector("nav")!
     $.selectElement(paragraph)
     editor.features.manipulation.delete()
-    expect(two.firstElementChild?.matches("p:empty")).toBe(true)
+    expect(two.querySelector("p")).toBeNull()
     expect(two.querySelector("nav")).toBe(directions)
-    expect($.anchor).toBe(two.firstElementChild)
-    two.firstElementChild!.remove()
+    expect($.anchor).toBe(two)
+    const added = document.createElement("p"); added.textContent = "Native edit"; two.prepend(added)
+    $.move(added.firstChild!)
+    added.remove()
     two.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "deleteContentBackward"}))
-    expect(two.firstElementChild?.matches("p:empty")).toBe(true)
     await settle()
-    expect(two.querySelectorAll("p")).toHaveLength(1)
+    expect(two.querySelector("p")).toBeNull()
+    expect(two.querySelector("nav")).toBe(directions)
   })
 
-  it("always retains a slide and a paragraph after removing the last slide, with undo/redo", async () => {
+  it("retains a blank slide after removing the last slide, with undo/redo", async () => {
     document.body.innerHTML = "<p>Original</p>"
     convert("slides")
     const original = slides()[0].id
     editor.doc.syncFromDOM()
     editor.features.slides.actions.removeSlide({type: "removeSlide"})
     expect(slides()).toHaveLength(1)
-    expect(slides()[0].firstElementChild?.matches("p:empty")).toBe(true)
+    expect(slides()[0].querySelector("h1, p")).toBeNull()
     expect(links()).toHaveLength(1)
-    expect($.anchor).toBe(slides()[0].firstElementChild)
+    expect($.anchor).toBe(slides()[0])
     editor.doc.undo(); await settle()
     expect(slides()).toHaveLength(1)
     expect(slides()[0].id).toBe(original)
     expect(slides()[0].firstElementChild?.textContent).toBe("Original")
     editor.doc.redo(); await settle()
     expect(slides()).toHaveLength(1)
-    expect(slides()[0].firstElementChild?.matches("p:empty")).toBe(true)
+    expect(slides()[0].querySelector("h1, p")).toBeNull()
   })
 
-  it("repairs direct DOM and remote deletions without changing other content or selection", async () => {
+  it("keeps direct DOM and remote deletions blank without changing other content or selection", async () => {
     const [one, two] = seed()
     const anchor = $.anchor, offset = $.anchorOffset
     two.replaceChildren(document.createComment("preserve"), document.createTextNode(" \n"))
     await settle()
-    expect(two.firstElementChild?.matches("p:empty")).toBe(true)
+    expect(two.querySelector("p")).toBeNull()
     expect(two.innerHTML).toContain("<!--preserve-->")
     expect($.anchor).toBe(anchor); expect($.anchorOffset).toBe(offset)
     editor.doc.syncFromDOM()
     editor.doc.doc.transact(() => editor.doc.body.delete(0, editor.doc.body.length), "remote-test")
     await settle()
     expect(slides()).toHaveLength(1)
-    expect(slides()[0].firstElementChild?.matches("p:empty")).toBe(true)
+    expect(slides()[0].querySelector("h1, p")).toBeNull()
     expect(links()).toHaveLength(1)
-    expect($.anchor).toBe(slides()[0].firstElementChild)
+    expect($.anchor).toBe(slides()[0])
     expect(one.isConnected).toBe(false)
     const serialized = await editor.serializeHTML(true)
-    expect(serialized).toContain('<p></p>')
+    expect(new DOMParser().parseFromString(serialized, "text/html").querySelector(".ww-slide p")).toBeNull()
     expect(serialized).not.toContain("◆")
   })
 
@@ -730,8 +899,9 @@ describe("CSS-only Slides layout", () => {
     }
   })
 
-  it("preserves the selected empty paragraph when it survives entering Slides", async () => {
+  it("preserves an authored empty paragraph and its selection when entering Slides", async () => {
     const paragraph = document.body.querySelector("p")!
+    paragraph.id = "authored"
     $.move(paragraph)
     expect(convert("slides")).toBe(true)
     await settle()
@@ -745,11 +915,11 @@ describe("CSS-only Slides layout", () => {
     ["canvas", "slides"], ["slides", "document"], ["slides", "canvas"],
   ] as const)("keeps an editable caret when switching an empty %s to %s", async (source, target) => {
     if(source !== "document") expect(convert(source)).toBe(true)
-    const previous = document.body.querySelector("h1, p")!
+    const previous = source === "slides" ? slides()[0] : document.body.querySelector("p")!
     $.move(previous)
     expect(convert(target)).toBe(true)
     await settle()
-    const initial = previous.isConnected ? previous : target === "slides" ? slides()[0].querySelector("h1")! : document.body.querySelector("p")!
+    const initial = previous.isConnected ? previous : target === "slides" ? slides()[0] : document.body.querySelector("p")!
     expect(initial).not.toBeNull()
     expect($.anchor).toBe(initial)
     expect($.anchorOffset).toBe(0)
@@ -760,8 +930,8 @@ describe("CSS-only Slides layout", () => {
     expect(initial.classList.contains("◆element-selected")).toBe(false)
     expect(document.body.classList.contains("◆node-selection-active")).toBe(false)
     expect($.isElementSelection).toBe(false)
-    expect(initial.childNodes).toHaveLength(0)
-    if(target !== "document") expect(editor.features.transformation.target).toBe(initial)
+    expect(initial.childNodes).toHaveLength(target === "slides" ? 1 : 0)
+    if(target !== "document") expect(editor.features.transformation.target).toBe(target === "slides" ? null : initial)
   })
 
   it("starts clean when switching between empty templates, including an empty Canvas", async () => {
@@ -770,8 +940,8 @@ describe("CSS-only Slides layout", () => {
       await settle()
       if(mode === "slides") {
         expect(slides()).toHaveLength(1)
-        expect(Array.from(slides()[0].children, child => child.localName)).toEqual(["h1", "p", "nav"])
-        expect(slides()[0].querySelector("h1")!.textContent).toBe("")
+        expect(Array.from(slides()[0].children, child => child.localName)).toEqual(["nav"])
+        expect(slides()[0].querySelector("h1, p")).toBeNull()
       }
       else {
         expect(Array.from(document.body.children, child => child.localName)).toEqual(["p"])
@@ -782,7 +952,7 @@ describe("CSS-only Slides layout", () => {
     expect(convert("canvas")).toBe(true)
     document.body.replaceChildren()
     expect(convert("slides")).toBe(true)
-    expect(Array.from(slides()[0].children, child => child.localName)).toEqual(["h1", "p", "nav"])
+    expect(Array.from(slides()[0].children, child => child.localName)).toEqual(["nav"])
     editor.features.slides.actions.addSlide({type: "addSlide"})
     expect(convert("document")).toBe(true)
     expect(editor.toHTML(true)).toBe("<p></p>")
@@ -790,6 +960,7 @@ describe("CSS-only Slides layout", () => {
 
   it("resets empty slide text blocks with selection markers on native line breaks", () => {
     expect(convert("slides")).toBe(true)
+    const paragraph = document.createElement("p"); slides()[0].prepend(paragraph)
     for(const item of slides()[0].querySelectorAll("h1, p")) {
       item.innerHTML = '<br class="◆ ◆empty-selected">'
     }

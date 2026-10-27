@@ -1991,7 +1991,7 @@ export abstract class EditingControls extends LitElement {
           ? this.graphicNumberInput("inset", "Corner inset", {min: 0})
           : ""}
         ${this.graphic?.shape === "star"
-          ? this.graphicNumberInput("inner-radius", "Inner radius", {min: 5, max: 90, step: 1})
+          ? this.graphicNumberInput("inner-radius", "Inner radius", {min: 0, max: 90, step: 1})
           : ""}
         ${this.graphic?.shape === "arrow" ? html`
           ${this.graphicNumberInput("head-size", "Head size", {min: 15, max: 80, step: 1})}

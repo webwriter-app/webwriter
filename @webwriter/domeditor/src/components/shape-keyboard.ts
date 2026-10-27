@@ -1,21 +1,42 @@
-import {LitElement, css, html, svg, type PropertyValues} from "lit"
-import {graphicShapeDragType, defaultGraphicShapePaint, graphicShapeIsOpen, graphicShapeOptions, type GraphicShapePaint, type GraphicMode} from "../graphic"
+import {LitElement, css, html, nothing, type PropertyValues} from "lit"
+import {graphicShapeDragType, defaultGraphicShapePaint, graphicShapeIsOpen, graphicShapeOptions, graphicShapeSections, type GraphicShapePaint, type GraphicMode} from "../graphic"
 import {ribbonIcon} from "../ribbon-icons"
 import {themeColorColumns, colorHex} from "../css-color"
+import type {ShapeKeyboardInput} from "../editor-bridge"
 
-const shapePages = ["Basic", "Advanced", "Flowchart"] as const
-const shapePageIcons = {Basic: "Geometry", Advanced: "ArrowBigRight", Flowchart: "ArrowRotaryRight"}
+const shapePages = graphicShapeSections.map(section => section.label)
+const shapePageIcons = {Basic: "Geometry", Advanced: "Graphic", Arrows: "ArrowBigRight", Flowchart: "ArrowRotaryRight"}
 const brushSizes = [1, 2, 4, 8]
+const defaultBrush = {stroke: "#000000", "stroke-width": defaultGraphicShapePaint["stroke-width"], opacity: defaultGraphicShapePaint.opacity}
+// The number row skips Backquote; each displayed row has at most 11 keys.
+const shapeKeyCodes = [
+  ["Backquote", ...Array.from({length: 9}, (_, i) => `Digit${i + 1}`), "Digit0", "Minus"],
+  [...[..."QWERTYUIOP"].map(key => `Key${key}`), "BracketLeft"],
+  [...[..."ASDFGHJKL"].map(key => `Key${key}`), "Semicolon", "Quote"],
+  ["IntlBackslash", ...[..."ZXCVBNM"].map(key => `Key${key}`), "Comma", "Period", "Slash"],
+]
+type ShapeKey = {code: string, key: string}
+type KeyboardLayout = Partial<EventTarget> & {getLayoutMap(): Promise<ReadonlyMap<string, string>>}
+const fallbackKeyRows = () => {
+  const language = navigator.language.toLowerCase()
+  const labels = language.startsWith("de-ch") ? ["§1234567890'", "qwertzuiopü", "asdfghjklöä", "<yxcvbnm,.-"]
+    : language.startsWith("de") ? ["^1234567890ß", "qwertzuiopü", "asdfghjklöä", "<yxcvbnm,.-"]
+      : ["`1234567890-", "qwertyuiop[", "asdfghjkl;'", "<zxcvbnm,./"]
+  return shapeKeyCodes.map((row, index) => row.map((code, column) => ({code, key: labels[index][column]})))
+}
+type ShapeOption = typeof graphicShapeOptions[number]
 type CustomBrush = Pick<Required<GraphicShapePaint>, "stroke" | "stroke-width">
-const shapePage = (category: string) => category === "Flowchart" ? "Flowchart"
-  : ["Lines", "Rectangles", "Basic shapes"].includes(category) ? "Basic" : "Advanced"
 
 /** Insertion paint belongs to the keyboard, independently of selected shapes. */
 export class ShapeKeyboard extends LitElement {
   static properties = {
     activePage: {state: true},
+    shifted: {state: true},
+    keyRows: {state: true},
     paint: {attribute: false},
     mode: {attribute: false},
+    insertionDisabled: {attribute: false},
+    keyboardInputDisabled: {attribute: false},
     customColor: {state: true},
     customWidth: {state: true},
     customBrushes: {state: true},
@@ -61,22 +82,24 @@ export class ShapeKeyboard extends LitElement {
     button[aria-pressed="true"] { color: #fff; border-color: #315f91; background: #315f91; }
     .close { display: grid; place-items: center; width: 2rem; margin-left: auto; flex: 0 0 auto; border: 0; background: transparent; }
     .close svg { width: 1.15rem; height: 1.15rem; }
-    .grid, .drawing-panel { height: calc(4 * 1.54rem + 3 * .25rem); min-height: 0; }
-    .grid {
-      display: grid; grid-template-columns: repeat(auto-fill, 2.42rem);
-      grid-auto-rows: 1.54rem; align-content: start; gap: .25rem;
-      overflow-y: auto;
-    }
-    .key { display: flex; align-items: center; justify-content: center; min-height: 0; padding: 0; }
-    .key svg { display: block; flex: none; width: 1.65rem; height: 1.375rem; overflow: visible; }
+    .grid, .drawing-panel { height: calc(4 * 2.2rem + 3 * .25rem); min-height: 0; }
+    .grid { display: flex; gap: .75rem; }
+    .main-keys { display: grid; flex: 11; min-width: 0; grid-template-rows: repeat(4, minmax(0, 1fr)); gap: .25rem; }
+    .key-row { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: .25rem; }
+    .surplus { display: grid; flex: var(--columns); min-width: 0; grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+      grid-template-rows: repeat(4, minmax(0, 1fr)); grid-auto-flow: column; gap: .25rem; }
+    .key { display: grid; place-items: center; min-height: 0; padding: .15rem .2rem; }
+    .key svg { display: block; grid-area: 1 / 1; width: 2rem; max-width: 100%; height: 1.65rem; }
+    .hint { grid-area: 1 / 1; align-self: start; justify-self: end; color: #667488; font-size: .52rem; line-height: 1; }
     .drawing-panel { display: flex; flex-direction: column; gap: .35rem; }
     .presets { flex: 1; min-height: 0; }
-    .brush-grid { width: 100%; height: 100%; table-layout: fixed; border-spacing: .2rem 0; }
-    .brush-grid .brush { min-height: 0; height: 1.125rem; }
+    .brush-grid { width: 100%; height: 100%; table-layout: fixed; border-spacing: .2rem; }
+    .brush-grid .brush { min-height: 0; height: 100%; }
     .brush-grid .brush svg { height: 1rem; }
     .brush-grid td { padding: 0; }
-    .brush { display: grid; place-items: center; width: 100%; min-height: 1.55rem; padding: 0; }
+    .brush { position: relative; display: grid; place-items: center; width: 100%; min-height: 1.55rem; padding: 0; }
     .brush svg { display: block; width: 100%; height: 1.3rem; }
+    .brush .hint { position: absolute; grid-area: auto; top: 50%; right: .16rem; transform: translateY(-50%); pointer-events: none; }
     .brush[aria-pressed="true"] { background: #e8f0fa; box-shadow: inset 0 0 0 1px #315f91; }
     .brush.light, .brush.light[aria-pressed="true"] { background: #cbd5e1; }
     .brush-footer { display: flex; flex: 0 0 auto; align-items: center; gap: .5rem; min-width: 0; }
@@ -104,21 +127,94 @@ export class ShapeKeyboard extends LitElement {
       .header { gap: .35rem; }
       .tab-label { display: none; }
       .tabs button, .drawing-modes button { width: 2rem; padding-inline: 0; }
+      .key { padding-inline: .08rem; }
     }
 
   `
 
   activePage = "Basic"
+  shifted = false
+  private keyRows: ShapeKey[][] = fallbackKeyRows()
+  private keyboardLayout = (navigator as Navigator & {keyboard?: KeyboardLayout}).keyboard
+  private previewViewBoxes = new Map<string, string>()
   paint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
   mode: GraphicMode = "select"
+  insertionDisabled = false
+  keyboardInputDisabled = false
   customColor = defaultGraphicShapePaint.stroke
   customWidth = defaultGraphicShapePaint["stroke-width"]
   customBrushes: CustomBrush[] = []
   brushDialogOpen = false
 
+  private get displayedPage() { return this.shifted && !this.isDrawingPage(this.activePage) ? "Advanced" : this.activePage }
+  private get shortcutRows() { return this.keyRows.map((row, index) => index === 0 ? row.slice(1) : row) }
+  private get brushShortcutRows() { return this.shortcutRows.map(row => row.slice(0, 10)) }
+  private pageKeys(page: string) {
+    const shapeRows = graphicShapeSections.find(section => section.label === page)?.rows ?? []
+    if(page !== "Basic" && page !== "Arrows") return shapeRows.flat()
+    const rows = this.shortcutRows
+    const surplus: ShapeOption[] = []
+    const keys = rows.flatMap((keys, index): (ShapeOption | undefined)[] => {
+      const row = shapeRows[index] ?? []
+      const capacity = keys.length
+      surplus.push(...row.slice(capacity))
+      return [...row.slice(0, capacity), ...Array<undefined>(Math.max(0, capacity - row.length)).fill(undefined)]
+    })
+    return [...keys, ...surplus]
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.keyboardLayout?.addEventListener?.("layoutchange", this.updateKeyboardLayout)
+    void this.updateKeyboardLayout()
+  }
+
+  private updateKeyboardLayout = async () => {
+    if(!this.keyboardLayout) return
+    try {
+      const layout = await this.keyboardLayout.getLayoutMap()
+      const rows = shapeKeyCodes.map(row => row.flatMap(code => {
+        const key = layout.get(code)
+        return key ? [{code, key}] : []
+      }))
+      if(this.isConnected && rows.every(row => row.length)) this.keyRows = rows
+    }
+    catch { /* Browsers without layout access use the language-based key labels. */ }
+  }
+
+  /** Modifier shortcuts are stable even when a different page was selected by pointer. */
+  handleInput(input: ShapeKeyboardInput) {
+    if(this.insertionDisabled || this.keyboardInputDisabled) return false
+    this.shifted = input.shiftKey || input.capsLock
+    if(input.type !== "keydown" || !input.altKey || this.brushDialogOpen) return false
+    const matches = (key: ShapeKey) => input.code ? key.code === input.code : key.key === input.key.toLowerCase()
+    if(this.isDrawingPage(this.activePage)) {
+      for(const [row, keys] of this.brushShortcutRows.entries()) {
+        const column = keys.findIndex(matches)
+        if(column < 0) continue
+        if(!input.repeat) this.setPaint({stroke: `#${themeColorColumns[column][0]}`, "stroke-width": String(brushSizes[row])}, true)
+        return true
+      }
+      return false
+    }
+    const keys = this.shortcutRows.flat()
+    const index = keys.findIndex(matches)
+    const page = input.shiftKey ? "Advanced" : ["Arrows", "Flowchart"].includes(this.activePage) ? this.activePage : "Basic"
+    const option = index < 0 ? undefined : this.pageKeys(page)[index]
+    if(!option) return false
+    if(!input.repeat) this.insertShape(option.type, true)
+    return true
+  }
+
   protected willUpdate(changed: PropertyValues) {
+    if(changed.has("insertionDisabled") && this.insertionDisabled
+      || changed.has("keyboardInputDisabled") && this.keyboardInputDisabled) this.shifted = false
     if(changed.has("mode")) {
-      if(this.mode !== "select") this.activePage = this.modePage(this.mode)
+      if(this.mode !== "select") {
+        const page = this.modePage(this.mode)
+        if(this.activePage !== page) this.setPaint(defaultBrush)
+        this.activePage = page
+      }
     }
     if(this.brushDialogOpen && (changed.has("mode") && this.mode === "select" || !this.isDrawingPage(this.activePage))) {
       this.closeBrushDialog()
@@ -126,11 +222,14 @@ export class ShapeKeyboard extends LitElement {
   }
 
   render() {
-    const options = graphicShapeOptions.filter(option => shapePage(option.category) === this.activePage)
+    const rows = this.shortcutRows, brushRows = this.brushShortcutRows
+    const options = this.pageKeys(this.displayedPage)
+    const surplus = options.slice(rows.flat().length).filter((option): option is ShapeOption => !!option)
+    let offset = 0
     return html`<section aria-label="Shapes">
       <div class="header">
         <div class="tabs" role="group" aria-label="Shape pages">
-          ${shapePages.map(page => html`<button type="button" aria-label=${page} title=${page} aria-pressed=${String(this.activePage === page)}
+          ${shapePages.map(page => html`<button type="button" aria-label=${page} title=${page} aria-pressed=${String(this.displayedPage === page)}
             @pointerdown=${this.keepSelection} @click=${() => this.selectPage(page)}><span class="tab-icon" aria-hidden="true">${ribbonIcon(shapePageIcons[page])}</span><span class="tab-label">${page}</span></button>`)}
         </div>
         <div class="drawing-modes" role="group" aria-label="Drawing modes">
@@ -145,8 +244,8 @@ export class ShapeKeyboard extends LitElement {
       </div>
       ${this.isDrawingPage(this.activePage) ? html`<div class="drawing-panel" role="group" aria-label=${`${this.modeLabel(this.pageMode(this.activePage))} drawing`}>
         <div class="presets"><table class="brush-grid" aria-label="Brush presets by color and size">
-          <tbody>${brushSizes.map(size => html`<tr>
-            ${themeColorColumns.map(([base]) => html`<td>${this.brushButton({stroke: `#${base}`, "stroke-width": String(size)})}</td>`)}
+          <tbody>${brushSizes.map((size, row) => html`<tr>
+            ${themeColorColumns.map(([base], column) => html`<td>${this.brushButton({stroke: `#${base}`, "stroke-width": String(size)}, false, brushRows[row][column]?.key)}</td>`)}
           </tr>`)}</tbody>
         </table></div>
         <div class="brush-footer"><div class="custom-brushes" role="group" aria-label="Custom brushes">
@@ -160,20 +259,20 @@ export class ShapeKeyboard extends LitElement {
             <output>${Math.round(Number(this.paint.opacity) * 100)}%</output>
           </label>
         </div>
-      </div>` : html`<div class="grid" role="group" aria-label=${this.activePage}>
-        ${options.map(option => html`<button class="key" type="button" draggable="true" title=${option.label} aria-label=${option.label}
-          @pointerdown=${(event: PointerEvent) => { if(event.pointerType !== "mouse") this.keepSelection(event) }}
-          @dragstart=${(event: DragEvent) => this.startDrag(event, option.type)}
-          @click=${() => this.dispatchEvent(new CustomEvent("shape-keyboard-command", {
-            detail: {shape: option.type, paint: {...this.paint}}, bubbles: true, composed: true,
-          }))}>
-          <svg viewBox="-10 -10 120 120" aria-hidden="true" focusable="false">
-            <g fill=${graphicShapeIsOpen(option.type) ? "none" : this.paint.fill} stroke=${this.paint.stroke}
-              stroke-width=${this.paint["stroke-width"]} opacity=${this.paint.opacity} stroke-linejoin="round" fill-rule="evenodd">
-              ${this.preview(option)}
-            </g>
-          </svg>
-        </button>`)}
+      </div>` : html`<div class="grid" role="group" aria-label=${this.displayedPage}>
+        <div class="main-keys">
+          ${rows.map(row => {
+            const start = offset
+            offset += row.length
+            return html`<div class="key-row">
+              ${options.slice(start, offset).map((option, column) => option
+                ? this.shapeButton(option, row[column].key) : html`<span aria-hidden="true"></span>`)}
+            </div>`
+          })}
+        </div>
+        ${surplus.length ? html`<div class="surplus" role="group" aria-label="More shapes" style=${`--columns: ${Math.ceil(surplus.length / 4)}`}>
+          ${surplus.map(option => this.shapeButton(option))}
+        </div>` : nothing}
       </div>`}
     </section>
     ${this.brushDialogOpen ? html`<dialog aria-labelledby="brush-heading" @cancel=${this.closeBrushDialog} @close=${() => this.brushDialogOpen = false}>
@@ -197,15 +296,40 @@ export class ShapeKeyboard extends LitElement {
     </dialog>` : null}`
   }
 
-  private brushButton(brush: CustomBrush, custom = false) {
+  private insertShape(shape: ShapeOption["type"], onlyIfUnselected = false) {
+    if(this.insertionDisabled) return
+    this.dispatchEvent(new CustomEvent("shape-keyboard-command", {
+      detail: {shape, paint: this.insertionPaint(shape), ...(onlyIfUnselected ? {onlyIfUnselected: true} : {})}, bubbles: true, composed: true,
+    }))
+  }
+
+  private shapeButton(option: ShapeOption, key?: string) {
+    const advanced = this.displayedPage === "Advanced"
+    return html`<button class="key" type="button" draggable=${String(!this.insertionDisabled)} ?disabled=${this.insertionDisabled} title=${option.label} aria-label=${option.label}
+      aria-keyshortcuts=${key ? `Alt+${advanced ? "Shift+" : ""}${key}` : nothing}
+      @pointerdown=${(event: PointerEvent) => { if(event.pointerType !== "mouse") this.keepSelection(event) }}
+      @dragstart=${(event: DragEvent) => this.startDrag(event, option.type)} @click=${() => this.insertShape(option.type)}>
+      ${key ? html`<span class="hint" aria-hidden="true">${key}</span>` : nothing}
+      <svg viewBox=${this.previewViewBoxes.get(option.path) ?? "-10 -10 120 120"} aria-hidden="true" focusable="false">
+        <g fill=${graphicShapeIsOpen(option.type) ? "none" : this.paint.fill} stroke=${this.paint.stroke}
+          stroke-width=${Number(this.paint["stroke-width"]) * 1.25} opacity=${this.paint.opacity} stroke-linejoin="round" fill-rule=${option.fillRule}>
+          <path d=${option.path} fill=${option.pathFill === "currentColor" ? this.paint.stroke : "inherit"}></path>
+        </g>
+      </svg>
+    </button>`
+  }
+
+  private brushButton(brush: CustomBrush, custom = false, key?: string) {
     const color = colorHex(brush.stroke) ?? brush.stroke
     const width = brush["stroke-width"]
     return html`<button class="brush ${color === "#ffffff" ? "light" : ""}" type="button"
       aria-label=${`${custom ? "Custom " : ""}${color}, ${width} px brush`} title=${`${color}, ${width} px`}
+      aria-keyshortcuts=${key ? `Alt+${key}` : nothing}
       aria-pressed=${String(this.mode === this.pageMode(this.activePage) && colorHex(this.paint.stroke) === color && Number(this.paint["stroke-width"]) === Number(width))}
       @pointerdown=${this.keepSelection} @click=${() => this.setPaint(brush, true)}>
       <svg viewBox="0 0 80 24" aria-hidden="true"><path d=${custom ? "M 10 12 L 70 12" : "M 28 12 L 52 12"} fill="none" stroke=${color}
         stroke-width=${width} opacity=${this.paint.opacity} stroke-linecap="round" vector-effect="non-scaling-stroke"></path></svg>
+      ${key ? html`<span class="hint" aria-hidden="true">${key}</span>` : nothing}
     </button>`
   }
 
@@ -235,14 +359,18 @@ export class ShapeKeyboard extends LitElement {
   }
 
   disconnectedCallback() {
+    this.keyboardLayout?.removeEventListener?.("layoutchange", this.updateKeyboardLayout)
+    this.shifted = false
     this.closeBrushDialog()
     super.disconnectedCallback()
   }
 
   private selectPage(page: string) {
     const wasDrawing = this.isDrawingPage(this.activePage)
-    this.activePage = page
     const nextMode = this.pageMode(page)
+    if(page !== this.activePage && (wasDrawing || this.isDrawingPage(page))
+      || this.isDrawingPage(page) && this.mode !== nextMode) this.setPaint(defaultBrush)
+    this.activePage = page
     if(wasDrawing === this.isDrawingPage(page) && (!wasDrawing || this.mode === nextMode)) return
     this.dispatchEvent(new CustomEvent("ribbon-button-click", {
       detail: {label: `graphic-mode:${this.isDrawingPage(page) ? nextMode : "select"}`}, bubbles: true, composed: true,
@@ -274,45 +402,46 @@ export class ShapeKeyboard extends LitElement {
     }
   }
 
+  private insertionPaint(shape: ShapeOption["type"]): GraphicShapePaint {
+    const {fill, stroke, ...paint} = this.paint
+    return shape === "text-box" ? paint : {...this.paint}
+  }
+
   private startDrag(event: DragEvent, shape: typeof graphicShapeOptions[number]["type"]) {
+    if(this.insertionDisabled) { event.preventDefault(); return }
     const data = event.dataTransfer
     if(!data) return
-    data.setData(graphicShapeDragType, JSON.stringify({shape, paint: {...this.paint}}))
+    data.setData(graphicShapeDragType, JSON.stringify({shape, paint: this.insertionPaint(shape)}))
     data.effectAllowed = "copy"
     const preview = (event.currentTarget as HTMLElement).querySelector("svg")!
     const bounds = preview.getBoundingClientRect()
     data.setDragImage(preview, bounds.width / 2, bounds.height / 2)
   }
 
-  private preview(option: typeof graphicShapeOptions[number]) {
-    if(option.path) return svg`<path d=${option.path}></path>`
-    switch(option.type) {
-      case "rectangle": return svg`<rect width="100" height="100" rx="5"></rect>`
-      case "ellipse": return svg`<ellipse cx="50" cy="50" rx="50" ry="50"></ellipse>`
-      case "triangle": return svg`<polygon points="50,0 100,100 0,100"></polygon>`
-      case "diamond": return svg`<polygon points="50,0 100,50 50,100 0,50"></polygon>`
-      case "hexagon": return svg`<polygon points="25,0 75,0 100,50 75,100 25,100 0,50"></polygon>`
-      case "star": return svg`<polygon points="50,0 61,35 98,35 68,57 79,92 50,70 21,92 32,57 2,35 39,35"></polygon>`
-      case "arrow": return svg`<polygon points="0,30 60,30 60,0 100,50 60,100 60,70 0,70"></polygon>`
-      case "line": return svg`<path d="M 0 50 L 100 50"></path>`
-      case "connector": return svg`<path d="M 0 0 L 50 0 L 50 100 L 100 100"></path>`
-      case "image": return svg`<rect width="100" height="100"></rect><circle cx="72" cy="25" r="10"></circle><path d="M 0 80 L 30 45 L 60 80 L 80 60 L 100 80" fill="none"></path>`
-    }
-  }
-
   protected updated() {
     const dialog = this.renderRoot.querySelector<HTMLDialogElement>("dialog")
     if(this.brushDialogOpen && dialog && !dialog.open) dialog.showModal()
+    const fitted: {preview: SVGSVGElement, viewBox: string}[] = []
     this.renderRoot.querySelectorAll<SVGSVGElement>(".key svg").forEach(preview => {
       const geometry = preview.querySelector<SVGGElement>("g")!
+      const path = geometry.querySelector("path")!.getAttribute("d")!
+      const cached = this.previewViewBoxes.get(path)
+      if(cached) { fitted.push({preview, viewBox: cached}); return }
       if(!geometry.getBBox) return
       try {
         const bounds = geometry.getBBox()
         const size = Math.max(bounds.width, bounds.height) * 1.2
         if(!Number.isFinite(size) || size <= 0) return
-        preview.setAttribute("viewBox", `${bounds.x + bounds.width / 2 - size / 2} ${bounds.y + bounds.height / 2 - size / 2} ${size} ${size}`)
+        const viewBox = `${bounds.x + bounds.width / 2 - size / 2} ${bounds.y + bounds.height / 2 - size / 2} ${size} ${size}`
+        this.previewViewBoxes.set(path, viewBox)
+        fitted.push({preview, viewBox})
       }
       catch { /* Hidden or detached SVGs may not have measurable geometry. */ }
+    })
+    // Complete geometry reads before changing any viewport. Interleaving these
+    // forces a fresh browser layout for every shape when Shift changes pages.
+    fitted.forEach(({preview, viewBox}) => {
+      if(preview.getAttribute("viewBox") !== viewBox) preview.setAttribute("viewBox", viewBox)
     })
   }
 

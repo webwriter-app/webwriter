@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import {beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
-import {graphicShapeOptions, graphicShapeCategories} from "../graphic"
+import {graphicShapeOptions, graphicShapeSections} from "../graphic"
 import {RibbonDrawer} from "./ribbon-drawer"
+import {ShapeKeyboard} from "./shape-keyboard"
 import type {RibbonMenu} from "./ribbon-menu"
 import {AppRibbon} from "./ribbon"
 import {DomEditorToolbox} from "./toolbox"
@@ -35,11 +36,21 @@ describe("graphic ribbon", () => {
 
   it("offers the requested text and line presets and omits removed shapes", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Lines").map(option => option.type)).toEqual([
-      "text-box", "image", "line", "connector",
+      "text-box", "image", "line", "connector", "line-start-arrow", "line-end-arrow", "line-both-arrows",
     ])
-    expect(graphicShapeOptions.some(option => ["polygon", "not-equal", "multidocument", "line-callout-2", "line-start-arrow", "line-end-arrow", "line-both-arrows"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions.some(option => ["rectangle", "polygon", "right-triangle", "not-equal", "multidocument", "line-callout-2"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions.find(option => option.type === "square-rectangle")).toMatchObject({label: "Rectangle"})
     expect(graphicShapeOptions.find(option => option.type === "image")).toMatchObject({label: "Image", icon: "Image", category: "Lines"})
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
+  })
+
+  it("orders triangles before squares, followed by other polygons and the circle", () => {
+    const shapes = graphicShapeOptions.filter(option => option.category !== "Lines")
+    expect(shapes[0].type).toBe("triangle")
+    expect(shapes.slice(1, 10).every(option => option.category === "Rectangles")).toBe(true)
+    expect(graphicShapeOptions.filter(option => option.category === "Basic shapes").slice(0, 10).map(option => option.type)).toEqual([
+      "parallelogram", "trapezoid", "diamond", "pentagon", "hexagon", "heptagon", "octagon", "decagon", "dodecagon", "ellipse",
+    ])
   })
 
   it("keeps graphic styling and shape insertion in one specialized drawer", async () => {
@@ -235,7 +246,7 @@ describe("graphic ribbon", () => {
 
     expect(listener.mock.calls[0][0].detail).toEqual({label: "element:svg", keepDrawerOpen: false})
     expect(graphic.submenu.filter(item => typeof item === "string" || item.action !== "import-graphic").map(item => typeof item === "string" ? item : item.action)).toEqual(
-      graphicShapeOptions.map(option => `insert-graphic-shape:${option.type}`),
+      graphicShapeSections.flatMap(section => section.rows.flat()).map(option => `insert-graphic-shape:${option.type}`),
     )
     expect(graphic.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!.groups).toHaveLength(0)
     graphic.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!.click()
@@ -244,16 +255,48 @@ describe("graphic ribbon", () => {
     await menu.updateComplete
     expect(menu).toHaveAttribute("gallery")
     const gallery = menu.shadowRoot!.querySelector(".shape-gallery")!
-    expect(gallery.querySelectorAll('[role="separator"]')).toHaveLength(graphicShapeCategories.length - 1)
+    expect(gallery.querySelectorAll('[role="separator"]')).toHaveLength(3)
     expect(gallery.querySelectorAll("h1, h2, h3, h4")).toHaveLength(0)
     expect(gallery.querySelectorAll('button[role="menuitem"]')).toHaveLength(graphicShapeOptions.length + 1)
     const importButton = gallery.querySelector('button[aria-label="Import graphic"]')!
     expect(importButton).toHaveClass("gallery-wide")
-    expect(importButton.nextElementSibling).toHaveAttribute("role", "separator")
+    expect(importButton.nextElementSibling).toHaveAttribute("aria-label", "Rectangle")
+    expect(importButton.nextElementSibling).toHaveClass("gallery-row-start")
     expect(importButton.querySelector(".icon-tabler-upload")).not.toBeNull()
-    expect(gallery.querySelector('button[aria-label="Heart"] path')).not.toBeNull()
-    expect(gallery.querySelector('button[aria-label="Arc"] path')).toHaveAttribute("fill", "none")
+    expect([...gallery.querySelectorAll('button[role="menuitem"]')].slice(0, 8).map(button => button.getAttribute("aria-label"))).toEqual([
+      "Text box", "Image", "Line", "Connector", "Narrow left arrow", "Narrow right arrow", "Narrow left-right arrow", "Import graphic",
+    ])
+    const shapeButtons = [...gallery.querySelectorAll('button[role="menuitem"]')].filter(button => button !== importButton)
+    const ordered = graphicShapeSections.flatMap(section => section.rows.flat())
+    shapeButtons.forEach((button, i) => {
+      expect(button.querySelector(".shape-preview path")).toHaveAttribute("d", ordered[i].path)
+      expect(button.querySelector(".shape-preview path")).toHaveAttribute("fill", ordered[i].pathFill ?? "none")
+    })
+    expect(gallery.querySelector('button[aria-label="Arc"]')).toBeNull()
 
+    const keyboard = new ShapeKeyboard()
+    document.body.append(keyboard)
+    await keyboard.updateComplete
+    const sections: string[][][] = [[]]
+    for(const child of gallery.children) {
+      if(child === importButton) continue
+      if(child.getAttribute("role") === "separator") { sections.push([]); continue }
+      const rows = sections.at(-1)!
+      if(child.classList.contains("gallery-row-start")) rows.push([])
+      rows.at(-1)!.push(child.getAttribute("aria-label")!)
+    }
+    expect(sections.map(rows => rows.map(row => row.length))).toEqual([
+      [7, 11, 11, 11], [11, 11, 11, 11], [10, 7, 10], [11, 11, 5],
+    ])
+    for(const [index, section] of graphicShapeSections.entries()) {
+      keyboard.shadowRoot!.querySelector<HTMLButtonElement>(`.tabs [aria-label="${section.label}"]`)!.click()
+      await keyboard.updateComplete
+      expect(sections[index]).toEqual([...keyboard.shadowRoot!.querySelectorAll(".key-row")]
+        .map(row => [...row.querySelectorAll("button")].map(button => button.getAttribute("aria-label")))
+        .filter(row => row.length))
+    }
+    shapeButtons.find(button => button.getAttribute("aria-label") === "3-point star")!.dispatchEvent(new MouseEvent("click", {bubbles: true}))
+    expect(listener.mock.calls.at(-1)![0].detail).toEqual({label: "insert-graphic-shape:star-3"})
   })
 
   it("opens the shape keyboard only for a captured drawing area", async () => {
@@ -387,6 +430,7 @@ describe("graphic ribbon", () => {
     await ribbon.updateComplete
     let geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Style"] .graphic-geometry-controls')!
     expect(geometry.querySelector('input[aria-label="Graphic: Inner radius"]')).toHaveValue(45)
+    expect(geometry.querySelector('input[aria-label="Graphic: Inner radius"]')).toHaveAttribute("min", "0")
 
     ribbon.graphic = {
       active: true,
@@ -404,13 +448,56 @@ describe("graphic ribbon", () => {
   it("exposes preset adjustments with their actual labels and ranges", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Edit"
-    ribbon.graphic = {active: true, capture: true, selectionCount: 1, shape: "left-up-arrow", parameters: {"adjust-thickness": "0"}}
+    ribbon.graphic = {active: true, capture: true, selectionCount: 1, shape: "left-up-arrow", parameters: {"adjust-shaft": "10"}}
     document.body.append(ribbon)
     await ribbon.updateComplete
-    const field = ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Graphic: Bend thickness"]')!
-    expect(field).toHaveValue(0)
-    expect(field.min).toBe("-10")
-    expect(field.max).toBe("15")
+    const field = ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Graphic: Shaft thickness"]')!
+    expect(field).toHaveValue(10)
+    expect(field.min).toBe("0.5")
+    expect(field.max).toBe("50")
+  })
+
+  it.each([
+    ["rectangular-callout", "adjust-roundness", "Corner roundness"],
+    ["rounded-rectangular-callout", "adjust-roundness", "Corner roundness"],
+    ["oval-callout", "adjust-roundness", "Bubble roundness"],
+    ["cloud-callout", "adjust-frizziness", "Cloud frizziness"],
+    ["line-callout-1", "adjust-roundness", "Corner roundness"],
+    ["line-callout-2", "adjust-roundness", "Corner roundness"],
+  ] as const)("exposes callout geometry controls for %s", async (shape, finalName, finalLabel) => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Edit"
+    ribbon.graphic = {
+      active: true,
+      capture: true,
+      selectionCount: 1,
+      shape,
+      parameters: {
+        "adjust-end-x": "33", "adjust-end-y": "44", [finalName]: "55",
+      },
+    }
+    const listener = vi.fn()
+    ribbon.addEventListener("graphic-parameter-change", listener)
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const geometry = ribbon.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[label="Style"] .graphic-geometry-controls')!
+    const fields = [
+      ["adjust-end-x", "Connector end X", "33"],
+      ["adjust-end-y", "Connector end Y", "44"],
+      [finalName, finalLabel, "55"],
+    ] as const
+    for(const [name, label, initialValue] of fields) {
+      const input = geometry.querySelector<HTMLInputElement>(`input[aria-label="Graphic: ${label}"]`)
+      expect(input).not.toBeNull()
+      expect(input).toHaveValue(Number(initialValue))
+      input!.value = "66"
+      input!.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
+      expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {name, value: "66"}}))
+    }
+    expect(geometry.querySelectorAll(fields.map(([, label]) => `input[aria-label="Graphic: ${label}"]`).join(","))).toHaveLength(3)
+    expect(geometry.querySelector('input[aria-label="Graphic: Connector start X"]')).toBeNull()
+    expect(geometry.querySelector('input[aria-label="Graphic: Connector start Y"]')).toBeNull()
   })
 
   it("maps connector routing and arrowheads into a contextual drawer", async () => {

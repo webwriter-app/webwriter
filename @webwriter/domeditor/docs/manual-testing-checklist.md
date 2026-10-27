@@ -114,7 +114,7 @@
 
 ### SETTINGS
 
-- [ ] Open Settings; toggle Show style toolbox, close/reopen, then restore it.
+- [ ] Open Settings; confirm Show style toolbox is absent and the Style tab remains hidden.
 - [ ] Set default layout to CANVAS; create a new document, then restore DOCUMENT.
 - [ ] Add a word to the local dictionary, then remove the word.
 - [ ] Open Commands; start a shortcut assignment, cancel, and check the original.

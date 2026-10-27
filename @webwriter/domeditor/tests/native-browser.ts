@@ -17,22 +17,60 @@ import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
 import {checkBoardMedia} from "./board-media"
 import {checkParagraphCut} from "./paragraph-cut"
+import {checkGraphicShapeFills} from "./graphic-shape-presets"
+import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
+import {checkGraphicBounds, checkEmptyGraphicLayout} from "./graphic-bounds"
+import {checkGraphicPie} from "./graphic-pie"
+import {checkGraphicChord} from "./graphic-chord"
+import {checkGraphicArrowPOIs} from "./graphic-arrow-pois"
+import {checkGraphicPOIEdges} from "./graphic-poi-edges"
+import {checkGraphicCurvedPOIs} from "./graphic-curved-pois"
+import {checkGraphicSpeechBubbles} from "./graphic-speech-bubbles"
+import {checkGraphicKeyboardDrag} from "./graphic-keyboard-drag"
+import {checkGraphicTextBox} from "./graphic-text-box"
+import {checkGraphicLabels} from "./graphic-labels"
+import {checkGraphicLabelResizePerformance} from "./graphic-label-resize-performance"
+import {checkGraphicEmptyLabelCaret} from "./graphic-empty-label-caret"
+import {checkGraphicText} from "./graphic-text"
+import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
+import {checkSlideEditing} from "./slide-editing"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
 const check = async (name: string, run: () => void | Promise<void>) => {
   const filter = new URLSearchParams(location.search).get("filter")
   if(filter && !name.includes(filter)) return
+  // History and preview checks can replace the document's live nodes.
+  fixture = document.querySelector<HTMLElement>("#fixture")!
   document.querySelector("#status")!.textContent = `Running: ${name}`
+  if(new URLSearchParams(location.search).has("run")) await fetch("/__native-progress", {method: "POST", body: name})
   try { await run(); checks.push({name}) }
   catch(error) { checks.push({name, error: String(error)}) }
 }
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-const fixture = document.querySelector<HTMLElement>("#fixture")!
+let fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
+await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)
+
 await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)
+await check("SVG preset bounding boxes fit their native contours during insertion and editing", checkGraphicBounds)
+await check("SVG empty graphic layout stays stable when the first shape is inserted", checkEmptyGraphicLayout)
+await check("SVG Pie POI sweeps continuously from small slices to a full circle", checkGraphicPie)
+await check("SVG Chord endpoint POIs retain their ellipse through circular edits", checkGraphicChord)
+await check("SVG block arrow POIs independently edit shaft and arrowhead dimensions", checkGraphicArrowPOIs)
+await check("SVG preset POIs stay on their actual contours through adjustments", checkGraphicPOIEdges)
+await check("SVG curved shape POIs follow contours while dragging and undoing", checkGraphicCurvedPOIs)
+await check("SVG speech bubbles attach their connector to the edge facing the tip", checkGraphicSpeechBubbles)
+await check("SVG rotated POI edits keep unedited geometry fixed on screen", checkGraphicPOIRotation)
+await check("shape keyboard drops stay within the captured graphic", checkGraphicKeyboardDrag)
+await check("SVG shape text entry keeps capture and native typing stable", checkGraphicText)
+await check("SVG shape text boxes fit content and wrap while preserving native editing", checkGraphicTextBox)
+await check("SVG shape text labels wrap and shrink within their geometry", checkGraphicLabels)
+await check("SVG shape text resize reuses glyph metrics and preserves undo", async()=>{await checkGraphicLabelResizePerformance()})
+await check("SVG shape text empty label carets stay centered through rotation and zoom", checkGraphicEmptyLabelCaret)
 
 await check("canvas multiline text keeps partial selections after formatting", async () => {
   const frame = document.createElement("iframe")
@@ -955,7 +993,8 @@ await check("Closed AI bar shows status and anchored reply speech bubbles", asyn
     switcher.dispatchEvent(new Event("change", {bubbles: true}))
     await ribbon.updateComplete
     assert(!ribbon.shadowRoot!.querySelector(".ai-bar-reply"), "switching chats resurrects a dismissed reply")
-    assert(!ribbon.shadowRoot!.querySelector(".ai-chat-messages")!.textContent!.includes("Reply for the second chat"), "chat history includes another chat's messages")
+    const firstChat = (ribbon as any).aiChats.find((chat: {id: string}) => chat.id === "chat-1")
+    assert(firstChat && !firstChat.messages.some((message: {content: string}) => message.content.includes("Reply for the second chat")), "chat history includes another chat's messages")
   }
   finally {ribbon.remove()}
 })
@@ -1444,6 +1483,12 @@ await check("standalone SVG arrowheads remain visible in canvas previews and exp
       Object.assign(graphic.style, {position: "absolute", left: "50px", top: `${80 + index * 100}px`, rotate: "5deg"})
       doc.body.append(graphic)
     }
+    await layoutFrame()
+    for(const graphic of doc.querySelectorAll("svg")) {
+      const matrix = graphic.querySelector("polyline")!.getScreenCTM()!
+      assert(Math.abs(Math.hypot(matrix.a, matrix.b) - Math.hypot(matrix.c, matrix.d)) < .001,
+        "minimum editing dimensions distort narrow arrowheads")
+    }
     const saved = editor.toHTML()
     const preview = previewFrameHTML(new DOMParser().parseFromString(saved, "text/html"), {
       bridgeNonce: "arrow-preview", hostOrigin: location.origin, frameOrigin: location.origin,
@@ -1456,10 +1501,10 @@ await check("standalone SVG arrowheads remain visible in canvas previews and exp
       const loaded = new Promise<void>(resolve => reader.addEventListener("load", () => resolve(), {once: true}))
       reader.srcdoc = html; fixture.append(reader); await loaded; await layoutFrame()
       for(const graphic of reader.contentDocument!.querySelectorAll("svg")) {
-        const line = graphic.querySelector("line")!, marker = graphic.querySelector("marker")!
+        const line = graphic.querySelector("polyline")!, marker = graphic.querySelector("marker")!
         assert(line && marker, "reader lost an arrow or its definition")
-        assert(Number(marker.getAttribute("markerHeight")) * Number(line.getAttribute("stroke-width")) > graphic.height.baseVal.value,
-          "fixture no longer has arrowheads extending outside its fitted viewport")
+        assert(Number(marker.getAttribute("markerHeight")) * Number(line.getAttribute("stroke-width")) <= graphic.height.baseVal.value,
+          "standalone viewport excludes the arrowheads")
         assert(reader.contentWindow!.getComputedStyle(graphic).overflow === "visible", "document theme clips arrowheads to the line's thin viewport")
       }
     }
@@ -2311,28 +2356,20 @@ await check("whitespace beside a lone floated figure selects document start", as
       doc.getSelection()!.setBaseAndExtent(doc.body, 0, doc.body, 1)
       frameEditor.features.selection.processSelection(undefined, {scrollIntoView: false})
       assert(frameEditor.features.manipulation.setFloat(figure, side === "left" ? "far-left" : "far-right"), "could not float the figure")
+      const paragraph = figure.nextElementSibling as HTMLParagraphElement
+      assert(paragraph?.localName === "p" && paragraph.textContent === "", "floating the only top-level item did not create an empty paragraph")
       await layoutFrame()
       const x = side === "left" ? 1300 : 30, y = 150
       const event = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 21, clientX: x, clientY: y})
       doc.body.dispatchEvent(event)
-      assert(event.defaultPrevented, `native caret hit testing still owns the outside click: float=${view.getComputedStyle(figure).float}, selection=${doc.getSelection()!.anchorNode?.nodeName}@${doc.getSelection()!.anchorOffset}, hits=${doc.elementsFromPoint(x, y).map(el => el.localName).join(",")}`)
       doc.body.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 21, clientX: x, clientY: y}))
       await layoutFrame()
-      assert(doc.getSelection()!.isCollapsed && doc.getSelection()!.anchorNode === doc.body && doc.getSelection()!.anchorOffset === 0,
-        "whitespace click did not select document start")
-      const caret = frameEditor.features.selection.emptyDocumentCaret!
-      assert(caret && view.getComputedStyle(caret).display !== "none", "document-start caret is hidden")
-      await layoutFrame()
-      const caretRect = caret.getBoundingClientRect(), bodyRect = doc.body.getBoundingClientRect()
-      const bodyStyle = view.getComputedStyle(doc.body)
-      const contentLeft = bodyStyle.direction === "rtl"
-        ? bodyRect.right - (parseFloat(bodyStyle.borderRightWidth) || 0) - (parseFloat(bodyStyle.paddingRight) || 0)
-        : bodyRect.left + (parseFloat(bodyStyle.borderLeftWidth) || 0) + (parseFloat(bodyStyle.paddingLeft) || 0)
-      const contentTop = bodyRect.top + (parseFloat(bodyStyle.borderTopWidth) || 0) + (parseFloat(bodyStyle.paddingTop) || 0)
-      assert(Math.abs(caretRect.left - contentLeft) < 1 && Math.abs(caretRect.top - contentTop) < 1,
-        `document-start caret is outside the content edge: caret=${caretRect.left},${caretRect.top}; content=${contentLeft},${contentTop}`)
-      doc.body.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Start"}))
-      assert(figure.nextElementSibling?.textContent === "Start", "typing in empty document flow did not create a paragraph after the float")
+      assert(doc.getSelection()!.isCollapsed && doc.getSelection()!.anchorNode === paragraph && doc.getSelection()!.anchorOffset === 0,
+        "whitespace click did not place the native caret in the empty paragraph")
+      const beforeInput = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Start"})
+      paragraph.dispatchEvent(beforeInput)
+      if(!beforeInput.defaultPrevented) doc.execCommand("insertText", false, "Start")
+      assert(paragraph.textContent === "Start", `typing at the paragraph caret did not insert text after the float: body=${doc.body.innerHTML}, selection=${doc.getSelection()!.anchorNode?.nodeName}@${doc.getSelection()!.anchorOffset}`)
       assert(figure.querySelector("figcaption")!.textContent === "Keep", "typing replaced the figure caption")
     }
   }
@@ -2809,8 +2846,9 @@ await check("empty media controls wrap to fit their element", async () => {
       const buttons = placeholder.root.querySelector(".file-options")!.getBoundingClientRect()
       const url = placeholder.root.querySelector(".url-row")!.getBoundingClientRect()
       const host = placeholder.element.getBoundingClientRect()
-      assert(width < 800 ? url.top >= buttons.bottom : Math.abs(url.top - buttons.top) < 2,
-        `URL input did not ${width < 800 ? "wrap" : "return to the first row"} at ${width}px`)
+      const wraps = host.width < buttons.width + 340 // 20rem URL basis, the separator, and flex gaps
+      assert(wraps ? url.top >= buttons.bottom : Math.abs(url.top - buttons.top) < 2,
+        `URL input did not ${wraps ? "wrap" : "fit beside the buttons"} at ${width}px: ${JSON.stringify({host: host.toJSON(), buttons: buttons.toJSON(), url: url.toJSON()})}`)
       assert(url.left >= host.left && url.right <= host.right && buttons.left >= host.left && buttons.right <= host.right,
         `media controls overflow at ${width}px`)
       assert(url.width > buttons.width || width === 120, "wrapped URL input does not use the available width")
@@ -2845,7 +2883,7 @@ await check("empty media controls wrap to fit their element", async () => {
                 `${type} icon button is clipped at ${width}x${height}`)
             }
             const labels = placeholder.root.querySelectorAll<HTMLElement>(".file-options button:not([hidden]) .label")
-            assert(Array.from(labels).every(label => getComputedStyle(label).display === (width <= 800 ? "none" : "block")),
+            assert(Array.from(labels).every(label => getComputedStyle(label).display === (host.width <= 832 ? "none" : "block")),
               `button labels did not yield before the URL at ${width}x${height}`)
           }
         }
@@ -3174,6 +3212,45 @@ await check("attribution is limited to top-level elements and follows nesting", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("toolbox attribution opens for multiple elements and deletes metadata together", async () => {
+  const {DomEditorToolbox} = await import("../src/components/toolbox")
+  const frame = document.createElement("iframe"), toolbox = new DomEditorToolbox()
+  frame.style.cssText = "width:900px;height:600px;border:0"
+  frame.srcdoc = '<!doctype html><body><p>First</p><p>Second</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  toolbox.style.width = "220px"
+  fixture.append(frame, toolbox)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "toolbox attribution fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, elements = Array.from(doc.querySelectorAll("p"))
+    doc.getSelection()!.setBaseAndExtent(elements[0].firstChild!, 0, elements[1].firstChild!, 6)
+    toolbox.activeTool = "Edit"
+    toolbox.elementStyle = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true})
+    toolbox.selectedElementTypes = editor.features.manipulation.getSelectedElementTypes()
+    toolbox.addEventListener("layout-action", () => editor.features.attribution.actions.openAttribution({type: "openAttribution"}))
+    await toolbox.updateComplete
+    const ui = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui")!, popup = ui.querySelector<HTMLElement>(".popup")!
+    editor.addAppendix(doc.createElement("div"))
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Edit attribution"]')!.click()
+    await layoutFrame()
+    assert(!popup.hidden && popup.matches(":popover-open") && view.getComputedStyle(popup).display !== "none", "toolbox attribution did not remain visible")
+    assert(popup.querySelector(".selection-summary")!.textContent!.includes("2 elements"), "dialog lost the multiple selection")
+    const remove = popup.querySelector<HTMLButtonElement>(".delete")!, save = popup.querySelector<HTMLButtonElement>(".save")!
+    const removeBox = remove.getBoundingClientRect(), saveBox = save.getBoundingClientRect()
+    assert(removeBox.left < saveBox.left && Math.abs(removeBox.bottom - saveBox.bottom) < 1, "Delete and Save are not aligned at the bottom left and right")
+    popup.querySelector<HTMLInputElement>('input[name="name"]')!.value = "Shared author"
+    save.click()
+    assert(elements.every(element => element.getAttribute(attributionAttributes.name) === "Shared author"), "attribution was not saved to every selected element")
+    doc.getSelection()!.setBaseAndExtent(elements[0].firstChild!, 0, elements[1].firstChild!, 6)
+    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Edit attribution"]')!.click()
+    remove.click()
+    assert(elements.every(element => !element.hasAttribute(attributionAttributes.name)), "Delete did not remove every selected attribution")
+    assert(!editor.toHTML(true).includes("◆attribution-ui"), "attribution controls leaked into authored HTML")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove(); toolbox.remove() }
+})
+
 await check("attribution inputs keep visible carets during element and capture selection", async () => {
   const paragraph = document.createElement("p")
   paragraph.textContent = "Attributed element"
@@ -3204,7 +3281,7 @@ await check("attribution inputs keep visible carets during element and capture s
       await picker.updateComplete
       const controls = [popup.querySelector<HTMLInputElement>('input[name="name"]')!, popup.querySelector<HTMLInputElement>('input[name="year"]')!,
         picker.shadowRoot!.querySelector<HTMLInputElement>("input")!, popup.querySelector<HTMLInputElement>('input[name="contact"]')!,
-        popup.querySelector<HTMLButtonElement>(".save")!, popup.querySelector<HTMLButtonElement>(".close")!]
+        popup.querySelector<HTMLButtonElement>(".delete")!, popup.querySelector<HTMLButtonElement>(".save")!, popup.querySelector<HTMLButtonElement>(".close")!]
       controls[0].focus()
       for(const shiftKey of [false, true]) {
         for(let step = 0; step < controls.length; step++) {
@@ -3326,8 +3403,13 @@ await check("new paragraphs and line breaks reveal the caret at the document end
         document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey, bubbles: true, cancelable: true}))
         await layoutFrame()
         const selection = document.getSelection()!
-        const rect = caretRect(selection.focusNode!, selection.focusOffset)
         const margin = 1.25 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+        let rect = caretRect(selection.focusNode!, selection.focusOffset)
+        // Selection scrolling uses smooth motion; wait for its visible result.
+        for(let attempt = 0; attempt < 60 && (rect.top < margin - 1 || rect.bottom > window.innerHeight - margin + 1); attempt++) {
+          await nextFrame()
+          rect = caretRect(selection.focusNode!, selection.focusOffset)
+        }
         assert(rect.height > 0 && rect.top >= margin - 1 && rect.bottom <= window.innerHeight - margin + 1,
           `caret outside viewport after Enter (shift: ${shiftKey}): ${rect.top}–${rect.bottom}`)
       }
@@ -3728,8 +3810,8 @@ await check("inline formula edges use text selections and block formula edges us
   for(const display of ["inline", "block"]) {
     math.setAttribute("display", display)
     await layoutFrame()
-    const rect = math.getBoundingClientRect()
     for(const after of [false, true]) {
+      const rect = math.getBoundingClientRect()
       const x = display === "block" ? rect.left + rect.width / 2 : after ? rect.right - 1 : rect.left + 1
       const y = display === "block" ? after ? rect.bottom - 1 : rect.top + 1 : rect.top + rect.height / 2
       math.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 8, clientX: x, clientY: y}))
@@ -4083,7 +4165,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
   paragraph.innerHTML = '<b>before</b><!--keep--><i>after</i>'
   fixture.append(paragraph)
   try {
-    paragraph.scrollIntoView()
+    paragraph.scrollIntoView({block: "center", behavior: "instant"})
     await layoutFrame()
     const before = paragraph.querySelector("b")!.firstChild!, after = paragraph.querySelector("i")!.firstChild!
     const range = document.createRange()
@@ -4092,7 +4174,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
       const rect = range.getBoundingClientRect()
       return {clientX: rect.left, clientY: rect.top + rect.height / 2}
     }
-    const start = point(before), end = point(after)
+    let start = point(before), end = point(after)
     const touch = (type: string, coordinates = start) => {
       const event = new PointerEvent(type, {bubbles: true, composed: true, cancelable: true,
         button: 0, pointerId: 71, pointerType: "touch", isPrimary: true, ...coordinates})
@@ -4107,6 +4189,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     touch("pointerup")
     assert($.anchor === before && $.anchorOffset === 2 && $.isEmpty, "touch tap did not place the caret at the hit-tested point")
     for(let tap = 0; tap < 2; tap++) {
+      start = point(before)
       touch("pointerdown"); touch("pointerup")
       await layoutFrame()
       const caret = editor.features.selection.selectionCaret!
@@ -4114,6 +4197,7 @@ await check("touch caret and ranges use shared pointer selection", async () => {
         && caret.getBoundingClientRect().height > 0, `touch release hid the shared text caret: ${caret?.getAttribute("part")}, ${caret && getComputedStyle(caret).display}, ${caret?.getBoundingClientRect().height}, focus ${document.activeElement?.localName}`)
       assert(caret.getRootNode() === editor.appendix && !editor.toHTML(true).includes("◆touch-caret-visible"), "touch caret leaked into authored HTML")
     }
+    start = point(before); end = point(after)
     touch("pointerdown")
     touch("pointermove", end)
     touch("pointerup", end)
@@ -4123,11 +4207,13 @@ await check("touch caret and ranges use shared pointer selection", async () => {
       event, x: coordinates.clientX, y: coordinates.clientY, pointerId: 72, buttons: event === "pointerup" ? 0 : 1,
     })
     for(let tap = 0; tap < 2; tap++) {
+      start = point(before)
       relay("pointerdown"); relay("pointerup")
       await layoutFrame()
       assert($.anchor === before && $.anchorOffset === 2 && $.isEmpty
         && document.body.classList.contains("◆touch-caret-visible"), "relayed touch tap lost the shared caret")
     }
+    start = point(before); end = point(after)
     relay("pointerdown"); relay("pointermove", end); relay("pointerup", end)
     assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2
       && !editor.features.selection.isInDragSelection, "relayed touch did not retain and clean up the shared range")
@@ -4337,6 +4423,7 @@ await check("node drag borders leave native text and table editing reachable", a
     try {
       $.selectElement(element)
       editor.features.selection.processSelection()
+      element.scrollIntoView({block: "center", behavior: "instant"})
       await layoutFrame()
       const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
       assert(surface?.draggable, "selected flow content lost native dragging")
@@ -4550,13 +4637,15 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
       assert(row.dataset.connected === (options.variant === "tab" ? "above" : "below"), `${options.variant}: wrong placement`)
       assert(menu.matches(":popover-open"), "menu left the browser's top layer")
       assert(Math.abs((above ? popup.bottom - box.top : box.bottom - popup.top) - 1) < .01, "trigger and menu do not share exactly one border pixel")
-      assert(popup.width >= box.width && popup.left >= 8 && popup.right <= window.innerWidth - 8, "menu does not contain its trigger within the viewport")
+      assert(popup.width >= box.width && popup.left >= 8 && popup.right <= document.documentElement.clientWidth - 8, "menu does not contain its trigger within the viewport")
       const style = getComputedStyle(row), surface = getComputedStyle(menu.shadowRoot!.querySelector<HTMLElement>(".menu")!)
       assert(style.backgroundColor === surface.backgroundColor && style.backgroundColor === "rgb(255, 255, 255)", "open trigger does not match the menu's white background")
       assert(style.opacity === "1", "muted trigger makes the joined border translucent")
       assert(style.borderLeftColor === surface.borderLeftColor && style.boxShadow === "none", "trigger's border does not match its menu")
       assert(parseFloat(getComputedStyle(menu, "::before").width) === box.width - 2, "shared border mask does not match trigger interior")
-      assert(parseFloat(menu.style.getPropertyValue("--ribbon-menu-join-left")) === box.left - popup.left + 1, "shared border mask is not aligned with the trigger")
+      const joinLeft = parseFloat(menu.style.getPropertyValue("--ribbon-menu-join-left"))
+      assert(Math.abs(joinLeft - (box.left - popup.left + 1)) < 1,
+        `shared border mask is not aligned with the trigger: ${JSON.stringify({joinLeft, triggerLeft: box.left, popupLeft: popup.left, expected: box.left - popup.left + 1})}`)
       const corners = above ? [surface.borderBottomLeftRadius, surface.borderBottomRightRadius] : [surface.borderTopLeftRadius, surface.borderTopRightRadius]
       if(popup.left === box.left) assert(corners[0] === "0px", "joined left corner retains a rounded gap")
       if(popup.right === box.right) assert(corners[1] === "0px", "joined right corner retains a rounded gap")
@@ -4565,6 +4654,47 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
       assert(!row.hasAttribute("data-connected") && menu.hidden && !menu.matches(":popover-open"), "closing the menu retains connected styling")
     }
     finally { button.remove() }
+  }
+})
+
+await check("shape ribbon galleries scroll only when the viewport cannot fit their contents", async () => {
+  for(const height of [1000,620]) {
+    const frame=document.createElement("iframe")
+    frame.style.cssText=`width:1600px;height:${height}px;border:0;max-width:none`
+    frame.srcdoc='<!doctype html><style>body{margin:16px;font:16px system-ui}</style><app-ribbon></app-ribbon><script type="module" src="/src/components/ribbon.ts"></script>'
+    document.body.append(frame)
+    const view=frame.contentWindow as Window & typeof globalThis
+    try {
+      for(let attempt=0;!view.customElements.get("app-ribbon") && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
+      assert(view.customElements.get("app-ribbon"),"Shape gallery fixture did not initialize")
+      const doc=frame.contentDocument!
+      const ribbon=doc.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
+      ribbon.activeMenu="Start"
+      await ribbon.updateComplete
+      let graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      await graphic.updateComplete
+      await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
+      graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      await graphic.updateComplete
+      graphic.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!.click()
+      await graphic.updateComplete
+      const menu=graphic.shadowRoot!.querySelector<import("../src/components/ribbon-menu").RibbonMenu>("ribbon-menu")!
+      await menu.updateComplete
+      await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
+      const surface=menu.shadowRoot!.querySelector<HTMLElement>(".menu")!,bounds=menu.getBoundingClientRect()
+      assert(bounds.top>=7.9 && bounds.bottom<=height-7.9,`${height}: shape gallery leaves the viewport`)
+      assert(surface.scrollWidth<=surface.clientWidth+1,`${height}: shape gallery scrolls horizontally`)
+      if(height===1000) assert(surface.scrollHeight<=surface.clientHeight+1,"Shape gallery scrolls despite having enough vertical space")
+      else {
+        assert(surface.scrollHeight>surface.clientHeight+1,"Shape gallery does not scroll in a short viewport")
+        const items=surface.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
+        items[items.length-1].focus()
+        const last=items[items.length-1].getBoundingClientRect(),visible=surface.getBoundingClientRect()
+        assert(last.bottom<=visible.bottom && last.top>=visible.top,"Final shape is not reachable in the short gallery")
+      }
+      assert(menu.shadowRoot!.querySelectorAll('[role="separator"]').length===3,"Gallery section dividers changed")
+    }
+    finally {frame.remove()}
   }
 })
 
@@ -4949,7 +5079,18 @@ await check("ribbon shapes retain their aspect ratio under the document theme", 
         await layoutFrame()
         const rect = graphic.getBoundingClientRect()
         const width = Number(graphic.getAttribute("width")), height = Number(graphic.getAttribute("height"))
-        assert(Math.abs(rect.width - width) < 1 && Math.abs(rect.height - height) < 1,
+        if(shape === "line") {
+          // The editor gives flat shapes a 32px minimum editing viewport. The
+          // line keeps its authored viewBox dimensions and fits uniformly in
+          // that taller viewport instead of being stretched to fill it.
+          const matrix = graphic.getScreenCTM()!
+          const scaleX = Math.hypot(matrix.a, matrix.b), scaleY = Math.hypot(matrix.c, matrix.d)
+          assert(rect.width >= width - 1 && rect.height >= 32
+            && Math.abs(scaleX - scaleY) < .01
+            && graphic.getAttribute("preserveAspectRatio") === "xMidYMid meet",
+          `line did not preserve its aspect ratio in the minimum editing viewport (${width} × ${height} → ${rect.width} × ${rect.height})`)
+        }
+        else assert(Math.abs(rect.width - width) < 1 && Math.abs(rect.height - height) < 1,
           `${shape} stretched from ${width} × ${height} to ${rect.width} × ${rect.height}`)
       }
       finally { graphic.remove() }
@@ -4968,6 +5109,7 @@ await check("standalone SVG affordances refit rotated elements and resize beyond
   const graphic = fixture.querySelector<SVGSVGElement>("svg")!
   assert(graphic, "standalone SVG was not inserted")
   Object.assign(graphic.style, {left: "200px", top: "200px", rotate: "30deg"})
+  const authoredPosition = {position: graphic.style.position, left: graphic.style.left, top: graphic.style.top, rotate: graphic.style.rotate}
   editor.features.selection.selectElement(graphic)
   await layoutFrame()
   assert($.selectedElement === graphic && !editor.features.selection.isCaptureSelection, "shape did not retain ordinary element selection")
@@ -4984,9 +5126,13 @@ await check("standalone SVG affordances refit rotated elements and resize beyond
   document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 91}))
   await layoutFrame()
   const current = graphic.getScreenCTM()!
-  for(const key of ["a", "b", "c", "d", "e", "f"] as const) {
-    assert(Math.abs(current[key] - original[key]) < .1, `refitting moved the shape's ${key} transform`)
+  for(const key of ["a", "b", "c", "d"] as const) {
+    assert(Math.abs(current[key] - original[key]) < .1, `refitting changed the shape's ${key} scale/rotation transform`)
   }
+  assert(getComputedStyle(graphic).position === "static"
+    && graphic.style.position === authoredPosition.position && graphic.style.left === authoredPosition.left
+    && graphic.style.top === authoredPosition.top && graphic.style.rotate === authoredPosition.rotate,
+  "refitting changed the standalone graphic's normal-flow positioning styles")
   assert(parseFloat(getComputedStyle(graphic).width) > originalWidth + 300, "radius edit did not grow the element")
   const ellipse = graphic.querySelector("ellipse")!
   assert(Number(ellipse.getAttribute("rx")) > 290, "radius remained constrained to the original viewport")
@@ -5287,6 +5433,8 @@ await check("canvas and slide delete affordances follow rotation placement", asy
       const deleter = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!
       const rotator = overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!
       const corner = overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-up-right")!
+      assert(view.getComputedStyle(deleter).visibility === "hidden", `${mode}: Delete remains actionable while editing text`)
+      editor.features.selection.selectElement(target)
       for(const zoom of [false, true]) {
         if(zoom && mode === "canvas") editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
         else if(zoom) editor.features.slides.actions.navigateSlides({type: "navigateSlides", operation: "zoom-in"})
@@ -5819,8 +5967,21 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))
     editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 320, clientY: 200}))
     editor.features.transformation.handleMoveEnd()
-    assert($.selectedElement === paragraph, "moving did not promote the canvas root to element selection")
+    const movedSelection = getSelection()!
+    assert(movedSelection.anchorNode === paragraph.firstChild && movedSelection.anchorOffset === 1
+      && movedSelection.focusNode === paragraph.firstChild && movedSelection.focusOffset === 7,
+    "moving did not restore the exact canvas text range")
+    assert(editor.features.transformation.target === paragraph
+      && contentFrame.part.contains("transform-overlay-content-selected") && !paragraph.classList.contains("◆element-selected"),
+    "moving did not retain the canvas content selection and root ownership")
     assert(Math.abs(parseFloat(paragraph.style.left) - (-300 + 120 / editor.features.canvas.zoom)) < 1, `zoomed move used screen instead of document units: ${paragraph.style.left}`)
+    await new Promise(resolve => setTimeout(resolve, 200))
+    assert(getComputedStyle(resizer).backgroundColor === getComputedStyle(contentFrame).outlineColor,
+      "moved canvas content selection does not retain grey content handles")
+    // Continue the camera-edge gesture checks from an explicit item selection;
+    // the move above intentionally leaves the native text range active.
+    editor.features.selection.selectElement(paragraph)
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
     mover.addEventListener("mousedown", event => editor.features.transformation.handleMoveStart(event), {once: true})
     mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: window.innerWidth - 20, clientY: 200}))
     const cameraBeforeEdge = slot.style.transform
@@ -5838,9 +5999,11 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
       paragraph.style.top = `${parseFloat(paragraph.style.top) + (200 - current.top) / editor.features.canvas.zoom}px`
       const start = paragraph.getBoundingClientRect()
       const x = start.left + start.width / 2, y = start.top + start.height / 2
-      const dx = direction === "left" ? 10 - start.left : direction === "right" || direction === "diagonal" ? window.innerWidth - 10 - start.right : 0
-      const dy = direction === "up" ? 10 - start.top : direction === "down" || direction === "diagonal" ? window.innerHeight - 10 - start.bottom : 0
-      assert(x + dx > 32 && x + dx < window.innerWidth - 32 && y + dy > 32 && y + dy < window.innerHeight - 32, "pointer must stay outside the edge zone")
+      const dx = direction === "left" ? 10 - x : direction === "right" || direction === "diagonal" ? window.innerWidth - 10 - x : 0
+      const dy = direction === "up" ? 10 - y : direction === "down" || direction === "diagonal" ? window.innerHeight - 10 - y : 0
+      assert(Math.abs(x + dx - (direction === "left" ? 10 : direction === "right" || direction === "diagonal" ? window.innerWidth - 10 : x)) < 1
+        && Math.abs(y + dy - (direction === "up" ? 10 : direction === "down" || direction === "diagonal" ? window.innerHeight - 10 : y)) < 1,
+      "edge-pan pointer did not reach the requested viewport edge")
       editor.features.transformation.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: x, clientY: y}))
       const camera = editor.features.canvas.clientPoint(0, 0)
       editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: x + dx, clientY: y + dy}))
@@ -6108,6 +6271,10 @@ await check("ribbon snippets drop at the caret and center in freeform layouts", 
         assert(Math.abs(box.left + box.width / 2 - x) < 1 && Math.abs(box.top + box.height / 2 - y) < 1, "drop is not centered at pointer coordinates")
         assert(inserted.innerHTML.includes("<!--keep-->"), "drop lost nested snippet content")
         for(const action of ["insert-graphic-shape:rectangle", "insert-math:frac", "list-style:ol:lower-alpha"]) {
+          // Keep prior graphics away from the next independent layout drop.
+          for(const graphic of target.querySelectorAll<SVGSVGElement>(":scope > svg")) graphic.style.left = `${parseFloat(graphic.style.left) + 1000}px`
+          range.selectNodeContents(target); range.collapse(false)
+          editor.features.selection.selectDropRange(range, {scrollIntoView: false})
           data.setData("application/x-webwriter-ribbon-insertion", action)
           surface.dispatchEvent(new DragEvent("drop", init))
           await layoutFrame()
@@ -6115,9 +6282,13 @@ await check("ribbon snippets drop at the caret and center in freeform layouts", 
           assert(Math.abs(box.left + box.width / 2 - x) < 1 && Math.abs(box.top + box.height / 2 - y) < 1, `${mode}: ${action} is not centered (${box.left + box.width / 2}, ${box.top + box.height / 2} vs ${x}, ${y}; ${root.outerHTML})`)
           assert(action.startsWith("insert-graphic") ? root.localName === "svg" : action.startsWith("insert-math") ? root.querySelector("mfrac") : root.localName === "ol", `${action} did not create its element`)
           if(action.startsWith("insert-graphic")) assert(doc.getSelection()?.toString() === "" && root.parentNode === doc.getSelection()?.anchorNode, "shape drop lost its element selection")
-          else assert(root.contains(doc.getSelection()?.anchorNode ?? null) && doc.getSelection()?.isCollapsed, `${action} lost its editing caret while centering`)
+          else assert(root.contains(doc.getSelection()?.anchorNode ?? null) && doc.getSelection()?.isCollapsed,
+            `${action} lost its editing caret while centering: ${root.outerHTML}; ${doc.getSelection()?.anchorNode?.nodeName}@${doc.getSelection()?.anchorOffset}, collapsed=${doc.getSelection()?.isCollapsed}`)
         }
         for(const tag of ["table", "details", "h2", "math", "svg"]) {
+          for(const graphic of target.querySelectorAll<SVGSVGElement>(":scope > svg")) graphic.style.left = `${parseFloat(graphic.style.left) + 1000}px`
+          range.selectNodeContents(target); range.collapse(false)
+          editor.features.selection.selectDropRange(range, {scrollIntoView: false})
           const elementData = new DataTransfer()
           elementData.setData("application/x-webwriter-ribbon-insertion", `element:${tag}`)
           target.dispatchEvent(new DragEvent("drop", {...init, dataTransfer: elementData}))
@@ -6133,6 +6304,11 @@ await check("ribbon snippets drop at the caret and center in freeform layouts", 
       }
       message = undefined
       for(let index = 0; index < 3; index++) {
+        if(mode !== "document") {
+          for(const graphic of target.querySelectorAll<SVGSVGElement>(":scope > svg")) graphic.style.left = `${parseFloat(graphic.style.left) + 1000}px`
+          range.selectNodeContents(target); range.collapse(false)
+          editor.features.selection.selectDropRange(range, {scrollIntoView: false})
+        }
         data.setData("application/x-webwriter-ribbon-insertion", "package:prepared")
         data.setData("text/html", "<x-prepared-drop>Prepared widget</x-prepared-drop>")
         target.dispatchEvent(new DragEvent("dragover", init))
@@ -6453,6 +6629,54 @@ await check("image hotspots scale and open popovers in preview and standalone re
       assert(view.location.hash === "#link", "link-only hotspot did not navigate to its destination")
       image.width = 360
       assert(doc.body.innerHTML === authored, "reading-mode hotspot UI changed the authored DOM")
+    }
+  }
+  finally { frame.remove() }
+})
+
+await check("canvas hotspot clicks preserve the camera in preview and standalone reading mode", async () => {
+  const {appendSerializedAssets} = await import("../src/serialization")
+  const {previewFrameHTML} = await import("../src/frame-document")
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:500px;max-width:none"
+  fixture.append(frame)
+  try {
+    for(const preview of [true, false]) {
+      const source = new DOMParser().parseFromString(`<!doctype html><style>${canvasStyles}</style><body class="ww-canvas"><img src="/tests/fixtures/image-map.svg" width="360" height="210" style="position:absolute;left:200px;top:150px" usemap="#plan"><map name="plan"><area shape="rect" coords="500,40,680,340" popovertarget="details" alt="Details"></map><div id="details" popover="auto">Hotspot content</div></body>`, "text/html")
+      let html: string
+      if(preview) html = previewFrameHTML(source, {bridgeNonce:"canvas-hotspot-check", hostOrigin:location.origin, frameOrigin:location.origin,
+        entryURL:new URL("../src/preview-entry.ts", import.meta.url).href, packages:[], importMap:null, executeScripts:true})
+      else { appendSerializedAssets(source, []); html = source.documentElement.outerHTML }
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
+      frame.srcdoc = html
+      await loaded
+      await layoutFrame()
+      const doc = frame.contentDocument!, view = frame.contentWindow! as Window & typeof globalThis
+      const image = doc.querySelector("img")!
+      assert(image.naturalWidth === 720, "canvas image fixture did not load")
+      const appendix = doc.body.shadowRoot!, slot = appendix.querySelector("slot")!
+      const root = appendix.querySelector(".◆image-map-reader")!.shadowRoot!
+      const link = root.querySelector<SVGAElement>('a[aria-label="Details"]')!
+      const camera = slot.style.transform, before = image.getBoundingClientRect(), authored = doc.body.innerHTML
+      const hotspot = link.getBoundingClientRect()
+      const point = {clientX:hotspot.left + 4, clientY:hotspot.top + 4}
+      const down = root.elementFromPoint(point.clientX, point.clientY)!
+      assert(down.closest<SVGAElement>("a") === link, "canvas hotspot is not the initial pointer target")
+      down.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles:true, composed:true, cancelable:true, button:0, ...point}))
+      // A dispatched click alone skips the native focus that caused #288.
+      link.focus()
+      assert(root.activeElement === link && doc.activeElement === doc.body, "hotspot focus was not retargeted through the appendix")
+      await layoutFrame()
+      const after = image.getBoundingClientRect()
+      assert(slot.style.transform === camera && after.left === before.left && after.top === before.top,
+        "focusing the canvas hotspot moved the camera before pointerup")
+      const up = root.elementFromPoint(point.clientX, point.clientY)!
+      assert(up.closest<SVGAElement>("a") === link, "canvas hotspot moved away from the pointer")
+      up.dispatchEvent(new view.PointerEvent("pointerup", {bubbles:true, composed:true, cancelable:true, button:0, ...point}))
+      up.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true, button:0, ...point}))
+      assert(doc.querySelector("#details")!.matches(":popover-open"), "canvas hotspot click did not open its popover")
+      assert(slot.style.transform === camera, "opening the canvas hotspot popover moved the camera")
+      assert(doc.body.innerHTML === authored, "canvas hotspot interaction changed authored content")
     }
   }
   finally { frame.remove() }
@@ -6820,6 +7044,8 @@ await check("Board columns and cards retain native editing and standalone layout
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("slide editing retains text and media selections after focus", checkSlideEditing)
+
 let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {
   const frame = document.createElement("iframe")
@@ -6839,7 +7065,12 @@ await check("CSS Slides use native fragment links while editing", async () => {
     assert(first.querySelectorAll("p").length === 2 && doc.querySelectorAll("section.ww-slide").length === 1, "Enter split slide boundary")
     slideEditor.features.slides.actions.addSlide({type: "addSlide"})
     const second = doc.querySelectorAll<HTMLElement>("section.ww-slide")[1]
-    second.firstElementChild!.textContent = "Second slide"
+    assert(!second.querySelector("h1, p"), "new slide contains automatic text boxes")
+    const heading = doc.createElement("h1"), paragraph = doc.createElement("p")
+    heading.textContent = "Second slide"
+    heading.style.cssText = "left:20px;top:20px;width:1200px;height:140px"
+    paragraph.style.cssText = "left:20px;top:180px"
+    second.prepend(heading, paragraph)
     const viewport = doc.querySelector<HTMLElement>(".ww-slides-viewport")!
     viewport.style.scrollBehavior = "auto"
     viewport.scrollLeft = 0
@@ -6877,7 +7108,7 @@ await check("CSS Slides use native fragment links while editing", async () => {
       assert(getComputedStyle(item).position === "absolute" && (item as HTMLElement).offsetParent === second, "slide box is not positioned relative to the slide")
     }
     assert(Math.abs(headingRect.left - paragraphRect.left) < 1 && paragraphRect.width < headingRect.width
-      && paragraphRect.top > headingRect.bottom && paragraphRect.bottom < slideRect.bottom - 20, "slide preset paragraph is not aligned or content sized")
+      && paragraphRect.top > headingRect.bottom && paragraphRect.bottom < slideRect.bottom - 20, "authored slide paragraph is not aligned or content sized")
     assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= frame.clientHeight, "navigation is not overlaid at the bottom")
     assert(Math.abs(nav.getBoundingClientRect().left - 16) < 1, "slides pagination is not left aligned")
     assert(getComputedStyle(second).paddingTop === "20px" && getComputedStyle(second).paddingBottom === "20px"
@@ -6928,8 +7159,11 @@ await check("CSS Slides use native fragment links while editing", async () => {
     actions.querySelector<HTMLButtonElement>('[name="add"]')!.click()
     await layoutFrame()
     assert(doc.querySelectorAll("section.ww-slide").length === 3, "navigation add affordance failed")
-    const third = doc.querySelectorAll<HTMLElement>("section.ww-slide")[2], presetText = third.querySelector("p")!
-    const presetHeading = third.querySelector("h1")!, beforeMove = presetHeading.getBoundingClientRect()
+    const third = doc.querySelectorAll<HTMLElement>("section.ww-slide")[2]
+    assert(!third.querySelector("h1, p"), "added slide contains automatic text boxes")
+    const presetText = paragraph.cloneNode(false) as HTMLParagraphElement, presetHeading = heading.cloneNode(false) as HTMLHeadingElement
+    third.prepend(presetHeading, presetText)
+    const beforeMove = presetHeading.getBoundingClientRect()
     presetHeading.textContent = "Slide title"
     doc.getSelection()!.setBaseAndExtent(presetHeading.firstChild!, 0, presetHeading.firstChild!, 2)
     slideEditor.features.selection.processSelection()
@@ -6948,11 +7182,17 @@ await check("CSS Slides use native fragment links while editing", async () => {
     mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))
     slideEditor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 212, clientY: 208}))
     slideEditor.features.transformation.handleMoveEnd()
-    assert(!slideFrame.part.contains("transform-overlay-content-selected") && doc.getSelection()!.anchorNode === third
-      && doc.getSelection()!.focusNode === third && !doc.getSelection()!.isCollapsed, "moving did not select the slide root")
-    assert(slideFrame.getAnimations().length > 0 && slideHandle.getAnimations().length > 0, "slide selection color changed without a transition")
+    const movedSelection = doc.getSelection()!
+    assert(movedSelection.anchorNode === presetHeading.firstChild && movedSelection.anchorOffset === 0
+      && movedSelection.focusNode === presetHeading.firstChild && movedSelection.focusOffset === 2,
+    "moving did not restore the exact slide text range")
+    assert(slideEditor.features.transformation.target === presetHeading
+      && slideFrame.part.contains("transform-overlay-content-selected")
+      && !presetHeading.classList.contains("◆element-selected"),
+    "moving did not retain the slide content selection and root ownership")
     await new Promise(resolve => setTimeout(resolve, 200))
-    assert(getComputedStyle(slideHandle).backgroundColor !== slideFrameColor, "selected slide root retained grey handles")
+    assert(getComputedStyle(slideHandle).backgroundColor === getComputedStyle(slideFrame).outlineColor,
+      "moved slide content selection does not retain grey content handles")
     const afterMove = presetHeading.getBoundingClientRect()
     assert(Math.abs(afterMove.left - beforeMove.left - 12) < 1 && Math.abs(afterMove.top - beforeMove.top - 8) < 1
       && Math.abs(afterMove.width - beforeMove.width) < 1 && Math.abs(afterMove.height - beforeMove.height) < 1, "moving a slide text box changes its size or uses the wrong origin")
@@ -7203,6 +7443,15 @@ await check("media stays centered in editing and standalone documents", async ()
         const mediaStyle = document.defaultView!.getComputedStyle(element)
         // Holiday deliberately offsets pictures after normal-flow placement.
         const offset = mediaStyle.position === "relative" ? parseFloat(mediaStyle.left) || 0 : 0
+        // An embed without a resource has no rendered box in Chromium even
+        // though CSS gives it a width. Verify the block centering contract
+        // directly instead of comparing its empty (0px) client rect.
+        if(element.localName === "embed" && box.width === 0) {
+          assert(mediaStyle.display === "block" && mediaStyle.marginLeft === "auto" && mediaStyle.marginRight === "auto"
+            && parseFloat(mediaStyle.width) <= right - left,
+          `${context}: empty embed did not receive centered, bounded block styles`)
+          continue
+        }
         assert(Math.abs((box.left + box.right) / 2 - offset - (prose.left + prose.right) / 2) < 1, `${context}: ${element.localName} was not centered in ${parent.localName}`)
         assert(box.left - offset >= left - 1 && box.right - offset <= right + 1, `${context}: ${element.localName} overflowed its column`)
       }
@@ -7503,10 +7752,10 @@ await check("far floats adapt to column margins and survive standalone export", 
         const effectiveSide = singleLane ? "right" : physical
         const gap = parseFloat(effectiveSide === "left" ? style.marginRight : style.marginLeft)
         assert(box.left >= -1 && box.right <= doc.documentElement.clientWidth + 1, "far float escaped the viewport")
-        const gutter = Math.min(32, Math.max(16, width * .02))
+        const gutter = Math.min(32, Math.max(16, viewportWidth * .02))
         const pageWidth = Math.min(2160, viewportWidth - 2 * gutter)
         if(!stacked) {
-          assert(Math.abs(box.width - (singleLane ? Math.min(256, Math.max(0, pageWidth - 300 - gutter)) : Math.max(0, (pageWidth - 720) / 2 - gutter))) < 1, `default float did not fill its lane: viewport=${width} box=${box.width} column=${column.width}`)
+          assert(Math.abs(box.width - (singleLane ? Math.min(256, Math.max(0, pageWidth - 300 - gutter)) : Math.max(0, (pageWidth - 720) / 2 - gutter))) < 1, `default float did not fill its lane: ${JSON.stringify({viewport: width, viewportWidth, rootClientWidth: doc.documentElement.clientWidth, frameWidth: frame.getBoundingClientRect().width, gutter, pageWidth, box: box.width, column: column.width, padding: style.padding})}`)
           const actualGap = effectiveSide === "left" ? column.left - box.right : box.left - column.right
           assert(Math.abs(actualGap - gutter) < 1, "float-to-column gap differs from the outer page margin")
         }
@@ -7847,7 +8096,8 @@ await check("wide widgets remain centered between symmetric float lanes", async 
       const singleLane = lanes && document.documentElement.clientWidth < 1200
       if(!singleLane) {
         assert(Math.abs(parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) < 1, "float lanes are asymmetric")
-        assert(Math.abs(center - document.documentElement.clientWidth / 2) < 1, "reserved column shifted away from the page center")
+        const root = document.documentElement.getBoundingClientRect()
+        assert(Math.abs(center - (root.left + root.right) / 2) < 1, `reserved column shifted away from the page center: ${JSON.stringify({center, rootRect: root.toJSON(), windowWidth: document.defaultView!.innerWidth, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight})}`)
       }
       else {
         assert(parseFloat(style.paddingRight) > parseFloat(style.paddingLeft) && width >= 300 - 1, "single right lane did not preserve readable text")
@@ -8033,7 +8283,7 @@ await check("empty graphics drag through their full capture outline into floats"
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("document shape drops use float lanes and ordinary content flow", async () => {
+await check("shape keyboard drops stay in captured graphics and ribbon shapes use document flow", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:700px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
@@ -8056,6 +8306,16 @@ await check("document shape drops use float lanes and ordinary content flow", as
         ? {"application/x-webwriter-graphic-shape": JSON.stringify({shape: "rectangle", paint: {fill: "#fbbf24", stroke: "#334155"}})}
         : {"application/x-webwriter-ribbon-insertion": "insert-graphic-shape:rectangle"}
       const box = anchor.getBoundingClientRect()
+      if(source === "keyboard") {
+        const before = main.innerHTML
+        assert(replayHostDrag({event: "dragover", x: box.left + box.width / 2, y: box.bottom + 8, data}, doc), "keyboard dragover was not claimed")
+        assert(!editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview"), "keyboard shape showed a document placement preview")
+        assert(replayHostDrag({event: "drop", x: box.left + box.width / 2, y: box.bottom + 8, data}, doc), "keyboard drop was not claimed")
+        await layoutFrame()
+        assert(!main.querySelector("svg") && main.innerHTML === before, "keyboard shape changed ordinary document content")
+        assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "rejected keyboard drop left a preview")
+        continue
+      }
       let x = box.left + box.width / 2, y = box.bottom + 8
       if(side !== "flow") {
         const graphic = editor.features.graphic.createGraphic("rectangle")
@@ -8079,7 +8339,6 @@ await check("document shape drops use float lanes and ordinary content flow", as
         assert(Math.abs(shapeBox.left + shapeBox.width / 2 - anchorBox.left - anchorBox.width / 2) < 1, `${source}: flow shape is outside the content column`)
       }
       else assert(graphic.nextElementSibling === anchor, `${source} ${side}: float is not beside its anchor`)
-      if(source === "keyboard") assert(graphic.querySelector("rect")?.getAttribute("fill") === "#fbbf24", "shape paint was lost")
       assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), "shape drop left editing artifacts")
       assert(!editor.toHTML(true).includes("◆"), "serialized shape contains editing artifacts")
     }
@@ -8103,6 +8362,12 @@ await check("document shape drops use float lanes and ordinary content flow", as
       }
       await layoutFrame()
       const graphic = doc.querySelector("svg")!
+      if(source === "keyboard") {
+        assert(!graphic, `${width}: uncaptured keyboard drop inserted a graphic`)
+        assert(insertion.isConnected && after.isConnected && after.textContent === "After", `${width}: rejected keyboard drop changed document flow`)
+        assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `${width}: rejected keyboard drop left insertion chrome`)
+        continue
+      }
       assert(graphic && view.getComputedStyle(graphic).position === "static", `${source} ${width}: new shape is spatially positioned`)
       assert(!graphic.style.left && !graphic.style.top && !graphic.style.right && !graphic.style.bottom, `${source} ${width}: new shape has position offsets`)
       if(source === "command") assert(after.getBoundingClientRect().top >= graphic.getBoundingClientRect().bottom, `${width}: shape command removed the shape from document flow`)
@@ -8111,7 +8376,7 @@ await check("document shape drops use float lanes and ordinary content flow", as
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("ribbon elements drop inside captured graphics with native content and cleanup", async () => {
+await check("ribbon elements are rejected over captured graphics with native content and cleanup", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1200px;max-width:none;height:800px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
@@ -8122,45 +8387,55 @@ await check("ribbon elements drop inside captured graphics with native content a
     assert(view.editor, "ribbon graphic fixture did not initialize")
     const editor = view.editor!, doc = frame.contentDocument!
     const events = view as unknown as {DragEvent: typeof DragEvent, DataTransfer: typeof DataTransfer}
-    for(const [action, selector] of [["element:table", "foreignObject table"], ["element:video", "foreignObject video"],
-      ["element:picture", "image"], ["element:math", "foreignObject math"], ["insert-math:frac", "foreignObject math mfrac"],
-      ["insert-graphic-shape:ellipse", "ellipse"], ["list-style:ol:lower-alpha", "foreignObject ol"], ["package-member:demo", "foreignObject demo-widget"]]) {
+    const actions = ["element:table", "element:video", "element:picture", "element:math", "insert-math:frac", "insert-graphic-shape:ellipse", "list-style:ol:lower-alpha", "package-member:demo"]
+    for(const action of actions) {
       doc.body.innerHTML = '<svg viewBox="100 50 600 300" style="display:block;width:600px;height:300px;margin:60px auto"><!--keep--><rect x="130" y="80" width="100" height="80" fill="skyblue"/></svg><p>After</p>'
-      const graphic = doc.querySelector("svg")!, original = graphic.querySelector("rect")!, after = doc.body.lastElementChild!
-      editor.features.selection.selectElement(graphic)
+      const graphic = doc.querySelector("svg")!, original = graphic.innerHTML, rect = graphic.querySelector("rect")!, after = doc.body.lastElementChild!
+      editor.features.selection.captureElement(graphic)
       await layoutFrame()
-      const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
       const data = new events.DataTransfer()
       data.setData("application/x-webwriter-ribbon-insertion", action)
       if(action === "package-member:demo") data.setData("text/html", '<demo-widget><p>Nested content</p></demo-widget>')
-      const event = (type: string) => new events.DragEvent(type, {bubbles:true, cancelable:true, composed:true, dataTransfer:data, clientX:x, clientY:y})
-      const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
-      const over = event("dragover")
-      surface.dispatchEvent(over)
-      assert(over.defaultPrevented && editor.features.selection.captureSelectedElement === graphic, `${action}: hover did not capture the graphic`)
-      for(let attempt = 0; attempt < 3; attempt++) {
-        await layoutFrame()
-        graphic.dispatchEvent(event("dragover"))
-        assert(!surface.isConnected && editor.features.selection.captureSelectedElement === graphic, `${action}: hover flickered`)
+      const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+      const dispatch = (target: EventTarget, type: string) => {
+        const event = new events.DragEvent(type, {bubbles:true, cancelable:true, composed:true, dataTransfer:data, clientX:x, clientY:y})
+        target.dispatchEvent(event)
+        return event
       }
-      graphic.dispatchEvent(event("drop"))
+      const hostMessages: MessageEvent[] = []
+      const receive = (event: MessageEvent) => { if(event.source === view && event.data?.type === "editor-ribbon-drop") hostMessages.push(event) }
+      window.addEventListener("message",receive)
+      const rootOver = dispatch(graphic,"dragover")
+      assert(rootOver.defaultPrevented && data.dropEffect === "none", `${action}: root dragover offered a drop`)
+      const rootDrop = dispatch(graphic,"drop")
+      assert(rootDrop.defaultPrevented, `${action}: root drop was not claimed`)
+      const childOver = dispatch(rect,"dragover")
+      assert(childOver.defaultPrevented && data.dropEffect === "none", `${action}: child dragover offered a drop`)
+      const childDrop = dispatch(rect,"drop")
+      assert(childDrop.defaultPrevented, `${action}: child drop was not claimed`)
+      const overlay = editor.appendix.querySelector('[part~="transform-overlay"]') ?? editor.appendix.querySelector('[part="node-drag-surface"]') ?? editor.appendix.querySelector("slot")
+      assert(overlay, `${action}: no appendix overlay to test`)
+      if(!overlay) throw new Error(`${action}: no appendix overlay to test`)
+      const overlayOver = dispatch(overlay,"dragover")
+      assert(overlayOver.defaultPrevented && data.dropEffect === "none", `${action}: appendix dragover offered a drop`)
+      const overlayDrop = dispatch(overlay,"drop")
+      assert(overlayDrop.defaultPrevented, `${action}: appendix drop was not claimed`)
       await layoutFrame()
-      assert(graphic.querySelector(selector) && graphic.querySelector("rect") === original, `${action}: dropped content replaced the graphic or disappeared`)
-      assert(graphic.firstChild?.nodeType === Node.COMMENT_NODE && after.isConnected && after.textContent === "After", `${action}: unrelated content changed: ${doc.body.innerHTML}`)
-      const foreign = graphic.querySelector("foreignObject")
-      if(foreign) {
-        assert(Math.abs(Number(foreign.getAttribute("x")) + Number(foreign.getAttribute("width")) / 2 - 400) < 1, `${action}: incorrect SVG x coordinate`)
-        assert(Math.abs(Number(foreign.getAttribute("y")) + Number(foreign.getAttribute("height")) / 2 - 200) < 1, `${action}: incorrect SVG y coordinate`)
-        assert(foreign.getBoundingClientRect().width > 0 && foreign.getBoundingClientRect().height > 0, `${action}: content has no rendered area`)
-      }
-      assert(editor.features.selection.captureSelectedElement === graphic && !editor.appendix.querySelector("#◆float-drop-preview"), `${action}: drop left stale placement state`)
-      assert(!editor.toHTML(true).includes("◆"), `${action}: serialized editor chrome`)
+      window.removeEventListener("message",receive)
+      assert(hostMessages.length === 0, `${action}: rejected graphic drop emitted a host ribbon message`)
+      assert(graphic.innerHTML === original && graphic.querySelector("rect") === rect && after.isConnected && after.textContent === "After", `${action}: source DOM changed`)
+      assert(editor.features.selection.captureSelectedElement === graphic, `${action}: capture changed`)
+      assert(!doc.body.classList.contains("◆drop-selection-active"), `${action}: drop selection marker remained`)
+      const caret = editor.appendix.querySelector(".◆selection-caret")
+      assert(!editor.appendix.querySelector("#◆float-drop-preview, #◆insertion-preview") && !caret?.getAttribute("part")?.includes("drop-caret"), `${action}: drop caret/preview remained`)
+      assert(!graphic.querySelector('[class*="◆drop-caret"]'), `${action}: authored drop caret remained`)
+      assert(!editor.toHTML(true).includes("◆"), `${action}: editor chrome leaked into serialization`)
     }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("keyboard shape drags capture graphics and finish drops through appendix surfaces", async () => {
+await check("shape keyboard drags retain capture through appendix surfaces", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:850px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
@@ -8173,7 +8448,7 @@ await check("keyboard shape drags capture graphics and finish drops through appe
     const events = view as unknown as {DragEvent: typeof DragEvent, DataTransfer: typeof DataTransfer}
     doc.body.innerHTML = '<svg viewBox="0 0 600 300" style="display:block;width:600px;height:300px"><!--keep--><rect x="100" y="80" width="160" height="120" fill="skyblue"/></svg><p id="anchor" style="height:140px">Document drop target</p>'
     const graphic = doc.querySelector("svg")!, original = graphic.querySelector("rect")!, paragraph = doc.querySelector("p")!
-    editor.features.selection.selectElement(graphic)
+    editor.features.selection.captureElement(graphic)
     await layoutFrame()
     const data = new events.DataTransfer()
     data.setData("application/x-webwriter-graphic-shape", JSON.stringify({shape:"ellipse", paint:{fill:"#fbbf24"}}))
@@ -8183,32 +8458,41 @@ await check("keyboard shape drags capture graphics and finish drops through appe
       return event
     }
     const box = graphic.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector(".◆transform-overlay") ?? editor.appendix.querySelector("slot")!
+    const foreign = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+    foreign.setAttribute("viewBox", "0 0 100 100")
+    foreign.style.cssText = "display:block;width:100px;height:100px"
+    doc.body.append(foreign)
+    await layoutFrame()
+    const paragraphBox = paragraph.getBoundingClientRect(), foreignBox = foreign.getBoundingClientRect()
+    for(const [target, point] of [[paragraph, {x:paragraphBox.left + 10, y:paragraphBox.top + 10}], [foreign, {x:foreignBox.left + 10, y:foreignBox.top + 10}]] as const) {
+      assert(dispatch(target, "dragover", point.x, point.y).defaultPrevented, "outside shape dragover was not claimed")
+      assert(data.dropEffect === "none" && editor.features.selection.captureSelectedElement === graphic, "outside hover changed drop eligibility or capture")
+      assert(dispatch(target, "drop", point.x, point.y).defaultPrevented, "outside shape drop was not claimed")
+      assert(doc.querySelectorAll("svg").length === 2 && editor.features.selection.captureSelectedElement === graphic, "outside drop changed the graphic or capture")
+    }
     assert(surface && dispatch(surface, "dragover", x, y).defaultPrevented, "shape hover was not accepted on the selected graphic surface")
     const outline = editor.appendix.querySelector(".◆selection-caret")
     for(let index = 0; index < 5; index++) {
       await layoutFrame()
-      assert(editor.features.selection.captureSelectedElement === graphic && !surface.isConnected, "graphic hover flickered back to element selection")
+      assert(editor.features.selection.captureSelectedElement === graphic && !editor.appendix.querySelector('[part="node-drag-surface"]'), "graphic hover flickered back to element selection")
       assert(!editor.appendix.querySelector("#◆float-drop-preview"), "graphic hover showed a document placement preview")
       dispatch(doc.elementFromPoint(x, y) ?? graphic, "dragover", x, y)
     }
     assert(editor.appendix.querySelector(".◆selection-caret") === outline, "graphic hover replaced its selection chrome")
     assert(dispatch(doc.elementFromPoint(x, y) ?? graphic, "drop", x, y).defaultPrevented, "graphic shape drop was rejected")
-    assert(doc.querySelectorAll("svg").length === 1 && graphic.querySelector("rect") === original && graphic.querySelector("ellipse"), "shape was not added to the existing graphic")
+    assert(doc.querySelectorAll("svg").length === 2 && graphic.querySelector("rect") === original && graphic.querySelector("ellipse"), "shape was not added to the existing graphic")
     // Native events in blank document space can originate on the appendix slot.
     for(const type of ["dragend", "drop"]) {
       const bounds = paragraph.getBoundingClientRect()
-      editor.features.manipulation.showFloatDropPreview(paragraph, "left", "transfer", editor.features.graphic.createGraphic("ellipse"))
-      const preview = editor.appendix.querySelector("#◆float-drop-preview")!.getBoundingClientRect()
-      const dropX = preview.left + preview.width / 2, dropY = Math.min(bounds.bottom - 10, preview.top + preview.height / 2)
-      editor.features.manipulation.clearFloatDropPreview("transfer")
+      const dropX = bounds.left + bounds.width / 2, dropY = bounds.top + bounds.height / 2
       const slot = editor.appendix.querySelector("slot")!
-      assert(dispatch(slot, "dragover", dropX, dropY).defaultPrevented, "slot hover was rejected")
-      assert(editor.appendix.querySelector("#◆float-drop-preview"), "slot hover did not show its float placement")
-      dispatch(slot, type, dropX, dropY)
+      assert(dispatch(slot, "dragover", dropX, dropY).defaultPrevented, "slot shape hover was not claimed")
+      assert(data.dropEffect === "none" && !editor.appendix.querySelector("#◆float-drop-preview"), "slot hover offered a document drop")
+      const ending = dispatch(slot, type, dropX, dropY)
+      if(type === "drop") assert(ending.defaultPrevented, "slot drop was not claimed")
       await layoutFrame()
-      assert(doc.querySelectorAll("svg").length === (type === "drop" ? 2 : 1), `slot ${type} inserted the wrong number of graphics`)
-      if(type === "drop") assert(doc.querySelectorAll("svg")[1].querySelectorAll("ellipse").length === 1, "document drop inserted the keyboard shape twice")
+      assert(doc.querySelectorAll("svg").length === 2, `slot ${type} inserted another graphic`)
       assert(!doc.body.classList.contains("◆drop-selection-active") && !editor.appendix.querySelector("#◆float-drop-preview"), `slot ${type} left a float preview behind`)
     }
     assert(paragraph.textContent === "Document drop target" && !editor.toHTML(true).includes("◆"), "keyboard dragging altered document text or serialized editor chrome")
@@ -8367,8 +8651,8 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
       assert(firstLine && Math.abs(firstLine.top - pictureRect.top) < 8, "first line is offset below the floated picture: " + JSON.stringify({picture:pictureRect.top, text:firstLine?.top, margin:getComputedStyle(text).marginTop}));
       // cqw uses the root content box, excluding both reserved scrollbar gutters.
       const pageContainerWidth = document.documentElement.getBoundingClientRect().width;
-      const pageGutter = Math.min(32, Math.max(16, innerWidth * .02));
-      assert(pictureRect.width > 256 && Math.abs(pictureRect.width - Math.max(256, (pageContainerWidth - 2 * pageGutter - 720) / 2 - pageGutter)) < 1, "default picture did not fill its float lane");
+      const pageGutter = Math.min(32, Math.max(16, pageContainerWidth * .02));
+      assert(pictureRect.width > 256 && Math.abs(pictureRect.width - Math.max(256, (pageContainerWidth - 2 * pageGutter - 720) / 2 - pageGutter)) < 1, "default picture did not fill its float lane: " + JSON.stringify({picture:pictureRect.width, pageContainerWidth, pageGutter, innerWidth, rootClientWidth:document.documentElement.clientWidth}));
       assert(picture.classList.contains("ww-float-right") && !picture.style.float && !picture.style.margin && !picture.style.maxWidth
         && picture.style.getPropertyValue("--ww-float-size").includes("100%"), "floated picture did not preserve its authored width through theme geometry");
       assert(firstLine && firstLine.bottom > pictureRect.top && firstLine.top < pictureRect.top + 24 && firstLine.right <= pictureRect.left - 5, "paragraph did not wrap beside the floated placeholder: " + JSON.stringify({picture:pictureRect, firstLine, parent:parentRect}));
@@ -8630,7 +8914,7 @@ await check("table commands complete across the real iframe bridge", async () =>
   finally {tableEditor.features.table.clearCellSelection(false); liveTable.remove(); tableEditor.destroy()}
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1280px;height:900px"
-  frame.src = "/"
+  frame.src = "/editor/"
   document.body.append(frame)
   try {
     let app: DomEditor | null = null
@@ -8710,7 +8994,7 @@ await check("table commands complete across the real iframe bridge", async () =>
 await check("iframe reactivation restores hit testing without changing the document or selection", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
-  frame.src = "/"
+  frame.src = "/editor/"
   document.body.append(frame)
   try {
     let app: DomEditor | null = null
@@ -8907,7 +9191,7 @@ await check("narrow toolboxes collapse below bottom panels and restore on tab ac
 await check("AI toolbox adapts its width and short-screen controls", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:900px;height:900px;background:white"
-  frame.src = "/"
+  frame.src = "/editor/"
   fixture.append(frame)
   try {
     let app: DomEditor | null = null
@@ -8928,14 +9212,16 @@ await check("AI toolbox adapts its width and short-screen controls", async () =>
     const composer = root.querySelector<HTMLElement>(".ai-chat-composer")!
     const tab = root.querySelector<HTMLElement>('[data-tool="AI"]')!
     const controls = [root.querySelector<HTMLElement>(".ai-chat-switcher")!, ...root.querySelectorAll<HTMLElement>(".ai-chat-header-button")]
+    let normalWidth = 0
     for(const [width, height] of [[900, 900], [380, 900], [399, 500], [400, 500], [900, 500], [380, 900]]) {
       frame.style.width = `${width}px`
       frame.style.height = `${height}px`
       await new Promise(resolve => setTimeout(resolve, 250))
       await layoutFrame()
       const pane = toolbox.getBoundingClientRect(), page = app!.getBoundingClientRect()
-      if(width < 400) assert(Math.abs(pane.left - page.left - 1) < 1 && Math.abs(pane.width - page.width + 2) < 1, "narrow AI toolbox did not fill the page width")
-      else assert(pane.width === 216, "AI toolbox did not restore its normal width")
+      if(!normalWidth) normalWidth = parseFloat(view.getComputedStyle(toolbox).width)
+      if(page.width < 600) assert(Math.abs(pane.left - page.left - 1) < 1 && Math.abs(pane.width - page.width + 2) < 1, "narrow AI toolbox did not fill the page width")
+      else assert(Math.abs(pane.width - normalWidth) < 1, `AI toolbox did not restore its normal CSS width: ${JSON.stringify({pane: pane.width, normalWidth, page: page.width})}`)
       const prefix = root.querySelector<HTMLElement>(".ai-tab-label-prefix")!
       assert((view.getComputedStyle(prefix).display === "none") === (height <= 600), "AI tab label did not adapt to screen height")
       const expectedComposer = (height <= 600 ? 5.5 : 7) * parseFloat(view.getComputedStyle(frame.contentDocument!.documentElement).fontSize)
@@ -9020,7 +9306,7 @@ await check("narrow ribbons show only the AI sparkles button", async () => {
 await check("recent documents fit one layout card when space is limited", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
-  frame.src = "/"
+  frame.src = "/editor/"
   document.body.append(frame)
   try {
     let app: DomEditor | null = null
@@ -9096,13 +9382,37 @@ await check("recent documents fit one layout card when space is limited", async 
         assert(Math.abs(card.width - (10 * rem - 10)) < 1, "layout cards did not shrink by 10px")
       }
     }
+    const recentDocuments = host.recentDocuments
+    for(const height of [900, 500]) {
+      frame.style.height = `${height}px`
+      for(const width of [1200, 800, 400]) {
+        bar.style.width = `${width}px`
+        for(const count of [1, 2, 3]) {
+          host.recentDocuments = recentDocuments.slice(0, count)
+          await app!.updateComplete
+          await layoutFrame()
+          const entries = [...list.querySelectorAll<HTMLElement>("li")].map(entry => entry.getBoundingClientRect())
+          const last = entries.at(-1)!
+          const listBox = list.getBoundingClientRect()
+          assert(Math.abs(last.right - listBox.right) <= 2, `last recent entry did not reach the right edge at ${width}x${height} with ${count} entries`)
+          if(count % 2) assert(Math.abs(last.left - listBox.left) <= 2, "unpaired recent entry did not use the full row")
+          if(count > 1) assert(entries[0].right <= entries[1].left || entries[0].bottom <= entries[1].top, "recent entries overlapped")
+        }
+      }
+    }
+    host.recentDocuments = recentDocuments
+    await app!.updateComplete
+    frame.style.height = "900px"
+    bar.style.width = "1200px"
+    await layoutFrame()
     const fullHeight = bar.getBoundingClientRect().height
     frame.style.height = "500px"
     for(const width of [1200, 800, 400]) {
       bar.style.width = `${width}px`
       await layoutFrame(); await layoutFrame()
       const height = bar.getBoundingClientRect().height
-      assert(height >= fullHeight * .45 && height <= fullHeight * .55, "short layout panel was not half-height")
+      const compactHeight = parseFloat(frame.contentWindow!.getComputedStyle(bar).minHeight)
+      assert(Math.abs(height - compactHeight) < 1, `short layout panel did not fit its compact minimum height: ${height}px vs ${compactHeight}px`)
       const cards = [...root.querySelectorAll<HTMLElement>(".document-layout-cards .layout-preset")]
       assert(cards.every(card => Math.abs(card.getBoundingClientRect().top - cards[0].getBoundingClientRect().top) < 1), "short layout cards did not form one row")
       const view = frame.contentWindow!
@@ -9211,7 +9521,7 @@ await check("toolbox Canvas to Document conversion retains the document selectio
 await check("bottom layout cards retain native editing focus after rendering", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1280px;height:900px;background:white"
-  frame.src = "/"
+  frame.src = "/editor/"
   document.body.append(frame)
   try {
     let app: DomEditor | null = null
@@ -9233,14 +9543,15 @@ await check("bottom layout cards retain native editing focus after rendering", a
       "fresh document did not start with the preferred language")
     if(!editingFrame!.contentDocument) {
       assert(new URL(editingFrame!.src).origin !== frame.contentWindow!.location.origin, "editor frame stayed on the app origin")
-      assert(editingFrame!.getAttribute("sandbox") === "allow-scripts allow-same-origin", "editor frame permissions changed")
+      const expectedSandbox = "allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
+      assert(editingFrame!.getAttribute("sandbox") === expectedSandbox, "editor frame permissions changed")
       const source = await app!.execute({type: "serializeDocument"}) as string
       assert(source.includes("<body"), "cross-origin editor did not answer a document command")
       await (app as any).enterPreview()
       const previewFrame = app!.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.preview-frame")
       assert(previewFrame && new URL(previewFrame.src).origin === new URL(editingFrame!.src).origin,
         "preview did not use the dedicated editor origin")
-      assert(previewFrame!.getAttribute("sandbox") === "allow-scripts allow-same-origin",
+      assert(previewFrame!.getAttribute("sandbox") === expectedSandbox,
         "preview frame permissions changed")
       for(let attempt = 0; attempt < 200 && !(app as any).previewOpaque; attempt++) {
         await new Promise(resolve => setTimeout(resolve, 25))

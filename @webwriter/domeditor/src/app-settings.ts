@@ -193,7 +193,6 @@ export type AppSettings = {
   updateDocumentLanguage: boolean
   disableAI: boolean
   showGuidedTour: boolean
-  showStyleToolbox: boolean
   pinDeveloperConsole: boolean
   autoReloadPackages: boolean
   autosaveCloudOnBundleChange: boolean
@@ -219,7 +218,6 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     updateDocumentLanguage: true,
     disableAI: false,
     showGuidedTour: true,
-    showStyleToolbox: false,
     pinDeveloperConsole: false,
     autoReloadPackages: true,
     autosaveCloudOnBundleChange: false,
@@ -303,9 +301,6 @@ export function loadAppSettings(): AppSettings {
       showGuidedTour: typeof value.showGuidedTour === "boolean"
         ? value.showGuidedTour
         : defaults.showGuidedTour,
-      showStyleToolbox: typeof value.showStyleToolbox === "boolean"
-        ? value.showStyleToolbox
-        : defaults.showStyleToolbox,
       pinDeveloperConsole: typeof value.pinDeveloperConsole === "boolean"
         ? value.pinDeveloperConsole
         : defaults.pinDeveloperConsole,

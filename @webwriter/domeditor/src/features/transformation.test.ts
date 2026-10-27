@@ -2276,25 +2276,37 @@ describe("transform controls and geometry", () => {
     expect(sibling).toHaveAttribute("data-after", "later")
   })
 
-  it.each(["p", "demo-widget", "svg"])("raises a canvas %s as soon as its move starts, without changing coordinates or content", async tag => {
+  it.each(["canvas", "slides"].flatMap(mode => ["p", "demo-widget", "svg"].map(tag => ({mode, tag}))))("raises a $mode $tag on frame activation with one style mutation and one undo step", async ({mode, tag}) => {
+    document.body.replaceChildren()
     const target = tag === "svg" ? append(document.createElementNS("http://www.w3.org/2000/svg", "svg")) : targetElement(tag)
     const sibling = targetElement("section")
     target.innerHTML = tag === "svg" ? '<g><circle r="5"/></g><!--keep-->' : '<unfamiliar-node>keep</unfamiliar-node><!--keep-->'
     const nested = target.firstElementChild as HTMLElement | SVGElement
     nested.style.cssText = "position: absolute; z-index: 77"
-    document.body.classList.add("ww-canvas")
+    document.body.className = `ww-${mode}`
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(target, sibling)
+    }
     Object.assign(target.style, {position: "absolute", left: "20px", top: "30px"})
     Object.assign(sibling.style, {position: "absolute", zIndex: "5"})
     mockRect(target)
     selectNode(target)
+    await mutationsDelivered()
     const nodes = Array.from(document.body.childNodes)
     const content = target.innerHTML
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const startingHTML = editor.toHTML(true)
     const mover = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!
+    const siblingStyle = sibling.getAttribute("style")
+    const observer = new MutationObserver(() => {})
+    observer.observe(target.parentElement!, {attributes: true, subtree: true, attributeFilter: ["style"]})
 
     mover.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 100, clientY: 100}))
+    expect(observer.takeRecords().map(record => record.target)).toEqual([target])
+    observer.disconnect()
     expect(Number(target.style.zIndex)).toBeGreaterThan(Number(sibling.style.zIndex))
     expect(target.style.left).toBe("20px")
     expect(target.style.top).toBe("30px")
@@ -2305,7 +2317,8 @@ describe("transform controls and geometry", () => {
     editor.doc.syncFromDOM()
     const finalHTML = editor.toHTML(true)
     expect(finalHTML).not.toBe(startingHTML)
-    expect(editor.doc.body.toString()).toContain('z-index: 6')
+    expect(target.style.zIndex).toBe("6")
+    expect(sibling.getAttribute("style")).toBe(siblingStyle)
     expect(finalHTML).not.toContain("◆")
     editor.doc.undo()
     expect(editor.toHTML(true)).toBe(startingHTML)
@@ -2313,9 +2326,41 @@ describe("transform controls and geometry", () => {
     expect(editor.toHTML(true)).toBe(finalHTML)
   })
 
-  it("keeps the last moved canvas item in front throughout dragging and subsequent move starts", () => {
-    document.body.classList.add("ww-canvas")
+  it.each(["canvas", "slides"].flatMap(mode => [
+    {forward: true, edge: true, cycle: true, selected: 1, expected: [10, 101, 100]},
+    {forward: false, edge: true, cycle: true, selected: 1, expected: [10, 9, 100]},
+    {forward: true, edge: false, cycle: false, selected: 1, expected: [10, 100, 50]},
+    {forward: false, edge: false, cycle: false, selected: 1, expected: [50, 10, 100]},
+    {forward: true, edge: false, cycle: true, selected: 2, expected: [10, 50, 9]},
+    {forward: false, edge: false, cycle: true, selected: 0, expected: [101, 50, 100]},
+  ].map(scenario => ({mode, ...scenario}))))("scans once for $mode frame stacking (forward=$forward, edge=$edge, cycle=$cycle)", ({mode, forward, edge, cycle, selected, expected}) => {
+    document.body.replaceChildren()
+    document.body.className = `ww-${mode}`
+    const items = [targetElement(), targetElement(), targetElement()]
+    items.forEach((item, i) => Object.assign(item.style, {position: "absolute", zIndex: String([10, 50, 100][i])}))
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(...items)
+    }
+    vi.spyOn(editor.doc, "beginUndoGroup").mockReturnValue(() => {})
+    vi.spyOn(feature, "updateInfo").mockImplementation(() => {})
+    const read = vi.spyOn(globalThis, "getComputedStyle")
+    feature.moveZ(items[selected], forward, edge, cycle)
+    expect(read.mock.calls).toHaveLength(items.length)
+    expect(new Set(read.mock.calls.map(([element]) => element))).toEqual(new Set(items))
+    expect(items.map(item => Number(item.style.zIndex))).toEqual(expected)
+  })
+
+  it.each(["canvas", "slides"])("keeps the last moved %s item in front throughout dragging and subsequent move starts", mode => {
+    document.body.replaceChildren()
+    document.body.className = `ww-${mode}`
     const first = targetElement(), second = targetElement("section")
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(first, second)
+    }
     for(const target of [first, second]) {
       Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
       mockRect(target)
@@ -2355,9 +2400,15 @@ describe("transform controls and geometry", () => {
     expect(sibling.style.zIndex).toBe("2")
   })
 
-  it("keeps canvas activation on cancellation and preserves a concurrent stacking change", () => {
-    document.body.classList.add("ww-canvas")
+  it.each(["canvas", "slides"])("keeps %s activation on cancellation and preserves a concurrent stacking change", mode => {
+    document.body.replaceChildren()
+    document.body.className = `ww-${mode}`
     const target = targetElement(), sibling = targetElement()
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(target, sibling)
+    }
     Object.assign(target.style, {position: "absolute", zIndex: "1", left: "0px", top: "0px"})
     Object.assign(sibling.style, {position: "absolute", zIndex: "2"})
     mockRect(target)
@@ -2367,6 +2418,7 @@ describe("transform controls and geometry", () => {
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 120, clientY: 100}))
     document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
     expect(target.style.zIndex).toBe("3")
+    expect(sibling.style.zIndex).toBe("2")
     expect(target.style.left).toBe("0px")
     expect(document.body).not.toHaveClass("◆transform-moving")
 

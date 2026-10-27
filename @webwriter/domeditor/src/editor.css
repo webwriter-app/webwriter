@@ -525,7 +525,7 @@ body::part(hover-caret) {
 }
 
 body::part(hover-caret-transformed),
-body:has(> *:is(:hover, .◆pointer-hovered))::part(hover-caret),
+body:not(.ww-slides):has(> *:is(:hover, .◆pointer-hovered))::part(hover-caret),
 body:has(.◆element-hovered)::part(hover-caret),
 body.◆element-hovered::part(hover-caret),
 body:has(.◆style-target-hovered)::part(hover-caret),
@@ -935,7 +935,7 @@ svg[viewBox]:empty {
   display: block;
   box-sizing: border-box;
   aspect-ratio: 16 / 9;
-  border: 1px solid #cbd5e1;
+  outline: 1px solid #cbd5e1;
   border-radius: 0.2rem;
   background-color: #fff;
   box-shadow: 0 1px 3px rgb(15 23 42 / 8%);
@@ -1082,6 +1082,11 @@ body::part(graphic-individual-outline) {
   vector-effect: non-scaling-stroke;
 }
 
+body::part(graphic-selection-outline) {
+  pointer-events: stroke;
+  cursor: move;
+}
+
 body::part(graphic-marquee) {
   fill: rgb(37 99 235 / 10%);
   stroke: #2563eb;
@@ -1104,6 +1109,12 @@ body::part(graphic-guide) {
   vector-effect: non-scaling-stroke;
 }
 
+body::part(graphic-ellipse-guide) {
+  fill: none;
+  stroke: #94a3b8;
+  opacity: .65;
+}
+
 body::part(graphic-guide-canvas) {
   stroke: #f59e0b;
 }
@@ -1122,6 +1133,7 @@ body::part(graphic-affordance) {
 body::part(graphic-affordance-roundness) { cursor: ew-resize; }
 body::part(graphic-affordance-radius-x) { cursor: ew-resize; }
 body::part(graphic-affordance-radius-y) { cursor: ns-resize; }
+body::part(graphic-affordance-arrowhead) { cursor: nwse-resize; }
 body::part(graphic-affordance-line-start),
 body::part(graphic-affordance-line-end),
 body::part(graphic-affordance-connector-start),
@@ -1479,10 +1491,12 @@ body::part(empty-document-caret) {
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
 }
 
-/* A BODY boundary selection can paint a native caret inside a positioned
- * child. Use the appendix caret for document flow and no caret for canvas. */
+/* A body or slide boundary can paint a native caret inside a positioned child.
+ * Use the appendix caret for document flow and no caret for freeform layouts. */
 body.◆empty-selected,
-body.◆empty-selected * {
+body.◆empty-selected *,
+body.ww-slides > .ww-slides-viewport > section.ww-slide.◆empty-selected:not([is]),
+body.ww-slides > .ww-slides-viewport > section.ww-slide.◆empty-selected:not([is]) * {
   caret-color: transparent !important;
 }
 

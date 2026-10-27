@@ -7,6 +7,8 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "SVG arrowheads select their connector, fit its outline and resize independently",
+  "SVG shape fills keep overlaps solid and intentional holes open",
   "SVG stroke colors preserve line placement and selection",
   "repeated canvas modifier selections preserve item placement and camera",
   "canvas multiline text keeps partial selections after formatting",
@@ -85,6 +87,7 @@ const expectedChecks = [
   "saved document module references do not poison trusted widget loading",
   "attribution is limited to top-level elements and follows nesting",
   "attribution inputs keep visible carets during element and capture selection",
+  "toolbox attribution opens for multiple elements and deletes metadata together",
   "attribution license picker wraps definitions on a third line and offers only current CC licenses",
   "block splitting retains attribution only on the original part",
   "new paragraphs and line breaks reveal the caret at the document end",
@@ -158,8 +161,10 @@ const expectedChecks = [
   "typing after moving a text box preserves its text and position",
   "a clean canvas retains its initial item when moving and typing without inserting links",
   "CSS Slides use native fragment links while editing",
+  "slide editing retains text and media selections after focus",
   "exported canvas runs its standalone viewer without editor dependencies",
   "image hotspots scale and open popovers in preview and standalone reading mode",
+  "canvas hotspot clicks preserve the camera in preview and standalone reading mode",
   "hotspot popovers use grey editing placeholders and compact controls",
   "saved Slides navigate with HTML and CSS and scripting disabled",
 ]
@@ -207,11 +212,22 @@ const expectedImportMapChecks = [
   "offline bundling leaves out unused modules of side-effect-free packages",
 ]
 let reportResult
+let activeCheck
 const resultPromise = new Promise(resolve => { reportResult = resolve })
 const resultPlugin = {
   name: "native-result",
   configureServer(server) {
     server.middlewares.use((request, response, next) => {
+      if(request.url === "/__native-progress" && request.method === "POST") {
+        let name = ""
+        request.on("data", chunk => { name += chunk })
+        request.on("end", () => {
+          activeCheck = name
+          process.stdout.write(`Running: ${name}\n`)
+          response.end()
+        })
+        return
+      }
       if(request.url?.startsWith("/__webwriter/local-packages/live-fixture/")) {
         const name = request.url.slice("/__webwriter/local-packages/live-fixture/".length).split("?")[0]
         if(!["widget.js", "label.js", "widget.css", "icon.svg"].includes(name)) return next()
@@ -258,7 +274,7 @@ const port = await new Promise((resolve, reject) => {
 const vite = await createServer({
   ...(widgetStateMode || widgetStorageMode ? {logLevel: "silent"} : {}),
   plugins: [resultPlugin],
-  server: {host: "127.0.0.1", port, strictPort: true},
+  server: {host: "127.0.0.1", port, strictPort: true, hmr: false, watch: null},
 })
 const profile = await mkdtemp(join(tmpdir(), "domeditor-native-"))
 if(browserName === "firefox") {
@@ -309,8 +325,10 @@ try {
   }))
   const failedToStart = new Promise(resolve => browser.once("error", error => resolve({error: String(error)})))
   const timedOut = new Promise(resolve => {
-    const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000 : 30000
-    timeout = setTimeout(() => resolve({error: "Native browser timed out"}), timeoutMs)
+    // The full regression suite runs its iframe and layout checks serially.
+    const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000
+      : !smoke && !checkFilter && !performanceMode && !widgetAggregationMode ? 600000 : 30000
+    timeout = setTimeout(() => resolve({error: `Native browser timed out${activeCheck ? ` while running: ${activeCheck}` : ""}`}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)

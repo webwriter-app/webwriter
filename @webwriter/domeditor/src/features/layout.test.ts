@@ -22,6 +22,196 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
+describe.each(["canvas", "slides"] as const)("%s stacking placement", mode => {
+  function seed() {
+    document.body.className = `ww-${mode}`
+    const content = '<!--before--><p style="position:absolute; z-index:1">First</p><custom-card style="position:absolute; z-index:2"><p style="z-index:99">Inside</p><!--keep--></custom-card><svg xmlns="http://www.w3.org/2000/svg" style="position:absolute; z-index:3"><circle r="5" /></svg><section style="position:absolute; z-index:4">Fourth</section><p style="position:absolute; z-index:5">Last</p><style>.authored {color:red}</style><template><p>Template</p></template>'
+    document.body.innerHTML = mode === "canvas" ? content : `<div class="ww-slides-viewport"><section class="ww-slide">${content}<nav class="ww-slide-directions">Directions</nav></section><section class="ww-slide"><p style="z-index:80">Other slide</p></section></div><nav class="ww-slides-navigation">Navigation</nav>`
+    const root = mode === "canvas" ? document.body : document.querySelector<HTMLElement>(".ww-slide")!
+    const items = Array.from(root.children).filter((item): item is HTMLElement | SVGSVGElement => !item.matches("style,template,nav"))
+    return {root, items}
+  }
+
+  it.each([
+    {direction: "front", expected: [1, 2, 6, 4, 5], writes: 1},
+    {direction: "up", expected: [1, 2, 4, 3, 5], writes: 2},
+    {direction: "down", expected: [1, 3, 2, 4, 5], writes: 2},
+    {direction: "back", expected: [1, 2, 0, 4, 5], writes: 1},
+  ] as const)("moves $direction with $writes style mutations and preserves DOM order", ({direction, expected, writes}) => {
+    const {root, items} = seed()
+    const nodes = Array.from(root.childNodes), contents = items.map(item => item.innerHTML)
+    $.selectElement(items[2])
+    const observer = new MutationObserver(() => {})
+    observer.observe(root, {attributes: true, subtree: true, attributeFilter: ["style"]})
+    expect(editor.features.layout.actions.movePlacement({type: "movePlacement", direction})).toBe(true)
+    expect(observer.takeRecords().map(record => record.target)).toHaveLength(writes)
+    observer.disconnect()
+    expect(items.map(item => Number(item.style.zIndex))).toEqual(expected)
+    expect(Array.from(root.childNodes)).toEqual(nodes)
+    expect(items.map(item => item.innerHTML)).toEqual(contents)
+    expect($.selectedElement).toBe(items[2])
+    expect(document.querySelector<HTMLElement>(".ww-slide + .ww-slide > p")?.style.zIndex).toBe(mode === "slides" ? "80" : undefined)
+    expect(root.querySelector("style")!.hasAttribute("style")).toBe(false)
+    expect(root.querySelector("template")!.hasAttribute("style")).toBe(false)
+    expect(root.querySelector("nav")?.hasAttribute("style") ?? false).toBe(false)
+  })
+
+  it("repairs duplicate indices locally while preserving auto, negative and sparse peers", () => {
+    const {items} = seed()
+    items.forEach((item, i) => item.style.zIndex = ["auto", "-4", "7", "7", "90"][i])
+    items[2].style.setProperty("z-index", "7", "important")
+    $.selectElement(items[2])
+    editor.features.layout.movePlacement("up")
+    expect(items.map(item => item.style.zIndex)).toEqual(["auto", "-4", "8", "7", "90"])
+    expect(items[2].style.getPropertyPriority("z-index")).toBe("important")
+    editor.features.layout.movePlacement("front")
+    const styles = items.map(item => item.getAttribute("style"))
+    editor.features.layout.movePlacement("front")
+    expect(items.map(item => item.getAttribute("style"))).toEqual(styles)
+  })
+
+  it.each(["front", "up", "down", "back"] as const)("reads each eligible peer once when moving %s or projecting availability", direction => {
+    const {items} = seed()
+    vi.spyOn(editor.doc, "beginUndoGroup").mockReturnValue(() => {})
+    const read = vi.spyOn(globalThis, "getComputedStyle")
+    editor.features.layout.placeElement(items[2], direction)
+    expect(read.mock.calls).toHaveLength(items.length)
+    expect(new Set(read.mock.calls.map(([element]) => element))).toEqual(new Set(items))
+    read.mockClear()
+    editor.features.layout.getPlacementState(items[2])
+    expect(read.mock.calls).toHaveLength(items.length)
+    expect(new Set(read.mock.calls.map(([element]) => element))).toEqual(new Set(items))
+  })
+
+  it.each([
+    {indices: [70, -20, 300, 0, 8], selected: 0, direction: "down", order: [1, 3, 0, 4, 2], writes: 2},
+    {indices: [0, 0, 0, 0, 0], selected: 0, direction: "up", order: [1, 0, 2, 3, 4], writes: 1},
+    {indices: [0, 0, 0, 0, 0], selected: 2, direction: "up", order: [0, 1, 3, 2, 4], writes: 2},
+    {indices: [0, 0, 0, 0, 0], selected: 4, direction: "down", order: [0, 1, 2, 4, 3], writes: 1},
+    {indices: [1, 0, 0, 2, 3], selected: 2, direction: "up", order: [1, 0, 2, 3, 4], writes: 1},
+    {indices: [0, 1, 0, 2, 3], selected: 1, direction: "down", order: [0, 1, 2, 3, 4], writes: 1},
+    {indices: [5, 1, 5, 1, 9], selected: 3, direction: "up", order: [1, 0, 3, 2, 4], writes: 2},
+    {indices: [5, 1, 5, 1, 9], selected: 0, direction: "down", order: [1, 0, 3, 2, 4], writes: 2},
+  ] as const)("swaps adjacent paint-order peers with gaps or ties ($indices, $selected, $direction)", ({indices, selected, direction, order, writes}) => {
+    const {root, items} = seed()
+    items.forEach((item, i) => item.style.zIndex = String(indices[i]))
+    vi.spyOn(editor.doc, "beginUndoGroup").mockReturnValue(() => {})
+    const read = vi.spyOn(globalThis, "getComputedStyle")
+    const observer = new MutationObserver(() => {})
+    observer.observe(root, {attributes: true, subtree: true, attributeFilter: ["style"]})
+    expect(editor.features.layout.placeElement(items[selected], direction)).toBe(true)
+    expect(read.mock.calls).toHaveLength(items.length)
+    expect(observer.takeRecords()).toHaveLength(writes)
+    observer.disconnect()
+    expect([...items].sort((a, b) => Number(a.style.zIndex) - Number(b.style.zIndex)).map(item => items.indexOf(item))).toEqual(order)
+  })
+
+  it.each(["front", "up", "down", "back"] as const)("does not write styles or open an undo group at the %s boundary", direction => {
+    const {items} = seed()
+    const target = items[direction === "front" || direction === "up" ? 4 : 0]
+    const begin = vi.spyOn(editor.doc, "beginUndoGroup")
+    const styles = items.map(item => item.getAttribute("style"))
+    expect(editor.features.layout.placeElement(target, direction)).toBe(true)
+    expect(items.map(item => item.getAttribute("style"))).toEqual(styles)
+    expect(begin).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    {direction: "front", bound: 2147483647, at: 4, expected: [1, 2, 5, 3, 4]},
+    {direction: "back", bound: -2147483648, at: 0, expected: [2, 3, 1, 4, 5]},
+  ] as const)("compacts only when moving $direction would overflow CSS's integer range", ({direction, bound, at, expected}) => {
+    const {items} = seed()
+    items[at].style.zIndex = String(bound)
+    expect(editor.features.layout.placeElement(items[2], direction)).toBe(true)
+    expect(items.map(item => Number(item.style.zIndex))).toEqual(expected)
+  })
+
+  it("projects DOM-order boundaries for auto and duplicate indices", () => {
+    const {items} = seed()
+    items.forEach(item => item.style.removeProperty("z-index"))
+    expect(editor.features.layout.getPlacementState(items[0])).toEqual({canMoveUp: true, canMoveDown: false})
+    expect(editor.features.layout.getPlacementState(items[2])).toEqual({canMoveUp: true, canMoveDown: true})
+    expect(editor.features.layout.getPlacementState(items[4])).toEqual({canMoveUp: false, canMoveDown: true})
+  })
+
+  it("projects boundaries and limits commands to connected direct children", () => {
+    const {root, items} = seed()
+    const state = (target: Element) => editor.features.manipulation.getStyleState([], target, false).target?.placement
+    expect(state(items[0])).toEqual({canMoveUp: true, canMoveDown: false})
+    expect(state(items[4])).toEqual({canMoveUp: false, canMoveDown: true})
+    const nested = items[1].querySelector("p")!
+    expect(state(nested)).toBeUndefined()
+    $.selectElement(nested)
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+    $.selectElement(items[2])
+    items[2].remove()
+    expect(editor.features.layout.getPlacementState(items[2])).toBeUndefined()
+    expect(editor.features.layout.placeElement(items[2], "front")).toBe(false)
+    document.getSelection()!.removeAllRanges()
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+    $.selectElement(root)
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+    $.selectElement(items[0])
+    vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    expect(editor.features.layout.movePlacement("front")).toBe(false)
+  })
+
+  it("resolves the toolbox target below the current canvas or slide root", () => {
+    const {items} = seed()
+    const nested = items[1].querySelector("p")!
+    $.move(nested.firstChild!, 2)
+    expect(editor.features.manipulation.topLevelStyleTarget).toBe(items[1])
+    expect(editor.features.layout.actions.movePlacement({type: "movePlacement", direction: "front", topLevel: true})).toBe(true)
+    expect(items[1].style.zIndex).toBe("6")
+    expect(nested.style.zIndex).toBe("99")
+  })
+
+  it("synchronizes placement, excludes markers, and undoes and redoes as one command", () => {
+    const {items} = seed()
+    editor.features.selection.captureElement(items[1])
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    editor.features.layout.movePlacement("front")
+    const after = editor.toHTML(true)
+    expect(after).not.toContain("◆")
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const html = sharedDOMBody(remote).toString()
+      expect(html).toContain("z-index: 6")
+      expect(html).not.toContain("◆")
+    }
+    finally { remote.destroy() }
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("uses remotely changed indices and newly inserted peers on the next command", () => {
+    const {root} = seed()
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const body = sharedDOMBody(remote)
+      const parent = mode === "canvas" ? body : (body.get(0) as Y.XmlElement).get(0) as Y.XmlElement
+      ;(parent.get(2) as Y.XmlElement).setAttribute("style", "position:absolute; z-index:100")
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
+      const current = Array.from(root.children).filter((item): item is HTMLElement | SVGSVGElement => !item.matches("style,template,nav"))
+      expect(current[1].style.zIndex).toBe("100")
+      const added = document.createElement("custom-added")
+      added.style.zIndex = "50"
+      root.append(added)
+      $.selectElement(current[2])
+      editor.features.layout.movePlacement("up")
+      expect(current.map(item => item.style.zIndex)).toEqual(["1", "100", "4", "3", "5"])
+      expect(added.style.zIndex).toBe("50")
+    }
+    finally { remote.destroy() }
+  })
+})
+
 describe("document floats", () => {
   // Left/right use CSS math unsupported by Happy DOM; native-browser.ts checks
   // their rendered alignment and exported HTML at each document breakpoint.
@@ -488,7 +678,7 @@ describe("document floats", () => {
   })
 
   it("does not expose former column, flex or grid commands or selection controls", () => {
-    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFloat", "moveFloat"])
+    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFloat", "moveFloat", "movePlacement"])
     document.querySelector<HTMLElement>("section")!.style.display = "grid"
     $.selectElement(document.querySelector("section")!)
     editor.features.layout.refresh()

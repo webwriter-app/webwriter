@@ -146,6 +146,9 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   document.addEventListener("wheel", () => post({type: "editor-frame-interaction"}), {capture: true, passive: true})
   document.addEventListener("keydown", event => {
     post({type: "editor-frame-interaction"})
+    // The captured graphic owns its Option shortcuts before application bindings.
+    if(event.altKey && !event.ctrlKey && !event.metaKey && !editor.features.mark.isSVGTextSelection
+      && editor.features.selection.captureSelectedElement?.localName === "svg") return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
     const command = appCommands.find(candidate => shortcuts[candidate.id] === shortcut)
@@ -172,6 +175,14 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
       saveSelection()
     }
     else if(data.command === "focus") {
+      // A queued host pointerdown can arrive after double-click opened a
+      // label. Focusing BODY would replace the proxy's live text selection.
+      if(editor.features.graphic.textEditingRange) {
+        bookmark = null
+        window.focus()
+        editor.features.graphic.focusTextInput()
+        return
+      }
       if(!data.restoreSelection) saveSelection()
       window.focus()
       document.body.focus({preventScroll: true})

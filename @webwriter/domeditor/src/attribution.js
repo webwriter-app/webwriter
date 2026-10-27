@@ -66,7 +66,10 @@ export function createAttributionController(doc, options = {}) {
     .◆attribution-ui label { display: grid; gap: 4px; }
     .◆attribution-ui input { caret-color: auto; width: 100%; min-width: 0; height: 30px; padding: 4px 7px; border: 1px solid #cbd5e1; border-radius: 3px; color: #0f172a; background: #fff; }
     .◆attribution-ui .pair { display: grid; grid-template-columns: minmax(0, 1fr) 70px; gap: 8px; }
-    .◆attribution-ui .save { justify-self: end; padding: 5px 12px; border: 1px solid #cbd5e1; border-radius: 3px; background: #f8fafc; color: inherit; cursor: pointer; }
+    .◆attribution-ui .actions { display: flex; justify-content: space-between; gap: 10px; }
+    .◆attribution-ui .actions button { padding: 5px 12px; border: 1px solid #cbd5e1; border-radius: 3px; background: #f8fafc; color: inherit; cursor: pointer; }
+    .◆attribution-ui .actions .delete { color: #b42318; }
+    .◆attribution-ui .selection-summary { margin: 0; color: #64748b; }
     .◆attribution-ui .details { display: grid; gap: 8px; overflow-wrap: anywhere; }
     .◆attribution-ui a { color: inherit; text-decoration: underline; }
     .◆attribution-ui .error { margin: 0; color: #b91c1c; }
@@ -100,7 +103,7 @@ export function createAttributionController(doc, options = {}) {
     <form><div class="pair"><label>Name<input name="name" autocomplete="name"></label><label>Year<input name="year" inputmode="numeric" pattern="[0-9]{4}" placeholder="YYYY"></label></div>
     <label>License<input name="license" type="hidden"></label>
     <label>Contact URL or email<input name="contact" placeholder="https://… or name@example.com"></label>
-    <p class="error" role="alert" hidden></p><button class="save" type="button">Save</button></form><div class="details" hidden></div>
+    <p class="selection-summary" hidden></p><p class="error" role="alert" hidden></p><div class="actions"><button class="delete" type="button" aria-label="Delete attribution">Delete</button><button class="save" type="button">Save</button></div></form><div class="details" hidden></div>
   </div>`
   const bridge = root.querySelector(".bridge"), button = root.querySelector(".copyright")
   const popup = root.querySelector(".popup"), form = root.querySelector("form"), details = root.querySelector(".details")
@@ -126,6 +129,7 @@ export function createAttributionController(doc, options = {}) {
   const appendix = root.getRootNode()
   appendix.adoptedStyleSheets = [...appendix.adoptedStyleSheets, sheet]
   let target = null, opened = null, baseline = null
+  let openedElements = [], baselines = new Map()
   let frame, destroyed = false
   let noteSheet = null, noteRules = "", noteSequence = 0, notesDirty = true
   const notes = new Map()
@@ -353,7 +357,7 @@ export function createAttributionController(doc, options = {}) {
   const close = (focus = false) => {
     if(!opened) return
     const previous = opened
-    opened = null; baseline = null
+    opened = null; baseline = null; openedElements = []; baselines.clear()
     licensePicker?.close(true)
     popup.hidePopover?.()
     popup.hidden = true
@@ -388,7 +392,7 @@ export function createAttributionController(doc, options = {}) {
       try { syncNotes() }
       catch(error) { clearNotes(); throw error }
     }
-    if(opened && eligible(opened) !== opened) close()
+    if(openedElements.some(element => eligible(element) !== element)) close()
     const next = opened ?? eligible(options.selectedElement?.())
     if(next !== target) {
       resize?.disconnect()
@@ -407,7 +411,7 @@ export function createAttributionController(doc, options = {}) {
     bridge.setAttribute("part", empty ? "transform-overlay" : "")
     button.querySelector("svg").toggleAttribute("hidden", empty)
     // Paint with the normal controls, above the native drag hit regions.
-    if(empty && appendix.lastElementChild !== root) appendix.append(root)
+    if(empty && !opened && appendix.lastElementChild !== root) appendix.append(root)
     const rect = target.getBoundingClientRect()
     const style = view.getComputedStyle(target)
     bridge.hidden = bridge.hidden || !rect.width || !rect.height || style.visibility === "hidden" || style.display === "none"
@@ -443,9 +447,15 @@ export function createAttributionController(doc, options = {}) {
     frame = view.requestAnimationFrame(() => { frame = undefined; refresh() })
   }
   const open = element => {
-    if(!eligible(element)) return false
-    opened = eligible(element)
-    baseline = values(opened)
+    const elements = [...new Set((Array.isArray(element) ? element : [element]).map(eligible))]
+    if(!elements.length || elements.includes(null)) return false
+    openedElements = elements
+    opened = elements[0]
+    baselines = new Map(elements.map(element => [element, values(element)]))
+    baseline = Object.fromEntries(fields.map(key => [key, elements.every(element => baselines.get(element)[key] === baselines.get(opened)[key]) ? baselines.get(opened)[key] : ""]))
+    const summary = root.querySelector(".selection-summary")
+    summary.hidden = elements.length === 1
+    summary.textContent = `Applies to ${elements.length} elements. Only changed fields are saved.`
     form.hidden = !editable(); details.hidden = editable(); error.hidden = true
     for(const key of fields) { inputs[key].value = baseline[key]; inputs[key].setCustomValidity("") }
     if(licensePicker) licensePicker.value = baseline.license
@@ -465,7 +475,7 @@ export function createAttributionController(doc, options = {}) {
   root.addEventListener("keydown", event => {
     if(event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true) }
     if(event.key === "Tab" && opened && editable() && !event.defaultPrevented && event.composedPath().includes(popup)) {
-      const controls = [inputs.name, inputs.year, licensePicker, inputs.contact, root.querySelector(".save"), root.querySelector(".close")]
+      const controls = [inputs.name, inputs.year, licensePicker, inputs.contact, root.querySelector(".delete"), root.querySelector(".save"), root.querySelector(".close")]
         .filter(control => control?.isConnected && !control.disabled)
       const index = controls.findIndex(control => event.composedPath().includes(control))
       event.preventDefault()
@@ -475,14 +485,14 @@ export function createAttributionController(doc, options = {}) {
     }
   })
   inputs.contact.addEventListener("input", () => inputs.contact.setCustomValidity(""))
-  const save = () => {
-    if(!editable() || !opened || eligible(opened) !== opened) { close(); return }
+  const save = (remove = false) => {
+    if(!editable() || !opened || openedElements.some(element => eligible(element) !== element)) { close(); return }
     const changed = {}
     for(const key of fields) {
-      if(inputs[key].value === baseline[key]) continue
-      const value = inputs[key].value.trim()
-      if(value === baseline[key]) continue
-      if((opened.getAttribute(attributionAttributes[key]) ?? "") !== baseline[key]) {
+      if(!remove && inputs[key].value === baseline[key]) continue
+      const value = remove ? "" : inputs[key].value.trim()
+      if(!remove && value === baseline[key]) continue
+      if(openedElements.some(element => (element.getAttribute(attributionAttributes[key]) ?? "") !== baselines.get(element)[key])) {
         error.textContent = "Attribution changed while editing. Close and reopen to use the latest values."
         error.hidden = false
         return
@@ -495,14 +505,18 @@ export function createAttributionController(doc, options = {}) {
       if(!url) { inputs.contact.reportValidity(); return }
       changed.contact = url
     }
-    if(!form.reportValidity()) return
-    if(!Object.keys(changed).length || options.save?.(opened, changed)) close(true)
+    if(!remove && !form.reportValidity()) return
+    if(!Object.keys(changed).length || options.save?.(openedElements, changed)) close(true)
   }
   // Native form activation is suppressed by designMode in some browsers.
-  root.querySelector(".save").addEventListener("click", save)
+  root.querySelector(".save").addEventListener("click", () => save())
+  root.querySelector(".delete").addEventListener("click", () => save(true))
   form.addEventListener("submit", event => { event.preventDefault(); save() })
   form.addEventListener("keydown", event => {
-    if(event.key === "Enter" && !event.isComposing && !event.defaultPrevented) { event.preventDefault(); save() }
+    if(event.key === "Enter" && !event.isComposing && !event.defaultPrevented) {
+      event.preventDefault()
+      save(event.target === root.querySelector(".delete"))
+    }
   })
   const handleEvent = event => {
     const path = event.composedPath()
