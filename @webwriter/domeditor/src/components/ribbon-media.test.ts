@@ -665,6 +665,20 @@ describe("primary media Source control", () => {
 
 
 describe("primary media alternative text", () => {
+  it.each(["picture", "img"] as const)("separates %s alternative text from Language using the standard field spacing", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.media = {type, attributes: {alt: "Description"}}
+    toolbox.elementAttributes = {path: [0], localName: type, namespaceURI: "http://www.w3.org/1999/xhtml", name: "Image", attributes: {lang: "en"}}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector(`ribbon-drawer[data-specialized="${type}"]`)!
+    const alt = drawer.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
+    const attributes = drawer.querySelector("element-attribute-editor")!
+    expect(alt.compareDocumentPosition(attributes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(getComputedStyle(attributes).marginTop).toBe("6.4px")
+  })
+
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("edits %s alternative text in primary options", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
@@ -718,14 +732,15 @@ describe("primary media alternative text", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Source: Source URL"]')!.value).toBe("fallback.ogg")
   })
 
-  it("offers image inputs for video covers and edits only poster", async () => {
+  it("offers image inputs for video covers in advanced options and edits only poster", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.media = {type: "video", attributes: {src: "movie.mp4", poster: "cover.png"}}
     document.body.append(toolbox)
     await toolbox.updateComplete
     const cover = toolbox.shadowRoot!.querySelector('[data-cover="true"]')!
-    expect(cover.closest('[slot="more"]')).toBeNull()
+    expect(cover.closest('[slot="more"]')).not.toBeNull()
+    expect(cover.parentElement!.lastElementChild).toBe(cover)
     expect(cover.querySelector("label")!.textContent).toBe("Cover image")
     const actions = vi.fn()
     const edits = vi.fn()
@@ -736,6 +751,11 @@ describe("primary media alternative text", () => {
       "selected-media-cover-file", "selected-media-cover-capture:screen-image", "selected-media-cover-capture:camera-image",
     ])
     const input = cover.querySelector<HTMLInputElement>("input")!
+    const source = toolbox.shadowRoot!.querySelector<HTMLInputElement>("#media-source-url")!
+    const coverStyle = getComputedStyle(input), sourceStyle = getComputedStyle(source)
+    for(const property of ["background-color", "border-top-width", "border-right-width", "border-bottom-width", "border-left-width", "border-radius", "padding", "height", "font-size", "line-height", "box-shadow"]) {
+      expect(coverStyle.getPropertyValue(property), property).toBe(sourceStyle.getPropertyValue(property))
+    }
     expect(input.value).toBe("cover.png")
     input.value = "new-cover.png"
     input.dispatchEvent(new Event("change", {bubbles: true}))

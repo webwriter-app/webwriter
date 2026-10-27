@@ -107,11 +107,13 @@ export class DomEditorToolbox extends EditingControls {
     ${proofreadingCardStyles}
     ${EditingControls.styles}
     .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
+    .specialized-options > .media-source {margin-bottom: 0;}
+    ribbon-drawer:is([data-specialized="picture"], [data-specialized="img"]) > element-attribute-editor {margin-top: .4rem;}
     .media-source .media-source-buttons {border-radius: 4px 4px 0 0; background: transparent;}
     .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
     .media-source-controls {min-width: 0; border-radius: 4px;}
     .media-source-controls:focus-within {outline: 2px solid #b9d7f5; outline-offset: 0;}
-    .media-source-field input {box-sizing: border-box; flex: 1; width: 0; min-width: 0; height: 100%; border: 0; padding: .3rem .4rem; background: transparent; color: inherit; font: inherit; outline: none; box-shadow: none;}
+    .media-source .media-source-field input {box-sizing: border-box; flex: 1; width: 0; min-width: 0; height: 100%; border: 0; border-radius: 0; padding: .3rem .4rem; background: transparent; color: inherit; font: inherit; outline: none; box-shadow: none;}
     .media-source-field > svg {width: 1rem; height: 1rem; flex: none; margin-left: .35rem;}
     .media-source-field button {display: flex; align-items: center; justify-content: center; flex: none; width: 1.4rem; height: 100%; padding: 0; border: 0; border-radius: 0 0 4px 0; background: transparent; color: inherit; font: inherit; cursor: pointer;}
     .media-source-field button:hover {background: #edf3f9;}
@@ -1174,7 +1176,6 @@ export class DomEditorToolbox extends EditingControls {
         ${this.media.type === "video" && this.media.videoPlaybackWarning ? html`<div class="video-playback-warning" role="status">${this.media.videoPlaybackWarning === "unsupported"
           ? "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."
           : "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."}</div>` : nothing}
-        ${this.media.type === "video" ? this.renderMediaSource(true) : nothing}
         <div class="media-toolbox-controls">
           ${mediaAttributeOptions[this.media.type].filter(option => ["alt", "aria-label"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
@@ -1195,6 +1196,7 @@ export class DomEditorToolbox extends EditingControls {
         ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
         ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
+        ${this.media?.type === "video" && (!group || singleTarget) ? this.renderMediaSource(true) : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
