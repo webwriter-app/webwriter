@@ -7916,7 +7916,6 @@ export class DomEditor extends LitElement {
         @shape-paint-change=${this.handleShapePaintChange}
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
-        .showStyleToolbox=${this.settings.showStyleToolbox}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}

@@ -802,18 +802,6 @@ export class SettingsPanel extends LitElement {
           <p class="setting-description">Layout used when creating a new document.</p>
         </section>
 
-        <section class="setting-card" aria-label="Toolbox">
-          <label class="checkbox-setting">
-            <input
-              type="checkbox"
-              .checked=${this.settings.showStyleToolbox}
-              @change=${(event: Event) => this.emitSettings({...this.settings, showStyleToolbox: (event.currentTarget as HTMLInputElement).checked})}
-            />
-            <span class="checkbox-label">Show style toolbox</span>
-            <span class="checkbox-description">Show the Style tab to edit the selected element’s CSS properties.</span>
-          </label>
-        </section>
-
         <section class="setting-card" aria-label="Guided tour">
           <label class="checkbox-setting">
             <input

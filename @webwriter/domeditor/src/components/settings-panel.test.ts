@@ -231,14 +231,13 @@ describe("settings panel", () => {
     }
   })
 
-  it("introduces commands, explains the Style tab, and spaces adjacent command sections", async () => {
+  it("introduces commands and spaces adjacent command sections", async () => {
     const panel = await mountPanel()
     const root = panel.shadowRoot!
     expect(root.querySelector("#settings-editor")!.getAttribute("role")).toBe("tabpanel")
     expect(root.querySelector(".cloud-heading")!.localName).toBe("h2")
     expect(root.textContent).not.toContain("Name shown in")
     expect(root.querySelector("#settings-commands")!.firstElementChild!.className).toBe("shortcut-help")
-    expect(root.querySelector('[aria-label="Toolbox"] .checkbox-description')!.textContent).toContain("CSS properties")
     const sections = [...root.querySelectorAll<HTMLElement>(".command-section")]
     const gap = parseFloat(getComputedStyle(sections[0].querySelector(".command-list")!).gap)
       * parseFloat(getComputedStyle(document.documentElement).fontSize)
@@ -473,7 +472,6 @@ describe("settings panel", () => {
       language: "de",
       updateDocumentLanguage: false,
       disableAnimations: true,
-      showStyleToolbox: true,
       pinDeveloperConsole: true,
       shortcuts: {...defaultAppSettings().shortcuts, "document.save": "Alt+S"},
     }
@@ -608,19 +606,18 @@ describe("settings dialog", () => {
   })
 })
 
-it("defaults to hiding Style and loads the saved preference", async () => {
-  expect(defaultAppSettings().showStyleToolbox).toBe(false)
+it("omits the removed style toolbox option and ignores its saved preference", async () => {
+  expect(defaultAppSettings()).not.toHaveProperty("showStyleToolbox")
   for(const value of [undefined, "yes", true, false]) {
     localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({showStyleToolbox: value}))
-    expect(loadAppSettings().showStyleToolbox).toBe(value === true)
+    const settings = loadAppSettings()
+    expect(settings).not.toHaveProperty("showStyleToolbox")
+    persistAppSettings(settings)
+    expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!)).not.toHaveProperty("showStyleToolbox")
   }
   const panel = await mountPanel()
-  const changes: AppSettings[] = []
-  panel.addEventListener("settings-change", event => changes.push((event as CustomEvent<AppSettings>).detail))
-  const checkbox = panel.shadowRoot!.querySelector<HTMLInputElement>('section[aria-label="Toolbox"] input')!
-  expect(checkbox.checked).toBe(false)
-  checkbox.click()
-  expect(changes.at(-1)!.showStyleToolbox).toBe(true)
+  expect(panel.shadowRoot!.querySelector('section[aria-label="Toolbox"]')).toBeNull()
+  expect(panel.shadowRoot!.textContent).not.toContain("Show style toolbox")
 })
 
 

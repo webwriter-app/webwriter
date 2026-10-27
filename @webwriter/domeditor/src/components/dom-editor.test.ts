@@ -1871,20 +1871,20 @@ describe("DomEditor iframe setup", () => {
     expect((editor as any).fileDirty).toBe(false)
   })
 
-  it("applies the style toolbox preference without changing authored HTML", async () => {
+  it("keeps the Style toolbox hidden after settings changes without changing authored HTML", async () => {
     const {editor, iframe} = await mountEditor()
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
     const authoredHTML = iframe.contentDocument!.documentElement.outerHTML
     await toolbox.updateComplete
     expect(toolbox.showStyleToolbox).toBe(false)
-    for(const showStyleToolbox of [true, false]) {
+    for(const disableAnimations of [true, false]) {
       ribbon.dispatchEvent(new CustomEvent("app-settings-change", {
-        detail: {...defaultAppSettings(), showStyleToolbox}, bubbles: true, composed: true,
+        detail: {...defaultAppSettings(), disableAnimations}, bubbles: true, composed: true,
       }))
       await editor.updateComplete
       await toolbox.updateComplete
-      expect(Boolean(toolbox.shadowRoot!.querySelector('button[data-tool="Style"]'))).toBe(showStyleToolbox)
+      expect(toolbox.shadowRoot!.querySelector('button[data-tool="Style"]')).toBeNull()
       expect(iframe.contentDocument!.documentElement.outerHTML).toBe(authoredHTML)
     }
   })
