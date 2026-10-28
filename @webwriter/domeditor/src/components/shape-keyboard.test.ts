@@ -21,7 +21,13 @@ const arrowRows = [
   ["Striped right arrow", "Notched right arrow", "Pentagon arrow", "Chevron", "Right arrow callout", "Down arrow callout", "Left arrow callout", "Up arrow callout", "Left-right arrow callout", "Quad arrow callout"],
 ]
 const arrows = arrowRows.flat().map(label => graphicShapeOptions.find(option => option.label === label)!)
-const advanced = graphicShapeOptions.filter(option => !basic.includes(option) && !arrows.includes(option) && option.category !== "Flowchart")
+const advancedRows = [
+  ["Teardrop", "Frame", "Half frame", "L corner", "Diagonal stripe", "Plus", "Plaque", "Cylinder", "Cube", "Donut", "No / prohibited"],
+  ["Block arc", "Folded corner", "Heart", "Lightning bolt", "Sun", "Moon", "Cloud", "Explosion 1", "Explosion 2"],
+  ["Plus sign", "Minus", "Multiply", "Divide", "Equal", "Left bracket", "Right bracket", "Left brace", "Right brace"],
+  ["Ribbon up", "Ribbon down", "Vertical scroll", "Horizontal scroll", "Wave", "Double wave", "Rectangular callout", "Rounded rectangular callout", "Oval callout", "Cloud callout", "Line callout 1"],
+]
+const advanced = advancedRows.flat().map(label => graphicShapeOptions.find(option => option.label === label)!)
 const catalogs = {Basic: basic, Advanced: advanced, Arrows: arrows, Flowchart: graphicShapeOptions.filter(option => option.category === "Flowchart")}
 
 async function mountKeyboard() {
@@ -437,10 +443,14 @@ describe("shape keyboard", () => {
     expect(titles()).not.toContain("Explosion 2")
     keyboard.activePage = "Advanced"
     await keyboard.updateComplete
-    expect(titles().slice(0, originalBasic.length - 29)).toEqual(originalBasic.slice(29).map(option => option.label))
+    expect(titles()).toEqual(advancedRows.flat())
     expect(titles()).toContain("Cloud")
     expect(titles()).toContain("Right brace")
     expect(titles()).toContain("Ribbon up")
+    expect(titles()).not.toContain("Parentheses")
+    expect(titles()).not.toContain("Braces")
+    expect(titles()).not.toContain("Curved ribbon up")
+    expect(titles()).not.toContain("Curved ribbon down")
     expect(titles()).toContain("Explosion 1")
     expect(titles()).toContain("Explosion 2")
     expect(titles()).not.toContain("5-point star")

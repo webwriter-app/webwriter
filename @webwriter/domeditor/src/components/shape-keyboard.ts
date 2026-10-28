@@ -151,7 +151,7 @@ export class ShapeKeyboard extends LitElement {
   private get brushShortcutRows() { return this.shortcutRows.map(row => row.slice(0, 10)) }
   private pageKeys(page: string) {
     const shapeRows = graphicShapeSections.find(section => section.label === page)?.rows ?? []
-    if(page !== "Basic" && page !== "Arrows") return shapeRows.flat()
+    if(page === "Flowchart") return shapeRows.flat()
     const rows = this.shortcutRows
     const surplus: ShapeOption[] = []
     const keys = rows.flatMap((keys, index): (ShapeOption | undefined)[] => {

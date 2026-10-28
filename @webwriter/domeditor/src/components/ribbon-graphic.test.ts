@@ -39,6 +39,8 @@ describe("graphic ribbon", () => {
       "text-box", "image", "line", "connector", "line-start-arrow", "line-end-arrow", "line-both-arrows",
     ])
     expect(graphicShapeOptions.some(option => ["rectangle", "polygon", "right-triangle", "not-equal", "multidocument", "line-callout-2"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions.some(option => ["parentheses", "braces", "curved-ribbon-up", "curved-ribbon-down"].includes(option.type))).toBe(false)
+    expect(graphicShapeOptions).toHaveLength(134)
     expect(graphicShapeOptions.find(option => option.type === "square-rectangle")).toMatchObject({label: "Rectangle"})
     expect(graphicShapeOptions.find(option => option.type === "image")).toMatchObject({label: "Image", icon: "Image", category: "Lines"})
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
@@ -286,7 +288,7 @@ describe("graphic ribbon", () => {
       rows.at(-1)!.push(child.getAttribute("aria-label")!)
     }
     expect(sections.map(rows => rows.map(row => row.length))).toEqual([
-      [7, 11, 11, 11], [11, 11, 11, 11], [10, 7, 10], [11, 11, 5],
+      [7, 11, 11, 11], [11, 9, 9, 11], [10, 7, 10], [11, 11, 5],
     ])
     for(const [index, section] of graphicShapeSections.entries()) {
       keyboard.shadowRoot!.querySelector<HTMLButtonElement>(`.tabs [aria-label="${section.label}"]`)!.click()
@@ -453,7 +455,7 @@ describe("graphic ribbon", () => {
     await ribbon.updateComplete
     const field = ribbon.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Graphic: Shaft thickness"]')!
     expect(field).toHaveValue(10)
-    expect(field.min).toBe("0.5")
+    expect(field.min).toBe("0")
     expect(field.max).toBe("50")
   })
 
