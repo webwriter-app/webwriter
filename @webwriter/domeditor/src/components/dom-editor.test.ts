@@ -8883,7 +8883,10 @@ describe("DomEditor.execute()", () => {
       expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBe(keyboard)
     }
     await post(markStateChangeEvent, {canMark: false, marks: []})
-    await post(selectionChangeEvent, selection)
+    expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBe(keyboard)
+    expect((editor as any).captureSelection).toBe(true)
+    await post(selectionChangeEvent, {...selection, graphic: {...selection.graphic, selectionCount: 0}})
+    expect(editor.shadowRoot!.querySelector("dom-editor-shape-keyboard")).toBe(keyboard)
     expect(ribbon.canMark).toBe(false)
     expect(keyboard.insertionDisabled).toBe(false)
     await post(markStateChangeEvent, {canMark: true, marks: []})

@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "SVG shape text entry keeps capture and native typing stable",
   "SVG preset POIs stay on their actual contours through adjustments",
   "SVG curved shape POIs follow contours while dragging and undoing",
   "SVG Chord endpoint POIs retain their ellipse through circular edits",

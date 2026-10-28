@@ -111,6 +111,15 @@ describe("SVG text marks", () => {
   })
 })
 
+it("does not expose text formatting for a captured SVG merely because it contains labels", () => {
+  const text = load("Label"), graphic = text.closest("svg")!
+  editor.features.selection.captureElement(graphic)
+  expect(feature().isSVGTextSelection).toBe(false)
+  expect(feature().getState().canMark).toBe(false)
+  select(text.firstChild!)
+  expect(feature().getState()).toMatchObject({canMark: true, svgText: true})
+})
+
 it("clears SVG text inside a larger document selection", () => {
   const text = load('<tspan style="font-weight: bold; fill: red">hello</tspan>')
   const paragraph = text.closest("p")!

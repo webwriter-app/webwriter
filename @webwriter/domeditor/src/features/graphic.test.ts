@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
 import {graphicPresetFillRule, isGraphicPresetType, readGraphicPreset, writeGraphicPreset, graphicPresetHandles} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
-import {shapeKeyboardInputEvent} from "../editor-bridge"
+import {shapeKeyboardInputEvent, markStateChangeEvent, selectionChangeEvent} from "../editor-bridge"
 import {previewFrameHTML} from "../frame-document"
 import {$, clearEditorMarkerClasses} from "../utility"
 import {
@@ -4464,6 +4464,33 @@ it.each(["shape", "outline", "resize-se", "rotate", "roundness", "port", "graphi
   expect(editor.features.graphic.textEditingRange).not.toBeNull()
   expect(editor.features.graphic.isTextInputFocused).toBe(true)
   expect(editor.appendix.querySelector('[part="graphic-text-caret"]')).not.toBeNull()
+})
+
+it("keeps canvas capture and mark availability stable when dismissing a shape label on the blank graphic", async () => {
+  editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+  editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+  const graphic = document.querySelector("svg")!, geometry = graphic.querySelector("rect")!
+  geometry.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, button: 0}))
+  const proxy = editor.appendix.querySelector(".◆graphic-label-input")!
+  proxy.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Label", cancelable: true}))
+  await mutationsDelivered()
+  expect(editor.features.mark.getState()).toMatchObject({canMark: true, svgText: true})
+  const post = vi.spyOn(editor, "postHostMessage")
+  graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 89, clientX: 10, clientY: 10}))
+  document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 89}))
+  await mutationsDelivered()
+  document.dispatchEvent(new Event("selectionchange"))
+  const messages = post.mock.calls.map(([message]) => message as {type: string, detail?: {canMark?: boolean, svgText?: boolean, graphic?: {capture: boolean}}})
+  const marks = messages.filter(message => message.type === markStateChangeEvent)
+  expect(marks.length).toBeGreaterThan(0)
+  expect(marks.every(message => !message.detail?.canMark || message.detail.svgText)).toBe(true)
+  expect(messages.filter(message => message.type === selectionChangeEvent).every(message => message.detail?.graphic?.capture)).toBe(true)
+  expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+  expect(editor.features.graphic.selectedShapes).toHaveLength(0)
+  expect(editor.features.graphic.textEditingRange).toBeNull()
+  expect(editor.features.mark.getState()).toMatchObject({canMark: false})
+  expect(graphic.querySelector("text")).toHaveTextContent("Label")
+  expect(editor.toHTML(true)).not.toContain("◆")
 })
 
 it("reopens a label on one click and preserves backwards Shift selection across proxy focus", () => {
