@@ -4172,6 +4172,47 @@ describe("graphic editing", () => {
     expect(graphic.getAttribute("style")).toBe(authoredStyle)
   })
 
+  it("keeps insertion preview fading at the visible viewport when its SVG dimensions and zoom differ", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("viewBox", "0 0 1600 800")
+    graphic.style.cssText = "width:800px;height:400px;filter:grayscale(0.5)"
+    Object.defineProperty(graphic, "clientWidth", {value: 800})
+    Object.defineProperty(graphic, "clientHeight", {value: 400})
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(30, 40, 800, 400)})
+    let matrix = {a: .5, b: 0, c: 0, d: .5, e: 30, f: 40}
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => matrix})
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    graphic.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 430, clientY: 240}))
+    const authored = graphic.innerHTML, style = graphic.getAttribute("style")
+    editor.features.graphic.actions.setGraphicShapePreview({type: "setGraphicShapePreview", shape: "rectangle", code: "KeyQ"})
+    const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-insertion-preview")!
+    Object.defineProperty(preview, "getScreenCTM", {value: () => matrix})
+    Object.defineProperty(preview, "getBoundingClientRect", {value: () => new DOMRect(matrix.e, matrix.f, 1600 * matrix.a, 800 * matrix.d)})
+    const inside = () => {
+      expect(preview.style.filter).toMatch(/^grayscale\(0.5\) url\(/)
+      const source = decodeURIComponent(preview.style.filter.match(/data:image\/svg\+xml,([^"#]+)/)![1])
+      const flood = new DOMParser().parseFromString(source, "image/svg+xml").querySelector('feFlood[result="inside"]')!
+      const values = ["x", "y", "width", "height"].map(name => Number(flood.getAttribute(name)))
+      return {x: values[0], y: values[1], width: values[2], height: values[3]}
+    }
+    editor.features.graphic.refresh()
+    expect(inside()).toEqual({x: 0, y: 0, width: 1600, height: 800})
+    editor.features.graphic.actions.navigateGraphic({type: "navigateGraphic", operation: "set-zoom", zoom: 150})
+    matrix = {a: .75, b: 0, c: 0, d: .75, e: -170, f: -60}
+    editor.features.graphic.refresh()
+    const mask = inside()
+    expect(mask.x * matrix.a + matrix.e).toBeCloseTo(30)
+    expect(mask.y * matrix.d + matrix.f).toBeCloseTo(40)
+    expect((mask.x + mask.width) * matrix.a + matrix.e).toBeCloseTo(830)
+    expect((mask.y + mask.height) * matrix.d + matrix.f).toBeCloseTo(440)
+    expect(graphic.innerHTML).toBe(authored)
+    expect(graphic.getAttribute("style")).toBe(style)
+    expect(editor.toHTML(true)).not.toContain("#overflow")
+    editor.features.graphic.disable()
+    expect(preview.isConnected).toBe(false)
+  })
+
   it("refreshes overflow boundaries after direct edits and cleans replaced graphics", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!

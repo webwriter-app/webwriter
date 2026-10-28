@@ -3208,7 +3208,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #positionPreviewRoot(preview: SVGSVGElement, graphic: SVGSVGElement) {
-    if(standaloneGraphicShape(graphic)) {
+    if(standaloneGraphicShape(graphic) || preview.classList.contains("◆graphic-insertion-preview")) {
       const box = graphicViewBox(graphic)
       const matrix = this.#screenMatrix(graphic)
       const origin = applyMatrix(matrix, {x: box.x, y: box.y})
@@ -3217,6 +3217,7 @@ export class GraphicFeature extends EditorFeature {
         overflow: "visible", transformOrigin: "0 0",
         transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${origin.x}, ${origin.y})`,
       })
+      if(this.#presentedGraphic === graphic && !preview.classList.contains("◆graphic-insertion-preview")) this.#updateOverflowPresentation(graphic)
       return
     }
     const rect = graphic.getBoundingClientRect()
@@ -4767,6 +4768,32 @@ export class GraphicFeature extends EditorFeature {
     else removeEditorMarker(captured, "◆graphic-grid-visible")
   }
 
+  #viewportMatrix(root: SVGSVGElement, width: number, height: number): Matrix {
+    const box = graphicViewBox(root), aspect = root.preserveAspectRatio?.baseVal
+    const w = width > 0 ? width : box.width, h = height > 0 ? height : box.height
+    let a = w / box.width, d = h / box.height, x = 0, y = 0
+    const align = aspect?.align ?? (root.getAttribute("preserveAspectRatio") === "none" ? 1 : 6)
+    if(align !== 1) {
+      a = d = aspect?.meetOrSlice === 2 ? Math.max(a, d) : Math.min(a, d)
+      x = (w - box.width * a) * ((align - 2) % 3) / 2
+      y = (h - box.height * d) * Math.floor((align - 2) / 3) / 2
+    }
+    return {a, b: 0, c: 0, d, e: x - box.x * a, f: y - box.y * d}
+  }
+
+  #cssViewportMatrix(root: SVGSVGElement, viewport: Matrix, width: number, height: number): Matrix {
+    const screen = this.#screenMatrix(root), scale = this.#viewport(root).scale
+    const a = screen.a / viewport.a / scale, b = screen.b / viewport.a / scale
+    const c = screen.c / viewport.d / scale, d = screen.d / viewport.d / scale
+    const rect = root.getBoundingClientRect()
+    // Native pan translations do not consistently share viewBox units.
+    // Recover the CSS box origin from its rendered bounds instead.
+    return {a, b, c, d,
+      e: rect.left - Math.min(0, a * width, c * height, a * width + c * height),
+      f: rect.top - Math.min(0, b * width, d * height, b * width + d * height),
+    }
+  }
+
   #updateOverflowPresentation(graphic: SVGSVGElement) {
     const sheet = this.#overflowStylesheet!
     // Read authored filters without feeding our own filter back into the chain.
@@ -4778,23 +4805,35 @@ export class GraphicFeature extends EditorFeature {
     const height = graphic.clientHeight || parseFloat(style.height)
     document.adoptedStyleSheets = sheets
     if(!(width > 0 && height > 0)) return
-    let region: Bounds = {x: 0, y: 0, width, height}
-    try {
-      for(const root of [graphic, ...this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview")]) {
-        const box = root.getBBox()
-        const matrix = root.getCTM()
-        if(matrix) region = unionBounds([region, boundsForPoints([
+    // A root SVG's CSS filter uses viewport pixels, before its CSS transform
+    // and independently of its viewBox and native pan/zoom.
+    const base = this.#cssViewportMatrix(graphic, this.#viewportMatrix(graphic, width, height), width, height)
+    const corners = [{x: 0, y: 0}, {x: width, y: 0}, {x: width, y: height}, {x: 0, y: height}]
+      .map(point => applyMatrix(base, point))
+    let graphicFilter = ""
+    for(const root of [graphic, ...this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview")]) {
+      const rootWidth = root === graphic ? width : root.clientWidth || parseFloat(root.style.width)
+      const rootHeight = root === graphic ? height : root.clientHeight || parseFloat(root.style.height)
+      if(!(rootWidth > 0 && rootHeight > 0)) continue
+      const viewport = this.#viewportMatrix(root, rootWidth, rootHeight), matrix = this.#cssViewportMatrix(root, viewport, rootWidth, rootHeight)
+      const inside = root === graphic ? {x: 0, y: 0, width, height}
+        : boundsForPoints(corners.map(point => applyInverseMatrix(matrix, point)))
+      let region = unionBounds([{x: 0, y: 0, width: rootWidth, height: rootHeight}, inside])
+      try {
+        const box = root.getBBox(), screen = this.#screenMatrix(root)
+        region = unionBounds([region, boundsForPoints([
           {x: box.x, y: box.y}, {x: box.x + box.width, y: box.y},
           {x: box.x + box.width, y: box.y + box.height}, {x: box.x, y: box.y + box.height},
-        ].map(point => applyMatrix(matrix, point)))])
+        ].map(point => applyInverseMatrix(matrix, applyMatrix(screen, point))))])
       }
+      catch { /* Detached SVGs and DOM shims may not expose native geometry. */ }
+      const padding = Math.max(rootWidth, rootHeight, region.width, region.height)
+      const source = `<svg xmlns="${SVG_NAMESPACE}"><filter id="overflow" filterUnits="userSpaceOnUse" x="${region.x - padding}" y="${region.y - padding}" width="${region.width + padding * 2}" height="${region.height + padding * 2}"><feFlood flood-opacity="0.35" result="outside"/><feFlood x="${inside.x}" y="${inside.y}" width="${inside.width}" height="${inside.height}" result="inside"/><feMerge><feMergeNode in="outside"/><feMergeNode in="inside"/></feMerge><feComposite in="SourceGraphic" operator="in"/></filter></svg>`
+      const filter = `${authoredFilter} url("data:image/svg+xml,${encodeURIComponent(source)}#overflow")`
+      if(root === graphic) graphicFilter = filter
+      else root.style.setProperty("filter", filter, "important")
     }
-    catch { /* Detached SVGs and DOM shims may not expose native geometry. */ }
-    const padding = Math.max(width, height, region.width, region.height)
-    // CSS filters on the outer SVG use viewport pixels, independently of its
-    // viewBox and native pan/zoom. Filtering preserves native overflow hit tests.
-    const source = `<svg xmlns="${SVG_NAMESPACE}"><filter id="overflow" filterUnits="userSpaceOnUse" x="${region.x - padding}" y="${region.y - padding}" width="${region.width + padding * 2}" height="${region.height + padding * 2}"><feFlood flood-opacity="0.35" result="outside"/><feFlood x="0" y="0" width="${width}" height="${height}" result="inside"/><feMerge><feMergeNode in="outside"/><feMergeNode in="inside"/></feMerge><feComposite in="SourceGraphic" operator="in"/></filter></svg>`
-    const rule = `svg.◆graphic-overflow-visible, svg.◆graphic-preview { overflow: visible !important; filter: ${authoredFilter} url("data:image/svg+xml,${encodeURIComponent(source)}#overflow") !important; }`
+    const rule = `svg.◆graphic-overflow-visible { overflow: visible !important; filter: ${graphicFilter} !important; } svg.◆graphic-preview { overflow: visible !important; }`
     if(this.#overflowRule !== rule) {
       sheet.replaceSync(rule)
       this.#overflowRule = rule
@@ -4802,6 +4841,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #clearCanvasPresentation() {
+    this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview").forEach(root => root.style.removeProperty("filter"))
     this.#presentationObserver?.disconnect()
     this.#presentationObserver = null
     this.#presentationResizeObserver?.disconnect()
