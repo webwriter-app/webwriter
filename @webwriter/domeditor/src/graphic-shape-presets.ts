@@ -59,10 +59,11 @@ const poi = (name: string, label: string, value: number, min: number, max: numbe
   name, label, default: value, min, max, axis, point: values => point(values[0]),
 })
 
-const turn = (path: string, quarters: number) => {
+const turn = (path: string, quarters: number, reflectY = false) => {
   const numbers = /[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g
   const values = Array.from(path.matchAll(numbers), m => Number(m[0]))
   for(let i = 0; i < values.length; i += 2) {
+    if(reflectY) values[i + 1] = 100 - values[i + 1]
     for(let j = 0; j < quarters; j++) [values[i], values[i + 1]] = [100 - values[i + 1], values[i]]
   }
   let i = 0
@@ -520,23 +521,24 @@ const originalGraphicShapePresets = {
 // Block arrows share three controls. A head's width is perpendicular to its
 // direction, independently of where its base starts along the shaft.
 type ArrowPoint = {x: number, y: number}
-const arrowTurnPoint = (point: ArrowPoint, direction: number) => {
+const arrowTurnPoint = (point: ArrowPoint, direction: number, reflectY = false) => {
   let {x, y} = point
+  if(reflectY) y = 100-y
   for(let i = 0; i < direction; i++) [x, y] = [100-y, x]
   return {x, y}
 }
 const arrowControl = (name: string, label: string, value: number, min: number, max: number,
-  point: (values: number[]) => ArrowPoint, axis: "x" | "y", direction: number): GraphicShapeAdjustment => ({
+  point: (values: number[]) => ArrowPoint, axis: "x" | "y", direction: number, reflectY = false): GraphicShapeAdjustment => ({
   name, label, default: value, min, max, axis: direction % 2 ? axis === "x" ? "y" : "x" : axis,
-  point: values => arrowTurnPoint(point(values), direction),
+  point: values => arrowTurnPoint(point(values), direction, reflectY),
 })
 const arrowPreset = (label: string, draw: (values: number[]) => string, values: [number, number, number],
   controls: [(values: number[]) => ArrowPoint, "x" | "y"][], direction = 0, normalized = false,
-  limits?: (values: number[], index: number) => [number, number], extra?: GraphicShapeAdjustment): GraphicShapePreset => ({
-  ...base(label, "Block arrows", values => turn(draw(values), direction), [
-    arrowControl("shaft", "Shaft thickness", values[0], 0, 50, ...controls[0], direction),
-    arrowControl("head-start", "Arrowhead start", values[1], 0, 100, ...controls[1], direction),
-    arrowControl("head-width", "Arrowhead thickness", values[2], normalized ? 1 : 0, 100, ...controls[2], direction),
+  limits?: (values: number[], index: number) => [number, number], extra?: GraphicShapeAdjustment, reflectY = false): GraphicShapePreset => ({
+  ...base(label, "Block arrows", values => turn(draw(values), direction, reflectY), [
+    arrowControl("shaft", "Shaft thickness", values[0], 0, 50, ...controls[0], direction, reflectY),
+    arrowControl("head-start", "Arrowhead start", values[1], 0, 100, ...controls[1], direction, reflectY),
+    arrowControl("head-width", "Arrowhead thickness", values[2], normalized ? 1 : 0, 100, ...controls[2], direction, reflectY),
     ...(extra ? [extra] : []),
   ]),
   ...(normalized ? {normalizedAdjustment: "head-width"} : {}),
@@ -576,13 +578,13 @@ const radialArrow = (values: number[], callout = false) => {
 }
 const radialArrowLimits = ([t, d, h]: number[], i: number, callout = false): [number, number] => i === 0
   ? [0,Math.min(h,50-d,callout ? 20 : 50)] : i === 1 ? [0,Math.min(callout ? 30 : 50,50-h)] : [t,50-d]
-const curvedBlockArrow = (label: string, direction: number) => arrowPreset(label, ([t, s, h]) =>
+const curvedBlockArrow = (label: string, direction: number, reflectY = direction < 2) => arrowPreset(label, ([t, s, h]) =>
   `M 90 ${7-t} C ${-3-17*t/7} ${7-t} ${-3-17*t/7} ${75+t} ${s} ${75+t} L ${s} ${75+h} L 100 75 L ${s} ${75-h} L ${s} ${75-t} C ${-3+17*t/7} ${75-t} ${-3+17*t/7} ${7+t} 90 ${7+t} Z`,
 [7,70,25], [
   [([t]) => ({x:90,y:7-t}), "y"],
   [([t, s]) => ({x:s,y:75-t}), "x"],
   [([, s, h]) => ({x:s,y:75-h}), "y"],
-], direction, false, ([t, , h], i) => i === 0 ? [0,Math.min(20,h)] : i === 1 ? [0,100] : [t,50])
+], direction, false, ([t, , h], i) => i === 0 ? [0,Math.min(20,h)] : i === 1 ? [0,100] : [t,50], undefined, reflectY)
 const elbowArrowControls: Parameters<typeof arrowPreset>[3] = [
   [([t]) => ({x:75+t,y:65}), "x"],
   [([t, d]) => ({x:75+t,y:d}), "y"],
@@ -689,4 +691,9 @@ const upgradeArrowValues: Record<ArrowPresetType, (values: number[]) => number[]
 export const legacyArrowPresets = Object.fromEntries((Object.keys(arrowPresets) as ArrowPresetType[]).map(type => [type, {
   definition: originalGraphicShapePresets[type], upgrade: upgradeArrowValues[type],
 }])) as Partial<Record<keyof typeof originalGraphicShapePresets, {definition: GraphicShapePreset, upgrade: (values: number[]) => number[]}>>
+// Keep saved, previously rotated variants recognizable without rewriting them.
+export const legacyCurvedArrowPresets: Partial<Record<keyof typeof originalGraphicShapePresets, GraphicShapePreset>> = {
+  "curved-right-arrow": curvedBlockArrow("Curved right arrow", 0, false),
+  "curved-down-arrow": curvedBlockArrow("Curved down arrow", 1, false),
+}
 export const graphicShapePresets = {...originalGraphicShapePresets, ...arrowPresets} satisfies Record<string, GraphicShapePreset>

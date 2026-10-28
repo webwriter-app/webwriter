@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 import {adjustGraphicPreset, graphicPresetFillRule, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
 
 const bounds = {x: -137.25, y: 219.75, width: 273.5, height: 146.25}
@@ -20,6 +20,71 @@ const cubicSamples = (path: string) => {
     }
   }
   return samples
+}
+
+const reflectedPathCoordinates = (path: string, axis: "x" | "y", bounds: {x: number, y: number, width: number, height: number}) => {
+  const coordinates = path.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  return coordinates.map((value, index) => {
+    const horizontal = index % 2 === 0
+    if(axis === "x" && horizontal) return 2 * bounds.x + bounds.width - value
+    if(axis === "y" && !horizontal) return 2 * bounds.y + bounds.height - value
+    return value
+  })
+}
+
+const expectMirroredCurvedArrows = (leftType: "curved-left-arrow" | "curved-up-arrow", rightType: "curved-right-arrow" | "curved-down-arrow", axis: "x" | "y", values: number[]) => {
+  const left = graphicPresetPath(leftType, bounds, values)
+  const right = graphicPresetPath(rightType, bounds, values)
+  const leftCommands = left.match(/[A-Za-z]/g)
+  const rightCommands = right.match(/[A-Za-z]/g)
+  expect(rightCommands).toEqual(leftCommands)
+  const expected = reflectedPathCoordinates(left, axis, bounds)
+  const actual = right.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  expect(actual).toHaveLength(expected.length)
+  actual.forEach((coordinate, index) => expect(coordinate).toBeCloseTo(expected[index], 7))
+
+  const leftElement = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  leftElement.setAttribute("aria-label", graphicShapePresets[leftType].label)
+  leftElement.setAttribute("d", left)
+  const rightElement = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  rightElement.setAttribute("aria-label", graphicShapePresets[rightType].label)
+  rightElement.setAttribute("d", right)
+  const leftState = readGraphicPreset(leftElement)!
+  const rightState = readGraphicPreset(rightElement)!
+  const leftHandles = graphicPresetHandles(leftState)
+  const rightHandles = graphicPresetHandles(rightState)
+  expect(rightHandles.map(({name}, index) => ({name, axis: rightState.definition.adjustments[index].axis})))
+    .toEqual(leftHandles.map(({name}, index) => ({name, axis: leftState.definition.adjustments[index].axis})))
+  rightHandles.forEach((handle, index) => {
+    const point = leftHandles[index].point
+    expect(handle.point.x).toBeCloseTo(axis === "x" ? 2 * bounds.x + bounds.width - point.x : point.x, 7)
+    expect(handle.point.y).toBeCloseTo(axis === "y" ? 2 * bounds.y + bounds.height - point.y : point.y, 7)
+  })
+
+  const serializedLeft = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${leftElement.outerHTML}</svg>`, "image/svg+xml").querySelector("path")!
+  const serializedRight = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${rightElement.outerHTML}</svg>`, "image/svg+xml").querySelector("path")!
+  const leftBefore = readGraphicPreset(serializedLeft)!
+  const rightBefore = readGraphicPreset(serializedRight)!
+  const target = 11
+  expect(adjustGraphicPreset(serializedLeft, leftBefore, `adjust-${leftBefore.definition.adjustments[0].name}`, target)).toBe(true)
+  expect(adjustGraphicPreset(serializedRight, rightBefore, `adjust-${rightBefore.definition.adjustments[0].name}`, target)).toBe(true)
+  const leftAfter = readGraphicPreset(serializedLeft)!
+  const rightAfter = readGraphicPreset(serializedRight)!
+  expectMirroredPaths(serializedLeft.getAttribute("d")!, serializedRight.getAttribute("d")!, axis, bounds)
+  const leftAfterHandles = graphicPresetHandles(leftAfter)
+  const rightAfterHandles = graphicPresetHandles(rightAfter)
+  rightAfterHandles.forEach((handle, index) => {
+    expect(handle.point.x).toBeCloseTo(axis === "x" ? 2 * bounds.x + bounds.width - leftAfterHandles[index].point.x : leftAfterHandles[index].point.x, 7)
+    expect(handle.point.y).toBeCloseTo(axis === "y" ? 2 * bounds.y + bounds.height - leftAfterHandles[index].point.y : leftAfterHandles[index].point.y, 7)
+  })
+}
+
+const expectMirroredPaths = (left: string, right: string, axis: "x" | "y", bounds: {x: number, y: number, width: number, height: number}) => {
+  expect(right.match(/[A-Za-z]/g)).toEqual(left.match(/[A-Za-z]/g))
+  const expected = reflectedPathCoordinates(left, axis, bounds)
+  const actual = right.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  expect(actual).toHaveLength(expected.length)
+  actual.forEach((coordinate, index) => expect(coordinate).toBeCloseTo(expected[index], 7))
 }
 
 describe("native SVG shape presets", () => {
@@ -997,4 +1062,40 @@ describe("native SVG shape presets", () => {
     expect(element.getAttribute("d")).not.toContain("C")
     expect(readGraphicPreset(element)!.type).toBe("chord")
   })
+
+  it.each([
+    ["curved-left-arrow", "curved-right-arrow", "x"],
+    ["curved-up-arrow", "curved-down-arrow", "y"],
+  ] as const)("mirrors %s and %s paths and handles at defaults and adjusted values", (leftType, rightType, axis) => {
+    for(const values of [graphicShapePresets[leftType].adjustments.map(adjustment => adjustment.default), [4, 54, 18], [12, 81, 34]]) {
+      expectMirroredCurvedArrows(leftType, rightType, axis, values)
+    }
+  })
+
+  it.each([
+    ["curved-right-arrow", "curved-left-arrow"],
+    ["curved-down-arrow", "curved-up-arrow"],
+  ] as const)("keeps legacy %s geometry recognizable until it is edited", (legacyType, mirroredType) => {
+    const legacy = legacyCurvedArrowPresets[legacyType]!
+    const values = [4, 54, 18]
+    let index = 0
+    const oldPath = legacy.draw(values).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g, value => {
+      const horizontal = index++ % 2 === 0
+      return String((horizontal ? bounds.x : bounds.y) + Number(value) / 100 * (horizontal ? bounds.width : bounds.height))
+    })
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[legacyType].label)
+    element.setAttribute("d", oldPath)
+    const before = readGraphicPreset(element)!
+    expect(before.type).toBe(legacyType)
+    before.values.forEach((value, i) => expect(value).toBeCloseTo(values[i], 3))
+    expect(element.getAttribute("d")).toBe(oldPath)
+    expect(adjustGraphicPreset(element, before, `adjust-${before.definition.adjustments[0].name}`, 11)).toBe(true)
+    const after = readGraphicPreset(element)!
+    expect(after.type).toBe(legacyType)
+    expect(after.type).not.toBe(mirroredType)
+    expect(after.values[0]).toBeCloseTo(11, 3)
+  })
+
+
 })

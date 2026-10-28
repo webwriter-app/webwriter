@@ -1,4 +1,4 @@
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyCurvedArrowPresets, legacyCalloutPresets, legacyChordPreset, legacyCloudPreset, legacySpeechBubblePresets, isConnectedCalloutType, connectedCalloutTypes, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 
 export type GraphicPresetType = keyof typeof graphicShapePresets
 type Bounds = {x: number, y: number, width: number, height: number}
@@ -104,6 +104,8 @@ function getTemplates() {
       ? [([p]) => `M 50 50 L 100 ${p} C 100 78 78 100 50 100 C 22 100 0 78 0 50 C 0 22 22 0 50 0 L 50 50 Z`]
       : option.type === "chord" || isConnectedCalloutType(option.type) ? [] : [values => presetDrawing(option.type, values)]
     if(reversedDetailPresets.has(option.type)) drawings.push(definition.draw)
+    const previousCurvedArrow = legacyCurvedArrowPresets[option.type]
+    if(previousCurvedArrow) drawings.push(previousCurvedArrow.draw)
     if(option.type === "double-wave") {
       drawings.push(([d]) => `M 0 20 Q 25 ${20-d} 50 20 Q 75 ${20+d} 100 20 L 100 80 Q 75 ${80+d} 50 80 Q 25 ${80-d} 0 80 Z`)
     }
