@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
-import {CanvasViewer, mountCanvasReader} from "./canvas-viewer.js"
+import {CanvasViewer, canvasStartingView, mountCanvasReader} from "./canvas-viewer.js"
 import {DOMEditor} from "./domeditor"
 import {parse} from "es-module-lexer"
 
@@ -27,6 +27,56 @@ const control = (name: string) => document.body.shadowRoot!.querySelector<HTMLBu
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
 
 describe("standalone canvas reader", () => {
+  it("uses only a direct uncustomized starting-view div", () => {
+    document.body.innerHTML = '<div class="ww-canvas-starting-view" id="nested"><div></div></div>'
+    expect(canvasStartingView()).toBe(document.getElementById("nested"))
+    const nested = document.createElement("section")
+    nested.innerHTML = '<div class="ww-canvas-starting-view" id="indirect"></div>'
+    document.body.append(nested)
+    expect(canvasStartingView()).toBe(document.getElementById("nested"))
+    const customized = document.createElement("div")
+    customized.className = "ww-canvas-starting-view"
+    customized.setAttribute("is", "custom-frame")
+    document.body.append(customized)
+    expect(canvasStartingView()).toBe(document.getElementById("nested"))
+    document.getElementById("nested")!.remove()
+    expect(canvasStartingView()).toBeNull()
+  })
+
+  it.each([
+    {left: -400, top: -250, width: 200, height: 100},
+    {left: 300, top: 180, width: 100, height: 600},
+  ])("fits starting view $width × $height without padding and centers it", frameRect => {
+    document.body.innerHTML = '<div class="ww-canvas-starting-view"></div><p>Outside frame</p>'
+    const frame = document.body.firstElementChild!
+    vi.spyOn(frame, "getBoundingClientRect").mockReturnValue({
+      ...frameRect, right: frameRect.left + frameRect.width, bottom: frameRect.top + frameRect.height,
+    } as DOMRect)
+    const apply = vi.spyOn(CanvasViewer.prototype, "applyCamera")
+    reader = mountCanvasReader()!
+    expect(apply).toHaveBeenCalledTimes(1)
+    const zoom = Math.min(window.innerWidth / frameRect.width, window.innerHeight / frameRect.height)
+    expect(reader.viewer.zoom).toBeCloseTo(zoom)
+    const slot = document.body.shadowRoot!.querySelector("slot")!
+    const match = slot.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\)/)!
+    expect(Number(match[1]) + frameRect.left * zoom).toBeCloseTo((window.innerWidth - frameRect.width * zoom) / 2)
+    expect(Number(match[2]) + frameRect.top * zoom).toBeCloseTo((window.innerHeight - frameRect.height * zoom) / 2)
+    expect(reader.viewer.items()).not.toContain(frame)
+  })
+
+  it.each([
+    {left: 0, top: 0, right: 0, bottom: 100, width: 0, height: 100},
+    {left: 0, top: 0, right: 100, bottom: 100, width: Number.NaN, height: 100},
+    {left: 0, top: 0, right: 100, bottom: 100, width: 100, height: Number.POSITIVE_INFINITY},
+  ])("falls back to fit-content for an invalid starting frame", rect => {
+    document.body.innerHTML = '<div class="ww-canvas-starting-view"></div><p>Content</p>'
+    vi.spyOn(document.body.firstElementChild!, "getBoundingClientRect").mockReturnValue(rect as DOMRect)
+    const apply = vi.spyOn(CanvasViewer.prototype, "applyCamera")
+    reader = mountCanvasReader()!
+    expect(apply).toHaveBeenCalledTimes(1)
+    expect(reader.viewer.zoom).toBe(1)
+  })
+
   it("keeps authored nodes unchanged while navigating and restores the existing appendix", () => {
     const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
     const slot = document.createElement("slot")
@@ -178,6 +228,7 @@ describe("canvas export assets", () => {
       const parsed = new DOMParser().parseFromString(html, "text/html")
       const script = parsed.querySelector<HTMLScriptElement>("#webwriter-canvas-viewer")!
       expect(script?.type).toBe("module")
+      expect(script?.getAttribute("blocking")).toBe("render")
       expect(script.hasAttribute("src")).toBe(false)
       const [imports] = await parse(script.textContent!)
       expect(imports).toHaveLength(0)

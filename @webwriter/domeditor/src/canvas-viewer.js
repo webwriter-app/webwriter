@@ -1,5 +1,13 @@
 /** Shared DOM canvas camera. This module has no imports so exports can embed
  * its exact source without an editor dependency or a network request. */
+export function canvasStartingView(body = document.body) {
+  return Array.from(body.children).find(isCanvasStartingView) ?? null
+}
+
+export function isCanvasStartingView(element) {
+  return element.matches("div.ww-canvas-starting-view:not([is])") && element.parentElement === element.ownerDocument.body
+}
+
 export class CanvasViewer {
   constructor(slot, background, controls, onChange = () => {}) {
     slot.dispatchEvent(new Event("webwriter-canvas-viewer-dispose"))
@@ -23,7 +31,7 @@ export class CanvasViewer {
 
   items() {
     return Array.from(document.body.children).filter(el =>
-      (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template"))
+      (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template") && !isCanvasStartingView(el))
   }
 
   removeMarker(element, marker) {
@@ -118,6 +126,22 @@ export class CanvasViewer {
     this.applyCamera()
   }
 
+  /** Fit the authored frame without padding or a preliminary camera change. */
+  startView() {
+    const frame = canvasStartingView(this.body)
+    if(!frame) return false
+    const rect = frame.getBoundingClientRect()
+    const width = rect.width / this.zoom, height = rect.height / this.zoom
+    if(!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return false
+    const point = this.clientPoint(rect.left, rect.top)
+    const zoom = Math.min(window.innerWidth / width, window.innerHeight / height)
+    if(!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(zoom) || zoom <= 0) return false
+    this.camera = {x: (window.innerWidth - width * zoom) / 2 - point.x * zoom,
+      y: (window.innerHeight - height * zoom) / 2 - point.y * zoom, zoom}
+    this.applyCamera()
+    return true
+  }
+
   /** Reveal local editing without asking the browser to scroll a finite page. */
   reveal(rect) {
     if(!this.active || this.panning) return
@@ -161,7 +185,7 @@ export class CanvasViewer {
 
 export const canvasControlsStyles = `
       .◆canvas-controls, .◆canvas-controls * { user-select: none; -webkit-user-select: none; }
-      .◆canvas-controls { position: fixed; bottom: 20px; left: 24px; z-index: 1000; display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
+      .◆canvas-controls { position: fixed; bottom: 20px; left: 24px; max-width: calc(100vw - 48px); box-sizing: border-box; flex-wrap: wrap; z-index: 1000; display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
       .◆canvas-controls[hidden] { display: none; }
       .◆canvas-controls button { font: inherit; padding: 7px 10px; border: 0; border-radius: 6px; color: inherit; background: #f1f5f9; cursor: pointer; }
       .◆canvas-controls button:hover, .◆canvas-controls button[aria-pressed=true] { background: #dbeafe; }
@@ -329,7 +353,7 @@ export function mountCanvasReader() {
   })
   slot.addEventListener("webwriter-canvas-viewer-dispose", destroy)
   observer.observe(document.documentElement, {childList: true, subtree: true, attributes: true, attributeFilter: ["class"]})
-  viewer.fit()
+  if(!viewer.startView()) viewer.fit()
   revealHash()
   return {viewer, destroy}
 }

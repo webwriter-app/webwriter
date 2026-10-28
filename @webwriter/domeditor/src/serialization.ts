@@ -155,6 +155,8 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const script = root.createElement("script")
     script.id = "webwriter-canvas-viewer"
     script.type = "module"
+    // Evaluate the initial camera before the browser paints authored content.
+    script.setAttribute("blocking", "render")
     script.textContent = `${layoutPrintSource}\n${canvasViewerSource}\nmountCanvasReader()\ncreateLayoutPrint(document)\n`
     head.append(script)
   }

@@ -121,6 +121,9 @@ body.ww-canvas {
 body.ww-canvas > :not(style, script, link, meta, template) { position: absolute; }
 body.ww-canvas > p:not([is]) { inline-size: max-content; min-inline-size: 25px; max-inline-size: none; }
 body.ww-canvas details:not([is]) { background-color: white; }
+/* This rectangle records the reader's starting bounds. Its editing outline
+ * lives in the shadow appendix, not in the exported document content. */
+div.ww-canvas-starting-view:not([is]) { visibility: hidden; pointer-events: none; }
 @media print {
   @page ww-canvas { margin: 10mm; }
   html:has(> body.ww-canvas) { min-height: 0; overflow: clip; background: none; }

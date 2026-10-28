@@ -1777,6 +1777,18 @@ body::part(transform-overlay-freeform) {
 body::part(transform-overlay-capture-selected) {
   outline-style: solid;
 }
+/* The starting view already has its own dotted border. Select that border
+ * directly, with the ordinary handles centered on its inner edge. */
+body::part(transform-overlay-starting-view) {
+  outline: none;
+  --ww-transform-handle-offset: -3px;
+}
+body.ww-canvas:has(> .ww-canvas-starting-view.◆element-selected)::part(canvas-starting-view) {
+  border-color: var(--sl-color-primary-400);
+}
+body.ww-canvas:has(> .ww-canvas-starting-view.◆element-selected)::part(canvas-starting-view-label) {
+  display: block;
+}
 body::part(transform-overlay-board) {
   --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
   --ww-transform-hover-color: var(--sl-color-gray-300, #cbd5e1);
@@ -1865,17 +1877,17 @@ body::part(transform-overlay-edge-right) {
   cursor: ew-resize;
 }
 body::part(transform-overlay-edge-up) {
-  top: -7px;
+  top: var(--ww-transform-handle-offset, -7px);
   left: var(--selection-flow-top-left, 0px);
   width: calc(var(--selection-flow-top-right, 100%) - var(--selection-flow-top-left, 0px));
 }
 body::part(transform-overlay-edge-down) {
-  bottom: -7px;
+  bottom: var(--ww-transform-handle-offset, -7px);
   left: var(--selection-flow-bottom-left, 0px);
   width: calc(var(--selection-flow-bottom-right, 100%) - var(--selection-flow-bottom-left, 0px));
 }
-body::part(transform-overlay-edge-left) { left: calc(var(--selection-flow-left, 0px) + var(--selection-flow-handle-left, -7px)); }
-body::part(transform-overlay-edge-right) { right: calc(100% - var(--selection-flow-right, 100%) + var(--selection-flow-handle-right, -7px)); }
+body::part(transform-overlay-edge-left) { left: calc(var(--selection-flow-left, 0px) + var(--selection-flow-handle-left, var(--ww-transform-handle-offset, -7px))); }
+body::part(transform-overlay-edge-right) { right: calc(100% - var(--selection-flow-right, 100%) + var(--selection-flow-handle-right, var(--ww-transform-handle-offset, -7px))); }
 body::part(transform-overlay-edge-move) { cursor: grab; }
 /* Cover the capture outline's inner half with the native document drag handles. */
 body:not(.ww-canvas, .ww-slides)::part(transform-overlay-edge-up),
@@ -1884,29 +1896,29 @@ body:not(.ww-canvas, .ww-slides)::part(transform-overlay-edge-left),
 body:not(.ww-canvas, .ww-slides)::part(transform-overlay-edge-right) { width: 11px; }
 /* Center 8px handles on the existing 2px selection outline, offset by 2px. */
 body::part(transform-overlay-scale-up-left) {
-  top: -7px;
-  left: calc(var(--selection-flow-top-left, 0px) + var(--selection-flow-handle-top-left, -7px));
+  top: var(--ww-transform-handle-offset, -7px);
+  left: calc(var(--selection-flow-top-left, 0px) + var(--selection-flow-handle-top-left, var(--ww-transform-handle-offset, -7px)));
   cursor: nwse-resize;
 }
 body::part(transform-overlay-scale-up-right) {
-  top: -7px;
-  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, -7px));
+  top: var(--ww-transform-handle-offset, -7px);
+  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, var(--ww-transform-handle-offset, -7px)));
   cursor: nesw-resize;
 }
 body::part(transform-overlay-scale-down-left) {
-  bottom: -7px;
-  left: calc(var(--selection-flow-bottom-left, 0px) + var(--selection-flow-handle-bottom-left, -7px));
+  bottom: var(--ww-transform-handle-offset, -7px);
+  left: calc(var(--selection-flow-bottom-left, 0px) + var(--selection-flow-handle-bottom-left, var(--ww-transform-handle-offset, -7px)));
   cursor: nesw-resize;
 }
 body::part(transform-overlay-scale-down-right) {
-  bottom: -7px;
-  right: calc(100% - var(--selection-flow-bottom-right, 100%) + var(--selection-flow-handle-bottom-right, -7px));
+  bottom: var(--ww-transform-handle-offset, -7px);
+  right: calc(100% - var(--selection-flow-bottom-right, 100%) + var(--selection-flow-handle-bottom-right, var(--ww-transform-handle-offset, -7px)));
   cursor: nwse-resize;
 }
-body::part(transform-overlay-scale-up-up) { top: -7px; left: calc(50% - 4px); cursor: ns-resize; }
-body::part(transform-overlay-scale-down-down) { bottom: -7px; left: calc(50% - 4px); cursor: ns-resize; }
-body::part(transform-overlay-scale-left-left) { left: -7px; top: calc(50% - 4px); cursor: ew-resize; }
-body::part(transform-overlay-scale-right-right) { right: -7px; top: calc(50% - 4px); cursor: ew-resize; }
+body::part(transform-overlay-scale-up-up) { top: var(--ww-transform-handle-offset, -7px); left: calc(50% - 4px); cursor: ns-resize; }
+body::part(transform-overlay-scale-down-down) { bottom: var(--ww-transform-handle-offset, -7px); left: calc(50% - 4px); cursor: ns-resize; }
+body::part(transform-overlay-scale-left-left) { left: var(--ww-transform-handle-offset, -7px); top: calc(50% - 4px); cursor: ew-resize; }
+body::part(transform-overlay-scale-right-right) { right: var(--ww-transform-handle-offset, -7px); top: calc(50% - 4px); cursor: ew-resize; }
 body::part(transform-overlay-scale-text) { cursor: ew-resize; }
 body::part(transform-overlay-scale) {
   position: absolute;
@@ -2303,7 +2315,7 @@ body::part(transform-overlay-attribution-freeform) {
   border-radius: 0;
 }
 body::part(transform-overlay-delete-freeform) {
-  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, -7px) - 4px);
+  right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, var(--ww-transform-handle-offset, -7px)) - 4px);
 }
 body::part(transform-overlay-attribution-freeform) {
   left: calc(var(--selection-flow-top-left, 0px) + var(--selection-flow-handle-top-left, -7px) - 4px);
@@ -2345,6 +2357,13 @@ body::part(transform-overlay-freeform transform-overlay-at-top) {
   --transform-rotate-top: 14px;
   --transform-rotate-stem-top: -17px;
   --transform-rotate-stem-height: 17px;
+}
+body::part(transform-overlay-starting-view) {
+  --transform-rotate-stem-height: 29px;
+}
+body::part(transform-overlay-starting-view transform-overlay-at-top) {
+  --transform-rotate-stem-top: -13px;
+  --transform-rotate-stem-height: 13px;
 }
 /* AI edits are staged in a private Yjs branch and remain a visually distinct,
  * read-only proposal until the user accepts or rejects them. All marker

@@ -1,8 +1,9 @@
-import {CanvasViewer, canvasControlsStyles} from "../canvas-viewer.js"
+import {CanvasViewer, canvasControlsStyles, canvasStartingView, isCanvasStartingView} from "../canvas-viewer.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {canvasClass, canvasStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import trashIcon from "@tabler/icons/outline/trash.svg?raw"
 
 type Item = HTMLElement | SVGSVGElement
 type Point = {x: number, y: number}
@@ -15,6 +16,7 @@ export class CanvasFeature extends EditorFeature {
   private slot: HTMLSlotElement | null = null
   private controls: HTMLElement | null = null
   private background: HTMLElement | null = null
+  private startingViewOutline: HTMLElement | null = null
   private stylesheet: CSSStyleSheet | null = null
   private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
@@ -47,6 +49,7 @@ export class CanvasFeature extends EditorFeature {
 
   itemAtPoint(x: number, y: number): Item | null {
     return this.items().find(item => {
+      if(isCanvasStartingView(item)) return false
       const rect = item.getBoundingClientRect()
       return x >= rect.left && x < rect.right && y >= rect.top && y < rect.bottom
     }) ?? null
@@ -104,6 +107,65 @@ export class CanvasFeature extends EditorFeature {
       if(!this.active) return
       this.viewer?.navigate(operation)
     },
+    saveCanvasStartingView: ({}: {type: "saveCanvasStartingView"}) => this.saveStartingView(),
+    showCanvasStartingView: ({}: {type: "showCanvasStartingView"}) => this.showStartingView(),
+    deleteCanvasStartingView: ({}: {type: "deleteCanvasStartingView"}) => this.deleteStartingView(),
+  }
+
+  private saveStartingView() {
+    if(!this.active || !this.viewer || this.editor.isEditingLocked) return false
+    const origin = this.clientPoint(0, 0)
+    const frame = canvasStartingView() ?? document.createElement("div")
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      frame.classList.add("ww-canvas-starting-view")
+      frame.setAttribute("aria-label", "Starting view")
+      clearInlinePlacement(frame)
+      Object.assign(frame.style, {position: "absolute", left: `${origin.x}px`, top: `${origin.y}px`,
+        width: `${window.innerWidth / this.zoom}px`, height: `${window.innerHeight / this.zoom}px`,
+        right: "auto", bottom: "auto", minWidth: "0", minHeight: "0", maxWidth: "none", maxHeight: "none",
+        boxSizing: "border-box", margin: "0", padding: "0", border: "0", transform: "none", rotate: "none", scale: "none", translate: "none"})
+      if(!frame.parentElement) document.body.append(frame)
+      this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(frame))
+    }
+    finally { end() }
+    this.refresh()
+    return true
+  }
+
+  private showStartingView() {
+    if(!this.active || !this.viewer) return false
+    const frame = canvasStartingView()
+    if(!frame) return this.saveStartingView()
+    this.viewer.startView()
+    this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(frame))
+    return true
+  }
+
+  private deleteStartingView() {
+    const frame = this.active && !this.editor.isEditingLocked ? canvasStartingView() : null
+    if(!frame) return false
+    const selected = $.selectedElements.includes(frame)
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      frame.remove()
+      if(selected) $.selectDocumentStart()
+      this.editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    }
+    finally { end() }
+    this.refresh()
+    return true
+  }
+
+  private updateStartingViewOutline() {
+    const outline = this.startingViewOutline
+    if(!outline) return
+    const frame = this.active ? canvasStartingView() : null
+    outline.hidden = !frame
+    if(!frame) return
+    const rect = frame.getBoundingClientRect()
+    Object.assign(outline.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+    outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!.classList.toggle("inside", rect.top < 24)
   }
 
   convert(mode: "canvas" | "document", captureUndo = true) {
@@ -288,6 +350,7 @@ export class CanvasFeature extends EditorFeature {
   }
 
   private cameraChanged = () => {
+    this.updateStartingViewOutline()
     this.editor.features.transformation.updateInfo()
     this.editor.features.layout.refresh()
     this.editor.features.graphic.refresh()
@@ -329,6 +392,15 @@ export class CanvasFeature extends EditorFeature {
 
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
+      const origin = event.composedPath()[0]
+      if(event.button === 0 && origin instanceof Node && this.startingViewOutline?.contains(origin)) {
+        const frame = this.active && !this.editor.isEditingLocked ? canvasStartingView() : null
+        if(!frame) return
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(frame))
+        return
+      }
       if(!this.editingRoot || !this.ownEvent(event)) return
       if(!this.active && event.button === 0) this.editor.features.slides.cancelNavigation()
       if(event.button === 0 && !this.hand && !this.spaceHand && this.backgroundInteraction(event)) {
@@ -366,10 +438,13 @@ export class CanvasFeature extends EditorFeature {
       if(target instanceof Node && this.controls?.contains(target)) event.preventDefault()
     },
     click: event => {
-      const target = event.composedPath()[0]
+      const origin = event.composedPath()[0]
+      const target = origin instanceof Element ? origin.closest("button") : null
       if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target)) return
       if(target.name === "hand") { this.hand = !this.hand; this.schedule() }
       else if(target.name === "text") this.insertCentered(() => this.insertText({x: window.innerWidth / 2, y: window.innerHeight / 2}))
+      else if(target.name === "starting-view") this.actions.showCanvasStartingView({type: "showCanvasStartingView"})
+      else if(target.name === "delete-starting-view") this.actions.deleteCanvasStartingView({type: "deleteCanvasStartingView"})
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
     },
     dblclick: event => {
@@ -400,14 +475,16 @@ export class CanvasFeature extends EditorFeature {
     if(this.active && !this.slot) {
       this.slot = this.editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")!
       this.viewer = new CanvasViewer(this.slot, this.background!, this.controls!, this.cameraChanged)
-      this.viewer.applyCamera()
+      if(!this.viewer.startView()) this.viewer.applyCamera()
     }
     else if(!this.active && this.slot) this.restoreSlot()
     if(this.active && (this.hand || this.spaceHand)) {
       if(!document.body.classList.contains("◆canvas-hand")) document.body.classList.add("◆canvas-hand")
     }
     else if(document.body.classList.contains("◆canvas-hand")) removeEditorMarker(document.body, "◆canvas-hand")
-    const signature = JSON.stringify([this.getState(), Boolean(this.emptyParagraph()), this.editor.isEditingLocked, this.hand])
+    this.updateStartingViewOutline()
+    const startingView = canvasStartingView()
+    const signature = JSON.stringify([this.getState(), Boolean(this.emptyParagraph()), this.editor.isEditingLocked, this.hand, Boolean(startingView)])
     if(signature === this.signature) return
     this.signature = signature
     this.controls!.replaceChildren()
@@ -426,6 +503,17 @@ export class CanvasFeature extends EditorFeature {
       button("zoom-in", "+", "Zoom in")
       button("actual-size", "100%", "Actual size")
       button("fit-content", "Fit", "Fit content")
+      const group = document.createElement("div")
+      group.className = "◆canvas-starting-view-controls"
+      group.setAttribute("role", "group")
+      group.setAttribute("aria-label", "Starting view")
+      const show = button("starting-view", "Starting view", startingView ? "Show and select the starting view" : "Add starting view")
+      show.disabled = !startingView && this.editor.isEditingLocked
+      const remove = button("delete-starting-view", "", "Delete starting view")
+      remove.innerHTML = trashIcon
+      remove.disabled = !startingView || this.editor.isEditingLocked
+      group.append(show, remove)
+      this.controls!.append(group)
     }
     this.controls!.hidden = !this.controls!.childElementCount
     this.editor.postSelectionPath()
@@ -459,11 +547,42 @@ export class CanvasFeature extends EditorFeature {
     this.controls.setAttribute("role", "toolbar")
     this.controls.setAttribute("aria-label", "Document canvas")
     this.editor.addAppendix(this.controls)
-    this.stylesheet = createStylesheet(canvasControlsStyles)
+    this.startingViewOutline = document.createElement("div")
+    this.startingViewOutline.setAttribute("part", "canvas-starting-view")
+    this.startingViewOutline.setAttribute("aria-hidden", "true")
+    for(const edge of ["top", "right", "bottom", "left"]) {
+      const handle = document.createElement("div")
+      handle.className = edge
+      this.startingViewOutline.append(handle)
+    }
+    const label = document.createElement("span")
+    label.setAttribute("part", "canvas-starting-view-label")
+    label.textContent = "STARTING VIEW"
+    this.startingViewOutline.append(label)
+    this.editor.addAppendix(this.startingViewOutline)
+    this.stylesheet = createStylesheet(canvasControlsStyles + `
+      .◆canvas-starting-view-controls { display: inline-flex; }
+      .◆canvas-starting-view-controls button:first-child { border-radius: 6px 0 0 6px; }
+      .◆canvas-starting-view-controls button:last-child { display: grid; place-items: center; border-left: 1px solid #cbd5e1; border-radius: 0 6px 6px 0; padding: 6px 8px; }
+      .◆canvas-starting-view-controls svg { width: 16px; height: 16px; }
+      [part=canvas-starting-view] { position: fixed; box-sizing: border-box; border: 2px dotted #9ca3af; pointer-events: none; z-index: 0; }
+      [part=canvas-starting-view][hidden] { display: none; }
+      [part=canvas-starting-view] > div { position: absolute; pointer-events: auto; cursor: pointer; }
+      [part=canvas-starting-view] > :is(.top, .bottom) { left: -4px; right: -4px; height: 8px; }
+      [part=canvas-starting-view] > :is(.left, .right) { top: -4px; bottom: -4px; width: 8px; }
+      [part=canvas-starting-view] > .top { top: -5px; }
+      [part=canvas-starting-view] > .bottom { bottom: -5px; }
+      [part=canvas-starting-view] > .left { left: -5px; }
+      [part=canvas-starting-view] > .right { right: -5px; }
+      [part=canvas-starting-view-label] { display: none; position: absolute; left: 0; top: -6px; transform: translateY(-100%); color: var(--sl-color-primary-400); font: 600 11px/16px system-ui; letter-spacing: .06em; white-space: nowrap; }
+      [part=canvas-starting-view-label].inside { left: 6px; top: 6px; transform: none; }
+      @media print { [part=canvas-starting-view] { display: none; } }
+    `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
     this.observer = new MutationObserver(this.schedule)
     this.observer.observe(document.documentElement, {subtree: true, childList: true, attributes: true, characterData: true})
     window.addEventListener("blur", this.release)
+    window.addEventListener("resize", this.schedule)
     this.refresh()
   }
 
@@ -475,9 +594,11 @@ export class CanvasFeature extends EditorFeature {
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null
     window.removeEventListener("blur", this.release)
+    window.removeEventListener("resize", this.schedule)
     this.restoreSlot()
     this.background?.remove(); this.background = null
     this.controls?.remove(); this.controls = null
+    this.startingViewOutline?.remove(); this.startingViewOutline = null
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     this.stylesheet = null
     this.signature = ""
