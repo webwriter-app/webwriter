@@ -792,6 +792,37 @@ describe("identity and cloud settings", () => {
     expect(panel.shadowRoot!.textContent).toContain("Signed in")
   })
 
+  it.each(["", "unused-password"])("adds a no-auth local provider through its loopback alias without requiring credentials (%s)", async suppliedPassword => {
+    const session = {...sessionMetadata, kind: "webwriter-dev-server", authentication: "none",
+      apiBaseUrl: "http://127.0.0.1:1234/api", collaborationUrl: "ws://127.0.0.1:1234", adminUrl: "http://127.0.0.1:1234/admin"}
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(async () => cloudResponse(session)))
+    const panel = await mountPanel()
+    panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+    const root = panel.shadowRoot!
+    const custom = [...root.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.trim() === "Custom provider")!
+    custom.click()
+    await panel.updateComplete
+    const form = root.querySelector<HTMLFormElement>(".new-provider")!
+    form.querySelector<HTMLInputElement>('[name="url"]')!.value = "http://localhost:1234"
+    const username = form.querySelector<HTMLInputElement>('[name="username"]')!
+    const password = form.querySelector<HTMLInputElement>('[name="password"]')!
+    expect(username.required).toBe(false)
+    expect(password.required).toBe(false)
+    password.value = suppliedPassword
+    form.requestSubmit()
+    await vi.waitFor(() => expect(panel.settings.cloudServices[0]?.authentication).toBe("none"))
+    await panel.updateComplete
+    const saved = loadAppSettings()
+    expect(saved.cloudServices[0].url).toBe(session.apiBaseUrl)
+    expect(saved.activeCloudServiceId).toBe(saved.cloudServices[0].id)
+    expect(saved.cloudServices[0].accessToken).toBeUndefined()
+    expect(password.value).toBe("")
+    expect(root.querySelector('[role="alert"]')).toBeNull()
+    expect(root.querySelector('.cloud-service:not(.local-settings) input[type="password"]')).toBeNull()
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(vi.mocked(fetch).mock.calls[0][1]?.body).toBeUndefined()
+  })
+
   it("clears failed credentials and keeps the existing active provider", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(cloudResponse(sessionMetadata))
       .mockResolvedValueOnce(cloudResponse({message: "Invalid credentials"}, 401)))

@@ -347,6 +347,20 @@ describe("development server", () => {
     expect((await fetch(`${baseUrl}/admin`)).status).toBe(200)
   })
 
+  it.each(["GET", "HEAD"])("redirects application entry pages on a loopback alias to the application origin (%s)", async method => {
+    const content = new URL(baseUrl)
+    content.hostname = "localhost"
+    for(const path of ["/", "/index.html", "/editor", "/editor/", "/editor/index.html?open=http%3A%2F%2Flocalhost%3A1234%2Fapi%2Fdocuments%2Flesson"]) {
+      const response = await rawRequest(path, {method, headers: {Host: content.host}})
+      expect(response.status).toBe(307)
+      expect(response.headers.get("Location")).toBe(`${baseUrl}${path}`)
+      expect(response.headers.get("Cache-Control")).toBe("no-store")
+      expect((await rawRequest(path, {method})).status).toBe(404)
+    }
+    expect((await rawRequest("/frame-shell.html", {method, headers: {Host: content.host}})).status).toBe(404)
+    expect((await rawRequest("/api/session", {method: "GET", headers: {Host: content.host}})).status).toBe(200)
+  })
+
   it("refuses network binds and non-loopback browser origins", async () => {
     await expect(createDevServer({host: "0.0.0.0", vite: false})).rejects.toThrow("loopback")
     const response = await fetch(`${baseUrl}/api/session`, {
@@ -413,6 +427,9 @@ describe("development server", () => {
     const appOrigin = "http://localhost:5173", editorOrigin = "http://127.0.0.1:5173"
     developmentServer = await createDevServer({port: 0, vite: false, appOrigin, editorOrigin, dataDirectory: developmentServer.dataDirectory})
     baseUrl = (await developmentServer.listen()).url
+    const redirect = await rawRequest("/editor/?open=lesson")
+    expect(redirect.status).toBe(307)
+    expect(redirect.headers.get("Location")).toBe(`${appOrigin}/editor/?open=lesson`)
     expect((await request("/api/documents", {headers: {Origin: appOrigin}})).response.status).toBe(200)
     for(const Origin of [editorOrigin, "http://localhost:5174"]) {
       expect((await request("/api/documents", {headers: {Origin}})).response.status).toBe(403)

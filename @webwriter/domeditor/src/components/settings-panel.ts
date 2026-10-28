@@ -493,15 +493,16 @@ export class SettingsPanel extends LitElement {
   }
 
   private renderCredentials(service?: CloudService) {
+    const required = (service?.type ?? this.providerType) === "edumix" && service?.authentication !== "none"
     return html`
       <label class="setting-label">Username
         <input name="username" autocomplete="username" aria-label=${service ? `Username for ${service.url}` : "Username"}
-          ?required=${service?.authentication !== "none"} .value=${service?.username ?? ""}
+          ?required=${required} .value=${service?.username ?? ""}
           @input=${(event: Event) => service && this.changeCloudServices(this.settings.cloudServices.map(value => value.id === service.id
             ? {...value, username: (event.currentTarget as HTMLInputElement).value, accessToken: undefined, expiresAt: undefined} : value))}>
       </label>
       ${service?.authentication !== "none" ? html`<label class="setting-label">Password
-        <input name="password" type="password" autocomplete="current-password" aria-label=${service ? `Password for ${service.url}` : "Password"} required>
+        <input name="password" type="password" autocomplete="current-password" aria-label=${service ? `Password for ${service.url}` : "Password"} ?required=${required}>
       </label>` : ""}`
   }
 

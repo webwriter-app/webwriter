@@ -283,7 +283,7 @@ export async function connectCloudService(service: CloudService, options: {
   }
   if(options.password === undefined && cloudServiceExpired(service)) throw new CloudAuthenticationError("Sign in again in Settings.")
   let value = await request(`${api}/session`)
-  if(options.password !== undefined) {
+  if(options.password !== undefined && sessionFrom(value)?.authentication !== "none") {
     if(!isRecord(value) || value.kind !== "webwriter-cloud-service" || value.version !== 1 || value.authentication !== "bearer") {
       throw new Error("This URL does not provide a supported WebWriter cloud service.")
     }
@@ -292,14 +292,23 @@ export async function connectCloudService(service: CloudService, options: {
     value = await request(signInUrl, {method: "POST", body: JSON.stringify({username: service.username, password: options.password})})
   }
   const session = sessionFrom(isRecord(value) && value.session ? value.session : value)
-  if(!session || session.apiBaseUrl.replace(/\/$/, "") !== api) throw new Error("This URL does not provide a supported WebWriter cloud service.")
-  const accessToken = isRecord(value) && typeof value.accessToken === "string" ? value.accessToken
+  if(!session) throw new Error("This URL does not provide a supported WebWriter cloud service.")
+  const requestedAPI = new URL(api)
+  const sessionAPI = new URL(session.apiBaseUrl.replace(/\/$/, ""))
+  // Local aliases may advertise the canonical application host. Follow it
+  // without accepting a different service port, protocol, or API path.
+  if(session.kind === "webwriter-dev-server" && loopbackHosts.has(requestedAPI.hostname)) requestedAPI.hostname = sessionAPI.hostname
+  if(requestedAPI.href !== sessionAPI.href) throw new Error("This URL does not provide a supported WebWriter cloud service.")
+  const accessToken = session.authentication === "none" ? undefined
+    : isRecord(value) && typeof value.accessToken === "string" ? value.accessToken
     : options.password === undefined ? service.accessToken : undefined
   if(session.authentication === "bearer" && !accessToken) throw new CloudAuthenticationError("Sign in in Settings.")
-  const expiresAt = isRecord(value) && typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt) ? value.expiresAt
+  const expiresAt = session.authentication === "none" ? undefined
+    : isRecord(value) && typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt) ? value.expiresAt
     : isRecord(value) && typeof value.expiresIn === "number" && Number.isFinite(value.expiresIn) ? Date.now() + value.expiresIn * 1000
       : accessToken ? tokenExpiresAt(accessToken) ?? (options.password === undefined ? service.expiresAt : undefined) : undefined
-  return {session, service: {...service, authentication: session.authentication === "none" ? "none" as const : undefined,
+  return {session, service: {...service, url: session.kind === "webwriter-dev-server" ? sessionAPI.href : service.url,
+    authentication: session.authentication === "none" ? "none" as const : undefined,
     accessToken, expiresAt}}
 }
 

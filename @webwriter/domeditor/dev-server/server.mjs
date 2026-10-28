@@ -684,6 +684,16 @@ export async function createDevServer(options = {}) {
       return
     }
 
+    // The application must start on its canonical origin: reversing the
+    // application/content pair blocks both privileged APIs and frame startup.
+    if(!privateTesting && ["GET", "HEAD"].includes(request.method)
+      && ["/", "/index.html", "/editor", "/editor/", "/editor/index.html"].includes(path)
+      && requestOrigin(request) !== browserAppOrigin()) {
+      response.writeHead(307, {Location: new URL(path + url.search, browserAppOrigin()).href, "Cache-Control": "no-store"})
+      response.end()
+      return
+    }
+
     const isLiveDocument = (path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")
     if(privateTesting) {
       const isEditorHost = request.headers.host.toLowerCase() === new URL(editorOrigin).host
