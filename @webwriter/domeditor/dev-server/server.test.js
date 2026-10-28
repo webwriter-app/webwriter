@@ -1,5 +1,5 @@
 // @vitest-environment node
-import {mkdtemp, readFile, readdir, writeFile} from "node:fs/promises"
+import {mkdtemp, readFile, readdir, rm, writeFile} from "node:fs/promises"
 import {tmpdir} from "node:os"
 import {join} from "node:path"
 import {request as httpRequest} from "node:http"
@@ -11,6 +11,8 @@ import {WebsocketProvider} from "y-websocket"
 import {docs, getYDoc} from "@y/websocket-server/utils"
 import WebSocketPackage from "ws"
 import {createDevServer} from "./server.mjs"
+import {LiveSession} from "../src/live-session"
+import {encodeLiveSessionFeedback} from "../src/live-session-permissions.js"
 import {defaultGroupingRules, distributionGroupingRevision, groupingTarget} from "../src/widget-grouping.js"
 import {distributionTarget, emptyDistributionConfig, encodeDistributionConfig} from "../src/distribution.js"
 
@@ -30,6 +32,18 @@ const request = async (path, init) => {
   const value = response.status === 204 ? null : await response.json()
   return {response, value}
 }
+
+const rawRequest = (path, init = {}) => new Promise((resolve, reject) => {
+  const outgoing = httpRequest(`${baseUrl}${path}`, init, response => {
+    const chunks = []
+    response.on("data", chunk => chunks.push(chunk))
+    response.on("error", reject)
+    response.on("end", () => resolve(new Response(response.statusCode === 204 || init.method === "HEAD"
+      ? null : Buffer.concat(chunks), {status: response.statusCode, headers: response.headers})))
+  })
+  outgoing.on("error", reject)
+  outgoing.end(init.body)
+})
 
 const openWebSocket = (url, options) => new Promise((resolve, reject) => {
   const socket = new WebSocketPackage(url, options)
@@ -125,6 +139,7 @@ afterEach(async () => {
   await developmentServer?.close()
   vi.restoreAllMocks()
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
 })
 
 describe("VPN-only private testing", () => {
@@ -139,19 +154,9 @@ describe("VPN-only private testing", () => {
     baseUrl = (await developmentServer.listen()).url
   }
   // Connect to loopback while preserving the VPN proxy's Host and browser Origin.
-  const privateRequest = (path, init = {}) => new Promise((resolve, reject) => {
-    const outgoing = httpRequest(`${baseUrl}${path}`, {...init, headers: {
-      Host: new URL(appOrigin).host, Origin: appOrigin, "Content-Type": "application/json", ...init.headers,
-    }}, response => {
-      const chunks = []
-      response.on("data", chunk => chunks.push(chunk))
-      response.on("error", reject)
-      response.on("end", () => resolve(new Response(response.statusCode === 204 || init.method === "HEAD"
-        ? null : Buffer.concat(chunks), {status: response.statusCode, headers: response.headers})))
-    })
-    outgoing.on("error", reject)
-    outgoing.end(init.body)
-  })
+  const privateRequest = (path, init = {}) => rawRequest(path, {...init, headers: {
+    Host: new URL(appOrigin).host, Origin: appOrigin, "Content-Type": "application/json", ...init.headers,
+  }})
   const socketOptions = (origin = editorOrigin, host = new URL(appOrigin).host) => ({headers: {Host: host, Origin: origin}})
 
   it("requires explicit HTTPS origins, isolated data, and a loopback bind", async () => {
@@ -270,6 +275,25 @@ describe("VPN-only private testing", () => {
     await closeWebSocket(socket)
   })
 
+  it("rejects content-origin document and provider access, including the retained-key exfiltration sequence", async () => {
+    await startPrivate()
+    await privateRequest("/api/providers", {method: "POST", body: JSON.stringify({id: "protected", name: "Protected", baseUrl: "https://provider.example/v1", auth: "bearer", apiKey: "dummy-protected-key"})})
+    for(const [path, init] of [
+      ["/api/documents", {}],
+      ["/api/providers", {}],
+      ["/admin", {}],
+      ["/api/providers/protected", {method: "PATCH", body: JSON.stringify({baseUrl: "https://attacker.invalid/v1"})}],
+      ["/api/inference/providers/protected/models", {}],
+      ["/api/providers/protected", {method: "OPTIONS", headers: {"Access-Control-Request-Method": "PATCH"}}],
+    ]) {
+      const response = await privateRequest(path, {...init, headers: {...init.headers, Origin: editorOrigin}})
+      expect(response.status).toBe(403)
+      expect(response.headers.has("access-control-allow-origin")).toBe(false)
+    }
+    expect(upstreamFetch).not.toHaveBeenCalled()
+    expect((await (await privateRequest("/api/providers/protected")).json()).provider.baseUrl).toBe("https://provider.example/v1")
+  })
+
   it("accepts collaboration upgrades only on the application host from configured origins", async () => {
     await startPrivate()
     const url = `${baseUrl.replace(/^http/, "ws")}/vpn-collaboration`
@@ -307,7 +331,7 @@ describe("VPN-only private testing", () => {
     const learner = await openWebSocket(`${socketUrl}&role=learner&learner=ada&learnerKey=llllllllllllllllllllllll`, socketOptions())
     await closeWebSocket(learner)
     await closeWebSocket(host)
-    expect((await privateRequest(path, {headers})).status).toBe(404)
+    await vi.waitFor(async () => expect((await privateRequest(path, {headers})).status).toBe(404))
   })
 })
 
@@ -360,6 +384,94 @@ describe("development server", () => {
     const address = await developmentServer.listen()
     expect(new URL(address.url).hostname).toBe("[::1]")
     expect((await fetch(`${address.url}/api/session`)).status).toBe(200)
+  })
+
+  it("separates the default application and content hosts for privileged endpoints and live documents", async () => {
+    const content = new URL(baseUrl)
+    content.hostname = "localhost"
+    expect((await request("/api/documents", {headers: {Origin: baseUrl}})).response.status).toBe(200)
+    for(const [path, init] of [
+      ["/api/documents", {}], ["/admin", {}],
+      ["/api/providers", {method: "POST", body: JSON.stringify({name: "Forbidden", baseUrl: "https://attacker.invalid", auth: "none"})}],
+      ["/api/providers", {method: "OPTIONS", headers: {"Access-Control-Request-Method": "POST"}}],
+    ]) {
+      const {response} = await request(path, {...init, headers: {...init.headers, Origin: content.origin}})
+      expect(response.status).toBe(403)
+      expect(response.headers.has("Access-Control-Allow-Origin")).toBe(false)
+      // Same-origin fetches need not carry Origin; the content Host cannot
+      // turn into an application API just by omitting that header.
+      expect((await rawRequest(path, {...init, headers: {...init.headers, Host: content.host}})).status).toBe(403)
+    }
+    const redirect = await fetch(`${baseUrl}/live/?liveSession=missing`, {redirect: "manual"})
+    expect(redirect.status).toBe(307)
+    expect(new URL(redirect.headers.get("Location")).origin).toBe(content.origin)
+    expect(upstreamFetch).not.toHaveBeenCalled()
+  })
+
+  it("allows an explicitly configured separate frontend origin without granting its frames privileged access", async () => {
+    await developmentServer.close()
+    const appOrigin = "http://localhost:5173", editorOrigin = "http://127.0.0.1:5173"
+    developmentServer = await createDevServer({port: 0, vite: false, appOrigin, editorOrigin, dataDirectory: developmentServer.dataDirectory})
+    baseUrl = (await developmentServer.listen()).url
+    expect((await request("/api/documents", {headers: {Origin: appOrigin}})).response.status).toBe(200)
+    for(const Origin of [editorOrigin, "http://localhost:5174"]) {
+      expect((await request("/api/documents", {headers: {Origin}})).response.status).toBe(403)
+    }
+    expect((await request("/api/widget-data/resolve", {method: "POST", headers: {Origin: editorOrigin},
+      body: JSON.stringify({document: "lesson", widget: "poll", mode: "individual"})})).response.status).toBe(200)
+  })
+
+  it.each(["backend", "frontend"])("excludes the provider data directory from Vite's ordinary, raw, and absolute file routes: %s", async entry => {
+    const projectRoot = fileURLToPath(new URL("../", import.meta.url))
+    const dataDirectory = await mkdtemp(join(projectRoot, ".review-private-"))
+    await writeFile(join(dataDirectory, "providers.json"), JSON.stringify({apiKey: "dummy-static-secret"}), {mode: 0o600})
+    await developmentServer.close()
+    developmentServer = undefined
+    // Vite owns process-level worker and shutdown hooks. Exercise the CLI in
+    // its own process, just like the private-testing startup regression.
+    const args = entry === "backend" ? [fileURLToPath(new URL("./server.mjs", import.meta.url))] : ["--input-type=module", "-e", `
+      import {createServer} from "vite"
+      const vite = await createServer({server:{host:"127.0.0.1",port:0,strictPort:true,hmr:false,watch:null}})
+      await vite.listen()
+      console.log("development server: http://127.0.0.1:" + vite.httpServer.address().port)
+      process.once("SIGTERM", async () => {await vite.close(); process.exit(0)})
+    `]
+    const child = spawn(process.execPath, args, {
+      env: {...process.env, WEBWRITER_DEV_HOST: "127.0.0.1", WEBWRITER_DEV_PORT: "0", WEBWRITER_DEV_DATA_DIR: dataDirectory,
+        VITE_APP_ORIGIN: "", VITE_EDITOR_ORIGIN: "", OPENAI_API_KEY: ""},
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    const stopped = new Promise(resolve => child.once("exit", (code, signal) => resolve({code, signal})))
+    try {
+      baseUrl = await new Promise((resolve, reject) => {
+        let output = ""
+        const timer = setTimeout(() => reject(new Error("Development CLI did not start")), 5000)
+        child.once("error", error => { clearTimeout(timer); reject(error) })
+        child.once("exit", code => { clearTimeout(timer); reject(new Error(`Development CLI exited before startup (${code})`)) })
+        child.stdout.on("data", chunk => {
+          output += chunk.toString()
+          const address = /development server: (http:\/\/127\.0\.0\.1:\d+)/.exec(output)
+          if(address) { clearTimeout(timer); resolve(address[1]) }
+        })
+        child.stderr.resume()
+      })
+      const relative = dataDirectory.slice(projectRoot.length)
+      for(const path of [`/${relative}/providers.json`, `/${relative}/providers.json?raw`, `/@fs${dataDirectory}/providers.json?raw`]) {
+        const response = await fetch(`${baseUrl}${path}`, {headers: {Origin: "http://localhost:1234"}})
+        expect(response.status).toBe(403)
+        expect(await response.text()).not.toContain("dummy-static-secret")
+      }
+      child.kill("SIGTERM")
+      const exit = await stopped
+      expect(exit.signal).toBeNull()
+      // Standalone Vite's SIGTERM hook may set the conventional 128 + 15
+      // exit code before the inline wrapper's close hook completes.
+      expect(entry === "frontend" ? [0, 143] : [0]).toContain(exit.code)
+    }
+    finally {
+      if(child.exitCode === null && child.signalCode === null) { child.kill("SIGKILL"); await stopped }
+      await rm(dataDirectory, {recursive: true, force: true})
+    }
   })
 
   it("creates, reads, updates, lists, and deletes documents", async () => {
@@ -1273,6 +1385,100 @@ describe("development server", () => {
       host.destroy()
       learnerDoc.destroy()
       hostDoc.destroy()
+    }
+  })
+
+  it.each([false, true])("accepts legacy widget activity while enforcing explicit distribution policies: %s", async configured => {
+    const token = "aaaaaaaaaaaaaaaaaaaaaaaa", hostKey = "hhhhhhhhhhhhhhhhhhhhhhhh"
+    const id = `widget-policy-${configured}`
+    const policy = emptyDistributionConfig("root")
+    const carrier = configured ? `<!--?${distributionTarget} ${encodeDistributionConfig(policy)}?-->` : ""
+    const html = `<html id="root"><head>${carrier}</head><body><test-widget answer="0"></test-widget></body></html>`
+    expect((await request(`/api/live-sessions/${id}`, {method: "PUT", body: JSON.stringify({token, hostKey, html})})).response.status).toBe(201)
+    const hostDoc = new Y.Doc(), learnerDoc = new Y.Doc()
+    const serverUrl = baseUrl.replace(/^http/, "ws"), room = `live-session-${id}`
+    const host = new WebsocketProvider(serverUrl, room, hostDoc, {
+      WebSocketPolyfill: WebSocketPackage, disableBc: true, params: {role: "host", token, hostKey},
+    })
+    let learner
+    try {
+      await vi.waitFor(() => expect(host.synced).toBe(true))
+      learner = new WebsocketProvider(serverUrl, room, learnerDoc, {
+        WebSocketPolyfill: WebSocketPackage, disableBc: true,
+        params: {role: "learner", token, learner: "ada", learnerKey: "llllllllllllllllllllllll"},
+      })
+      learner.awareness.setLocalState({liveSession: {role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}}})
+      await vi.waitFor(() => expect(learner.synced).toBe(true))
+      const nextHTML = html.replace('answer="0"', 'answer="42"')
+      learnerDoc.getMap("live-session-states").set("ada", {learner: "ada", time: Date.now(), html: nextHTML})
+      if(configured) {
+        await vi.waitFor(() => expect(learner.wsconnected).toBe(false))
+        expect(hostDoc.getMap("live-session-states").has("ada")).toBe(false)
+      }
+      else await vi.waitFor(() => expect(hostDoc.getMap("live-session-states").get("ada")?.html).toBe(nextHTML))
+    }
+    finally {
+      learner?.destroy(); host.destroy()
+      learnerDoc.destroy(); hostDoc.destroy()
+    }
+  })
+
+  it("keeps feedback off the broadcast document and sends it only to authenticated recipients, including reconnects", async () => {
+    const frames = new Map()
+    vi.stubGlobal("WebSocket", class extends WebSocketPackage {
+      constructor(url) {
+        super(url)
+        const query = new URL(url).searchParams
+        const recipient = query.get("learner") ?? "host"
+        const messages = frames.get(recipient) ?? []
+        frames.set(recipient, messages)
+        this.on("message", data => messages.push(Buffer.from(data)))
+      }
+    })
+    const saved = new Map()
+    vi.stubGlobal("sessionStorage", {getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value)})
+    const options = {id: "private-feedback", serverUrl: baseUrl.replace(/^http/, "ws"), token: "aaaaaaaaaaaaaaaaaaaaaaaa"}
+    const sessions = []
+    const create = extra => {
+      const session = new LiveSession({...options, ...extra})
+      sessions.push(session)
+      return session
+    }
+    const learner = id => create({role: "learner", learner: {id, name: id, color: "#08c"}})
+    const host = create({role: "host", hostKey: "hhhhhhhhhhhhhhhhhhhhhhhh"})
+    let attacker
+    try {
+      await vi.waitFor(() => expect(host.status).toBe("connected"))
+      const ada = learner("ada"), lin = learner("lin")
+      await vi.waitFor(() => expect(host.learners.filter(person => person.connected)).toHaveLength(2))
+      const feedback = host.sendFeedback("ada", "A confidential message addressed to Ada")
+      expect(feedback).not.toBeNull()
+      await vi.waitFor(() => expect(ada.feedback).toEqual([feedback]))
+      expect(lin.feedback).toEqual([])
+      expect(frames.get("lin").some(frame => frame.includes(feedback.text))).toBe(false)
+      for(const session of [host, ada, lin]) {
+        expect(Buffer.from(Y.encodeStateAsUpdate(session.doc)).includes(feedback.text)).toBe(false)
+      }
+      expect(Buffer.from(Y.encodeStateAsUpdate(getYDoc("live-session-private-feedback"))).includes(feedback.text)).toBe(false)
+
+      ada.destroy()
+      const rejoined = learner("ada"), grace = learner("grace")
+      await vi.waitFor(() => expect(rejoined.feedback).toEqual([feedback]))
+      await vi.waitFor(() => expect(grace.status).toBe("connected"))
+      expect(grace.feedback).toEqual([])
+      expect(frames.get("grace").some(frame => frame.includes(feedback.text))).toBe(false)
+      expect(host.feedback).toEqual([feedback])
+
+      attacker = await openWebSocket(`${options.serverUrl}/live-session-${options.id}?role=learner&token=${options.token}&learner=mallory&learnerKey=mmmmmmmmmmmmmmmmmmmmmmmm`)
+      const closed = new Promise(resolve => attacker.once("close", resolve))
+      attacker.send(encodeLiveSessionFeedback({...feedback, id: "forged-feedback", participant: "lin"}))
+      expect(await closed).toBe(1008)
+      expect(lin.feedback).toEqual([])
+      expect(host.feedback).toEqual([feedback])
+    }
+    finally {
+      attacker?.terminate()
+      sessions.reverse().forEach(session => session.destroy())
     }
   })
 })

@@ -31,7 +31,7 @@ const click = (target: Element) => {
 const config = (target: string, permissions: DistributionConfig["permissions"], add: string[] = [], items: DistributionConfig["items"] = []) => ({
   ...emptyDistributionConfig(target), permissions, add, items,
 })
-const setup = (markup: string, permissions: DistributionConfig["permissions"] = ["edit", "style", "delete", "insert"], extraConfigs: DistributionConfig[] = [], widgets: import("./schema").WidgetSchemaDefinition[] = [], layout?: "canvas" | "slides" | "board") => {
+const setup = (markup: string, permissions: DistributionConfig["permissions"] = ["edit", "style", "delete", "insert"], extraConfigs: DistributionConfig[] = [], widgets: import("./schema").WidgetSchemaDefinition[] = [], layout?: "canvas" | "slides" | "board", item = {id: "element:span", label: "Approved span", html: '<span data-approved="yes">Approved</span>'}) => {
   rootId = `reader-${crypto.randomUUID()}`
   document.designMode = "off"
   document.head.replaceChildren()
@@ -42,7 +42,6 @@ const setup = (markup: string, permissions: DistributionConfig["permissions"] = 
   document.body.removeAttribute("style")
   document.body.innerHTML = markup
   if(layout) document.body.className = `ww-${layout}`
-  const item = {id: "element:span", label: "Approved span", html: '<span data-approved="yes">Approved</span>'}
   writeDistributionConfig(document.documentElement, config(rootId, permissions, [item.id], [item]))
   for(const itemConfig of extraConfigs) {
     const target = document.getElementById(itemConfig.target)!
@@ -151,6 +150,38 @@ describe("distribution reader runtime", () => {
     expect(paragraph.childNodes[1]?.nodeType).toBe(Node.COMMENT_NODE)
     expect(context.editor!.toHTML(true, false)).toBe('<p id="container">Start<!--keep--><span data-approved="yes">Approved</span></p>')
     expect(document.body.querySelector("[data-webwriter-editor-only], [contenteditable]")).toBeNull()
+  })
+
+  it("remaps references across all roots of each inserted approved template", async () => {
+    const item = {
+      id: "element:input",
+      label: "Name field",
+      html: '<!--start--><label for="name">Name</label><input id="name" aria-describedby="help"><span id="help">Help</span><svg xmlns="http://www.w3.org/2000/svg"><use href="#help"></use></svg><!--end-->',
+    }
+    const {context} = setup('<p id="container">Start</p>', undefined, [], [], undefined, item)
+    const paragraph = document.querySelector<HTMLParagraphElement>("#container")!
+    await waitForReady(context, paragraph)
+    context.editor!.features.selection.selectElement(paragraph)
+    const picker = context.controls.querySelector<HTMLSelectElement>('select[aria-label="Reader palette"]')!
+    picker.value = item.id
+    button(context, "Insert").click()
+    button(context, "Insert").click()
+
+    const labels = Array.from(paragraph.querySelectorAll("label"))
+    const inputs = Array.from(paragraph.querySelectorAll("input"))
+    const helps = Array.from(paragraph.querySelectorAll("span"))
+    expect(labels).toHaveLength(2)
+    expect(inputs).toHaveLength(2)
+    expect(helps).toHaveLength(2)
+    expect(new Set(inputs.map(input => input.id)).size).toBe(2)
+    for(let index = 0; index < 2; index++) {
+      expect(labels[index].htmlFor).toBe(inputs[index].id)
+      expect(inputs[index].getAttribute("aria-describedby")).toBe(helps[index].id)
+      expect(paragraph.querySelector(`use[href="#${helps[index].id}"]`)).not.toBeNull()
+    }
+    expect(paragraph.childNodes[1]?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(paragraph.childNodes[2]?.nodeType).toBe(Node.ELEMENT_NODE)
+    expect(paragraph.querySelector("svg")?.namespaceURI).toBe("http://www.w3.org/2000/svg")
   })
 
   it("does not insert a dormant template when insert permission is absent", async () => {

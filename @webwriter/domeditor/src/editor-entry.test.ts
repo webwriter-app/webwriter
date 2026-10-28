@@ -29,6 +29,7 @@ const flushMutations = async() => {
 afterEach(() => {
   document.body.replaceChildren()
   document.body.removeAttribute("contenteditable")
+  if(document.doctype) document.replaceChild(document.implementation.createDocumentType("html", "", ""), document.doctype)
   vi.restoreAllMocks()
 })
 
@@ -115,6 +116,9 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
   providerDisconnect.mockClear()
   const nonce = "frame-control-nonce-1234"
   const origin = window.location.origin
+  document.doctype?.remove()
+  document.insertBefore(document.implementation.createDocumentType("html", "-//WebWriter//DTD HTML 5.0//EN",
+    "https://example.test/webwriter.dtd"), document.documentElement)
   document.body.setAttribute("contenteditable", "")
   document.body.innerHTML = '<template><p>Before</p></template><p>Document</p><input><demo-widget></demo-widget>'
   const postMessage = vi.spyOn(window, "postMessage")
@@ -130,6 +134,15 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
   const snapshots = postMessage.mock.calls.map(([message]) => message as {type?: string, html?: string})
     .filter(message => message.type === "editor-frame-snapshot")
   expect(snapshots.some(message => message.html?.includes("After template edit"))).toBe(true)
+  const doctype = '<!DOCTYPE html PUBLIC "-//WebWriter//DTD HTML 5.0//EN" "https://example.test/webwriter.dtd">'
+  expect(snapshots.some(message => message.html?.startsWith(doctype))).toBe(true)
+
+  window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "snapshot", requestId: "doctype-snapshot",
+  }}))
+  const snapshotResponse = postMessage.mock.calls.map(([message]) => message as {type?: string, requestId?: string, html?: string})
+    .find(message => message.type === "editor-frame-response" && message.requestId === "doctype-snapshot")
+  expect(snapshotResponse?.html?.startsWith(doctype)).toBe(true)
 
   const shortcutEvent = (target: EventTarget) => {
     const event = new KeyboardEvent("keydown", {key: "z", ctrlKey: true, bubbles: true, composed: true, cancelable: true})

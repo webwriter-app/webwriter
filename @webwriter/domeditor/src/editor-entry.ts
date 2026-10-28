@@ -4,6 +4,7 @@ import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, re
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
 import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
 import {isAuthoredMutation} from "./editor-artifacts"
+import {serializeDoctype} from "./serialization-primitives"
 
 /** Shortest time between two document snapshots posted to the host. */
 const snapshotInterval = 250
@@ -90,7 +91,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   let motionSheet: CSSStyleSheet | null = null
   let shortcuts = settings.shortcuts ?? {}
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, origin)
-  const snapshot = () => `${document.doctype ? `<!doctype ${document.doctype.name}>` : ""}${document.documentElement.outerHTML}`
+  const snapshot = () => `${serializeDoctype(document.doctype)}${document.documentElement.outerHTML}`
   const setMotion = (disabled: boolean) => {
     if(motionSheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== motionSheet)
     motionSheet = null

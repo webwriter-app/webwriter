@@ -966,6 +966,87 @@ describe("table cell selection", () => {
     }
   })
 
+  it.each(["selection", "content", "equal-content replacement", "equal-HTML cell replacement", "other target cell", "disable", "disable and re-enable"])("does not paste into a stale table after pending clipboard work: %s", async change => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    const [first, second] = cells()
+    editor.features.table.selectCells(first)
+    const read = navigator.clipboard.read
+    let resolveRead!: (items: ClipboardItems) => void
+    const pendingRead = new Promise<ClipboardItems>(resolve => { resolveRead = resolve })
+    Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: () => pendingRead})
+    try {
+      const paste = editor.features.table.paste()
+      if(change === "selection") editor.features.table.selectCells(second)
+      if(change === "content") first.textContent = "Changed"
+      if(change === "equal-content replacement") first.firstChild!.replaceWith(document.createTextNode("A"))
+      if(change === "equal-HTML cell replacement") first.replaceWith(first.cloneNode(true))
+      if(change === "other target cell") second.textContent = "Changed"
+      if(change === "disable" || change === "disable and re-enable") {
+        editor.features.table.disable()
+        if(change === "disable and re-enable") {
+          editor.features.table.enable()
+          editor.features.table.selectCells(first)
+        }
+      }
+      resolveRead([{types: ["text/plain"], getType: async () => new Blob(["Pasted"])}] as unknown as ClipboardItems)
+      expect(await paste).toBe(false)
+      expect(first.textContent).not.toBe("Pasted")
+      expect(first.isConnected).toBe(change !== "equal-HTML cell replacement")
+      expect(second.textContent).not.toBe("Pasted")
+    }
+    finally {
+      editor.features.table.enable()
+      Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: read})
+    }
+  })
+
+  it("revalidates the table after a delayed clipboard item read", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
+    const cell = cells()[0]
+    editor.features.table.selectCells(cell)
+    const read = navigator.clipboard.read
+    let resolveType!: (blob: Blob) => void
+    const getType = vi.fn(() => new Promise<Blob>(resolve => { resolveType = resolve }))
+    const readClipboard = vi.fn(() => [{types: ["text/plain"], getType}])
+    Object.defineProperty(navigator.clipboard, "read", {
+      configurable: true,
+      value: readClipboard,
+    })
+    try {
+      const paste = editor.features.table.paste()
+      await Promise.resolve()
+      expect(readClipboard).toHaveBeenCalledOnce()
+      expect(getType).toHaveBeenCalledOnce()
+      cell.textContent = "Changed during getType"
+      resolveType(new Blob(["Pasted"]))
+      expect(await paste).toBe(false)
+      expect(cell.textContent).toBe("Changed during getType")
+    }
+    finally { Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: read}) }
+  })
+
+  it("pastes into the unchanged selection and supports undo", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const [first, second] = cells()
+    editor.features.table.selectCells(first)
+    const read = navigator.clipboard.read
+    Object.defineProperty(navigator.clipboard, "read", {
+      configurable: true,
+      value: async () => [{types: ["text/plain"], getType: async () => new Blob(["Pasted"])}],
+    })
+    try {
+      expect(await editor.features.table.paste()).toBe(true)
+      expect(first.textContent).toBe("Pasted")
+      expect(second.textContent).toBe("B")
+      editor.doc.syncFromDOM()
+      editor.doc.undo()
+      expect(cells().map(cell => cell.textContent)).toEqual(["A", "B"])
+    }
+    finally { Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: read}) }
+  })
+
   it("pastes TSV segments starting at the selected cell and grows the table", () => {
     document.body.innerHTML = "<table><tbody><tr><td>A</td></tr></tbody></table>"
     editor.features.table.selectCells(cells()[0])

@@ -1,7 +1,7 @@
 import * as Y from "yjs"
 import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates} from "y-protocols/awareness"
 import {WebsocketProvider} from "y-websocket"
-import {acceptLearnerUpdate} from "./live-session-permissions.js"
+import {acceptLearnerUpdate, encodeLiveSessionFeedback, liveSessionFeedbackMessage, readLiveSessionFeedback} from "./live-session-permissions.js"
 import {isCssColor} from "./css-color"
 import type {IImportMap} from "@jspm/import-map"
 import type {WebWriterPackage} from "./packages"
@@ -111,7 +111,6 @@ const META = "live-session-meta"
 const LEARNERS = "live-session-learners"
 const STEPS = "live-session-steps"
 const STATES = "live-session-states"
-const FEEDBACK = "live-session-feedback"
 const transportSessions = new Map<string, Set<LiveSession>>()
 const sessionIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
 const learnerIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
@@ -182,7 +181,7 @@ export class LiveSession {
   readonly #learnerMap: Y.Map<LiveSessionLearner>
   readonly #stepArray: Y.Array<LiveSessionStep>
   readonly #stateMap: Y.Map<LiveSessionLearnerState>
-  readonly #feedbackArray: Y.Array<LiveSessionFeedback>
+  readonly #feedbackMessages = new Map<string, LiveSessionFeedback>()
   readonly #transportOrigin = {}
   readonly #listeners = new Set<LiveSessionChangeListener>()
   readonly #clientLearners = new Map<number, string>()
@@ -215,7 +214,6 @@ export class LiveSession {
     this.#learnerMap = this.doc.getMap(LEARNERS)
     this.#stepArray = this.doc.getArray(STEPS)
     this.#stateMap = this.doc.getMap(STATES)
-    this.#feedbackArray = this.doc.getArray(FEEDBACK)
 
     if(!options.serverUrl && this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
       this.#meta.set("baseHTML", options.baseHTML)
@@ -245,13 +243,13 @@ export class LiveSession {
     this.#learnerMap.observe(this.#handleCollectionChange)
     this.#stateMap.observe(this.#handleCollectionChange)
     this.#meta.observe(this.#handleCollectionChange)
-    this.#feedbackArray.observe(this.#handleCollectionChange)
     this.awareness.on("change", this.#handleAwarenessChange)
 
     if(options.serverUrl) {
       this.#provider = new WebsocketProvider(options.serverUrl, `live-session-${this.id}`, this.doc as any, {
         awareness: this.awareness,
         disableBc: true,
+        connect: false,
         params: {
           token: this.#token!, role: this.role,
           ...(this.role === "host"
@@ -259,10 +257,19 @@ export class LiveSession {
             : {learner: this.#learner!.id, learnerKey: connectionKey(this.id, this.role, this.#token!, this.#learner!.id)}),
         },
       })
+      this.#provider.messageHandlers[liveSessionFeedbackMessage] = (_encoder, decoder) => {
+        try { this.#receiveFeedback(readLiveSessionFeedback(decoder)) }
+        catch { /* Ignore malformed feedback without interrupting document synchronization. */ }
+      }
       this.#provider.on("status", ({status}: {status: string}) => {
         this.#status = status === "connected" ? "connected" : "connecting"
+        if(status === "connected" && this.role === "host") {
+          // Reconnects retry messages whose delivery may have been interrupted.
+          for(const message of this.#feedbackMessages.values()) this.#provider!.ws?.send(encodeLiveSessionFeedback(message))
+        }
         this.#notify()
       })
+      this.#provider.connect()
     }
     else {
       const peers = transportSessions.get(this.id) ?? new Set<LiveSession>()
@@ -317,12 +324,7 @@ export class LiveSession {
   }
 
   get feedback() {
-    return this.#feedbackArray.toArray()
-      .filter(message => message && typeof message.id === "string"
-        && typeof message.participant === "string" && typeof message.text === "string"
-        && Number.isFinite(message.time)
-        && (this.role === "host" || message.participant === this.#learner?.id))
-      .map(message => clone(message))
+    return [...this.#feedbackMessages.values()].map(message => clone(message))
   }
 
   sendFeedback(participant: string, text: string): LiveSessionFeedback | null {
@@ -330,8 +332,25 @@ export class LiveSession {
       || !this.learners.some(learner => learner.id === participant && learner.connected)
       || typeof text !== "string" || !text.trim() || text.length > 4000) return null
     const message = {id: identifier("feedback"), participant, text: text.trim(), time: Date.now()}
-    this.#feedbackArray.push([message])
+    if(this.#provider) {
+      if(!this.#provider.wsconnected || !this.#provider.ws) return null
+      try { this.#provider.ws.send(encodeLiveSessionFeedback(message)) }
+      catch { return null }
+    }
+    else {
+      for(const peer of transportSessions.get(this.id) ?? []) {
+        if(peer.#token === this.#token && (peer.role === "host" || peer.#learner?.id === participant)) peer.#receiveFeedback(message)
+      }
+    }
+    this.#receiveFeedback(message)
     return clone(message)
+  }
+
+  #receiveFeedback(message: LiveSessionFeedback) {
+    if(this.#destroyed || this.#feedbackMessages.has(message.id)
+      || this.role !== "host" && message.participant !== this.#learner?.id) return
+    this.#feedbackMessages.set(message.id, clone(message))
+    this.#queueNotify()
   }
 
   get status() {
@@ -405,7 +424,6 @@ export class LiveSession {
     this.#learnerMap.unobserve(this.#handleCollectionChange)
     this.#stateMap.unobserve(this.#handleCollectionChange)
     this.#meta.unobserve(this.#handleCollectionChange)
-    this.#feedbackArray.unobserve(this.#handleCollectionChange)
     this.awareness.off("change", this.#handleAwarenessChange)
     this.awareness.destroy()
     this.doc.destroy()
@@ -486,6 +504,9 @@ export class LiveSession {
 
   #sendSync(target: LiveSession) {
     target.#applyUpdate(Y.encodeStateAsUpdate(this.doc))
+    for(const message of this.#feedbackMessages.values()) {
+      if(target.role === "host" || message.participant === target.#learner?.id) target.#receiveFeedback(message)
+    }
     const awareness = encodeAwarenessUpdate(this.awareness, [...this.awareness.getStates().keys()])
     target.#applyAwareness(awareness)
   }
@@ -497,7 +518,10 @@ export class LiveSession {
       // map/array values under a fresh client ID would break later deltas,
       // whose causal clocks refer to these structs.
       const update = Y.encodeStateAsUpdate(this.doc, Y.encodeStateVector(target.doc))
-      if(acceptLearnerUpdate(target.doc, update, this.#learner.id)) target.#applyUpdate(update)
+      if(acceptLearnerUpdate(target.doc, update, this.#learner.id)) {
+        target.#applyUpdate(update)
+        for(const message of this.#feedbackMessages.values()) target.#receiveFeedback(message)
+      }
     }
     catch {
       // A malformed local peer must not prevent a host from reconnecting.

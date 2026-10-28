@@ -156,7 +156,7 @@ import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../
 import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
-import {editorFrameOrigin} from "../frame-origins"
+import {editorFrameOrigin, pairedLoopbackOrigin} from "../frame-origins"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "../frame-local-packages"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
@@ -2745,7 +2745,9 @@ export class DomEditor extends LitElement {
       if(serverUrl && sessionToken) {
         if(!this.backendClient) throw new Error("Connect to a server to share a live document")
         const backendOrigin = new URL(this.backendClient.apiBaseUrl).origin
-        const documentOrigin = backendOrigin === location.origin ? editorFrameOrigin() : backendOrigin
+        const documentOrigin = this.backendSession?.kind === "webwriter-dev-server"
+          ? pairedLoopbackOrigin(new URL(backendOrigin)) ?? editorFrameOrigin()
+          : backendOrigin === location.origin ? editorFrameOrigin() : backendOrigin
         const html = previewFrameHTML(previewSource, {
           bridgeNonce: "", hostOrigin: location.origin, frameOrigin: documentOrigin,
           entryURL: "", learnerEntryURL: new URL(liveLearnerEntryUrl, editorFrameOrigin()).href,

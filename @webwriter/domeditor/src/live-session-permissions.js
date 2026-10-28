@@ -1,4 +1,6 @@
 import * as Y from "yjs"
+import * as encoding from "lib0/encoding"
+import * as decoding from "lib0/decoding"
 
 const MAX_UPDATE_SIZE = 8 * 1024 * 1024
 const learnerIdPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
@@ -12,6 +14,29 @@ const mapNames = {
 
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value)
 const isFiniteNumber = value => typeof value === "number" && Number.isFinite(value)
+// y-websocket reserves message types 0–3. Feedback uses the authenticated
+// connection directly so it never enters the session's broadcast Y.Doc.
+export const liveSessionFeedbackMessage = 4
+export const validLiveSessionFeedback = value => isRecord(value)
+  && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 256
+  && typeof value.participant === "string" && learnerIdPattern.test(value.participant)
+  && typeof value.text === "string" && Boolean(value.text.trim()) && value.text.length <= 4000
+  && isFiniteNumber(value.time)
+
+export function encodeLiveSessionFeedback(value) {
+  if(!validLiveSessionFeedback(value)) throw new TypeError("Invalid live session feedback")
+  const encoder = encoding.createEncoder()
+  encoding.writeVarUint(encoder, liveSessionFeedbackMessage)
+  encoding.writeVarString(encoder, JSON.stringify(value))
+  return encoding.toUint8Array(encoder)
+}
+
+export function readLiveSessionFeedback(decoder) {
+  const value = JSON.parse(decoding.readVarString(decoder))
+  if(!validLiveSessionFeedback(value) || decoding.hasContent(decoder)) throw new TypeError("Invalid live session feedback")
+  return value
+}
+
 const validPoint = value => isRecord(value) && isFiniteNumber(value.x) && isFiniteNumber(value.y)
 const validColor = value => {
   if(typeof value !== "string" || value.length > 64 || !value.trim() || /[;{}\u0000-\u001f]/.test(value)) return false

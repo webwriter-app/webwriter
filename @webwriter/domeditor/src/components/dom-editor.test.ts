@@ -7567,7 +7567,7 @@ describe("DomEditor.execute()", () => {
     await host.enterPreview()
     let finish!: (value: {url: string}) => void
     const publishLiveSession = vi.fn().mockReturnValue(new Promise(resolve => {finish = resolve}))
-    host.backendSession = {collaborationUrl: "ws://localhost:1234", user: {id: "host", name: "Host"}}
+    host.backendSession = {kind: "webwriter-dev-server", collaborationUrl: "ws://localhost:1234", user: {id: "host", name: "Host"}}
     host.backendClient = {apiBaseUrl: "http://localhost:1234/api", publishLiveSession}
     const starting = host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
     await vi.waitFor(() => expect(publishLiveSession).toHaveBeenCalledOnce())
@@ -7578,7 +7578,8 @@ describe("DomEditor.execute()", () => {
     expect(html).toContain("data:text/javascript")
     expect(html).toContain("data:text/css")
     expect(html).not.toContain(LOCAL_PACKAGE_ROUTE_PREFIX)
-    finish({url: `http://localhost:1234/live/?liveSession=${id}&liveToken=${token}&liveServer=ws%3A%2F%2Flocalhost%3A1234`})
+    expect(new DOMParser().parseFromString(html, "text/html").querySelector("base")?.href).toBe("http://127.0.0.1:1234/")
+    finish({url: `http://127.0.0.1:1234/live/?liveSession=${id}&liveToken=${token}&liveServer=ws%3A%2F%2Flocalhost%3A1234`})
     await starting
     const session = host.liveSession as LiveSession
     expect(session.doc.getMap("live-session-meta").has("baseHTML")).toBe(false)

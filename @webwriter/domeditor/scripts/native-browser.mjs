@@ -315,7 +315,8 @@ try {
   if(!smoke && !mathVisual && !importMapMode && !performanceMode && !widgetStateMode && !widgetStorageMode && !widgetAggregationMode
     && filteredChecks.some(name => name.startsWith("standalone live learners"))) {
     const {createDevServer} = await import("../dev-server/server.mjs")
-    liveServer = await createDevServer({vite: false, port: 0, dataDirectory: join(profile, "live-session")})
+    liveServer = await createDevServer({vite: false, port: 0, dataDirectory: join(profile, "live-session"),
+      appOrigin: `http://127.0.0.1:${port}`, editorOrigin: `http://localhost:${port}`})
     const address = await liveServer.listen()
     liveServerURL = address.url.replace(/^http/, "ws")
   }

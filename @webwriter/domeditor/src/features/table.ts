@@ -70,6 +70,7 @@ export class TableFeature extends EditorFeature {
   private gapControls: Array<{button: HTMLButtonElement, axis: "row" | "column", index: number, map: TableMap}> = []
   private anchorCell: HTMLTableCellElement | null = null
   private focusCell: HTMLTableCellElement | null = null
+  private pasteLifecycle = 0
   private pendingCell: HTMLTableCellElement | null = null
   private pointerSelecting = false
   private textDragAnchor: SelectionPoint | null = null
@@ -158,6 +159,7 @@ export class TableFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.pasteLifecycle++
     window.removeEventListener("blur", this.finishResize)
     window.removeEventListener("resize", this.scheduleGaps)
     this.gapResizeObserver?.disconnect()
@@ -998,12 +1000,39 @@ export class TableFeature extends EditorFeature {
   /** Missing clipboard capabilities return false; supported API failures are
    * deliberately propagated without changing the selected cells. */
   async paste() {
-    if(!this.hasCellSelection || !navigator.clipboard?.read) return false
+    if(!this.isEnabled || !this.hasCellSelection || !navigator.clipboard?.read) return false
+    const table = this.selectedTable
+    if(!this.editableTable(table)) return false
+    const anchor = this.anchorCell
+    const focus = this.focusCell
+    const selected = this.selectedCells
+    const tableRange = table.ownerDocument.createRange()
+    tableRange.selectNodeContents(table)
+    const identity = captureRangeIdentity(tableRange)
+    const htmlBefore = (cloneWithoutEditorMarkers(table, true, {inert: true}) as Element).outerHTML
+    const lifecycle = this.pasteLifecycle
+    const stillCurrent = () => {
+      if(!this.isEnabled || lifecycle !== this.pasteLifecycle || !this.editableTable(table)
+        || this.anchorCell !== anchor || this.focusCell !== focus
+        || this.selectedTable !== table) return false
+      const current = this.selectedCells
+      if(current.length !== selected.length || current.some((cell, index) => cell !== selected[index])) return false
+      if((cloneWithoutEditorMarkers(table, true, {inert: true}) as Element).outerHTML !== htmlBefore) return false
+      const range = table.ownerDocument.createRange()
+      range.selectNodeContents(table)
+      const currentIdentity = captureRangeIdentity(range)
+      return currentIdentity.size === identity.size && [...identity].every(node => currentIdentity.has(node))
+    }
     const items = await navigator.clipboard.read()
     const htmlItem = items.find(item => item.types.includes("text/html"))
     const textItem = items.find(item => item.types.includes("text/plain"))
-    const html = htmlItem ? await (await htmlItem.getType("text/html")).text() : ""
+    let html = ""
+    if(htmlItem) {
+      html = await (await htmlItem.getType("text/html")).text()
+      if(!stillCurrent()) return false
+    }
     const plain = textItem ? await (await textItem.getType("text/plain")).text() : ""
+    if(!stillCurrent()) return false
     return this.pasteMatrix(this.clipboardMatrix(html, plain))
   }
 

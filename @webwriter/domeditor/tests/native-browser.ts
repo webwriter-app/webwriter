@@ -321,7 +321,9 @@ for(const large of [false, true]) await check(large
   : "standalone live learners open the document without editor controls or an iframe", async () => {
   const {LiveSession, liveSessionHostKey} = await import("../src/live-session")
   const {previewFrameHTML} = await import("../src/frame-document")
+  const {pairedLoopbackOrigin} = await import("../src/frame-origins")
   const serverUrl = new URL(location.href).searchParams.get("liveServer")!
+  const httpOrigin = new URL(serverUrl.replace(/^ws/, "http")).origin
   const script = `data:text/javascript,${encodeURIComponent(`import {label} from "live-label";
     customElements.define("standalone-live-widget", class extends HTMLElement {
       connectedCallback() {
@@ -341,10 +343,12 @@ for(const large of [false, true]) await check(large
           };
           reportEnded();
         });
-        requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
+          const apiBlocked = await fetch(${JSON.stringify(new URL("/api/documents", httpOrigin).href)})
+            .then(response => response.status === 403, () => true);
           window.opener.postMessage({type:'live-learner-check', topLevel:window===parent,
             noEditor:!customElements.get('dom-editor') && !document.querySelector('dom-editor,app-ribbon,iframe'),
-            title:document.title, text:button.textContent, width:this.getBoundingClientRect().width}, '*');
+            apiBlocked, title:document.title, text:button.textContent, width:this.getBoundingClientRect().width}, '*');
           button.click();
         });
       }
@@ -354,10 +358,9 @@ for(const large of [false, true]) await check(large
     importMap: {imports: {"live-label": `data:text/javascript,${encodeURIComponent('export const label="Answer the question"')}`}}}
   const token = "standalone-live-token-0123456789"
   const id = `standalone-${crypto.randomUUID()}`
-  const httpOrigin = new URL(serverUrl.replace(/^ws/, "http")).origin
   const source = new DOMParser().parseFromString('<!doctype html><html lang="en"><head><title>Live lesson</title><style>body{margin:24px;font:18px system-ui;background:#f8fafc}article{max-width:640px;margin:auto;padding:24px;background:white}</style></head><body><article><h1>Live lesson</h1><p>Explore the question below.</p><!--keep--><standalone-live-widget></standalone-live-widget></article></body></html>', "text/html")
   const html = previewFrameHTML(source, {...dependencies, standalone: true, bridgeNonce: "", hostOrigin: location.origin,
-    frameOrigin: httpOrigin, entryURL: "", learnerEntryURL: new URL("../src/live-learner-entry.ts", import.meta.url).href, executeScripts: true})
+    frameOrigin: pairedLoopbackOrigin(new URL(httpOrigin))!, entryURL: "", learnerEntryURL: new URL("../src/live-learner-entry.ts", import.meta.url).href, executeScripts: true})
   const publication = await fetch(new URL(`/api/live-sessions/${id}`, httpOrigin), {method: "PUT", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({token, hostKey: liveSessionHostKey(id, token), html})})
   assert(publication.ok, `initial HTTP document publication failed (${publication.status})`)
@@ -384,6 +387,7 @@ for(const large of [false, true]) await check(large
     learnerWindow = window.open(learnerURL, "live-learner-check")
     assert(learnerWindow, "learner window did not open")
     const result = await report
+    assert(result.apiBlocked, "learner content could read application documents")
     assert(result.topLevel && result.noEditor, "learner was wrapped in an editor or iframe")
     assert(result.title === "Live lesson" && result.text === "Answer the question" && result.width === 240, "learner document or widget did not render")
     assert(!host.doc.getMap("live-session-meta").has("baseHTML") && !host.doc.getMap("live-session-meta").has("previewDependencies"), "initial document was sent through Yjs")

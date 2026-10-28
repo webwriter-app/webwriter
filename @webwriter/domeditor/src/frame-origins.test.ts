@@ -13,4 +13,8 @@ describe("dedicated editor origin", () => {
   it("requires an explicit origin outside loopback development", () => {
     expect(() => editorFrameOrigin(locationAt("app.example"))).toThrow("VITE_EDITOR_ORIGIN")
   })
+
+  it("refuses to reverse the application and content roles on the application origin", () => {
+    expect(() => editorHostOrigin(locationAt("127.0.0.1"))).toThrow("VITE_APP_ORIGIN")
+  })
 })

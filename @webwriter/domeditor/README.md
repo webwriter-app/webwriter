@@ -12,6 +12,8 @@ The server listens on `http://127.0.0.1:1234` and refuses non-loopback bind addr
 
 Editor and preview iframes use the paired `localhost` origin in development. The app at `127.0.0.1` and the frames at `localhost` share the port but have different origins. For a deployed build, serve the same static files at a dedicated editor origin and set `VITE_APP_ORIGIN` and `VITE_EDITOR_ORIGIN` to the two exact HTTPS origins when building. The frame origin must serve `frame-shell.html`, `local-package-service-worker.js`, and the generated `assets/` files. Collaboration servers and widget asset hosts must also accept requests from the editor origin. Keep it separate from the application origin; the frames require both `allow-scripts` and `allow-same-origin` for native editing and widget support.
 
+Document, provider, and administration APIs accept browser requests only from the application origin. Frames retain access to widget-data resolution, grouping context, and immutable Git package resources. When running a separate frontend with `npm run start:frontend`, set `VITE_APP_ORIGIN` and `VITE_EDITOR_ORIGIN` to its exact loopback origins in both processes; for example `http://localhost:5173` and `http://127.0.0.1:5173`. The backend data directory is excluded from Vite file serving.
+
 Data is stored in the ignored `.webwriter-dev/` directory. Provider files have owner-only permissions, but API keys are still stored as plaintext development secrets. `OPENAI_API_KEY` can instead be set in `.env.local`; it creates an OpenAI provider whose key stays in the environment.
 
 For trusted remote testers, an explicit **VPN-only private-testing mode** reuses
