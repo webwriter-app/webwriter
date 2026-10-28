@@ -38,6 +38,7 @@ import {checkGraphicText} from "./graphic-text"
 import {checkGraphicGrid} from "./graphic-grid"
 import {checkKeyboardTabs} from "./keyboard-tabs"
 import {checkGraphicBrushes} from "./graphic-brushes"
+import {checkGraphicResizeMirror} from "./graphic-resize-mirror"
 import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
 import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
@@ -79,6 +80,7 @@ await check("SVG shape text entry keeps capture and native typing stable", check
 await check("SVG snapping follows the visible grid through viewport changes", checkGraphicGrid)
 await check("Tab cycles captured graphic and formula keyboard tabs without changing content", checkKeyboardTabs)
 await check("Drawing brush keys are temporary and inserted shapes keep their defaults", checkGraphicBrushes)
+await check("Crossing graphic resize edges reflects shapes and preserves fixed anchors", checkGraphicResizeMirror)
 await check("SVG shape text boxes fit content and wrap while preserving native editing", checkGraphicTextBox)
 await check("SVG shape text labels wrap and shrink within their geometry", checkGraphicLabels)
 await check("SVG shape text resize reuses glyph metrics and preserves undo", async()=>{await checkGraphicLabelResizePerformance()})

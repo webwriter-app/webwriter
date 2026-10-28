@@ -32,6 +32,14 @@ const reflectedPathCoordinates = (path: string, axis: "x" | "y", bounds: {x: num
   })
 }
 
+const expectSamePresetPath = (actualPath: string, expectedPath: string) => {
+  expect(actualPath.match(/[A-Za-z]/g)).toEqual(expectedPath.match(/[A-Za-z]/g))
+  const actual = actualPath.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  const expected = expectedPath.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  expect(actual).toHaveLength(expected.length)
+  actual.forEach((coordinate, index) => expect(coordinate).toBeCloseTo(expected[index], 7))
+}
+
 const expectMirroredCurvedArrows = (leftType: "curved-left-arrow" | "curved-up-arrow", rightType: "curved-right-arrow" | "curved-down-arrow", axis: "x" | "y", values: number[]) => {
   const left = graphicPresetPath(leftType, bounds, values)
   const right = graphicPresetPath(rightType, bounds, values)
@@ -1097,5 +1105,60 @@ describe("native SVG shape presets", () => {
     expect(after.values[0]).toBeCloseTo(11, 3)
   })
 
+  it.each([
+    "left-arrow", "curved-right-arrow", "pie", "chord", "rectangular-callout", "text-box",
+  ] as const)("round-trips %s through horizontal, vertical, and double preset reflections", type => {
+    const definition = graphicShapePresets[type]
+    const values = type === "pie" ? [132] : type === "chord" ? [31, 124]
+      : type === "rectangular-callout" ? [37, 72, 19] : definition.adjustments.map(adjustment => adjustment.default)
+    const reflections = [
+      {horizontal: true, vertical: false},
+      {horizontal: false, vertical: true},
+      {horizontal: true, vertical: true},
+    ]
+    for(const reflection of reflections) {
+      const d = graphicPresetPath(type, bounds, values, reflection)
+      const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+      element.setAttribute("aria-label", definition.label)
+      element.setAttribute("d", d)
+      const state = readGraphicPreset(element)!
+      expect(state.type).toBe(type)
+      expect(state.bounds.width).toBeGreaterThan(0)
+      expect(state.bounds.height).toBeGreaterThan(0)
+      if(type === "curved-right-arrow") {
+        expect(state.reflection).toEqual(reflection)
+      }
+      expect(element.getAttribute("d")).toBe(d)
 
+      const frame = state.bounds
+      const actualReflection = state.reflection ?? {horizontal: false, vertical: false}
+      const handles = graphicPresetHandles(state)
+      handles.forEach(handle => {
+        const adjustment = definition.adjustments[handle.index]
+        const point = adjustment.point(state.values)
+        expect(handle.point.x).toBeCloseTo(frame.x + (actualReflection.horizontal ? 100 - point.x : point.x) / 100 * frame.width, 4)
+        expect(handle.point.y).toBeCloseTo(frame.y + (actualReflection.vertical ? 100 - point.y : point.y) / 100 * frame.height, 4)
+      })
+
+      writeGraphicPreset(element, state)
+      expectSamePresetPath(element.getAttribute("d")!, d)
+      const current = readGraphicPreset(element)!
+      const adjustment = current.definition.adjustments[0]
+      const changed = Math.min(adjustment.max, Math.max(adjustment.min, current.values[0] + 1))
+      expect(adjustGraphicPreset(element, current, `adjust-${adjustment.name}`, changed)).toBe(true)
+      const numericState = readGraphicPreset(element)!
+      if(type === "curved-right-arrow") {
+        expect(numericState.reflection).toEqual(reflection)
+      }
+      expect(numericState.values[0]).toBeCloseTo(changed, 3)
+      const nextHandle = graphicPresetHandles(numericState).find(handle => handle.index === 0)
+      if(nextHandle) expect(adjustGraphicPreset(element, numericState, nextHandle.name, nextHandle.point)).toBe(true)
+      const pointerState = readGraphicPreset(element)!
+      if(type === "curved-right-arrow") {
+        expect(pointerState.reflection).toEqual(reflection)
+      }
+      const canonical = graphicPresetPath(type, pointerState.bounds, pointerState.values, pointerState.reflection)
+      expectSamePresetPath(element.getAttribute("d")!, canonical)
+    }
+  })
 })

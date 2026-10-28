@@ -2,7 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import "@testing-library/jest-dom/vitest"
 import * as Y from "yjs"
-import {graphicPresetFillRule, isGraphicPresetType, readGraphicPreset, writeGraphicPreset, graphicPresetHandles} from "../graphic-shapes"
+import {graphicPresetFillRule, graphicPresetPath, isGraphicPresetType, readGraphicPreset, writeGraphicPreset, graphicPresetHandles} from "../graphic-shapes"
 import {DOMEditor} from "../domeditor"
 import {shapeKeyboardInputEvent, markStateChangeEvent, selectionChangeEvent} from "../editor-bridge"
 import {previewFrameHTML} from "../frame-document"
@@ -3409,6 +3409,89 @@ describe("graphic editing", () => {
     expect(overlay.querySelectorAll('[data-graphic-handle^="vertex-"]')).toHaveLength(5)
   })
 
+  it("keeps a mirrored text box anchored over repeated resize frames", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "text-box"})
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "label", value: "Wrapped label"})
+    const shape = editor.features.graphic.selectedShape!
+    const geometry = shape.querySelector("path")!
+    writeGraphicPreset(geometry, readGraphicPreset(geometry)!, {x: 100, y: 100, width: 200, height: 80})
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
+    editor.features.graphic.refresh()
+    const initial = readGraphicPreset(geometry)!.bounds
+    const fixed = initial.x + initial.width, centerY = initial.y + initial.height / 2
+    const west = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="resize-w"]')!
+    west.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 179, clientX: initial.x, clientY: centerY}))
+    for(const width of [100, 150, 100]) {
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 179, clientX: fixed + width, clientY: centerY}))
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      const preview = editor.appendix.querySelector(".◆graphic-preview path")!
+      const bounds = readGraphicPreset(preview)!.bounds
+      expect(bounds.x + bounds.width / 2).toBeCloseTo(fixed + width / 2)
+    }
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 179}))
+    const committed = readGraphicPreset(geometry)!.bounds
+    expect(committed.x + committed.width / 2).toBeCloseTo(fixed + 50)
+    expect(shape.querySelector("text")).toHaveTextContent("Wrapped label")
+  })
+
+  it("retains a reflected polygon arrow's controls when its dimensions and arrowhead are edited", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "arrow"})
+    const arrow = document.querySelector("polygon")!
+    arrow.setAttribute("points", "100,130 160,130 160,100 200,150 160,200 160,170 100,170")
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
+    clickShape(arrow)
+    const east = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="resize-e"]')!
+    east.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 180, clientX: 200, clientY: 150}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 180, clientX: 50, clientY: 150}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 180}))
+    expect(editor.appendix.querySelectorAll('[data-graphic-handle^="arrow-"]')).toHaveLength(3)
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "head-size", value: "60"})
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "80"})
+    const points = arrow.getAttribute("points")!.split(" ").map(point => point.split(",").map(Number))
+    expect(points[3][0]).toBe(50)
+    expect(points[0][0]).toBe(130)
+    expect(editor.features.graphic.getState()?.parameters?.["head-size"]).toBe("60")
+    const start = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="arrow-head-start"]')!
+    start.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 181, clientX: points[1][0], clientY: 150}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 181, clientX: 90, clientY: 150}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 181}))
+    expect(editor.features.graphic.getState()?.parameters?.["head-size"]).toBe("50")
+  })
+
+  it("mirrors image content across crossed edges and retains its reflection when moving and rotating", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.innerHTML = '<image x="100" y="80" width="100" height="60" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22/%3E"/>'
+    const image = graphic.querySelector("image")!
+    const href = image.getAttribute("href")
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
+    clickShape(image)
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="resize-se"]')!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 181, clientX: 200, clientY: 140}))
+    for(const [x, y] of [[50, 30], [40, 20]]) {
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 181, clientX: x, clientY: y}))
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      const preview = editor.appendix.querySelector(".◆graphic-preview image")!
+      expect(preview.getAttribute("transform")).toBe(`matrix(-1 0 0 -1 ${x + 100} ${y + 80})`)
+      expect(image.getAttribute("transform")).toBeNull()
+    }
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 181}))
+    expect(image).toHaveAttribute("x", "40")
+    expect(image).toHaveAttribute("y", "20")
+    expect(image).toHaveAttribute("width", "60")
+    expect(image).toHaveAttribute("height", "60")
+    expect(image).toHaveAttribute("transform", "matrix(-1 0 0 -1 140 100)")
+    image.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 182, clientX: 50, clientY: 30}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 182, clientX: 70, clientY: 40}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 182}))
+    expect(image).toHaveAttribute("transform", "matrix(-1 0 0 -1 180 120)")
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "rotation", value: "30"})
+    expect(image).toHaveAttribute("transform", "rotate(30 90 60) matrix(-1 0 0 -1 180 120)")
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "width", value: "120"})
+    expect(image).toHaveAttribute("transform", "rotate(30 120 60) matrix(-1 0 0 -1 240 120)")
+    expect(image.getAttribute("href")).toBe(href)
+  })
+
   it("moves a horizontal line without changing its endpoints' axis", () => {
     editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
@@ -5520,6 +5603,128 @@ describe("polyline and Bezier path drawing", () => {
     clickShape(sibling)
     expect(editor.features.graphic.selectedShape).toBe(sibling)
     expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each([
+    {shape: "left-arrow", axis: "horizontal", handle: "e", crossed: {x: 50, y: 150}, stillCrossed: {x: 40, y: 150}, originalSide: {x: 120, y: 150}},
+    {shape: "left-arrow", axis: "vertical", handle: "s", crossed: {x: 200, y: 50}, stillCrossed: {x: 200, y: 40}, originalSide: {x: 200, y: 130}},
+    {shape: "left-arrow", axis: "both", handle: "se", crossed: {x: 50, y: 50}, stillCrossed: {x: 40, y: 40}, originalSide: {x: 120, y: 120}},
+    {shape: "curved-right-arrow", axis: "horizontal", handle: "e", crossed: {x: 50, y: 150}, stillCrossed: {x: 40, y: 150}, originalSide: {x: 120, y: 150}},
+    {shape: "curved-right-arrow", axis: "vertical", handle: "s", crossed: {x: 200, y: 50}, stillCrossed: {x: 200, y: 40}, originalSide: {x: 200, y: 130}},
+    {shape: "curved-right-arrow", axis: "both", handle: "se", crossed: {x: 50, y: 50}, stillCrossed: {x: 40, y: 40}, originalSide: {x: 120, y: 120}},
+  ] as const)("keeps $shape resize reflection stable across repeated $axis crossing, commit, undo, redo, and crossing back", async ({shape, axis, handle: edge, crossed, stillCrossed, originalSide}) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape})
+    const target = graphic.querySelector<SVGPathElement>("path")!
+    const initial = readGraphicPreset(target)!
+    writeGraphicPreset(target, initial, {x: 100, y: 100, width: 200, height: 100})
+    editor.features.graphic.refresh()
+    await mutationsDelivered()
+    clickShape(target)
+    const originalPath = target.getAttribute("d")!
+    const id = pointerId++
+    const resizeTo = async (position: {x: number, y: number}) => {
+      document.dispatchEvent(new PointerEvent("pointermove", {
+        bubbles: true, cancelable: true, buttons: 1, pointerId: id, clientX: position.x, clientY: position.y,
+      }))
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    }
+    const begin = () => {
+      const resizeHandle = editor.appendix.querySelector<HTMLElement>(`[data-graphic-handle="resize-${edge}"]`)!
+      expect(resizeHandle).not.toBeNull()
+      resizeHandle.dispatchEvent(new PointerEvent("pointerdown", {
+        bubbles: true, composed: true, cancelable: true, button: 0, pointerId: id,
+        clientX: parseFloat(resizeHandle.style.left), clientY: parseFloat(resizeHandle.style.top),
+      }))
+    }
+    begin()
+    await resizeTo(crossed)
+    const expected = {horizontal: axis !== "vertical", vertical: axis !== "horizontal"}
+    const firstPreview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+    expect(readGraphicPreset(firstPreview)).toMatchObject({type: shape, reflection: expected})
+    expect(target.getAttribute("d")).toBe(originalPath)
+    await resizeTo(stillCrossed)
+    const repeatedPreview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+    expect(readGraphicPreset(repeatedPreview)?.reflection).toEqual(expected)
+    expect(target.getAttribute("d")).toBe(originalPath)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: id, clientX: stillCrossed.x, clientY: stillCrossed.y}))
+    await mutationsDelivered()
+    expect(readGraphicPreset(target)?.reflection).toEqual(expected)
+    const committedPath = target.getAttribute("d")!
+    expect(committedPath).not.toBe(originalPath)
+    editor.doc.undo()
+    expect(target.getAttribute("d")).toBe(originalPath)
+    editor.doc.redo()
+    expect(target.getAttribute("d")).toBe(committedPath)
+
+    const backId = pointerId++
+    const reverseEdge = edge.replace("e", "w").replace("s", "n")
+    const backHandle = editor.appendix.querySelector<HTMLElement>(`[data-graphic-handle="resize-${reverseEdge}"]`)!
+    backHandle.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, composed: true, cancelable: true, button: 0, pointerId: backId,
+      clientX: parseFloat(backHandle.style.left), clientY: parseFloat(backHandle.style.top),
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, cancelable: true, buttons: 1, pointerId: backId, clientX: originalSide.x, clientY: originalSide.y,
+    }))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const backPreview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+    expect(readGraphicPreset(backPreview)?.reflection ?? {horizontal: false, vertical: false}).toEqual({horizontal: false, vertical: false})
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: backId, clientX: originalSide.x, clientY: originalSide.y}))
+    expect(readGraphicPreset(target)?.reflection ?? {horizontal: false, vertical: false}).toEqual({horizontal: false, vertical: false})
+  })
+
+  it("resizes a multi-selection across the opposite edge while reversing positions and reflecting both presets", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "left-arrow"})
+    const firstShape = graphic.querySelector<SVGPathElement>("path")!
+    writeGraphicPreset(firstShape, readGraphicPreset(firstShape)!, {x: 100, y: 100, width: 200, height: 100})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "curved-right-arrow"})
+    const secondShape = [...graphic.querySelectorAll<SVGPathElement>("path")].at(-1)!
+    writeGraphicPreset(secondShape, readGraphicPreset(secondShape)!, {x: 450, y: 100, width: 200, height: 100})
+    editor.features.graphic.refresh()
+    await mutationsDelivered()
+    clickShape(firstShape)
+    clickShape(secondShape, true)
+    expect(editor.features.graphic.getState()?.selectionCount).toBe(2)
+    const originalPaths = [firstShape.getAttribute("d"), secondShape.getAttribute("d")]
+    const beforeCenters = [firstShape, secondShape].map(shape => {
+      const {x, width} = readGraphicPreset(shape)!.bounds
+      return x + width / 2
+    })
+    const id = pointerId++
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="resize-e"]')!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, composed: true, cancelable: true, button: 0, pointerId: id,
+      clientX: parseFloat(handle.style.left), clientY: parseFloat(handle.style.top),
+    }))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, cancelable: true, buttons: 1, pointerId: id, clientX: 50, clientY: 200}))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    const previews = [...editor.appendix.querySelectorAll<SVGPathElement>(".◆graphic-preview path")]
+    expect(previews).toHaveLength(2)
+    previews.forEach(preview => expect(readGraphicPreset(preview)?.reflection).toMatchObject({horizontal: true}))
+    expect([firstShape.getAttribute("d"), secondShape.getAttribute("d")]).toEqual(originalPaths)
+    const previewCenters = previews.map(preview => {
+      const {x, width} = readGraphicPreset(preview)!.bounds
+      return x + width / 2
+    })
+    expect(previewCenters[0]).toBeGreaterThan(previewCenters[1])
+    expect(beforeCenters[0]).toBeLessThan(beforeCenters[1])
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: id, clientX: 50, clientY: 200}))
+    await mutationsDelivered()
+    expect(readGraphicPreset(firstShape)?.reflection).toMatchObject({horizontal: true})
+    expect(readGraphicPreset(secondShape)?.reflection).toMatchObject({horizontal: true})
+    const afterCenters = [firstShape, secondShape].map(shape => {
+      const {x, width} = readGraphicPreset(shape)!.bounds
+      return x + width / 2
+    })
+    expect(afterCenters[0]).toBeGreaterThan(afterCenters[1])
   })
 
 })
