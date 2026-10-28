@@ -112,13 +112,13 @@ const irregularStar = (n: number, inner: number, variant: number) => polygon(Arr
   const radius = i%2 ? inner : 40 + ((i*7 + variant*3)%11)
   return [50+radius*Math.cos(theta),50+radius*Math.sin(theta)]
 }))
-const starPreset = (n: number, inner: number) => base(`${n}-point star`, "Stars and banners", star(n), [poi("inner", "Inner radius", inner, 0, 44, p => ({x:50+p*Math.sin(Math.PI/n),y:50-p*Math.cos(Math.PI/n)}))])
+const starPreset = (n: number, inner: number) => base(`${n}-point star`, "Stars and banners", star(n), [poi("inner", "Inner radius", inner, 0, 48, p => ({x:50+p*Math.sin(Math.PI/n),y:50-p*Math.cos(Math.PI/n)}))])
 const ribbonPreset = (label: string, down: boolean, curved: boolean) => base(label, "Stars and banners", ([d]) => {
   const path = curved
     ? `M 20 15 Q 50 ${15+d} 80 15 L 80 30 L 100 25 L 90 50 L 100 75 L 80 70 L 80 80 Q 50 ${80+d} 20 80 L 20 70 L 0 75 L 10 50 L 0 25 L 20 30 Z M 20 30 L 20 70 M 80 30 L 80 70 M 20 70 L 35 80 M 80 70 L 65 80`
     : `M 20 ${20-d/2} L 80 ${20-d/2} L 80 30 L 100 30 L 90 55 L 100 80 L 80 80 L 65 65 L 35 65 L 20 80 L 0 80 L 10 55 L 0 30 L 20 30 Z M 20 30 L 20 65 L 80 65 L 80 30 M 20 65 L 35 80 M 80 65 L 65 80`
   return down ? turn(path,2) : path
-}, [poi("fold", curved ? "Ribbon curve" : "Fold depth", 15, 3, 28, p => ({x:50,y:down ? curved ? 85-p/2 : 80+p/2 : curved ? 15+p/2 : 20-p/2}), "y")])
+}, [poi("fold", curved ? "Ribbon curve" : "Fold depth", 15, 0, curved ? 28 : 40, p => ({x:50,y:down ? curved ? 85-p/2 : 80+p/2 : curved ? 15+p/2 : 20-p/2}), "y")])
 const scrollPath = (d: number) => `M 20 ${d} Q 20 0 30 0 L 95 0 Q 100 ${d} 90 ${d} L 80 ${d} L 80 ${100-d} Q 80 100 70 100 L 5 100 Q 0 ${100-d} 10 ${100-d} L 20 ${100-d} Z M 30 0 Q 40 ${d} 30 ${d} L 20 ${d} M 70 100 Q 60 ${100-d} 70 ${100-d} L 80 ${100-d}`
 const cloudBubble = () => "M 12 60 C -5 60 -3 38 10 35 C -2 18 12 10 25 15 C 28 -3 46 -3 50 10 C 63 -3 78 0 78 15 C 96 5 105 20 92 33 C 110 40 100 58 88 58 C 88 78 68 80 60 67 C 48 83 32 78 30 65 C 17 78 7 73 12 60 Z"
 const cloudCoordinates = cloudBubble().match(/-?\d+/g)!.map(Number)
@@ -362,13 +362,13 @@ export const legacyCalloutPresets: Record<string, {definition: GraphicShapePrese
 const originalGraphicShapePresets = {
   "straight-arrow": {...base("Straight arrow", "Lines", ([p]) => `M 0 0 L 100 100 M ${100-p} 100 L 100 100 L 100 ${100-p}`, [poi("head", "Arrowhead size", 22, 8, 40, p => ({x:100-p,y:100}))]), open:true},
   "double-arrow": {...base("Double arrow", "Lines", ([p]) => `M 0 0 L 100 100 M ${100-p} 100 L 100 100 L 100 ${100-p} M 0 ${p} L 0 0 L ${p} 0`, [poi("head", "Arrowhead size", 22, 8, 40, p => ({x:p,y:0}))]), open:true},
-  "elbow-connector": {...base("Elbow connector", "Lines", values => { const d=v(values,0,50); return `M 10 15 L ${d} 15 L ${d} 85 L 90 85` }, [poi("bend", "Bend", 50, 15, 85, p => ({x:p,y:15}))]), open:true},
-  "elbow-connector-arrow": {...base("Elbow connector arrow", "Lines", ([p]) => `M 0 0 L ${p} 0 L ${p} 85 L 100 85 M 85 70 L 100 85 L 85 100`, [poi("bend", "Bend", 50, 15, 80, p => ({x:p,y:0}))]), open:true},
-  "elbow-connector-double-arrow": {...base("Elbow connector double arrow", "Lines", ([p]) => `M 0 15 L ${p} 15 L ${p} 85 L 100 85 M 85 70 L 100 85 L 85 100 M 15 0 L 0 15 L 15 30`, [poi("bend", "Bend", 50, 20, 80, p => ({x:p,y:15}))]), open:true},
-  "curved-connector": {...base("Curved connector", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100`, [poi("bend", "Bend", 80, 10, 90, p => ({x:15.625+.28125*p,y:15.625}))]), open:true},
-  "curved-connector-arrow": {...base("Curved connector arrow", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100 M 85 85 L 100 100 L 82 100`, [poi("bend", "Bend", 80, 10, 90, p => ({x:15.625+.28125*p,y:15.625}))]), open:true},
-  "curved-connector-double-arrow": {...base("Curved connector double arrow", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100 M 85 85 L 100 100 L 82 100 M 15 15 L 0 0 L 18 0`, [poi("bend", "Bend", 80, 10, 90, p => ({x:15.625+.28125*p,y:15.625}))]), open:true},
-  "curve": {...base("Curve", "Lines", ([p]) => `M 0 70 C 20 0 ${p} 0 50 50 C ${100-p} 100 80 100 100 70`, [poi("curve", "Curve control", 40, 10, 60, p => ({x:13.75+.375*p,y:15}))]), open:true},
+  "elbow-connector": {...base("Elbow connector", "Lines", values => { const d=v(values,0,50); return `M 10 15 L ${d} 15 L ${d} 85 L 90 85` }, [poi("bend", "Bend", 50, 10, 90, p => ({x:p,y:15}))]), open:true},
+  "elbow-connector-arrow": {...base("Elbow connector arrow", "Lines", ([p]) => `M 0 0 L ${p} 0 L ${p} 85 L 100 85 M 85 70 L 100 85 L 85 100`, [poi("bend", "Bend", 50, 0, 100, p => ({x:p,y:0}))]), open:true},
+  "elbow-connector-double-arrow": {...base("Elbow connector double arrow", "Lines", ([p]) => `M 0 15 L ${p} 15 L ${p} 85 L 100 85 M 85 70 L 100 85 L 85 100 M 15 0 L 0 15 L 15 30`, [poi("bend", "Bend", 50, 0, 100, p => ({x:p,y:15}))]), open:true},
+  "curved-connector": {...base("Curved connector", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100`, [poi("bend", "Bend", 80, 0, 100, p => ({x:15.625+.28125*p,y:15.625}))]), open:true},
+  "curved-connector-arrow": {...base("Curved connector arrow", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100 M 85 85 L 100 100 L 82 100`, [poi("bend", "Bend", 80, 0, 100, p => ({x:15.625+.28125*p,y:15.625}))]), open:true},
+  "curved-connector-double-arrow": {...base("Curved connector double arrow", "Lines", ([p]) => `M 0 0 C ${p} 0 ${100-p} 100 100 100 M 85 85 L 100 100 L 82 100 M 15 15 L 0 0 L 18 0`, [poi("bend", "Bend", 80, 0, 100, p => ({x:15.625+.28125*p,y:15.625}))]), open:true},
+  "curve": {...base("Curve", "Lines", ([p]) => `M 0 70 C 20 0 ${p} 0 50 50 C ${100-p} 100 80 100 100 70`, [poi("curve", "Curve control", 40, 0, 100, p => ({x:13.75+.375*p,y:15}))]), open:true},
   "square-rectangle": base("Rectangle", "Rectangles", roundedCorners, roundedCornerControls(0)),
   "rounded-rectangle": base("Rounded rectangle", "Rectangles", roundedCorners, roundedCornerControls(12)),
   "snip-one": base("Snip one corner", "Rectangles", ([tl = 15]) => polygon([[tl,0],[100,0],[100,100],[0,100],[0,tl]]), [cornerControl("snip", "top-left", 0, 15)]),
@@ -382,11 +382,11 @@ const originalGraphicShapePresets = {
   "right-triangle": base("Right triangle", "Basic shapes", ([p]) => polygon([[p,0],[100,100],[0,100]]), [poi("apex", "Apex position", 0, 0, 100, p => ({x:p,y:0}))]),
   "parallelogram": base("Parallelogram", "Basic shapes", values => { const d=v(values,0,18); return polygon([[d,0],[100,0],[100-d,100],[0,100]]) }, [a("slant", "Slant",18,0,50)]),
   "trapezoid": base("Trapezoid", "Basic shapes", values => { const d=v(values,0,25); return polygon([[d,0],[100-d,0],[100,100],[0,100]]) }, [a("top-inset", "Top inset",25,0,50)]),
-  "pentagon": base("Pentagon", "Basic shapes", values => { const d=v(values,0,38); return polygon([[50,0],[100,d],[82,100],[18,100],[0,d]]) }, [poi("shoulder", "Shoulder height",38,15,48,p => ({x:100,y:p}),"y")]),
-  "heptagon": base("Heptagon", "Basic shapes", values => { const d=v(values,0,19); return polygon([[50,0],[89,d],[98,62],[72,100],[28,100],[2,62],[11,d]]) }, [poi("shoulder", "Shoulder height",19,8,35,p => ({x:89,y:p}),"y")]),
+  "pentagon": base("Pentagon", "Basic shapes", values => { const d=v(values,0,38); return polygon([[50,0],[100,d],[82,100],[18,100],[0,d]]) }, [poi("shoulder", "Shoulder height",38,0,50,p => ({x:100,y:p}),"y")]),
+  "heptagon": base("Heptagon", "Basic shapes", values => { const d=v(values,0,19); return polygon([[50,0],[89,d],[98,62],[72,100],[28,100],[2,62],[11,d]]) }, [poi("shoulder", "Shoulder height",19,0,62,p => ({x:89,y:p}),"y")]),
   "octagon": base("Octagon", "Basic shapes", values => { const d=v(values,0,25); return polygon([[d,0],[100-d,0],[100, d],[100,100-d],[100-d,100],[d,100],[0,100-d],[0,d]]) }, [a("corner", "Corner",25,0,50)]),
-  "decagon": base("Decagon", "Basic shapes", values => { const d=v(values,0,7); return polygon([[50,0],[79,d],[98,35],[98,65],[79,93],[50,100],[21,93],[2,65],[2,35],[21,d]]) }, [poi("shoulder", "Shoulder height",7,0,20,p => ({x:79,y:p}),"y")]),
-  "dodecagon": base("Dodecagon", "Basic shapes", values => { const d=v(values,0,13); return polygon([[37,0],[63,0],[87,d],[100,37],[100,63],[87,87],[63,100],[37,100],[13,87],[0,63],[0,37],[13,d]]) }, [poi("shoulder", "Shoulder height",13,2,25,p => ({x:87,y:p}),"y")]),
+  "decagon": base("Decagon", "Basic shapes", values => { const d=v(values,0,7); return polygon([[50,0],[79,d],[98,35],[98,65],[79,93],[50,100],[21,93],[2,65],[2,35],[21,d]]) }, [poi("shoulder", "Shoulder height",7,0,35,p => ({x:79,y:p}),"y")]),
+  "dodecagon": base("Dodecagon", "Basic shapes", values => { const d=v(values,0,13); return polygon([[37,0],[63,0],[87,d],[100,37],[100,63],[87,87],[63,100],[37,100],[13,87],[0,63],[0,37],[13,d]]) }, [poi("shoulder", "Shoulder height",13,0,37,p => ({x:87,y:p}),"y")]),
   "pie": base("Pie", "Basic shapes", ([sweep]) => {
     const middle = piePoint(sweep / 2), end = piePoint(sweep)
     return `M 50 50 L 50 0 A 50 50 0 0 0 ${middle.x} ${middle.y} A 50 50 0 0 0 ${end.x} ${end.y} Z`
@@ -399,36 +399,36 @@ const originalGraphicShapePresets = {
     {name: "sweep", label: "End endpoint", default: 240, min: .5, max: 360, axis: "angle", point: values => piePoint(values[0] + values[1])},
   ]),
   "teardrop": base("Teardrop", "Basic shapes", values => `M 50 0 C 75 32 95 52 82 78 C 68 ${100-v(values,0,6)} 32 ${100-v(values,0,6)} 18 78 C 5 52 25 32 50 0 Z`, [poi("bulge", "Bulge",6,0,25,p => ({x:50,y:94.5-.75*p}),"y")]),
-  "frame": base("Frame", "Basic shapes", values => `${rect(0)} ${rect(0, v(values,0,15))}`, [poi("thickness", "Frame thickness",15,2,35,p => ({x:p,y:p}))]),
-  "half-frame": base("Half frame", "Basic shapes", ([d]) => polygon([[0,0],[100,0],[100-d,d],[d,d],[d,100-d],[0,100]]), [poi("thickness", "Frame thickness", 25, 5, 45, p => ({x:p,y:p}))]),
-  "corner": base("L corner", "Basic shapes", ([d]) => polygon([[0,0],[d,0],[d,100-d],[100,100-d],[100,100],[0,100]]), [poi("thickness", "Arm thickness", 35, 5, 65, p => ({x:p,y:0}))]),
-  "diagonal-stripe": base("Diagonal stripe", "Basic shapes", ([d]) => polygon([[100-d,0],[100,0],[0,100],[0,100-d]]), [poi("width", "Stripe width", 40, 5, 80, p => ({x:100-p,y:0}))]),
-  "plus": base("Plus", "Basic shapes", values => { const d=v(values,0,30); return polygon([[d,0],[100-d,0],[100-d,d],[100,d],[100,100-d],[100-d,100-d],[100-d,100],[d,100],[d,100-d],[0,100-d],[0,d],[d,d]]) }, [a("arm", "Arm width",30,5,45)]),
+  "frame": base("Frame", "Basic shapes", values => `${rect(0)} ${rect(0, v(values,0,15))}`, [poi("thickness", "Frame thickness",15,0,50,p => ({x:p,y:p}))]),
+  "half-frame": base("Half frame", "Basic shapes", ([d]) => polygon([[0,0],[100,0],[100-d,d],[d,d],[d,100-d],[0,100]]), [poi("thickness", "Frame thickness", 25, 0, 50, p => ({x:p,y:p}))]),
+  "corner": base("L corner", "Basic shapes", ([d]) => polygon([[0,0],[d,0],[d,100-d],[100,100-d],[100,100],[0,100]]), [poi("thickness", "Arm thickness", 35, 0, 100, p => ({x:p,y:0}))]),
+  "diagonal-stripe": base("Diagonal stripe", "Basic shapes", ([d]) => polygon([[100-d,0],[100,0],[0,100],[0,100-d]]), [poi("width", "Stripe width", 40, 0, 100, p => ({x:100-p,y:0}))]),
+  "plus": base("Plus", "Basic shapes", values => { const d=v(values,0,30); return polygon([[d,0],[100-d,0],[100-d,d],[100,d],[100,100-d],[100-d,100-d],[100-d,100],[d,100],[d,100-d],[0,100-d],[0,d],[d,d]]) }, [a("arm", "Arm width",30,0,50)]),
   "plaque": base("Plaque", "Basic shapes", ([r]) => `M ${r} 0 L ${100-r} 0 Q ${100-r} ${r} 100 ${r} L 100 ${100-r} Q ${100-r} ${100-r} ${100-r} 100 L ${r} 100 Q ${r} ${100-r} 0 ${100-r} L 0 ${r} Q ${r} ${r} ${r} 0 Z`, [poi("radius", "Corner cutout", 18, 0, 50, p => ({x:p,y:0}))]),
-  "cylinder": base("Cylinder", "Basic shapes", values => { const d=v(values,0,16); return `M 5 ${d+2} C 5 2 95 2 95 ${d+2} L 95 ${100-d} C 95 98 5 98 5 ${100-d} Z M 5 ${d+2} C 5 ${d*2+2} 95 ${d*2+2} 95 ${d+2}` }, [poi("depth", "Cap depth",16,4,35,p => ({x:5,y:p+2}),"y")]),
+  "cylinder": base("Cylinder", "Basic shapes", values => { const d=v(values,0,16); return `M 5 ${d+2} C 5 2 95 2 95 ${d+2} L 95 ${100-d} C 95 98 5 98 5 ${100-d} Z M 5 ${d+2} C 5 ${d*2+2} 95 ${d*2+2} 95 ${d+2}` }, [poi("depth", "Cap depth",16,0,50,p => ({x:5,y:p+2}),"y")]),
   "cube": base("Cube", "Basic shapes", ([d]) => `M ${d} 0 L 100 0 L 100 ${100-d} L ${100-d} 100 L 0 100 L 0 ${d} Z M 0 ${d} L ${100-d} ${d} L 100 0 M ${100-d} ${d} L ${100-d} 100`, [poi("depth", "Depth", 25, 0, 50, p => ({x:p,y:0}))]),
-  "donut": base("Donut", "Basic shapes", values => `${ellipse()} ${ellipse(50,50,v(values,0,25),v(values,0,25))}`, [poi("hole", "Hole radius",25,5,45,p => ({x:50+p,y:50}))]),
-  "prohibited": base("No / prohibited", "Basic shapes", ([r]) => prohibitedPath(r), [poi("hole", "Inner radius", 35, 20, 40, p => ({x:50-p*Math.SQRT1_2,y:50+p*Math.SQRT1_2}))]),
-  "block-arc": base("Block arc", "Basic shapes", ([r]) => `M 0 100 C 0 -33.333 100 -33.333 100 100 L ${50+r} 100 C ${50+r} ${100-r*2.66666} ${50-r} ${100-r*2.66666} ${50-r} 100 Z`, [poi("inner", "Inner radius", 30, 8, 43, p => ({x:50+p,y:100}))]),
-  "folded-corner": base("Folded corner", "Basic shapes", ([d]) => `M 0 0 L 100 0 L 100 ${100-d} L ${100-d} 100 L 0 100 Z M 100 ${100-d} L ${100-d} ${100-d} L ${100-d} 100`, [poi("fold", "Fold size", 18, 5, 45, p => ({x:100-p,y:100}))]),
-  "heart": base("Heart", "Basic shapes", values => { const d=v(values,0,22); return `M 50 90 C 42 80 5 55 5 28 C 5 5 35 0 50 ${d} C 65 0 95 5 95 28 C 95 55 58 80 50 90 Z` }, [poi("cleft", "Cleft depth",22,5,40,p => ({x:50,y:p}),"y")]),
+  "donut": base("Donut", "Basic shapes", values => `${ellipse()} ${ellipse(50,50,v(values,0,25),v(values,0,25))}`, [poi("hole", "Hole radius",25,0,50,p => ({x:50+p,y:50}))]),
+  "prohibited": base("No / prohibited", "Basic shapes", ([r]) => prohibitedPath(r), [poi("hole", "Inner radius", 35, 0, 50, p => ({x:50-p*Math.SQRT1_2,y:50+p*Math.SQRT1_2}))]),
+  "block-arc": base("Block arc", "Basic shapes", ([r]) => `M 0 100 C 0 -33.333 100 -33.333 100 100 L ${50+r} 100 C ${50+r} ${100-r*2.66666} ${50-r} ${100-r*2.66666} ${50-r} 100 Z`, [poi("inner", "Inner radius", 30, 0, 50, p => ({x:50+p,y:100}))]),
+  "folded-corner": base("Folded corner", "Basic shapes", ([d]) => `M 0 0 L 100 0 L 100 ${100-d} L ${100-d} 100 L 0 100 Z M 100 ${100-d} L ${100-d} ${100-d} L ${100-d} 100`, [poi("fold", "Fold size", 18, 0, 50, p => ({x:100-p,y:100}))]),
+  "heart": base("Heart", "Basic shapes", values => { const d=v(values,0,22); return `M 50 90 C 42 80 5 55 5 28 C 5 5 35 0 50 ${d} C 65 0 95 5 95 28 C 95 55 58 80 50 90 Z` }, [poi("cleft", "Cleft depth",22,0,50,p => ({x:50,y:p}),"y")]),
   "lightning-bolt": base("Lightning bolt", "Basic shapes", ([left = 20, right = 18]) => polygon([[55,0],[left,55],[45,55],[35,100],[100-right,38],[55,38]]), [
     {name:"width", label:"Left corner", default:20, min:5, max:35, axis:"x", opposite:"right-width", point: values => ({x:values[0],y:55})},
     {name:"right-width", label:"Right corner", default:18, min:5, max:35, axis:"x", opposite:"width", point: values => ({x:100-values[1],y:38})},
   ]),
-  "sun": base("Sun", "Basic shapes", ([r]) => `${ellipse(50,50,25,25)} ${Array.from({length:8}, (_,i) => { const t=i*Math.PI/4; return polygon([[50+48*Math.cos(t),50+48*Math.sin(t)],[50+r*Math.cos(t-.2),50+r*Math.sin(t-.2)],[50+r*Math.cos(t+.2),50+r*Math.sin(t+.2)]]) }).join(" ")}`, [poi("ray", "Ray inner radius", 34, 29, 42, p => ({x:50+p*Math.cos(.2),y:50+p*Math.sin(.2)}))]),
+  "sun": base("Sun", "Basic shapes", ([r]) => `${ellipse(50,50,25,25)} ${Array.from({length:8}, (_,i) => { const t=i*Math.PI/4; return polygon([[50+48*Math.cos(t),50+48*Math.sin(t)],[50+r*Math.cos(t-.2),50+r*Math.sin(t-.2)],[50+r*Math.cos(t+.2),50+r*Math.sin(t+.2)]]) }).join(" ")}`, [poi("ray", "Ray inner radius", 34, 25, 48, p => ({x:50+p*Math.cos(.2),y:50+p*Math.sin(.2)}))]),
   "moon": base("Moon", "Basic shapes", ([phase]) => {
     const control = 50 + (phase - 50) * .5523
     return `M 50 0 C 22.385 0 0 22.385 0 50 C 0 77.615 22.385 100 50 100 C ${control} 100 ${phase} 77.615 ${phase} 50 C ${phase} 22.385 ${control} 0 50 0 Z`
-  }, [poi("phase", "Moon phase",20,5,100,p => ({x:p,y:50}))]),
-  "cloud": base("Cloud", "Basic shapes", ([inner]) => cloudPath(inner), [poi("inner", "Inner radius",30,8,38,p=>({x:50+28*p/30,y:40-25*p/30}))]),
-  "arc": {...base("Arc", "Basic shapes", ([p]) => `M 0 0 C ${p} 0 100 ${100-p} 100 100`, [poi("curve", "Curve control", 55.23, 10, 90, p => ({x:50+.375*p,y:50-.375*p}))]), open:true},
-  "parentheses": {...base("Parentheses pair", "Basic shapes", values => { const d=v(values,0,20); return `M 38 5 C ${38-d} 25 ${38-d} 75 38 95 M 62 5 C ${62+d} 25 ${62+d} 75 62 95` }, [poi("curve", "Curve",20,5,35,p => ({x:38-.75*p,y:50}))]), open:true},
-  "braces": {...base("Braces pair", "Basic shapes", values => { const d=v(values,0,12); return `M 42 5 Q ${42-d} 5 32 25 L 32 40 Q 32 50 20 50 Q 32 50 32 60 L 32 75 Q ${42-d} 95 42 95 M 58 5 Q ${58+d} 5 68 25 L 68 40 Q 68 50 80 50 Q 68 50 68 60 L 68 75 Q ${58+d} 95 58 95` }, [poi("curve", "Curve",12,2,25,p => ({x:39.5-.5*p,y:10}))]), open:true},
-  "left-bracket": {...base("Left bracket", "Basic shapes", ([r]) => `M 75 0 L ${25+r} 0 Q 25 0 25 ${r} L 25 ${100-r} Q 25 100 ${25+r} 100 L 75 100`, [poi("radius", "Corner radius", 0, 0, 30, p => ({x:25+p,y:0}))]), open:true},
-  "right-bracket": {...base("Right bracket", "Basic shapes", ([r]) => `M 25 0 L ${75-r} 0 Q 75 0 75 ${r} L 75 ${100-r} Q 75 100 ${75-r} 100 L 25 100`, [poi("radius", "Corner radius", 0, 0, 30, p => ({x:75-p,y:0}))]), open:true},
-  "left-brace": {...base("Left brace", "Basic shapes", values => `M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 ${v(values,0,25)} 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95`, [poi("width", "Brace width",25,5,45,p => ({x:p,y:50}))]), open:true},
-  "right-brace": {...base("Right brace", "Basic shapes", values => `M 30 5 Q 52 5 48 25 L 48 40 Q 48 50 ${100-v(values,0,25)} 50 Q 48 50 48 60 L 48 75 Q 52 95 30 95`, [poi("width", "Brace width",25,5,45,p => ({x:100-p,y:50}))]), open:true},
+  }, [poi("phase", "Moon phase",20,0,100,p => ({x:p,y:50}))]),
+  "cloud": base("Cloud", "Basic shapes", ([inner]) => cloudPath(inner), [poi("inner", "Inner radius",30,0,38,p=>({x:50+28*p/30,y:40-25*p/30}))]),
+  "arc": {...base("Arc", "Basic shapes", ([p]) => `M 0 0 C ${p} 0 100 ${100-p} 100 100`, [poi("curve", "Curve control", 55.23, 0, 100, p => ({x:50+.375*p,y:50-.375*p}))]), open:true},
+  "parentheses": {...base("Parentheses pair", "Basic shapes", values => { const d=v(values,0,20); return `M 38 5 C ${38-d} 25 ${38-d} 75 38 95 M 62 5 C ${62+d} 25 ${62+d} 75 62 95` }, [poi("curve", "Curve",20,0,38,p => ({x:38-.75*p,y:50}))]), open:true},
+  "braces": {...base("Braces pair", "Basic shapes", values => { const d=v(values,0,12); return `M 42 5 Q ${42-d} 5 32 25 L 32 40 Q 32 50 20 50 Q 32 50 32 60 L 32 75 Q ${42-d} 95 42 95 M 58 5 Q ${58+d} 5 68 25 L 68 40 Q 68 50 80 50 Q 68 50 68 60 L 68 75 Q ${58+d} 95 58 95` }, [poi("curve", "Curve",12,0,42,p => ({x:39.5-.5*p,y:10}))]), open:true},
+  "left-bracket": {...base("Left bracket", "Basic shapes", ([r]) => `M 75 0 L ${25+r} 0 Q 25 0 25 ${r} L 25 ${100-r} Q 25 100 ${25+r} 100 L 75 100`, [poi("radius", "Corner radius", 0, 0, 50, p => ({x:25+p,y:0}))]), open:true},
+  "right-bracket": {...base("Right bracket", "Basic shapes", ([r]) => `M 25 0 L ${75-r} 0 Q 75 0 75 ${r} L 75 ${100-r} Q 75 100 ${75-r} 100 L 25 100`, [poi("radius", "Corner radius", 0, 0, 50, p => ({x:75-p,y:0}))]), open:true},
+  "left-brace": {...base("Left brace", "Basic shapes", values => `M 70 5 Q 48 5 52 25 L 52 40 Q 52 50 ${v(values,0,25)} 50 Q 52 50 52 60 L 52 75 Q 48 95 70 95`, [poi("width", "Brace width",25,0,52,p => ({x:p,y:50}))]), open:true},
+  "right-brace": {...base("Right brace", "Basic shapes", values => `M 30 5 Q 52 5 48 25 L 48 40 Q 48 50 ${100-v(values,0,25)} 50 Q 48 50 48 60 L 48 75 Q 52 95 30 95`, [poi("width", "Brace width",25,0,100,p => ({x:100-p,y:50}))]), open:true},
   "left-arrow": blockArrow("Left arrow", 2),
   "up-arrow": blockArrow("Up arrow", 3),
   "down-arrow": blockArrow("Down arrow", 1),
@@ -455,40 +455,40 @@ const originalGraphicShapePresets = {
   "left-right-arrow-callout": base("Left-right arrow callout", "Block arrows", ([d]) => polygon([[0,50],[18,30],[18,42],[d,42],[d,15],[100-d,15],[100-d,42],[82,42],[82,30],[100,50],[82,70],[82,58],[100-d,58],[100-d,85],[d,85],[d,58],[18,58],[18,70]]), [poi("inset", "Box inset", 30, 20, 40, p => ({x:p,y:15}))]),
   "quad-arrow-callout": base("Quad arrow callout", "Block arrows", ([t]) => quadArrow(t, true), [poi("shaft", "Shaft half-width", 7, 3, 12, p => ({x:50+p,y:18}))]),
   "circular-arrow": base("Circular arrow", "Block arrows", ([t]) => `M 10 70 C -10 30 15 0 50 0 C 75 0 95 20 95 45 L 100 45 L 85 68 L 65 45 L ${95-t} 45 C ${95-t} ${20+t} 75 ${t} 50 ${t} C ${15+t} ${t} ${t} 30 ${10+t} 70 Z`, [poi("thickness", "Band thickness", 12, 5, 22, p => ({x:50,y:p}), "y")]),
-  "equation-plus": base("Plus sign", "Equation shapes", ([t]) => crossPath(t), [poi("thickness", "Bar thickness", 24, 8, 45, p => ({x:50+p/2,y:0}))]),
-  "equation-minus": base("Minus", "Equation shapes", ([r]) => `M ${r} 38 L ${100-r} 38 Q 100 38 100 ${38+r} L 100 ${62-r} Q 100 62 ${100-r} 62 L ${r} 62 Q 0 62 0 ${62-r} L 0 ${38+r} Q 0 38 ${r} 38 Z`, [poi("roundness", "Corner roundness", 0, 0, 10, p => ({x:p,y:38}))]),
-  "multiply": base("Multiply", "Equation shapes", ([t]) => polygon([[t,0],[50,50-t],[100-t,0],[100,t],[50+t,50],[100,100-t],[100-t,100],[50,50+t],[t,100],[0,100-t],[50-t,50],[0,t]]), [poi("thickness", "Bar width", 20, 6, 35, p => ({x:p,y:0}))]),
-  "divide": base("Divide", "Equation shapes", ([r]) => `M 0 40 L 100 40 L 100 60 L 0 60 Z ${ellipse(50,15,r,r)} ${ellipse(50,85,r,r)}`, [poi("dot", "Dot radius", 10, 4, 14, p => ({x:50+p,y:15}))]),
-  "equal": base("Equal", "Equation shapes", ([t]) => `M 0 15 L 100 15 L 100 ${15+t} L 0 ${15+t} Z M 0 ${85-t} L 100 ${85-t} L 100 85 L 0 85 Z`, [poi("thickness", "Bar thickness", 20, 8, 30, p => ({x:50,y:15+p}), "y")]),
+  "equation-plus": base("Plus sign", "Equation shapes", ([t]) => crossPath(t), [poi("thickness", "Bar thickness", 24, 0, 100, p => ({x:50+p/2,y:0}))]),
+  "equation-minus": base("Minus", "Equation shapes", ([r]) => `M ${r} 38 L ${100-r} 38 Q 100 38 100 ${38+r} L 100 ${62-r} Q 100 62 ${100-r} 62 L ${r} 62 Q 0 62 0 ${62-r} L 0 ${38+r} Q 0 38 ${r} 38 Z`, [poi("roundness", "Corner roundness", 0, 0, 12, p => ({x:p,y:38}))]),
+  "multiply": base("Multiply", "Equation shapes", ([t]) => polygon([[t,0],[50,50-t],[100-t,0],[100,t],[50+t,50],[100,100-t],[100-t,100],[50,50+t],[t,100],[0,100-t],[50-t,50],[0,t]]), [poi("thickness", "Bar width", 20, 0, 50, p => ({x:p,y:0}))]),
+  "divide": base("Divide", "Equation shapes", ([r]) => `M 0 40 L 100 40 L 100 60 L 0 60 Z ${ellipse(50,15,r,r)} ${ellipse(50,85,r,r)}`, [poi("dot", "Dot radius", 10, 0, 15, p => ({x:50+p,y:15}))]),
+  "equal": base("Equal", "Equation shapes", ([t]) => `M 0 15 L 100 15 L 100 ${15+t} L 0 ${15+t} Z M 0 ${85-t} L 100 ${85-t} L 100 85 L 0 85 Z`, [poi("thickness", "Bar thickness", 20, 0, 35, p => ({x:50,y:15+p}), "y")]),
   "not-equal": {...base("Not equal", "Equation shapes", ([s]) => `M 0 25 L ${50-s} 25 L ${65-s} 0 L 80 0 L 65 25 L 100 25 L 100 42 L 55 42 L 45 58 L 100 58 L 100 75 L 35 75 L 20 100 L ${5+s} 100 L ${20+s} 75 L 0 75 L 0 58 L ${30+s} 58 L ${40+s} 42 L 0 42 Z`, [poi("slash", "Slash width", 0, -5, 5, p => ({x:50-p,y:25}))]),},
   "process": base("Process", "Flowchart", ([r]) => rect(r), [poi("roundness", "Corner roundness", 0, 0, 50, p => ({x:p,y:0}))]),
   "alternate-process": base("Alternate process", "Flowchart", ([r]) => rect(r), [poi("radius", "Corner radius", 15, 0, 50, p => ({x:p,y:0}))]),
-  "decision": base("Decision", "Flowchart", ([p]) => polygon([[p,0],[100,50],[p,100],[0,50]]), [poi("apex", "Apex position", 50, 15, 85, p => ({x:p,y:0}))]),
+  "decision": base("Decision", "Flowchart", ([p]) => polygon([[p,0],[100,50],[p,100],[0,50]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:0}))]),
   "data": base("Data", "Flowchart", ([s]) => polygon([[s,0],[100,0],[100-s,100],[0,100]]), [poi("slant", "Slant", 20, 0, 50, p => ({x:p,y:0}))]),
-  "predefined-process": base("Predefined process", "Flowchart", ([m]) => `${rect()} M ${m} 0 L ${m} 100 M ${100-m} 0 L ${100-m} 100`, [poi("margin", "Side margin", 12, 3, 35, p => ({x:p,y:0}))]),
-  "internal-storage": base("Internal storage", "Flowchart", ([m]) => `${rect()} M ${m} 0 L ${m} 100 M 0 ${m} L 100 ${m}`, [poi("margin", "Header margin", 15, 5, 40, p => ({x:p,y:p}))]),
-  "document": base("Document", "Flowchart", ([d]) => `M 0 0 L 100 0 L 100 85 C 65 ${85-d} 35 ${85+d} 0 85 Z`, [poi("wave", "Wave depth", 20, 3, 35, p => ({x:25.46875,y:85+.28125*p}), "y")]),
-  "multidocument": base("Multiple documents", "Flowchart", ([d]) => `M 0 15 L 85 15 L 85 85 C 55 ${85-d} 30 ${85+d} 0 85 Z M 8 8 L 93 8 L 93 78 M 15 0 L 100 0 L 100 70`, [poi("wave", "Wave depth", 15, 3, 30, p => ({x:21.71875,y:85+.28125*p}), "y")]),
-  "terminator": base("Terminator", "Flowchart", ([r]) => `M ${r} 25 L ${100-r} 25 C 100 25 100 75 ${100-r} 75 L ${r} 75 C 0 75 0 25 ${r} 25 Z`, [poi("roundness", "End roundness", 25, 5, 45, p => ({x:p,y:25}))]),
+  "predefined-process": base("Predefined process", "Flowchart", ([m]) => `${rect()} M ${m} 0 L ${m} 100 M ${100-m} 0 L ${100-m} 100`, [poi("margin", "Side margin", 12, 0, 50, p => ({x:p,y:0}))]),
+  "internal-storage": base("Internal storage", "Flowchart", ([m]) => `${rect()} M ${m} 0 L ${m} 100 M 0 ${m} L 100 ${m}`, [poi("margin", "Header margin", 15, 0, 50, p => ({x:p,y:p}))]),
+  "document": base("Document", "Flowchart", ([d]) => `M 0 0 L 100 0 L 100 85 C 65 ${85-d} 35 ${85+d} 0 85 Z`, [poi("wave", "Wave depth", 20, 0, 35, p => ({x:25.46875,y:85+.28125*p}), "y")]),
+  "multidocument": base("Multiple documents", "Flowchart", ([d]) => `M 0 15 L 85 15 L 85 85 C 55 ${85-d} 30 ${85+d} 0 85 Z M 8 8 L 93 8 L 93 78 M 15 0 L 100 0 L 100 70`, [poi("wave", "Wave depth", 15, 0, 30, p => ({x:21.71875,y:85+.28125*p}), "y")]),
+  "terminator": base("Terminator", "Flowchart", ([r]) => `M ${r} 25 L ${100-r} 25 C 100 25 100 75 ${100-r} 75 L ${r} 75 C 0 75 0 25 ${r} 25 Z`, [poi("roundness", "End roundness", 25, 0, 50, p => ({x:p,y:25}))]),
   "preparation": base("Preparation", "Flowchart", ([p]) => polygon([[p,0],[100-p,0],[100,50],[100-p,100],[p,100],[0,50]]), [poi("point", "Point depth", 22, 0, 50, p => ({x:p,y:0}))]),
-  "manual-input": base("Manual input", "Flowchart", ([s]) => polygon([[0,s],[100,0],[100,100],[0,100]]), [poi("slope", "Top slope", 22, 0, 60, p => ({x:0,y:p}), "y")]),
-  "manual-operation": base("Manual operation", "Flowchart", ([s]) => polygon([[0,0],[100,0],[100-s,100],[s,100]]), [poi("inset", "Bottom inset", 20, 0, 45, p => ({x:p,y:100}))]),
-  "flowchart-connector": base("Connector", "Flowchart", ([r]) => roundFlow(r), [poi("curvature", "Curvature", 27.615, 15, 38, p => ({x:25-.375*p,y:25-.375*p}))]),
-  "offpage-connector": base("Off-page connector", "Flowchart", ([p]) => polygon([[0,0],[100,0],[100,p],[50,100],[0,p]]), [poi("point", "Shoulder height", 75, 30, 95, p => ({x:100,y:p}), "y")]),
-  "card": base("Card", "Flowchart", ([p]) => polygon([[p,0],[100,0],[100,100],[0,100],[0,p]]), [poi("corner", "Clipped corner", 25, 0, 65, p => ({x:p,y:0}))]),
-  "punched-tape": base("Punched tape", "Flowchart", ([d]) => `M 0 15 C 30 ${15+d} 70 ${15-d} 100 15 L 100 85 C 70 ${85-d} 30 ${85+d} 0 85 Z`, [poi("wave", "Wave depth", 20, 3, 35, p => ({x:24.0625,y:15+.28125*p}), "y")]),
-  "summing-junction": base("Summing junction", "Flowchart", ([r]) => `${roundFlow(r)} M 15 15 L 85 85 M 15 85 L 85 15`, [poi("curvature", "Curvature", 27.615, 15, 38, p => ({x:25-.375*p,y:25-.375*p}))]),
-  "or": base("Or", "Flowchart", ([r]) => `${roundFlow(r)} M 0 50 L 100 50 M 50 0 L 50 100`, [poi("curvature", "Curvature", 27.615, 15, 38, p => ({x:25-.375*p,y:25-.375*p}))]),
-  "collate": base("Collate", "Flowchart", ([p]) => polygon([[0,0],[100,0],[50,p],[100,100],[0,100],[50,p]]), [poi("waist", "Waist height", 50, 35, 65, p => ({x:50,y:p}), "y")]),
-  "sort": base("Sort", "Flowchart", ([p]) => `${polygon([[50,0],[100,p],[50,100],[0,p]])} M 0 ${p} L 100 ${p}`, [poi("division", "Division height", 50, 20, 80, p => ({x:0,y:p}), "y")]),
-  "extract": base("Extract", "Flowchart", ([p]) => polygon([[p,0],[100,100],[0,100]]), [poi("apex", "Apex position", 50, 10, 90, p => ({x:p,y:0}))]),
-  "merge": base("Merge", "Flowchart", ([p]) => polygon([[0,0],[100,0],[p,100]]), [poi("apex", "Apex position", 50, 10, 90, p => ({x:p,y:100}))]),
-  "stored-data": base("Stored data", "Flowchart", ([r]) => `M ${r} 0 L 100 0 C ${100-r} 0 ${100-r} 100 100 100 L ${r} 100 C 0 100 0 0 ${r} 0 Z`, [poi("curve", "End curvature", 20, 5, 40, p => ({x:p,y:0}))]),
-  "delay": base("Delay", "Flowchart", ([r]) => `M 0 0 L ${100-r} 0 C 100 0 100 100 ${100-r} 100 L 0 100 Z`, [poi("curve", "End curvature", 45, 10, 70, p => ({x:100-p,y:0}))]),
-  "sequential-access-storage": base("Sequential access storage", "Flowchart", ([t]) => `${ellipse(45,45,45,45)} M 45 90 L 100 90 L 100 ${90-t} L 75 ${90-t}`, [poi("tail", "Tail height", 10, 3, 25, p => ({x:100,y:90-p}), "y")]),
-  "magnetic-disk": base("Magnetic disk", "Flowchart", ([d]) => cylinderPath(d), [poi("depth", "Cap depth", 15, 5, 30, p => ({x:0,y:p}), "y")]),
-  "direct-access-storage": base("Direct access storage", "Flowchart", ([d]) => turn(cylinderPath(d), 1), [poi("depth", "Cap depth", 15, 5, 30, p => ({x:100-p,y:0}))]),
-  "display": base("Display", "Flowchart", ([d]) => `M ${d} 0 L 80 0 C 100 0 100 100 80 100 L ${d} 100 L 0 50 Z`, [poi("point", "Point depth", 20, 5, 50, p => ({x:p,y:0}))]),
+  "manual-input": base("Manual input", "Flowchart", ([s]) => polygon([[0,s],[100,0],[100,100],[0,100]]), [poi("slope", "Top slope", 22, 0, 100, p => ({x:0,y:p}), "y")]),
+  "manual-operation": base("Manual operation", "Flowchart", ([s]) => polygon([[0,0],[100,0],[100-s,100],[s,100]]), [poi("inset", "Bottom inset", 20, 0, 50, p => ({x:p,y:100}))]),
+  "flowchart-connector": base("Connector", "Flowchart", ([r]) => roundFlow(r), [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
+  "offpage-connector": base("Off-page connector", "Flowchart", ([p]) => polygon([[0,0],[100,0],[100,p],[50,100],[0,p]]), [poi("point", "Shoulder height", 75, 0, 100, p => ({x:100,y:p}), "y")]),
+  "card": base("Card", "Flowchart", ([p]) => polygon([[p,0],[100,0],[100,100],[0,100],[0,p]]), [poi("corner", "Clipped corner", 25, 0, 100, p => ({x:p,y:0}))]),
+  "punched-tape": base("Punched tape", "Flowchart", ([d]) => `M 0 15 C 30 ${15+d} 70 ${15-d} 100 15 L 100 85 C 70 ${85-d} 30 ${85+d} 0 85 Z`, [poi("wave", "Wave depth", 20, 0, 35, p => ({x:24.0625,y:15+.28125*p}), "y")]),
+  "summing-junction": base("Summing junction", "Flowchart", ([r]) => `${roundFlow(r)} M 15 15 L 85 85 M 15 85 L 85 15`, [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
+  "or": base("Or", "Flowchart", ([r]) => `${roundFlow(r)} M 0 50 L 100 50 M 50 0 L 50 100`, [poi("curvature", "Curvature", 27.615, 0, 50, p => ({x:25-.375*p,y:25-.375*p}))]),
+  "collate": base("Collate", "Flowchart", ([p]) => polygon([[0,0],[100,0],[50,p],[100,100],[0,100],[50,p]]), [poi("waist", "Waist height", 50, 0, 100, p => ({x:50,y:p}), "y")]),
+  "sort": base("Sort", "Flowchart", ([p]) => `${polygon([[50,0],[100,p],[50,100],[0,p]])} M 0 ${p} L 100 ${p}`, [poi("division", "Division height", 50, 0, 100, p => ({x:0,y:p}), "y")]),
+  "extract": base("Extract", "Flowchart", ([p]) => polygon([[p,0],[100,100],[0,100]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:0}))]),
+  "merge": base("Merge", "Flowchart", ([p]) => polygon([[0,0],[100,0],[p,100]]), [poi("apex", "Apex position", 50, 0, 100, p => ({x:p,y:100}))]),
+  "stored-data": base("Stored data", "Flowchart", ([r]) => `M ${r} 0 L 100 0 C ${100-r} 0 ${100-r} 100 100 100 L ${r} 100 C 0 100 0 0 ${r} 0 Z`, [poi("curve", "End curvature", 20, 0, 100, p => ({x:p,y:0}))]),
+  "delay": base("Delay", "Flowchart", ([r]) => `M 0 0 L ${100-r} 0 C 100 0 100 100 ${100-r} 100 L 0 100 Z`, [poi("curve", "End curvature", 45, 0, 100, p => ({x:100-p,y:0}))]),
+  "sequential-access-storage": base("Sequential access storage", "Flowchart", ([t]) => `${ellipse(45,45,45,45)} M 45 90 L 100 90 L 100 ${90-t} L 75 ${90-t}`, [poi("tail", "Tail height", 10, 0, 90, p => ({x:100,y:90-p}), "y")]),
+  "magnetic-disk": base("Magnetic disk", "Flowchart", ([d]) => cylinderPath(d), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:0,y:p}), "y")]),
+  "direct-access-storage": base("Direct access storage", "Flowchart", ([d]) => turn(cylinderPath(d), 1), [poi("depth", "Cap depth", 15, 0, 30, p => ({x:100-p,y:0}))]),
+  "display": base("Display", "Flowchart", ([d]) => `M ${d} 0 L 80 0 C 100 0 100 100 80 100 L ${d} 100 L 0 50 Z`, [poi("point", "Point depth", 20, 0, 80, p => ({x:p,y:0}))]),
   "seal-1": base("Explosion 1", "Stars and banners", ([p]) => irregularStar(12,p,0), [poi("inner", "Inner radius", 26, 8, 38, p => ({x:50+p*Math.sin(Math.PI/12),y:50-p*Math.cos(Math.PI/12)}))]),
   "seal-2": base("Explosion 2", "Stars and banners", ([p]) => irregularStar(16,p,1), [poi("inner", "Inner radius", 32, 8, 38, p => ({x:50+p*Math.sin(Math.PI/16),y:50-p*Math.cos(Math.PI/16)}))]),
   "star-3": starPreset(3, 16),
@@ -534,13 +534,13 @@ const arrowPreset = (label: string, draw: (values: number[]) => string, values: 
   controls: [(values: number[]) => ArrowPoint, "x" | "y"][], direction = 0, normalized = false,
   limits?: (values: number[], index: number) => [number, number], extra?: GraphicShapeAdjustment): GraphicShapePreset => ({
   ...base(label, "Block arrows", values => turn(draw(values), direction), [
-    arrowControl("shaft", "Shaft thickness", values[0], .5, 50, ...controls[0], direction),
-    arrowControl("head-start", "Arrowhead start", values[1], 5, 95, ...controls[1], direction),
-    arrowControl("head-width", "Arrowhead thickness", values[2], 1, 100, ...controls[2], direction),
+    arrowControl("shaft", "Shaft thickness", values[0], 0, 50, ...controls[0], direction),
+    arrowControl("head-start", "Arrowhead start", values[1], 0, 100, ...controls[1], direction),
+    arrowControl("head-width", "Arrowhead thickness", values[2], normalized ? 1 : 0, 100, ...controls[2], direction),
     ...(extra ? [extra] : []),
   ]),
   ...(normalized ? {normalizedAdjustment: "head-width"} : {}),
-  adjustmentLimits: limits ?? (([shaft, , head], index) => index === 0 ? [.5, head] : index === 2 ? [Math.max(1, shaft), 100] : index === 3 && extra ? [extra.min, extra.max] : [5, 95]),
+  adjustmentLimits: limits ?? (([shaft, , head], index) => index === 0 ? [0, head] : index === 2 ? [Math.max(normalized ? 1 : 0, shaft), 100] : index === 3 && extra ? [extra.min, extra.max] : [0, 100]),
 })
 const horizontalArrowControls: Parameters<typeof arrowPreset>[3] = [
   [([t]) => ({x: 0, y: 50-t}), "y"],
@@ -556,7 +556,7 @@ const doubleBlockArrow = (label: string, direction: number) => arrowPreset(label
   [([t]) => ({x:50,y:50-t}), "y"],
   [([t, d]) => ({x:d,y:50-t}), "x"],
   [([, d, h]) => ({x:d,y:50-h}), "y"],
-], direction, true, ([t, , h], i) => i === 0 ? [.5,h] : i === 1 ? [5,45] : [Math.max(1,t),100])
+], direction, true, ([t, , h], i) => i === 0 ? [0,h] : i === 1 ? [0,50] : [Math.max(1,t),100])
 const multipleArrowControls: Parameters<typeof arrowPreset>[3] = [
   [([t, d]) => ({x:50+t,y:(d+50-t)/2}), "x"],
   [([t, d]) => ({x:50+t,y:d}), "y"],
@@ -574,15 +574,15 @@ const radialArrow = (values: number[], callout = false) => {
   }
   return polygon(points)
 }
-const radialArrowLimits = ([t, d, h]: number[], i: number): [number, number] => i === 0
-  ? [.5,Math.min(h,49-d,19)] : i === 1 ? [5,Math.min(29,49-h)] : [Math.max(1,t),49-d]
+const radialArrowLimits = ([t, d, h]: number[], i: number, callout = false): [number, number] => i === 0
+  ? [0,Math.min(h,50-d,callout ? 20 : 50)] : i === 1 ? [0,Math.min(callout ? 30 : 50,50-h)] : [t,50-d]
 const curvedBlockArrow = (label: string, direction: number) => arrowPreset(label, ([t, s, h]) =>
   `M 90 ${7-t} C ${-3-17*t/7} ${7-t} ${-3-17*t/7} ${75+t} ${s} ${75+t} L ${s} ${75+h} L 100 75 L ${s} ${75-h} L ${s} ${75-t} C ${-3+17*t/7} ${75-t} ${-3+17*t/7} ${7+t} 90 ${7+t} Z`,
 [7,70,25], [
   [([t]) => ({x:90,y:7-t}), "y"],
   [([t, s]) => ({x:s,y:75-t}), "x"],
   [([, s, h]) => ({x:s,y:75-h}), "y"],
-], direction, false, ([t, , h], i) => i === 0 ? [.5,Math.min(20,h)] : i === 1 ? [45,95] : [Math.max(1,t),50])
+], direction, false, ([t, , h], i) => i === 0 ? [0,Math.min(20,h)] : i === 1 ? [0,100] : [t,50])
 const elbowArrowControls: Parameters<typeof arrowPreset>[3] = [
   [([t]) => ({x:75+t,y:65}), "x"],
   [([t, d]) => ({x:75+t,y:d}), "y"],
@@ -595,8 +595,8 @@ const blockArrowCallout = (label: string, direction: number) => arrowPreset(labe
   [0,0],[b,0],[b,50-t],[s,50-t],[s,50-h],[100,50],[s,50+h],[s,50+t],[b,50+t],[b,100],[0,100],
 ]), [10,80,25], [
   [([t, s, , b = 65]) => ({x:(b+s)/2,y:50-t}), "y"], ...horizontalArrowControls.slice(1),
-], direction, false, ([t, s, h, b = 65], i) => i === 0 ? [.5,Math.min(h,49)] : i === 1 ? [b+1,95] : i === 2 ? [Math.max(1,t),50] : [30,Math.min(75,s-1)],
-  hiddenArrowParameter("box", "Box width", 65, 30, 75))
+], direction, false, ([t, s, h, b = 65], i) => i === 0 ? [0,Math.min(h,50)] : i === 1 ? [b,100] : i === 2 ? [t,50] : [0,s],
+  hiddenArrowParameter("box", "Box width", 65, 0, 100))
 const arrowPresets = {
   "left-arrow": straightBlockArrow("Left arrow", 2),
   "up-arrow": straightBlockArrow("Up arrow", 3),
@@ -608,24 +608,24 @@ const arrowPresets = {
     [0,65],[d,65-h],[d,65-t],[50-t,65-t],[50-t,d],[50-h,d],[50,0],[50+h,d],[50+t,d],[50+t,65-t],[100-d,65-t],[100-d,65-h],[100,65],[100-d,65+h],[100-d,65+t],[d,65+t],[d,65+h],
   ]), [10,25,25], [
     [([t]) => ({x:50+t,y:40}), "x"], ...multipleArrowControls.slice(1),
-  ], 0, false, ([t,d,h], i) => i === 0 ? [.5,Math.min(h,49-d)] : i === 1 ? [5,Math.min(45,64-h)] : [Math.max(1,t),64-d]),
+  ], 0, false, ([t,d,h], i) => i === 0 ? [0,Math.min(h,50-d)] : i === 1 ? [0,Math.min(50,65-h)] : [t,65-d]),
   "bent-arrow": arrowPreset("Bent arrow", ([t, s, h]) =>
     `M ${10-t} 100 L ${10-t} 40 Q ${10-t} ${20-t} 30 ${20-t} L ${s} ${20-t} L ${s} ${25-h} L 100 25 L ${s} ${25+h} L ${s} ${20+t} L 30 ${20+t} Q ${10+t} ${20+t} ${10+t} 40 L ${10+t} 100 Z`,
   [10,70,25], [
     [([t]) => ({x:10-t,y:100}), "x"],
     [([t, s]) => ({x:s,y:20-t}), "x"],
     [([, s, h]) => ({x:s,y:25-h}), "y"],
-  ], 0, false, ([t, , h], i) => i === 0 ? [.5,Math.min(20,h-5)] : i === 1 ? [40,95] : [t+5,50]),
+  ], 0, false, ([t, , h], i) => i === 0 ? [0,Math.min(20,h-5)] : i === 1 ? [30,100] : [t+5,50]),
   "u-turn-arrow": arrowPreset("U-turn arrow", ([t, s, h]) =>
     `M ${9-t} 100 L ${9-t} 38 C ${9-t} ${-3-t} ${71+t} ${-3-t} ${71+t} 38 L ${71+t} ${s} L ${70+h} ${s} L 70 90 L ${70-h} ${s} L ${71-t} ${s} L ${71-t} 38 C ${71-t} ${-3+t} ${9+t} ${-3+t} ${9+t} 38 L ${9+t} 100 Z`,
   [9,60,30], [
     [([t]) => ({x:9-t,y:100}), "x"],
     [([t, s]) => ({x:71+t,y:s}), "y"],
     [([, s, h]) => ({x:70+h,y:s}), "x"],
-  ], 0, false, ([t, , h], i) => i === 0 ? [.5,Math.min(20,h-1)] : i === 1 ? [40,85] : [t+1,50]),
+  ], 0, false, ([t, , h], i) => i === 0 ? [0,Math.min(20,h-1)] : i === 1 ? [38,90] : [t+1,50]),
   "left-up-arrow": arrowPreset("Left-up arrow", ([t, d, h]) => polygon([
     [0,75],[d,75-h],[d,75-t],[75-t,75-t],[75-t,d],[75-h,d],[75,0],[75+h,d],[75+t,d],[75+t,75+t],[d,75+t],[d,75+h],
-  ]), [10,25,25], elbowArrowControls, 0, false, ([t,d,h], i) => i === 0 ? [.5,Math.min(h,74-d)] : i === 1 ? [5,Math.min(45,74-h)] : [Math.max(1,t),74-d]),
+  ]), [10,25,25], elbowArrowControls, 0, false, ([t,d,h], i) => i === 0 ? [0,Math.min(h,75-d)] : i === 1 ? [0,75-h] : [t,75-d]),
   "bent-up-arrow": arrowPreset("Bent-up arrow", ([t, d, h]) => polygon([
     [0,90+t],[0,90-t],[75-t,90-t],[75-t,d],[75-h,d],[75,0],[75+h,d],[75+t,d],[75+t,90+t],
   ]), [10,25,25], [[([t]) => ({x:0,y:90-t}), "y"], ...elbowArrowControls.slice(1)]),
@@ -636,7 +636,7 @@ const arrowPresets = {
   "striped-right-arrow": arrowPreset("Striped right arrow", ([t, s, h]) =>
     `${polygon([[25,50-t],[s,50-t],[s,50-h],[100,50],[s,50+h],[s,50+t],[25,50+t]])} ${polygon([[0,50-t],[5,50-t],[5,50+t],[0,50+t]])} ${polygon([[12,50-t],[19,50-t],[19,50+t],[12,50+t]])}`,
   [15,70,50], [[([t]) => ({x:25,y:50-t}), "y"], ...horizontalArrowControls.slice(1)], 0, true,
-  ([t, , h], i) => i === 0 ? [.5,h] : i === 1 ? [30,95] : [Math.max(1,t),100]),
+  ([t, , h], i) => i === 0 ? [0,h] : i === 1 ? [25,100] : [Math.max(1,t),100]),
   "notched-right-arrow": arrowPreset("Notched right arrow", ([t, s, h, notch = 15]) => polygon([
     [0,50-t],[s,50-t],[s,50-h],[100,50],[s,50+h],[s,50+t],[0,50+t],[notch,50],
   ]), [20,65,50], horizontalArrowControls, 0, true, undefined, hiddenArrowParameter("notch", "Notch depth", 15, 3, 40)),
@@ -656,18 +656,18 @@ const arrowPresets = {
     [([t, d, , b = 30]) => ({x:(b+d)/2,y:50-t}), "y"],
     [([t, d]) => ({x:d,y:50-t}), "x"],
     [([, d, h]) => ({x:d,y:50-h}), "y"],
-  ], 0, false, ([t,d,h,b = 30], i) => i === 0 ? [.5,Math.min(h,34)] : i === 1 ? [5,b-1] : i === 2 ? [Math.max(1,t),50] : [Math.max(20,d+1),40],
-    hiddenArrowParameter("box", "Box inset", 30, 20, 40)),
+  ], 0, false, ([t,d,h,b = 30], i) => i === 0 ? [0,Math.min(h,35)] : i === 1 ? [0,b] : i === 2 ? [t,50] : [d,50],
+    hiddenArrowParameter("box", "Box inset", 30, 0, 50)),
   "quad-arrow-callout": arrowPreset("Quad arrow callout", values => radialArrow(values, true), [7,18,20], [
     [([t, d]) => ({x:50+t,y:(d+30)/2}), "x"], ...multipleArrowControls.slice(1),
-  ], 0, false, radialArrowLimits),
+  ], 0, false, (values, index) => radialArrowLimits(values, index, true)),
   "circular-arrow": arrowPreset("Circular arrow", ([t, s, h]) =>
     `M ${16-t} 70 C ${1-t} 30 ${21-t} ${6-t} 50 ${6-t} C 75 ${6-t} ${89+t} ${26-t} ${89+t} ${s} L ${85+h} ${s} L 85 68 L ${85-h} ${s} L ${89-t} ${s} C ${89-t} ${26+t} 75 ${6+t} 50 ${6+t} C ${21+t} ${6+t} ${1+t} 30 ${16+t} 70 Z`,
   [6,45,17.5], [
     [([t]) => ({x:50,y:6-t}), "y"],
     [([t, s]) => ({x:89+t,y:s}), "y"],
     [([, s, h]) => ({x:85+h,y:s}), "x"],
-  ], 0, false, ([t, , h], i) => i === 0 ? [.5,Math.min(15,h-4)] : i === 1 ? [30,63] : [t+4,45]),
+  ], 0, false, ([t, , h], i) => i === 0 ? [0,Math.min(15,h-4)] : i === 1 ? [0,68] : [t+4,45]),
 } satisfies Record<string, GraphicShapePreset>
 
 type ArrowPresetType = keyof typeof arrowPresets

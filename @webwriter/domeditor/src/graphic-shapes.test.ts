@@ -29,7 +29,7 @@ describe("native SVG shape presets", () => {
     element.setAttribute("d", graphicPresetPath("cloud", bounds))
     const before = readGraphicPreset(element)!
     expect(before.definition.adjustments.map(({name,label,default: value,min,max,axis}) => ({name,label,value,min,max,axis}))).toEqual([
-      {name:"inner",label:"Inner radius",value:30,min:8,max:38,axis:"x"},
+      {name:"inner",label:"Inner radius",value:30,min:0,max:38,axis:"x"},
     ])
     expect(graphicPresetHandles(before).map(handle=>handle.label)).toEqual(["Inner radius"])
     const unadjustedPath = element.getAttribute("d")!
@@ -580,6 +580,35 @@ describe("native SVG shape presets", () => {
     }
   })
 
+  it.each([
+    ["frame", "thickness", 0, 50], ["donut", "hole", 0, 50],
+    ["corner", "thickness", 0, 100], ["moon", "phase", 0, 100],
+    ["cloud", "inner", 0, 38], ["document", "wave", 0, 35],
+    ["collate", "waist", 0, 100], ["sort", "division", 0, 100],
+    ["extract", "apex", 0, 100], ["merge", "apex", 0, 100],
+    ["left-arrow", "shaft", 0, 50], ["left-arrow", "head-start", 0, 100],
+    ["left-right-arrow", "head-start", 0, 50],
+  ] as const)("lets %s %s reach its geometric endpoints %s and %s and move away after reload", (type, name, min, max) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[type].label)
+    element.setAttribute("d", graphicPresetPath(type, bounds))
+    for(const value of [min, max]) {
+      const before = readGraphicPreset(element)!
+      const index = before.definition.adjustments.findIndex(adjustment => adjustment.name === name)
+      const values = [...before.values]; values[index] = value
+      const point = before.definition.adjustments[index].point(values)
+      expect(adjustGraphicPreset(element, before, `adjust-${name}`, {
+        x: bounds.x + point.x / 100 * bounds.width, y: bounds.y + point.y / 100 * bounds.height,
+      })).toBe(true)
+      const reloaded = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${element.outerHTML}</svg>`, "image/svg+xml").querySelector("path")!
+      const after = readGraphicPreset(reloaded)!
+      expect(after.type).toBe(type)
+      expect(after.values[index]).toBeCloseTo(value, 3)
+      expect(adjustGraphicPreset(reloaded, after, `adjust-${name}`, (min + max) / 2)).toBe(true)
+      expect(readGraphicPreset(reloaded)!.values[index]).toBeCloseTo((min + max) / 2, 3)
+    }
+  })
+
   it.each(graphicPresetOptions)("recovers $label geometry and adjustments from serialized SVG", option => {
     const definition: GraphicShapePreset = graphicShapePresets[option.type]
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
@@ -751,7 +780,7 @@ describe("native SVG shape presets", () => {
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
     element.setAttribute("aria-label", "Moon")
     element.setAttribute("d", graphicPresetPath("moon", frame))
-    for(const [x, expected] of [[-100, 5], [120, 50], [400, 100]]) {
+    for(const [x, expected] of [[-100, 0], [120, 50], [400, 100]]) {
       const state = readGraphicPreset(element)!
       adjustGraphicPreset(element, state, "adjust-phase", {x, y: -1000})
       expect(readGraphicPreset(element)!.values[0]).toBeCloseTo(expected)
@@ -787,7 +816,7 @@ describe("native SVG shape presets", () => {
     expect(adjustGraphicPreset(element, before, "adjust-waist", {
       x: bounds.x + bounds.width * 2, y: bounds.y + bounds.height * height / 100,
     })).toBe(true)
-    const state = readGraphicPreset(element)!, value = Math.max(35, Math.min(65, height))
+    const state = readGraphicPreset(element)!, value = Math.max(0, Math.min(100, height))
     expect(state.values[0]).toBeCloseTo(value)
     const handle = graphicPresetHandles(state)[0].point
     expect(handle.x).toBeCloseTo(bounds.x + bounds.width / 2)

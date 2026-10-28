@@ -92,6 +92,7 @@ type Interaction = {
   previewRoot?: SVGSVGElement
   vertex?: number
   adjustmentAngle?: number
+  handleOffset?: Point
   arrowhead?: {endpoint: ConnectorEndpoint, size: number, step: Point}
   attachedConnectors: AttachedConnector[]
   portTarget?: PortTarget | null
@@ -804,6 +805,7 @@ export class GraphicFeature extends EditorFeature {
   #drawCursorStylesheet: CSSStyleSheet | null = null
   #labelEditor: LabelEditor | null = null
   #overlay: HTMLElement | null = null
+  #handleOffsets = new WeakMap<Element, Point>()
   #refreshQueued = false
   #frame: number | null = null
   #presentedGraphic: SVGSVGElement | null = null
@@ -2401,6 +2403,8 @@ export class GraphicFeature extends EditorFeature {
     const endpoint = handle === "arrowhead-start" ? "start" : "end"
     const head = kind === "arrowhead" ? arrowhead(shape, endpoint) : null
     if(kind === "arrowhead" && !head) return
+    const offset = captureTarget && this.#handleOffsets.get(captureTarget)
+    const offsetPoint = offset && this.#clientPoint(graphic, event.clientX - offset.x, event.clientY - offset.y)
     this.#interaction = {
       kind,
       handle,
@@ -2417,6 +2421,7 @@ export class GraphicFeature extends EditorFeature {
       candidates: this.#snapCandidates(graphic, new Set(shapes)),
       items,
       attachedConnectors: this.#captureAttachedConnectors(graphic, shapes),
+      ...(offsetPoint ? {handleOffset: {x: point.x - offsetPoint.x, y: point.y - offsetPoint.y}} : {}),
       ...(kind === "path-point" ? {vertex: Number(handle.slice("path-point-".length))} : {}),
       ...(kind === "vertex" ? {vertex: Number.parseInt(handle.slice("vertex-".length))} : {}),
       ...(head ? {arrowhead: {endpoint, size: head.size, step: {
@@ -2563,7 +2568,8 @@ export class GraphicFeature extends EditorFeature {
       const index = preset?.definition.adjustments.findIndex(adjustment => `adjust-${adjustment.name}` === interaction.handle) ?? -1
       const adjustment = preset?.definition.adjustments[index]
       if(preset && adjustment?.axis === "angle") {
-        const point = rotateAround(interaction.latest.point, shapeCenter(source), -interaction.rotation)
+        const input = interaction.latest.point, offset = interaction.handleOffset
+        const point = rotateAround({x: input.x - (offset?.x ?? 0), y: input.y - (offset?.y ?? 0)}, shapeCenter(source), -interaction.rotation)
         const chord = preset.type === "chord", start = chord ? preset.values[0] : 0
         const previous = interaction.adjustmentAngle ?? preset.values[index] + (chord && index === 1 ? start : 0)
         const angle = graphicPresetAngle(preset.bounds, point, previous)
@@ -3379,7 +3385,7 @@ export class GraphicFeature extends EditorFeature {
   #applyInteraction(shape: Element, interaction: Interaction): ActiveGuides {
     const {latest} = interaction
     const geometry = shapeGeometry(shape)
-    let point = latest.point
+    let point = {x: latest.point.x - (interaction.handleOffset?.x ?? 0), y: latest.point.y - (interaction.handleOffset?.y ?? 0)}
     if(interaction.rotation && interaction.kind !== "move" && interaction.kind !== "rotate") {
       const center = shapeCenter(interaction.items[0].source)
       point = rotateAround(point, center, -interaction.rotation)
@@ -4559,7 +4565,10 @@ export class GraphicFeature extends EditorFeature {
     const geometry = shapeGeometry(shape)
     const position = (name: string, point: Point) => {
       const handle = overlay.querySelector<HTMLElement>(`[data-graphic-handle="${name}"]`)
-      if(handle) this.#positionHandle(handle, toClient(point))
+      if(handle) {
+        this.#handleOffsets.delete(handle)
+        this.#positionHandle(handle, toClient(point))
+      }
     }
     const preset = readGraphicPreset(geometry)
     const path = editableShapePath(shape)
@@ -4576,7 +4585,9 @@ export class GraphicFeature extends EditorFeature {
           const offset = {x: (middle.x - center.x) / length * 10, y: (middle.y - center.y) / length * 10}
           handles.forEach((handle, index) => {
             const button = overlay.querySelector<HTMLElement>(`[data-graphic-handle="${handle.name}"]`)!
-            this.#positionHandle(button, {x: middle.x + (index ? 1 : -1) * offset.x, y: middle.y + (index ? 1 : -1) * offset.y})
+            const displayed = {x: middle.x + (index ? 1 : -1) * offset.x, y: middle.y + (index ? 1 : -1) * offset.y}
+            this.#positionHandle(button, displayed)
+            this.#handleOffsets.set(button, {x: displayed.x - endpoints[index].x, y: displayed.y - endpoints[index].y})
           })
         }
         const interaction = this.#interaction
@@ -4638,6 +4649,32 @@ export class GraphicFeature extends EditorFeature {
       const scale = distance > 0 ? Math.max(1, 16 / distance) : 1
       const handle = overlay.querySelector<HTMLElement>(`[data-graphic-handle="arrowhead-${head.endpoint}"]`)
       if(handle) this.#positionHandle(handle, {x: origin.x + (corner.x - origin.x) * scale, y: origin.y + (corner.y - origin.y) * scale})
+    })
+    this.#dodgeSpecificHandles(overlay)
+  }
+
+  /** Keep POIs reachable at geometric endpoints without moving the geometry.
+   * Work in CSS pixels so zoom and rotation do not shrink the separation. */
+  #dodgeSpecificHandles(overlay: HTMLElement) {
+    const point = (handle: HTMLElement) => ({x: parseFloat(handle.style.left), y: parseFloat(handle.style.top)})
+    const occupied = [...overlay.querySelectorAll<HTMLElement>('[data-graphic-handle^="resize-"], [data-graphic-handle="rotate"]')]
+      .filter(handle => !handle.hidden).map(point)
+    const handles = overlay.querySelectorAll<HTMLElement>('.◆graphic-specific-handles [part~="graphic-affordance"]')
+    handles.forEach(handle => {
+      const offset = this.#handleOffsets.get(handle)
+      const name = handle.dataset.graphicHandle!
+      if(/^(?:path-point-|vertex-|line-|connector-|arrowhead-)/.test(name)) return
+      const original = point(handle), displayed = {...original}
+      // Moving only upward makes this terminate even when several POIs and
+      // resize handles coincide on a small shape.
+      for(let collision; (collision = occupied.find(other => Math.hypot(displayed.x - other.x, displayed.y - other.y) < 16 - .0001));) {
+        displayed.y = collision.y - 16
+      }
+      if(displayed.y !== original.y) {
+        this.#positionHandle(handle, displayed)
+        this.#handleOffsets.set(handle, {x: offset?.x ?? 0, y: (offset?.y ?? 0) + displayed.y - original.y})
+      }
+      occupied.push(displayed)
     })
   }
 

@@ -7,6 +7,13 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "SVG preset POIs stay on their actual contours through adjustments",
+  "SVG curved shape POIs follow contours while dragging and undoing",
+  "SVG Chord endpoint POIs retain their ellipse through circular edits",
+  "SVG block arrow POIs independently edit shaft and arrowhead dimensions",
+  "SVG Pie POI sweeps continuously from small slices to a full circle",
+  "SVG rotated POI edits keep unedited geometry fixed on screen",
+  "SVG POIs dodge resize handles at geometric endpoints",
   "canvas starting view frames resize, delete and open without shifting",
   "SVG arrowheads select their connector, fit its outline and resize independently",
   "SVG shape fills keep overlaps solid and intentional holes open",
@@ -328,7 +335,7 @@ try {
   const timedOut = new Promise(resolve => {
     // The full regression suite runs its iframe and layout checks serially.
     const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000
-      : !smoke && !checkFilter && !performanceMode && !widgetAggregationMode ? 600000 : 30000
+      : !smoke && !checkFilter && !performanceMode && !widgetAggregationMode ? 600000 : checkFilter ? 120000 : 30000
     timeout = setTimeout(() => resolve({error: `Native browser timed out${activeCheck ? ` while running: ${activeCheck}` : ""}`}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])

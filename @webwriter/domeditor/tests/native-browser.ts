@@ -26,6 +26,7 @@ import {checkGraphicChord} from "./graphic-chord"
 import {checkGraphicArrowPOIs} from "./graphic-arrow-pois"
 import {checkGraphicPOIEdges} from "./graphic-poi-edges"
 import {checkGraphicCurvedPOIs} from "./graphic-curved-pois"
+import {checkGraphicPOIDodge} from "./graphic-poi-dodge"
 import {checkGraphicSpeechBubbles} from "./graphic-speech-bubbles"
 import {checkGraphicKeyboardDrag} from "./graphic-keyboard-drag"
 import {checkGraphicTextBox} from "./graphic-text-box"
@@ -65,6 +66,7 @@ await check("SVG Chord endpoint POIs retain their ellipse through circular edits
 await check("SVG block arrow POIs independently edit shaft and arrowhead dimensions", checkGraphicArrowPOIs)
 await check("SVG preset POIs stay on their actual contours through adjustments", checkGraphicPOIEdges)
 await check("SVG curved shape POIs follow contours while dragging and undoing", checkGraphicCurvedPOIs)
+await check("SVG POIs dodge resize handles at geometric endpoints", checkGraphicPOIDodge)
 await check("SVG speech bubbles attach their connector to the edge facing the tip", checkGraphicSpeechBubbles)
 await check("SVG rotated POI edits keep unedited geometry fixed on screen", checkGraphicPOIRotation)
 await check("shape keyboard drops stay within the captured graphic", checkGraphicKeyboardDrag)

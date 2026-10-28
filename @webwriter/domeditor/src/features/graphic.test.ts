@@ -1323,6 +1323,70 @@ describe("graphic editing", () => {
     expect(graphic.querySelector("path")).toHaveAttribute("fill", "#ef4444")
   })
 
+  it.each([0, 90].flatMap(rotation => [.5, 2].map(scale => ({rotation, scale}))))("dodges resize handles at POI endpoints without a drag jump ($rotation degrees, scale $scale)", async ({rotation, scale}) => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "donut"})
+    const graphic = document.querySelector("svg")!, shape = graphic.querySelector("path")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: scale, b: 0, c: 0, d: scale, e: 30, f: 40})})
+    const bounds = {x: 120, y: 140, width: 240, height: 160}
+    writeGraphicPreset(shape, readGraphicPreset(shape)!, bounds, [50])
+    const center = {x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2}
+    if(rotation) shape.setAttribute("transform", `rotate(${rotation} ${center.x} ${center.y})`)
+    const toClient = (point: {x: number, y: number}) => {
+      const rotated = rotation ? {x: center.x - (point.y - center.y), y: center.y + (point.x - center.x)} : point
+      return {x: rotated.x * scale + 30, y: rotated.y * scale + 40}
+    }
+    editor.features.graphic.refresh()
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="adjust-hole"]')!
+    const natural = toClient(graphicPresetHandles(readGraphicPreset(shape)!)[0].point)
+    const start = {x: parseFloat(handle.style.left), y: parseFloat(handle.style.top)}
+    expect(start.x).toBeCloseTo(natural.x)
+    expect(start.y).toBeCloseTo(natural.y - 16)
+    const original = shape.getAttribute("d")!
+    const pointer = {bubbles: true, composed: true, button: 0, pointerId: 96}
+    handle.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: start.x, clientY: start.y}))
+    const target = toClient(center)
+    document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: target.x, clientY: target.y - 16}))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(readGraphicPreset(editor.appendix.querySelector(".◆graphic-preview path"))!.values[0]).toBeCloseTo(0)
+    expect(shape).toHaveAttribute("d", original)
+    document.dispatchEvent(new PointerEvent("pointerup", pointer))
+    await mutationsDelivered()
+    expect(readGraphicPreset(shape)!.values[0]).toBeCloseTo(0)
+    const edited = shape.getAttribute("d")!
+    editor.doc.undo()
+    expect(shape).toHaveAttribute("d", original)
+    editor.doc.redo()
+    expect(shape).toHaveAttribute("d", edited)
+    editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "adjust-hole", value: "25"})
+    editor.features.graphic.refresh()
+    const free = toClient(graphicPresetHandles(readGraphicPreset(shape)!)[0].point)
+    expect(parseFloat(handle.style.left)).toBeCloseTo(free.x)
+    expect(parseFloat(handle.style.top)).toBeCloseTo(free.y)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
+  })
+
+  it.each([0, 50])("separates coincident corner POIs from each other and resize handles at radius %s", radius => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rounded-rectangle"})
+    const graphic = document.querySelector("svg")!, shape = graphic.querySelector("path")!
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: .1, b: 0, c: 0, d: .1, e: 0, f: 0})})
+    writeGraphicPreset(shape, readGraphicPreset(shape)!, {x: 120, y: 140, width: 240, height: 160}, [radius, radius, radius, radius])
+    const original = shape.getAttribute("d")!
+    editor.features.graphic.refresh()
+    const point = (handle: HTMLElement) => ({x: parseFloat(handle.style.left), y: parseFloat(handle.style.top)})
+    const handles = [...editor.appendix.querySelectorAll<HTMLElement>('[data-graphic-handle^="adjust-"]')]
+    expect(handles).toHaveLength(4)
+    const occupied = [...editor.appendix.querySelectorAll<HTMLElement>('[data-graphic-handle^="resize-"], [data-graphic-handle="rotate"]')].filter(handle => !handle.hidden).map(point)
+    for(const handle of handles) {
+      const displayed = point(handle)
+      for(const other of occupied) expect(Math.hypot(displayed.x - other.x, displayed.y - other.y)).toBeGreaterThanOrEqual(16 - .0001)
+      occupied.push(displayed)
+    }
+    expect(shape).toHaveAttribute("d", original)
+  })
+
   it.each([
     {label: "Shift", shiftKey: true, metaKey: false, ctrlKey: false, affected: [0, 1], rotation: 0},
     {label: "Ctrl", shiftKey: false, metaKey: false, ctrlKey: true, affected: [0, 3], rotation: 0},
@@ -1514,19 +1578,21 @@ describe("graphic editing", () => {
     const controls = [...editor.appendix.querySelectorAll<HTMLElement>('.◆graphic-specific-handles [data-graphic-handle]')]
     expect(controls).toHaveLength(2)
     if(sweep === 360) expect(Math.hypot(parseFloat(controls[0].style.left) - parseFloat(controls[1].style.left),
-      parseFloat(controls[0].style.top) - parseFloat(controls[1].style.top))).toBeGreaterThanOrEqual(19.9)
+      parseFloat(controls[0].style.top) - parseFloat(controls[1].style.top))).toBeGreaterThanOrEqual(16 - .0001)
     const guide = editor.appendix.querySelector<SVGEllipseElement>(".◆graphic-ellipse-guide")!
     expect(guide).toHaveAttribute("display", "none")
     await mutationsDelivered()
     editor.doc.stopCapturing()
     const before = readGraphicPreset(shape)!, original = shape.getAttribute("d")!, fixed = graphicPresetHandles(before)[1-index].point
     const handle = controls[index], pointer = {bubbles: true, composed: true, button: 0, pointerId: 94}
+    const natural = at(start + (index ? sweep : 0))
+    const offset = {x: parseFloat(handle.style.left) - natural.x, y: parseFloat(handle.style.top) - natural.y}
     handle.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: parseFloat(handle.style.left), clientY: parseFloat(handle.style.top)}))
     expect(guide).not.toHaveAttribute("display", "none")
     const guideFrame = guide.getAttribute("transform")!.match(/[-+]?(?:\d*\.)?\d+/g)!.map(Number)
     for(const angle of samples) {
       const target = at(angle)
-      document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: target.x, clientY: target.y}))
+      document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: target.x + offset.x, clientY: target.y + offset.y}))
     }
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     const preview = readGraphicPreset(editor.appendix.querySelector(".◆graphic-preview path"))!
@@ -1590,12 +1656,15 @@ describe("graphic editing", () => {
     editor.doc.stopCapturing()
     const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="adjust-sweep"]')!
     const pointer = {bubbles: true, composed: true, button: 0, pointerId: 59}
+    const natural = graphicPresetHandles(before)[0].point
+    const initial = rotation ? {x: center.x - (natural.y - center.y), y: center.y + (natural.x - center.x)} : natural
+    const offset = {x: parseFloat(handle.style.left) - initial.x, y: parseFloat(handle.style.top) - initial.y}
     handle.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: parseFloat(handle.style.left), clientY: parseFloat(handle.style.top)}))
     for(const angle of sweep === 360 ? [300, 359, 360] : sweep === 90 ? [180, 90] : [180, 90, 10, 0]) {
       const radians = angle * Math.PI / 180
       const local = {x: center.x - Math.sin(radians) * bounds.width / 2, y: center.y - Math.cos(radians) * bounds.height / 2}
       const target = rotation ? {x: center.x - (local.y - center.y), y: center.y + (local.x - center.x)} : local
-      document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: target.x, clientY: target.y}))
+      document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: target.x + offset.x, clientY: target.y + offset.y}))
       if(!batched) {
         await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
         expect(readGraphicPreset(editor.appendix.querySelector(".◆graphic-preview path"))!.values[0]).toBeCloseTo(angle, 3)
@@ -1607,7 +1676,7 @@ describe("graphic editing", () => {
       expect(readGraphicPreset(editor.appendix.querySelector(".◆graphic-preview path"))!.values[0]).toBeCloseTo(sweep, 3)
     }
     if(centerRelease) {
-      document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: center.x, clientY: center.y}))
+      document.dispatchEvent(new PointerEvent("pointermove", {...pointer, buttons: 1, clientX: center.x + offset.x, clientY: center.y + offset.y}))
       await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
       expect(readGraphicPreset(editor.appendix.querySelector(".◆graphic-preview path"))!.values[0]).toBeCloseTo(sweep, 3)
     }
@@ -2051,7 +2120,7 @@ describe("graphic editing", () => {
       await mutationsDelivered()
       expect(readGraphicPreset(shape)?.values[0]).toBeCloseTo(expected)
       expect(parseFloat(handle.style.left)).toBeCloseTo(bounds.x + bounds.width * expected / 100)
-      expect(parseFloat(handle.style.top)).toBeCloseTo(bounds.y)
+      expect(parseFloat(handle.style.top)).toBeCloseTo(bounds.y - (expected === 50 ? 40 : expected === 0 ? 16 : 0))
       const offset = bounds.width * expected / 100
       expect(graphicPathGeometry(shape)!.points).toEqual([
         {x: bounds.x + offset, y: bounds.y},

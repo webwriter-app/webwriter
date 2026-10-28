@@ -47,11 +47,13 @@ export async function checkGraphicPie() {
       const original = path.getAttribute("d")!
       const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="adjust-sweep"]')!
       const box = handle.getBoundingClientRect(), pointer = {bubbles: true, composed: true, button: 0, pointerId: 93}
+      const natural = DOMMatrix.fromMatrix(path.getScreenCTM()!).transformPoint(pointAt(270))
+      const offset = {x:parseFloat(handle.style.left)-natural.x,y:parseFloat(handle.style.top)-natural.y}
       handle.dispatchEvent(new view.PointerEvent("pointerdown", {...pointer, clientX: box.x + box.width / 2, clientY: box.y + box.height / 2}))
       const sequence = target === 360 ? [300, 359, 360] : target === 0 ? [180, 90, 10, 0] : [180, 90]
       for(const sweep of sequence) {
         const point = DOMMatrix.fromMatrix(path.getScreenCTM()!).transformPoint(pointAt(sweep))
-        doc.dispatchEvent(new view.PointerEvent("pointermove", {...pointer, buttons: 1, clientX: point.x, clientY: point.y}))
+        doc.dispatchEvent(new view.PointerEvent("pointermove", {...pointer, buttons: 1, clientX: point.x + offset.x, clientY: point.y + offset.y}))
         await layout()
         const preview = readGraphicPreset(editor.appendix.querySelector(".◆graphic-preview path"))!
         assert(Math.abs(preview.values[0] - sweep) < .001, `${rotation}/${target}: preview jumped at ${sweep}`)
@@ -59,7 +61,7 @@ export async function checkGraphicPie() {
       }
       if(target === 90) {
         const point = DOMMatrix.fromMatrix(path.getScreenCTM()!).transformPoint(pointAt(0, 0))
-        doc.dispatchEvent(new view.PointerEvent("pointermove", {...pointer, buttons: 1, clientX: point.x, clientY: point.y}))
+        doc.dispatchEvent(new view.PointerEvent("pointermove", {...pointer, buttons: 1, clientX: point.x + offset.x, clientY: point.y + offset.y}))
         await layout()
         assert(Math.abs(readGraphicPreset(editor.appendix.querySelector(".◆graphic-preview path"))!.values[0] - 90) < .001, `${rotation}: Pie lost its last angle at the center`)
       }
