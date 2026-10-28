@@ -3643,9 +3643,9 @@ export class GraphicFeature extends EditorFeature {
     if(!this.#options.snap || interaction.latest.altKey) return {bounds, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
     const x = this.#bestSnap([bounds.x, bounds.x + bounds.width / 2, bounds.x + bounds.width], interaction.candidates.x, threshold.x)
-      ?? this.#gridSnap(bounds.x, threshold.x)
+      ?? this.#gridSnap(bounds.x, threshold.x, "x")
     const y = this.#bestSnap([bounds.y, bounds.y + bounds.height / 2, bounds.y + bounds.height], interaction.candidates.y, threshold.y)
-      ?? this.#gridSnap(bounds.y, threshold.y)
+      ?? this.#gridSnap(bounds.y, threshold.y, "y")
     return {
       bounds: {...bounds, x: bounds.x + (x?.delta ?? 0), y: bounds.y + (y?.delta ?? 0)},
       guides: {x: x?.target, y: y?.target},
@@ -3662,11 +3662,11 @@ export class GraphicFeature extends EditorFeature {
     let x: {delta: number, target: SnapTarget} | null = null
     let y: {delta: number, target: SnapTarget} | null = null
     if(direction.includes("w") || direction.includes("e")) {
-      x = this.#bestSnap([moving.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(moving.x, threshold.x)
+      x = this.#bestSnap([moving.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(moving.x, threshold.x, "x")
       moving.x += x?.delta ?? 0
     }
     if(direction.includes("n") || direction.includes("s")) {
-      y = this.#bestSnap([moving.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(moving.y, threshold.y)
+      y = this.#bestSnap([moving.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(moving.y, threshold.y, "y")
       moving.y += y?.delta ?? 0
     }
     const resized = this.#resizeBounds(moving, originalDirection, interaction)
@@ -3676,10 +3676,10 @@ export class GraphicFeature extends EditorFeature {
   #snapPoint(point: Point, interaction: Pick<Interaction, "latest" | "matrix" | "candidates">, forceGrid = false) {
     if(this.#standaloneShape() || !this.#options.snap || interaction.latest.altKey) return {point, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
-    const x = forceGrid ? this.#gridSnap(point.x, Infinity)
-      : this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x)
-    const y = forceGrid ? this.#gridSnap(point.y, Infinity)
-      : this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y)
+    const x = forceGrid ? this.#gridSnap(point.x, Infinity, "x")
+      : this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x, "x")
+    const y = forceGrid ? this.#gridSnap(point.y, Infinity, "y")
+      : this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y, "y")
     return {
       point: {x: point.x + (x?.delta ?? 0), y: point.y + (y?.delta ?? 0)},
       guides: {x: x?.target, y: y?.target},
@@ -3704,8 +3704,22 @@ export class GraphicFeature extends EditorFeature {
     return best
   }
 
-  #gridSnap(value: number, threshold: number) {
-    const target = Math.round(value / 50) * 50
+  #gridSnap(value: number, threshold: number, axis: "x" | "y") {
+    const graphic = this.#activeGraphic()
+    if(!graphic) return null
+    // The background's 24px tiles live in the CSS viewport, independently
+    // of the viewBox and native pan/zoom. Map its origin back to SVG units.
+    const style = getComputedStyle(graphic), rect = graphic.getBoundingClientRect()
+    const box = graphicViewBox(graphic)
+    const width = graphic.clientWidth || rect.width || (style.width.endsWith("px") ? parseFloat(style.width) : box.width)
+    const height = graphic.clientHeight || rect.height || (style.height.endsWith("px") ? parseFloat(style.height) : box.height)
+    const screen = this.#screenMatrix(graphic), viewport = this.#viewportMatrix(graphic, width, height)
+    const css = this.#cssViewportMatrix(graphic, viewport, width, height)
+    const origin = applyInverseMatrix(css, {x: screen.e, y: screen.f})
+    const scale = (axis === "x" ? viewport.a : viewport.d) * this.#viewport(graphic).scale
+    const offset = origin[axis]
+    if(!Number.isFinite(scale) || !Number.isFinite(offset) || !scale) return null
+    const target = (Math.round((value * scale + offset) / 24) * 24 - offset) / scale
     const delta = target - value
     return Math.abs(delta) <= threshold ? {delta, target: {value: target, kind: "grid"} as SnapTarget} : null
   }

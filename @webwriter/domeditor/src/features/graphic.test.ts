@@ -2408,6 +2408,7 @@ describe("graphic editing", () => {
   })
 
   it("moves shapes directly and exposes shape-specific appendix affordances", () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
@@ -2626,6 +2627,7 @@ describe("graphic editing", () => {
   })
 
   it("moves labeled shapes and their text together through the preview path", () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     Object.defineProperty(graphic, "getBoundingClientRect", {
@@ -2769,6 +2771,7 @@ describe("graphic editing", () => {
   })
 
   it("resizes and rotates with appendix handles", () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
     const rectangle = graphic.querySelector("rect")!
@@ -3213,17 +3216,17 @@ describe("graphic editing", () => {
     document.dispatchEvent(new PointerEvent("pointermove", {
       bubbles: true,
       buttons: 1,
-      clientX: 1047,
+      clientX: 1053,
       clientY: 597,
     }))
     document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0}))
 
     expect(rectangle).toHaveAttribute("x", "920")
     expect(rectangle).toHaveAttribute("y", "570")
-    expect(rectangle).toHaveAttribute("width", "130")
+    expect(rectangle).toHaveAttribute("width", "136")
     expect(rectangle).toHaveAttribute("height", "30")
     expect({left: northwest.style.left, top: northwest.style.top}).toEqual({left: "920px", top: "570px"})
-    expect({left: southeast.style.left, top: southeast.style.top}).toEqual({left: "1050px", top: "600px"})
+    expect({left: southeast.style.left, top: southeast.style.top}).toEqual({left: "1056px", top: "600px"})
   })
 
   it("switches crossed corners around the fixed anchor of a rotated shape", () => {
@@ -3280,6 +3283,7 @@ describe("graphic editing", () => {
   })
 
   it("moves a horizontal line without changing its endpoints' axis", () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "line"})
     const graphic = document.querySelector("svg")!
@@ -4818,6 +4822,9 @@ describe("polyline and Bezier path drawing", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     graphic.setAttribute("viewBox", "0 0 400 300")
+    graphic.style.width = "800px"
+    graphic.style.height = "600px"
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(100, 50, 800, 600)})
     Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 100, f: 50})})
     await mutationsDelivered()
     editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
@@ -4830,7 +4837,7 @@ describe("polyline and Bezier path drawing", () => {
 
     const path = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
     expect(graphicShapeType(path)).toBe("polyline")
-    expect(path.getAttribute("d")).toBe("M 0 0 L 50 50 L 40 40")
+    expect(path.getAttribute("d")).toBe("M 12 24 L 36 36 L 40 40")
     expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
     await mutationsDelivered()
     expect(editor.doc.body.toString()).not.toContain("◆")
@@ -4886,8 +4893,9 @@ describe("polyline and Bezier path drawing", () => {
     pointClick(graphic, 50, 0)
     pointClick(graphic, 50, 50)
     pointClick(graphic, 0, 0)
-    const closed = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
-    expect(closed.getAttribute("d")).toMatch(/^M 0 0 L 50 0 L 50 50 Z$/)
+    // This triangle also matches a Merge preset at its new apex endpoint.
+    const closed = graphic.querySelector<SVGPathElement>("path")!
+    expect(closed.getAttribute("d")).toMatch(/^M 0 0 L 48 0 L 48 48 Z$/)
 
     editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "curves"})
     pointClick(graphic, 100, 100)
@@ -4895,7 +4903,7 @@ describe("polyline and Bezier path drawing", () => {
     graphic.dispatchEvent(new MouseEvent("dblclick", {bubbles: true, cancelable: true, button: 0}))
     const curve = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "bezier")!
     expect(curve).toBeTruthy()
-    expect(curve.getAttribute("d")).toMatch(/^M\s*100\s*100\s*C/)
+    expect(curve.getAttribute("d")).toMatch(/^M\s*96\s*96\s*C/)
     expect(editor.appendix.querySelector(".◆graphic-preview")).toBeNull()
   })
 
@@ -4907,10 +4915,11 @@ describe("polyline and Bezier path drawing", () => {
     pointClick(graphic, 80, 40, {shiftKey: true})
     document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
     const path = [...graphic.querySelectorAll<SVGPathElement>("path")].find(shape => graphicShapeType(shape) === "polyline")!
-    expect(path.getAttribute("d")).toBe("M 0 0 L 50 50")
+    expect(path.getAttribute("d")).toBe("M 0 0 L 72 72")
   })
 
   it("creates symmetric curve handles and supports selected path point edits as one undo step", async () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "curves"})
@@ -5014,6 +5023,7 @@ describe("polyline and Bezier path drawing", () => {
   })
 
   it("moves a selected path point by one or fifty pixels with arrow keys", async () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     await mutationsDelivered()
@@ -5039,6 +5049,7 @@ describe("polyline and Bezier path drawing", () => {
   })
 
   it("moves the last draft vertex with arrows, removes it with Backspace, and cancels without inserting", () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
@@ -5064,6 +5075,7 @@ describe("polyline and Bezier path drawing", () => {
   })
 
   it("moves a closed curve's first anchor, closing endpoint, and adjacent controls together", () => {
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "snap"})
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
     Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
@@ -5142,16 +5154,120 @@ describe("polyline and Bezier path drawing", () => {
     editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
     pointClick(graphic, 12, 31)
     const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
-    expect(preview.getAttribute("d")).toBe("M 0 50 L 0 50")
+    expect(preview.getAttribute("d")).toBe("M 24 24 L 24 24")
     const secondary = new PointerEvent("pointerdown", {bubbles: true, cancelable: true, isPrimary: false, pointerType: "touch", button: 0, pointerId: pointerId++, clientX: 200, clientY: 200})
     graphic.dispatchEvent(secondary)
     expect(secondary.defaultPrevented).toBe(true)
     expect(editor.features.graphic.getState()?.mode).toBe("lines")
-    expect(preview.getAttribute("d")).toBe("M 0 50 L 0 50")
+    expect(preview.getAttribute("d")).toBe("M 24 24 L 24 24")
     pointClick(graphic, 100, 100)
     document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, cancelable: true, key: "Enter"}))
-    expect(graphic.querySelector("path")!.getAttribute("d")).toBe("M 0 50 L 100 100")
+    expect(graphic.querySelector("path")!.getAttribute("d")).toBe("M 24 24 L 96 96")
     expect(graphic.querySelector("rect")).toHaveAttribute("x", "12")
+  })
+
+  it("snaps to fixed screen-grid intersections with a translated nonzero viewBox", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("viewBox", "100 200 400 300")
+    graphic.style.width = "200px"
+    graphic.style.height = "170px"
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(0, 0, 200, 170)})
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 0.5, b: 0, c: 0, d: 0.5, e: -50, f: -90})})
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+
+    pointClick(graphic, 25, 25)
+    const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+    expect(preview.getAttribute("d")).toBe("M 148 228 L 148 228")
+  })
+
+  it("maps a fixed screen grid through anisotropic SVG scaling", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("viewBox", "0 0 400 300")
+    graphic.setAttribute("preserveAspectRatio", "none")
+    graphic.style.width = "800px"
+    graphic.style.height = "150px"
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(0, 0, 800, 150)})
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 0.5, e: 0, f: 0})})
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+
+    pointClick(graphic, 73, 15.75)
+    const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+    expect(preview.getAttribute("d")).toBe("M 36 48 L 36 48")
+  })
+
+  it("includes native SVG zoom and pan when choosing screen-grid intersections", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")! as SVGSVGElement & {currentScale: number, currentTranslate: DOMPoint}
+    graphic.setAttribute("viewBox", "0 0 400 300")
+    graphic.style.width = "400px"
+    graphic.style.height = "300px"
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(0, 0, 400, 300)})
+    Object.defineProperty(graphic, "currentScale", {value: 2, configurable: true})
+    Object.defineProperty(graphic, "currentTranslate", {value: {x: 10, y: -10}, configurable: true})
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 2, b: 0, c: 0, d: 2, e: 10, f: -10})})
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "lines"})
+
+    pointClick(graphic, 73, 15)
+    const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
+    expect(preview.getAttribute("d")).toBe("M 31 17 L 31 17")
+  })
+
+  it("moves on the viewport grid with Alt bypass and with the visible grid hidden", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("preserveAspectRatio", "none")
+    graphic.style.width = "3200px"
+    graphic.style.height = "900px"
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(0, 0, 3200, 900)})
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 2, b: 0, c: 0, d: 1, e: 10, f: 5})})
+    const rectangle = graphic.querySelector<SVGRectElement>("rect")!
+    rectangle.setAttribute("x", "100")
+    rectangle.setAttribute("y", "100")
+    rectangle.setAttribute("width", "100")
+    rectangle.setAttribute("height", "100")
+    clickShape(rectangle)
+    const drag = (id: number, start: {x: number, y: number}, end: {x: number, y: number}, altKey = false) => {
+      rectangle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: id, clientX: start.x, clientY: start.y}))
+      document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: id, clientX: end.x, clientY: end.y, altKey}))
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: id, clientX: end.x, clientY: end.y, altKey}))
+    }
+
+    drag(181, {x: 310, y: 155}, {x: 330, y: 167}, true)
+    expect(rectangle).toHaveAttribute("x", "110")
+    expect(rectangle).toHaveAttribute("y", "112")
+
+    editor.features.graphic.actions.toggleGraphicOption({type: "toggleGraphicOption", name: "grid"})
+    drag(182, {x: 330, y: 167}, {x: 336, y: 170})
+    expect(rectangle).toHaveAttribute("x", "115")
+    expect(rectangle).toHaveAttribute("y", "115")
+    expect(graphic).not.toHaveClass("◆graphic-grid-visible")
+  })
+
+  it("resizes a rectangle to viewport-grid intersections under anisotropic mapping", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("preserveAspectRatio", "none")
+    graphic.style.width = "3200px"
+    graphic.style.height = "900px"
+    Object.defineProperty(graphic, "getBoundingClientRect", {value: () => new DOMRect(0, 0, 3200, 900)})
+    Object.defineProperty(graphic, "getScreenCTM", {configurable: true, value: () => ({a: 2, b: 0, c: 0, d: 1, e: 10, f: 5})})
+    const rectangle = graphic.querySelector<SVGRectElement>("rect")!
+    rectangle.setAttribute("x", "100")
+    rectangle.setAttribute("y", "100")
+    rectangle.setAttribute("width", "100")
+    rectangle.setAttribute("height", "100")
+    clickShape(rectangle)
+    const handle = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="resize-se"]')!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 183, clientX: 410, clientY: 205}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 183, clientX: 426, clientY: 213}))
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 183, clientX: 426, clientY: 213}))
+
+    expect(rectangle).toHaveAttribute("width", "111")
+    expect(rectangle).toHaveAttribute("height", "111")
   })
 
   it("cancels a completed curve handle drag with Escape while its tab can remain open", () => {
