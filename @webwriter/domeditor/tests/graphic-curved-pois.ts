@@ -67,10 +67,17 @@ export async function checkGraphicCurvedPOIs() {
         const expected = numbers(graphicPresetPath(type,state.bounds,next))
         const button = currentHandles[handleIndex], box = button.getBoundingClientRect()
         const pointer = {bubbles:true,composed:true,button:0,pointerId:96}
+        const natural = graphicPresetHandles(state)[handleIndex].point
+        const screen = new view.DOMPoint(natural.x,natural.y).matrixTransform(shape.getScreenCTM()!)
+        const offset = {x:parseFloat(button.style.left)-screen.x,y:parseFloat(button.style.top)-screen.y}
+        // CSS serializes positions with less precision than native SVG matrices.
+        if(Math.abs(offset.x)<.01) offset.x=0
+        if(Math.abs(offset.y)<.01) offset.y=0
         const destination = new view.DOMPoint(target.x,target.y).matrixTransform(shape.getScreenCTM()!)
+        destination.x += offset.x; destination.y += offset.y
         initialPath.setAttribute("d",original)
-        const handleCenter = new view.DOMPoint(box.x+box.width/2,box.y+box.height/2).matrixTransform(shape.getScreenCTM()!.inverse())
-        assert(initialPath.isPointInStroke(handleCenter),`${type}/${rotation}/${handleIndex}: visible handle center is off the authored contour`)
+        assert(initialPath.isPointInStroke(new view.DOMPoint(natural.x,natural.y)),`${type}/${rotation}/${handleIndex}: geometric POI is off the authored contour`)
+        assert(Math.abs(offset.x)<.1 && offset.y<.1,`${type}/${rotation}/${handleIndex}: visible POI did not dodge upward`)
         editor.doc.stopCapturing()
         button.dispatchEvent(new view.PointerEvent("pointerdown",{...pointer,clientX:box.x+box.width/2,clientY:box.y+box.height/2}))
         doc.dispatchEvent(new view.PointerEvent("pointermove",{...pointer,buttons:1,clientX:destination.x,clientY:destination.y}))
@@ -79,7 +86,7 @@ export async function checkGraphicCurvedPOIs() {
         const preview = editor.appendix.querySelector<SVGPathElement>(".◆graphic-preview path")!
         assert(preview,`${type}: missing preview`)
         const actual = numbers(preview.getAttribute("d")!)
-        assert(actual.length === expected.length && actual.every((value,i) => Math.abs(value-expected[i]) < .001),`${type}/${rotation}/${handleIndex}: preview geometry differs from expected`)
+        assert(actual.length === expected.length && actual.every((value,i) => Math.abs(value-expected[i]) < .001),`${type}/${rotation}/${handleIndex}: preview geometry differs from expected; offset ${JSON.stringify(offset)}, target ${JSON.stringify(target)}, diff ${Math.max(...actual.map((value,i)=>Math.abs(value-expected[i])))}, values ${JSON.stringify(readGraphicPreset(preview)?.values)}`)
 
         doc.dispatchEvent(new view.PointerEvent("pointerup",{...pointer,clientX:destination.x,clientY:destination.y}))
         await layout()

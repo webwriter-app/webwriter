@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
+import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCloudPreset, legacyCurvedArrowPresets, legacySpeechBubblePresets, speechBubblePrefix, type GraphicShapePreset} from "./graphic-shape-presets"
 import {adjustGraphicPreset, graphicPresetFillRule, graphicPresetHandles, graphicPresetOptions, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "./graphic-shapes"
 
 const bounds = {x: -137.25, y: 219.75, width: 273.5, height: 146.25}
@@ -22,6 +22,79 @@ const cubicSamples = (path: string) => {
   return samples
 }
 
+const reflectedPathCoordinates = (path: string, axis: "x" | "y", bounds: {x: number, y: number, width: number, height: number}) => {
+  const coordinates = path.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  return coordinates.map((value, index) => {
+    const horizontal = index % 2 === 0
+    if(axis === "x" && horizontal) return 2 * bounds.x + bounds.width - value
+    if(axis === "y" && !horizontal) return 2 * bounds.y + bounds.height - value
+    return value
+  })
+}
+
+const expectSamePresetPath = (actualPath: string, expectedPath: string) => {
+  expect(actualPath.match(/[A-Za-z]/g)).toEqual(expectedPath.match(/[A-Za-z]/g))
+  const actual = actualPath.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  const expected = expectedPath.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  expect(actual).toHaveLength(expected.length)
+  actual.forEach((coordinate, index) => expect(coordinate).toBeCloseTo(expected[index], 7))
+}
+
+const expectMirroredCurvedArrows = (leftType: "curved-left-arrow" | "curved-up-arrow", rightType: "curved-right-arrow" | "curved-down-arrow", axis: "x" | "y", values: number[]) => {
+  const left = graphicPresetPath(leftType, bounds, values)
+  const right = graphicPresetPath(rightType, bounds, values)
+  const leftCommands = left.match(/[A-Za-z]/g)
+  const rightCommands = right.match(/[A-Za-z]/g)
+  expect(rightCommands).toEqual(leftCommands)
+  const expected = reflectedPathCoordinates(left, axis, bounds)
+  const actual = right.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  expect(actual).toHaveLength(expected.length)
+  actual.forEach((coordinate, index) => expect(coordinate).toBeCloseTo(expected[index], 7))
+
+  const leftElement = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  leftElement.setAttribute("aria-label", graphicShapePresets[leftType].label)
+  leftElement.setAttribute("d", left)
+  const rightElement = document.createElementNS("http://www.w3.org/2000/svg", "path")
+  rightElement.setAttribute("aria-label", graphicShapePresets[rightType].label)
+  rightElement.setAttribute("d", right)
+  const leftState = readGraphicPreset(leftElement)!
+  const rightState = readGraphicPreset(rightElement)!
+  const leftHandles = graphicPresetHandles(leftState)
+  const rightHandles = graphicPresetHandles(rightState)
+  expect(rightHandles.map(({name}, index) => ({name, axis: rightState.definition.adjustments[index].axis})))
+    .toEqual(leftHandles.map(({name}, index) => ({name, axis: leftState.definition.adjustments[index].axis})))
+  rightHandles.forEach((handle, index) => {
+    const point = leftHandles[index].point
+    expect(handle.point.x).toBeCloseTo(axis === "x" ? 2 * bounds.x + bounds.width - point.x : point.x, 7)
+    expect(handle.point.y).toBeCloseTo(axis === "y" ? 2 * bounds.y + bounds.height - point.y : point.y, 7)
+  })
+
+  const serializedLeft = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${leftElement.outerHTML}</svg>`, "image/svg+xml").querySelector("path")!
+  const serializedRight = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${rightElement.outerHTML}</svg>`, "image/svg+xml").querySelector("path")!
+  const leftBefore = readGraphicPreset(serializedLeft)!
+  const rightBefore = readGraphicPreset(serializedRight)!
+  const target = 11
+  expect(adjustGraphicPreset(serializedLeft, leftBefore, `adjust-${leftBefore.definition.adjustments[0].name}`, target)).toBe(true)
+  expect(adjustGraphicPreset(serializedRight, rightBefore, `adjust-${rightBefore.definition.adjustments[0].name}`, target)).toBe(true)
+  const leftAfter = readGraphicPreset(serializedLeft)!
+  const rightAfter = readGraphicPreset(serializedRight)!
+  expectMirroredPaths(serializedLeft.getAttribute("d")!, serializedRight.getAttribute("d")!, axis, bounds)
+  const leftAfterHandles = graphicPresetHandles(leftAfter)
+  const rightAfterHandles = graphicPresetHandles(rightAfter)
+  rightAfterHandles.forEach((handle, index) => {
+    expect(handle.point.x).toBeCloseTo(axis === "x" ? 2 * bounds.x + bounds.width - leftAfterHandles[index].point.x : leftAfterHandles[index].point.x, 7)
+    expect(handle.point.y).toBeCloseTo(axis === "y" ? 2 * bounds.y + bounds.height - leftAfterHandles[index].point.y : leftAfterHandles[index].point.y, 7)
+  })
+}
+
+const expectMirroredPaths = (left: string, right: string, axis: "x" | "y", bounds: {x: number, y: number, width: number, height: number}) => {
+  expect(right.match(/[A-Za-z]/g)).toEqual(left.match(/[A-Za-z]/g))
+  const expected = reflectedPathCoordinates(left, axis, bounds)
+  const actual = right.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
+  expect(actual).toHaveLength(expected.length)
+  actual.forEach((coordinate, index) => expect(coordinate).toBeCloseTo(expected[index], 7))
+}
+
 describe("native SVG shape presets", () => {
   it("uses one radial inner-radius POI for the cloud while preserving lobe midpoints", () => {
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
@@ -29,7 +102,7 @@ describe("native SVG shape presets", () => {
     element.setAttribute("d", graphicPresetPath("cloud", bounds))
     const before = readGraphicPreset(element)!
     expect(before.definition.adjustments.map(({name,label,default: value,min,max,axis}) => ({name,label,value,min,max,axis}))).toEqual([
-      {name:"inner",label:"Inner radius",value:30,min:8,max:38,axis:"x"},
+      {name:"inner",label:"Inner radius",value:30,min:0,max:38,axis:"x"},
     ])
     expect(graphicPresetHandles(before).map(handle=>handle.label)).toEqual(["Inner radius"])
     const unadjustedPath = element.getAttribute("d")!
@@ -580,6 +653,35 @@ describe("native SVG shape presets", () => {
     }
   })
 
+  it.each([
+    ["frame", "thickness", 0, 50], ["donut", "hole", 0, 50],
+    ["corner", "thickness", 0, 100], ["moon", "phase", 0, 100],
+    ["cloud", "inner", 0, 38], ["document", "wave", 0, 35],
+    ["collate", "waist", 0, 100], ["sort", "division", 0, 100],
+    ["extract", "apex", 0, 100], ["merge", "apex", 0, 100],
+    ["left-arrow", "shaft", 0, 50], ["left-arrow", "head-start", 0, 100],
+    ["left-right-arrow", "head-start", 0, 50],
+  ] as const)("lets %s %s reach its geometric endpoints %s and %s and move away after reload", (type, name, min, max) => {
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[type].label)
+    element.setAttribute("d", graphicPresetPath(type, bounds))
+    for(const value of [min, max]) {
+      const before = readGraphicPreset(element)!
+      const index = before.definition.adjustments.findIndex(adjustment => adjustment.name === name)
+      const values = [...before.values]; values[index] = value
+      const point = before.definition.adjustments[index].point(values)
+      expect(adjustGraphicPreset(element, before, `adjust-${name}`, {
+        x: bounds.x + point.x / 100 * bounds.width, y: bounds.y + point.y / 100 * bounds.height,
+      })).toBe(true)
+      const reloaded = new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${element.outerHTML}</svg>`, "image/svg+xml").querySelector("path")!
+      const after = readGraphicPreset(reloaded)!
+      expect(after.type).toBe(type)
+      expect(after.values[index]).toBeCloseTo(value, 3)
+      expect(adjustGraphicPreset(reloaded, after, `adjust-${name}`, (min + max) / 2)).toBe(true)
+      expect(readGraphicPreset(reloaded)!.values[index]).toBeCloseTo((min + max) / 2, 3)
+    }
+  })
+
   it.each(graphicPresetOptions)("recovers $label geometry and adjustments from serialized SVG", option => {
     const definition: GraphicShapePreset = graphicShapePresets[option.type]
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
@@ -751,7 +853,7 @@ describe("native SVG shape presets", () => {
     const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
     element.setAttribute("aria-label", "Moon")
     element.setAttribute("d", graphicPresetPath("moon", frame))
-    for(const [x, expected] of [[-100, 5], [120, 50], [400, 100]]) {
+    for(const [x, expected] of [[-100, 0], [120, 50], [400, 100]]) {
       const state = readGraphicPreset(element)!
       adjustGraphicPreset(element, state, "adjust-phase", {x, y: -1000})
       expect(readGraphicPreset(element)!.values[0]).toBeCloseTo(expected)
@@ -787,7 +889,7 @@ describe("native SVG shape presets", () => {
     expect(adjustGraphicPreset(element, before, "adjust-waist", {
       x: bounds.x + bounds.width * 2, y: bounds.y + bounds.height * height / 100,
     })).toBe(true)
-    const state = readGraphicPreset(element)!, value = Math.max(35, Math.min(65, height))
+    const state = readGraphicPreset(element)!, value = Math.max(0, Math.min(100, height))
     expect(state.values[0]).toBeCloseTo(value)
     const handle = graphicPresetHandles(state)[0].point
     expect(handle.x).toBeCloseTo(bounds.x + bounds.width / 2)
@@ -967,5 +1069,96 @@ describe("native SVG shape presets", () => {
     expect(element.getAttribute("d")).toMatch(/^M .* A .* A .* Z$/)
     expect(element.getAttribute("d")).not.toContain("C")
     expect(readGraphicPreset(element)!.type).toBe("chord")
+  })
+
+  it.each([
+    ["curved-left-arrow", "curved-right-arrow", "x"],
+    ["curved-up-arrow", "curved-down-arrow", "y"],
+  ] as const)("mirrors %s and %s paths and handles at defaults and adjusted values", (leftType, rightType, axis) => {
+    for(const values of [graphicShapePresets[leftType].adjustments.map(adjustment => adjustment.default), [4, 54, 18], [12, 81, 34]]) {
+      expectMirroredCurvedArrows(leftType, rightType, axis, values)
+    }
+  })
+
+  it.each([
+    ["curved-right-arrow", "curved-left-arrow"],
+    ["curved-down-arrow", "curved-up-arrow"],
+  ] as const)("keeps legacy %s geometry recognizable until it is edited", (legacyType, mirroredType) => {
+    const legacy = legacyCurvedArrowPresets[legacyType]!
+    const values = [4, 54, 18]
+    let index = 0
+    const oldPath = legacy.draw(values).replace(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g, value => {
+      const horizontal = index++ % 2 === 0
+      return String((horizontal ? bounds.x : bounds.y) + Number(value) / 100 * (horizontal ? bounds.width : bounds.height))
+    })
+    const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    element.setAttribute("aria-label", graphicShapePresets[legacyType].label)
+    element.setAttribute("d", oldPath)
+    const before = readGraphicPreset(element)!
+    expect(before.type).toBe(legacyType)
+    before.values.forEach((value, i) => expect(value).toBeCloseTo(values[i], 3))
+    expect(element.getAttribute("d")).toBe(oldPath)
+    expect(adjustGraphicPreset(element, before, `adjust-${before.definition.adjustments[0].name}`, 11)).toBe(true)
+    const after = readGraphicPreset(element)!
+    expect(after.type).toBe(legacyType)
+    expect(after.type).not.toBe(mirroredType)
+    expect(after.values[0]).toBeCloseTo(11, 3)
+  })
+
+  it.each([
+    "left-arrow", "curved-right-arrow", "pie", "chord", "rectangular-callout", "text-box",
+  ] as const)("round-trips %s through horizontal, vertical, and double preset reflections", type => {
+    const definition = graphicShapePresets[type]
+    const values = type === "pie" ? [132] : type === "chord" ? [31, 124]
+      : type === "rectangular-callout" ? [37, 72, 19] : definition.adjustments.map(adjustment => adjustment.default)
+    const reflections = [
+      {horizontal: true, vertical: false},
+      {horizontal: false, vertical: true},
+      {horizontal: true, vertical: true},
+    ]
+    for(const reflection of reflections) {
+      const d = graphicPresetPath(type, bounds, values, reflection)
+      const element = document.createElementNS("http://www.w3.org/2000/svg", "path")
+      element.setAttribute("aria-label", definition.label)
+      element.setAttribute("d", d)
+      const state = readGraphicPreset(element)!
+      expect(state.type).toBe(type)
+      expect(state.bounds.width).toBeGreaterThan(0)
+      expect(state.bounds.height).toBeGreaterThan(0)
+      if(type === "curved-right-arrow") {
+        expect(state.reflection).toEqual(reflection)
+      }
+      expect(element.getAttribute("d")).toBe(d)
+
+      const frame = state.bounds
+      const actualReflection = state.reflection ?? {horizontal: false, vertical: false}
+      const handles = graphicPresetHandles(state)
+      handles.forEach(handle => {
+        const adjustment = definition.adjustments[handle.index]
+        const point = adjustment.point(state.values)
+        expect(handle.point.x).toBeCloseTo(frame.x + (actualReflection.horizontal ? 100 - point.x : point.x) / 100 * frame.width, 4)
+        expect(handle.point.y).toBeCloseTo(frame.y + (actualReflection.vertical ? 100 - point.y : point.y) / 100 * frame.height, 4)
+      })
+
+      writeGraphicPreset(element, state)
+      expectSamePresetPath(element.getAttribute("d")!, d)
+      const current = readGraphicPreset(element)!
+      const adjustment = current.definition.adjustments[0]
+      const changed = Math.min(adjustment.max, Math.max(adjustment.min, current.values[0] + 1))
+      expect(adjustGraphicPreset(element, current, `adjust-${adjustment.name}`, changed)).toBe(true)
+      const numericState = readGraphicPreset(element)!
+      if(type === "curved-right-arrow") {
+        expect(numericState.reflection).toEqual(reflection)
+      }
+      expect(numericState.values[0]).toBeCloseTo(changed, 3)
+      const nextHandle = graphicPresetHandles(numericState).find(handle => handle.index === 0)
+      if(nextHandle) expect(adjustGraphicPreset(element, numericState, nextHandle.name, nextHandle.point)).toBe(true)
+      const pointerState = readGraphicPreset(element)!
+      if(type === "curved-right-arrow") {
+        expect(pointerState.reflection).toEqual(reflection)
+      }
+      const canonical = graphicPresetPath(type, pointerState.bounds, pointerState.values, pointerState.reflection)
+      expectSamePresetPath(element.getAttribute("d")!, canonical)
+    }
   })
 })

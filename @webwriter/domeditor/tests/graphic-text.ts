@@ -10,8 +10,12 @@ export async function checkGraphicText() {
   document.body.append(frame)
   const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor, editorError?: string}
   let updates = 0
+  const states: {type: string, detail: {canMark?: boolean, svgText?: boolean, graphic?: {capture?: boolean}}}[] = []
   const observe = (event: MessageEvent) => {
-    if(event.source === view && [markStateChangeEvent, selectionChangeEvent].includes(event.data?.type)) updates++
+    if(event.source === view && [markStateChangeEvent, selectionChangeEvent].includes(event.data?.type)) {
+      updates++
+      states.push(event.data)
+    }
   }
   window.addEventListener("message", observe)
   try {
@@ -48,10 +52,27 @@ export async function checkGraphicText() {
       assert(!editor.appendix.querySelector(".◆graphic-label-input"), "Escape left the label proxy attached")
       assert(!graphic.querySelector(".◆graphic-text-editing"), "Escape left a text editing marker")
     }
+    shape.dispatchEvent(new view.MouseEvent("dblclick", {bubbles: true, button: 0}))
+    await settle()
+    assert(editor.features.graphic.isTextInputFocused, "label did not reopen before blank-canvas dismissal")
+    states.length = 0
+    const box = graphic.getBoundingClientRect()
+    graphic.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0, pointerId: 9, clientX: box.left + 10, clientY: box.top + 10}))
+    doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, button: 0, pointerId: 9}))
+    await settle()
+    assert(editor.features.selection.captureSelectedElement === graphic, "dismissing a label lost graphic capture")
+    assert(!editor.features.graphic.selectedShapes.length && !editor.features.graphic.textEditingRange,
+      "blank-canvas dismissal retained a shape or label selection")
+    const markStates = states.filter(state => state.type === markStateChangeEvent)
+    assert(markStates.length && markStates.every(state => !state.detail.canMark || state.detail.svgText),
+      "label dismissal temporarily reported document text formatting and would unmount the shape keyboard")
+    assert(states.filter(state => state.type === selectionChangeEvent).every(state => state.detail.graphic?.capture),
+      "label dismissal temporarily reported uncaptured graphic selection")
     const text=graphic.querySelector("text")!
     for(const surface of ["shape","outline","resize-se","rotate","port","graphic-resize"]) {
       text.dispatchEvent(new view.PointerEvent("pointerdown",{bubbles:true,cancelable:true,button:0,pointerId:7}))
       doc.dispatchEvent(new view.PointerEvent("pointerup",{bubbles:true,button:0,pointerId:7}))
+      await settle()
       assert(editor.features.graphic.textEditingRange && editor.features.graphic.isTextInputFocused,`${surface}: clicking the label did not enter text selection`)
       const selected=editor.features.graphic.selectedShape!
       const outline=editor.appendix.querySelector<SVGPolygonElement>('[part="graphic-selection-outline"]')!

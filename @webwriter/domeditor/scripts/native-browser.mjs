@@ -7,9 +7,20 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "Crossing graphic resize edges reflects shapes and preserves fixed anchors",
+  "Drawing brush keys are temporary and inserted shapes keep their defaults",
+  "Tab cycles captured graphic and formula keyboard tabs without changing content",
   "canvas starting view frames resize, delete and open without shifting",
+  "SVG snapping follows the visible grid through viewport changes",
   "SVG arrowheads select their connector, fit its outline and resize independently",
   "SVG shape fills keep overlaps solid and intentional holes open",
+  "SVG preset POIs stay on their actual contours through adjustments",
+  "SVG curved shape POIs follow contours while dragging and undoing",
+  "SVG Chord endpoint POIs retain their ellipse through circular edits",
+  "SVG block arrow POIs independently edit shaft and arrowhead dimensions",
+  "SVG Pie POI sweeps continuously from small slices to a full circle",
+  "SVG rotated POI edits keep unedited geometry fixed on screen",
+  "SVG POIs dodge resize handles at geometric endpoints",
   "SVG stroke colors preserve line placement and selection",
   "repeated canvas modifier selections preserve item placement and camera",
   "canvas multiline text keeps partial selections after formatting",
@@ -95,6 +106,8 @@ const expectedChecks = [
   "native drag floats in preview areas and preserves ordinary gap drops",
   "document shape drops use float lanes and ordinary content flow",
   "keyboard shape drags capture graphics and finish drops through appendix surfaces",
+  "shape keys preview and place at the cursor without Alt",
+  "SVG shape text entry keeps capture and native typing stable",
   "ribbon elements drop inside captured graphics with native content and cleanup",
   "empty document gutters prefer floats throughout the viewport",
   "empty graphics drag through their full capture outline into floats",
@@ -328,7 +341,7 @@ try {
   const timedOut = new Promise(resolve => {
     // The full regression suite runs its iframe and layout checks serially.
     const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000
-      : !smoke && !checkFilter && !performanceMode && !widgetAggregationMode ? 600000 : 30000
+      : !smoke && !checkFilter && !performanceMode && !widgetAggregationMode ? 600000 : checkFilter ? 120000 : 30000
     timeout = setTimeout(() => resolve({error: `Native browser timed out${activeCheck ? ` while running: ${activeCheck}` : ""}`}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])

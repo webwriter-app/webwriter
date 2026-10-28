@@ -118,7 +118,7 @@ export const graphicShapeOptions = [
   ...basicGraphicShapeOptions.filter(option => option.type !== "line" && option.type !== "image" && option.type !== "polygon" && option.type !== "rectangle"),
   ...lineArrowOptions,
   ...graphicPresetOptions.filter(option => option.category !== "Lines"
-    && !["text-box", "right-triangle", "arc", "not-equal", "multidocument", "line-callout-2"].includes(option.type)),
+    && !["text-box", "right-triangle", "arc", "not-equal", "multidocument", "line-callout-2", "parentheses", "braces", "curved-ribbon-up", "curved-ribbon-down"].includes(option.type)),
 ]
   .map(option => ({...option,
     category: option.type === "triangle" || option.type === "right-triangle" ? "Triangles" : option.category,
@@ -153,12 +153,27 @@ const arrowShapeRows = [
   graphicShapeOptions.filter(option => option.category === "Block arrows" && !groupedArrows.has(option.type)),
 ]
 
+const bracketShapeTypes = new Set(["left-bracket", "right-bracket", "left-brace", "right-brace"])
+const explosionShapeTypes = new Set(["seal-1", "seal-2"])
+const advancedShapes = graphicShapeOptions.filter(option => !basicShapes.has(option.type)
+  && option.category !== "Block arrows" && option.category !== "Flowchart")
+const advancedShapeRows = [
+  advancedShapes.filter(option => option.category === "Basic shapes" && !bracketShapeTypes.has(option.type)
+    || explosionShapeTypes.has(option.type)),
+  [
+    ...advancedShapes.filter(option => option.category === "Equation shapes"),
+    ...advancedShapes.filter(option => bracketShapeTypes.has(option.type)),
+  ],
+  advancedShapes.filter(option => option.category !== "Basic shapes" && option.category !== "Equation shapes"
+    && !explosionShapeTypes.has(option.type)),
+].flatMap(options => Array.from({length: Math.ceil(options.length / 11)}, (_, index) => options.slice(index * 11, (index + 1) * 11)))
+
 export const graphicShapeSections = [
   {label: "Basic" as const, rows: basicShapeRows},
   ...(["Advanced", "Arrows", "Flowchart"] as const).map(label => {
     if(label === "Arrows") return {label, rows: arrowShapeRows}
-    const options = graphicShapeOptions.filter(option => label === "Flowchart" ? option.category === "Flowchart"
-      : !basicShapes.has(option.type) && option.category !== "Block arrows" && option.category !== "Flowchart")
+    if(label === "Advanced") return {label, rows: advancedShapeRows}
+    const options = graphicShapeOptions.filter(option => option.category === "Flowchart")
     return {label, rows: Array.from({length: Math.ceil(options.length / 11)}, (_, index) => options.slice(index * 11, (index + 1) * 11))}
   }),
 ]

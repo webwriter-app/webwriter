@@ -7,7 +7,6 @@ import type {ShapeKeyboardInput} from "../editor-bridge"
 const shapePages = graphicShapeSections.map(section => section.label)
 const shapePageIcons = {Basic: "Geometry", Advanced: "Graphic", Arrows: "ArrowBigRight", Flowchart: "ArrowRotaryRight"}
 const brushSizes = [1, 2, 4, 8]
-const defaultBrush = {stroke: "#000000", "stroke-width": defaultGraphicShapePaint["stroke-width"], opacity: defaultGraphicShapePaint.opacity}
 // The number row skips Backquote; each displayed row has at most 11 keys.
 const shapeKeyCodes = [
   ["Backquote", ...Array.from({length: 9}, (_, i) => `Digit${i + 1}`), "Digit0", "Minus"],
@@ -31,7 +30,8 @@ type CustomBrush = Pick<Required<GraphicShapePaint>, "stroke" | "stroke-width">
 export class ShapeKeyboard extends LitElement {
   static properties = {
     activePage: {state: true},
-    shifted: {state: true},
+    activeShape: {state: true},
+    heldBrush: {state: true},
     keyRows: {state: true},
     paint: {attribute: false},
     mode: {attribute: false},
@@ -91,6 +91,8 @@ export class ShapeKeyboard extends LitElement {
     .key { display: grid; place-items: center; min-height: 0; padding: .15rem .2rem; }
     .key svg { display: block; grid-area: 1 / 1; width: 2rem; max-width: 100%; height: 1.65rem; }
     .hint { grid-area: 1 / 1; align-self: start; justify-self: end; color: #667488; font-size: .52rem; line-height: 1; }
+    .key[aria-pressed="true"] .hint { color: #fff; }
+    .shape-hint { grid-column: 9 / span 3; align-self: center; min-width: 0; color: #667488; font-size: .65rem; line-height: 1.2; text-align: right; }
     .drawing-panel { display: flex; flex-direction: column; gap: .35rem; }
     .presets { flex: 1; min-height: 0; }
     .brush-grid { width: 100%; height: 100%; table-layout: fixed; border-spacing: .2rem; }
@@ -128,12 +130,15 @@ export class ShapeKeyboard extends LitElement {
       .tab-label { display: none; }
       .tabs button, .drawing-modes button { width: 2rem; padding-inline: 0; }
       .key { padding-inline: .08rem; }
+      .shape-hint { font-size: .55rem; line-height: 1.05; }
     }
 
   `
 
   activePage = "Basic"
-  shifted = false
+  private activeShape: ShapeOption["type"] | null = null
+  private heldShapeKey: {code: string, key: string} | null = null
+  private heldBrush: {code: string, key: string, brush: CustomBrush, mode: "draw" | "lines" | "curves"} | null = null
   private keyRows: ShapeKey[][] = fallbackKeyRows()
   private keyboardLayout = (navigator as Navigator & {keyboard?: KeyboardLayout}).keyboard
   private previewViewBoxes = new Map<string, string>()
@@ -146,12 +151,12 @@ export class ShapeKeyboard extends LitElement {
   customBrushes: CustomBrush[] = []
   brushDialogOpen = false
 
-  private get displayedPage() { return this.shifted && !this.isDrawingPage(this.activePage) ? "Advanced" : this.activePage }
   private get shortcutRows() { return this.keyRows.map((row, index) => index === 0 ? row.slice(1) : row) }
   private get brushShortcutRows() { return this.shortcutRows.map(row => row.slice(0, 10)) }
+  private get drawingPaint() { return {...this.paint, ...this.heldBrush?.brush} }
   private pageKeys(page: string) {
     const shapeRows = graphicShapeSections.find(section => section.label === page)?.rows ?? []
-    if(page !== "Basic" && page !== "Arrows") return shapeRows.flat()
+    if(page === "Flowchart") return shapeRows.flat()
     const rows = this.shortcutRows
     const surplus: ShapeOption[] = []
     const keys = rows.flatMap((keys, index): (ShapeOption | undefined)[] => {
@@ -182,37 +187,103 @@ export class ShapeKeyboard extends LitElement {
     catch { /* Browsers without layout access use the language-based key labels. */ }
   }
 
-  /** Modifier shortcuts are stable even when a different page was selected by pointer. */
+  /** Held shortcuts follow the selected page and physical keyboard layout. */
   handleInput(input: ShapeKeyboardInput) {
     if(this.insertionDisabled || this.keyboardInputDisabled) return false
-    this.shifted = input.shiftKey || input.capsLock
-    if(input.type !== "keydown" || !input.altKey || this.brushDialogOpen) return false
     const matches = (key: ShapeKey) => input.code ? key.code === input.code : key.key === input.key.toLowerCase()
+    if(input.type === "keyup") {
+      if(this.heldBrush && matches(this.heldBrush)) { this.clearHeldBrush(); return true }
+      if(this.heldShapeKey && matches(this.heldShapeKey)) { this.clearHeldShape(); return true }
+      this.updateHeldShape()
+      return false
+    }
+    if(input.key === "Escape") { const held = !!this.heldShapeKey || !!this.heldBrush; this.cancelInput(); return held }
+    if(this.brushDialogOpen) return false
+    if(input.key === "Tab" && !input.altKey) {
+      if(!input.repeat) {
+        this.cancelInput()
+        const pages = [...shapePages, "Freehand", "Lines", "Curves"]
+        const index = pages.indexOf(this.activePage)
+        this.selectPage(pages[(index + (input.shiftKey ? -1 : 1) + pages.length) % pages.length])
+      }
+      return true
+    }
     if(this.isDrawingPage(this.activePage)) {
       for(const [row, keys] of this.brushShortcutRows.entries()) {
         const column = keys.findIndex(matches)
         if(column < 0) continue
-        if(!input.repeat) this.setPaint({stroke: `#${themeColorColumns[column][0]}`, "stroke-width": String(brushSizes[row])}, true)
+        if(!input.repeat && (!this.heldBrush || !matches(this.heldBrush))) {
+          this.heldBrush = {code: input.code, key: input.key.toLowerCase(), mode: this.pageMode(this.activePage),
+            brush: {stroke: `#${themeColorColumns[column][0]}`, "stroke-width": String(brushSizes[row])}}
+          this.previewBrush()
+        }
         return true
       }
       return false
     }
+    if(input.type !== "keydown") return false
     const keys = this.shortcutRows.flat()
     const index = keys.findIndex(matches)
-    const page = input.shiftKey ? "Advanced" : ["Arrows", "Flowchart"].includes(this.activePage) ? this.activePage : "Basic"
+    const page = this.activePage
     const option = index < 0 ? undefined : this.pageKeys(page)[index]
     if(!option) return false
-    if(!input.repeat) this.insertShape(option.type, true)
+    if(this.heldShapeKey && matches(this.heldShapeKey)) {
+      this.updateHeldShape()
+      return true
+    }
+    this.heldShapeKey = {code: input.code, key: input.key.toLowerCase()}
+    this.setActiveShape(option.type)
     return true
   }
 
+  private setActiveShape(shape: ShapeOption["type"] | null) {
+    if(this.activeShape === shape) return
+    this.activeShape = shape
+    this.dispatchEvent(new CustomEvent("shape-keyboard-preview", {
+      detail: {shape, ...(shape ? {paint: this.insertionPaint(shape), ...this.heldShapeKey} : {})}, bubbles: true, composed: true,
+    }))
+  }
+
+  private updateHeldShape() {
+    if(!this.heldShapeKey || this.isDrawingPage(this.activePage)) return
+    const keys = this.shortcutRows.flat()
+    const index = keys.findIndex(key => this.heldShapeKey!.code ? key.code === this.heldShapeKey!.code : key.key === this.heldShapeKey!.key)
+    const option = index < 0 ? undefined : this.pageKeys(this.activePage)[index]
+    this.setActiveShape(option?.type ?? null)
+  }
+
+  private clearHeldShape() {
+    this.heldShapeKey = null
+    this.setActiveShape(null)
+  }
+
+  private previewBrush() {
+    if(!this.heldBrush) return
+    this.dispatchEvent(new CustomEvent("shape-brush-preview", {
+      detail: {paint: this.drawingPaint, mode: this.heldBrush.mode}, bubbles: true, composed: true,
+    }))
+  }
+
+  private clearHeldBrush(notify = true) {
+    const held = this.heldBrush
+    if(!held) return
+    this.heldBrush = null
+    if(notify) this.dispatchEvent(new CustomEvent("shape-brush-preview", {
+      detail: {paint: null, mode: held.mode}, bubbles: true, composed: true,
+    }))
+  }
+
+  /** Clears a held shortcut when the host loses focus or hides the keyboard. */
+  cancelInput() { this.clearHeldShape(); this.clearHeldBrush() }
+
   protected willUpdate(changed: PropertyValues) {
-    if(changed.has("insertionDisabled") && this.insertionDisabled
-      || changed.has("keyboardInputDisabled") && this.keyboardInputDisabled) this.shifted = false
+    if(changed.has("insertionDisabled") && this.insertionDisabled || changed.has("keyboardInputDisabled") && this.keyboardInputDisabled) this.cancelInput()
+    if(changed.has("activePage")) this.cancelInput()
     if(changed.has("mode")) {
+      if(this.mode === "select") this.clearHeldBrush()
       if(this.mode !== "select") {
         const page = this.modePage(this.mode)
-        if(this.activePage !== page) this.setPaint(defaultBrush)
+        if(this.activePage !== page) this.cancelInput()
         this.activePage = page
       }
     }
@@ -223,13 +294,13 @@ export class ShapeKeyboard extends LitElement {
 
   render() {
     const rows = this.shortcutRows, brushRows = this.brushShortcutRows
-    const options = this.pageKeys(this.displayedPage)
+    const options = this.pageKeys(this.activePage)
     const surplus = options.slice(rows.flat().length).filter((option): option is ShapeOption => !!option)
     let offset = 0
     return html`<section aria-label="Shapes">
       <div class="header">
         <div class="tabs" role="group" aria-label="Shape pages">
-          ${shapePages.map(page => html`<button type="button" aria-label=${page} title=${page} aria-pressed=${String(this.displayedPage === page)}
+          ${shapePages.map(page => html`<button type="button" aria-label=${page} title=${page} aria-pressed=${String(this.activePage === page)}
             @pointerdown=${this.keepSelection} @click=${() => this.selectPage(page)}><span class="tab-icon" aria-hidden="true">${ribbonIcon(shapePageIcons[page])}</span><span class="tab-label">${page}</span></button>`)}
         </div>
         <div class="drawing-modes" role="group" aria-label="Drawing modes">
@@ -259,14 +330,18 @@ export class ShapeKeyboard extends LitElement {
             <output>${Math.round(Number(this.paint.opacity) * 100)}%</output>
           </label>
         </div>
-      </div>` : html`<div class="grid" role="group" aria-label=${this.displayedPage}>
+      </div>` : html`<div class="grid" role="group" aria-label=${this.activePage}>
         <div class="main-keys">
-          ${rows.map(row => {
+          ${rows.map((row, rowIndex) => {
             const start = offset
             offset += row.length
             return html`<div class="key-row">
               ${options.slice(start, offset).map((option, column) => option
-                ? this.shapeButton(option, row[column].key) : html`<span aria-hidden="true"></span>`)}
+                ? this.shapeButton(option, row[column].key)
+                : this.activePage === "Basic" && rowIndex === 0 && column === 8
+                  ? html`<span class="shape-hint" style="grid-column: 9 / span 3">Hold key and click to insert</span>`
+                  : this.activePage === "Basic" && rowIndex === 0 && column > 8
+                    ? nothing : html`<span aria-hidden="true"></span>`)}
             </div>`
           })}
         </div>
@@ -304,16 +379,16 @@ export class ShapeKeyboard extends LitElement {
   }
 
   private shapeButton(option: ShapeOption, key?: string) {
-    const advanced = this.displayedPage === "Advanced"
     return html`<button class="key" type="button" draggable=${String(!this.insertionDisabled)} ?disabled=${this.insertionDisabled} title=${option.label} aria-label=${option.label}
-      aria-keyshortcuts=${key ? `Alt+${advanced ? "Shift+" : ""}${key}` : nothing}
+      aria-keyshortcuts=${key || nothing}
+      aria-pressed=${String(this.activeShape === option.type)}
       @pointerdown=${(event: PointerEvent) => { if(event.pointerType !== "mouse") this.keepSelection(event) }}
       @dragstart=${(event: DragEvent) => this.startDrag(event, option.type)} @click=${() => this.insertShape(option.type)}>
       ${key ? html`<span class="hint" aria-hidden="true">${key}</span>` : nothing}
       <svg viewBox=${this.previewViewBoxes.get(option.path) ?? "-10 -10 120 120"} aria-hidden="true" focusable="false">
-        <g fill=${graphicShapeIsOpen(option.type) ? "none" : this.paint.fill} stroke=${this.paint.stroke}
-          stroke-width=${Number(this.paint["stroke-width"]) * 1.25} opacity=${this.paint.opacity} stroke-linejoin="round" fill-rule=${option.fillRule}>
-          <path d=${option.path} fill=${option.pathFill === "currentColor" ? this.paint.stroke : "inherit"}></path>
+        <g fill=${graphicShapeIsOpen(option.type) ? "none" : this.paint.fill} stroke=${defaultGraphicShapePaint.stroke}
+          stroke-width=${Number(defaultGraphicShapePaint["stroke-width"]) * 1.25} opacity=${defaultGraphicShapePaint.opacity} stroke-linejoin="round" fill-rule=${option.fillRule}>
+          <path d=${option.path} fill=${option.pathFill === "currentColor" ? defaultGraphicShapePaint.stroke : "inherit"}></path>
         </g>
       </svg>
     </button>`
@@ -324,8 +399,8 @@ export class ShapeKeyboard extends LitElement {
     const width = brush["stroke-width"]
     return html`<button class="brush ${color === "#ffffff" ? "light" : ""}" type="button"
       aria-label=${`${custom ? "Custom " : ""}${color}, ${width} px brush`} title=${`${color}, ${width} px`}
-      aria-keyshortcuts=${key ? `Alt+${key}` : nothing}
-      aria-pressed=${String(this.mode === this.pageMode(this.activePage) && colorHex(this.paint.stroke) === color && Number(this.paint["stroke-width"]) === Number(width))}
+      aria-keyshortcuts=${key || nothing}
+      aria-pressed=${String(this.mode === this.pageMode(this.activePage) && colorHex(this.drawingPaint.stroke) === color && Number(this.drawingPaint["stroke-width"]) === Number(width))}
       @pointerdown=${this.keepSelection} @click=${() => this.setPaint(brush, true)}>
       <svg viewBox="0 0 80 24" aria-hidden="true"><path d=${custom ? "M 10 12 L 70 12" : "M 28 12 L 52 12"} fill="none" stroke=${color}
         stroke-width=${width} opacity=${this.paint.opacity} stroke-linecap="round" vector-effect="non-scaling-stroke"></path></svg>
@@ -339,6 +414,7 @@ export class ShapeKeyboard extends LitElement {
   }
 
   private openBrushDialog() {
+    this.cancelInput()
     this.customColor = colorHex(this.paint.stroke) ?? defaultGraphicShapePaint.stroke
     this.customWidth = this.paint["stroke-width"]
     this.brushDialogOpen = true
@@ -360,7 +436,7 @@ export class ShapeKeyboard extends LitElement {
 
   disconnectedCallback() {
     this.keyboardLayout?.removeEventListener?.("layoutchange", this.updateKeyboardLayout)
-    this.shifted = false
+    this.cancelInput()
     this.closeBrushDialog()
     super.disconnectedCallback()
   }
@@ -368,8 +444,7 @@ export class ShapeKeyboard extends LitElement {
   private selectPage(page: string) {
     const wasDrawing = this.isDrawingPage(this.activePage)
     const nextMode = this.pageMode(page)
-    if(page !== this.activePage && (wasDrawing || this.isDrawingPage(page))
-      || this.isDrawingPage(page) && this.mode !== nextMode) this.setPaint(defaultBrush)
+    if(page !== this.activePage) this.cancelInput()
     this.activePage = page
     if(wasDrawing === this.isDrawingPage(page) && (!wasDrawing || this.mode === nextMode)) return
     this.dispatchEvent(new CustomEvent("ribbon-button-click", {
@@ -390,10 +465,12 @@ export class ShapeKeyboard extends LitElement {
   }
 
   private setPaint(paint: GraphicShapePaint, activateDrawing = false) {
+    if(activateDrawing) this.clearHeldBrush(false)
     this.paint = {...this.paint, ...paint}
     this.dispatchEvent(new CustomEvent("shape-paint-change", {
       detail: {paint: {...this.paint}}, bubbles: true, composed: true,
     }))
+    this.previewBrush()
     if(activateDrawing && this.isDrawingPage(this.activePage)) {
       const mode = this.pageMode(this.activePage)
       if(this.mode !== mode) this.dispatchEvent(new CustomEvent("ribbon-button-click", {
@@ -403,8 +480,7 @@ export class ShapeKeyboard extends LitElement {
   }
 
   private insertionPaint(shape: ShapeOption["type"]): GraphicShapePaint {
-    const {fill, stroke, ...paint} = this.paint
-    return shape === "text-box" ? paint : {...this.paint}
+    return shape === "text-box" ? {} : {fill: this.paint.fill}
   }
 
   private startDrag(event: DragEvent, shape: typeof graphicShapeOptions[number]["type"]) {
@@ -439,7 +515,7 @@ export class ShapeKeyboard extends LitElement {
       catch { /* Hidden or detached SVGs may not have measurable geometry. */ }
     })
     // Complete geometry reads before changing any viewport. Interleaving these
-    // forces a fresh browser layout for every shape when Shift changes pages.
+    // forces a fresh browser layout for every shape when changing pages.
     fitted.forEach(({preview, viewBox}) => {
       if(preview.getAttribute("viewBox") !== viewBox) preview.setAttribute("viewBox", viewBox)
     })

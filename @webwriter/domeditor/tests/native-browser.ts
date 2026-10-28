@@ -26,13 +26,19 @@ import {checkGraphicChord} from "./graphic-chord"
 import {checkGraphicArrowPOIs} from "./graphic-arrow-pois"
 import {checkGraphicPOIEdges} from "./graphic-poi-edges"
 import {checkGraphicCurvedPOIs} from "./graphic-curved-pois"
+import {checkGraphicPOIDodge} from "./graphic-poi-dodge"
 import {checkGraphicSpeechBubbles} from "./graphic-speech-bubbles"
 import {checkGraphicKeyboardDrag} from "./graphic-keyboard-drag"
+import {checkGraphicKeyboardHeld} from "./graphic-keyboard-held"
 import {checkGraphicTextBox} from "./graphic-text-box"
 import {checkGraphicLabels} from "./graphic-labels"
 import {checkGraphicLabelResizePerformance} from "./graphic-label-resize-performance"
 import {checkGraphicEmptyLabelCaret} from "./graphic-empty-label-caret"
 import {checkGraphicText} from "./graphic-text"
+import {checkGraphicGrid} from "./graphic-grid"
+import {checkKeyboardTabs} from "./keyboard-tabs"
+import {checkGraphicBrushes} from "./graphic-brushes"
+import {checkGraphicResizeMirror} from "./graphic-resize-mirror"
 import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
 import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
@@ -65,10 +71,16 @@ await check("SVG Chord endpoint POIs retain their ellipse through circular edits
 await check("SVG block arrow POIs independently edit shaft and arrowhead dimensions", checkGraphicArrowPOIs)
 await check("SVG preset POIs stay on their actual contours through adjustments", checkGraphicPOIEdges)
 await check("SVG curved shape POIs follow contours while dragging and undoing", checkGraphicCurvedPOIs)
+await check("SVG POIs dodge resize handles at geometric endpoints", checkGraphicPOIDodge)
 await check("SVG speech bubbles attach their connector to the edge facing the tip", checkGraphicSpeechBubbles)
 await check("SVG rotated POI edits keep unedited geometry fixed on screen", checkGraphicPOIRotation)
 await check("shape keyboard drops stay within the captured graphic", checkGraphicKeyboardDrag)
+await check("shape keys preview and place at the cursor without Alt", checkGraphicKeyboardHeld)
 await check("SVG shape text entry keeps capture and native typing stable", checkGraphicText)
+await check("SVG snapping follows the visible grid through viewport changes", checkGraphicGrid)
+await check("Tab cycles captured graphic and formula keyboard tabs without changing content", checkKeyboardTabs)
+await check("Drawing brush keys are temporary and inserted shapes keep their defaults", checkGraphicBrushes)
+await check("Crossing graphic resize edges reflects shapes and preserves fixed anchors", checkGraphicResizeMirror)
 await check("SVG shape text boxes fit content and wrap while preserving native editing", checkGraphicTextBox)
 await check("SVG shape text labels wrap and shrink within their geometry", checkGraphicLabels)
 await check("SVG shape text resize reuses glyph metrics and preserves undo", async()=>{await checkGraphicLabelResizePerformance()})

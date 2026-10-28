@@ -45,6 +45,7 @@ import {
 type Point = {x: number, y: number}
 type Bounds = {x: number, y: number, width: number, height: number}
 type Matrix = {a: number, b: number, c: number, d: number, e: number, f: number}
+type Reflection = {horizontal: boolean, vertical: boolean}
 type GraphicOption = "grid" | "snap" | "guides"
 type ConnectorRouting = "straight" | "orthogonal"
 type PortDirection = "n" | "e" | "s" | "w"
@@ -68,6 +69,8 @@ type InteractionItem = {
   visualBounds: Bounds
   points: Point[]
   rotation: number
+  preset?: ReturnType<typeof readGraphicPreset>
+  imageTransform?: string | null
   signature: string
   preview?: SVGGraphicsElement
 }
@@ -92,6 +95,7 @@ type Interaction = {
   previewRoot?: SVGSVGElement
   vertex?: number
   adjustmentAngle?: number
+  handleOffset?: Point
   arrowhead?: {endpoint: ConnectorEndpoint, size: number, step: Point}
   attachedConnectors: AttachedConnector[]
   portTarget?: PortTarget | null
@@ -197,6 +201,7 @@ type PathInteraction = {
 
 const numberPattern = "[-+]?(?:\\d*\\.)?\\d+(?:[eE][-+]?\\d+)?"
 const rotatePattern = new RegExp(`rotate\\(\\s*(${numberPattern})(?:[ ,]+(${numberPattern})[ ,]+(${numberPattern}))?\\s*\\)`, "i")
+const imageReflectionPattern = new RegExp(`matrix\\(\\s*(-?1)[ ,]+0[ ,]+0[ ,]+(-?1)[ ,]+(${numberPattern})[ ,]+(${numberPattern})\\s*\\)\\s*$`)
 
 const cleanNumber = (value: number) => {
   const rounded = Math.round(value * 100) / 100
@@ -569,18 +574,21 @@ function canonicalArrowPoints(shape: Element): Point[] | null {
   if(graphicShapeType(shape) !== "arrow") return null
   const points = parsePoints(shapeGeometry(shape))
   if(points.length !== 7) return null
-  const {x, y, width, height} = boundsForPoints(points), cx = x + width / 2, cy = y + height / 2
+  const {x, y, width, height} = boundsForPoints(points), cy = y + height / 2
   const [a, b, c, d, e, f, g] = points
+  const leftward = d.x < a.x, inverted = e.y < c.y
+  const tail = leftward ? x + width : x, tip = leftward ? x : x + width
+  const top = inverted ? y + height : y, bottom = inverted ? y : y + height
   const expected = [
-    {x, y: a.y}, {x: b.x, y: a.y}, {x: b.x, y}, {x: x + width, y: cy},
-    {x: b.x, y: y + height}, {x: f.x, y: g.y}, {x, y: g.y},
+    {x: tail, y: a.y}, {x: b.x, y: a.y}, {x: b.x, y: top}, {x: tip, y: cy},
+    {x: b.x, y: bottom}, {x: f.x, y: g.y}, {x: tail, y: g.y},
   ]
   const scale = Math.max(1, width, height), epsilon = scale * 1e-5
   if(Math.abs(a.y + g.y - 2 * cy) > epsilon || Math.abs(b.y - a.y) > epsilon
     || Math.abs(f.y - g.y) > epsilon || Math.abs(b.x - f.x) > epsilon
     || Math.abs(c.x - b.x) > epsilon || Math.abs(e.x - b.x) > epsilon
-    || Math.abs(c.y - y) > epsilon || Math.abs(e.y - (y + height)) > epsilon
-    || Math.abs(d.x - (x + width)) > epsilon || Math.abs(d.y - cy) > epsilon
+    || Math.abs(c.y - top) > epsilon || Math.abs(e.y - bottom) > epsilon
+    || Math.abs(d.x - tip) > epsilon || Math.abs(d.y - cy) > epsilon
     || expected.some((p, i) => Math.abs(points[i].x - p.x) > epsilon || Math.abs(points[i].y - p.y) > epsilon)) return null
   return points
 }
@@ -676,22 +684,41 @@ const syncShapeText = (shape: Element) => {
   })
 }
 
+const imageReflection = (transform: string, bounds: Bounds) => {
+  const match = transform.match(imageReflectionPattern)
+  const horizontal = match?.[1] === "-1", vertical = match?.[2] === "-1"
+  if(match && (horizontal || vertical)
+    && Math.abs(Number(match[3]) - (horizontal ? 2 * bounds.x + bounds.width : 0)) < .0001
+    && Math.abs(Number(match[4]) - (vertical ? 2 * bounds.y + bounds.height : 0)) < .0001) {
+    return {horizontal, vertical, prefix: transform.slice(0, match.index).trim(), suffix: match[0]}
+  }
+  return {horizontal: false, vertical: false, prefix: transform, suffix: ""}
+}
+
 const setRotation = (shape: Element, angle: number) => {
-  const transform = shape.getAttribute("transform") ?? ""
+  const original = shape.getAttribute("transform") ?? ""
+  const image = shape.localName === "image" ? imageReflection(original, shapeBounds(shape)) : null
+  const transform = image?.prefix ?? original
   const center = shapeCenter(shape)
   const rotation = `rotate(${cleanNumber(angle)} ${cleanNumber(center.x)} ${cleanNumber(center.y)})`
   const next = rotatePattern.test(transform)
     ? transform.replace(rotatePattern, rotation)
     : `${transform} ${rotation}`.trim()
+  let result = next
   if(Math.abs(angle) < 0.005) {
     const withoutRotation = next.replace(rotatePattern, "").replace(/\s+/g, " ").trim()
-    withoutRotation ? shape.setAttribute("transform", withoutRotation) : shape.removeAttribute("transform")
+    result = withoutRotation
   }
-  else shape.setAttribute("transform", next)
+  if(image?.suffix) result = `${result} ${image.suffix}`.trim()
+  result ? shape.setAttribute("transform", result) : shape.removeAttribute("transform")
 }
 
-const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPoints: Array<{x: number, y: number}>) => {
+const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPoints: Array<{x: number, y: number}>,
+  reflection: Reflection = {horizontal: false, vertical: false}, initialPreset?: ReturnType<typeof readGraphicPreset>, initialImageTransform?: string | null) => {
   const geometry = shapeGeometry(shape)
+  const image = geometry.localName === "image" ? imageReflection(
+    (initialImageTransform === undefined ? geometry.getAttribute("transform") : initialImageTransform) ?? "",
+    initialImageTransform === undefined ? shapeBounds(shape) : initial) : null
   const minimum = ["rectangle", "ellipse", "image"].includes(graphicShapeType(shape) ?? "") ? 1 : 0
   const safe = {
     x: next.x,
@@ -700,32 +727,37 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
     height: Math.max(minimum, next.height),
   }
   const scalePoint = (point: {x: number, y: number}) => ({
-    x: safe.x + (initial.width ? (point.x - initial.x) / initial.width * safe.width : point.x - initial.x),
-    y: safe.y + (initial.height ? (point.y - initial.y) / initial.height * safe.height : point.y - initial.y),
+    x: safe.x + (initial.width ? (reflection.horizontal ? 1 - (point.x - initial.x) / initial.width : (point.x - initial.x) / initial.width) * safe.width : point.x - initial.x),
+    y: safe.y + (initial.height ? (reflection.vertical ? 1 - (point.y - initial.y) / initial.height : (point.y - initial.y) / initial.height) * safe.height : point.y - initial.y),
   })
-  const preset = readGraphicPreset(geometry)
+  const preset = initialPreset === undefined ? readGraphicPreset(geometry) : initialPreset
   if(preset) {
+    const reflected = {...preset, reflection: {
+      horizontal: !!preset.reflection?.horizontal !== reflection.horizontal,
+      vertical: !!preset.reflection?.vertical !== reflection.vertical,
+    }}
     const text = preset.definition.contentSize && shapeText(shape)
     if(text) {
+      const currentPreset = readGraphicPreset(geometry) ?? preset
       const current=shapeBounds(shape)
-      const resizing=Math.abs(safe.width-initial.width)>.01
+      const resizing=initialPreset !== undefined || Math.abs(safe.width-initial.width)>.01
       const dx=safe.x-current.x, dy=safe.y+(resizing ? (initial.height-current.height)/2 : 0)-current.y
       for(const [name,delta] of [["x",dx],["y",dy]] as const) {
         const value=text.getAttribute(name)
         if(value) text.setAttribute(name,value.replace(new RegExp(numberPattern,"g"), value => cleanNumber(Number(value)+delta)))
       }
       if(resizing) text.style.inlineSize = `${Math.max(1,safe.width-preset.definition.contentSize!.padding*2)}px`
-      writeGraphicPreset(geometry,preset,{...preset.bounds,x:preset.bounds.x+dx,y:preset.bounds.y+dy,width:resizing ? Math.max(1,safe.width) : preset.bounds.width})
+      writeGraphicPreset(geometry,reflected,{...currentPreset.bounds,x:currentPreset.bounds.x+dx,y:currentPreset.bounds.y+dy,width:resizing ? Math.max(1,safe.width) : currentPreset.bounds.width})
       return
     }
     // Resize the contour's bounds while retaining the preset's design frame.
     // Use the current preview geometry so repeated frames do not compound.
-    const current = shapeBounds(shape)
+    const current = initialPreset === undefined ? shapeBounds(shape) : initial
     const sx = current.width ? Math.max(1, safe.width) / current.width : 1
     const sy = current.height ? Math.max(1, safe.height) / current.height : 1
-    writeGraphicPreset(geometry, preset, {
-      x: safe.x + (preset.bounds.x - current.x) * sx,
-      y: safe.y + (preset.bounds.y - current.y) * sy,
+    writeGraphicPreset(geometry, reflected, {
+      x: safe.x + (reflection.horizontal ? current.x + current.width - preset.bounds.x - preset.bounds.width : preset.bounds.x - current.x) * sx,
+      y: safe.y + (reflection.vertical ? current.y + current.height - preset.bounds.y - preset.bounds.height : preset.bounds.y - current.y) * sy,
       width: preset.bounds.width * sx, height: preset.bounds.height * sy,
     })
     syncShapeText(shape)
@@ -749,6 +781,12 @@ const setShapeBounds = (shape: Element, next: Bounds, initial: Bounds, initialPo
       geometry.setAttribute("y", cleanNumber(safe.y))
       geometry.setAttribute("width", cleanNumber(safe.width))
       geometry.setAttribute("height", cleanNumber(safe.height))
+      if(image) {
+        const horizontal = image.horizontal !== reflection.horizontal, vertical = image.vertical !== reflection.vertical
+        const matrix = horizontal || vertical ? `matrix(${horizontal ? -1 : 1} 0 0 ${vertical ? -1 : 1} ${horizontal ? cleanNumber(2 * attributeNumber(geometry, "x") + attributeNumber(geometry, "width")) : 0} ${vertical ? cleanNumber(2 * attributeNumber(geometry, "y") + attributeNumber(geometry, "height")) : 0})` : ""
+        const transform = `${image.prefix} ${matrix}`.trim()
+        transform ? geometry.setAttribute("transform", transform) : geometry.removeAttribute("transform")
+      }
       break
     case "ellipse":
       geometry.setAttribute("cx", cleanNumber(safe.x + safe.width / 2))
@@ -804,6 +842,7 @@ export class GraphicFeature extends EditorFeature {
   #drawCursorStylesheet: CSSStyleSheet | null = null
   #labelEditor: LabelEditor | null = null
   #overlay: HTMLElement | null = null
+  #handleOffsets = new WeakMap<Element, Point>()
   #refreshQueued = false
   #frame: number | null = null
   #presentedGraphic: SVGSVGElement | null = null
@@ -817,6 +856,7 @@ export class GraphicFeature extends EditorFeature {
   #navigatedGraphics = new Set<SVGSVGElement>()
   #options: Record<GraphicOption, boolean> = {grid: true, snap: true, guides: true}
   #insertionPointer: Point | null = null
+  #shapePreview: {graphic: SVGSVGElement, shape: GraphicShapeType, paint?: GraphicShapePaint, code?: string, key?: string, root?: SVGSVGElement, element?: SVGGraphicsElement} | null = null
 
   enable() {
     if(this.isEnabled) return
@@ -830,6 +870,7 @@ export class GraphicFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.#insertionPointer = null
+    this.#clearShapePreview()
     this.#pendingImport?.cancel()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
@@ -854,11 +895,20 @@ export class GraphicFeature extends EditorFeature {
   }
 
   actions = {
+    setGraphicShapePreview: ({shape, paint, code, key}: {type: "setGraphicShapePreview", shape: GraphicShapeType | null, paint?: GraphicShapePaint, code?: string, key?: string}) => {
+      this.#clearShapePreview()
+      const graphic = this.#capturedGraphic()
+      if(!shape || !isGraphicShapeType(shape) || !graphic || !this.#canInsertText(graphic)
+        || this.#drawGraphic || this.editor.features.mark.isSVGTextSelection) return
+      this.#shapePreview = {graphic, shape, paint, code, key}
+      this.#updateShapePreview()
+    },
     setGraphicMode: ({mode, paint}: {type: "setGraphicMode", mode: GraphicMode, paint?: GraphicShapePaint}) => {
       if(!["select", "draw", "lines", "curves"].includes(mode) || !this.isEnabled || this.editor.isEditingLocked) return
       const graphic = this.#capturedGraphic()
       if(!graphic || !this.#canInsertText(graphic)) return
       this.#cancelPointer()
+      this.#clearShapePreview()
       this.#closeLabelEditor(true)
       this.#drawMode = mode === "select" ? "draw" : mode
       if(paint) this.#drawPaint = {...this.#drawPaint, ...paint}
@@ -1113,8 +1163,72 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #rememberInsertionPointer(event: PointerEvent) {
-    this.#insertionPointer = event.pointerType === "touch" || isAppendixInteraction(event)
+    this.#insertionPointer = event.pointerType === "touch" || isAppendixInteraction(event) || isFormControlInteraction(event)
       || isWidgetShadowInteraction(event, this.editor.schema) ? null : {x: event.clientX, y: event.clientY}
+    this.#updateShapePreview()
+  }
+
+  #clearShapePreview() {
+    this.#shapePreview?.root?.remove()
+    this.#shapePreview = null
+  }
+
+  #shapePreviewPoint() {
+    const preview = this.#shapePreview, pointer = this.#insertionPointer
+    if(!preview || !pointer || preview.graphic !== this.#capturedGraphic() || !this.#canInsertText(preview.graphic)
+      || this.#drawGraphic || this.editor.features.mark.isSVGTextSelection) return null
+    const graphic = preview.graphic, box = graphicViewBox(graphic)
+    const local = applyInverseMatrix(this.#baseScreenMatrix(graphic), pointer)
+    if(local.x < box.x || local.x > box.x + box.width || local.y < box.y || local.y > box.y + box.height) return null
+    const target = this.editor.hitTestBeneathAppendix(() => document.elementFromPoint?.(pointer.x, pointer.y))
+    return graphicContainerForNode(target ?? null) === graphic ? this.#clientPoint(graphic, pointer.x, pointer.y) : null
+  }
+
+  #updateShapePreview() {
+    const preview = this.#shapePreview
+    if(!preview) return
+    if(preview.graphic !== this.#capturedGraphic() || !this.#canInsertText(preview.graphic)
+      || this.#drawGraphic || this.editor.features.mark.isSVGTextSelection) { this.#clearShapePreview(); return }
+    const point = this.#shapePreviewPoint()
+    if(!point) { preview.root?.setAttribute("display", "none"); return }
+    const graphic = preview.graphic
+    if(!preview.root) {
+      const root = document.createElementNS(SVG_NAMESPACE, "svg")
+      root.classList.add("◆", "◆editor-only", "◆graphic-preview", "◆graphic-insertion-preview")
+      root.setAttribute("part", "graphic-preview")
+      root.setAttribute("aria-hidden", "true")
+      root.style.opacity = ".4"
+      root.setAttribute("viewBox", graphic.getAttribute("viewBox") ?? "0 0 1600 900")
+      const aspect = graphic.getAttribute("preserveAspectRatio")
+      if(aspect) root.setAttribute("preserveAspectRatio", aspect)
+      this.editor.addAppendix(root)
+      preview.root = root
+      this.#positionPreviewRoot(root, graphic)
+      let element = this.#createShape(preview.shape, 0, root, graphic)
+      root.append(element)
+      this.#applyShapePaint(element, preview.shape, preview.paint)
+      if(preview.shape === "text-box") element = this.#setLabel(element, "Text")
+      preview.element = element
+    }
+    preview.root.removeAttribute("display")
+    this.#positionPreviewRoot(preview.root, graphic)
+    const bounds = shapeBounds(preview.element!)
+    this.#moveShape(preview.element!, point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2)
+    if(this.#presentedGraphic === graphic) this.#updateOverflowPresentation(graphic)
+  }
+
+  #placePreviewShape(event: PointerEvent) {
+    const preview = this.#shapePreview
+    if(!preview || event.button !== 0 || event.ctrlKey || event.metaKey || this.#spaceDown
+      || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema)) return false
+    const point = this.#shapePreviewPoint()
+    if(!point) return false
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    this.editor.doc.stopCapturing()
+    this.#insertShape(preview.graphic, preview.shape, preview.paint, point)
+    this.editor.doc.stopCapturing()
+    return true
   }
 
   #shapeInsertionPoint(graphic: SVGSVGElement): Point {
@@ -1228,6 +1342,7 @@ export class GraphicFeature extends EditorFeature {
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
       this.#rememberInsertionPointer(event)
+      if(this.#placePreviewShape(event)) return
       if(!this.#labelEditor || event.button !== 0) return
       const path = event.composedPath()
       // The outer graphic's transform controls consume the event before our
@@ -1236,8 +1351,8 @@ export class GraphicFeature extends EditorFeature {
         || path.some(target => target instanceof Element && target.id === "◆transform-overlay")) this.#closeLabelEditor(true)
     },
     pointermove: event => this.#rememberInsertionPointer(event),
-    pointerout: event => { if(!event.relatedTarget) this.#insertionPointer = null },
-    pointercancel: () => this.#insertionPointer = null,
+    pointerout: event => { if(!event.relatedTarget) { this.#insertionPointer = null; this.#updateShapePreview() } },
+    pointercancel: () => { this.#insertionPointer = null; this.#clearShapePreview() },
     dragover: event => {
       if(event.defaultPrevented || this.#rejectRibbonDrop(event)) return
       if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
@@ -1413,6 +1528,19 @@ export class GraphicFeature extends EditorFeature {
       }
       const graphic = this.#capturedGraphic()
       if(!graphic) return
+      if(event.key === "Escape" && this.#shapePreview) {
+        this.#clearShapePreview()
+        this.#postShapeKeyboardInput(event)
+        this.#claimKeyboardEvent(event)
+        return
+      }
+      if(event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
+        this.#clearShapePreview()
+        this.#postShapeKeyboardInput(event)
+        this.#claimKeyboardEvent(event)
+        return
+      }
+      if(event.ctrlKey || event.metaKey || event.isComposing) this.#clearShapePreview()
       if(event.key === "Shift" || event.key === "CapsLock") this.#postShapeKeyboardInput(event)
       if(!event.altKey && modifierKeyDown(event) && ["z", "y"].includes(event.key.toLowerCase())) {
         this.#cancelPointer()
@@ -1545,10 +1673,13 @@ export class GraphicFeature extends EditorFeature {
       }
       const isAltGraph = event.getModifierState("AltGraph")
       const isPrintable = event.key.length === 1 && !event.metaKey && (!event.ctrlKey || isAltGraph)
-      if(event.key !== "Shift" && event.key !== "CapsLock" && !this.#interaction && !this.#connector && !this.#marquee && !this.#pan && !this.#stroke && !this.#path) this.#postShapeKeyboardInput(event)
+      if(event.key !== "Shift" && event.key !== "CapsLock" && !this.#interaction && !this.#connector && !this.#marquee && !this.#pan
+        && (this.#drawGraphic || !this.#stroke && !this.#path)) this.#postShapeKeyboardInput(event)
       if(event.key === "Enter" || event.key === "Dead" || isPrintable) this.#claimKeyboardEvent(event)
     },
     keyup: event => {
+      const preview = this.#shapePreview
+      if(preview && (preview.code ? event.code === preview.code : preview.key?.toLowerCase() === event.key.toLowerCase())) this.#clearShapePreview()
       this.#handleSpaceUp(event)
       this.#updatePOIModifiers(event)
       if(this.#capturedGraphic() && !this.editor.features.mark.isSVGTextSelection) this.#postShapeKeyboardInput(event)
@@ -1564,7 +1695,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #postShapeKeyboardInput(event: KeyboardEvent) {
-    if(event.isComposing || event.ctrlKey || event.metaKey || this.selectedShapes.length) return
+    if(event.isComposing || event.type !== "keyup" && (event.ctrlKey || event.metaKey)) return
     const detail: ShapeKeyboardInput = {
       type: event.type as ShapeKeyboardInput["type"], key: event.key, code: event.code,
       altKey: event.altKey, shiftKey: event.shiftKey, capsLock: event.getModifierState("CapsLock"), repeat: event.repeat,
@@ -1614,6 +1745,7 @@ export class GraphicFeature extends EditorFeature {
 
   #handleWindowBlur = () => {
     this.#insertionPointer = null
+    this.#clearShapePreview()
     this.#spaceDown = false
     removeEditorMarker(document.body, "◆graphic-pan-ready")
     this.#cancelPan()
@@ -1683,16 +1815,16 @@ export class GraphicFeature extends EditorFeature {
     return graphic
   }
 
-  #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement): SVGGraphicsElement {
+  #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement, sizingGraphic = graphic): SVGGraphicsElement {
     if(type === "line-start-arrow" || type === "line-end-arrow" || type === "line-both-arrows") {
-      const connector = this.#createShape("connector", index, graphic)
-      const bounds = this.#shapeInsertionBounds("line", index, graphic)
+      const connector = this.#createShape("connector", index, graphic, sizingGraphic)
+      const bounds = this.#shapeInsertionBounds("line", index, sizingGraphic)
       setConnectorEndpoints(connector, {x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y}, "straight")
       if(type !== "line-end-arrow") this.#setConnectorArrow(connector, "start", true, graphic)
       if(type !== "line-start-arrow") this.#setConnectorArrow(connector, "end", true, graphic)
       return connector
     }
-    const bounds = this.#shapeInsertionBounds(type, index, graphic)
+    const bounds = this.#shapeInsertionBounds(type, index, sizingGraphic)
     let shape: SVGGraphicsElement
     if(isGraphicPresetType(type)) {
       const definition: GraphicShapePreset = graphicShapePresets[type]
@@ -1886,6 +2018,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #openLabelEditor(shape: SVGGraphicsElement) {
+    this.#clearShapePreview()
     this.#closeLabelEditor(true, false)
     this.editor.doc.stopCapturing()
     const graphic = graphicContainerForNode(shape)
@@ -2395,12 +2528,16 @@ export class GraphicFeature extends EditorFeature {
       visualBounds: visualBounds(source),
       points: shapePoints(source),
       rotation: rotationOf(source),
+      preset: readGraphicPreset(shapeGeometry(source)),
+      ...(graphicShapeType(source) === "image" ? {imageTransform: shapeGeometry(source).getAttribute("transform")} : {}),
       signature: this.#geometrySignature(source),
     }))
     const multi = items.length > 1
     const endpoint = handle === "arrowhead-start" ? "start" : "end"
     const head = kind === "arrowhead" ? arrowhead(shape, endpoint) : null
     if(kind === "arrowhead" && !head) return
+    const offset = captureTarget && this.#handleOffsets.get(captureTarget)
+    const offsetPoint = offset && this.#clientPoint(graphic, event.clientX - offset.x, event.clientY - offset.y)
     this.#interaction = {
       kind,
       handle,
@@ -2417,6 +2554,7 @@ export class GraphicFeature extends EditorFeature {
       candidates: this.#snapCandidates(graphic, new Set(shapes)),
       items,
       attachedConnectors: this.#captureAttachedConnectors(graphic, shapes),
+      ...(offsetPoint ? {handleOffset: {x: point.x - offsetPoint.x, y: point.y - offsetPoint.y}} : {}),
       ...(kind === "path-point" ? {vertex: Number(handle.slice("path-point-".length))} : {}),
       ...(kind === "vertex" ? {vertex: Number.parseInt(handle.slice("vertex-".length))} : {}),
       ...(head ? {arrowhead: {endpoint, size: head.size, step: {
@@ -2563,10 +2701,11 @@ export class GraphicFeature extends EditorFeature {
       const index = preset?.definition.adjustments.findIndex(adjustment => `adjust-${adjustment.name}` === interaction.handle) ?? -1
       const adjustment = preset?.definition.adjustments[index]
       if(preset && adjustment?.axis === "angle") {
-        const point = rotateAround(interaction.latest.point, shapeCenter(source), -interaction.rotation)
+        const input = interaction.latest.point, offset = interaction.handleOffset
+        const point = rotateAround({x: input.x - (offset?.x ?? 0), y: input.y - (offset?.y ?? 0)}, shapeCenter(source), -interaction.rotation)
         const chord = preset.type === "chord", start = chord ? preset.values[0] : 0
         const previous = interaction.adjustmentAngle ?? preset.values[index] + (chord && index === 1 ? start : 0)
-        const angle = graphicPresetAngle(preset.bounds, point, previous)
+        const angle = graphicPresetAngle(preset.bounds, point, previous, preset.reflection)
         const min = chord ? index === 0 ? start + preset.values[1] - 360 : start + .5 : adjustment.min
         const max = chord ? index === 0 ? start + preset.values[1] - .5 : start + 360 : adjustment.max
         if(angle !== undefined) interaction.adjustmentAngle = Math.max(min, Math.min(max, angle))
@@ -3202,7 +3341,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #positionPreviewRoot(preview: SVGSVGElement, graphic: SVGSVGElement) {
-    if(standaloneGraphicShape(graphic)) {
+    if(standaloneGraphicShape(graphic) || preview.classList.contains("◆graphic-insertion-preview")) {
       const box = graphicViewBox(graphic)
       const matrix = this.#screenMatrix(graphic)
       const origin = applyMatrix(matrix, {x: box.x, y: box.y})
@@ -3211,6 +3350,7 @@ export class GraphicFeature extends EditorFeature {
         overflow: "visible", transformOrigin: "0 0",
         transform: `matrix(${matrix.a}, ${matrix.b}, ${matrix.c}, ${matrix.d}, ${origin.x}, ${origin.y})`,
       })
+      if(this.#presentedGraphic === graphic && !preview.classList.contains("◆graphic-insertion-preview")) this.#updateOverflowPresentation(graphic)
       return
     }
     const rect = graphic.getBoundingClientRect()
@@ -3331,17 +3471,18 @@ export class GraphicFeature extends EditorFeature {
       const snapped = this.#snapResize(next, resized.direction, originalDirection, interaction)
       const scaleX = interaction.bounds.width ? snapped.bounds.width / interaction.bounds.width : 1
       const scaleY = interaction.bounds.height ? snapped.bounds.height / interaction.bounds.height : 1
+      const reflection = snapped.reflection
       shapes.forEach((shape, index) => {
         const item = interaction.items[index]
         const mapped = {
-          x: snapped.bounds.x + (item.bounds.x - interaction.bounds.x) * scaleX,
-          y: snapped.bounds.y + (item.bounds.y - interaction.bounds.y) * scaleY,
+          x: snapped.bounds.x + (reflection.horizontal ? interaction.bounds.x + interaction.bounds.width - item.bounds.x - item.bounds.width : item.bounds.x - interaction.bounds.x) * scaleX,
+          y: snapped.bounds.y + (reflection.vertical ? interaction.bounds.y + interaction.bounds.height - item.bounds.y - item.bounds.height : item.bounds.y - interaction.bounds.y) * scaleY,
           width: item.bounds.width * scaleX,
           height: item.bounds.height * scaleY,
         }
-        setShapeBounds(shape, mapped, item.bounds, item.points)
+        setShapeBounds(shape, mapped, item.bounds, item.points, reflection, item.preset, item.imageTransform)
         this.#layoutShapeText(shape)
-        setRotation(shape, item.rotation)
+        setRotation(shape, reflection.horizontal !== reflection.vertical ? -item.rotation : item.rotation)
       })
       interaction.frameBounds = snapped.bounds
       interaction.frameRotation = 0
@@ -3379,7 +3520,7 @@ export class GraphicFeature extends EditorFeature {
   #applyInteraction(shape: Element, interaction: Interaction): ActiveGuides {
     const {latest} = interaction
     const geometry = shapeGeometry(shape)
-    let point = latest.point
+    let point = {x: latest.point.x - (interaction.handleOffset?.x ?? 0), y: latest.point.y - (interaction.handleOffset?.y ?? 0)}
     if(interaction.rotation && interaction.kind !== "move" && interaction.kind !== "rotate") {
       const center = shapeCenter(interaction.items[0].source)
       point = rotateAround(point, center, -interaction.rotation)
@@ -3429,21 +3570,22 @@ export class GraphicFeature extends EditorFeature {
       if(!points) return {}
       const next = points.map(({x, y}) => ({x, y}))
       const centerY = (points[0].y + points[6].y) / 2
+      const vertical = points[4].y < points[2].y ? -1 : 1
       if(interaction.kind === "arrow-shaft") {
-        const headHalf = Math.max(.5, (points[4].y - points[2].y) / 2)
+        const headHalf = Math.max(.5, Math.abs(points[4].y - points[2].y) / 2)
         const half = Math.max(.5, Math.min(headHalf, Math.abs(point.y - centerY)))
-        next[0].y = next[1].y = centerY - half
-        next[5].y = next[6].y = centerY + half
+        next[0].y = next[1].y = centerY - vertical * half
+        next[5].y = next[6].y = centerY + vertical * half
       }
       else if(interaction.kind === "arrow-head-start") {
-        const start = Math.max(points[0].x + .5, Math.min(points[3].x - .5, point.x))
+        const start = Math.max(Math.min(points[0].x, points[3].x) + .5, Math.min(Math.max(points[0].x, points[3].x) - .5, point.x))
         for(const index of [1, 2, 4, 5]) next[index].x = start
       }
       else {
         const shaftHalf = Math.abs(points[0].y - centerY)
         const half = Math.max(shaftHalf, Math.abs(point.y - centerY))
-        next[2].y = centerY - half
-        next[4].y = centerY + half
+        next[2].y = centerY - vertical * half
+        next[4].y = centerY + vertical * half
       }
       setPoints(geometry, next)
       syncShapeText(shape)
@@ -3544,8 +3686,8 @@ export class GraphicFeature extends EditorFeature {
         next = this.#constrainResize(next, resized.direction, interaction.bounds, latest.metaKey || latest.ctrlKey)
       }
       const snapped = this.#snapResize(next, resized.direction, originalDirection, interaction)
-      const stable = this.#stabilizeRotatedResize(snapped.bounds, originalDirection, interaction)
-      setShapeBounds(shape, stable, interaction.bounds, interaction.points)
+      const stable = this.#stabilizeRotatedResize(snapped.bounds, originalDirection, interaction, snapped.reflection)
+      setShapeBounds(shape, stable, interaction.bounds, interaction.points, snapped.reflection, interaction.items[0].preset, interaction.items[0].imageTransform)
       setRotation(shape, interaction.rotation)
       return snapped.guides
     }
@@ -3576,13 +3718,16 @@ export class GraphicFeature extends EditorFeature {
       next.height = Math.max(1, Math.abs(delta) * (fromCenter ? 2 : 1))
       next.y = fromCenter ? center.y - next.height / 2 : vertical === "n" ? fixed - next.height : fixed
     }
-    return {bounds: next, direction: `${vertical}${horizontal}`}
+    return {bounds: next, direction: `${vertical}${horizontal}`, reflection: {
+      horizontal: !!horizontal && horizontal !== (direction.includes("w") ? "w" : "e"),
+      vertical: !!vertical && vertical !== (direction.includes("n") ? "n" : "s"),
+    }}
   }
 
   /** Keeps the opposite resize handle fixed when the shape's rotation center
    * moves with its resized bounds. This is the SVG equivalent of deriving a
    * rotated scale box from the fixed and dragged handles. */
-  #stabilizeRotatedResize(next: Bounds, direction: string, interaction: Interaction) {
+  #stabilizeRotatedResize(next: Bounds, direction: string, interaction: Interaction, reflection: Reflection) {
     const fromCenter = interaction.latest.metaKey || interaction.latest.ctrlKey
     if(!interaction.rotation) return next
     const initial = interaction.bounds
@@ -3592,8 +3737,8 @@ export class GraphicFeature extends EditorFeature {
     }
     const initialCenter = shapeCenter(interaction.items[0].source)
     const nextCenter = {
-      x: next.x + (initial.width ? (initialCenter.x - initial.x) * next.width / initial.width : initialCenter.x - initial.x),
-      y: next.y + (initial.height ? (initialCenter.y - initial.y) * next.height / initial.height : initialCenter.y - initial.y),
+      x: next.x + (initial.width ? (reflection.horizontal ? 1 - (initialCenter.x - initial.x) / initial.width : (initialCenter.x - initial.x) / initial.width) * next.width : initialCenter.x - initial.x),
+      y: next.y + (initial.height ? (reflection.vertical ? 1 - (initialCenter.y - initial.y) / initial.height : (initialCenter.y - initial.y) / initial.height) * next.height : initialCenter.y - initial.y),
     }
     const anchor = {
       x: fromCenter ? boundsCenter.x : direction.includes("w") ? initial.x + initial.width
@@ -3636,9 +3781,9 @@ export class GraphicFeature extends EditorFeature {
     if(!this.#options.snap || interaction.latest.altKey) return {bounds, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
     const x = this.#bestSnap([bounds.x, bounds.x + bounds.width / 2, bounds.x + bounds.width], interaction.candidates.x, threshold.x)
-      ?? this.#gridSnap(bounds.x, threshold.x)
+      ?? this.#gridSnap(bounds.x, threshold.x, "x")
     const y = this.#bestSnap([bounds.y, bounds.y + bounds.height / 2, bounds.y + bounds.height], interaction.candidates.y, threshold.y)
-      ?? this.#gridSnap(bounds.y, threshold.y)
+      ?? this.#gridSnap(bounds.y, threshold.y, "y")
     return {
       bounds: {...bounds, x: bounds.x + (x?.delta ?? 0), y: bounds.y + (y?.delta ?? 0)},
       guides: {x: x?.target, y: y?.target},
@@ -3646,7 +3791,9 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #snapResize(bounds: Bounds, direction: string, originalDirection: string, interaction: Interaction) {
-    if(!this.#options.snap || interaction.latest.altKey) return {bounds, direction, guides: {}}
+    const reflection = {horizontal: /[we]/.test(direction) && direction.includes("w") !== originalDirection.includes("w"),
+      vertical: /[ns]/.test(direction) && direction.includes("n") !== originalDirection.includes("n")}
+    if(!this.#options.snap || interaction.latest.altKey) return {bounds, direction, reflection, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
     const moving = {
       x: direction.includes("w") ? bounds.x : bounds.x + bounds.width,
@@ -3655,24 +3802,24 @@ export class GraphicFeature extends EditorFeature {
     let x: {delta: number, target: SnapTarget} | null = null
     let y: {delta: number, target: SnapTarget} | null = null
     if(direction.includes("w") || direction.includes("e")) {
-      x = this.#bestSnap([moving.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(moving.x, threshold.x)
+      x = this.#bestSnap([moving.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(moving.x, threshold.x, "x")
       moving.x += x?.delta ?? 0
     }
     if(direction.includes("n") || direction.includes("s")) {
-      y = this.#bestSnap([moving.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(moving.y, threshold.y)
+      y = this.#bestSnap([moving.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(moving.y, threshold.y, "y")
       moving.y += y?.delta ?? 0
     }
     const resized = this.#resizeBounds(moving, originalDirection, interaction)
-    return {bounds: resized.bounds, direction: resized.direction, guides: {x: x?.target, y: y?.target}}
+    return {...resized, guides: {x: x?.target, y: y?.target}}
   }
 
   #snapPoint(point: Point, interaction: Pick<Interaction, "latest" | "matrix" | "candidates">, forceGrid = false) {
     if(this.#standaloneShape() || !this.#options.snap || interaction.latest.altKey) return {point, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
-    const x = forceGrid ? this.#gridSnap(point.x, Infinity)
-      : this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x)
-    const y = forceGrid ? this.#gridSnap(point.y, Infinity)
-      : this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y)
+    const x = forceGrid ? this.#gridSnap(point.x, Infinity, "x")
+      : this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x, "x")
+    const y = forceGrid ? this.#gridSnap(point.y, Infinity, "y")
+      : this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y, "y")
     return {
       point: {x: point.x + (x?.delta ?? 0), y: point.y + (y?.delta ?? 0)},
       guides: {x: x?.target, y: y?.target},
@@ -3697,8 +3844,22 @@ export class GraphicFeature extends EditorFeature {
     return best
   }
 
-  #gridSnap(value: number, threshold: number) {
-    const target = Math.round(value / 50) * 50
+  #gridSnap(value: number, threshold: number, axis: "x" | "y") {
+    const graphic = this.#activeGraphic()
+    if(!graphic) return null
+    // The background's 24px tiles live in the CSS viewport, independently
+    // of the viewBox and native pan/zoom. Map its origin back to SVG units.
+    const style = getComputedStyle(graphic), rect = graphic.getBoundingClientRect()
+    const box = graphicViewBox(graphic)
+    const width = graphic.clientWidth || rect.width || (style.width.endsWith("px") ? parseFloat(style.width) : box.width)
+    const height = graphic.clientHeight || rect.height || (style.height.endsWith("px") ? parseFloat(style.height) : box.height)
+    const screen = this.#screenMatrix(graphic), viewport = this.#viewportMatrix(graphic, width, height)
+    const css = this.#cssViewportMatrix(graphic, viewport, width, height)
+    const origin = applyInverseMatrix(css, {x: screen.e, y: screen.f})
+    const scale = (axis === "x" ? viewport.a : viewport.d) * this.#viewport(graphic).scale
+    const offset = origin[axis]
+    if(!Number.isFinite(scale) || !Number.isFinite(offset) || !scale) return null
+    const target = (Math.round((value * scale + offset) / 24) * 24 - offset) / scale
     const delta = target - value
     return Math.abs(delta) <= threshold ? {delta, target: {value: target, kind: "grid"} as SnapTarget} : null
   }
@@ -4258,6 +4419,7 @@ export class GraphicFeature extends EditorFeature {
 
   #refresh() {
     if(!this.isEnabled) return
+    this.#updateShapePreview()
     if(this.#drawGraphic && (this.#capturedGraphic() !== this.#drawGraphic || !this.#canInsertText(this.#drawGraphic))) {
       this.#cancelStroke()
       this.#setDrawGraphic(null)
@@ -4559,7 +4721,10 @@ export class GraphicFeature extends EditorFeature {
     const geometry = shapeGeometry(shape)
     const position = (name: string, point: Point) => {
       const handle = overlay.querySelector<HTMLElement>(`[data-graphic-handle="${name}"]`)
-      if(handle) this.#positionHandle(handle, toClient(point))
+      if(handle) {
+        this.#handleOffsets.delete(handle)
+        this.#positionHandle(handle, toClient(point))
+      }
     }
     const preset = readGraphicPreset(geometry)
     const path = editableShapePath(shape)
@@ -4576,7 +4741,9 @@ export class GraphicFeature extends EditorFeature {
           const offset = {x: (middle.x - center.x) / length * 10, y: (middle.y - center.y) / length * 10}
           handles.forEach((handle, index) => {
             const button = overlay.querySelector<HTMLElement>(`[data-graphic-handle="${handle.name}"]`)!
-            this.#positionHandle(button, {x: middle.x + (index ? 1 : -1) * offset.x, y: middle.y + (index ? 1 : -1) * offset.y})
+            const displayed = {x: middle.x + (index ? 1 : -1) * offset.x, y: middle.y + (index ? 1 : -1) * offset.y}
+            this.#positionHandle(button, displayed)
+            this.#handleOffsets.set(button, {x: displayed.x - endpoints[index].x, y: displayed.y - endpoints[index].y})
           })
         }
         const interaction = this.#interaction
@@ -4638,6 +4805,32 @@ export class GraphicFeature extends EditorFeature {
       const scale = distance > 0 ? Math.max(1, 16 / distance) : 1
       const handle = overlay.querySelector<HTMLElement>(`[data-graphic-handle="arrowhead-${head.endpoint}"]`)
       if(handle) this.#positionHandle(handle, {x: origin.x + (corner.x - origin.x) * scale, y: origin.y + (corner.y - origin.y) * scale})
+    })
+    this.#dodgeSpecificHandles(overlay)
+  }
+
+  /** Keep POIs reachable at geometric endpoints without moving the geometry.
+   * Work in CSS pixels so zoom and rotation do not shrink the separation. */
+  #dodgeSpecificHandles(overlay: HTMLElement) {
+    const point = (handle: HTMLElement) => ({x: parseFloat(handle.style.left), y: parseFloat(handle.style.top)})
+    const occupied = [...overlay.querySelectorAll<HTMLElement>('[data-graphic-handle^="resize-"], [data-graphic-handle="rotate"]')]
+      .filter(handle => !handle.hidden).map(point)
+    const handles = overlay.querySelectorAll<HTMLElement>('.◆graphic-specific-handles [part~="graphic-affordance"]')
+    handles.forEach(handle => {
+      const offset = this.#handleOffsets.get(handle)
+      const name = handle.dataset.graphicHandle!
+      if(/^(?:path-point-|vertex-|line-|connector-|arrowhead-)/.test(name)) return
+      const original = point(handle), displayed = {...original}
+      // Moving only upward makes this terminate even when several POIs and
+      // resize handles coincide on a small shape.
+      for(let collision; (collision = occupied.find(other => Math.hypot(displayed.x - other.x, displayed.y - other.y) < 16 - .0001));) {
+        displayed.y = collision.y - 16
+      }
+      if(displayed.y !== original.y) {
+        this.#positionHandle(handle, displayed)
+        this.#handleOffsets.set(handle, {x: offset?.x ?? 0, y: (offset?.y ?? 0) + displayed.y - original.y})
+      }
+      occupied.push(displayed)
     })
   }
 
@@ -4730,6 +4923,32 @@ export class GraphicFeature extends EditorFeature {
     else removeEditorMarker(captured, "◆graphic-grid-visible")
   }
 
+  #viewportMatrix(root: SVGSVGElement, width: number, height: number): Matrix {
+    const box = graphicViewBox(root), aspect = root.preserveAspectRatio?.baseVal
+    const w = width > 0 ? width : box.width, h = height > 0 ? height : box.height
+    let a = w / box.width, d = h / box.height, x = 0, y = 0
+    const align = aspect?.align ?? (root.getAttribute("preserveAspectRatio") === "none" ? 1 : 6)
+    if(align !== 1) {
+      a = d = aspect?.meetOrSlice === 2 ? Math.max(a, d) : Math.min(a, d)
+      x = (w - box.width * a) * ((align - 2) % 3) / 2
+      y = (h - box.height * d) * Math.floor((align - 2) / 3) / 2
+    }
+    return {a, b: 0, c: 0, d, e: x - box.x * a, f: y - box.y * d}
+  }
+
+  #cssViewportMatrix(root: SVGSVGElement, viewport: Matrix, width: number, height: number): Matrix {
+    const screen = this.#screenMatrix(root), scale = this.#viewport(root).scale
+    const a = screen.a / viewport.a / scale, b = screen.b / viewport.a / scale
+    const c = screen.c / viewport.d / scale, d = screen.d / viewport.d / scale
+    const rect = root.getBoundingClientRect()
+    // Native pan translations do not consistently share viewBox units.
+    // Recover the CSS box origin from its rendered bounds instead.
+    return {a, b, c, d,
+      e: rect.left - Math.min(0, a * width, c * height, a * width + c * height),
+      f: rect.top - Math.min(0, b * width, d * height, b * width + d * height),
+    }
+  }
+
   #updateOverflowPresentation(graphic: SVGSVGElement) {
     const sheet = this.#overflowStylesheet!
     // Read authored filters without feeding our own filter back into the chain.
@@ -4741,23 +4960,35 @@ export class GraphicFeature extends EditorFeature {
     const height = graphic.clientHeight || parseFloat(style.height)
     document.adoptedStyleSheets = sheets
     if(!(width > 0 && height > 0)) return
-    let region: Bounds = {x: 0, y: 0, width, height}
-    try {
-      for(const root of [graphic, ...this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview")]) {
-        const box = root.getBBox()
-        const matrix = root.getCTM()
-        if(matrix) region = unionBounds([region, boundsForPoints([
+    // A root SVG's CSS filter uses viewport pixels, before its CSS transform
+    // and independently of its viewBox and native pan/zoom.
+    const base = this.#cssViewportMatrix(graphic, this.#viewportMatrix(graphic, width, height), width, height)
+    const corners = [{x: 0, y: 0}, {x: width, y: 0}, {x: width, y: height}, {x: 0, y: height}]
+      .map(point => applyMatrix(base, point))
+    let graphicFilter = ""
+    for(const root of [graphic, ...this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview")]) {
+      const rootWidth = root === graphic ? width : root.clientWidth || parseFloat(root.style.width)
+      const rootHeight = root === graphic ? height : root.clientHeight || parseFloat(root.style.height)
+      if(!(rootWidth > 0 && rootHeight > 0)) continue
+      const viewport = this.#viewportMatrix(root, rootWidth, rootHeight), matrix = this.#cssViewportMatrix(root, viewport, rootWidth, rootHeight)
+      const inside = root === graphic ? {x: 0, y: 0, width, height}
+        : boundsForPoints(corners.map(point => applyInverseMatrix(matrix, point)))
+      let region = unionBounds([{x: 0, y: 0, width: rootWidth, height: rootHeight}, inside])
+      try {
+        const box = root.getBBox(), screen = this.#screenMatrix(root)
+        region = unionBounds([region, boundsForPoints([
           {x: box.x, y: box.y}, {x: box.x + box.width, y: box.y},
           {x: box.x + box.width, y: box.y + box.height}, {x: box.x, y: box.y + box.height},
-        ].map(point => applyMatrix(matrix, point)))])
+        ].map(point => applyInverseMatrix(matrix, applyMatrix(screen, point))))])
       }
+      catch { /* Detached SVGs and DOM shims may not expose native geometry. */ }
+      const padding = Math.max(rootWidth, rootHeight, region.width, region.height)
+      const source = `<svg xmlns="${SVG_NAMESPACE}"><filter id="overflow" filterUnits="userSpaceOnUse" x="${region.x - padding}" y="${region.y - padding}" width="${region.width + padding * 2}" height="${region.height + padding * 2}"><feFlood flood-opacity="0.35" result="outside"/><feFlood x="${inside.x}" y="${inside.y}" width="${inside.width}" height="${inside.height}" result="inside"/><feMerge><feMergeNode in="outside"/><feMergeNode in="inside"/></feMerge><feComposite in="SourceGraphic" operator="in"/></filter></svg>`
+      const filter = `${authoredFilter} url("data:image/svg+xml,${encodeURIComponent(source)}#overflow")`
+      if(root === graphic) graphicFilter = filter
+      else root.style.setProperty("filter", filter, "important")
     }
-    catch { /* Detached SVGs and DOM shims may not expose native geometry. */ }
-    const padding = Math.max(width, height, region.width, region.height)
-    // CSS filters on the outer SVG use viewport pixels, independently of its
-    // viewBox and native pan/zoom. Filtering preserves native overflow hit tests.
-    const source = `<svg xmlns="${SVG_NAMESPACE}"><filter id="overflow" filterUnits="userSpaceOnUse" x="${region.x - padding}" y="${region.y - padding}" width="${region.width + padding * 2}" height="${region.height + padding * 2}"><feFlood flood-opacity="0.35" result="outside"/><feFlood x="0" y="0" width="${width}" height="${height}" result="inside"/><feMerge><feMergeNode in="outside"/><feMergeNode in="inside"/></feMerge><feComposite in="SourceGraphic" operator="in"/></filter></svg>`
-    const rule = `svg.◆graphic-overflow-visible, svg.◆graphic-preview { overflow: visible !important; filter: ${authoredFilter} url("data:image/svg+xml,${encodeURIComponent(source)}#overflow") !important; }`
+    const rule = `svg.◆graphic-overflow-visible { overflow: visible !important; filter: ${graphicFilter} !important; } svg.◆graphic-preview { overflow: visible !important; }`
     if(this.#overflowRule !== rule) {
       sheet.replaceSync(rule)
       this.#overflowRule = rule
@@ -4765,6 +4996,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #clearCanvasPresentation() {
+    this.editor.appendix.querySelectorAll<SVGSVGElement>(".◆graphic-preview").forEach(root => root.style.removeProperty("filter"))
     this.#presentationObserver?.disconnect()
     this.#presentationObserver = null
     this.#presentationResizeObserver?.disconnect()
@@ -4861,7 +5093,7 @@ export class GraphicFeature extends EditorFeature {
       ...(type === "hexagon" ? {inset: cleanNumber(Math.max(0, points[0]?.x - bounds.x))} : {}),
       ...(type === "star" ? {"inner-radius": cleanNumber(starInnerRadius(points))} : {}),
       ...(type === "arrow" ? {
-        "head-size": cleanNumber(bounds.width ? (bounds.x + bounds.width - (points[1]?.x ?? bounds.x)) / bounds.width * 100 : 36),
+        "head-size": cleanNumber(bounds.width ? Math.abs((points[3]?.x ?? bounds.x + bounds.width) - (points[1]?.x ?? bounds.x)) / bounds.width * 100 : 36),
         "tail-width": cleanNumber(bounds.height ? Math.abs((points[6]?.y ?? bounds.y) - (points[0]?.y ?? bounds.y)) / bounds.height * 100 : 42),
       } : {}),
       ...(["polyline", "bezier"].includes(type ?? "") ? {closed: String(graphicPathGeometry(geometry)?.closed ?? false)} : {}),
@@ -4922,7 +5154,11 @@ export class GraphicFeature extends EditorFeature {
       const parameters = this.#parameters(shape)
       const head = name === "head-size" ? numeric : Number.parseFloat(parameters["head-size"] ?? "36")
       const tail = name === "tail-width" ? numeric : Number.parseFloat(parameters["tail-width"] ?? "42")
-      setPoints(geometry, arrowPoints(shapeBounds(shape), head / 100, tail / 100))
+      const bounds = shapeBounds(shape), original = canonicalArrowPoints(shape)
+      setPoints(geometry, arrowPoints(bounds, head / 100, tail / 100).map(point => ({
+        x: original && original[3].x < original[0].x ? 2 * bounds.x + bounds.width - point.x : point.x,
+        y: original && original[4].y < original[2].y ? 2 * bounds.y + bounds.height - point.y : point.y,
+      })))
     }
     else if(["x", "y", "width", "height"].includes(name)) {
       const bounds = shapeBounds(shape)

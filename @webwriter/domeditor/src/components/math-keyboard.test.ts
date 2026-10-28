@@ -274,6 +274,33 @@ describe("formula keyboard", () => {
       .toBe(mathKeyboardLayouts[1].label)
   })
 
+  it("cycles all math layouts forward and backward, wrapping around handwriting", async () => {
+    const keyboard = await mountKeyboard()
+    const layouts = [...mathKeyboardLayouts.map(layout => layout.id), "handwriting"]
+    keyboard.shifted = true
+
+    for(const layout of layouts.slice(1)) {
+      keyboard.cycleLayout()
+      await keyboard.updateComplete
+      expect(keyboard.activeLayout).toBe(layout)
+      expect(keyboard.shifted).toBe(false)
+      if(layout === "handwriting") await vi.waitFor(() => expect(recognition.load).toHaveBeenCalledOnce())
+    }
+    keyboard.cycleLayout()
+    await keyboard.updateComplete
+    expect(keyboard.activeLayout).toBe(layouts[0])
+    expect(recognition.dispose).toHaveBeenCalledOnce()
+
+    keyboard.cycleLayout(true)
+    await keyboard.updateComplete
+    expect(keyboard.activeLayout).toBe("handwriting")
+    await vi.waitFor(() => expect(recognition.load).toHaveBeenCalledTimes(2))
+    keyboard.cycleLayout(true)
+    await keyboard.updateComplete
+    expect(keyboard.activeLayout).toBe(layouts.at(-2))
+    expect(recognition.dispose).toHaveBeenCalledTimes(2)
+  })
+
   it("provides accessible icon alternatives for layout tabs and formula controls", async () => {
     const keyboard = await mountKeyboard()
     const root = keyboard.shadowRoot!

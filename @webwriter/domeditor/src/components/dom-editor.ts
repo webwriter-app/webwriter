@@ -9,6 +9,7 @@ import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentRefe
 import "./developer-console"
 import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
+import type {MathKeyboard} from "./math-keyboard"
 import "./shape-keyboard"
 import type {ShapeKeyboard} from "./shape-keyboard"
 import "./link-keyboard"
@@ -114,6 +115,7 @@ import {
   loadWidgetsMessage,
   selectionChangeEvent,
   shapeKeyboardInputEvent,
+  mathKeyboardTabEvent,
   type ShapeKeyboardInput,
   type ElementStyleMutation,
   type ElementStyleState,
@@ -2429,11 +2431,11 @@ export class DomEditor extends LitElement {
 
   private handleHostWindowBlur = () => {
     const keyboard = this.renderRoot.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")
-    if(keyboard) keyboard.shifted = false
     // Entering a child frame also blurs the host Window. Check the completed
     // focus change before treating it as a switch to another app/window.
     queueMicrotask(() => {
       if(!this.isConnected || this.ownerDocument.hasFocus() || matchMedia("(pointer: coarse)").matches) return
+      keyboard?.cancelInput()
       this.handleHostWindowFocus()
       const frame = this.editorIframe()
       if(!frame) return
@@ -3046,7 +3048,7 @@ export class DomEditor extends LitElement {
   private readonly handleConfiguredShortcut = (event: KeyboardEvent) => {
     this.dismissFloatInfo()
     if(event.defaultPrevented || event.isComposing) return
-    if(event.currentTarget !== this.editorDocument && this.handleHostShapeKey(event)) return
+    if(event.currentTarget !== this.editorDocument && (this.handleHostMathTab(event) || this.handleHostShapeKey(event))) return
     if(event.currentTarget === this.editorDocument && this.graphicSelection?.capture && !this.svgText
       && event.altKey && !event.ctrlKey && !event.metaKey) return
     const shortcut = shortcutFromEvent(event)
@@ -3073,9 +3075,9 @@ export class DomEditor extends LitElement {
   }
 
   private readonly handleHostShapeKey = (event: KeyboardEvent) => {
-    if(event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey) return false
-    const keyboard = this.shapeInputKeyboard
-    if(!keyboard || isTextFieldInteraction(event) || !event.composedPath().includes(keyboard) && event.target !== document.body) return false
+    if(event.defaultPrevented || event.isComposing || event.type !== "keyup" && (event.ctrlKey || event.metaKey)) return false
+    const keyboard = this.activeShapeKeyboard
+    if(!keyboard || event.type !== "keyup" && (isTextFieldInteraction(event) || !event.composedPath().includes(keyboard) && event.target !== document.body)) return false
     const handled = keyboard.handleInput({
       type: event.type as ShapeKeyboardInput["type"], key: event.key, code: event.code,
       altKey: event.altKey, shiftKey: event.shiftKey, capsLock: event.getModifierState("CapsLock"), repeat: event.repeat,
@@ -3084,8 +3086,19 @@ export class DomEditor extends LitElement {
     return handled
   }
 
-  private get shapeInputKeyboard() {
-    return this.hasGraphicElementSelection ? null : this.activeShapeKeyboard
+  private readonly handleHostMathTab = (event: KeyboardEvent) => {
+    if(event.key !== "Tab" || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return false
+    const keyboard = this.activeMathKeyboard
+    if(!keyboard || isTextFieldInteraction(event) || !event.composedPath().includes(keyboard) && event.target !== document.body) return false
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    if(!event.repeat) keyboard.cycleLayout(event.shiftKey)
+    return true
+  }
+
+  private get activeMathKeyboard() {
+    if(!this.isMathEditing || !this.captureSelection || this.mathKeyboardHidden || this.previewActive || this.liveSessionActive) return null
+    return this.renderRoot.querySelector<MathKeyboard>("dom-editor-math-keyboard")
   }
 
   private get activeShapeKeyboard() {
@@ -6331,6 +6344,9 @@ export class DomEditor extends LitElement {
 
   protected updated(changed: PropertyValues) {
     super.updated(changed)
+    if((changed.has("shapeKeyboardHidden") && this.shapeKeyboardHidden) || changed.has("svgText") && this.svgText) {
+      this.renderRoot.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")?.cancelInput()
+    }
     if(changed.has("linkSelection") && this.linkSelection?.active && !(changed.get("linkSelection") as LinkSelectionState | null)?.active)
       this.linkKeyboardHidden = false
     if(changed.has("mathSelection") && this.mathSelection?.active) {
@@ -6363,17 +6379,31 @@ export class DomEditor extends LitElement {
   }
 
   private handleShapeKeyboardCommand = (event: CustomEvent<{shape: GraphicShapeType, paint: GraphicShapePaint, onlyIfUnselected?: boolean}>) => {
-    if(!(event.detail?.onlyIfUnselected ? this.shapeInputKeyboard : this.activeShapeKeyboard) || !isGraphicShapeType(event.detail?.shape)) return
+    if(!this.activeShapeKeyboard || event.detail?.onlyIfUnselected && this.hasGraphicElementSelection || !isGraphicShapeType(event.detail?.shape)) return
     void this.execute({type: "addGraphicShape", shape: event.detail.shape, paint: event.detail.paint,
       ...(event.detail.onlyIfUnselected ? {onlyIfUnselected: true} : {})})
       .catch(() => { /* Concurrent edits may remove the active canvas. */ })
       .finally(() => { if(this.ownerDocument.activeElement !== this.editorIframe()) this.focusEditor() })
   }
 
+  private handleShapeKeyboardPreview = (event: CustomEvent<{shape: GraphicShapeType | null, paint?: GraphicShapePaint, code?: string, key?: string}>) => {
+    const {shape, paint, code, key} = event.detail
+    if(shape !== null && (!this.activeShapeKeyboard || !isGraphicShapeType(shape))) return
+    void this.execute({type: "setGraphicShapePreview", shape, paint, code, key})
+      .catch(() => { /* The captured graphic may have been replaced. */ })
+  }
+
   private handleShapePaintChange = (event: CustomEvent<{paint: Required<GraphicShapePaint>}>) => {
     if(!this.graphicSelection?.capture || this.previewActive || this.liveSessionActive) return
     this.shapePaint = {...event.detail.paint}
     if(this.graphicSelection.mode && this.graphicSelection.mode !== "select") void this.execute({type: "setGraphicDrawPaint", paint: this.shapePaint})
+  }
+
+  private handleShapeBrushPreview = (event: CustomEvent<{paint: Required<GraphicShapePaint> | null, mode: "draw" | "lines" | "curves"}>) => {
+    if(!this.graphicSelection?.capture || this.previewActive || this.liveSessionActive) return
+    const {paint, mode} = event.detail
+    if(paint && this.graphicSelection.mode !== mode) void this.execute({type: "setGraphicMode", mode, paint})
+    else void this.execute({type: "setGraphicDrawPaint", paint: paint ?? this.shapePaint})
   }
 
   private get isMathEditing() {
@@ -7042,7 +7072,13 @@ export class DomEditor extends LitElement {
       const input = event.data.detail as Partial<ShapeKeyboardInput> | undefined
       if(input && (input.type === "keydown" || input.type === "keyup") && typeof input.key === "string" && typeof input.code === "string"
         && typeof input.altKey === "boolean" && typeof input.shiftKey === "boolean" && typeof input.capsLock === "boolean" && typeof input.repeat === "boolean") {
-        this.shapeInputKeyboard?.handleInput(input as ShapeKeyboardInput)
+        this.activeShapeKeyboard?.handleInput(input as ShapeKeyboardInput)
+      }
+      return
+    }
+    if(event.data?.type === mathKeyboardTabEvent) {
+      if(this.isEditorMessage(event) && typeof event.data.detail?.backward === "boolean") {
+        this.activeMathKeyboard?.cycleLayout(event.data.detail.backward)
       }
       return
     }
@@ -7921,8 +7957,10 @@ export class DomEditor extends LitElement {
             @click=${() => { this.shapeKeyboardHidden = false; this.focusEditor() }}>${ribbonIcon("Graphic")}</button>` : nothing}
           <section class="shape-keyboard-area" aria-label="Shape input" ?hidden=${this.shapeKeyboardHidden}>
             <dom-editor-shape-keyboard .paint=${this.shapePaint} .mode=${this.graphicSelection.mode ?? "select"}
-              .insertionDisabled=${this.svgText} .keyboardInputDisabled=${this.hasGraphicElementSelection}
+              .insertionDisabled=${this.svgText}
               @shape-keyboard-command=${this.handleShapeKeyboardCommand}
+              @shape-keyboard-preview=${this.handleShapeKeyboardPreview}
+              @shape-brush-preview=${this.handleShapeBrushPreview}
               @ribbon-button-click=${this.handleRibbonButtonClick}
               @shape-paint-change=${this.handleShapePaintChange}
               @shape-keyboard-close=${() => { this.shapeKeyboardHidden = true; this.focusEditor() }}

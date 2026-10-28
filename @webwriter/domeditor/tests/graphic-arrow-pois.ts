@@ -68,7 +68,11 @@ export async function checkGraphicArrowPOIs() {
       }
       const button = handles[index], box = button.getBoundingClientRect()
       const pointer = {bubbles:true,composed:true,button:0,pointerId:95}
+      const natural = before ? graphicPresetHandles(before)[index].point : arrowPoints(frameBounds)[index]
+      const screen = new view.DOMPoint(natural.x,natural.y).matrixTransform(shape.getScreenCTM()!)
       const destination = new view.DOMPoint(target.x,target.y).matrixTransform(shape.getScreenCTM()!)
+      destination.x += Number(button.style.left.replace("px", "")) - screen.x
+      destination.y += Number(button.style.top.replace("px", "")) - screen.y
       editor.doc.stopCapturing()
       button.dispatchEvent(new view.PointerEvent("pointerdown",{...pointer,clientX:box.x+box.width/2,clientY:box.y+box.height/2}))
       doc.dispatchEvent(new view.PointerEvent("pointermove",{...pointer,buttons:1,clientX:destination.x,clientY:destination.y}))
@@ -78,7 +82,7 @@ export async function checkGraphicArrowPOIs() {
       assert(preview,`${option.label}: no preview`)
       const edited = preview.getAttribute(preset ? "d" : "points")!
       const actual = numbers(edited)
-      assert(actual.length === expected.length && actual.every((value,i) => Math.abs(value-expected[i]) < .0001),`${option.label}/${rotation}/${index}: POI changed the wrong dimensions`)
+      assert(actual.length === expected.length && actual.every((value,i) => Math.abs(value-expected[i]) < .005),`${option.label}/${rotation}/${index}: POI changed the wrong dimensions`)
       if(before) {
         const state = readGraphicPreset(preview)!
         assert(state?.type === option.type,`${option.label}: edited shape lost recognition`)

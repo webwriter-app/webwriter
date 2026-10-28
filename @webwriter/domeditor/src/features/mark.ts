@@ -678,7 +678,8 @@ export class MarkFeature extends EditorFeature {
     }
 
     const context = this.getSelection()
-    if(!context) return {canMark: this.editor.features.math.selectedFormulas.length > 0 || this.selectedSVGTextRoots().length > 0, marks: []}
+    if(!context) return {canMark: this.editor.features.math.selectedFormulas.length > 0
+      || !this.editor.features.selection.isCaptureSelection && this.selectedSVGTextRoots().length > 0, marks: []}
 
     const marks = new Set<MarkName>()
     for(const {node} of context.text) {

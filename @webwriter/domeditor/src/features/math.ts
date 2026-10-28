@@ -4,6 +4,7 @@ import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathEl
 
 import {styleMarkNames, type MarkName} from "../marks"
 import {MathCompletionInput} from "./math-completion"
+import {mathKeyboardTabEvent} from "../editor-bridge"
 import formulaIcon from "@tabler/icons/outline/math.svg?raw"
 
 const formulaMarks = {b: ["font-weight", "bold"], i: ["font-style", "italic"], u: ["text-decoration-line", "underline"], s: ["text-decoration-line", "line-through"]} as const
@@ -1036,6 +1037,13 @@ export class MathFeature extends EditorFeature {
       && ["Backquote", "IntlBackslash"].includes(event.code)
     const continuingDeadPower = this.atDeadPowerPoint()
     if(!root || event.isComposing && !deadPower && !continuingDeadPower) return
+    if(event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey
+      && this.editor.features.selection.captureSelectedElement === root) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      if(!event.repeat) this.editor.postHostMessage({type: mathKeyboardTabEvent, detail: {backward: event.shiftKey}})
+      return
+    }
     this.marked.add(root)
     const apple = isOnApple()
     const primary = !event.altKey && !event.getModifierState("AltGraph")

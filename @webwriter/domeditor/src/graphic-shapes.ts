@@ -3,11 +3,13 @@ import {graphicShapePresets, legacyArrowPresets, legacyCalloutPresets, legacyCho
 export type GraphicPresetType = keyof typeof graphicShapePresets
 type Bounds = {x: number, y: number, width: number, height: number}
 type Point = {x: number, y: number}
+type Reflection = {horizontal: boolean, vertical: boolean}
 export type GraphicPresetState = {
   type: GraphicPresetType
   definition: GraphicShapePreset
   bounds: Bounds
   values: number[]
+  reflection?: Reflection
 }
 
 const numberPattern = /[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g
@@ -74,12 +76,33 @@ function scalePath(path: string, bounds: Bounds, precision = 1e6) {
   })
 }
 
-export function graphicPresetPath(type: GraphicPresetType, bounds: Bounds, values = defaults(graphicShapePresets[type])) {
-  return scalePath(presetDrawing(type, values), bounds, type === "chord" ? 1e10 : 1e6)
+function reflectPoint(point: Point, bounds: Bounds, reflection?: Reflection): Point {
+  return {x: reflection?.horizontal ? 2 * bounds.x + bounds.width - point.x : point.x,
+    y: reflection?.vertical ? 2 * bounds.y + bounds.height - point.y : point.y}
+}
+
+function reflectPath(path: string, bounds: Bounds, reflection: Reflection) {
+  let index = 0
+  const clean = (value: number) => String(Math.round(value * 1e10) / 1e10)
+  return path.replace(coordinateOrArcPattern, (value, arc: string | undefined) => {
+    if(arc) {
+      const [rx, ry, rotation, large, sweep, x, y] = coordinates(arc)
+      const point = reflectPoint({x, y}, bounds, reflection), reverse = reflection.horizontal !== reflection.vertical
+      return `A ${rx} ${ry} ${reverse ? -rotation : rotation} ${large} ${reverse ? 1 - sweep : sweep} ${clean(point.x)} ${clean(point.y)} `
+    }
+    const horizontal = index++ % 2 === 0, axis = horizontal ? "x" : "y"
+    const point = reflectPoint({x: Number(value), y: Number(value)}, bounds, reflection)
+    return clean(point[axis])
+  })
+}
+
+export function graphicPresetPath(type: GraphicPresetType, bounds: Bounds, values = defaults(graphicShapePresets[type]), reflection?: Reflection) {
+  const path = scalePath(presetDrawing(type, values), bounds, type === "chord" ? 1e10 : 1e6)
+  return reflection?.horizontal || reflection?.vertical ? reflectPath(path, bounds, reflection) : path
 }
 
 export function writeGraphicPreset(element: Element, state: GraphicPresetState, bounds = state.bounds, values = state.values) {
-  element.setAttribute("d", graphicPresetPath(state.type, bounds, values))
+  element.setAttribute("d", graphicPresetPath(state.type, bounds, values, state.reflection))
   element.setAttribute("fill-rule", graphicPresetFillRule(state.type))
 }
 
@@ -254,13 +277,40 @@ export function readGraphicPreset(element: Element | null): GraphicPresetState |
   const label = element.getAttribute("aria-label")
   const previous = cache.get(element)
   if(previous?.path === path && previous.label === label) return previous.state
+  const preferred = graphicPresetOptions.find(option => option.label === label)?.type
+  let state: GraphicPresetState | null = null
+  const reflections: Reflection[] = [
+    {horizontal: false, vertical: false}, {horizontal: true, vertical: false},
+    {horizontal: false, vertical: true}, {horizontal: true, vertical: true},
+  ]
+  for(const type of preferred ? [preferred, undefined] : [undefined]) {
+    for(const reflection of reflections) {
+      const mirrored = reflection.horizontal || reflection.vertical
+      const candidate = readPreset(mirrored ? reflectPath(path, {x: 0, y: 0, width: 0, height: 0}, reflection) : path, label, type)
+      if(!candidate) continue
+      state = mirrored ? {...candidate, bounds: {
+        ...candidate.bounds,
+        x: reflection.horizontal ? -candidate.bounds.x - candidate.bounds.width : candidate.bounds.x,
+        y: reflection.vertical ? -candidate.bounds.y - candidate.bounds.height : candidate.bounds.y,
+      }, reflection} : candidate
+      break
+    }
+    if(state) break
+  }
+  cache.set(element, {path, label, state})
+  return state
+}
+
+function readPreset(path: string, label: string | null, preferred?: GraphicPresetType): GraphicPresetState | null {
   const actual = coordinates(path)
   let state = readPiePreset(path, actual) ?? readChordPreset(path, actual) ?? readSpeechBubblePreset(path,label)
+  if(state && preferred && state.type !== preferred) state = null
   const candidates = state ? [] : [...getTemplates().get(signature(path)) ?? []]
   // Accessible names disambiguate geometrically identical presets, but never
   // override the path validation or hold editing parameters.
   candidates.sort((a, b) => Number(b.definition.label === label) - Number(a.definition.label === label))
   for(const template of candidates) {
+    if(preferred && template.type !== preferred) continue
     const horizontal = fitAxis(template, actual, 0)
     const vertical = fitAxis(template, actual, 1)
     if(!horizontal || !vertical || horizontal[1]! <= 0 || vertical[1]! <= 0) continue
@@ -279,7 +329,6 @@ export function readGraphicPreset(element: Element | null): GraphicPresetState |
       values: template.upgrade ? template.upgrade(values) : template.type === "pie" ? [270 - Math.atan2(values[0] - 50, 50) * 180 / Math.PI] : values}
     break
   }
-  cache.set(element, {path, label, state})
   return state
 }
 
@@ -287,7 +336,7 @@ export function graphicPresetHandles(state: GraphicPresetState) {
   return state.definition.adjustments.flatMap((adjustment, index) => {
     if(adjustment.hidden) return []
     if(state.definition.adjustments.some(other => other.pairedWith === adjustment.name)) return []
-    const point = adjustment.point(state.values)
+    const point = reflectPoint(adjustment.point(state.values), {x: 0, y: 0, width: 100, height: 100}, state.reflection)
     return {
       name: `adjust-${adjustment.name}`, label: adjustment.pairedWith ? adjustment.label.replace(/ X$/, "") : adjustment.label, index,
       point: {x: state.bounds.x + point.x / 100 * state.bounds.width, y: state.bounds.y + point.y / 100 * state.bounds.height},
@@ -296,7 +345,8 @@ export function graphicPresetHandles(state: GraphicPresetState) {
 }
 
 /** Unwrap one pointer sample against the preceding sweep, including the seam. */
-export function graphicPresetAngle(bounds: Bounds, input: Point, previous: number) {
+export function graphicPresetAngle(bounds: Bounds, input: Point, previous: number, reflection?: Reflection) {
+  input = reflectPoint(input, bounds, reflection)
   const x = (input.x - bounds.x - bounds.width / 2) / (bounds.width / 2)
   const y = (input.y - bounds.y - bounds.height / 2) / (bounds.height / 2)
   // Native pointer coordinates can round a transformed center by a subpixel.
@@ -310,6 +360,7 @@ export function graphicPresetAngle(bounds: Bounds, input: Point, previous: numbe
 
 export function adjustGraphicPreset(element: Element, state: GraphicPresetState, name: string, input: number | Point,
   mirror: {horizontal?: boolean, vertical?: boolean} = {}) {
+  if(typeof input !== "number") input = reflectPoint(input, state.bounds, state.reflection)
   const index = state.definition.adjustments.findIndex(adjustment => `adjust-${adjustment.name}` === name)
   if(index < 0) return false
   const adjustment = state.definition.adjustments[index]
