@@ -14,6 +14,8 @@ import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
 import {siteTranslations} from "./site-translations"
 import scopedCustomElementRegistrySource from "./scoped-custom-element-registry.js?raw"
+import distributionReaderSources from "virtual:distribution-reader-sources"
+import {readDistributionConfigs} from "./distribution-dom"
 import type {WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
@@ -90,6 +92,17 @@ export function scopedCustomElementRegistryScript(root: Document, editorOnly = f
 
 /** Adds the widget and template resources required by a detached document. */
 export function appendSerializedAssets(root: Document, packages: WebWriterPackage[], importMap?: IImportMap | null) {
+  const distribution = readDistributionConfigs(root)
+  root.querySelectorAll('script[id="webwriter-distribution-reader"]').forEach(script => script.remove())
+  const permissions = new Set(distribution.flatMap(config => config.permissions))
+  if(permissions.size || distribution.some(config => config.items.length)) {
+    const script = root.createElement("script")
+    script.id = "webwriter-distribution-reader"
+    script.type = "module"
+    const actions = [...permissions, ...(distribution.some(config => config.items.length) ? ["insert"] : [])]
+    script.textContent = `${distributionReaderSources.core}\nconst distributionContext = distributionReader.mountDistributionReader(document);\nif(distributionContext) {\n${actions.map(action => `${distributionReaderSources[action as keyof typeof distributionReaderSources]}\ndistributionAction.install(distributionContext);`).join("\n")}\n}`.replace(/<\/script/gi, "<\\/script")
+    root.head.append(script)
+  }
   const resourceKey = (url: string) => {
     try { return new URL(url, root.baseURI).href }
     catch { return url }
@@ -170,6 +183,12 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     })
   }
   collectTags(root)
+  // Templates held in policy data also contribute resources before their first insertion.
+  for(const config of distribution) for(const item of config.items) {
+    const template = root.createElement("template")
+    template.innerHTML = item.html
+    collectTags(template.content)
+  }
   const known = new Set<string>()
   const required = new Set<string>()
   for(const pkg of packages) {

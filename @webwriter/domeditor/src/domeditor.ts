@@ -33,6 +33,7 @@ import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
 import { TemplateFeature } from "./features/template"
+import {DistributionFeature} from "./features/distribution"
 import { Schema } from "./schema"
 import { $, adoptStylesheet, clearEditorArtifacts, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
@@ -246,6 +247,7 @@ export class DOMEditor {
     "state": new StateFeature(this),
     "head": new HeadFeature(this),
     "template": new TemplateFeature(this),
+    "distribution": new DistributionFeature(this),
     "math": new MathFeature(this),
     "insertion": new InsertionFeature(this),
     "history": new HistoryFeature(this),
@@ -981,6 +983,8 @@ export class DOMEditor {
     const selectedElementTypes = this.features.manipulation.getSelectedElementTypes()
     const detail: SelectionChangeDetail = {
       path,
+      distribution: this.features.distribution.getState(attributeElement),
+      distributionGeneral: this.features.distribution.getState(document.documentElement),
       ...(selectedElementTypes.length ? {selectedElementTypes} : {}),
       ...($.isMultiElementSelection ? {nodeSelected: true} : {}),
       documentLayout: this.getDocumentLayoutState(),

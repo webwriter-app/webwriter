@@ -9,6 +9,7 @@ import {setupWSConnection, getYDoc, docs} from "@y/websocket-server/utils"
 import * as Y from "yjs"
 import * as decoding from "lib0/decoding"
 import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
+import {createDistributionValidator} from "./distribution.mjs"
 import {formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
 import {fetchGitPackage, gitPackageSource, gitPackageMimeType} from "./git-packages.mjs"
 
@@ -547,7 +548,9 @@ export async function createDevServer(options = {}) {
         const type = decoding.readVarUint(decoder)
         if(type === 0) {
           const syncType = decoding.readVarUint(decoder)
-          if(syncType !== 0 && (syncType > 2 || !acceptLearnerUpdate(shared, decoding.readVarUint8Array(decoder), request.liveLearner))) {
+          const distribution = liveSessionTokens.get(request.liveRoom)?.distribution
+          if(syncType !== 0 && (syncType > 2 || !acceptLearnerUpdate(shared, decoding.readVarUint8Array(decoder), request.liveLearner,
+            distribution ? distribution.validate : undefined))) {
             throw new Error("Forbidden live update")
           }
         }
@@ -608,6 +611,9 @@ export async function createDevServer(options = {}) {
         if(!safeSessionToken(token) || !safeSessionToken(hostKey) || typeof html !== "string" || !html.trim()) {
           return apiError(response, 400, "A live session needs host credentials and an HTML document")
         }
+        let distribution
+        try { distribution = createDistributionValidator(html) }
+        catch { return apiError(response, 400, "Invalid distribution instructions") }
         const id = liveDocument[1], room = `live-session-${id}`
         let session = liveSessionTokens.get(room)
         if(session && (session.token !== token || session.hostKey !== hostKey)) return apiError(response, 403, "Live session permission denied")
@@ -624,6 +630,7 @@ export async function createDevServer(options = {}) {
           session.timer.unref()
         }
         session.html = html
+        session.distribution = distribution
         const documentURL = new URL("/live/", editorOrigin ?? origin)
         documentURL.search = new URLSearchParams({liveSession: id, liveToken: token, liveServer: origin.replace(/^http/, "ws")}).toString()
         return json(response, 201, {url: documentURL.href})

@@ -58,7 +58,7 @@ const validStep = (value, learnerId) => isRecord(value)
   && (value.widgets === undefined || Array.isArray(value.widgets))
 
 /** Validate a learner-authored Yjs update without mutating the live document. */
-export function acceptLearnerUpdate(doc, update, learnerId) {
+export function acceptLearnerUpdate(doc, update, learnerId, validateDocument) {
   if(!doc?.store || typeof doc.getMap !== "function" || !(update instanceof Uint8Array)
     || update.byteLength === 0 || update.byteLength > MAX_UPDATE_SIZE
     || typeof learnerId !== "string" || !learnerIdPattern.test(learnerId)) return false
@@ -71,6 +71,7 @@ export function acceptLearnerUpdate(doc, update, learnerId) {
     const states = validationDoc.getMap(mapNames.states)
     Y.applyUpdate(validationDoc, Y.encodeStateAsUpdate(doc))
     const previousSteps = steps.toArray()
+    const previousHTML = states.get(learnerId)?.html
     let accepted = true
     let changedLearner = false
     let changedState = false
@@ -98,6 +99,17 @@ export function acceptLearnerUpdate(doc, update, learnerId) {
     if(validationDoc.store.pendingStructs || validationDoc.store.pendingDs) accepted = false
     if(accepted && changedLearner && (!learners.has(learnerId) || !validLearner(learners.get(learnerId), learnerId))) accepted = false
     if(accepted && changedState && (!states.has(learnerId) || !validState(states.get(learnerId), learnerId))) accepted = false
+    if(accepted && validateDocument) {
+      let before = previousHTML
+      for(const step of steps.toArray().filter(step => !previousSteps.some(previous => previous.id === step.id))) {
+        if(step.html !== undefined) {
+          if(!validateDocument(before, step.html)) { accepted = false; break }
+          before = step.html
+        }
+      }
+      const finalHTML = states.get(learnerId)?.html
+      if(accepted && changedState && finalHTML !== undefined && !validateDocument(before, finalHTML)) accepted = false
+    }
     const previousIds = previousSteps.map(step => step?.id)
     const finalSteps = steps.toArray()
     const finalIds = finalSteps.map(step => step?.id)

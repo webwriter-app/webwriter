@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterAll, beforeEach, describe, expect, it, vi} from "vitest"
+import {afterAll, afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
@@ -7,6 +7,7 @@ import {Schema} from "../schema"
 import {$, isWidgetShadowInteraction} from "../utility"
 import {isDataBlockType, stripActiveContent} from "../active-content"
 import {isWidgetOptionsState} from "../widget-options"
+import {effectiveDistribution} from "../distribution-dom"
 import type {ActionDeclaration, OptionDeclaration} from "../../../lit/index"
 
 class OptionsWidget extends HTMLElement {
@@ -451,6 +452,8 @@ describe("widget contract edge cases", () => {
 })
 
 describe("widget sharing controls", () => {
+  afterEach(() => document.head.replaceChildren())
+
   it.each(["application/json", "application/xml"])("reports only the direct scoped %s data block", type => {
     editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
     const value = type === "application/json" ? '{"answers":{}}' : '<answers />'
@@ -475,10 +478,12 @@ describe("widget sharing controls", () => {
     expect(editor.features.widget.getOptionsState([document.body, widget])?.sharing?.mode).toBe("individual")
     const share = editor.getActionHandler("setWidgetSharing"), group = editor.getActionHandler("setWidgetGrouping")
     share({type: "setWidgetSharing", ...reference, enabled: true})
-    expect(widget.getAttribute("shared")).toBe("")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("all")
     const rules = defaultGroupingRules("stable")
     group({type: "setWidgetGrouping", ...reference, grouping: rules})
-    expect(widget.getAttribute("shared")).toBe("group")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("group")
     expect(widget.lastChild?.nodeType).toBe(7)
     expect(readWidgetGrouping(widget)).toEqual(rules)
     const state = editor.features.widget.getOptionsState([document.body, widget])!
@@ -486,11 +491,14 @@ describe("widget sharing controls", () => {
     expect(isWidgetOptionsState({...state, sharing: {...state.sharing, grouping: {version: 99}}})).toBe(false)
     share({type: "setWidgetSharing", ...reference, enabled: false})
     expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("individual")
     expect(readWidgetGrouping(widget)).toEqual(rules)
     share({type: "setWidgetSharing", ...reference, enabled: true})
-    expect(widget.getAttribute("shared")).toBe("group")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("group")
     group({type: "setWidgetGrouping", ...reference, grouping: null})
-    expect(widget.getAttribute("shared")).toBe("")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("all")
     expect(readWidgetGrouping(widget)).toBeNull()
   })
 
@@ -506,9 +514,11 @@ describe("widget sharing controls", () => {
       widgetId: widget.id, grouping: defaultGroupingRules("undo")})
     editor.doc.undo()
     expect(widget.getAttribute("shared")).toBe("")
+    expect(effectiveDistribution(widget)).toBeNull()
     expect(readWidgetGrouping(widget)).toBeNull()
     editor.doc.redo()
-    expect(widget.getAttribute("shared")).toBe("group")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("group")
     expect(readWidgetGrouping(widget)?.seed).toBe("undo")
   })
 

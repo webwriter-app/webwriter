@@ -1,3 +1,5 @@
+import {validateDistributionConfig} from "./distribution.js"
+import type {DistributionSelection} from "./features/distribution"
 import {isCaptionEnumeration} from "./caption-enumeration"
 import {isLinkSelectionState, type LinkSelectionState} from "./links"
 import {
@@ -421,6 +423,8 @@ export type FigureSelectionState = {
 }
 
 export type SelectionChangeDetail = {
+  distribution?: DistributionSelection | null
+  distributionGeneral?: DistributionSelection | null
   path: SelectionPathItem[]
   /** True when a structural selection can be wrapped even if its common path is BODY. */
   canSection?: boolean
@@ -884,6 +888,8 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   const detail = value.detail
   return Array.isArray(detail.path) && detail.path.every(isSelectionPathItem)
     && [detail.nodeSelected, detail.capture, detail.inserted, detail.canSection].every(isOptionalBoolean)
+    && (detail.distribution === undefined || detail.distribution === null || isDistributionSelection(detail.distribution))
+    && (detail.distributionGeneral === undefined || detail.distributionGeneral === null || isDistributionSelection(detail.distributionGeneral))
     && isOptionalFeature(detail.section, isSectionSelection)
     && isOptionalFeature(detail.gap, isSelectionGap)
     && isOptionalFeature(detail.list, isListSelection)
@@ -1038,4 +1044,15 @@ export function isDocumentHeadStateChangeMessage(value: unknown): value is Docum
         && typeof attribute.name === "string"
         && typeof attribute.value === "string")
   })
+}
+
+function isDistributionSelection(value: unknown): boolean {
+  if(!isRecord(value) || typeof value.target !== "string" || typeof value.identity !== "string"
+    || !(value.path === null || Array.isArray(value.path) && value.path.every(isNonnegativeInteger))
+    || !(value.inheritedFrom === null || typeof value.inheritedFrom === "string")
+    || !(value.error === undefined || typeof value.error === "string")) return false
+  try {
+    for(const config of [value.local, value.effective]) if(config !== null) validateDistributionConfig(config)
+    return true
+  } catch { return false }
 }

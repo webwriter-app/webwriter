@@ -90,6 +90,8 @@ export type SharedDOMDocOptions = {
   documentPermalinks?: boolean
   widgetData?: WidgetDataOptions
   supportsWidgetData?: (widget: Element) => boolean
+  /** Nested elements whose initial authored state is mirrored but then owned by another scope. */
+  scopeBoundary?: (element: Element) => boolean
   root?: HTMLElement
   ydoc?: Y.Doc
   awareness?: Awareness
@@ -102,6 +104,10 @@ type DOMAttribute = {
   name: string
   namespaceURI: string | null
 }
+
+type ScopeBoundarySnapshot =
+  | {text: string}
+  | {name: string; attrs: Record<string, string>; children: ScopeBoundarySnapshot[]}
 
 const childContainer = (element: Element): Element | DocumentFragment =>
   element.localName === "template" && "content" in element
@@ -175,6 +181,7 @@ export class SharedDOMDoc {
   readonly #renderedTransactions = new WeakSet<Y.Transaction>()
   readonly #nodes = new WeakMap<YXmlNode, Node>()
   readonly #xmlNodes = new WeakMap<Node, YXmlNode>()
+  readonly #scopeBoundaryBaselines = new WeakMap<Element, ScopeBoundarySnapshot>()
   readonly #minimumRepairs = new Set<Element>()
   readonly #repairBaselines = new WeakMap<Element, string>()
   readonly #document: Document
@@ -197,6 +204,7 @@ export class SharedDOMDoc {
   #historyStateQueued = false
   readonly #documentPermalinks: boolean
   readonly #beforeSyncFromDOM?: () => void
+  readonly #scopeBoundary?: (element: Element) => boolean
 
   constructor(
     readonly serverUrl?: string,
@@ -209,6 +217,7 @@ export class SharedDOMDoc {
   ) {
     this.root = options.root ?? document.body
     this.#beforeSyncFromDOM = options.beforeSyncFromDOM
+    this.#scopeBoundary = options.scopeBoundary
     this.#documentPermalinks = options.documentPermalinks ?? false
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
@@ -708,6 +717,7 @@ export class SharedDOMDoc {
     this.#beforeSyncFromDOM?.()
     const pending = this.#isObserving ? this.#observer.takeRecords() : undefined
     let records = mutations ? [...mutations, ...(pending ?? [])] : pending
+    if(records) records = records.filter(record => !this.#insideScopeBoundary(record.target))
     // Explicit synchronization without pending records still discovers upgrades
     // and retries invalid data. Ordinary edits inspect only affected bindings.
     const discover = !mutations && !records?.length
@@ -1401,6 +1411,19 @@ export class SharedDOMDoc {
     return Boolean(element?.closest(".◆editor-only, [data-webwriter-editor-only]"))
   }
 
+  #isScopeBoundary(element: Element) {
+    return element !== this.root && Boolean(this.#scopeBoundary?.(element))
+  }
+
+  #insideScopeBoundary(node: Node) {
+    let element: Element | null = isElement(node) ? node : node.parentElement
+    while(element && element !== this.root) {
+      if(this.#isScopeBoundary(element)) return true
+      element = element.parentElement
+    }
+    return false
+  }
+
   #undoScopes() {
     return this.#documentHead
       ? [this.#body, this.#documentHead, this.#headMetadata, this.#documentAttributes!]
@@ -1469,6 +1492,18 @@ export class SharedDOMDoc {
     }
     if(!isElement(node) || this.#isInsideIgnoredElement(node)) return null
 
+    // A boundary may have been moved within this outer scope. Its live DOM can
+    // already contain private state, so rebuild the moved node from the last
+    // outer-mirror snapshot rather than capturing those current descendants.
+    const prior = this.#xmlNodes.get(node)
+    if(this.#isScopeBoundary(node) && prior instanceof Y.XmlElement && this.#isCompatiblePair(node, prior)) {
+      const baseline = this.#scopeBoundaryBaselines.get(node) ?? (prior.doc ? this.#snapshotYNode(prior) : null)
+      if(!baseline) return null
+      const clone = this.#restoreYNode(baseline) as Y.XmlElement
+      if(addPair) this.#addNodePair(node, clone)
+      return clone
+    }
+
     const yElement = new Y.XmlElement(node.localName)
     const repair = this.#repairBaselines.get(node)
     if(repair) yElement.setAttribute(INTERNAL_MINIMUM_REPAIR, repair)
@@ -1495,6 +1530,21 @@ export class SharedDOMDoc {
     if(children.length) yElement.insert(0, children)
     if(addPair) this.#addNodePair(node, yElement)
     return yElement
+  }
+
+  #snapshotYNode(node: YXmlNode): ScopeBoundarySnapshot {
+    if(node instanceof Y.XmlText) return {text: node.toString()}
+    if(!(node instanceof Y.XmlElement)) return {text: node.toString()}
+    return {name: node.nodeName, attrs: node.getAttributes(), children: node.toArray().map(child => this.#snapshotYNode(child as YXmlNode))}
+  }
+
+  #restoreYNode(snapshot: ScopeBoundarySnapshot): YXmlNode {
+    if("text" in snapshot) return new Y.XmlText(snapshot.text)
+    const clone = new Y.XmlElement(snapshot.name)
+    for(const [name, value] of Object.entries(snapshot.attrs)) clone.setAttribute(name, value)
+    const children = snapshot.children.map(child => this.#restoreYNode(child))
+    if(children.length) clone.insert(0, children as (Y.XmlElement | Y.XmlText)[])
+    return clone
   }
 
   #createDOMNode(yNode: YXmlNode, addPair = true): Node | null {
@@ -1714,6 +1764,12 @@ export class SharedDOMDoc {
 
   #reconcileYElement(domElement: Element, yElement: Y.XmlElement, changed?: ReadonlySet<Node>) {
     this.#addNodePair(domElement, yElement)
+    if(this.#isScopeBoundary(domElement)) {
+      if(!this.#scopeBoundaryBaselines.has(domElement) && yElement.doc) {
+        this.#scopeBoundaryBaselines.set(domElement, this.#snapshotYNode(yElement))
+      }
+      return
+    }
     this.#copyDOMAttributesToY(domElement, yElement)
     if(this.widgetData.isBlock(domElement)) return
 
@@ -1725,11 +1781,19 @@ export class SharedDOMDoc {
       return mapped && currentYSet.has(mapped) && this.#isCompatiblePair(child, mapped) ? [mapped] : []
     })
     const retained = longestOrderedSubset(currentYChildren, desiredExisting)
-    const desiredYChildren = domChildren.map(child => {
+    const desiredYChildren: YXmlNode[] = []
+    for(const child of domChildren) {
       const mapped = this.#xmlNodes.get(child)
-      if(mapped && retained.has(mapped) && this.#isCompatiblePair(child, mapped)) return mapped
-      return this.#createYNode(child)!
-    })
+      if(mapped && retained.has(mapped) && this.#isCompatiblePair(child, mapped)) {
+        desiredYChildren.push(mapped)
+        continue
+      }
+      const created = this.#createYNode(child)
+      // A moved boundary whose baseline is unavailable must not be rebuilt
+      // from participant DOM. Leave the current shared parent intact.
+      if(!created) return
+      desiredYChildren.push(created)
+    }
 
     for(let index = currentYChildren.length - 1; index >= 0; index--) {
       if(!retained.has(currentYChildren[index])) yElement.delete(index, 1)
@@ -1775,16 +1839,32 @@ export class SharedDOMDoc {
    * changes; created children already mirror their Y subtree. */
   #reconcileDOMElement(yElement: Y.XmlElement, domElement: Element, deep = true) {
     this.#addNodePair(domElement, yElement)
+    if(this.#isScopeBoundary(domElement)) {
+      if(!this.#scopeBoundaryBaselines.has(domElement) && yElement.doc) this.#scopeBoundaryBaselines.set(domElement, this.#snapshotYNode(yElement))
+      return
+    }
     this.#copyYAttributesToDOM(yElement, domElement)
     if(this.widgetData.isBlock(domElement)) return
 
     const container = childContainer(domElement)
     const yChildren = yElement.toArray() as YXmlNode[]
+    const usedDOMChildren = new Set<Node>()
     const renderableChildren = yChildren.flatMap(yChild => {
       const mapped = this.#nodes.get(yChild)
-      const domChild = mapped && mapped.parentNode === container && this.#isCompatiblePair(mapped, yChild)
-        ? mapped
-        : this.#createDOMNode(yChild)
+      let domChild = mapped && mapped.parentNode === container && !usedDOMChildren.has(mapped) && this.#isCompatiblePair(mapped, yChild)
+        ? mapped : null
+      // A joining participant may already have a private live subtree at the
+      // same boundary. Reuse it by authored identity before constructing the
+      // outer mirror's baseline DOM node.
+      if(!domChild && yChild instanceof Y.XmlElement && !this.#isYComment(yChild) && !this.#isYProcessingInstruction(yChild)) {
+        const id = yChild.getAttribute("id")
+        domChild = Array.from(container.childNodes).find((child): child is Element => isElement(child)
+          && !usedDOMChildren.has(child) && this.#isScopeBoundary(child)
+          && this.#isCompatiblePair(child, yChild)
+          && (id ? child.getAttribute("id") === id : true)) ?? null
+      }
+      if(!domChild) domChild = this.#createDOMNode(yChild)
+      if(domChild) usedDOMChildren.add(domChild)
       return domChild ? [{yChild, domChild}] : []
     })
     const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)

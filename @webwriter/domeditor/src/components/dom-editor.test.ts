@@ -8997,7 +8997,7 @@ describe("DomEditor.execute()", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     await toolbox.updateComplete
     await ribbon.updateComplete
-    expect([...toolbox.shadowRoot!.querySelectorAll("[role=tab]")].map(tab => tab.getAttribute("data-tool"))).toEqual(["Edit", "AI", "Review"])
+    expect([...toolbox.shadowRoot!.querySelectorAll("[role=tab]")].map(tab => tab.getAttribute("data-tool"))).toEqual(["Edit", "AI", "Review", "Distribute"])
     toolbox.selectTool("AI")
     await editor.updateComplete
     await ribbon.updateComplete

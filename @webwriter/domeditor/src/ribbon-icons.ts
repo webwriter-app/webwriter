@@ -34,6 +34,7 @@ import arrowBigRight from "@tabler/icons/outline/arrow-big-right.svg?raw"
 import arrowRotaryRight from "@tabler/icons/outline/arrow-rotary-right.svg?raw"
 import userShare from "./assets/user-share.svg?raw"
 import userEdit from "@tabler/icons/outline/user-edit.svg?raw"
+import usersGroup from "@tabler/icons/outline/users-group.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
@@ -333,6 +334,7 @@ const icons: Record<string, string> = {
   QR: qrcode,
   Share: share,
   UserShare: userShare,
+  "users-group": usersGroup,
   UserEdit: userEdit,
   Paste: clipboard,
   Cut: scissors,

@@ -7,6 +7,8 @@ import {RibbonDrawer} from "./ribbon-drawer"
 import {AIProviderStore} from "../ai-provider"
 import {emptyProofreadingState, emptyVersionHistoryState} from "../editor-bridge"
 import {emptyDocumentHeadState} from "../document-head"
+import type {DistributionConfig, DistributionItem} from "../distribution.js"
+import type {DistributionSelectionState} from "./distribution-controls"
 
 it("combines document options without exposing a root widget or separate language attribute", async () => {
   const toolbox = await mountToolbox()
@@ -160,6 +162,7 @@ describe("toolbox", () => {
     toolbox.preview = true
     await toolbox.updateComplete
     expect(toolbox.activeTool).toBeNull()
+    expect(toolButton(toolbox, "Distribute")).toBeNull()
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll('[role="tab"]'), tab => tab.getAttribute("data-tool"))).toEqual(["Feedback"])
     const tab = toolButton(toolbox, "Feedback")
     expect(tab.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(true)
@@ -738,7 +741,7 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>("#toolbox-pane")!.hidden).toBe(true)
   })
 
-  it("renders Edit, Style, Ask AI, and Review as icon-only tabs on the breadcrumb baseline", async () => {
+  it("renders Edit, Style, Ask AI, Review, and Distribute as icon-only tabs on the breadcrumb baseline", async () => {
     const toolbox = await mountToolbox()
     const tablist = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
     const tabs = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab"))
@@ -746,19 +749,70 @@ describe("toolbox", () => {
     const labels = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab-label"))
 
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
-      "Edit", "Style", "Ask AI", "Review",
+      "Edit", "Style", "Ask AI", "Review", "Distribute",
     ])
     expect(buttons.map(button => button.getAttribute("aria-selected"))).toEqual([
-      "false", "false", "false", "false",
+      "false", "false", "false", "false", "false",
     ])
-    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Ask AI", "Review"])
+    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Ask AI", "Review", "Distribute"])
     expect(labels.every(label => getComputedStyle(label).opacity === "0")).toBe(true)
     expect(tabs.every(tab => getComputedStyle(tab).width === "28px")).toBe(true)
     expect(getComputedStyle(tablist).borderBottomWidth).toBe("0.5px")
     expect(getComputedStyle(tablist).borderBottomColor).toBe("#a8a8a8")
     expect(buttons[0].querySelector(".icon-tabler-pencil")).not.toBeNull()
+    expect(buttons[1].querySelector("svg")).not.toBeNull()
     expect(buttons[1].querySelector(".icon-tabler-palette")).not.toBeNull()
     expect(buttons[3].querySelector(".icon-tabler-text-grammar")).not.toBeNull()
+    expect(buttons[4].querySelector(".icon-tabler-users-group")).not.toBeNull()
+  })
+
+  it("shows distribution controls with host state and pending status, without authoring drawers", async () => {
+    const toolbox = await mountToolbox()
+    const local: DistributionConfig = {
+      version: 1,
+      target: "element-1",
+      scope: "group",
+      permissions: ["edit"],
+      add: ["user-snippet:quote"],
+      items: [{id: "user-snippet:quote", label: "Quote", html: "<blockquote></blockquote>"}],
+    }
+    const state: DistributionSelectionState = {
+      target: "element-1",
+      local,
+      effective: local,
+      inheritedFrom: null,
+    }
+    const items: DistributionItem[] = [
+      {id: "element:section", label: "Section", html: "<section></section>"},
+      {id: "user-snippet:quote", label: "Quote", html: "<blockquote></blockquote>"},
+    ]
+    toolbox.distributionGeneral = state
+    toolbox.distribution = state
+    toolbox.distributionItems = items
+    toolbox.distributionPending = true
+    toolButton(toolbox, "Distribute").click()
+    await toolbox.updateComplete
+    const controls = Array.from(toolbox.shadowRoot!.querySelectorAll("distribution-controls")) as Array<HTMLElement & {
+      state: DistributionSelectionState | null
+      items: DistributionItem[]
+      pending: boolean
+    }>
+    await Promise.all(controls.map((control) => (control as unknown as {updateComplete: Promise<unknown>}).updateComplete))
+    expect(controls).toHaveLength(2)
+    expect(controls[0].state).toBe(state)
+    expect(controls[0].items).toBe(items)
+    expect(controls[0].pending).toBe(true)
+    expect(controls[1].state).toBe(state)
+    expect(controls[1].items).toBe(items)
+    expect(controls[1].pending).toBe(true)
+    const permissionsDrawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Permissions for readers"]')!
+    expect(permissionsDrawer).not.toBeNull()
+    expect(permissionsDrawer.icon).toBe("users-group")
+    expect(permissionsDrawer.layout).toBe("distribution")
+    expect(permissionsDrawer.showPaneIcon).toBe(true)
+    expect(permissionsDrawer.querySelector("distribution-controls")).toBe(controls[0])
+    expect(toolbox.shadowRoot!.querySelector("element-style-editor, .widget-sharing, .specialized-widget-primary")).toBeNull()
+    expect(toolbox.activeTool).toBe("Distribute")
   })
 
   it("does not install app-only AI or resize listeners across reconnects", async () => {
@@ -829,7 +883,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(tablist).paddingRight).toBe("4px")
     expect(getComputedStyle(tablist).paddingLeft).toBe("0px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0", "0"])
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0", "0", "0"])
     expect(getComputedStyle(style).width).toBe("28px")
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
@@ -846,7 +900,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(editTab).width).toBe("28px")
     expect(getComputedStyle(styleTab).width).toBe("128px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0", "0"])
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0", "0", "0"])
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!

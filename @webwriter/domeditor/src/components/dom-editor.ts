@@ -1,3 +1,5 @@
+import type {DistributionSelection} from "../features/distribution"
+import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import type {LiveWidgetAggregateInput} from "../widget-aggregate"
@@ -324,6 +326,10 @@ type LiveSessionIdentity = {
 export class DomEditor extends LitElement {
   static properties = {
     selectionPath: {attribute: false, state: true},
+    distributionSelection: {attribute: false, state: true},
+    distributionGeneral: {attribute: false, state: true},
+    distributionItems: {attribute: false, state: true},
+    distributionPending: {state: true},
     captureSelection: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
@@ -467,6 +473,15 @@ export class DomEditor extends LitElement {
   private savedEditorSelection: SelectionBookmark | "remote" | null = null
   private ribbonInputSession = false
   private restoreEditorAfterRibbonInput = false
+  private distributionGeneral: DistributionSelection | null = null
+  private distributionSelection: DistributionSelection | null = null
+  private distributionItems: DistributionItem[] = []
+  private distributionPending = false
+  private distributionGeneration = 0
+  private distributionWriteRevision = 0
+  private distributionWriteQueue: Promise<void> = Promise.resolve()
+  private distributionPendingConfigs = new Map<string, {revision: number, config: DistributionConfig | null}>()
+  private distributionAcceptedStates = new Map<string, DistributionSelection>()
   private selectionPath: SelectionPathItem[] = []
   private nodeSelection = false
   private captureSelection = false
@@ -6065,8 +6080,75 @@ export class DomEditor extends LitElement {
     else if(toolbox?.activeTool === "AI") toolbox.selectTool(null)
   }
 
+  private async loadDistributionItems() {
+    const generation = ++this.distributionGeneration
+    this.distributionPending = true
+    try {
+      const builtins = await this.execute({type: "getDistributionInsertionItems"}) as DistributionItem[]
+      const members = await Promise.all(this.installedPackages.flatMap(pkg => pkg.members.filter(member => member.insertable).map(async member => ({
+        id: packageMemberAction(member), label: member.label,
+        html: member.kind === "snippet" ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
+          : member.tagName ? `<${member.tagName}></${member.tagName}>` : "",
+      }))))
+      if(generation !== this.distributionGeneration) return
+      this.distributionItems = [...builtins, ...members.filter(item => item.html),
+        ...this.settings.userSnippets.map(snippet => ({id: `user-snippet:${snippet.id}`, label: snippet.label, html: snippet.html}))]
+    }
+    catch(error) {
+      if(generation === this.distributionGeneration && this.distributionSelection) this.distributionSelection = {
+        ...this.distributionSelection, error: error instanceof Error ? error.message : String(error),
+      }
+    }
+    finally { if(generation === this.distributionGeneration) this.distributionPending = false }
+  }
+
+  private projectDistributionState(state: DistributionSelection | null): DistributionSelection | null {
+    if(!state) return null
+    this.distributionAcceptedStates.set(state.identity, state)
+    const pending = this.distributionPendingConfigs.get(state.identity)
+    if(!pending) return state
+    const config = pending.config ? {...pending.config, target: state.target || pending.config.target} : null
+    return {...state, local: config, effective: config ?? state.effective, inheritedFrom: config ? null : state.inheritedFrom}
+  }
+
+  private refreshDistributionState(identity: string, error?: string) {
+    const accepted = this.distributionAcceptedStates.get(identity)
+    if(!accepted) return
+    const projected = this.projectDistributionState({...accepted, ...(error ? {error} : {})})
+    if(this.distributionGeneral?.identity === identity) this.distributionGeneral = projected
+    if(this.distributionSelection?.identity === identity) this.distributionSelection = projected
+  }
+
+  private handleDistributionConfigChange = (event: CustomEvent<{target: string, config: DistributionConfig | null, general?: boolean}>) => {
+    const state = event.detail.general ? this.distributionGeneral : this.distributionSelection
+    if(!state || this.distributionPending || event.detail.target !== state.target) return
+    if(!this.distributionAcceptedStates.has(state.identity)) this.distributionAcceptedStates.set(state.identity, state)
+    const revision = ++this.distributionWriteRevision
+    const config = event.detail.config
+    const frame = this.frameRevision
+    this.distributionPendingConfigs.set(state.identity, {revision, config})
+    // Keep cards enabled and preserve the newest local choice through older frame acknowledgements.
+    this.refreshDistributionState(state.identity)
+    this.distributionWriteQueue = this.distributionWriteQueue.then(async () => {
+      if(frame !== this.frameRevision) return
+      let failure: string | undefined
+      try {
+        const applied = await this.execute({type: "setDistributionConfig", path: state.path, identity: state.identity, config})
+        if(applied === false) failure = "The distribution target changed. Select it again."
+      }
+      catch(error) { failure = error instanceof Error ? error.message : String(error) }
+      finally {
+        if(frame === this.frameRevision && this.distributionPendingConfigs.get(state.identity)?.revision === revision) {
+          this.distributionPendingConfigs.delete(state.identity)
+          this.refreshDistributionState(state.identity, failure)
+        }
+      }
+    })
+  }
+
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
+    if(tool === "Distribute") void this.loadDistributionItems()
     const expandDockedToolbox = this.narrowLayout && this.bottomPanelOpen
     if(expandDockedToolbox) {
       this.mathKeyboardHidden = true
@@ -7186,6 +7268,8 @@ export class DomEditor extends LitElement {
       const selectionGap = gap
         ? {parentPath: [...gap.parentPath], offset: gap.offset}
         : null
+      this.distributionSelection = this.projectDistributionState(event.data.detail.distribution ?? null)
+      this.distributionGeneral = this.projectDistributionState(event.data.detail.distributionGeneral ?? null)
       this.selectionPath = path
       const selectedSection = event.data.detail.section
       const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
@@ -7610,6 +7694,12 @@ export class DomEditor extends LitElement {
     this.editorReadyPromise = null
     this.editorReadyResolve = null
     this.editorReadyReject = null
+    this.distributionGeneration++
+    this.distributionPendingConfigs.clear()
+    this.distributionAcceptedStates.clear()
+    this.distributionGeneral = null
+    this.distributionSelection = null
+    this.distributionItems = []
     this.selectionPath = []
     this.nodeSelection = false
     this.captureSelection = false
@@ -8010,6 +8100,11 @@ export class DomEditor extends LitElement {
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
+        .distributionGeneral=${this.distributionGeneral}
+        .distribution=${this.distributionSelection}
+        .distributionItems=${this.distributionItems}
+        .distributionPending=${this.distributionPending}
+        @distribution-config-change=${this.handleDistributionConfigChange}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}
         .documentSelected=${this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1}

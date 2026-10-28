@@ -2,6 +2,7 @@ import { fileURLToPath } from 'url'
 import { defineConfig } from 'vite'
 import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
+import {distributionReaderPlugin} from './scripts/distribution-reader-plugin.mjs'
 import {documentationPlugin} from './scripts/documentation-plugin.mjs'
 import {siteHeaderPlugin} from './scripts/site-header.mjs'
 
@@ -39,7 +40,7 @@ function localPackageServiceWorkerPlugin() {
 
 export default defineConfig({
     plugins: [siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
-      referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url)))],
+      referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))), distributionReaderPlugin()],
     appType: "mpa",
     publicDir: "../../static",
     resolve: {

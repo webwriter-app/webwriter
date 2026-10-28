@@ -1,3 +1,6 @@
+import "./distribution-controls"
+import type {DistributionSelectionState} from "./distribution-controls"
+import type {DistributionItem} from "../distribution.js"
 import type {LiveSessionFeedback, LiveSessionLearner} from "../live-session"
 import "./float-info"
 import type {FloatInfo} from "./float-info"
@@ -28,13 +31,14 @@ import "./style-combobox"
 import {defaultGraphicShapePaint, graphicShapeOptions, SVG_NAMESPACE, type GraphicShapePaint} from "../graphic"
 import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
 
-export type ToolboxTool = "Edit" | "Style" | "AI" | "Review" | "Feedback"
+export type ToolboxTool = "Edit" | "Distribute" | "Style" | "AI" | "Review" | "Feedback"
 
 const tools: readonly {label: ToolboxTool, icon: string}[] = [
   {label: "Edit", icon: "Pencil"},
   {label: "Style", icon: "Theme"},
   {label: "AI", icon: "AI"},
   {label: "Review", icon: "Grammar"},
+  {label: "Distribute", icon: "users-group"},
 ]
 
 /** Document toolbox presented beside the breadcrumb rather than as top-level
@@ -45,7 +49,7 @@ export class DomEditorToolbox extends EditingControls {
   protected get commentReviewMode() { return this.activeTool === "Review" }
 
   protected usesNativePointerInteraction(event: MouseEvent) {
-    return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content")))
+    return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content") || target.localName === "distribution-controls"))
   }
 
   protected renderGraphicDrawer() {
@@ -58,6 +62,10 @@ export class DomEditorToolbox extends EditingControls {
 
   static properties = {
     ...EditingControls.properties,
+    distribution: {attribute: false},
+    distributionGeneral: {attribute: false},
+    distributionItems: {attribute: false},
+    distributionPending: {type: Boolean},
     shapePaint: {attribute: false},
     preview: {type: Boolean, reflect: true},
     feedbackActive: {type: Boolean},
@@ -84,6 +92,11 @@ export class DomEditorToolbox extends EditingControls {
     documentLayoutError: {attribute: false},
     proofreadingState: {attribute: false},
   }
+
+  distributionGeneral: DistributionSelectionState | null = null
+  distribution: DistributionSelectionState | null = null
+  distributionItems: DistributionItem[] = []
+  distributionPending = false
 
   shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
   private shapeFillColor = "#ffffff"
@@ -856,7 +869,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   protected get currentMenuGroups(): RibbonMenuGroup[] {
-    if(this.activeTool === "AI" || this.activeTool === "Feedback") return []
+    if(this.activeTool === "AI" || this.activeTool === "Feedback" || this.activeTool === "Distribute") return []
     return contextDrawerPolicy({
       menu: "Edit",
       surface: "toolbox",
@@ -1571,7 +1584,7 @@ export class DomEditorToolbox extends EditingControls {
     const previousMenu = this.activeMenu
     this.activeTool = nextTool
     if(nextTool) {
-      this.activeMenu = nextTool === "Review" || nextTool === "AI" || nextTool === "Feedback" ? "Edit" : nextTool
+      this.activeMenu = nextTool === "Review" || nextTool === "AI" || nextTool === "Feedback" || nextTool === "Distribute" ? "Edit" : nextTool
       if(nextTool !== "Feedback" && nextTool !== "AI" && (nextTool !== "Style" || previousMenu === nextTool)) {
         this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
       }
@@ -1816,6 +1829,14 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null || this.collapsed}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
+            ${this.activeTool === "Distribute" ? html`<ribbon-drawer label="Permissions for readers" icon="users-group" layout="distribution" show-pane-icon>
+            <distribution-controls general hide-heading .state=${this.distributionGeneral}
+              .items=${this.distributionItems} .pending=${this.distributionPending}
+              .disabled=${this.htmlPending || this.historyState.preview !== null}></distribution-controls>
+            </ribbon-drawer>
+            <distribution-controls heading="Selection" .state=${this.distribution}
+              .items=${this.distributionItems} .pending=${this.distributionPending}
+              .disabled=${this.htmlPending || this.historyState.preview !== null}></distribution-controls>` : ""}
             ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}
             ${this.activeTool === "Review" ? html`
               <div class="review-section review-comments">${this.renderCommentDrawer()}</div>
@@ -1826,7 +1847,7 @@ export class DomEditorToolbox extends EditingControls {
             ` : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderWidgetSharing() : ""}
-            ${this.activeTool && this.activeTool !== "AI" && this.activeTool !== "Review" ? this.renderDrawers() : ""}
+            ${this.activeTool && this.activeTool !== "AI" && this.activeTool !== "Review" && this.activeTool !== "Distribute" ? this.renderDrawers() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>

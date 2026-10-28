@@ -10,6 +10,7 @@ import {isGraphicShapeType} from "../graphic"
 import {mathStructureOptions} from "../math"
 
 export type InsertionMenuItem = {
+  id?: string
   tag?: string
   /** Complete authored markup used instead of an empty element. */
   html?: string
@@ -135,6 +136,11 @@ export class InsertionMenu extends LitElement {
       pointer-events: auto;
     }
 
+    :host([inline]) {
+      position: static;
+      width: 100%;
+    }
+
     [hidden] { display: none; }
 
     .menu {
@@ -161,6 +167,7 @@ export class InsertionMenu extends LitElement {
     .menu { position: relative; }
     .close:hover { background: transparent; color: #111827; }
     .sections { max-height: min(24rem, calc(100vh - 6rem)); overflow: auto; scrollbar-width: thin; padding: 0.35rem; }
+    :host([inline]) .sections { max-height: min(14rem, calc(100vh - 2rem)); }
     section + section { margin-top: 0.25rem; }
     h2 { margin: 0.45rem 0.4rem 0.2rem; color: #6b7280; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
 
@@ -211,16 +218,18 @@ export class InsertionMenu extends LitElement {
 
   @property({type: Boolean, reflect: true}) open = false
   @property({type: String}) query = ""
+  @property({attribute: false}) items: InsertionMenuItem[] | null = null
+  @property({type: Boolean, reflect: true}) inline = false
   @state() private activeIndex = -1
 
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
-    const items: InsertionMenuItem[] = [
+    const items: InsertionMenuItem[] = this.items ?? [
       ...insertionMenuItems.filter(item => item.kind !== "html" && item.tag !== "pre"
         && !sectionInsertionTags.some(tag => tag === item.tag)),
       ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
     ]
-    return items.filter(item => !query || [item.name, item.tag, item.packageName,
+    return items.filter(item => !query || [item.name, item.id, item.tag, item.packageName,
       item.packageName && packageNameLabel(item.packageName), item.kind]
       .filter(Boolean).join(" ").toLowerCase().includes(query))
   }

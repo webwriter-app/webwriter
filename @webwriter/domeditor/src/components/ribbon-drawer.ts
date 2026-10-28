@@ -1008,6 +1008,7 @@ export class RibbonDrawer extends LitElement {
     :host([pane][layout="graphic"]) .controls,
     :host([pane][layout="document-head"]) .controls,
     :host([pane][layout="metadata"]) .controls,
+    :host([pane][layout="distribution"]) .controls,
     :host([pane][layout="packages"][single-column]) .controls {
       grid-template-columns: minmax(0, 1fr);
     }

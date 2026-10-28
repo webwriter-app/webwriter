@@ -1,6 +1,8 @@
 import type {ElementSelectionType} from "../editor-bridge"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
+import {effectiveDistribution, ensureDistributionTarget, writeDistributionConfig} from "../distribution-dom"
+import {emptyDistributionConfig, type DistributionConfig} from "../distribution.js"
 import {EditorFeature} from "."
 import {isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
 import {isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
@@ -223,7 +225,12 @@ export class WidgetFeature extends EditorFeature {
       try { grouping = readWidgetGrouping(widget) }
       catch(reason) { error = reason instanceof Error ? reason.message : String(reason) }
     }
-    const mode = !widget.hasAttribute("shared") ? "individual" : widget.getAttribute("shared") === "group" ? "group" : "all"
+    let mode: "individual" | "group" | "all" = "individual"
+    try {
+      const policy = effectiveDistribution(widget)
+      mode = policy?.config.scope ?? (!widget.hasAttribute("shared") ? "individual" : widget.getAttribute("shared") === "group" ? "group" : "all")
+    }
+    catch(reason) { error = reason instanceof Error ? reason.message : String(reason) }
     const data = supported ? Array.from(widget.children).find(child => child.localName === "script"
       && child.getAttribute("slot") === "data" && !child.hasAttribute("src")
       && ["application/json", "application/xml"].includes(child.getAttribute("type") ?? "")) : undefined
@@ -262,8 +269,14 @@ export class WidgetFeature extends EditorFeature {
 
   setSharing(widget: Element, enabled: boolean) {
     if(this.editor.isEditingLocked) return false
-    if(enabled) widget.setAttribute("shared", readWidgetGrouping(widget) ? "group" : "")
-    else widget.removeAttribute("shared")
+    const effective = effectiveDistribution(widget)?.config
+    const scope = enabled ? (readWidgetGrouping(widget) ? "group" : "all") : "individual"
+    const current = effective ?? emptyDistributionConfig(widget.id || "pending")
+    const target = ensureDistributionTarget(widget)
+    const config: DistributionConfig = {...current, target, scope}
+    writeDistributionConfig(widget, config)
+    widget.removeAttribute("shared")
+    this.editor.doc.syncFromDOM()
     this.editor.postSelectionPath()
     return true
   }
@@ -272,8 +285,18 @@ export class WidgetFeature extends EditorFeature {
     if(this.editor.isEditingLocked) return false
     const end = this.editor.doc.beginUndoGroup()
     try {
+      const effective = effectiveDistribution(widget)
+      const legacyShared = !effective && widget.hasAttribute("shared")
+      let updated: DistributionConfig | undefined
+      if((effective && effective.config.scope !== "individual") || legacyShared) {
+        const current = effective?.config ?? emptyDistributionConfig(widget.id || "pending")
+        updated = {...current, target: ensureDistributionTarget(widget), scope: grouping ? "group" : "all"}
+      }
       writeWidgetGrouping(widget, grouping)
-      if(widget.hasAttribute("shared")) widget.setAttribute("shared", grouping ? "group" : "")
+      if(updated) {
+        writeDistributionConfig(widget, updated)
+        widget.removeAttribute("shared")
+      }
       this.editor.doc.syncFromDOM()
     }
     finally { end() }

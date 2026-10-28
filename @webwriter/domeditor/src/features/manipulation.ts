@@ -443,7 +443,7 @@ export class ManipulationFeature extends EditorFeature {
       .some(type => type === elementDragType || type === ribbonInsertionDragType)
   }
 
-  private ribbonElement(tag: string): Element {
+  ribbonElement(tag: string): Element {
     if(tag === "table") return createTable(2, 2)
     if(tag === "ul" || tag === "ol") {
       const list = document.createElement(tag)
