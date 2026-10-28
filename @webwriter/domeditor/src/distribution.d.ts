@@ -4,6 +4,7 @@ export type DistributionPermission =
   | "delete"
   | "duplicate"
   | "style"
+  | "insert"
 
 export type DistributionScope = "individual" | "group" | "all"
 
@@ -17,6 +18,8 @@ export interface DistributionConfig {
   version: 1
   target: string
   scope: DistributionScope
+  /** Requested participants per group; omitted for existing session-defined groups. */
+  groupSize?: number
   permissions: DistributionPermission[]
   add: string[]
   items: DistributionItem[]

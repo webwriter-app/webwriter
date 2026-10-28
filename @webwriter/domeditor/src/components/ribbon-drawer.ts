@@ -1,6 +1,7 @@
 import {LitElement, css, html} from "lit"
 import {uiMotionDisabled} from "../utility"
 import {ribbonIcon} from "../ribbon-icons"
+import {styleMap} from "lit/directives/style-map.js"
 
 export type RibbonDrawerLayoutWidths = {
   collapsed: number
@@ -32,6 +33,7 @@ export class RibbonDrawer extends LitElement {
     icon: {type: String},
     iconUrl: {type: String, attribute: "icon-url"},
     iconPath: {type: String, attribute: "icon-path"},
+    iconBadge: {type: String, attribute: "icon-badge"},
     label: {type: String},
     elementCount: {type: Number, attribute: "element-count"},
     showPaneIcon: {type: Boolean, attribute: "show-pane-icon"},
@@ -800,6 +802,12 @@ export class RibbonDrawer extends LitElement {
       object-fit: contain;
     }
 
+    .icon-composite {position: relative; display: block; width: 100%; height: 100%;}
+    .icon-badge {position: absolute; top: -0.25rem; right: -0.25rem; display: block; width: 55%; height: 55%; padding: 0.5px; border: 1.5px solid var(--ribbon-drawer-icon-background, #fff); border-radius: 50%; background: var(--ribbon-drawer-icon-background, #fff);}
+    .image-icon {display: block; width: 100%; height: 100%;}
+    :host([data-selected]) .image-icon {background: currentColor; mask: var(--ribbon-drawer-image) center / contain no-repeat;}
+    :host([data-selected]) .image-icon img {visibility: hidden;}
+
     .summary-label {
       display: block;
       max-width: 100%;
@@ -918,6 +926,7 @@ export class RibbonDrawer extends LitElement {
       width: 1rem;
       height: 1rem;
       margin-inline-end: 0.35rem;
+      color: var(--ribbon-drawer-heading-color, var(--ribbon-control-color, #526b86));
     }
 
     :host([pane]) {
@@ -951,7 +960,7 @@ export class RibbonDrawer extends LitElement {
       align-items: center;
       min-height: 2.15rem;
       padding-right: 2rem;
-      color: #465465;
+      color: var(--ribbon-drawer-heading-color, #465465);
       font-size: 0.72rem;
       font-weight: 650;
     }
@@ -1136,6 +1145,7 @@ export class RibbonDrawer extends LitElement {
   icon = ""
   iconUrl = ""
   iconPath = ""
+  iconBadge = ""
   label = "Drawer"
   elementCount = 1
   showPaneIcon = false
@@ -1535,9 +1545,10 @@ export class RibbonDrawer extends LitElement {
   }
 
   render() {
-    const icon = this.iconUrl ? html`<img src=${this.iconUrl} alt="">`
+    const baseIcon = this.iconUrl ? html`<span class="image-icon" style=${styleMap({"--ribbon-drawer-image": `url(${JSON.stringify(this.iconUrl)})`})}><img src=${this.iconUrl} alt=""></span>`
       : this.iconPath ? html`<svg viewBox="-10 -10 120 120" fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="round"><path d=${this.iconPath}></path></svg>`
         : ribbonIcon(this.icon || this.label)
+    const icon = this.iconBadge ? html`<span class="icon-composite">${baseIcon}<span class="icon-badge">${ribbonIcon(this.iconBadge)}</span></span>` : baseIcon
     const elementCount = this.elementCount > 1 ? html`<span class="element-count" aria-label=${`${this.elementCount} elements`}>${this.elementCount}</span>` : ""
     const toggleUnavailable = (!this.collapsed && !this.expandable)
       || (this.layout === "elements" && !this.collapsed && !this.drawerOpen)

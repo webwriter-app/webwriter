@@ -1,5 +1,7 @@
 import {applyUpdate, encodeStateAsUpdate, encodeStateVector} from "yjs"
 import {SharedDOMDoc} from "./domdoc"
+import {DOMEditor} from "./domeditor-core"
+import {$, getContainer, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction} from "./utility"
 import {WidgetDataStorage} from "./widget-data-storage"
 import {effectiveDistribution, hydrateDistributionInstructions, readDistributionConfigs} from "./distribution-dom"
 import {distributionFragment, distributionSnapshot} from "./distribution-snapshot"
@@ -8,19 +10,19 @@ import type {DistributionConfig, DistributionPermission} from "./distribution.js
 
 export type DistributionReaderContext = {
   root: Document
+  readonly editor: DOMEditor | null
   controls: HTMLElement
   selected: () => Element | null
   policy: (element?: Element | null) => DistributionConfig | null
   allows: (permission: DistributionPermission, element?: Element | null) => boolean
   mutate: (operation: () => void, element?: Element | null) => boolean
-  addButton: (label: string, permission: DistributionPermission, action: () => void) => HTMLButtonElement
   listen: (target: EventTarget, type: string, listener: EventListener) => void
   message: (text: string) => void
   destroy: () => void
 }
 
 /** Only in-frame primitives are imported here. Authoring controls never enter this graph. */
-export function mountDistributionReader(root: Document): DistributionReaderContext | null {
+export function mountDistributionReader(root: Document, options: {widgets?: import("./schema").WidgetSchemaDefinition[]} = {}): DistributionReaderContext | null {
   hydrateDistributionInstructions(root)
   const configs = readDistributionConfigs(root)
   if(!configs.length || root.designMode === "on") return null
@@ -34,16 +36,13 @@ export function mountDistributionReader(root: Document): DistributionReaderConte
   }))
   const dock = root.createElement("section")
   dock.className = "◆distribution-reader"
-  dock.setAttribute("aria-label", "Reader editing")
+  dock.setAttribute("aria-label", "Insert elements")
   const controls = root.createElement("div")
   controls.setAttribute("role", "toolbar")
-  controls.setAttribute("aria-label", "Reader actions")
+  controls.setAttribute("aria-label", "Insertable elements")
   const status = root.createElement("p")
   status.setAttribute("role", "status")
-  status.textContent = "Select an element to see available actions."
-  const outline = root.createElement("div")
-  outline.className = "◆distribution-outline"
-  outline.hidden = true
+
   const style = root.createElement("style")
   style.textContent = `
     .◆distribution-reader{position:fixed;inset:auto 12px 12px;margin:auto;width:max-content;max-width:calc(100vw - 24px);max-height:min(40vh,20rem);overflow:auto;box-sizing:border-box;padding:8px;z-index:2147483646;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#334155;box-shadow:0 3px 16px #0002;font:13px/1.4 system-ui}
@@ -53,16 +52,16 @@ export function mountDistributionReader(root: Document): DistributionReaderConte
     .◆distribution-reader label{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
     .◆distribution-reader button:disabled{opacity:.45}.◆distribution-reader button[aria-pressed=true]{background:#e0f2fe}
     .◆distribution-reader :focus-visible{outline:2px solid #2563eb;outline-offset:2px}
-    .◆distribution-reader p{margin:6px 0 0;font-size:12px}.◆distribution-outline{position:fixed;pointer-events:none;border:2px solid #2563eb;box-sizing:border-box;z-index:2147483645}
-    @media print{.◆distribution-reader,.◆distribution-outline{display:none!important}}
+    .◆distribution-reader p{margin:6px 0 0;font-size:12px}
+    @media print{.◆distribution-reader{display:none!important}}
   `
   dock.append(controls, status)
-  appendix.append(style, outline, dock)
+  dock.hidden = true
+  appendix.append(style, dock)
   const cleanup: (() => void)[] = []
   const mirrors = new Map<string, {mirror: SharedDOMDoc, root: HTMLElement, close: () => void}>()
-  const buttons: {button: HTMLButtonElement, permission: DistributionPermission}[] = []
   let baseMirror: SharedDOMDoc | undefined
-  let selected: Element | null = null, selecting = false, destroyed = false, ready = false
+  let selected: Element | null = null, editor: DOMEditor | null = null, destroyed = false, ready = false
   let accepted = distributionSnapshot(root.documentElement)!
   const listen = (target: EventTarget, type: string, listener: EventListener) => {
     target.addEventListener(type, listener)
@@ -74,14 +73,15 @@ export function mountDistributionReader(root: Document): DistributionReaderConte
     return config ? mirrors.get(config.target) : undefined
   }
   const position = () => {
+    const previous = selected
     if(selected && !selected.isConnected) selected = null
-    outline.hidden = !selected
-    if(selected) {
-      const rect = selected.getBoundingClientRect()
-      Object.assign(outline.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+    if(editor && !appendix.activeElement) {
+      const selection = root.getSelection()
+      selected = editor.features.selection.captureSelectedElement ?? editor.features.selection.selectedSectionElement ?? $.selectedElement
+        ?? (selection?.anchorNode && root.body.contains(selection.anchorNode) ? getContainer(selection.anchorNode) : null)
+      if(selected && !editor.allows("select", selected)) selected = null
     }
-    for(const {button, permission} of buttons) button.disabled = !ready || !owner() || !policy()?.permissions.includes(permission)
-    if(selected) status.textContent = `${selected.localName}${selected.id ? ` #${selected.id}` : ""} · ${policy()?.scope ?? "No editing permissions"}`
+    if(previous !== selected) view.dispatchEvent(new Event("webwriter-distribution-selection"))
   }
   const restore = () => {
     if(baseMirror) { baseMirror.pauseDOMSync(); baseMirror.resumeDOMSync() }
@@ -102,7 +102,7 @@ export function mountDistributionReader(root: Document): DistributionReaderConte
   })
   observer.observe(root.documentElement, {subtree: true, attributes: true, characterData: true, childList: true})
   const context: DistributionReaderContext = {
-    root, controls, selected: () => selected, policy,
+    root, controls, get editor() { return editor }, selected: () => { position(); return selected }, policy,
     allows: (permission, element = selected) => ready && Boolean(owner(element)) && Boolean(policy(element)?.permissions.includes(permission)),
     mutate: (operation, element = selected) => {
       const binding = owner(element)
@@ -130,53 +130,44 @@ export function mountDistributionReader(root: Document): DistributionReaderConte
       }
       return succeeded
     },
-    addButton: (label, permission, action) => {
-      const button = root.createElement("button")
-      button.type = "button"; button.textContent = label; button.disabled = true
-      button.addEventListener("click", action)
-      controls.append(button); buttons.push({button, permission})
-      return button
-    },
-    listen, message: text => { status.textContent = text },
+    listen, message: text => { status.textContent = text; dock.hidden = false },
     destroy: () => {
       if(destroyed) return
       destroyed = true; observer.disconnect()
       cleanup.splice(0).forEach(close => close())
+      editor?.destroy(); editor = null
       baseMirror?.destroy()
       mirrors.forEach(({mirror, close}) => { mirror.destroy(); close() }); mirrors.clear()
-      dock.remove(); outline.remove(); style.remove()
+      dock.remove(); style.remove()
     },
   }
-  const selectButton = root.createElement("button")
-  selectButton.type = "button"; selectButton.textContent = "Select"; selectButton.setAttribute("aria-pressed", "false")
-  selectButton.addEventListener("click", () => { selecting = !selecting; selectButton.setAttribute("aria-pressed", String(selecting)) })
-  controls.append(selectButton)
-  for(const kind of ["undo", "redo"] as const) {
-    const button = root.createElement("button")
-    button.type = "button"; button.textContent = kind === "undo" ? "Undo" : "Redo"
-    button.addEventListener("click", () => {
-      const binding = owner()
-      if(!ready || !binding) return
-      binding.mirror[kind]()
-      accepted = distributionSnapshot(root.documentElement)!
-      position()
-    })
-    controls.append(button)
-  }
-  listen(root, "click", event => {
-    if(!selecting || event.composedPath().includes(appendix)) return
-    const target = event.target as Element
-    if(!target?.closest || !root.body.contains(target)) return
-    selected = target.closest("[is]") ?? target
-    // Select custom hosts atomically, including light-DOM descendants owned by a widget.
-    for(let parent = selected.parentElement; parent && parent !== root.body; parent = parent.parentElement) {
-      if(parent.localName.includes("-") || parent.hasAttribute("is")) selected = parent
+  // Install the boundary before the shared feature listeners. Native text editing
+  // and all appendix gestures then run through the same engine as authoring.
+  const boundary = (event: Event) => {
+    if(!editor || destroyed || isWidgetShadowInteraction(event, editor.schema) || isFormControlInteraction(event)) return
+    if(isAppendixInteraction(event)) return
+    if(event.type === "pointerdown" || event.type === "mousedown") {
+      const target = event.target instanceof Element ? event.target : null
+      root.designMode = target && context.allows("edit", target) ? "on" : "off"
+      return
     }
-    event.preventDefault(); event.stopImmediatePropagation(); position()
-  })
-  listen(root, "keydown", event => { if((event as KeyboardEvent).key === "Escape") { selecting = false; selected = null; selectButton.setAttribute("aria-pressed", "false"); position() } })
-  listen(view, "scroll", position)
-  listen(view, "resize", position)
+    if(event instanceof KeyboardEvent && event.key === "Escape") return
+    const whole = editor.features.selection.captureSelectedElement ?? editor.features.selection.selectedSectionElement ?? $.selectedElement
+    const key = event instanceof KeyboardEvent ? event.key : ""
+    const inputType = event instanceof InputEvent ? event.inputType : ""
+    const deleting = ["Backspace", "Delete"].includes(key) || inputType.startsWith("delete") || event.type === "cut"
+    const typing = event.type !== "keydown" || key.length === 1 && !((event as KeyboardEvent).ctrlKey || (event as KeyboardEvent).metaKey)
+      || ["Enter", "Tab", "Backspace", "Delete"].includes(key)
+    if(!typing) return
+    const permission = deleting && whole ? "delete" : "edit"
+    if(!editor.allowsSelection(permission)) { event.preventDefault(); event.stopImmediatePropagation() }
+  }
+  for(const type of ["pointerdown", "mousedown", "keydown", "beforeinput", "paste", "cut", "compositionstart"]) {
+    view.addEventListener(type, boundary, true)
+    cleanup.push(() => view.removeEventListener(type, boundary, true))
+  }
+  listen(view, "webwriter-distribution-selection", position)
+  listen(root, "selectionchange", () => { position(); view.dispatchEvent(new Event("webwriter-distribution-selection")) })
   listen(view, "pagehide", context.destroy)
   const storage = new WidgetDataStorage(view.indexedDB)
   cleanup.push(() => storage.destroy())
@@ -224,9 +215,18 @@ export function mountDistributionReader(root: Document): DistributionReaderConte
       mirrors.set(config.target, {mirror, root: scopeRoot, close: () => { unsubscribe(); connection.doc.off("update", relay); channel?.close() }})
     }
     accepted = distributionSnapshot(root.documentElement)!
-    ready = true; observer.takeRecords(); position()
+    ready = true
+    // DOMEditor itself is shared with authoring; only its capability provider differs.
+    // No host ribbon, toolbox, bridge initialization or settings enter this path.
+    if(root === document) editor = new DOMEditor({widgets: options.widgets, reader: {allows: (permission, element) => permission === "select"
+      ? ["edit", "move", "delete"].some(action => context.allows(action as DistributionPermission, element))
+      // Generic authoring add controls do not carry an approved insertion recipe.
+      // Reader insertion continues through the exact items in its palette.
+      : permission !== "insert" && context.allows(permission, element)}})
+    accepted = distributionSnapshot(root.documentElement)!
+    observer.takeRecords(); position()
     view.dispatchEvent(new Event("webwriter-distribution-ready"))
   }
-  void initialize().catch(error => { status.textContent = error instanceof Error ? error.message : String(error) })
+  void initialize().catch(error => { ready = false; context.message(error instanceof Error ? error.message : String(error)) })
   return context
 }

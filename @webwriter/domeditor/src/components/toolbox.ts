@@ -20,7 +20,7 @@ import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
-import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
+import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes, documentLayoutLabel, documentLayoutIcon} from "./layout-preview"
 import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, listMarkerImageProperty, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
@@ -30,6 +30,7 @@ import {canonicalMarkName} from "../marks"
 import "./style-combobox"
 import {defaultGraphicShapePaint, graphicShapeOptions, SVG_NAMESPACE, type GraphicShapePaint} from "../graphic"
 import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
+import {getElementPresentation} from "../element-names"
 
 export type ToolboxTool = "Edit" | "Distribute" | "Style" | "AI" | "Review" | "Feedback"
 
@@ -66,6 +67,7 @@ export class DomEditorToolbox extends EditingControls {
     distributionGeneral: {attribute: false},
     distributionItems: {attribute: false},
     distributionPending: {type: Boolean},
+    distributionInsertDragActive: {type: Boolean},
     shapePaint: {attribute: false},
     preview: {type: Boolean, reflect: true},
     feedbackActive: {type: Boolean},
@@ -97,6 +99,7 @@ export class DomEditorToolbox extends EditingControls {
   distribution: DistributionSelectionState | null = null
   distributionItems: DistributionItem[] = []
   distributionPending = false
+  distributionInsertDragActive = false
 
   shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
   private shapeFillColor = "#ffffff"
@@ -116,6 +119,8 @@ export class DomEditorToolbox extends EditingControls {
   aiSidebar = false
 
   static styles = css`
+    .distribution-drawer {--ribbon-drawer-icon-background: #f2f2f2;}
+    .distribution-drawer[data-selected] {--ribbon-drawer-heading-color: var(--sl-color-primary-400, #38bdf8);}
     ${aiChatStyles}
     ${proofreadingCardStyles}
     ${EditingControls.styles}
@@ -1739,6 +1744,10 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   render() {
+    const distributionElement = this.elementAttributes ?? this.selectionPath.at(-1)
+    const distributionPresentation = distributionElement ?? {name: "element", icon: "Section", iconUrl: undefined}
+    const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
+    const distributionSelected = this.elementSelected && Boolean(this.distribution)
     return html`
       <div
         class="toolbox"
@@ -1829,14 +1838,24 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null || this.collapsed}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
-            ${this.activeTool === "Distribute" ? html`<ribbon-drawer label="Permissions for readers" icon="users-group" layout="distribution" show-pane-icon>
+            ${this.activeTool === "Distribute" ? html`<ribbon-drawer class="distribution-drawer" label=${`${documentLayoutLabel(this.documentLayout.mode)} permissions`}
+              icon=${documentLayoutIcon(this.documentLayout.mode)} icon-badge="Checkbox" layout="distribution" show-pane-icon>
             <distribution-controls general hide-heading .state=${this.distributionGeneral}
+              .insertDragActive=${this.distributionInsertDragActive}
               .items=${this.distributionItems} .pending=${this.distributionPending}
               .disabled=${this.htmlPending || this.historyState.preview !== null}></distribution-controls>
             </ribbon-drawer>
-            <distribution-controls heading="Selection" .state=${this.distribution}
+            <ribbon-drawer class="distribution-drawer" label=${distributionSelected ? `${distributionPresentation.name} permissions` : "Permissions"}
+              icon=${distributionSelected ? distributionIcon : "Section"} .iconUrl=${distributionSelected ? distributionPresentation.iconUrl ?? "" : ""}
+              icon-badge="Checkbox" ?data-selected=${distributionSelected} layout="distribution" show-pane-icon>
+            <distribution-controls heading="Grouping" view="grouping" .state=${this.distribution}
               .items=${this.distributionItems} .pending=${this.distributionPending}
-              .disabled=${this.htmlPending || this.historyState.preview !== null}></distribution-controls>` : ""}
+              .disabled=${!this.elementSelected || this.htmlPending || this.historyState.preview !== null}></distribution-controls>
+            <distribution-controls heading="Permissions" view="permissions" compact .state=${this.distribution}
+              .insertDragActive=${this.distributionInsertDragActive}
+              .items=${this.distributionItems} .pending=${this.distributionPending}
+              .disabled=${!this.elementSelected || this.htmlPending || this.historyState.preview !== null}></distribution-controls>
+            </ribbon-drawer>` : ""}
             ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}
             ${this.activeTool === "Review" ? html`
               <div class="review-section review-comments">${this.renderCommentDrawer()}</div>

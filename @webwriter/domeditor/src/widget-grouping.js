@@ -1,5 +1,13 @@
 export const groupingTarget = "ww-grouping"
 
+/** A compact distribution size uses the same deterministic formation rules as the full grouping editor. */
+export function distributionGroupingRevision(config) {
+  if(config?.scope !== "group" || config.groupSize === undefined) return undefined
+  return encodeURIComponent(JSON.stringify(validateGroupingRules({
+    ...defaultGroupingRules(config.target), number: config.groupSize,
+  })))
+}
+
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value)
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key)
 const fail = message => { throw new TypeError(`Invalid grouping rules: ${message}`) }

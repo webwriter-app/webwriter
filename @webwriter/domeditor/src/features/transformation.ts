@@ -5,7 +5,7 @@ import {standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../element-styles"
 import {mediaCropInsets} from "../media"
-import {captionIconSource} from "../ribbon-icons"
+import {captionIconSource} from "../caption-icon"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
 import {isCanvasStartingView} from "../canvas-viewer.js"
@@ -80,6 +80,7 @@ type Gesture = {
  * on the current DOM. Escape, pointer cancellation and teardown cancel a drag.
  */
 export class TransformationFeature extends EditorFeature {
+  readonly readerPermission = "select" as const
   protected handlesAppendixInteractions = true
   protected handlesCapturedElementInteractions = true
   #target: TransformElement | null = null
@@ -405,7 +406,7 @@ export class TransformationFeature extends EditorFeature {
     return (element instanceof HTMLElement || element instanceof SVGSVGElement
       || mathRoot(element) === element && element.getAttribute("display") === "block")
       && element !== document.documentElement && element !== document.head
-      && !isDocumentRoot(element) && getDocumentRoot().contains(element)
+      && !isDocumentRoot(element) && getDocumentRoot().contains(element) && this.editor.allows("select", element)
   }
 
   /** Called at the selection feature's invariant boundary, including capture
@@ -480,6 +481,8 @@ export class TransformationFeature extends EditorFeature {
 
   #syncControlParts() {
     const overlay = this.overlay
+    const allows = (permission: "move" | "delete" | "style" | "edit") => this.#group.length
+      ? this.#group.every(element => this.editor.allows(permission, element)) : this.editor.allows(permission, this.target)
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
     const text = Boolean(this.target && !freeform && this.#isTextContainer(this.target))
@@ -488,19 +491,20 @@ export class TransformationFeature extends EditorFeature {
     setPart(overlay, "transform-overlay-starting-view", !this.#group.length && Boolean(this.target && isCanvasStartingView(this.target)))
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      const hide = !freeform || this.#group.length > 0
+      const hide = !allows("style") || !freeform || this.#group.length > 0
       midpoint.hidden = hide
       setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = this.#group.length > 0 || !freeform && scaler.dataset.resizeDirection !== corner
+      const hide = !allows("style") || this.#group.length > 0 || !freeform && scaler.dataset.resizeDirection !== corner
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
       setPart(scaler, "transform-overlay-scale-text", text)
     }
     for(const edge of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
       edge.dataset.transformMode = "move"
-      edge.draggable = !this.editor.features.canvas.active && !this.editor.features.slides.active
+      edge.style.pointerEvents = allows("move") ? "" : "none"
+      edge.draggable = allows("move") && !this.editor.features.canvas.active && !this.editor.features.slides.active
       edge.title = "Move"
       setPart(edge, "transform-overlay-edge-move", true)
     }
@@ -511,21 +515,21 @@ export class TransformationFeature extends EditorFeature {
       setPart(control, `transform-overlay-${name}-hidden`, hide)
       control.hidden = hide
     }
-    hidden("rotator", !freeform || (this.#group.length
+    hidden("rotator", !allows("style") || !freeform || (this.#group.length
       ? !this.#group.every(element => getComputedStyle(element).position === "absolute" && !isCanvasStartingView(element))
       : position !== "absolute" || Boolean(this.target && isCanvasStartingView(this.target))))
     hidden("orderer", true)
-    hidden("mover", freeform)
+    hidden("mover", freeform || !allows("move"))
     const captionPosition = this.editor.features.manipulation.getCaptionPosition()
     const captionAlignment = this.editor.features.manipulation.getCaptionAlignment() ?? "left"
     const caption = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
-    hidden("caption", freeform || !this.target || captionPosition === null)
+    hidden("caption", !allows("edit") || freeform || !this.target || captionPosition === null)
     caption.style.setProperty("--icon", `url("data:image/svg+xml,${encodeURIComponent(captionIconSource(captionPosition ?? "none", captionAlignment, true))}")`)
     caption.title = captionPosition === "none" ? "Add caption" : `Caption ${captionPosition}, align ${captionAlignment}: cycle position`
     caption.setAttribute("aria-label", caption.title)
     overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
       !this.editor.features.canvas.active && !this.editor.features.slides.active
-    hidden("delete", false)
+    hidden("delete", !allows("delete"))
     setPart(overlay.querySelector("#◆transform-overlay-delete")!, "transform-overlay-delete-freeform", freeform)
     hidden("arranger", true)
     hidden("anchor", true)
@@ -950,6 +954,7 @@ export class TransformationFeature extends EditorFeature {
 
   #begin(event: MouseEvent, mode: Mode, handle: HTMLElement) {
     const target = this.target
+    if(!(this.#group.length ? this.#group : target ? [target] : []).every(element => this.editor.allows(mode === "move" ? "move" : "style", element))) return false
     if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
     if(this.#group.length) return this.#beginGroup(event, mode, handle)
     if(mode === "crop" && !cropDirections.some(direction => direction === handle.dataset.cropDirection)) return false
@@ -1676,7 +1681,7 @@ export class TransformationFeature extends EditorFeature {
       }
       if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-delete" && this.overlay.contains(handle)) {
         const target = this.target
-        if(target && !this.#gesture && !this.editor.isEditingLocked) {
+        if(target && !this.#gesture && !this.editor.isEditingLocked && this.editor.allowsSelection("delete")) {
           if(this.#group.length) {
             if(this.#validGroupSelection()) {
               const end = this.editor.doc.beginUndoGroup()

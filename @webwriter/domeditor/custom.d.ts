@@ -43,11 +43,6 @@ declare module 'virtual:reference-formatter-source' {
 declare module 'virtual:distribution-reader-sources' {
   const sources: {
     core: string
-    edit: string
-    move: string
-    style: string
-    delete: string
-    duplicate: string
     insert: string
   }
   export default sources

@@ -1,4 +1,5 @@
 import {widgetGroupingRevision} from "./widget-grouping-dom"
+import {distributionGroupingRevision} from "./widget-grouping.js"
 import * as Y from "yjs"
 import {messageSync, WebsocketProvider} from "y-websocket"
 import {WidgetDataStorage, type WidgetDataPersistenceState} from "./widget-data-storage"
@@ -275,7 +276,7 @@ export class WidgetDataBindings {
           this.#error(block, new TypeError("Unknown widget sharing mode")); continue
         }
         const mode: WidgetDataMode = policy?.config.scope ?? (shared === null ? "individual" : shared === "group" ? "group" : "all")
-        const policyGrouping = policy ? widgetGroupingRevision(policy.element) : undefined
+        const policyGrouping = policy ? distributionGroupingRevision(policy.config) ?? widgetGroupingRevision(policy.element) : undefined
         const groupingRevision = mode === "group" ? (policyGrouping ?? widgetGroupingRevision(widget)) : undefined
         const key = `${this.documentId}:${widget.id}:${mode}:${block.type}:${groupingRevision ?? ""}`
         let binding = this.#bindings.get(block)

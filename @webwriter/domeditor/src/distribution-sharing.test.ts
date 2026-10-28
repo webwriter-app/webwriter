@@ -7,6 +7,7 @@ import {emptyDistributionConfig, encodeDistributionConfig, distributionTarget} f
 import {writeDistributionConfig} from "./distribution-dom"
 import {Schema} from "./schema"
 import {WidgetDataBindings, type WidgetDataRequest} from "./widget-data"
+import {distributionGroupingRevision} from "./widget-grouping.js"
 
 const tick = async () => { await new Promise(resolve => setTimeout(resolve, 0)) }
 const cleanups: (() => void)[] = []
@@ -21,7 +22,7 @@ function createBindings(markup = '<data-widget id="sharing-widget"><script type=
   const bindings = new WidgetDataBindings(root, element => element.localName === "data-widget", {
     resolve: request => {
       requests.push(request)
-      const key = `${request.widget}:${request.mode}`
+      const key = `${request.widget}:${request.mode}:${request.groupingRevision ?? ""}`
       let doc = docs.get(key)
       if(!doc) { doc = new Y.Doc(); docs.set(key, doc) }
       return {doc}
@@ -38,6 +39,28 @@ afterEach(() => {
 })
 
 describe("widget data distribution sharing", () => {
+  it("inherits numbered grouping and rebinds when the requested group size changes", async () => {
+    const peer = createBindings()
+    const parent = document.createElement("section")
+    parent.id = "numbered-groups"
+    parent.append(peer.widget)
+    peer.root.append(parent)
+    const config = {...makeConfig(parent.id, "group"), groupSize: 2}
+    writeDistributionConfig(parent, config)
+    peer.bindings.sync()
+    await tick()
+    expect(peer.requests.at(-1)?.groupingRevision).toBe(distributionGroupingRevision(config))
+    const rules = JSON.parse(decodeURIComponent(peer.requests.at(-1)!.groupingRevision!))
+    expect(rules).toMatchObject({method: "automatic", groupBy: "members", number: 2})
+    peer.block.textContent = '{"answer":42}'
+    peer.bindings.sync()
+    writeDistributionConfig(parent, {...config, groupSize: 4})
+    peer.bindings.sync()
+    await tick()
+    expect(peer.requests.at(-1)?.groupingRevision).not.toBe(distributionGroupingRevision(config))
+    expect(peer.block.textContent).toBe('{"answer":0}')
+  })
+
   it("inherits scope, applies a complete local override, and never copies answers across scopes", async () => {
     const peer = createBindings()
     const parent = document.createElement("section")

@@ -10,7 +10,8 @@ import * as Y from "yjs"
 import * as decoding from "lib0/decoding"
 import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
 import {createDistributionValidator} from "./distribution.mjs"
-import {formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
+import {distributionGroupingRevision, formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
+import {decodeDistributionConfig, distributionTarget} from "../src/distribution.js"
 import {fetchGitPackage, gitPackageSource, gitPackageMimeType} from "./git-packages.mjs"
 
 const serverDirectory = dirname(fileURLToPath(import.meta.url))
@@ -101,6 +102,24 @@ const widgetGroupingDeclaration = (documentId, widgetId) => {
   if(elements.length > 1) throw Object.assign(new Error("Widget ID is ambiguous in the shared document"), {status: 409})
   const widget = elements[0]
   if(!widget) return null
+  const head = isYMap(mirror) ? mirror.get("head") : document.getXmlElement("document-head")
+  const configs = new Map()
+  for(const node of isYXmlElement(head) ? head.toArray() : []) {
+    if(!isYXmlElement(node) || node.getAttribute(widgetNodeKind) !== widgetProcessingInstructionKind
+      || node.getAttribute(widgetProcessingInstructionTarget) !== distributionTarget) continue
+    const config = decodeDistributionConfig(node.toArray().map(child => child.toString()).join(""))
+    if(!config || configs.has(config.target)) throw Object.assign(new Error("Invalid distribution grouping declaration"), {status: 409})
+    configs.set(config.target, config)
+  }
+  let policy
+  for(let element = widget; isYXmlElement(element); element = element.parent) {
+    policy = configs.get(element.getAttribute("id"))
+    if(policy) break
+  }
+  const attributes = isYMap(mirror) ? mirror.get("attributes") : document.getXmlElement("document-attributes")
+  if(!policy && isYXmlElement(attributes)) policy = configs.get(attributes.getAttribute("id"))
+  const distributionRevision = distributionGroupingRevision(policy)
+  if(distributionRevision) return distributionRevision
   const instructions = widget.toArray().filter(node => isYXmlElement(node)
     && node.getAttribute(widgetNodeKind) === widgetProcessingInstructionKind
     && node.getAttribute(widgetProcessingInstructionTarget) === groupingTarget)

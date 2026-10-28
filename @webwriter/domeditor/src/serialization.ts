@@ -13,23 +13,17 @@ import {documentLayoutMode} from "./document-layout"
 import {getDocumentRoot} from "./document-template"
 import {creativeCommonsLicenses} from "./document-head"
 import {siteTranslations} from "./site-translations"
-import scopedCustomElementRegistrySource from "./scoped-custom-element-registry.js?raw"
 import distributionReaderSources from "virtual:distribution-reader-sources"
 import {readDistributionConfigs} from "./distribution-dom"
-import type {WebWriterPackage} from "./packages"
+import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
+import {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype} from "./serialization-primitives"
+export {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype} from "./serialization-primitives"
+import {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
+export {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
 
-export const originalURLAttribute = (name: string) => `data-webwriter-original-${name.replace(":", "-")}`
-export const originalPackageEntriesAttribute = "data-webwriter-original-package-entries"
-export const offlinePackageStyleAttribute = "data-webwriter-offline-package-style"
 const legacyScopedRegistryPolyfillURL = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
-
-/** Escape a value inserted into a double-quoted HTML attribute. */
-export const escapeHTMLAttribute = (value: string) => value
-  .replaceAll("&", "&amp;")
-  .replaceAll('"', "&quot;")
-  .replaceAll("<", "&lt;")
 
 export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "xlink:href", "style", "integrity"] as const
 
@@ -72,37 +66,11 @@ export function restoreOriginalResourceURLs(root: ParentNode) {
   root.querySelectorAll<HTMLTemplateElement>("template").forEach(template => restoreOriginalResourceURLs(template.content))
 }
 
-export function serializeDoctype(doctype: DocumentType | null) {
-  if(!doctype) return ""
-  const publicId = doctype.publicId ? ` PUBLIC \"${doctype.publicId}\"` : ""
-  const systemId = doctype.systemId
-    ? `${doctype.publicId ? "" : " SYSTEM"} \"${doctype.systemId}\"`
-    : ""
-  return `<!DOCTYPE ${doctype.name}${publicId}${systemId}>`
-}
-
-/** Creates the standalone scoped-registry adapter required before widget scripts. */
-export function scopedCustomElementRegistryScript(root: Document, editorOnly = false) {
-  const script = root.createElement("script")
-  script.id = "webwriter-scoped-registry"
-  if(editorOnly) script.classList.add("◆", "◆editor-only")
-  script.textContent = scopedCustomElementRegistrySource.replace(/<\/script/gi, "<\\/script")
-  return script
-}
-
 /** Adds the widget and template resources required by a detached document. */
 export function appendSerializedAssets(root: Document, packages: WebWriterPackage[], importMap?: IImportMap | null) {
   const distribution = readDistributionConfigs(root)
   root.querySelectorAll('script[id="webwriter-distribution-reader"]').forEach(script => script.remove())
   const permissions = new Set(distribution.flatMap(config => config.permissions))
-  if(permissions.size || distribution.some(config => config.items.length)) {
-    const script = root.createElement("script")
-    script.id = "webwriter-distribution-reader"
-    script.type = "module"
-    const actions = [...permissions, ...(distribution.some(config => config.items.length) ? ["insert"] : [])]
-    script.textContent = `${distributionReaderSources.core}\nconst distributionContext = distributionReader.mountDistributionReader(document);\nif(distributionContext) {\n${actions.map(action => `${distributionReaderSources[action as keyof typeof distributionReaderSources]}\ndistributionAction.install(distributionContext);`).join("\n")}\n}`.replace(/<\/script/gi, "<\\/script")
-    root.head.append(script)
-  }
   const resourceKey = (url: string) => {
     try { return new URL(url, root.baseURI).href }
     catch { return url }
@@ -166,11 +134,11 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   }
   if(documentLayoutMode(root.body) === "canvas") {
     const script = root.createElement("script")
-    script.id = "webwriter-canvas-viewer"
+    script.id = permissions.size ? "webwriter-layout-print" : "webwriter-canvas-viewer"
     script.type = "module"
     // Evaluate the initial camera before the browser paints authored content.
     script.setAttribute("blocking", "render")
-    script.textContent = `${layoutPrintSource}\n${canvasViewerSource}\nmountCanvasReader()\ncreateLayoutPrint(document)\n`
+    script.textContent = `${layoutPrintSource}\n${permissions.size ? "" : `${canvasViewerSource}\nmountCanvasReader()\n`}createLayoutPrint(document)\n`
     head.append(script)
   }
   const tags = new Set<string>()
@@ -184,10 +152,18 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   }
   collectTags(root)
   // Templates held in policy data also contribute resources before their first insertion.
-  for(const config of distribution) for(const item of config.items) {
+  for(const config of distribution.filter(config => config.permissions.includes("insert"))) for(const item of config.items) {
     const template = root.createElement("template")
     template.innerHTML = item.html
     collectTags(template.content)
+  }
+  if(permissions.size) {
+    const script = root.createElement("script")
+    script.id = "webwriter-distribution-reader"
+    script.type = "module"
+    const actions = permissions.has("insert") ? ["insert"] as const : []
+    script.textContent = `${distributionReaderSources.core}\nconst distributionContext = distributionReader.mountDistributionReader(document, ${JSON.stringify({widgets: packageWidgetSchemaDefinitions(packages).filter(widget => tags.has(widget.tagName))})});\nif(distributionContext) {\n${actions.map(action => `${distributionReaderSources[action as keyof typeof distributionReaderSources]}\ndistributionAction.install(distributionContext);`).join("\n")}\n}`.replace(/<\/script/gi, "<\\/script")
+    root.head.append(script)
   }
   const known = new Set<string>()
   const required = new Set<string>()

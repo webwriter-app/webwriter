@@ -11,7 +11,8 @@ import {WebsocketProvider} from "y-websocket"
 import {docs, getYDoc} from "@y/websocket-server/utils"
 import WebSocketPackage from "ws"
 import {createDevServer} from "./server.mjs"
-import {defaultGroupingRules, groupingTarget} from "../src/widget-grouping.js"
+import {defaultGroupingRules, distributionGroupingRevision, groupingTarget} from "../src/widget-grouping.js"
+import {distributionTarget, emptyDistributionConfig, encodeDistributionConfig} from "../src/distribution.js"
 
 const exampleDocuments = JSON.parse(await readFile(new URL("../src/example-documents.json", import.meta.url), "utf8"))
 
@@ -836,6 +837,45 @@ describe("development server", () => {
     await vi.waitFor(() => expect(restored.getMap("widget-data").get("answer")).toBe("saved"))
     restoredProvider.destroy()
     restored.destroy()
+  })
+
+  it("resolves numbered distribution groups from the nearest authoritative sharing instruction", async () => {
+    const documentRoom = "numbered-distribution-room", widget = "numbered-widget"
+    const serverDocument = getYDoc(documentRoom)
+    const localDocument = new Y.Doc()
+    const mirror = new Y.Map()
+    localDocument.getMap("domeditor").set("document", mirror)
+    const body = new Y.XmlElement("body"), head = new Y.XmlElement("head")
+    mirror.set("body", body); mirror.set("head", head); mirror.set("attributes", new Y.XmlElement("html"))
+    const parent = new Y.XmlElement("section"), target = new Y.XmlElement("data-widget")
+    parent.setAttribute("id", "group-container"); target.setAttribute("id", widget)
+    body.insert(0, [parent]); parent.insert(0, [target])
+    const config = {...emptyDistributionConfig("group-container"), scope: "group", groupSize: 2}
+    const instruction = value => {
+      const node = new Y.XmlElement("domeditor-comment")
+      node.setAttribute("__domeditor_node_kind", "processing-instruction")
+      node.setAttribute("__domeditor_processing_instruction_target", distributionTarget)
+      node.insert(0, [new Y.XmlText(encodeDistributionConfig(value))])
+      return node
+    }
+    head.insert(0, [instruction(config)])
+    Y.applyUpdate(serverDocument, Y.encodeStateAsUpdate(localDocument))
+    const resolve = groupingRevision => request("/api/widget-data/resolve", {
+      method: "POST", headers: {"X-Test-User": "ada"},
+      body: JSON.stringify({document: "numbered-distribution", documentRoom, widget, mode: "group", groupingRevision}),
+    })
+    const first = await resolve(distributionGroupingRevision(config))
+    expect(first.response.status).toBe(200)
+    expect(widgetGroupsFormed.mock.calls.at(-1)[1].rules).toMatchObject({groupBy: "members", number: 2})
+    const override = {...config, target: widget, groupSize: 4}
+    head.insert(1, [instruction(override)])
+    Y.applyUpdate(serverDocument, Y.encodeStateAsUpdate(localDocument))
+    expect((await resolve(distributionGroupingRevision(config))).response.status).toBe(409)
+    const second = await resolve(distributionGroupingRevision(override))
+    expect(second.response.status).toBe(200)
+    expect(second.value.room).not.toBe(first.value.room)
+    expect(widgetGroupsFormed.mock.calls.at(-1)[1].rules.number).toBe(4)
+    localDocument.destroy()
   })
 
   it("resolves group rooms from the authoritative shared PI and protects grouping context", async () => {

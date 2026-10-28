@@ -5,6 +5,7 @@ import {ribbonIcon} from "../ribbon-icons"
 
 export const documentLayoutModes = ["document", "canvas", "slides", "board"] as const
 export const documentLayoutLabel = (mode: DocumentLayoutMode) => mode[0].toUpperCase() + mode.slice(1)
+export const documentLayoutIcon = (mode: DocumentLayoutMode) => ({document: "Document", canvas: "Canvas", slides: "KeywordPresentation", board: "Columns"}[mode])
 
 /** Shared with the layout gallery so both pickers use the same visual language. */
 export const documentLayoutPreviewStyles = css`
@@ -168,5 +169,5 @@ export function renderDocumentLayoutCard(mode: DocumentLayoutMode, state: Docume
     @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
     @mousedown=${(event: MouseEvent) => { if(event.button === 0) event.preventDefault() }}
     @click=${() => select(mode)}
-  >${guard([mode], () => html`<span class="layout-preset-icon" aria-hidden="true">${ribbonIcon({document: "Document", canvas: "Canvas", slides: "KeywordPresentation", board: "Columns"}[mode])}</span>${renderDocumentLayoutPreview(mode)}`)}</button>`
+  >${guard([mode], () => html`<span class="layout-preset-icon" aria-hidden="true">${ribbonIcon(documentLayoutIcon(mode))}</span>${renderDocumentLayoutPreview(mode)}`)}</button>`
 }

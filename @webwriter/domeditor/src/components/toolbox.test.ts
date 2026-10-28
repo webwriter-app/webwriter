@@ -788,31 +788,94 @@ describe("toolbox", () => {
     ]
     toolbox.distributionGeneral = state
     toolbox.distribution = state
+    toolbox.elementAttributes = {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", icon: "Paragraph", attributes: {}}
+    toolbox.elementSelected = true
     toolbox.distributionItems = items
     toolbox.distributionPending = true
+    toolbox.distributionInsertDragActive = true
     toolButton(toolbox, "Distribute").click()
     await toolbox.updateComplete
     const controls = Array.from(toolbox.shadowRoot!.querySelectorAll("distribution-controls")) as Array<HTMLElement & {
       state: DistributionSelectionState | null
       items: DistributionItem[]
       pending: boolean
+      insertDragActive: boolean
+      view: string
+      compact: boolean
+      disabled: boolean
     }>
     await Promise.all(controls.map((control) => (control as unknown as {updateComplete: Promise<unknown>}).updateComplete))
-    expect(controls).toHaveLength(2)
+    expect(controls).toHaveLength(3)
     expect(controls[0].state).toBe(state)
     expect(controls[0].items).toBe(items)
     expect(controls[0].pending).toBe(true)
+    expect(controls[0].insertDragActive).toBe(true)
     expect(controls[1].state).toBe(state)
     expect(controls[1].items).toBe(items)
     expect(controls[1].pending).toBe(true)
-    const permissionsDrawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Permissions for readers"]')!
+    expect(controls[1].view).toBe("grouping")
+    expect(controls[2].state).toBe(state)
+    expect(controls[2].view).toBe("permissions")
+    expect(controls[2].compact).toBe(true)
+    expect(controls[2].insertDragActive).toBe(true)
+    const permissionsDrawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Document permissions"]')!
     expect(permissionsDrawer).not.toBeNull()
-    expect(permissionsDrawer.icon).toBe("users-group")
+    expect(permissionsDrawer.icon).toBe("Document")
+    expect(permissionsDrawer.iconBadge).toBe("Checkbox")
     expect(permissionsDrawer.layout).toBe("distribution")
     expect(permissionsDrawer.showPaneIcon).toBe(true)
     expect(permissionsDrawer.querySelector("distribution-controls")).toBe(controls[0])
+    const sharingDrawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Paragraph permissions"]')!
+    expect(sharingDrawer).not.toBeNull()
+    expect(sharingDrawer.icon).toBe("Paragraph")
+    expect(sharingDrawer.iconBadge).toBe("Checkbox")
+    expect(sharingDrawer.layout).toBe("distribution")
+    expect(sharingDrawer.showPaneIcon).toBe(true)
+    expect(sharingDrawer.querySelector("distribution-controls")).toBe(controls[1])
+    expect(controls[1].shadowRoot!.querySelector("h2")?.textContent).toBe("Grouping")
+    expect(controls[2].shadowRoot!.querySelector("h2")?.textContent).toBe("Permissions")
+    expect(sharingDrawer.hasAttribute("data-selected")).toBe(true)
+    expect([...sharingDrawer.querySelectorAll("distribution-controls")]).toEqual([controls[1], controls[2]])
+    expect(toolbox.shadowRoot!.querySelector("details")).toBeNull()
+    toolbox.elementSelected = false
+    await toolbox.updateComplete
+    expect(sharingDrawer.label).toBe("Permissions")
+    expect(sharingDrawer.hasAttribute("data-selected")).toBe(false)
+    expect(controls[1].disabled).toBe(true)
+    expect(controls[2].disabled).toBe(true)
     expect(toolbox.shadowRoot!.querySelector("element-style-editor, .widget-sharing, .specialized-widget-primary")).toBeNull()
     expect(toolbox.activeTool).toBe("Distribute")
+  })
+
+  it.each([
+    ["document", "Document", "Document"], ["canvas", "Canvas", "Canvas"],
+    ["slides", "Slides", "KeywordPresentation"], ["board", "Board", "Columns"],
+  ] as const)("uses the %s layout name and icon for document distribution", async (mode, label, icon) => {
+    const toolbox = await mountToolbox()
+    toolbox.documentLayout = {mode, canConvert: true, zoom: 100}
+    toolButton(toolbox, "Distribute").click()
+    await toolbox.updateComplete
+    const drawers = [...toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>('ribbon-drawer[layout="distribution"]')]
+    expect(drawers).toHaveLength(2)
+    expect(drawers[0].label).toBe(`${label} permissions`)
+    expect(drawers[0].icon).toBe(icon)
+    expect(drawers[0].iconBadge).toBe("Checkbox")
+    expect(drawers[1].label).toBe("Permissions")
+    expect(drawers[1].iconBadge).toBe("Checkbox")
+  })
+
+  it("keeps the Grouping control visible and disabled when no element is selected", async () => {
+    const toolbox = await mountToolbox()
+    toolButton(toolbox, "Distribute").click()
+    await toolbox.updateComplete
+    const grouping = toolbox.shadowRoot!.querySelector<HTMLElement & {disabled: boolean, updateComplete: Promise<unknown>}>('distribution-controls[view="grouping"]')!
+    await grouping.updateComplete
+    expect(grouping.disabled).toBe(true)
+    const control = grouping.shadowRoot!.querySelector('.grouping')!
+    expect(control.getAttribute("aria-disabled")).toBe("true")
+    expect(grouping.shadowRoot!.textContent).toContain("single")
+    expect(grouping.shadowRoot!.textContent).not.toContain("Select an element")
+    expect([...grouping.shadowRoot!.querySelectorAll("button")].every(button => button.disabled)).toBe(true)
   })
 
   it("does not install app-only AI or resize listeners across reconnects", async () => {

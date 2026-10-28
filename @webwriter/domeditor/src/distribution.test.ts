@@ -23,7 +23,7 @@ const config = (overrides: Record<string, unknown> = {}): DistributionConfig => 
 describe("distribution config", () => {
   it("exports the stable target and known permissions", () => {
     expect(distributionTarget).toBe("ww-distribute")
-    expect(distributionPermissions).toEqual(["edit", "move", "delete", "duplicate", "style"])
+    expect(distributionPermissions).toEqual(["edit", "move", "delete", "duplicate", "style", "insert"])
     expect(isDistributionPermission("style")).toBe(true)
     expect(isDistributionPermission("unknown")).toBe(false)
     for (const permission of ["text", "resize", "attributes"]) {
@@ -47,8 +47,24 @@ describe("distribution config", () => {
     })
   })
 
+  it("preserves dormant add lists when insertion permission is disabled", () => {
+    const dormant = config({permissions: [], add: ["element:section"]})
+    expect(validateDistributionConfig(dormant).add).toEqual(["element:section"])
+    expect(decodeDistributionConfig(encodeDistributionConfig(dormant))?.add).toEqual(["element:section"])
+  })
+
   it.each(["individually", "none", "", null])("rejects invalid scope %s", (scope) => {
     expect(() => validateDistributionConfig(config({ scope }))).toThrow(TypeError)
+  })
+
+  it("round trips explicit group sizes and keeps legacy session-defined groups valid", () => {
+    expect(decodeDistributionConfig(encodeDistributionConfig(config({groupSize: 4})))?.groupSize).toBe(4)
+    expect(validateDistributionConfig(config()).groupSize).toBeUndefined()
+    expect(validateDistributionConfig(config({scope: "all", groupSize: 4})).groupSize).toBeUndefined()
+  })
+
+  it.each([0, 1, -1, 2.5, 1000, "2", null])("rejects invalid group size %s", groupSize => {
+    expect(() => validateDistributionConfig(config({groupSize}))).toThrow(TypeError)
   })
 
   it.each(["package:*", "package-member:*", "user-snippet:*", "insert-math:*", "element:**", "widget:*", "snippet:*"])("rejects wildcard add entry %s", (entry) => {

@@ -1,4 +1,5 @@
-import {appendSerializedAssets, escapeHTMLAttribute, scopedCustomElementRegistryScript} from "../serialization"
+import {escapeHTMLAttribute} from "../serialization-primitives"
+import {scopedCustomElementRegistryScript} from "../scoped-custom-element-registry-script"
 import { EditorFeature } from "."
 import type { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
@@ -120,7 +121,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
 
   /** Adds runtime resources required by the detached authored document. */
   appendSerializedAssets(root: Document) {
-    appendSerializedAssets(root, this.widgetPackages, this.dependencyPlan?.map)
+    this.editor.appendSerializedAssets(root, this.widgetPackages, this.dependencyPlan?.map)
   }
 
   get packageDependencyPlan() { return this.dependencyPlan }

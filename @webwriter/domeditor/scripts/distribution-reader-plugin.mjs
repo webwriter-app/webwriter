@@ -1,28 +1,23 @@
 import { build } from "esbuild"
 import { existsSync } from "node:fs"
+import {readFile} from "node:fs/promises"
 import { isAbsolute, normalize, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const virtualId = "virtual:distribution-reader-sources"
 const resolvedVirtualId = `\0${virtualId}`
-const actions = {
-  edit: "installEdit",
-  move: "installMove",
-  style: "installStyle",
-  delete: "installDelete",
-  duplicate: "installDuplicate",
-  insert: "installInsert",
-}
+const actions = {insert: "installInsert"}
 
 const blockedInputs = [
-  /\/src\/components\//,
+  /\/src\/components\/(?!media-capture\.ts$|media-source\.styles\.ts$)/,
   /\/src\/app-settings(?:\.ts|\/|$)/,
-  /\/src\/editor-bridge(?:\.ts|\/|$)/,
+
   /\/src\/domeditor\.ts$/,
   /\/src\/editor-entry\.ts$/,
 ]
 
 function absoluteInput(input, projectRoot) {
+  if(input.startsWith("reader-raw:")) input = input.slice("reader-raw:".length)
   return normalize(isAbsolute(input) ? input : resolve(projectRoot, input)).replaceAll("\\", "/")
 }
 
@@ -47,8 +42,25 @@ function watchInputs(pluginContext, result, projectRoot) {
   }
 }
 
+const readerBuildOptions = {
+  define: {"import.meta.env.MODE": '"reader"', "import.meta.env.BASE_URL": '"./"'},
+  tsconfigRaw: {compilerOptions: {experimentalDecorators: true, useDefineForClassFields: false}},
+  plugins: [{name: "reader-raw-assets", setup(build) {
+    build.onResolve({filter: /^yjs$/}, args => {
+      if(args.pluginData?.readerYjs) return
+      return build.resolve("yjs", {resolveDir: fileURLToPath(new URL("../", import.meta.url)), kind: "import-statement", pluginData: {readerYjs: true}})
+    })
+    build.onResolve({filter: /\?raw$/}, async args => {
+      const resolved = await build.resolve(args.path.slice(0, -4), {resolveDir: args.resolveDir, kind: args.kind})
+      return {path: resolved.path, namespace: "reader-raw"}
+    })
+    build.onLoad({filter: /.*/, namespace: "reader-raw"}, async args => ({contents: await readFile(args.path, "utf8"), loader: "text"}))
+  }}],
+}
+
 async function bundleEntry(entry, projectRoot, globalName) {
   const result = await build({
+    ...readerBuildOptions,
     absWorkingDir: projectRoot,
     entryPoints: [entry],
     bundle: true,
@@ -65,6 +77,7 @@ async function bundleEntry(entry, projectRoot, globalName) {
 
 async function bundleAction(name, exportName, actionEntry, projectRoot) {
   const result = await build({
+    ...readerBuildOptions,
     absWorkingDir: projectRoot,
     stdin: {
       contents: `export { ${exportName} as install } from ${JSON.stringify(actionEntry)}`,

@@ -53,7 +53,7 @@ describe("host distribution validator", () => {
 
   it("allows exact configured widget templates and rejects forged lookalikes", () => {
     const item = {id: "element:demo-leaf", label: "Approved widget", html: "<demo-leaf>Approved</demo-leaf>"}
-    const policy = {...config("box", [], [item.id], [item])}
+    const policy = {...config("box", ["insert"], [item.id], [item])}
     const validator = createDistributionValidator(page('<demo-box id="box"></demo-box>', [policy]))
     expect(validator.validate(undefined, page('<demo-box id="box"><demo-leaf>Approved</demo-leaf></demo-box>', [policy]))).toBe(true)
     expect(validator.validate(undefined, page('<demo-box id="box"><demo-leaf>Forged</demo-leaf></demo-box>', [policy]))).toBe(false)

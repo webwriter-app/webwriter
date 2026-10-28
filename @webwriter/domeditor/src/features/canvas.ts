@@ -11,6 +11,7 @@ type Point = {x: number, y: number}
 /** The DOM owns item placement. This feature owns only a disposable camera
  * and appendix controls; remote changes are never normalized into a schema. */
 export class CanvasFeature extends EditorFeature {
+  readonly readerPermission = "view" as const
   protected handlesAppendixInteractions = true
   private viewer: CanvasViewer | null = null
   private slot: HTMLSlotElement | null = null
@@ -100,6 +101,7 @@ export class CanvasFeature extends EditorFeature {
 
   actions = {
     setDocumentLayout: ({mode, expectedMode}: {type: "setDocumentLayout", mode: DocumentLayoutMode, expectedMode: DocumentLayoutMode}) => {
+      if(!this.editor.allows("edit", document.body)) return false
       return this.editor.setDocumentLayout(mode, expectedMode)
     },
     startCanvas: ({}: {type: "startCanvas"}) => Boolean(this.emptyParagraph()) && this.convert("canvas"),
@@ -113,7 +115,9 @@ export class CanvasFeature extends EditorFeature {
   }
 
   private saveStartingView() {
-    if(!this.active || !this.viewer || this.editor.isEditingLocked) return false
+    const existing = canvasStartingView()
+    if(!this.active || !this.viewer || this.editor.isEditingLocked
+      || !this.editor.allows(existing ? "style" : "insert", existing ?? document.body)) return false
     const origin = this.clientPoint(0, 0)
     const frame = canvasStartingView() ?? document.createElement("div")
     const end = this.editor.doc.beginUndoGroup()
@@ -144,7 +148,7 @@ export class CanvasFeature extends EditorFeature {
 
   private deleteStartingView() {
     const frame = this.active && !this.editor.isEditingLocked ? canvasStartingView() : null
-    if(!frame) return false
+    if(!frame || !this.editor.allows("delete", frame)) return false
     const selected = $.selectedElements.includes(frame)
     const end = this.editor.doc.beginUndoGroup()
     try {
@@ -169,7 +173,7 @@ export class CanvasFeature extends EditorFeature {
   }
 
   convert(mode: "canvas" | "document", captureUndo = true) {
-    if(this.editor.isEditingLocked || !this.getState().canConvert || this.getState().mode === mode) return false
+    if(this.editor.isEditingLocked || !this.editor.allows("edit", document.body) || !this.getState().canConvert || this.getState().mode === mode) return false
     const items = this.items()
     const empty = this.emptyParagraph()
     const bodyRect = document.body.getBoundingClientRect()
@@ -247,7 +251,7 @@ export class CanvasFeature extends EditorFeature {
   insertCentered<T>(command: () => T): T {
     if((!this.active && !this.editor.features.slides.active) || this.placing || this.editor.isEditingLocked) return command()
     const root = this.active ? document.body : this.editor.features.slides.insertionSlide()
-    if(!root) return undefined as T
+    if(!root || !this.editor.allows("insert", root)) return undefined as T
     const end = this.editor.doc.beginUndoGroup()
     try {
       return this.editor.features.selection.withoutSelectionScroll(() => {
@@ -456,7 +460,7 @@ export class CanvasFeature extends EditorFeature {
 
   private insertText(point: Point) {
     const root = this.editingRoot
-    if(!root || this.editor.isEditingLocked) return
+    if(!root || this.editor.isEditingLocked || !this.editor.allows("insert", root)) return
     const world = this.active ? this.clientPoint(point.x, point.y) : this.editor.features.slides.clientPoint(root, point.x, point.y)
     const end = this.editor.doc.beginUndoGroup()
     try {
@@ -484,7 +488,9 @@ export class CanvasFeature extends EditorFeature {
     else if(document.body.classList.contains("◆canvas-hand")) removeEditorMarker(document.body, "◆canvas-hand")
     this.updateStartingViewOutline()
     const startingView = canvasStartingView()
-    const signature = JSON.stringify([this.getState(), Boolean(this.emptyParagraph()), this.editor.isEditingLocked, this.hand, Boolean(startingView)])
+    const canInsert = this.editor.allows("insert", document.body)
+    const canDeleteStartingView = startingView ? this.editor.allows("delete", startingView) : false
+    const signature = JSON.stringify([this.getState(), Boolean(this.emptyParagraph()), this.editor.isEditingLocked, this.hand, Boolean(startingView), canInsert, canDeleteStartingView])
     if(signature === this.signature) return
     this.signature = signature
     this.controls!.replaceChildren()
@@ -497,7 +503,7 @@ export class CanvasFeature extends EditorFeature {
     }
     if(this.active) {
       button("hand", "Pan", "Toggle hand tool (middle-drag also pans)").setAttribute("aria-pressed", String(this.hand))
-      button("text", "Add text").disabled = this.editor.isEditingLocked
+      button("text", "Add text").hidden = !canInsert
       button("zoom-out", "−", "Zoom out")
       const output = document.createElement("output"); output.textContent = `${Math.round(this.zoom * 100)}%`; this.controls!.append(output)
       button("zoom-in", "+", "Zoom in")
@@ -508,10 +514,10 @@ export class CanvasFeature extends EditorFeature {
       group.setAttribute("role", "group")
       group.setAttribute("aria-label", "Starting view")
       const show = button("starting-view", "Starting view", startingView ? "Show and select the starting view" : "Add starting view")
-      show.disabled = !startingView && this.editor.isEditingLocked
+      show.hidden = !startingView && !canInsert
       const remove = button("delete-starting-view", "", "Delete starting view")
       remove.innerHTML = trashIcon
-      remove.disabled = !startingView || this.editor.isEditingLocked
+      remove.hidden = !canDeleteStartingView
       group.append(show, remove)
       this.controls!.append(group)
     }

@@ -36,6 +36,8 @@ const capturedInteractionEvents = new Set([
 export class EditorFeature {
 
   constructor(readonly editor: DOMEditor) {}
+  /** Reading sessions gate the shared listener path before any feature runs. */
+  readonly readerPermission: "edit" | "select" | "view" = "edit"
   protected isEnabled = false
   /** Boundary listeners inspect composed origins themselves before feature routing. */
   captureListeners: DocumentListenerMap = {}
@@ -58,6 +60,7 @@ export class EditorFeature {
     const target = listeners === this.captureListeners ? this.captureListenerTarget : document
     Object.entries(listeners).forEach(([type, listener]) => {
       const wrapped: EventListener = event => {
+        if(this.editor.allowsFeatureEvent?.(this, event) === false) return
         if(listeners === this.captureListeners) {
           listener(event as never)
           return

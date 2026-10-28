@@ -1,5 +1,7 @@
 import type {DistributionSelection} from "../features/distribution"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
+import {emptyDistributionConfig} from "../distribution.js"
+import type {DistributionInsertDrop} from "./distribution-controls"
 import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import type {LiveWidgetAggregateInput} from "../widget-aggregate"
@@ -33,7 +35,7 @@ import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
-import {elementDragType, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
+import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {
@@ -479,7 +481,7 @@ export class DomEditor extends LitElement {
   private distributionPending = false
   private distributionGeneration = 0
   private distributionWriteRevision = 0
-  private distributionWriteQueue: Promise<void> = Promise.resolve()
+  private distributionWriteQueue: Promise<unknown> = Promise.resolve()
   private distributionPendingConfigs = new Map<string, {revision: number, config: DistributionConfig | null}>()
   private distributionAcceptedStates = new Map<string, DistributionSelection>()
   private selectionPath: SelectionPathItem[] = []
@@ -5060,14 +5062,19 @@ export class DomEditor extends LitElement {
       if(!snippet || typeof snippet !== "object" || !("html" in snippet) || typeof snippet.html !== "string"
         || !("label" in snippet) || typeof snippet.label !== "string" || !snippet.html) return
       if(this.settings.userSnippets.some(saved => saved.html === snippet.html)) return
-      const id = crypto.randomUUID()
-      this.editingSnippetId = id
-      this.settings = {...this.settings, userSnippets: [{id, label: snippet.label.slice(0, SNIPPET_LABEL_MAX_LENGTH), html: snippet.html},
-        ...this.settings.userSnippets]}
-      persistAppSettings(this.settings)
+      this.editingSnippetId = this.saveUserSnippet({html: snippet.html, label: snippet.label}).id
     }
     catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
     finally { if(!this.editingSnippetId) this.focusEditor() }
+  }
+
+  private saveUserSnippet(snippet: {html: string, label: string}, id: string = crypto.randomUUID()) {
+    const existing = this.settings.userSnippets.find(saved => saved.html === snippet.html)
+    if(existing) return existing
+    const saved = {id, label: snippet.label.slice(0, SNIPPET_LABEL_MAX_LENGTH), html: snippet.html}
+    this.settings = {...this.settings, userSnippets: [saved, ...this.settings.userSnippets]}
+    persistAppSettings(this.settings)
+    return saved
   }
 
   private handleSnippetNameChange(event: CustomEvent<{action: string, label: string}>) {
@@ -6122,15 +6129,18 @@ export class DomEditor extends LitElement {
   private handleDistributionConfigChange = (event: CustomEvent<{target: string, config: DistributionConfig | null, general?: boolean}>) => {
     const state = event.detail.general ? this.distributionGeneral : this.distributionSelection
     if(!state || this.distributionPending || event.detail.target !== state.target) return
+    void this.writeDistributionConfig(state, event.detail.config)
+  }
+
+  private writeDistributionConfig(state: DistributionSelection, config: DistributionConfig | null) {
     if(!this.distributionAcceptedStates.has(state.identity)) this.distributionAcceptedStates.set(state.identity, state)
     const revision = ++this.distributionWriteRevision
-    const config = event.detail.config
     const frame = this.frameRevision
     this.distributionPendingConfigs.set(state.identity, {revision, config})
     // Keep cards enabled and preserve the newest local choice through older frame acknowledgements.
     this.refreshDistributionState(state.identity)
-    this.distributionWriteQueue = this.distributionWriteQueue.then(async () => {
-      if(frame !== this.frameRevision) return
+    const write = this.distributionWriteQueue.then(async () => {
+      if(frame !== this.frameRevision) return false
       let failure: string | undefined
       try {
         const applied = await this.execute({type: "setDistributionConfig", path: state.path, identity: state.identity, config})
@@ -6143,7 +6153,66 @@ export class DomEditor extends LitElement {
           this.refreshDistributionState(state.identity, failure)
         }
       }
+      return !failure && frame === this.frameRevision
     })
+    this.distributionWriteQueue = write
+    return write
+  }
+
+  private handleDistributionInsertDrop = async (event: CustomEvent<DistributionInsertDrop>) => {
+    const {general, target, action, token} = event.detail
+    const initial = general ? this.distributionGeneral : this.distributionSelection
+    if(!initial || initial.target !== target || this.htmlPending || this.historyState.preview !== null) return
+    this.handleRibbonDragEnd()
+    const frame = this.frameRevision
+    try {
+      let item: DistributionItem | undefined
+      let snippet: {id: string, html: string, label: string} | undefined
+      let install: WebWriterPackage | undefined
+      if(token) {
+        const captured = await this.execute({type: "getDraggedSnippet", token})
+        if(!captured || typeof captured !== "object" || !("html" in captured) || typeof captured.html !== "string" || !captured.html
+          || !("label" in captured) || typeof captured.label !== "string") return
+        const existing = this.settings.userSnippets.find(saved => saved.html === captured.html)
+        snippet = existing ?? {id: crypto.randomUUID(), html: captured.html, label: captured.label.slice(0, SNIPPET_LABEL_MAX_LENGTH)}
+        item = {id: `user-snippet:${snippet.id}`, label: snippet.label, html: snippet.html}
+      } else if(action) {
+        item = this.distributionItems.find(candidate => candidate.id === action)
+        if(!item && ribbonElementInsertionAction(action)) {
+          const builtins = await this.execute({type: "getDistributionInsertionItems"}) as DistributionItem[]
+          item = builtins.find(candidate => candidate.id === action)
+        }
+        if(!item && ribbonInsertionAction(action)) {
+          const saved = this.settings.userSnippets.find(candidate => `user-snippet:${candidate.id}` === action)
+          if(saved) item = {id: action, label: saved.label, html: saved.html}
+          else {
+            const packages = [...this.installedPackages, ...this.localPackages, ...this.packages]
+            const pkg = packages.find(candidate => action === `package:${candidate.name}`
+              || candidate.members.some(member => packageMemberAction(member) === action && member.insertable))
+            const member = pkg?.members.find(member => member.insertable && (action === `package:${pkg.name}` || packageMemberAction(member) === action))
+            if(!pkg || !member) return
+            const html = member.kind === "snippet" ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
+              : member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
+            if(!html) return
+            item = {id: packageMemberAction(member), label: member.label, html}
+            if(!this.installedPackages.some(candidate => candidate.name === pkg.name)) install = pkg
+          }
+        }
+      }
+      // Resolve against the latest projected policy without applying an asynchronous drop to a new selection.
+      const current = general ? this.distributionGeneral : this.distributionSelection
+      if(!item || !current || current.identity !== initial.identity || frame !== this.frameRevision) return
+      const config = current.local ?? current.effective ?? emptyDistributionConfig(current.target || "selection")
+      const next: DistributionConfig = {...config, target: current.target || "selection", permissions: config.permissions.includes("insert") ? [...config.permissions] : [...config.permissions, "insert"],
+        add: config.add.includes(item.id) ? [...config.add] : [...config.add, item.id],
+        items: [...config.items.filter(candidate => candidate.id !== item!.id), item]}
+      if(!await this.writeDistributionConfig(current, next)) return
+      if(snippet) this.saveUserSnippet(snippet, snippet.id)
+      this.distributionItems = [...this.distributionItems.filter(candidate => candidate.id !== item!.id), item]
+      // Save the policy before package installation reloads the frame, preserving its authored target.
+      if(install) await this.setPackageInstalled(install, true)
+    }
+    catch(error) { this.refreshDistributionState(initial.identity, error instanceof Error ? error.message : String(error)) }
   }
 
   private handleToolboxChange = (event: Event) => {
@@ -8104,7 +8173,9 @@ export class DomEditor extends LitElement {
         .distribution=${this.distributionSelection}
         .distributionItems=${this.distributionItems}
         .distributionPending=${this.distributionPending}
+        .distributionInsertDragActive=${Boolean(this.ribbonDrag)}
         @distribution-config-change=${this.handleDistributionConfigChange}
+        @distribution-insert-drop=${this.handleDistributionInsertDrop}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}
         .documentSelected=${this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1}

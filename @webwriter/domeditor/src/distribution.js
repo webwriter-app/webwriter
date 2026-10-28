@@ -6,11 +6,12 @@ export const distributionPermissions = Object.freeze([
   "delete",
   "duplicate",
   "style",
+  "insert",
 ])
 
 const scopes = new Set(["individual", "group", "all"])
 const permissionSet = new Set(distributionPermissions)
-const configKeys = new Set(["version", "target", "scope", "permissions", "add", "items"])
+const configKeys = new Set(["version", "target", "scope", "groupSize", "permissions", "add", "items"])
 const itemKeys = new Set(["id", "label", "html"])
 const MAX_STRING = 256
 const MAX_ITEM_HTML = 1_000_000
@@ -61,6 +62,9 @@ export function validateDistributionConfig(value) {
   if (value.version !== 1) throw new TypeError("Invalid distribution version")
   const target = requireString(value.target, "target")
   if (!scopes.has(value.scope)) throw new TypeError("Invalid distribution scope")
+  if (Object.hasOwn(value, "groupSize") && (!Number.isSafeInteger(value.groupSize) || value.groupSize < 2 || value.groupSize > 999)) {
+    throw new TypeError("Invalid distribution group size")
+  }
   if (!Array.isArray(value.permissions) || !Array.isArray(value.add) || !Array.isArray(value.items)) {
     throw new TypeError("Invalid distribution arrays")
   }
@@ -90,7 +94,8 @@ export function validateDistributionConfig(value) {
     if (totalHtmlLength > MAX_TOTAL_HTML) throw new TypeError("Distribution HTML is too large")
     return { id, label, html }
   })
-  return { version: 1, target, scope: value.scope, permissions, add, items }
+  return { version: 1, target, scope: value.scope,
+    ...(value.scope === "group" && value.groupSize !== undefined ? {groupSize: value.groupSize} : {}), permissions, add, items }
 }
 
 export function encodeDistributionConfig(config) {

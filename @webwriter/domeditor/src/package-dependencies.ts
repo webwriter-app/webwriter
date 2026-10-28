@@ -1,6 +1,7 @@
 import type {IImportMap} from "@jspm/import-map"
 import type {WebWriterPackage, WebWriterPackageRegistry} from "./packages"
 import {canonicalNpmUrl, fetchWithin, JSDELIVR_DATA_ENDPOINT, JSDELIVR_NPM_ENDPOINT, NPM_FILE_MIRRORS, NPM_FILE_TIMEOUT_MS, NPM_REGISTRY_ENDPOINT} from "./npm-files"
+export {runtimeDocumentBaseURL} from "./document-base-url"
 
 /** Runtime assets and their exact browser resolutions for one installed set. */
 export type PackageDependencyPlan = {
@@ -9,20 +10,6 @@ export type PackageDependencyPlan = {
 }
 
 export const packageImportMapId = "webwriter-package-importmap"
-
-/** srcdoc may report about:srcdoc as its base in some browser contexts. */
-export function runtimeDocumentBaseURL(root: Document = document) {
-  const candidates = [root.baseURI]
-  try { candidates.push(root.defaultView?.parent?.location.href ?? "") }
-  catch { /* A standalone cross-origin document has no accessible parent. */ }
-  for(const candidate of candidates) {
-    try {
-      if(/^https?:$/.test(new URL(candidate).protocol)) return candidate
-    }
-    catch { /* Try the next document context. */ }
-  }
-  throw new Error("Could not resolve the document's HTTP base URL")
-}
 
 const isStringRecord = (value: unknown): value is Record<string, string> =>
   !!value && typeof value === "object" && !Array.isArray(value)

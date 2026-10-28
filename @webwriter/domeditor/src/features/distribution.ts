@@ -1,4 +1,4 @@
-import {insertionMenuItems} from "../components/insertion-menu"
+import {insertionMenuItems} from "../insertion"
 import {graphicShapeOptions} from "../graphic"
 import {mathStructureOptions} from "../math"
 import {EditorFeature} from "."

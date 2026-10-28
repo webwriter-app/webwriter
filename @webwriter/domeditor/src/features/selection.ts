@@ -51,6 +51,7 @@ function isCaretAtStartOf(element: Element) {
  * state onto the body, and implements
  * pointer-based selection (drag selection, modifier-click element selection). */
 export class SelectionFeature extends EditorFeature {
+  readonly readerPermission = "select" as const
   // Window capture precedes document feature handlers, even after re-enabling.
   protected captureListenerTarget = window
 
@@ -209,7 +210,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   selectSectionElement(section: Element) {
-    if(!section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section) || slideLayoutRole(section) || boardLayoutRole(section)) return false
+    if(!this.editor.allows("select", section) || !section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section) || slideLayoutRole(section) || boardLayoutRole(section)) return false
     this.#releaseCaptureSelection()
     this.#selectedSection = section
     this.processSelection()
@@ -225,7 +226,7 @@ export class SelectionFeature extends EditorFeature {
    * Focused appendix controls can preserve their native text selection.
    * Contentful widgets use ordinary element selection so their content stays editable. */
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
-    if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    if(!this.editor.allows("select", element) || !element.isConnected || element === document.body || !document.body.contains(element)) return
     if(element.matches("caption, figcaption, details > summary")) {
       this.selectElement(element)
       return
@@ -266,7 +267,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   selectElement(element: Element) {
-    if(!element.isConnected || element === document.body || !document.body.contains(element) || slideLayoutRole(element)) return
+    if(!this.editor.allows("select", element) || !element.isConnected || element === document.body || !document.body.contains(element) || slideLayoutRole(element)) return
     const focused = document.activeElement === document.body ? this.editor.appendix.activeElement : null
     if(focused instanceof HTMLElement) focused.blur()
     this.#releaseCaptureSelection()
@@ -621,7 +622,7 @@ export class SelectionFeature extends EditorFeature {
     const first = document.body.firstElementChild
     if(first?.localName === this.editor.schema.defaultNodeKey
       && document.body.childNodes.length === 1 && !first.childNodes.length) $.move(first)
-    else $.selectDocumentStart()
+    else if(!this.editor.options.reader) $.selectDocumentStart()
     super.enable()
     this.#floatObserver = new MutationObserver(records => {
       if(records.some(isAuthoredMutation)) {
@@ -1387,7 +1388,7 @@ export class SelectionFeature extends EditorFeature {
     const candidate = explicit ?? (freeform ? this.#layoutSelectionItem(native, native)
       : atomicEditingContainer(native, this.editor.schema) ?? (native ? mediaContainerForNode(native) ?? graphicContainerForNode(native) : null) ?? this.#modifierSelectionTarget(native))
     const target = candidate ? figureSelectionTarget(candidate) : null
-    if(!this.isEnabled
+    if(!this.isEnabled || !this.editor.allows("select", target)
       || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target) || slideLayoutRole(target)) {
       this.#clearHoverGeometry()
       return
@@ -1955,6 +1956,15 @@ export class SelectionFeature extends EditorFeature {
    * preserve the last interaction's scroll target without revealing it again. */
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
     if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
+    if(!this.editor.allowsSelection("select")) {
+      this.#releaseCaptureSelection()
+      this.clearSelectedSection()
+      this.#clearSelections()
+      this.#clearElementHover()
+      this.editor.features.transformation.clearTransform()
+      this.editor.features.manipulation.refreshNodeDragTarget(null)
+      return
+    }
     // Appendix inputs and SVG label ranges own their text selection. Clamping
     // them into BODY disrupts typing and clears the graphic's capture outline.
     if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused

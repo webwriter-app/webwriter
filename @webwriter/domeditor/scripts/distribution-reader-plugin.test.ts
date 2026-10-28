@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 import { distributionReaderPlugin } from "./distribution-reader-plugin.mjs"
 
-const expectedSources = ["core", "edit", "move", "style", "delete", "duplicate", "insert"]
+const expectedSources = ["core", "insert"]
 
 async function loadSources() {
   const plugin = distributionReaderPlugin()
@@ -20,17 +20,21 @@ describe("distribution reader virtual sources", () => {
     for (const [name, source] of Object.entries(sources)) {
       expect(source, name).toMatch(/\(\(\)=>|var distribution(?:Reader|Action)/)
       expect(source, name).not.toMatch(/^\s*import\s/m)
-      expect(source, name).not.toMatch(/editor-bridge|editor-entry|app-settings|src\/components|window\.parent|parent\.postMessage/i)
+      expect(source, name).not.toMatch(/editor-entry|app-settings|domeditor-toolbox|domeditor-ribbon/i)
     }
+    expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/domeditor-core\.ts$/))
+    expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/editor\.css$/))
+    expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/features\/selection\.ts$/))
+    expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/features\/manipulation\.ts$/))
+    expect(watchFile).not.toHaveBeenCalledWith(expect.stringMatching(/src\/(?:domeditor|serialization|app-settings)\.ts$/))
     expect(sources.core.length).toBeGreaterThan(10_000)
-    expect(sources.core.length).toBeLessThan(500_000)
+    expect(sources.core.length).toBeLessThan(1_750_000)
     expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/distribution-reader\.ts$/))
     expect(watchFile).toHaveBeenCalledWith(expect.stringMatching(/src\/distribution-reader-actions\.ts$/))
   })
 
-  it("keeps numeric resize controls in the style bundle and out of edit", async () => {
+  it("omits the discarded text, size and movement dialogs from every permission module", async () => {
     const { sources } = await loadSources()
-    expect(sources.edit).not.toMatch(/Apply size|Width \(px\)|Height \(px\)/i)
-    expect(sources.style).toMatch(/Apply size|Width \(px\)|Height \(px\)/i)
+    for(const source of Object.values(sources)) expect(source).not.toMatch(/Apply size|Width \(px\)|Height \(px\)|Element CSS declarations|Edit text|Move earlier|Move later/)
   })
 })

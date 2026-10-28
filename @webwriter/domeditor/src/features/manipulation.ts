@@ -25,7 +25,7 @@ import {
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
-import {elementDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../components/insertion-menu"
+import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
   elementAttributeState,
@@ -214,6 +214,8 @@ export class ManipulationFeature extends EditorFeature {
   private dragMutationObserver: MutationObserver | null = null
   private readonly dragGeometryCleanup: (() => void)[] = []
   private nodeDrag: {element: Element, token: string} | null = null
+  // Keep the source through dragend: a host drop command crosses the frame asynchronously.
+  private snippetDrag: {element: Element, token: string} | null = null
 
   /** The live authored source remains the breadcrumb target during drop previews. */
   get draggedElement() {
@@ -236,11 +238,12 @@ export class ManipulationFeature extends EditorFeature {
   private insertionPreviewObserver: MutationObserver | null = null
   private insertionPreviewResizeObserver: ResizeObserver | null = null
   private insertionPreviewTarget: Element | null = null
-  private readonly dragType = "application/x-webwriter-node"
+  private readonly dragType = nodeDragType
 
   /** A native draggable surface lives in the appendix, leaving authored
    * attributes (including an author's own draggable value) untouched. */
   refreshNodeDragTarget(element: Element | null) {
+    if(element && !this.editor.allows("move", element)) element = null
     if(this.nodeDrag) return
     if(!this.isEnabled || element === document.body || element === getDocumentRoot()
       || this.editor.features.canvas.active || this.editor.features.slides.active
@@ -376,6 +379,7 @@ export class ManipulationFeature extends EditorFeature {
   private insertionGeneration = 0
 
   disable() {
+    this.snippetDrag = null
     this.insertionGeneration++
     this.hoverInsertion(false)
     this.endNodeDrag(false)
@@ -383,6 +387,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   startNodeDrag(event: DragEvent, element: Element) {
+    if(!this.editor.allows("move", element)) { event.preventDefault(); return }
     if(!this.isEnabled || event.defaultPrevented || !event.dataTransfer || element !== ($.selectedElement ?? this.editor.features.math.selectedMath)
       || !getDocumentRoot().contains(element) || element === getDocumentRoot()) {
       event.preventDefault()
@@ -401,6 +406,7 @@ export class ManipulationFeature extends EditorFeature {
     // pointer-events becomes none during dragstart. Its own drop listeners
     // already handle hovering back over the source surface.
     this.nodeDrag = {element, token}
+    this.snippetDrag = this.nodeDrag
     this.prepareFloatDropTargets(element)
   }
 
@@ -2852,6 +2858,7 @@ export class ManipulationFeature extends EditorFeature {
   /** A new continuation keeps formatting, but the original retains attribution. */
   cloneSplitContinuation<T extends Element>(element: T): T {
     const continuation = cloneWithoutEditorMarkers(element, false)
+    continuation.removeAttribute("id")
     for(const name of Object.values(attributionAttributes)) continuation.removeAttribute(name)
     return continuation
   }
@@ -3171,6 +3178,14 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Action handlers, addressable by action type through the editor. */
+  private elementSnippet(container: Element | null) {
+    if(!container) return null
+    const fragment = getInertDocument(container).createDocumentFragment()
+    fragment.append(cloneWithoutEditorMarkers(container, true, {inert: true}))
+    const {html, text} = this.editor.serializeClipboardFragment(fragment)
+    return {html, label: text.trim().replace(/\s+/g, " ").slice(0, 80) || container.localName}
+  }
+
   actions = {
     hoverInsertion: ({hovered, tag}: {type: "hoverInsertion", hovered: boolean, tag?: string}) => this.hoverInsertion(hovered, tag),
     insertElement: ({tag}: {type: "insertElement", tag: string}) => {
@@ -3199,14 +3214,14 @@ export class ManipulationFeature extends EditorFeature {
     copy: ({}: {type: "copy"}) => {
       return this.copy()
     },
-    getSnippet: ({}: {type: "getSnippet"}) => {
-      const container = this.snippetTarget
-      if(!container) return null
-      const fragment = document.createDocumentFragment()
-      fragment.append(cloneWithoutEditorMarkers(container, true, {inert: true}))
-      const {html, text} = this.editor.serializeClipboardFragment(fragment)
-      return {html, label: text.trim().replace(/\s+/g, " ").slice(0, 80) || container.localName}
+    getDraggedSnippet: ({token}: {type: "getDraggedSnippet", token: string}) => {
+      const source = this.snippetDrag
+      if(!source || source.token !== token) return null
+      this.snippetDrag = null
+      if(!getDocumentRoot().contains(source.element)) return null
+      return this.elementSnippet(source.element)
     },
+    getSnippet: ({}: {type: "getSnippet"}) => this.elementSnippet(this.snippetTarget),
     hoverSnippet: ({hovered}: {type: "hoverSnippet", hovered: boolean}) => {
       this.editor.features.selection.showSnippetHover(hovered ? this.snippetTarget : null)
     },
@@ -3677,6 +3692,8 @@ export class ManipulationFeature extends EditorFeature {
    * reverse. At the document boundaries, Backspace/Delete move the caret to
    * the end/start of the adjacent block. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character") {
+    const whole = this.editor.features.selection.captureSelectedElement ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
+    if(!this.editor.allowsSelection(whole ? "delete" : "edit")) return
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
     const selected = $.selectedElement

@@ -74,8 +74,8 @@ export class WidgetFeature extends EditorFeature {
    * Widgets observe `contenteditable` (or `isContentEditable`) to switch
    * into their editing presentation. An authored value is left untouched. */
   #connectWidget(element: Element) {
-    if(!document.body.contains(element) || !this.isWidget(element)) return
-    if(!element.id) element.id = `ww${crypto.randomUUID()}`
+    if(!document.body.contains(element) || !this.isWidget(element) || !this.editor.allows("edit", element)) return
+    if(!element.id && !this.editor.options.reader) element.id = `ww${crypto.randomUUID()}`
     if(element.hasAttribute("contenteditable")) return
     element.classList.add("◆", widgetEditableMarker)
     element.setAttribute("contenteditable", "")
