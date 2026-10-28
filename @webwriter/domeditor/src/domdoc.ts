@@ -698,6 +698,9 @@ export class SharedDOMDoc {
         return
       }
       if(this.#document === document) $.clearLayoutRanges()
+      if(selectionAPI.rangeCount === 1 && selectionAPI.anchorNode === domSelection.anchorNode
+        && selectionAPI.anchorOffset === domSelection.anchorOffset && selectionAPI.focusNode === domSelection.focusNode
+        && selectionAPI.focusOffset === domSelection.focusOffset) return
       selectionAPI.setBaseAndExtent(
         domSelection.anchorNode,
         domSelection.anchorOffset,
@@ -822,12 +825,19 @@ export class SharedDOMDoc {
       const shared = this.#xmlNodes.get(node)
       return isElement(node) && shared instanceof Y.XmlElement && this.#isSelectionNode(shared)
     })
+    const mappedContainerSet = new Set(mappedContainers)
+    const hasContainerAncestor = (node: Node, candidates: ReadonlySet<Node>, includeSelf = false) => {
+      for(let current: Node | null = includeSelf ? node : node.parentNode; current; current = current.parentNode) {
+        if(candidates.has(current)) return true
+      }
+      return false
+    }
     // Changes to template fragments, ignored-node membership and unmapped
     // structure need the full reconciler. Ordinary typing/attribute changes
     // only inspect their current DOM targets.
     if(relevant.some(record => !this.#xmlNodes.has(record.target)
       && record.target !== this.#document.documentElement
-      && !mappedContainers.some(parent => parent.contains(record.target))
+      && !hasContainerAncestor(record.target, mappedContainerSet, true)
       || record.type === "attributes" && (record.attributeName === "data-webwriter-editor-only"
         || record.attributeName === "class" && ((record.oldValue ?? "").includes("◆editor-only")
           || (record.target as Element).classList.contains("◆editor-only"))))) {
@@ -840,14 +850,14 @@ export class SharedDOMDoc {
       for(let node: Node | null = record.target; node && !changed.has(node); node = node.parentNode) changed.add(node)
     }
     for(const node of containers) {
-      if([...containers].some(parent => parent !== node && parent.contains(node))) continue
+      if(hasContainerAncestor(node, containers)) continue
       const yNode = this.#xmlNodes.get(node)
       if(isElement(node) && yNode instanceof Y.XmlElement && this.#isSelectionNode(yNode)) {
         this.#reconcileYElement(node, yNode, changed)
       }
     }
     for(const node of new Set(relevant.filter(record => record.type !== "childList").map(record => record.target))) {
-      if([...containers].some(parent => parent.contains(node))) continue
+      if(hasContainerAncestor(node, containers, true)) continue
       if(node === this.#document.documentElement && this.#documentAttributes) {
         this.#reconcileDocumentAttributes()
         continue
@@ -1849,24 +1859,57 @@ export class SharedDOMDoc {
     const container = childContainer(domElement)
     const yChildren = yElement.toArray() as YXmlNode[]
     const usedDOMChildren = new Set<Node>()
-    const renderableChildren = yChildren.flatMap(yChild => {
-      const mapped = this.#nodes.get(yChild)
-      let domChild = mapped && mapped.parentNode === container && !usedDOMChildren.has(mapped) && this.#isCompatiblePair(mapped, yChild)
-        ? mapped : null
-      // A joining participant may already have a private live subtree at the
-      // same boundary. Reuse it by authored identity before constructing the
-      // outer mirror's baseline DOM node.
-      if(!domChild && yChild instanceof Y.XmlElement && !this.#isYComment(yChild) && !this.#isYProcessingInstruction(yChild)) {
-        const id = yChild.getAttribute("id")
-        domChild = Array.from(container.childNodes).find((child): child is Element => isElement(child)
-          && !usedDOMChildren.has(child) && this.#isScopeBoundary(child)
-          && this.#isCompatiblePair(child, yChild)
-          && (id ? child.getAttribute("id") === id : true)) ?? null
+    let boundaryCandidates: Map<string, IterableIterator<Element>> | undefined
+    const BoundaryObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
+    const boundaryObserver = this.#scopeBoundary ? new BoundaryObserver(() => {}) : null
+    boundaryObserver?.observe(container, {subtree: true, childList: true, attributes: true})
+    const renderableChildren: {yChild: YXmlNode, domChild: Node}[] = []
+    try {
+      for(const yChild of yChildren) {
+        const mapped = this.#nodes.get(yChild)
+        let domChild = mapped && mapped.parentNode === container && !usedDOMChildren.has(mapped) && this.#isCompatiblePair(mapped, yChild)
+          ? mapped : null
+        // A joining participant may already have a private live subtree at
+        // the same boundary. Index those candidates once for this parent.
+        if(!domChild && this.#scopeBoundary && yChild instanceof Y.XmlElement && !this.#isYComment(yChild) && !this.#isYProcessingInstruction(yChild)) {
+          // Constructing a custom element can deliberately replace another
+          // boundary. Pending native records invalidate this read-batch index.
+          if(boundaryObserver?.takeRecords().length) boundaryCandidates = undefined
+          if(!boundaryCandidates) {
+            const buckets = new Map<string, Element[]>()
+            for(const child of Array.from(container.childNodes)) {
+              if(!isElement(child) || !this.#isScopeBoundary(child)) continue
+              const name = child.prefix ? `${child.prefix}:${child.localName}` : child.localName
+              for(const id of child.id ? [null, child.id] : [null]) {
+                const key = JSON.stringify([child.namespaceURI, name, id])
+                const bucket = buckets.get(key) ?? []
+                bucket.push(child); buckets.set(key, bucket)
+              }
+            }
+            boundaryCandidates = new Map([...buckets].map(([key, children]) => [key, children.values()]))
+          }
+          const id = yChild.getAttribute("id")
+          const namespace = yChild.hasAttribute(INTERNAL_NAMESPACE)
+            ? yChild.getAttribute(INTERNAL_NAMESPACE) || null : this.#document.documentElement.namespaceURI
+          const name = yChild.getAttribute(INTERNAL_QUALIFIED_NAME) ?? yChild.nodeName
+          const candidates = boundaryCandidates.get(JSON.stringify([namespace, name, id || null]))
+          for(let next = candidates?.next(); next && !next.done; next = candidates?.next()) {
+            const child = next.value
+            if(child.parentNode === container && !usedDOMChildren.has(child) && this.#isScopeBoundary(child)
+              && this.#isCompatiblePair(child, yChild) && (!id || child.getAttribute("id") === id)) {
+              domChild = child
+              break
+            }
+          }
+        }
+        if(!domChild) domChild = this.#createDOMNode(yChild)
+        if(domChild) {
+          usedDOMChildren.add(domChild)
+          renderableChildren.push({yChild, domChild})
+        }
       }
-      if(!domChild) domChild = this.#createDOMNode(yChild)
-      if(domChild) usedDOMChildren.add(domChild)
-      return domChild ? [{yChild, domChild}] : []
-    })
+    }
+    finally { boundaryObserver?.disconnect() }
     const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)
     const desiredSet = new Set(desiredDOMChildren)
     const currentChildren = Array.from(container.childNodes)

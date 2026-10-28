@@ -11,6 +11,12 @@ import {isTextFieldInteraction} from "../utility"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
+const selectionPresentationMarkers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
+  "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
+  "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
+  "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
+const selectionPresentationSelector = selectionPresentationMarkers.map(marker => `.${marker}`).join(",")
+
 function arrowDirection(key: string) {
   return key === "ArrowUp" || key === "ArrowLeft"
     ? "backward" as const
@@ -76,8 +82,29 @@ export class SelectionFeature extends EditorFeature {
   #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
   readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null }
 
+  #trackSelectionMarkers(records: MutationRecord[]) {
+    const track = (node: Node) => {
+      if(isElement(node) && node.getRootNode() === document && node.matches(selectionPresentationSelector)) this.#selectionMarkers.add(node)
+    }
+    for(const record of records) {
+      if(record.type === "attributes" && record.attributeName === "class") track(record.target)
+      else if(record.type === "childList") for(const node of record.addedNodes) {
+        track(node)
+        if(isElement(node) && node.getRootNode() === document) node.querySelectorAll(selectionPresentationSelector).forEach(track)
+      }
+    }
+  }
+
+  readonly #handlePresentationChanges = (records: MutationRecord[]) => {
+    this.#trackSelectionMarkers(records)
+    if(records.some(isAuthoredMutation)) {
+      this.#invalidateFloatCandidates()
+      this.#refreshGapCaretInlinePosition()
+    }
+  }
+
   #currentFloatCandidates() {
-    if(this.#floatObserver?.takeRecords().some(isAuthoredMutation)) this.#invalidateFloatCandidates()
+    this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
     const root = getDocumentRoot()
     // CSSOM edits have no mutation event. Periodically rediscover candidates;
     // running authored animations can change float membership every frame.
@@ -624,12 +651,8 @@ export class SelectionFeature extends EditorFeature {
       && document.body.childNodes.length === 1 && !first.childNodes.length) $.move(first)
     else if(!this.editor.options.reader) $.selectDocumentStart()
     super.enable()
-    this.#floatObserver = new MutationObserver(records => {
-      if(records.some(isAuthoredMutation)) {
-        this.#invalidateFloatCandidates()
-        this.#refreshGapCaretInlinePosition()
-      }
-    })
+    this.#selectionMarkers = new Set(document.querySelectorAll(selectionPresentationSelector))
+    this.#floatObserver = new MutationObserver(this.#handlePresentationChanges)
     this.#floatObserver.observe(document.documentElement, {
       subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true,
     })
@@ -645,6 +668,7 @@ export class SelectionFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.#trackSelectionMarkers(this.#floatObserver?.takeRecords() ?? [])
     this.#floatObserver?.disconnect()
     this.#floatObserver = null
     this.#invalidateFloatCandidates()
@@ -1724,16 +1748,11 @@ export class SelectionFeature extends EditorFeature {
   /** Clears the previous presentation, including markers on removed nodes. */
   #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture" | "text" | "empty") {
     this.#clearAtomicOverlays()
-    const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
-      "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
-      "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
-      "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
-    const elements = new Set([...this.#selectionMarkers,
-      ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
+    this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
     const retainedMarker = retainedKind === "text" ? "◆text-selected"
       : retainedKind === "empty" ? "◆empty-selected" : "◆element-selected"
-    elements.forEach(element => {
-      const removed = markers.filter(marker => !(
+    this.#selectionMarkers.forEach(element => {
+      const removed = selectionPresentationMarkers.filter(marker => !(
         element === retainedElement && (marker === retainedMarker || marker === "◆element-capture-selected" && retainedKind === "capture")
         || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "◆node-selection-active"
       ))

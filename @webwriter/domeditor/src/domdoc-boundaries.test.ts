@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
 
@@ -29,6 +29,150 @@ afterEach(() => {
 })
 
 describe("SharedDOMDoc scope boundaries", () => {
+  it("hydrates a wide existing root without rereading its full child list per shared child", () => {
+    const html = Array.from({length: 1000}, (_, index) => `<p data-index="${index}">Text ${index}</p>`).join("")
+    const sourceRoot = document.createElement("section")
+    sourceRoot.innerHTML = html
+    document.body.append(sourceRoot)
+    const source = new SharedDOMDoc(undefined, undefined, [], [], {root: sourceRoot})
+    sharedDocs.push(source)
+
+    const root = document.createElement("section")
+    root.innerHTML = html
+    document.body.append(root)
+    const childNodes = vi.spyOn(root, "childNodes", "get")
+    const hydrated = new SharedDOMDoc(undefined, undefined, [], [], {root, ydoc: cloneYDoc(source)})
+    sharedDocs.push(hydrated)
+
+    expect(childNodes.mock.calls.length).toBeLessThan(5)
+    expect(root.innerHTML).toBe(html)
+    expect(root.children).toHaveLength(1000)
+  })
+
+  it("indexes many boundary candidates once while preserving private live nodes across remote updates and undo", async () => {
+    const count = 120
+    const html = `${Array.from({length: count}, (_, index) => `<section id="inner-${index}" data-boundary title="default"><p>Default ${index}</p></section>`).join("")}<p id="outside">Before</p>`
+    const source = createOuter(html, undefined, element => element.hasAttribute("data-boundary"))
+
+    const peerRoot = document.createElement("section")
+    peerRoot.innerHTML = html
+    document.body.append(peerRoot)
+    const privateNodes = Array.from(peerRoot.querySelectorAll<HTMLElement>("section[data-boundary]"))
+    privateNodes.forEach((element, index) => {
+      element.title = `private ${index}`
+      element.firstElementChild!.textContent = `Private ${index}`
+    })
+    const scopeBoundary = vi.fn((element: Element) => element.hasAttribute("data-boundary"))
+    const peer = new SharedDOMDoc(undefined, undefined, [], [], {
+      root: peerRoot,
+      ydoc: cloneYDoc(source.shared),
+      scopeBoundary,
+    })
+    sharedDocs.push(peer)
+
+    expect(scopeBoundary.mock.calls.length).toBeLessThan(count * 8)
+    privateNodes.forEach((element, index) => {
+      expect(peerRoot.children[index]).toBe(element)
+      expect(element.title).toBe(`private ${index}`)
+      expect(element.textContent).toBe(`Private ${index}`)
+    })
+
+    source.shared.stopCapturing()
+    source.root.querySelector("#outside")!.textContent = "Remote edit"
+    source.shared.syncFromDOM()
+    await mutationsDelivered()
+    Y.applyUpdate(peer.doc, Y.encodeStateAsUpdate(source.shared.doc), "remote")
+    expect(peerRoot.querySelector("#outside")!.textContent).toBe("Remote edit")
+    privateNodes.forEach((element, index) => {
+      expect(peerRoot.children[index]).toBe(element)
+      expect(element.textContent).toBe(`Private ${index}`)
+    })
+
+    source.shared.undo()
+    Y.applyUpdate(peer.doc, Y.encodeStateAsUpdate(source.shared.doc), "remote-undo")
+    expect(peerRoot.querySelector("#outside")!.textContent).toBe("Before")
+    privateNodes.forEach((element, index) => expect(peerRoot.children[index]).toBe(element))
+  })
+
+  it("matches explicit and idless boundaries in order and rejects type or namespace mismatches", () => {
+    const html = '<section id="explicit" data-boundary title="default"></section><section data-boundary title="first"></section><section data-boundary title="second"></section><section id="wrong-type" data-boundary></section><section id="wrong-namespace" data-boundary></section>'
+    const source = createOuter(html, undefined, element => element.hasAttribute("data-boundary"))
+    const root = document.createElement("section")
+    root.innerHTML = '<section id="explicit" data-boundary title="private explicit"></section><section data-boundary title="private first"></section><section data-boundary title="private second"></section><div id="wrong-type" data-boundary title="must be discarded"></div>'
+    const wrongNamespace = document.createElementNS("urn:private", "section")
+    wrongNamespace.id = "wrong-namespace"
+    wrongNamespace.setAttribute("data-boundary", "")
+    wrongNamespace.setAttribute("title", "must also be discarded")
+    root.append(wrongNamespace)
+    document.body.append(root)
+    const explicit = root.children[0]
+    const firstIdless = root.children[1]
+    const secondIdless = root.children[2]
+    const wrongType = root.children[3]
+    const scopeBoundary = (element: Element) => element.hasAttribute("data-boundary")
+
+    const peer = new SharedDOMDoc(undefined, undefined, [], [], {
+      root,
+      ydoc: cloneYDoc(source.shared),
+      scopeBoundary,
+    })
+    sharedDocs.push(peer)
+
+    expect(root.children[0]).toBe(explicit)
+    expect(root.children[0].getAttribute("title")).toBe("private explicit")
+    expect(root.children[1]).toBe(firstIdless)
+    expect(root.children[1].getAttribute("title")).toBe("private first")
+    expect(root.children[2]).toBe(secondIdless)
+    expect(root.children[2].getAttribute("title")).toBe("private second")
+    expect(wrongType.isConnected).toBe(false)
+    expect(wrongNamespace.isConnected).toBe(false)
+    expect(root.children[3].localName).toBe("section")
+    expect(root.children[3].namespaceURI).toBe("http://www.w3.org/1999/xhtml")
+    expect(root.children[3].id).toBe("wrong-type")
+    expect(root.children[4].localName).toBe("section")
+    expect(root.children[4].namespaceURI).toBe("http://www.w3.org/1999/xhtml")
+    expect(root.children[4].id).toBe("wrong-namespace")
+  })
+
+  it("keeps a boundary installed by a custom-element constructor during hydration", () => {
+    let replaceBoundaryDuringHydration = false
+    let peerRoot: HTMLElement | null = null
+    let originalBoundary: Element | null = null
+    let replacementBoundary: Element | null = null
+    customElements.define("hydration-boundary-refresh-test", class extends HTMLElement {
+      constructor() {
+        super()
+        if(!replaceBoundaryDuringHydration || !peerRoot || !originalBoundary) return
+        replacementBoundary = peerRoot.ownerDocument.createElement("section")
+        replacementBoundary.id = "inner"
+        replacementBoundary.setAttribute("data-boundary", "")
+        replacementBoundary.setAttribute("title", "new private state")
+        replacementBoundary.innerHTML = "<p>New private state</p>"
+        peerRoot.replaceChild(replacementBoundary, originalBoundary)
+      }
+    })
+
+    const source = createOuter('<hydration-boundary-refresh-test></hydration-boundary-refresh-test><section id="inner" data-boundary title="shared"><p>Shared baseline</p></section>', undefined,
+      element => element.hasAttribute("data-boundary"))
+    peerRoot = document.createElement("section")
+    peerRoot.innerHTML = '<hydration-boundary-refresh-test></hydration-boundary-refresh-test><section id="inner" data-boundary title="old private state"><p>Old private state</p></section>'
+    document.body.append(peerRoot)
+    originalBoundary = peerRoot.querySelector("#inner")
+    replaceBoundaryDuringHydration = true
+    const peer = new SharedDOMDoc(undefined, undefined, [], [], {
+      root: peerRoot,
+      ydoc: cloneYDoc(source.shared),
+      scopeBoundary: element => element.hasAttribute("data-boundary"),
+    })
+    replaceBoundaryDuringHydration = false
+    sharedDocs.push(peer)
+
+    expect(replacementBoundary).not.toBeNull()
+    expect(peerRoot.querySelector("#inner")).toBe(replacementBoundary)
+    expect(replacementBoundary!.getAttribute("title")).toBe("new private state")
+    expect(replacementBoundary!.textContent).toBe("New private state")
+  })
+
   it("seeds the boundary's authored defaults, filters its edits before widget data and outer reconciliation, and never treats root as a boundary", async () => {
     const {root, shared} = createOuter('<section id="inner" title="authored"><p>Default</p></section><p id="outside">Before</p>')
     const inner = root.querySelector<HTMLElement>("#inner")!

@@ -452,12 +452,30 @@ describe("canvas document layout", () => {
     }
   })
 
+  it("stops empty-paragraph discovery after two eligible items", () => {
+    document.body.innerHTML = Array.from({length: 1000}, (_, index) => `<p>${index}</p>`).join("")
+    const canvas = editor.features.canvas
+    const getState = vi.spyOn(canvas, "getState")
+    const matches = vi.spyOn(HTMLElement.prototype, "matches")
+
+    expect(canvas.emptyParagraph()).toBeNull()
+    expect(matches).toHaveBeenCalledTimes(2)
+    expect(getState).not.toHaveBeenCalled()
+  })
+
   it("recognizes an empty paragraph alongside bootstrap and metadata elements", () => {
-    document.body.innerHTML = '<p></p><script class="◆editor-only" type="module"></script><style></style>'
+    document.body.innerHTML = '<p></p><script class="◆editor-only" type="module"></script><style></style><link rel="stylesheet" href="/unused.css"><meta name="viewport"><template><p>Template content</p></template>'
     const paragraph = document.body.querySelector("p")!
     expect(editor.features.canvas.emptyParagraph()).toBe(paragraph)
     paragraph.textContent = "Authored content"
     expect(editor.features.canvas.emptyParagraph()).toBeNull()
+  })
+
+  it("treats custom elements and SVG as eligible layout items", () => {
+    for(const html of ["<p></p><custom-card></custom-card>", '<p></p><svg><circle r="2"></circle></svg>']) {
+      document.body.innerHTML = html
+      expect(editor.features.canvas.emptyParagraph()).toBeNull()
+    }
   })
 
   it("rechecks a stale startCanvas request against current DOM", () => {

@@ -1341,7 +1341,8 @@ export const $ = EditingSelection
  * and semantic section wrappers are transparent to ordinary selection. */
 export function getContainer(node: Node) {
   let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
-  while(element && !isOutOfFlow(element) && !boardLayoutRole(element) && slideLayoutRole(element) !== "slide" && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
+  while(element && (isMarkElement(element) || isSectionElement(element))
+    && !boardLayoutRole(element) && slideLayoutRole(element) !== "slide" && !isOutOfFlow(element)) element = element.parentElement
   return element!
 }
 
@@ -1512,8 +1513,8 @@ export function pathFromNode(root: Node, node: Node): number[] | null {
   while(current && current !== root) {
     const parent: ParentNode | null = current.parentNode
     if(!parent) return null
-    const index = Array.from(parent.childNodes).indexOf(current as ChildNode)
-    if(index < 0) return null
+    let index = 0
+    for(let sibling = current.previousSibling; sibling; sibling = sibling.previousSibling) index++
     path.unshift(index)
     current = parent
   }

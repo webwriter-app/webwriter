@@ -552,8 +552,10 @@ export class TransformationFeature extends EditorFeature {
 
   /** The linear part of the actual CSS transform, including ancestors.
    * Translation and transform-origin are already reflected in the live rect. */
-  #matrix(element: Element | null): DOMMatrix {
+  #matrix(element: Element | null, matrices?: WeakMap<Element, DOMMatrix>): DOMMatrix {
     if(!element) return new DOMMatrix()
+    const cached = matrices?.get(element)
+    if(cached) return cached
     const style = getComputedStyle(element)
     const angle = this.#angle(style.getPropertyValue("rotate"))
     const scale = this.#scale(style.getPropertyValue("scale"))
@@ -561,7 +563,9 @@ export class TransformationFeature extends EditorFeature {
     const own = new DOMMatrix().scale(zoom).rotate(angle).scale(scale[0], scale[1])
       .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
     own.e = own.f = 0
-    return this.#matrix(renderedParentElement(element)).multiply(own)
+    const matrix = this.#matrix(renderedParentElement(element), matrices).multiply(own)
+    matrices?.set(element, matrix)
+    return matrix
   }
 
   #angle(value: string) {
@@ -578,7 +582,7 @@ export class TransformationFeature extends EditorFeature {
     return [values[0], values[1] ?? values[0]]
   }
 
-  #size(element: TransformElement) {
+  #size(element: TransformElement, matrices?: WeakMap<Element, DOMMatrix>) {
     const style = getComputedStyle(element)
     const extra = (properties: string[]) => properties.reduce((sum, property) => sum + (parseFloat(style.getPropertyValue(property)) || 0), 0)
     const paddingWidth = style.boxSizing === "border-box" ? 0 : extra(["padding-left", "padding-right", "border-left-width", "border-right-width"])
@@ -590,7 +594,7 @@ export class TransformationFeature extends EditorFeature {
       // The live rect is already a border box; transformed hosts need their
       // local layout dimensions so the overlay does not apply scale twice.
       const rect = element.getBoundingClientRect()
-      const matrix = this.#matrix(element)
+      const matrix = this.#matrix(element, matrices)
       const transformed = matrix.a !== 1 || matrix.b !== 0 || matrix.c !== 0 || matrix.d !== 1
       const width = transformed && element instanceof HTMLElement ? element.offsetWidth || rect.width : rect.width
       const height = transformed && element instanceof HTMLElement ? element.offsetHeight || rect.height : rect.height
@@ -628,26 +632,27 @@ export class TransformationFeature extends EditorFeature {
     return crop?.target === media ? crop.edges : null
   }
 
-  /** Border-box geometry shared by transform, selection and hover overlays. */
-  boxGeometry(element: TransformElement, cropped = true): BoxGeometry {
+  /** Border-box geometry shared by transform, selection and hover overlays.
+   * Matrices may be shared only within one synchronous batch of layout reads. */
+  boxGeometry(element: TransformElement, cropped = true, matrices?: WeakMap<Element, DOMMatrix>): BoxGeometry {
     if(element.localName === "figure" && Array.from(element.classList).some(name => name.startsWith("◆figure-flow-"))) {
       const content = captionedFigureContent(element)
-      if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped)
+      if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped, matrices)
     }
     let rect = element.getBoundingClientRect()
-    let {width, height} = this.#size(element)
-    let matrix = this.#matrix(element)
+    let {width, height} = this.#size(element, matrices)
+    let matrix = this.#matrix(element, matrices)
     const media = cropped ? this.editor.features.media.cropTargetFor(element) : null
     const insets = media && this.#mediaCropInsets(media)
     if(media && insets?.some(value => value)) {
-      const source = this.boxGeometry(media, false)
+      const source = this.boxGeometry(media, false, matrices)
       if(element.localName === "figure") {
-        const visible = this.boxGeometry(media)
+        const visible = this.boxGeometry(media, true, matrices)
         const caption = element.querySelector<HTMLElement>(":scope > figcaption")
         const inverse = matrix.inverse()
         const local = (point: {x: number, y: number}) => this.#vector(inverse, point.x - rect.left - rect.width / 2, point.y - rect.top - rect.height / 2)
         const mediaPoints = visible.corners.map(local)
-        const points = [...mediaPoints, ...(caption ? this.boxGeometry(caption, false).corners.map(local) : [])]
+        const points = [...mediaPoints, ...(caption ? this.boxGeometry(caption, false, matrices).corners.map(local) : [])]
         const left = Math.min(...mediaPoints.map(point => point.x)), right = Math.max(...mediaPoints.map(point => point.x))
         const top = Math.min(...points.map(point => point.y)), bottom = Math.max(...points.map(point => point.y))
         width = right - left

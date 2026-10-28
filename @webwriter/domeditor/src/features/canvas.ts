@@ -43,9 +43,16 @@ export class CanvasFeature extends EditorFeature {
     return this.active ? document.body : this.editor.features.slides.active ? this.editor.features.slides.current() : null
   }
 
-  items(root: HTMLElement | null = this.editingRoot ?? document.body): Item[] {
-    return Array.from(root?.children ?? []).filter((el): el is Item =>
-      (el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template") && !slideLayoutRole(el))
+  items(root: HTMLElement | null = this.editingRoot ?? document.body, limit = Infinity): Item[] {
+    const items: Item[] = []
+    if(limit <= 0) return items
+    for(const el of root?.children ?? []) {
+      if((el instanceof HTMLElement || el instanceof SVGSVGElement) && !el.matches("style, script, link, meta, template") && !slideLayoutRole(el)) {
+        items.push(el)
+        if(items.length >= limit) break
+      }
+    }
+    return items
   }
 
   itemAtPoint(x: number, y: number): Item | null {
@@ -57,9 +64,12 @@ export class CanvasFeature extends EditorFeature {
   }
 
   canConvertContent(nodes: Iterable<Node>) {
-    return !Array.from(nodes).some(node => node instanceof Text && Boolean(node.textContent?.trim())
-      || node instanceof Element && !(node instanceof HTMLElement || node instanceof SVGSVGElement)
-        && !node.matches("style, script, link, meta, template"))
+    for(const node of nodes) {
+      if(node instanceof Text && Boolean(node.textContent?.trim())
+        || node instanceof Element && !(node instanceof HTMLElement || node instanceof SVGSVGElement)
+          && !node.matches("style, script, link, meta, template")) return false
+    }
+    return true
   }
 
   getState(): DocumentLayoutState {
@@ -75,8 +85,9 @@ export class CanvasFeature extends EditorFeature {
   }
 
   emptyParagraph() {
-    const items = this.items()
-    if(documentLayoutMode() !== "document" || !this.getState().canConvert || items.length !== 1) return null
+    if(documentLayoutMode() !== "document") return null
+    const items = this.items(undefined, 2)
+    if(items.length !== 1 || !this.getState().canConvert) return null
     const paragraph = items[0]
     return this.isEmptyParagraph(paragraph) ? paragraph : null
   }

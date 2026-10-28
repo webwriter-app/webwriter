@@ -1,5 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
+import {isAuthoredMutation} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -506,7 +507,7 @@ export class DOMEditor {
       const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
       this.#bodySchemaObserver = new DocumentMutationObserver(this.#handleBodySchemaChanges)
       this.#bodySchemaObserver.observe(document.body, {
-        childList: true, subtree: true, attributes: true, attributeFilter: ["contenteditable", "is", "style", "class"],
+        childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ["contenteditable", "is", "style", "class"],
       })
       this.#bodySchemaObserver.observe(document.head, {
         childList: true, subtree: true, characterData: true, attributes: true,
@@ -647,8 +648,10 @@ export class DOMEditor {
     }
   }
 
-  #handleBodySchemaChanges = () => {
-    this.#ensureDocumentContent()
+  #handleBodySchemaChanges = (mutations: MutationRecord[]) => {
+    // Selection markers do not change authored flow. Head resources still
+    // require a check because their CSS can reposition every body child.
+    if(mutations.some(mutation => document.head.contains(mutation.target) || isAuthoredMutation(mutation))) this.#ensureDocumentContent()
   }
 
   /** Restores a static default flow child when none remains in the body.

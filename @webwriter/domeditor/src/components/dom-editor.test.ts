@@ -8170,6 +8170,29 @@ describe("DomEditor.execute()", () => {
     expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).not.toBeNull()
   })
 
+  it("rejects nonempty layout snapshots without cloning and still recognizes cleared content", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    host.fileHandle = {}
+    const body = iframe.contentDocument!.body
+    body.innerHTML = '<p>Authored text</p>'.repeat(1000)
+    host.fileDirty = true
+    const clone = vi.spyOn(body, "cloneNode")
+    host.updateDocumentLayoutsVisibility()
+    expect(host.documentLayoutsDismissed).toBe(true)
+    expect(clone).not.toHaveBeenCalled()
+    clone.mockRestore()
+
+    body.innerHTML = '<p><span class="◆editor-only">Editor text</span><br></p>'
+    host.updateDocumentLayoutsVisibility()
+    expect(host.documentLayoutsDismissed).toBe(false)
+    expect(body.querySelector("span")?.textContent).toBe("Editor text")
+    body.firstElementChild!.append('Authored again')
+    host.updateDocumentLayoutsVisibility()
+    expect(host.documentLayoutsDismissed).toBe(true)
+  })
+
   it.each([false, true])("restores Layouts after clearing a saved document unless manually dismissed (isolated frame: %s)", async isolated => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any

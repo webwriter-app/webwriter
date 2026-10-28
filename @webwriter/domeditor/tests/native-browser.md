@@ -40,6 +40,35 @@ and that the actual host/ribbon bindings settle after selection-state changes.
 These idle checks use a synthetic catalog and an isolated host with network and
 iframe startup withheld; they do not rule out loops driven by real editor events.
 
+For broader document scaling measurements and native editing with the actual
+frame snapshot bridge, run:
+
+```sh
+node scripts/performance-profile.mjs --production --output=.cache/performance/measurements
+node scripts/performance-profile.mjs --production --profile --output=.cache/performance/profiles
+```
+
+Omit `--production` to compare the development build. The production command
+builds the profiling fixtures in an isolated directory without replacing `dist/`. The first command
+records unprofiled medians, p95s and maxima for 100–10,000 top-level elements,
+existing-DOM hydration, batches of changed containers, selection conversion,
+host snapshots, serialization, undo/redo, idle behavior and native insertText,
+including typing/selection in 100-row and 500-row tables with six columns.
+The live fixture is 1200×800 CSS pixels and uses the real editor and frame
+bridge with proofreading disabled and collaboration disconnected. The host
+snapshot handler is real but isolated from host UI rendering. The next-frame
+checkpoint is rAF followed by a timer, not an INP or physical keyboard measurement.
+
+Use `--only=live`, `--only=tables` or `--only=reconciliation` for a focused run.
+The second command selects representative large cases and saves one Chrome CPU
+profile (`.cpuprofile`), Performance timeline (`.trace.json`) and metric summary
+per operation. Load these in Chrome DevTools Performance. Profiling runs for at
+least 350 ms per stage; use the separate unprofiled results for latency claims.
+Both commands use disposable Chrome profiles and loopback-only HTTP/debugging
+servers. Output includes environment information and browser exceptions. These
+synthetic fixtures exclude external widget startup, real network latency and
+proofreading; the separate widget benchmarks cover widget data and persistence.
+
 ## Cross-browser smoke matrix
 
 Run the compact platform smoke checks in one engine with:

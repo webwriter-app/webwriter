@@ -14,6 +14,7 @@ const expectedChecks = [
   "SVG snapping follows the visible grid through viewport changes",
   "SVG arrowheads select their connector, fit its outline and resize independently",
   "SVG shape fills keep overlaps solid and intentional holes open",
+  "SVG shape text resize reuses glyph metrics and preserves undo",
   "SVG preset POIs stay on their actual contours through adjustments",
   "SVG curved shape POIs follow contours while dragging and undoing",
   "SVG Chord endpoint POIs retain their ellipse through circular edits",

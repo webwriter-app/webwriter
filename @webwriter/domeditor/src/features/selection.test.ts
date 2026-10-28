@@ -2284,6 +2284,38 @@ describe("processSelection()", () => {
     expect(replaced.hasAttribute("class")).toBe(false)
     expect(editor.toHTML()).not.toContain("◆text-selected")
   })
+
+  it("cleans markers introduced by pending DOM edits without rescanning the document", () => {
+    const target = el("p", "Current")
+    const other = el("p", "Other")
+    $.move(target.firstChild!, 1)
+    feature.processSelection()
+    const queries = vi.spyOn(document, "querySelectorAll")
+    other.classList.add("◆", "◆text-selected")
+    const inserted = document.createElement("div")
+    inserted.innerHTML = '<p class="◆ ◆element-selected">Inserted marker</p>'
+    document.body.append(inserted)
+    feature.processSelection()
+    expect(other).not.toHaveClass("◆text-selected", "◆")
+    expect(inserted.firstElementChild).not.toHaveClass("◆element-selected", "◆")
+    expect(target).toHaveClass("◆text-selected")
+    expect(queries.mock.calls.filter(([selector]) => selector.includes("◆gap-before-selected"))).toHaveLength(0)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    queries.mockRestore()
+  })
+
+  it("clears pending and disconnected markers when disabled", () => {
+    const target = el("p", "Current")
+    $.move(target.firstChild!, 1)
+    feature.processSelection()
+    target.remove()
+    const foreign = el("p", "Foreign")
+    foreign.classList.add("◆", "◆text-selected")
+    feature.disable()
+    expect(target).not.toHaveClass("◆text-selected", "◆")
+    expect(foreign).not.toHaveClass("◆text-selected", "◆")
+    feature.enable()
+  })
   it("hides the gap caret when leaving a gap selection", () => {
     const p1 = el("p", "a"); el("p", "b")
     $.selectGap(p1)

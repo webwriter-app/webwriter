@@ -30,6 +30,44 @@ describe("DOMEditor lifecycle", () => {
     expect(document.body.contains(authored)).toBe(true)
   })
 
+  it("ignores marker-only schema checks but reacts to authored positioning", async () => {
+    document.body.innerHTML = '<p class="authored">Keep</p>'
+    const editor = new DOMEditor()
+    const settle = async () => { await Promise.resolve(); await Promise.resolve() }
+    try {
+      await settle()
+      const paragraph = document.body.querySelector("p")!
+      const check = vi.spyOn(editor.schema, "ensureStaticContent")
+      paragraph.classList.add("◆", "◆text-selected")
+      document.body.classList.add("◆", "◆node-selection-active")
+      await settle()
+      expect(check).not.toHaveBeenCalled()
+      paragraph.style.position = "absolute"
+      await settle()
+      expect(check).toHaveBeenCalled()
+      expect(paragraph.isConnected).toBe(true)
+      expect(paragraph.classList.contains("authored")).toBe(true)
+      expect(Array.from(document.body.children).some(element => (getComputedStyle(element).position || "static") === "static")).toBe(true)
+      check.mockRestore()
+    }
+    finally { editor.destroy() }
+  })
+
+  it("rechecks flow when an editor head resource changes document CSS", async () => {
+    document.body.innerHTML = '<p>Keep</p>'
+    const editor = new DOMEditor(), style = document.createElement("style")
+    style.className = "◆editor-only"
+    try {
+      await Promise.resolve(); await Promise.resolve()
+      style.textContent = "body > p {position:absolute !important}"
+      document.head.append(style)
+      await Promise.resolve(); await Promise.resolve()
+      expect(Array.from(document.body.children).some(element => (element as HTMLElement).style.getPropertyPriority("position") === "important"
+        && getComputedStyle(element).position === "static")).toBe(true)
+    }
+    finally { style.remove(); editor.destroy() }
+  })
+
   it("assigns a persistent UUIDv4 document ID to the html element", () => {
     const editor = new DOMEditor()
     const id = document.documentElement.id

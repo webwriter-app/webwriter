@@ -66,6 +66,39 @@ describe("table grid", () => {
     expect(map.matrix[2][1]?.cell.textContent).toBe("D")
   })
 
+  it("bounds spans to the current row group after direct edits without repeated group scans", () => {
+    const table = document.createElement("table")
+    table.innerHTML = '<tbody>' + '<tr><td rowspan="0">A</td><td>B</td></tr>'
+      + '<tr><td>C</td></tr>'.repeat(99) + '</tbody><tbody><tr><td>D</td></tr></tbody>'
+    document.body.replaceChildren(table)
+    const rows = Array.from(table.querySelectorAll("tr"))
+    const parents = rows.map(row => vi.spyOn(row, "parentElement", "get"))
+    const map = buildTableMap(table)
+    expect(map.placements[0].rowSpan).toBe(100)
+    expect(map.matrix[100][0]?.cell.textContent).toBe("D")
+    expect(parents.reduce((sum, spy) => sum + spy.mock.calls.length, 0)).toBeLessThan(rows.length * 6)
+    parents.forEach(spy => spy.mockRestore())
+
+    // A second call must inspect the actual DOM rather than a retained map.
+    table.tBodies[1].prepend(rows[99])
+    expect(buildTableMap(table).placements[0].rowSpan).toBe(99)
+    expect(rows[0].cells[0].getAttribute("rowspan")).toBe("0")
+  })
+
+  it.each([false, true])("builds one fresh map for selection state (cell selection: %s)", cellSelection => {
+    document.body.innerHTML = '<table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    if(cellSelection) editor.features.table.selectCells(cells()[0], cells()[1])
+    else $.move(cells()[0].firstChild!, 0)
+    const queries = vi.spyOn(table, "querySelectorAll")
+    const state = editor.features.table.getState()
+    expect(state).toMatchObject({rows: 2, columns: 2, selectedCells: cellSelection ? 2 : 0})
+    expect(queries.mock.calls.filter(([selector]) => selector === "tr")).toHaveLength(1)
+    table.rows[1].insertCell().textContent = "E"
+    expect(editor.features.table.getState()?.columns).toBe(3)
+    queries.mockRestore()
+  })
+
   it("bounds raw oversized column spans to the HTML table limit", () => {
     document.body.innerHTML = '<table><tbody><tr><td colspan="4294967296">A</td></tr></tbody></table>'
 
@@ -1281,6 +1314,46 @@ describe("table gap controls", () => {
     expect(document.body.querySelector(".◆table-gaps")).toBeNull()
     expect(editor.toHTML(true)).not.toContain("table-gaps")
     expect(editor.doc.body.toString()).not.toContain("table-gaps")
+  })
+
+  it("measures only cells needed for column gaps in a tall table", async () => {
+    document.body.innerHTML = '<table><tbody>' + '<tr><td>A</td><td>B</td></tr>'.repeat(30) + '</tbody></table>'
+    const table = document.querySelector("table")!
+    const rows = Array.from(table.rows), cellsByRow = rows.map(row => Array.from(row.cells))
+    mockTableGeometry(table, rows, cellsByRow)
+    const geometry = vi.spyOn(editor.features.transformation, "boxGeometry")
+    await renderGaps(table)
+    const measuredCells = new Set(geometry.mock.calls.map(([element]) => element).filter(element => element.matches("td, th")))
+    expect([...measuredCells]).toEqual(cellsByRow[0])
+    expect(editor.appendix.querySelectorAll('.◆table-gaps button[data-axis="row"]')).toHaveLength(31)
+    geometry.mockRestore()
+  })
+
+  it("batches gap geometry before overlay writes and reuses ancestor matrices only for that batch", async () => {
+    document.body.innerHTML = '<div><table><tbody><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table></div>'
+    const table = document.querySelector("table")!, parent = table.parentElement!
+    const rows = Array.from(table.rows), cellsByRow = rows.map(row => Array.from(row.cells))
+    mockTableGeometry(table, rows, cellsByRow)
+    await renderGaps(table)
+    cellsByRow[0][0].getBoundingClientRect = () => box(30, 20, 130, 60)
+    const overlay = editor.appendix.querySelector(".◆table-gaps")!
+    const writes = new MutationObserver(() => {})
+    writes.observe(overlay, {subtree: true, attributes: true, attributeFilter: ["style"]})
+    const original = editor.features.transformation.boxGeometry.bind(editor.features.transformation)
+    const geometry = vi.spyOn(editor.features.transformation, "boxGeometry").mockImplementation((...args) => {
+      expect(writes.takeRecords()).toHaveLength(0)
+      return original(...args)
+    })
+    const styles = vi.spyOn(globalThis, "getComputedStyle")
+    const feature = editor.features.table as unknown as {renderGaps(): void}
+    feature.renderGaps()
+    expect(styles.mock.calls.filter(([element]) => element === parent)).toHaveLength(1)
+    expect(overlay.querySelector<HTMLButtonElement>('button[data-axis="column"]')!.style.left).toBe("30px")
+    geometry.mockRestore(); writes.disconnect(); styles.mockRestore()
+
+    parent.style.transform = "scale(2)"
+    feature.renderGaps()
+    expect(overlay.querySelector<HTMLButtonElement>("button")!.style.transform).toContain("matrix(2, 0, 0, 2, 0, 0)")
   })
 
   it.each([

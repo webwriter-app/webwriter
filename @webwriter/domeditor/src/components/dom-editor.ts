@@ -2248,8 +2248,17 @@ export class DomEditor extends LitElement {
       this.documentLayoutsDismissed = false
       return
     }
-    const body = this.editorDocument?.body.cloneNode(true) as HTMLElement | undefined
-    if(!body) return
+    const current = this.editorDocument?.body
+    if(!current) return
+    // Any authored text rules out an empty layout. Short-circuit before
+    // cloning, cleaning and reparsing a large document on every snapshot.
+    const text = current.ownerDocument.createTreeWalker(current, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode: node => node.nodeType === Node.ELEMENT_NODE
+        ? (node as Element).matches(".◆editor-only, [data-webwriter-editor-only]") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
+        : node.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+    })
+    if(text.nextNode()) { this.documentLayoutsDismissed = true; return }
+    const body = current.cloneNode(true) as HTMLElement
     clearEditorArtifacts(body)
     this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
