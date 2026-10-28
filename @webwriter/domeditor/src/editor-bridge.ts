@@ -41,6 +41,7 @@ export const loadWidgetsMessage = "load-widgets"
 export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 export const shapeKeyboardInputEvent = "dom-editor-shape-keyboard-input"
+export const mathKeyboardTabEvent = "dom-editor-math-keyboard-tab"
 
 export type ShapeKeyboardInput = {
   type: "keydown" | "keyup"

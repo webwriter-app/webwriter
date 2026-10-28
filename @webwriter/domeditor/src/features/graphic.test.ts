@@ -77,8 +77,34 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
-  it.each(["cleared", "removed"])("blocks keyboard insertion and modifier relays until internal selection is %s", state => {
+  it.each(["select", "draw", "lines", "curves"] as const)("claims and relays Tab navigation while a graphic is captured in %s mode", mode => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode})
+    const original = editor.toHTML(true)
+    const post = vi.spyOn(editor, "postHostMessage")
+    for(const shiftKey of [false, true]) {
+      const event = new KeyboardEvent("keydown", {key: "Tab", code: "Tab", shiftKey, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(post).toHaveBeenCalledWith({type: shapeKeyboardInputEvent, detail: expect.objectContaining({key: "Tab", shiftKey})})
+      expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+      expect(editor.toHTML(true)).toBe(original)
+    }
+    for(const modifiers of [{altKey: true}, {ctrlKey: true}, {metaKey: true}, {isComposing: true}]) {
+      const event = new KeyboardEvent("keydown", {key: "Tab", code: "Tab", bubbles: true, cancelable: true, ...modifiers})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(false)
+    }
+    editor.features.selection.selectElement(graphic)
+    post.mockClear()
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", code: "Tab", bubbles: true, cancelable: true}))
+    expect(post.mock.calls.some(([message]) => (message as {type: string}).type === shapeKeyboardInputEvent)).toBe(false)
+  })
+
+  it.each(["cleared", "removed"])("relays held shape keys while retaining the legacy unselected insertion guard until selection is %s", state => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const selected = editor.features.graphic.selectedShape!
@@ -87,7 +113,7 @@ describe("graphic editing", () => {
     for(const [type, key] of [["keydown", "Shift"], ["keyup", "Shift"], ["keydown", "CapsLock"], ["keyup", "CapsLock"], ["keydown", "1"]]) {
       document.dispatchEvent(new KeyboardEvent(type, {key, code: key === "1" ? "Digit1" : key, altKey: key === "1", bubbles: true, shiftKey: type === "keydown", cancelable: true}))
     }
-    expect(inputs()).toHaveLength(0)
+    expect(inputs()).toHaveLength(5)
     const command = {type: "addGraphicShape" as const, shape: "ellipse" as const, onlyIfUnselected: true}
     editor.features.graphic.actions.addGraphicShape(command)
     expect(graphic.children).toHaveLength(1)
@@ -106,7 +132,7 @@ describe("graphic editing", () => {
     const authored = editor.toHTML(true)
     const post = vi.spyOn(editor, "postHostMessage")
     for(const code of ["Digit0", "KeyP", "Semicolon", "Period"]) {
-      const key = new KeyboardEvent("keydown", {key: "Dead", code, altKey: true, bubbles: true, cancelable: true})
+      const key = new KeyboardEvent("keydown", {key: "Dead", code, bubbles: true, cancelable: true})
       document.dispatchEvent(key)
       expect(key.defaultPrevented).toBe(true)
     }
@@ -2291,6 +2317,107 @@ describe("graphic editing", () => {
     })
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     expect(editor.features.graphic.getState()?.parameters).toMatchObject({x: "380", y: "130"})
+  })
+
+  it.each(["ellipse", "line-both-arrows", "rounded-rectangle", "text-box"] as const)("previews held %s in the appendix and places it at each click with undo/redo", async shape => {
+    const graphic = document.createElementNS(SVG_NAMESPACE, "svg")
+    graphic.setAttribute("viewBox", "100 50 800 400")
+    graphic.innerHTML = '<!--keep--><g aria-label="Existing content"><path d="M0 0L10 10"/></g>'
+    const existing = graphic.lastElementChild!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 0, b: 2, c: -2, d: 0, e: 1000, f: 100})})
+    document.body.append(graphic)
+    editor.features.selection.captureElement(graphic)
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    const original = graphic.innerHTML
+    editor.features.graphic.actions.setGraphicShapePreview({type: "setGraphicShapePreview", shape, code: "KeyQ", paint: {fill: "#60a5fa", stroke: "#334155", opacity: ".7"}})
+    expect(editor.appendix.querySelector(".◆graphic-insertion-preview")).toBeNull()
+    const pointer = {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 80}
+    graphic.dispatchEvent(new PointerEvent("pointermove", {...pointer, clientX: 600, clientY: 700}))
+    const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-insertion-preview")!
+    expect(preview).not.toBeNull()
+    expect(Number(preview.style.opacity)).toBe(.4)
+    expect(graphic.innerHTML).toBe(original)
+    await mutationsDelivered()
+    editor.doc.stopCapturing()
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: 600, clientY: 700}))
+    document.dispatchEvent(new PointerEvent("pointerup", pointer))
+    await mutationsDelivered()
+    const first = editor.features.graphic.selectedShape!
+    expect(graphic.contains(first)).toBe(true)
+    const parameters = editor.features.graphic.getState()!.parameters!
+    expect(Number(parameters.x) + Number(parameters.width) / 2).toBeCloseTo(300)
+    expect(Number(parameters.y) + Number(parameters.height) / 2).toBeCloseTo(200)
+    expect(editor.appendix.querySelector(".◆graphic-insertion-preview")).toBe(preview)
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {...pointer, clientX: 500, clientY: 800}))
+    document.dispatchEvent(new PointerEvent("pointerup", pointer))
+    await mutationsDelivered()
+    const second = editor.features.graphic.selectedShape!
+    expect(second).not.toBe(first)
+    expect(Number(editor.features.graphic.getState()!.parameters!.x) + Number(editor.features.graphic.getState()!.parameters!.width) / 2).toBeCloseTo(350)
+    editor.doc.undo()
+    expect(second.isConnected).toBe(false)
+    expect(first.isConnected).toBe(true)
+    editor.doc.redo()
+    expect(graphic.contains(existing)).toBe(true)
+    expect([...graphic.childNodes].find(node => node.nodeType === Node.COMMENT_NODE)?.nextSibling).toBe(existing)
+    document.dispatchEvent(new KeyboardEvent("keyup", {key: "q", code: "KeyQ", bubbles: true}))
+    expect(editor.appendix.querySelector(".◆graphic-insertion-preview")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+  })
+
+  it.each(["release", "escape", "cancel", "blur", "removed", "replaced", "uncaptured", "locked", "mode", "disabled"])("cleans a held shape preview on %s", async ending => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    graphic.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, clientX: 200, clientY: 100}))
+    editor.features.graphic.actions.setGraphicShapePreview({type: "setGraphicShapePreview", shape: "ellipse", code: "KeyQ"})
+    expect(editor.appendix.querySelector(".◆graphic-insertion-preview")).not.toBeNull()
+    const original = graphic.innerHTML
+    if(ending === "release") document.dispatchEvent(new KeyboardEvent("keyup", {key: "q", code: "KeyQ", bubbles: true}))
+    else if(ending === "escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", code: "Escape", bubbles: true}))
+    else if(ending === "cancel") graphic.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true}))
+    else if(ending === "blur") window.dispatchEvent(new Event("blur"))
+    else if(ending === "removed") graphic.remove()
+    else if(ending === "replaced") graphic.replaceWith(graphic.cloneNode(true))
+    else if(ending === "uncaptured") editor.features.selection.selectElement(graphic)
+    else if(ending === "locked") editor.lockEditing("test")
+    else if(ending === "mode") editor.features.graphic.actions.setGraphicMode({type: "setGraphicMode", mode: "draw"})
+    else editor.features.graphic.disable()
+    editor.features.graphic.refresh()
+    await mutationsDelivered()
+    expect(editor.appendix.querySelector(".◆graphic-insertion-preview")).toBeNull()
+    expect(graphic.innerHTML).toBe(original)
+  })
+
+  it("hides held shape previews outside the current viewport and ignores widgets and native controls", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    graphic.setAttribute("viewBox", "0 0 800 400")
+    Object.defineProperty(graphic, "getScreenCTM", {value: () => ({a: 1, b: 0, c: 0, d: 1, e: 0, f: 0})})
+    vi.spyOn(document, "elementFromPoint").mockReturnValue(graphic)
+    editor.features.graphic.actions.setGraphicShapePreview({type: "setGraphicShapePreview", shape: "ellipse", code: "KeyQ"})
+    const move = (target: Element, x = 200) => target.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, clientX: x, clientY: 100}))
+    move(graphic)
+    const preview = editor.appendix.querySelector(".◆graphic-insertion-preview")!
+    expect(preview).not.toHaveAttribute("display", "none")
+    move(graphic, 900)
+    expect(preview).toHaveAttribute("display", "none")
+    const widget = document.createElement("test-widget"), input = document.createElement("input")
+    widget.attachShadow({mode: "open"}).append(input)
+    document.body.append(widget)
+    move(input)
+    expect(preview).toHaveAttribute("display", "none")
+    input.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 100}))
+    expect(graphic.querySelector("ellipse")).toBeNull()
+    editor.features.selection.captureElement(graphic)
+    editor.features.graphic.actions.setGraphicShapePreview({type: "setGraphicShapePreview", shape: "ellipse", code: "KeyQ"})
+    move(graphic)
+    expect(editor.appendix.querySelector(".◆graphic-insertion-preview")).not.toHaveAttribute("display", "none")
+    document.dispatchEvent(new KeyboardEvent("keyup", {key: "q", code: "KeyQ", bubbles: true}))
+    graphic.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, button: 0, clientX: 200, clientY: 100}))
+    expect(graphic.querySelector("ellipse")).toBeNull()
   })
 
   it("centers inserted shapes on the current pointer using the live SVG transform, with undo and redo", async () => {

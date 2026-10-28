@@ -819,6 +819,7 @@ export class GraphicFeature extends EditorFeature {
   #navigatedGraphics = new Set<SVGSVGElement>()
   #options: Record<GraphicOption, boolean> = {grid: true, snap: true, guides: true}
   #insertionPointer: Point | null = null
+  #shapePreview: {graphic: SVGSVGElement, shape: GraphicShapeType, paint?: GraphicShapePaint, code?: string, key?: string, root?: SVGSVGElement, element?: SVGGraphicsElement} | null = null
 
   enable() {
     if(this.isEnabled) return
@@ -832,6 +833,7 @@ export class GraphicFeature extends EditorFeature {
   disable() {
     if(!this.isEnabled) return
     this.#insertionPointer = null
+    this.#clearShapePreview()
     this.#pendingImport?.cancel()
     window.removeEventListener("resize", this.#scheduleRefresh)
     window.removeEventListener("blur", this.#handleWindowBlur)
@@ -856,11 +858,20 @@ export class GraphicFeature extends EditorFeature {
   }
 
   actions = {
+    setGraphicShapePreview: ({shape, paint, code, key}: {type: "setGraphicShapePreview", shape: GraphicShapeType | null, paint?: GraphicShapePaint, code?: string, key?: string}) => {
+      this.#clearShapePreview()
+      const graphic = this.#capturedGraphic()
+      if(!shape || !isGraphicShapeType(shape) || !graphic || !this.#canInsertText(graphic)
+        || this.#drawGraphic || this.editor.features.mark.isSVGTextSelection) return
+      this.#shapePreview = {graphic, shape, paint, code, key}
+      this.#updateShapePreview()
+    },
     setGraphicMode: ({mode, paint}: {type: "setGraphicMode", mode: GraphicMode, paint?: GraphicShapePaint}) => {
       if(!["select", "draw", "lines", "curves"].includes(mode) || !this.isEnabled || this.editor.isEditingLocked) return
       const graphic = this.#capturedGraphic()
       if(!graphic || !this.#canInsertText(graphic)) return
       this.#cancelPointer()
+      this.#clearShapePreview()
       this.#closeLabelEditor(true)
       this.#drawMode = mode === "select" ? "draw" : mode
       if(paint) this.#drawPaint = {...this.#drawPaint, ...paint}
@@ -1115,8 +1126,72 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #rememberInsertionPointer(event: PointerEvent) {
-    this.#insertionPointer = event.pointerType === "touch" || isAppendixInteraction(event)
+    this.#insertionPointer = event.pointerType === "touch" || isAppendixInteraction(event) || isFormControlInteraction(event)
       || isWidgetShadowInteraction(event, this.editor.schema) ? null : {x: event.clientX, y: event.clientY}
+    this.#updateShapePreview()
+  }
+
+  #clearShapePreview() {
+    this.#shapePreview?.root?.remove()
+    this.#shapePreview = null
+  }
+
+  #shapePreviewPoint() {
+    const preview = this.#shapePreview, pointer = this.#insertionPointer
+    if(!preview || !pointer || preview.graphic !== this.#capturedGraphic() || !this.#canInsertText(preview.graphic)
+      || this.#drawGraphic || this.editor.features.mark.isSVGTextSelection) return null
+    const graphic = preview.graphic, box = graphicViewBox(graphic)
+    const local = applyInverseMatrix(this.#baseScreenMatrix(graphic), pointer)
+    if(local.x < box.x || local.x > box.x + box.width || local.y < box.y || local.y > box.y + box.height) return null
+    const target = this.editor.hitTestBeneathAppendix(() => document.elementFromPoint?.(pointer.x, pointer.y))
+    return graphicContainerForNode(target ?? null) === graphic ? this.#clientPoint(graphic, pointer.x, pointer.y) : null
+  }
+
+  #updateShapePreview() {
+    const preview = this.#shapePreview
+    if(!preview) return
+    if(preview.graphic !== this.#capturedGraphic() || !this.#canInsertText(preview.graphic)
+      || this.#drawGraphic || this.editor.features.mark.isSVGTextSelection) { this.#clearShapePreview(); return }
+    const point = this.#shapePreviewPoint()
+    if(!point) { preview.root?.setAttribute("display", "none"); return }
+    const graphic = preview.graphic
+    if(!preview.root) {
+      const root = document.createElementNS(SVG_NAMESPACE, "svg")
+      root.classList.add("◆", "◆editor-only", "◆graphic-preview", "◆graphic-insertion-preview")
+      root.setAttribute("part", "graphic-preview")
+      root.setAttribute("aria-hidden", "true")
+      root.style.opacity = ".4"
+      root.setAttribute("viewBox", graphic.getAttribute("viewBox") ?? "0 0 1600 900")
+      const aspect = graphic.getAttribute("preserveAspectRatio")
+      if(aspect) root.setAttribute("preserveAspectRatio", aspect)
+      this.editor.addAppendix(root)
+      preview.root = root
+      this.#positionPreviewRoot(root, graphic)
+      let element = this.#createShape(preview.shape, 0, root, graphic)
+      root.append(element)
+      this.#applyShapePaint(element, preview.shape, preview.paint)
+      if(preview.shape === "text-box") element = this.#setLabel(element, "Text")
+      preview.element = element
+    }
+    preview.root.removeAttribute("display")
+    this.#positionPreviewRoot(preview.root, graphic)
+    const bounds = shapeBounds(preview.element!)
+    this.#moveShape(preview.element!, point.x - bounds.x - bounds.width / 2, point.y - bounds.y - bounds.height / 2)
+    if(this.#presentedGraphic === graphic) this.#updateOverflowPresentation(graphic)
+  }
+
+  #placePreviewShape(event: PointerEvent) {
+    const preview = this.#shapePreview
+    if(!preview || event.button !== 0 || event.ctrlKey || event.metaKey || this.#spaceDown
+      || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema)) return false
+    const point = this.#shapePreviewPoint()
+    if(!point) return false
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    this.editor.doc.stopCapturing()
+    this.#insertShape(preview.graphic, preview.shape, preview.paint, point)
+    this.editor.doc.stopCapturing()
+    return true
   }
 
   #shapeInsertionPoint(graphic: SVGSVGElement): Point {
@@ -1230,6 +1305,7 @@ export class GraphicFeature extends EditorFeature {
   captureListeners: DocumentListenerMap = {
     pointerdown: event => {
       this.#rememberInsertionPointer(event)
+      if(this.#placePreviewShape(event)) return
       if(!this.#labelEditor || event.button !== 0) return
       const path = event.composedPath()
       // The outer graphic's transform controls consume the event before our
@@ -1238,8 +1314,8 @@ export class GraphicFeature extends EditorFeature {
         || path.some(target => target instanceof Element && target.id === "◆transform-overlay")) this.#closeLabelEditor(true)
     },
     pointermove: event => this.#rememberInsertionPointer(event),
-    pointerout: event => { if(!event.relatedTarget) this.#insertionPointer = null },
-    pointercancel: () => this.#insertionPointer = null,
+    pointerout: event => { if(!event.relatedTarget) { this.#insertionPointer = null; this.#updateShapePreview() } },
+    pointercancel: () => { this.#insertionPointer = null; this.#clearShapePreview() },
     dragover: event => {
       if(event.defaultPrevented || this.#rejectRibbonDrop(event)) return
       if(event.dataTransfer?.types.includes(graphicShapeDragType)) {
@@ -1415,6 +1491,19 @@ export class GraphicFeature extends EditorFeature {
       }
       const graphic = this.#capturedGraphic()
       if(!graphic) return
+      if(event.key === "Escape" && this.#shapePreview) {
+        this.#clearShapePreview()
+        this.#postShapeKeyboardInput(event)
+        this.#claimKeyboardEvent(event)
+        return
+      }
+      if(event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey && !event.isComposing) {
+        this.#clearShapePreview()
+        this.#postShapeKeyboardInput(event)
+        this.#claimKeyboardEvent(event)
+        return
+      }
+      if(event.ctrlKey || event.metaKey || event.isComposing) this.#clearShapePreview()
       if(event.key === "Shift" || event.key === "CapsLock") this.#postShapeKeyboardInput(event)
       if(!event.altKey && modifierKeyDown(event) && ["z", "y"].includes(event.key.toLowerCase())) {
         this.#cancelPointer()
@@ -1547,10 +1636,13 @@ export class GraphicFeature extends EditorFeature {
       }
       const isAltGraph = event.getModifierState("AltGraph")
       const isPrintable = event.key.length === 1 && !event.metaKey && (!event.ctrlKey || isAltGraph)
-      if(event.key !== "Shift" && event.key !== "CapsLock" && !this.#interaction && !this.#connector && !this.#marquee && !this.#pan && !this.#stroke && !this.#path) this.#postShapeKeyboardInput(event)
+      if(event.key !== "Shift" && event.key !== "CapsLock" && !this.#interaction && !this.#connector && !this.#marquee && !this.#pan
+        && (this.#drawGraphic || !this.#stroke && !this.#path)) this.#postShapeKeyboardInput(event)
       if(event.key === "Enter" || event.key === "Dead" || isPrintable) this.#claimKeyboardEvent(event)
     },
     keyup: event => {
+      const preview = this.#shapePreview
+      if(preview && (preview.code ? event.code === preview.code : preview.key?.toLowerCase() === event.key.toLowerCase())) this.#clearShapePreview()
       this.#handleSpaceUp(event)
       this.#updatePOIModifiers(event)
       if(this.#capturedGraphic() && !this.editor.features.mark.isSVGTextSelection) this.#postShapeKeyboardInput(event)
@@ -1566,7 +1658,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #postShapeKeyboardInput(event: KeyboardEvent) {
-    if(event.isComposing || event.ctrlKey || event.metaKey || this.selectedShapes.length) return
+    if(event.isComposing || event.type !== "keyup" && (event.ctrlKey || event.metaKey)) return
     const detail: ShapeKeyboardInput = {
       type: event.type as ShapeKeyboardInput["type"], key: event.key, code: event.code,
       altKey: event.altKey, shiftKey: event.shiftKey, capsLock: event.getModifierState("CapsLock"), repeat: event.repeat,
@@ -1616,6 +1708,7 @@ export class GraphicFeature extends EditorFeature {
 
   #handleWindowBlur = () => {
     this.#insertionPointer = null
+    this.#clearShapePreview()
     this.#spaceDown = false
     removeEditorMarker(document.body, "◆graphic-pan-ready")
     this.#cancelPan()
@@ -1685,16 +1778,16 @@ export class GraphicFeature extends EditorFeature {
     return graphic
   }
 
-  #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement): SVGGraphicsElement {
+  #createShape(type: GraphicShapeType, index = 0, graphic?: SVGSVGElement, sizingGraphic = graphic): SVGGraphicsElement {
     if(type === "line-start-arrow" || type === "line-end-arrow" || type === "line-both-arrows") {
-      const connector = this.#createShape("connector", index, graphic)
-      const bounds = this.#shapeInsertionBounds("line", index, graphic)
+      const connector = this.#createShape("connector", index, graphic, sizingGraphic)
+      const bounds = this.#shapeInsertionBounds("line", index, sizingGraphic)
       setConnectorEndpoints(connector, {x: bounds.x, y: bounds.y}, {x: bounds.x + bounds.width, y: bounds.y}, "straight")
       if(type !== "line-end-arrow") this.#setConnectorArrow(connector, "start", true, graphic)
       if(type !== "line-start-arrow") this.#setConnectorArrow(connector, "end", true, graphic)
       return connector
     }
-    const bounds = this.#shapeInsertionBounds(type, index, graphic)
+    const bounds = this.#shapeInsertionBounds(type, index, sizingGraphic)
     let shape: SVGGraphicsElement
     if(isGraphicPresetType(type)) {
       const definition: GraphicShapePreset = graphicShapePresets[type]
@@ -1888,6 +1981,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   #openLabelEditor(shape: SVGGraphicsElement) {
+    this.#clearShapePreview()
     this.#closeLabelEditor(true, false)
     this.editor.doc.stopCapturing()
     const graphic = graphicContainerForNode(shape)
@@ -4279,6 +4373,7 @@ export class GraphicFeature extends EditorFeature {
 
   #refresh() {
     if(!this.isEnabled) return
+    this.#updateShapePreview()
     if(this.#drawGraphic && (this.#capturedGraphic() !== this.#drawGraphic || !this.#canInsertText(this.#drawGraphic))) {
       this.#cancelStroke()
       this.#setDrawGraphic(null)

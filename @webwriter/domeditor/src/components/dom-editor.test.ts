@@ -8,6 +8,7 @@ import {AppRibbon} from "./ribbon"
 import {elementDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
 import type {ShapeKeyboard} from "./shape-keyboard"
+import type {MathKeyboard} from "./math-keyboard"
 import type {LinkKeyboard} from "./link-keyboard"
 import {DomEditorBreadcrumb, type DocumentTreeItem} from "./breadcrumb"
 import type {RibbonButton} from "./ribbon-button"
@@ -28,6 +29,7 @@ import {
   undoStateChangeEvent,
   selectionChangeEvent,
   shapeKeyboardInputEvent,
+  mathKeyboardTabEvent,
   type VersionHistoryState,
 } from "../editor-bridge"
 import {WEBWRITER_GENERATOR, emptyDocumentHeadState} from "../document-head"
@@ -9185,7 +9187,7 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertMath", structure: "frac"})
   })
 
-  it.each([1, 2])("ignores shape keyboard inputs for %s selected graphic elements while allowing button insertion", async selectionCount => {
+  it.each([1, 2])("allows shape keyboard previews for %s selected graphic elements", async selectionCount => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
@@ -9199,27 +9201,53 @@ describe("DomEditor.execute()", () => {
     await select(selectionCount)
     const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
     expect(keyboard.insertionDisabled).toBe(false)
-    expect(keyboard.keyboardInputDisabled).toBe(true)
-    const detail = {type: "keydown", key: "1", code: "Digit1", altKey: true, shiftKey: true, capsLock: true, repeat: false}
+    expect(keyboard.keyboardInputDisabled).toBe(false)
+    const detail = {type: "keydown", key: "1", code: "Digit1", altKey: false, shiftKey: true, capsLock: false, repeat: false}
     const relay = () => window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: shapeKeyboardInputEvent, detail}}))
     relay()
-    keyboard.dispatchEvent(new CustomEvent("shape-keyboard-command", {detail: {shape: "ellipse", paint: keyboard.paint, onlyIfUnselected: true}, bubbles: true, composed: true}))
+    expect(execute).toHaveBeenCalledWith({type: "setGraphicShapePreview", shape: "text-box",
+      paint: {}, code: "Digit1", key: "1"})
+    execute.mockClear()
     const key = keyboard.shadowRoot!.querySelector<HTMLButtonElement>(".key")!
-    key.dispatchEvent(new KeyboardEvent("keydown", {key: "1", code: "Digit1", altKey: true, shiftKey: true, bubbles: true, composed: true}))
-    expect(keyboard.shifted).toBe(false)
+    key.dispatchEvent(new KeyboardEvent("keydown", {key: "1", code: "Digit1", altKey: false, shiftKey: true, bubbles: true, composed: true}))
     expect(execute).not.toHaveBeenCalled()
     const ellipse = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.key[title="Ellipse"]')!
     expect(ellipse.disabled).toBe(false)
     expect(ellipse.getAttribute("draggable")).toBe("true")
     ellipse.click()
-    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "addGraphicShape", shape: "ellipse", paint: keyboard.paint})
+    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "addGraphicShape", shape: "ellipse", paint: {fill: keyboard.paint.fill}})
     execute.mockClear()
     await select(0)
     expect(keyboard.insertionDisabled).toBe(false)
     expect(keyboard.keyboardInputDisabled).toBe(false)
     relay()
-    expect(keyboard.shifted).toBe(true)
-    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "addGraphicShape", onlyIfUnselected: true}))
+    expect(keyboard.activePage).toBe("Basic")
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it("cycles shape tabs from the document bridge and host Tab keys while captured", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+      type: selectionChangeEvent, detail: {path: [], graphic: {active: true, capture: true, mode: "select"}},
+    }}))
+    await editor.updateComplete
+    const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+      type: shapeKeyboardInputEvent, detail: {type: "keydown", key: "Tab", code: "Tab", altKey: false, shiftKey: false, capsLock: false, repeat: false},
+    }}))
+    await keyboard.updateComplete
+    expect(keyboard.activePage).toBe("Advanced")
+    const tab = new KeyboardEvent("keydown", {key: "Tab", code: "Tab", shiftKey: true, bubbles: true, cancelable: true})
+    document.body.dispatchEvent(tab)
+    await keyboard.updateComplete
+    expect(tab.defaultPrevented).toBe(true)
+    expect(keyboard.activePage).toBe("Basic")
+    keyboard.dispatchEvent(new CustomEvent("shape-keyboard-close", {bubbles: true, composed: true}))
+    await editor.updateComplete
+    const hidden = new KeyboardEvent("keydown", {key: "Tab", code: "Tab", bubbles: true, cancelable: true})
+    document.body.dispatchEvent(hidden)
+    expect(hidden.defaultPrevented).toBe(false)
   })
 
   it("routes shape keys from the document bridge and host keyboard, respecting hidden and text editing states", async () => {
@@ -9231,39 +9259,70 @@ describe("DomEditor.execute()", () => {
     }))
     await editor.updateComplete
     const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    keyboard.activePage = "Advanced"
     await keyboard.updateComplete
-    const detail = {type: "keydown", key: "q", code: "KeyQ", altKey: true, shiftKey: true, capsLock: false, repeat: false}
+    const detail = {type: "keydown", key: "q", code: "KeyQ", altKey: false, shiftKey: true, capsLock: false, repeat: false}
     const relay = (input = detail, source: Window | null = editorWindow) => window.dispatchEvent(new MessageEvent("message", {
       data: {type: shapeKeyboardInputEvent, detail: input}, source,
     }))
     relay()
     await keyboard.updateComplete
-    const shape = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-keyshortcuts="Alt+Shift+q"]')!
+    const shape = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-keyshortcuts="q"]')!
     shape.click()
     expect(execute).toHaveBeenCalledTimes(2)
-    expect(execute.mock.calls[0]).toEqual([{...execute.mock.calls[1][0], onlyIfUnselected: true}])
+    expect(execute.mock.calls[0][0]).toMatchObject({type: "setGraphicShapePreview", shape: "block-arc", code: "KeyQ", key: "q"})
+    expect(execute.mock.calls[1][0]).toMatchObject({type: "addGraphicShape", shape: "block-arc"})
     execute.mockClear()
     relay(detail, window)
     expect(execute).not.toHaveBeenCalled()
     relay({...detail, type: "keyup", shiftKey: false})
     await keyboard.updateComplete
-    expect(keyboard.shifted).toBe(false)
-    shape.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", altKey: true, bubbles: true, composed: true, cancelable: true}))
-    expect(execute).toHaveBeenCalledTimes(1)
+    expect(keyboard.activePage).toBe("Advanced")
+    expect(execute).toHaveBeenCalledWith({type: "setGraphicShapePreview", shape: null, paint: undefined, code: undefined, key: undefined})
     execute.mockClear()
+    shape.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", altKey: false, shiftKey: true, bubbles: true, composed: true, cancelable: true}))
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "setGraphicShapePreview", shape: "block-arc"}))
+    shape.dispatchEvent(new KeyboardEvent("keyup", {key: "q", code: "KeyQ", bubbles: true, composed: true, cancelable: true}))
+    expect(execute).toHaveBeenLastCalledWith(expect.objectContaining({type: "setGraphicShapePreview", shape: null}))
+    execute.mockClear()
+    document.body.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", ctrlKey: true, bubbles: true, cancelable: true}))
+    document.body.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", metaKey: true, bubbles: true, cancelable: true}))
+    expect(execute).not.toHaveBeenCalled()
     const input = document.createElement("input")
     editor.shadowRoot!.append(input)
-    input.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", altKey: true, bubbles: true, composed: true}))
+    input.dispatchEvent(new KeyboardEvent("keydown", {key: "q", code: "KeyQ", bubbles: true, composed: true}))
     expect(execute).not.toHaveBeenCalled()
-    keyboard.shifted = true
+    relay()
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "setGraphicShapePreview", shape: "block-arc"}))
+    execute.mockClear()
+    vi.spyOn(document, "hasFocus").mockReturnValue(true)
     window.dispatchEvent(new Event("blur"))
-    expect(keyboard.shifted).toBe(false)
+    await Promise.resolve()
+    expect(keyboard.shadowRoot!.querySelector('.key[aria-pressed="true"]')).not.toBeNull()
+    vi.spyOn(document, "hasFocus").mockReturnValue(false)
+    window.dispatchEvent(new Event("blur"))
+    await Promise.resolve()
+    await keyboard.updateComplete
+    expect(keyboard.shadowRoot!.querySelector('.key[aria-pressed="true"]')).toBeNull()
+    execute.mockClear()
+    relay()
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "setGraphicShapePreview", shape: "block-arc"}))
+    execute.mockClear()
     ;(editor as any).svgText = true
+    await editor.updateComplete
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "setGraphicShapePreview", shape: null}))
+    execute.mockClear()
     relay()
     expect(execute).not.toHaveBeenCalled()
     ;(editor as any).svgText = false
+    await editor.updateComplete
+    relay()
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "setGraphicShapePreview", shape: "block-arc"}))
+    execute.mockClear()
     keyboard.dispatchEvent(new CustomEvent("shape-keyboard-close", {bubbles: true, composed: true}))
     await editor.updateComplete
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({type: "setGraphicShapePreview", shape: null}))
+    execute.mockClear()
     relay()
     expect(execute).not.toHaveBeenCalled()
   })
@@ -9287,7 +9346,7 @@ describe("DomEditor.execute()", () => {
         .find(button => button.textContent?.trim() === (mode === "draw" ? "Freehand" : mode === "lines" ? "Lines" : "Curves"))!
     modeButton.click()
     expect(execute).toHaveBeenCalledWith(mode !== "select"
-      ? {type: "setGraphicMode", mode, paint: {fill: "#ffffff", stroke: "#000000", "stroke-width": "4", opacity: "1"}}
+      ? {type: "setGraphicMode", mode, paint: keyboard.paint}
       : {type: "setGraphicMode", mode})
   })
 
@@ -9320,6 +9379,39 @@ describe("DomEditor.execute()", () => {
     key.dispatchEvent(shortcut)
     expect(shortcut.defaultPrevented).toBe(true)
     expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {...paint, stroke: "#70ad47", "stroke-width": "1", opacity: "0.5"}})
+  })
+
+  it("restores the clicked session brush after temporary keys and keyboard recreation", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const select = async (capture: boolean) => {
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+        type: selectionChangeEvent, detail: {path: [], ...(capture ? {graphic: {active: true, capture: true, mode: "draw"}} : {})},
+      }}))
+      await editor.updateComplete
+    }
+    await select(true)
+    let keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#5b9bd5, 8 px brush"]')!.click()
+    await editor.updateComplete
+    const saved = {...keyboard.paint}
+    const input = {type: "keydown" as "keydown" | "keyup", key: "0", code: "Digit0", altKey: false, shiftKey: false, capsLock: false, repeat: false}
+    const relay = (type: "keydown" | "keyup") => window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+      type: shapeKeyboardInputEvent, detail: {...input, type},
+    }}))
+    relay("keydown")
+    expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: {...saved, stroke: "#70ad47", "stroke-width": "1"}})
+    expect(keyboard.paint).toEqual(saved)
+    relay("keyup")
+    expect(execute).toHaveBeenLastCalledWith({type: "setGraphicDrawPaint", paint: saved})
+    relay("keydown")
+    await select(false)
+    await select(true)
+    keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
+    await keyboard.updateComplete
+    expect(keyboard.paint).toEqual(saved)
+    expect(keyboard.shadowRoot!.querySelector('.brush[aria-pressed="true"]')?.getAttribute("aria-label")).toBe("#5b9bd5, 8 px brush")
   })
 
   it.each(["draw", "lines", "curves"] as const)("retains the selected %s brush after drawing completion updates", async mode => {
@@ -9365,8 +9457,7 @@ describe("DomEditor.execute()", () => {
     await updateMode("curves")
     const keyboard = editor.shadowRoot!.querySelector<ShapeKeyboard>("dom-editor-shape-keyboard")!
     await keyboard.updateComplete
-    expect(execute).toHaveBeenCalledExactlyOnceWith({type: "setGraphicDrawPaint",
-      paint: {fill: "#ffffff", stroke: "#000000", "stroke-width": "4", opacity: "1"}})
+    expect(execute).not.toHaveBeenCalled()
     execute.mockClear()
     await updateMode("select")
     await keyboard.updateComplete
@@ -9586,6 +9677,44 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("dom-editor-math-keyboard")).not.toBeNull()
     expect(focusEditor).toHaveBeenCalled()
+  })
+
+  it("cycles formula tabs from trusted frame messages and host Tab keys only while captured", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    const select = async (capture: boolean) => {
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {
+        type: selectionChangeEvent, detail: {path: [], math: {active: true, display: "block"}, capture},
+      }}))
+      await editor.updateComplete
+    }
+    await select(true)
+    const keyboard = editor.shadowRoot!.querySelector<MathKeyboard>("dom-editor-math-keyboard")!
+    await keyboard.updateComplete
+    const relay = (backward: boolean, source: Window = editorWindow!) => window.dispatchEvent(new MessageEvent("message", {
+      source, data: {type: mathKeyboardTabEvent, detail: {backward}},
+    }))
+    relay(false, window)
+    expect(keyboard.activeLayout).toBe("numbers")
+    relay(false)
+    await keyboard.updateComplete
+    expect(keyboard.activeLayout).toBe("operators")
+    const tab = new KeyboardEvent("keydown", {key: "Tab", code: "Tab", shiftKey: true, bubbles: true, cancelable: true})
+    document.body.dispatchEvent(tab)
+    await keyboard.updateComplete
+    expect(tab.defaultPrevented).toBe(true)
+    expect(keyboard.activeLayout).toBe("numbers")
+    const input = document.createElement("input")
+    editor.shadowRoot!.append(input)
+    const fieldTab = new KeyboardEvent("keydown", {key: "Tab", code: "Tab", bubbles: true, composed: true, cancelable: true})
+    input.dispatchEvent(fieldTab)
+    expect(fieldTab.defaultPrevented).toBe(false)
+    expect(keyboard.activeLayout).toBe("numbers")
+    await select(false)
+    relay(false)
+    expect(keyboard.activeLayout).toBe("numbers")
+    const uncaptured = new KeyboardEvent("keydown", {key: "Tab", code: "Tab", bubbles: true, cancelable: true})
+    document.body.dispatchEvent(uncaptured)
+    expect(uncaptured.defaultPrevented).toBe(false)
   })
 
   it("shows the block formula keyboard only during capture selection", async () => {

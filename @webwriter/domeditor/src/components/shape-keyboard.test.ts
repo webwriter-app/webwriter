@@ -43,15 +43,14 @@ describe("shape keyboard", () => {
   it("blocks insertion, dragging, and modifier reactions when insertion is disabled", async () => {
     const keyboard = await mountKeyboard()
     const command = vi.fn()
+    const preview = vi.fn()
     keyboard.addEventListener("shape-keyboard-command", command)
-    keyboard.shifted = true
+    keyboard.addEventListener("shape-keyboard-preview", preview)
     keyboard.insertionDisabled = true
     await keyboard.updateComplete
-    expect(keyboard.shifted).toBe(false)
     const input = {type: "keydown" as const, key: "1", code: "Digit1", altKey: true, shiftKey: true, capsLock: true, repeat: false}
     expect(keyboard.handleInput(input)).toBe(false)
     expect(keyboard.handleInput({...input, type: "keyup"})).toBe(false)
-    expect(keyboard.shifted).toBe(false)
     const keys = [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>(".key")]
     expect(keys.every(key => key.disabled && key.getAttribute("draggable") === "false")).toBe(true)
     keys[0].click()
@@ -62,41 +61,39 @@ describe("shape keyboard", () => {
     keyboard.insertionDisabled = false
     await keyboard.updateComplete
     expect(keyboard.handleInput({...input, shiftKey: false, capsLock: false})).toBe(true)
-    expect(command).toHaveBeenCalledOnce()
+    expect(command).not.toHaveBeenCalled()
+    expect(preview.mock.calls[0][0].detail).toMatchObject({shape: "text-box", code: "Digit1"})
   })
 
   it("ignores keyboard inputs while keeping shape buttons, tabs, and dragging available", async () => {
     const keyboard = await mountKeyboard()
     const command = vi.fn()
     keyboard.addEventListener("shape-keyboard-command", command)
-    keyboard.shifted = true
     keyboard.keyboardInputDisabled = true
     await keyboard.updateComplete
-    expect(keyboard.shifted).toBe(false)
     const input = {type: "keydown" as const, key: "1", code: "Digit1", altKey: true, shiftKey: true, capsLock: true, repeat: false}
     expect(keyboard.handleInput(input)).toBe(false)
     expect(keyboard.handleInput({...input, type: "keyup"})).toBe(false)
-    expect(keyboard.shifted).toBe(false)
     expect(command).not.toHaveBeenCalled()
     const button = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Rectangle"]')!
     expect(button.disabled).toBe(false)
     expect(button.getAttribute("draggable")).toBe("true")
     button.click()
-    expect(command.mock.calls[0][0].detail).toEqual({shape: "square-rectangle", paint: keyboard.paint})
+    expect(command.mock.calls[0][0].detail).toEqual({shape: "square-rectangle", paint: {fill: keyboard.paint.fill}})
     const data = new DataTransfer()
     const drag = new Event("dragstart", {bubbles: true, cancelable: true})
     Object.assign(drag, {dataTransfer: data})
     vi.spyOn(data, "setDragImage").mockImplementation(() => undefined)
     button.dispatchEvent(drag)
     expect(drag.defaultPrevented).toBe(false)
-    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "square-rectangle", paint: keyboard.paint})
+    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "square-rectangle", paint: {fill: keyboard.paint.fill}})
     keyboard.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Advanced"]')!.click()
     await keyboard.updateComplete
     expect(keyboard.shadowRoot!.querySelector('.grid[aria-label="Advanced"]')).not.toBeNull()
     keyboard.keyboardInputDisabled = false
     await keyboard.updateComplete
     expect(keyboard.handleInput({...input, shiftKey: false, capsLock: false})).toBe(true)
-    expect(command.mock.calls.at(-1)![0].detail).toMatchObject({shape: "text-box", onlyIfUnselected: true})
+    expect(command).toHaveBeenCalledOnce()
   })
 
   it.each(["Basic", "Advanced", "Arrows", "Flowchart"] as const)("places the %s number row at the first position while shortcuts start at the second physical key", async page => {
@@ -108,10 +105,10 @@ describe("shape keyboard", () => {
     const first = row.querySelector<HTMLButtonElement>("button")!
     expect(first.title).toBe(catalogs[page][0].label)
     expect(first.querySelector(".hint")!.textContent).toBe("1")
-    expect(first.getAttribute("aria-keyshortcuts")).toBe(`Alt+${page === "Advanced" ? "Shift+" : ""}1`)
+    expect(first.getAttribute("aria-keyshortcuts")).toBe("1")
     const commands: string[] = []
-    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
-    const input = {type: "keydown" as const, key: "`", code: "Backquote", altKey: true, shiftKey: page === "Advanced", capsLock: false, repeat: false}
+    keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
+    const input = {type: "keydown" as const, key: "`", code: "Backquote", altKey: true, shiftKey: false, capsLock: false, repeat: false}
     expect(keyboard.handleInput(input)).toBe(false)
     expect(keyboard.handleInput({...input, key: "1", code: "Digit1"})).toBe(true)
     expect(commands).toEqual([catalogs[page][0].type])
@@ -128,7 +125,7 @@ describe("shape keyboard", () => {
     expect(keys[30].querySelector(".hint")!.textContent).toBe("z")
     expect(keys[31].querySelector(".hint")!.textContent).toBe("x")
     const commands: string[] = []
-    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
+    keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
     const input = {type: "keydown" as const, key: "<", code: "IntlBackslash", altKey: true, shiftKey: false, capsLock: false, repeat: false}
     expect(keyboard.handleInput({...input, key: "8", code: "Digit8"})).toBe(false)
     expect(keyboard.handleInput({...input, key: "-", code: "Minus"})).toBe(false)
@@ -154,14 +151,16 @@ describe("shape keyboard", () => {
     expect(graphicShapeOptions.some(option => ["right-triangle", "rectangle"].includes(option.type))).toBe(false)
     expect(graphicShapeOptions.filter(option => option.label === "Rectangle").map(option => option.type)).toEqual(["square-rectangle"])
     const commands: string[] = []
-    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
+    keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
     const input = {type: "keydown" as const, key: "q", code: "KeyQ", altKey: true, shiftKey: false, capsLock: false, repeat: false}
     keyboard.handleInput(input)
     keyboard.handleInput({...input, key: "w", code: "KeyW"})
     keyboard.handleInput({...input, key: "a", code: "KeyA"})
     keyboard.handleInput({...input, key: "'", code: "Quote"})
-    keyboard.handleInput({...input, key: "!", code: "Digit1", shiftKey: true})
-    expect(commands).toEqual(["square-rectangle", "rounded-rectangle", "triangle", "chord", "teardrop"])
+    keyboard.activePage = "Advanced"
+    await keyboard.updateComplete
+    keyboard.handleInput({...input, key: "1", code: "Digit1"})
+    expect(commands.filter(Boolean)).toEqual(["square-rectangle", "rounded-rectangle", "triangle", "chord", "teardrop"])
     await keyboard.updateComplete
     expect(keyboard.shadowRoot!.querySelector('.grid[aria-label="Advanced"] button[title="Teardrop"]')).not.toBeNull()
   })
@@ -177,8 +176,8 @@ describe("shape keyboard", () => {
       ["IntlBackslash", ...[..."ZXCVBNM"].map(key => `Key${key}`), "Comma", "Period", "Slash"],
     ]
     const commands: string[] = []
-    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
-    const input = {type: "keydown" as const, key: "", code: "", altKey: true, shiftKey: page === "Advanced", capsLock: false, repeat: false}
+    keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
+    const input = {type: "keydown" as const, key: "", code: "", altKey: true, shiftKey: false, capsLock: false, repeat: false}
     for(const [rowIndex, row] of [...keyboard.shadowRoot!.querySelectorAll(".key-row")].entries()) {
       expect(row.children.length).toBeLessThanOrEqual(11)
       for(const [column, key] of [...row.querySelectorAll<HTMLButtonElement>("button")].entries()) {
@@ -203,7 +202,7 @@ describe("shape keyboard", () => {
     expect(rows.map(row => [...row.querySelectorAll(".hint")].map(hint => hint.textContent).join("")))
       .toEqual(["1234567890", "qwertyu", "asdfghjkl;", ""])
     const commands: string[] = []
-    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
+    keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
     const input = {type: "keydown" as const, key: "", code: "", altKey: true, shiftKey: false, capsLock: false, repeat: false}
     for(const code of ["Minus", "KeyI", "KeyO", "KeyP", "BracketLeft", "Quote", "IntlBackslash", "KeyZ"]) {
       expect(keyboard.handleInput({...input, code})).toBe(false)
@@ -221,14 +220,34 @@ describe("shape keyboard", () => {
     const root = keyboard.shadowRoot!
     const rows = [...root.querySelectorAll(".key-row")]
     expect(rows).toHaveLength(4)
-    expect(rows.map(row => row.querySelectorAll("button").length)).toEqual([11, 11, 11, advanced.length - 33])
+    expect(rows.map(row => row.querySelectorAll("button").length)).toEqual(advancedRows.map(row => row.length))
     const hints = rows.map(row => [...row.querySelectorAll(".hint")].map(hint => hint.textContent).join(""))
-    expect(hints).toEqual(["1234567890-", "qwertyuiop[", "asdfghjkl;'", "<zxcvbnm,./".slice(0, advanced.length - 33)])
+    expect(hints).toEqual(["1234567890-", "qwertyuio", "asdfghjkl", "<zxcvbnm,./"])
     const keys = [...root.querySelectorAll(".main-keys button")]
-    keys.forEach(key => expect(key.getAttribute("aria-keyshortcuts")).toBe(`Alt+Shift+${key.querySelector(".hint")!.textContent}`))
-    expect([...root.querySelectorAll(".surplus button")].map(key => key.getAttribute("title")))
-      .toEqual(advanced.slice(44).map(option => option.label))
+    keys.forEach(key => expect(key.getAttribute("aria-keyshortcuts")).toBe(key.querySelector(".hint")!.textContent))
+    expect(rows.map(row => [...row.querySelectorAll<HTMLButtonElement>("button")].map(key => key.title)))
+      .toEqual(advancedRows)
     expect(root.querySelector(".surplus .hint")).toBeNull()
+  })
+
+  it("keeps Advanced row breaks and shortcuts aligned to their physical rows", async () => {
+    const keyboard = await mountKeyboard()
+    keyboard.activePage = "Advanced"
+    await keyboard.updateComplete
+    const rows = [...keyboard.shadowRoot!.querySelectorAll(".key-row")]
+    const titles = (row: Element) => [...row.querySelectorAll<HTMLButtonElement>("button")].map(button => button.title)
+    expect(rows.map(titles)).toEqual(advancedRows)
+    const commands: string[] = []
+    keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
+    const input = {type: "keydown" as const, key: "", code: "", altKey: true, shiftKey: false, capsLock: false, repeat: false}
+    for(const [code, expected] of [["KeyI", "seal-1"], ["KeyO", "seal-2"], ["KeyA", "equation-plus"]] as const) {
+      expect(keyboard.handleInput({...input, code})).toBe(true)
+      expect(commands.at(-1)).toBe(expected)
+    }
+    for(const code of ["KeyP", "BracketLeft"]) expect(keyboard.handleInput({...input, code})).toBe(false)
+    expect(commands).toEqual(["seal-1", "seal-2", "equation-plus"])
+    expect(titles(rows[1])).not.toContain("Plus sign")
+    expect(titles(rows[2])[0]).toBe("Plus sign")
   })
 
   it("uses the configured keyboard map and refreshes it when the layout changes", async () => {
@@ -250,29 +269,33 @@ describe("shape keyboard", () => {
       await keyboard.updateComplete
       const hints = () => [...keyboard.shadowRoot!.querySelectorAll(".key-row")]
         .map(row => [...row.querySelectorAll(".hint")].map(hint => hint.textContent).join(""))
-      expect(hints()).toEqual([labels[0].slice(1), ...labels.slice(1, 3).map(row => row.slice(0,11)), labels[3].slice(0, advanced.length - 33)])
+      const expectedCodes = [
+        [...Array.from({length: 9}, (_, i) => `Digit${i+1}`), "Digit0", "Minus"],
+        [...[..."QWERTYUIOP"].map(key => `Key${key}`), "BracketLeft"],
+        [...[..."ASDFGHJKL"].map(key => `Key${key}`)],
+        ["IntlBackslash", ...[..."ZXCVBNM"].map(key => `Key${key}`), "Comma", "Period", "Slash"],
+      ]
+      expect(hints()).toEqual(advancedRows.map((row, rowIndex) => row.map((_, column) => map.get(expectedCodes[rowIndex][column]) ?? "").join("")))
       const commands: string[] = []
-      keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
-      const last = keyboard.shadowRoot!.querySelector<HTMLButtonElement>(".key-row:last-child button:last-child")!
-      const lastCode = codes.flat()[advanced.length]
-      keyboard.handleInput({type: "keydown", code: lastCode, key: map.get(lastCode)!, altKey: true, shiftKey: true, capsLock: false, repeat: false})
+      keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
+      const last = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.key-row button[title="Line callout 1"]')!
+      const lastCode = codes[3][8]
+      keyboard.handleInput({type: "keydown", code: lastCode, key: map.get(lastCode)!, altKey: true, shiftKey: false, capsLock: false, repeat: false})
       last.click()
-      expect(commands).toHaveLength(2)
-      expect(commands[0]).toBe(commands[1])
+      expect(commands).toHaveLength(1)
       map.set("KeyY", "y")
       map.delete("IntlBackslash")
       layout.dispatchEvent(new Event("layoutchange"))
       await Promise.resolve()
       await keyboard.updateComplete
-      expect(hints()[1]).toBe("qwertyuiopü")
-      expect(keyboard.shadowRoot!.querySelectorAll(".key-row:last-child button")).toHaveLength(Math.min(10, advanced.length - 33))
+      expect(hints()[1]).toBe("qwertyuio")
+      expect(keyboard.shadowRoot!.querySelectorAll(".key-row:last-child button")).toHaveLength(10)
       keyboard.activePage = "Basic"
-      keyboard.handleInput({type: "keyup", key: "Shift", code: "ShiftLeft", altKey: false, shiftKey: false, capsLock: false, repeat: false})
       await keyboard.updateComplete
       const firstStar = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.key-row:last-child button[title="3-point star"]')!
-      expect(firstStar.getAttribute("aria-keyshortcuts")).toBe("Alt+y")
-      expect(keyboard.shadowRoot!.querySelector('button[title="4-point star"]')!.getAttribute("aria-keyshortcuts")).toBe("Alt+x")
-      expect(keyboard.shadowRoot!.querySelector('button[title="5-point star"]')!.getAttribute("aria-keyshortcuts")).toBe("Alt+c")
+      expect(firstStar.getAttribute("aria-keyshortcuts")).toBe("y")
+      expect(keyboard.shadowRoot!.querySelector('button[title="4-point star"]')!.getAttribute("aria-keyshortcuts")).toBe("x")
+      expect(keyboard.shadowRoot!.querySelector('button[title="5-point star"]')!.getAttribute("aria-keyshortcuts")).toBe("c")
       keyboard.handleInput({type: "keydown", key: "c", code: "KeyC", altKey: true, shiftKey: false, capsLock: false, repeat: false})
       expect(commands.at(-1)).toBe("star")
       map.delete("Quote")
@@ -302,51 +325,95 @@ describe("shape keyboard", () => {
     finally { Reflect.deleteProperty(navigator, "keyboard") }
   })
 
-  it("shows Advanced with Shift or Caps Lock and inserts basic with Option or advanced with Option+Shift", async () => {
+  it("keeps manually selected shape pages through Shift and CapsLock while a shape key is held", async () => {
     const keyboard = await mountKeyboard()
     const input = (changes: Partial<ShapeKeyboardInput>) => keyboard.handleInput({
-      type: "keydown", key: "Shift", code: "ShiftLeft", altKey: true, shiftKey: false, capsLock: false, repeat: false, ...changes,
+      type: "keydown", key: "1", code: "Digit1", altKey: true, shiftKey: false, capsLock: false, repeat: false, ...changes,
     })
-    const commands: string[] = []
-    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
-    input({shiftKey: true})
-    await keyboard.updateComplete
-    expect(keyboard.shadowRoot!.querySelector(".grid")!.getAttribute("aria-label")).toBe("Advanced")
-    expect(keyboard.activePage).toBe("Basic")
-    expect(input({key: "q", code: "KeyQ", altKey: false})).toBe(false)
-    expect(input({key: "Q", code: "KeyQ", altKey: false, shiftKey: true})).toBe(false)
-    expect(input({key: "!", code: "Digit1", shiftKey: true})).toBe(true)
-    input({key: "!", code: "Digit1", shiftKey: true, repeat: true})
-    input({type: "keyup", key: "!", code: "Digit1", shiftKey: true})
-    expect(commands).toEqual([advanced[0].type])
-    input({type: "keyup"})
-    await keyboard.updateComplete
-    expect(keyboard.shadowRoot!.querySelector(".grid")!.getAttribute("aria-label")).toBe("Basic")
-    input({key: "1", code: "Digit1"})
-    input({key: "CapsLock", code: "CapsLock", capsLock: true})
-    input({type: "keyup", key: "CapsLock", code: "CapsLock", capsLock: true})
-    await keyboard.updateComplete
-    expect(keyboard.shadowRoot!.querySelector(".grid")!.getAttribute("aria-label")).toBe("Advanced")
-    input({key: "Q", code: "KeyQ", capsLock: true, shiftKey: true})
-    expect(commands).toEqual([advanced[0].type, basic[0].type, advanced[11].type])
-    input({key: "CapsLock", code: "CapsLock"})
-    await keyboard.updateComplete
-    expect(keyboard.shifted).toBe(false)
+    const previews: unknown[] = []
+    keyboard.addEventListener("shape-keyboard-preview", event => previews.push((event as CustomEvent).detail))
+    for(const page of ["Basic", "Advanced", "Arrows", "Flowchart"] as const) {
+      keyboard.activePage = page
+      await keyboard.updateComplete
+      expect(input({})).toBe(true)
+      expect(previews.at(-1)).toMatchObject({shape: catalogs[page][0].type, code: "Digit1"})
+      expect(input({key: "Shift", code: "ShiftLeft", shiftKey: true})).toBe(false)
+      expect(input({key: "CapsLock", code: "CapsLock", capsLock: true})).toBe(false)
+      expect(input({type: "keyup", key: "CapsLock", code: "CapsLock", capsLock: true})).toBe(false)
+      expect(input({key: "1", code: "Digit1", repeat: true})).toBe(true)
+      await keyboard.updateComplete
+      expect(keyboard.activePage).toBe(page)
+      expect(keyboard.shadowRoot!.querySelector(".grid")!.getAttribute("aria-label")).toBe(page)
+      expect(previews.at(-1)).toMatchObject({shape: catalogs[page][0].type, code: "Digit1"})
+      expect([...keyboard.shadowRoot!.querySelectorAll("[aria-keyshortcuts]")].every(key => !key.getAttribute("aria-keyshortcuts")!.startsWith("Shift+"))).toBe(true)
+      input({type: "keyup", key: "1", code: "Digit1"})
+    }
     keyboard.activePage = "Advanced"
-    input({key: "œ", code: "KeyQ"})
-    expect(commands.at(-1)).toBe("square-rectangle")
     await keyboard.updateComplete
-    expect(keyboard.shadowRoot!.querySelector('[aria-keyshortcuts="Alt+Shift+q"] .hint')!.textContent).toBe("q")
+    expect(keyboard.shadowRoot!.querySelector('[aria-keyshortcuts="Shift+q"]')).toBeNull()
+    expect(keyboard.shadowRoot!.querySelector('[aria-keyshortcuts="q"] .hint')!.textContent).toBe("q")
+  })
+
+  it("cycles the seven visible tabs with Tab and Shift+Tab, clearing held shape previews", async () => {
+    const keyboard = await mountKeyboard()
+    const pages = ["Basic", "Advanced", "Arrows", "Flowchart", "Freehand", "Lines", "Curves"]
+    const modes: string[] = []
+    const previews: unknown[] = []
+    keyboard.addEventListener("ribbon-button-click", event => modes.push((event as CustomEvent<{label: string}>).detail.label))
+    keyboard.addEventListener("shape-keyboard-preview", event => previews.push((event as CustomEvent).detail))
+    const tab = (shiftKey = false, repeat = false, type: ShapeKeyboardInput["type"] = "keydown") => keyboard.handleInput({
+      type, key: "Tab", code: "Tab", altKey: false, shiftKey, capsLock: false, repeat,
+    })
+
+    expect(tab()).toBe(true)
+    await keyboard.updateComplete
+    expect(keyboard.activePage).toBe("Advanced")
+    expect(tab(true)).toBe(true)
+    await keyboard.updateComplete
+    expect(keyboard.activePage).toBe("Basic")
+    expect(tab(true)).toBe(true)
+    await keyboard.updateComplete
+    expect(keyboard.activePage).toBe("Curves")
+    expect(modes).toEqual(["graphic-mode:curves"])
+    expect(tab()).toBe(true)
+    await keyboard.updateComplete
+    expect(keyboard.activePage).toBe("Basic")
+    expect(modes.at(-1)).toBe("graphic-mode:select")
+
+    expect(keyboard.handleInput({type: "keydown", key: "1", code: "Digit1", altKey: true, shiftKey: false, capsLock: false, repeat: false})).toBe(true)
+    expect(previews.at(-1)).toMatchObject({shape: "text-box"})
+    expect(tab()).toBe(true)
+    expect(previews.at(-1)).toEqual({shape: null})
+    await keyboard.updateComplete
+    expect(keyboard.activePage).toBe("Advanced")
+    expect(tab(false, true)).toBe(true)
+    expect(keyboard.activePage).toBe("Advanced")
+    expect(tab(false, false, "keyup")).toBe(false)
+    expect(keyboard.activePage).toBe("Advanced")
+
     keyboard.activePage = "Basic"
     await keyboard.updateComplete
-    expect(keyboard.shadowRoot!.querySelector('[aria-keyshortcuts="Alt+q"] .hint')!.textContent).toBe("q")
-    keyboard.activePage = "Flowchart"
-    input({shiftKey: true})
-    input({type: "keyup"})
+    for(const page of pages.slice(1)) {
+      expect(tab()).toBe(true)
+      await keyboard.updateComplete
+      expect(keyboard.activePage).toBe(page)
+    }
+    expect(tab()).toBe(true)
     await keyboard.updateComplete
-    expect(keyboard.shadowRoot!.querySelector(".grid")!.getAttribute("aria-label")).toBe("Flowchart")
-    keyboard.remove()
-    expect(keyboard.shifted).toBe(false)
+    expect(keyboard.activePage).toBe("Basic")
+    expect(modes).toEqual(["graphic-mode:curves", "graphic-mode:select", "graphic-mode:draw", "graphic-mode:lines", "graphic-mode:curves", "graphic-mode:select"])
+  })
+
+  it("does not navigate tabs when shortcut input is disabled or the brush dialog is open", async () => {
+    const keyboard = await mountKeyboard()
+    const tab = () => keyboard.handleInput({type: "keydown", key: "Tab", code: "Tab", altKey: false, shiftKey: false, capsLock: false, repeat: false})
+    for(const blocked of ["insertionDisabled", "keyboardInputDisabled", "brushDialogOpen"] as const) {
+      keyboard.activePage = "Basic"
+      keyboard[blocked] = true
+      expect(tab()).toBe(false)
+      expect(keyboard.activePage).toBe("Basic")
+      keyboard[blocked] = false
+    }
   })
 
   it("does not insert shapes from unmapped keys or drawing pages", async () => {
@@ -375,6 +442,19 @@ describe("shape keyboard", () => {
     expect(root.querySelector(".freehand")!.parentElement).not.toBe(root.querySelector(".tabs"))
     expect(root.querySelector(".freehand svg")).not.toBeNull()
     expect(root.textContent).not.toContain("Style keys, then insert")
+  })
+
+  it("shows an insertion hint in the last three columns of the Basic first row only", async () => {
+    const keyboard = await mountKeyboard()
+    const firstRow = keyboard.shadowRoot!.querySelector(".key-row")!
+    const hint = firstRow.querySelector<HTMLElement>(".shape-hint")!
+    expect(hint.textContent).toBe("Hold key and click to insert")
+    expect(hint.style.gridColumn).toBe("9 / span 3")
+    expect(firstRow.querySelectorAll("button")).toHaveLength(7)
+    expect(firstRow.children).toHaveLength(9)
+    keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.tabs button[aria-label="Advanced"]')!.click()
+    await keyboard.updateComplete
+    expect(keyboard.shadowRoot!.querySelector(".shape-hint")).toBeNull()
   })
 
   it("gives both tab groups accessible icon buttons", async () => {
@@ -461,15 +541,18 @@ describe("shape keyboard", () => {
     expect(titles()[0]).toBe("Arrow")
     expect(titles().at(-1)).toBe("Quad arrow callout")
     const commands: string[] = []
-    keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
+    keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
     const input = {type: "keydown" as const, key: "1", code: "Digit1", altKey: true, shiftKey: false, capsLock: false, repeat: false}
     keyboard.handleInput(input)
     keyboard.handleInput({...input, key: "u", code: "KeyU"})
-    keyboard.handleInput({...input, key: "!", shiftKey: true})
     keyboard.handleInput({...input, type: "keyup"})
     await keyboard.updateComplete
-    expect(commands).toEqual(["arrow", "circular-arrow", advanced[0].type])
-    expect(keyboard.shadowRoot!.querySelector(".grid")!.getAttribute("aria-label")).toBe("Arrows")
+    keyboard.activePage = "Advanced"
+    await keyboard.updateComplete
+    keyboard.handleInput(input)
+    keyboard.handleInput({...input, type: "keyup"})
+    expect(commands.filter(Boolean)).toEqual(["arrow", "circular-arrow", advanced[0].type])
+    expect(keyboard.shadowRoot!.querySelector(".grid")!.getAttribute("aria-label")).toBe("Advanced")
   })
 
   it("keeps text box defaults for click, shortcut, and drag insertion instead of applying shape fill and stroke", async () => {
@@ -483,27 +566,27 @@ describe("shape keyboard", () => {
     keyboard.handleInput({type: "keydown", key: "1", code: "Digit1", altKey: true, shiftKey: false, capsLock: false, repeat: false})
     const paint = {"stroke-width": "6", opacity: "0.5"}
     expect(command.mock.calls.map(([event]) => event.detail)).toEqual([
-      {shape: "text-box", paint}, {shape: "text-box", paint, onlyIfUnselected: true},
+      {shape: "text-box", paint: {}},
     ])
     const data = new DataTransfer()
     const event = new Event("dragstart", {bubbles: true, composed: true})
     Object.assign(event, {dataTransfer: data})
     vi.spyOn(data, "setDragImage").mockImplementation(() => undefined)
     button.dispatchEvent(event)
-    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "text-box", paint})
+    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "text-box", paint: {}})
     expect(keyboard.paint).toEqual({fill: "red", stroke: "blue", "stroke-width": "6", opacity: "0.5"})
   })
 
-  it("slightly thickens preview strokes while preserving insertion paint and emitting an independent copy", async () => {
+  it("uses the configured fill but default brush stroke for icons and shape insertion", async () => {
     const keyboard = await mountKeyboard()
     keyboard.paint = {fill: "#12ab34", stroke: "#ab1234", "stroke-width": "6", opacity: "0.5"}
     await keyboard.updateComplete
 
     const preview = keyboard.shadowRoot!.querySelector(".grid svg g")!
     expect(preview.getAttribute("fill")).toBe("#12ab34")
-    expect(preview.getAttribute("stroke")).toBe("#ab1234")
-    expect(preview.getAttribute("stroke-width")).toBe("7.5")
-    expect(preview.getAttribute("opacity")).toBe("0.5")
+    expect(preview.getAttribute("stroke")).toBe("#334155")
+    expect(preview.getAttribute("stroke-width")).toBe("5")
+    expect(preview.getAttribute("opacity")).toBe("1")
 
     let detail: {shape: string; paint: Record<string, string>} | undefined
     keyboard.addEventListener("shape-keyboard-command", event => {
@@ -513,7 +596,7 @@ describe("shape keyboard", () => {
 
     expect(detail).toEqual({
       shape: "ellipse",
-      paint: {fill: "#12ab34", stroke: "#ab1234", "stroke-width": "6", opacity: "0.5"},
+      paint: {fill: "#12ab34"},
     })
     detail!.paint.fill = "#000000"
     expect(keyboard.paint.fill).toBe("#12ab34")
@@ -537,7 +620,7 @@ describe("shape keyboard", () => {
     keyboard.addEventListener("shape-keyboard-command", event => commands.push((event as CustomEvent).detail.shape))
     for(const key of keys.slice(4, 7)) {
       expect(key.querySelector("g")!.getAttribute("fill")).toBe("none")
-      expect(key.querySelector("path")!.getAttribute("fill")).toBe("#ab1234")
+      expect(key.querySelector("path")!.getAttribute("fill")).toBe("#334155")
       key.click()
     }
     expect(commands).toEqual(["line-start-arrow", "line-end-arrow", "line-both-arrows"])
@@ -546,10 +629,10 @@ describe("shape keyboard", () => {
     Object.assign(event, {dataTransfer: data})
     vi.spyOn(data, "setDragImage").mockImplementation(() => undefined)
     keys[6].dispatchEvent(event)
-    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "line-both-arrows", paint: keyboard.paint})
+    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "line-both-arrows", paint: {fill: keyboard.paint.fill}})
   })
 
-  it.each(["draw", "lines", "curves"] as const)("selects all forty %s brushes with Alt plus the displayed physical key", async mode => {
+  it.each(["draw", "lines", "curves"] as const)("temporarily previews all forty %s brushes with the displayed physical key", async mode => {
     const keyboard = await mountKeyboard()
     keyboard.mode = mode
     await keyboard.updateComplete
@@ -562,25 +645,37 @@ describe("shape keyboard", () => {
       ["IntlBackslash", ...[..."ZXCVBNM"].map(key => `Key${key}`), "Comma", "Period"],
     ]
     const hints = ["1234567890", "qwertyuiop", "asdfghjkl;", "<zxcvbnm,."]
-    const change = vi.fn(), insert = vi.fn()
+    const change = vi.fn(), preview = vi.fn(), insert = vi.fn()
     keyboard.addEventListener("shape-paint-change", change)
+    keyboard.addEventListener("shape-brush-preview", preview)
     keyboard.addEventListener("shape-keyboard-command", insert)
-    const input: ShapeKeyboardInput = {type: "keydown", key: "Dead", code: "", altKey: true, shiftKey: false, capsLock: false, repeat: false}
+    const persistentPaint = {...keyboard.paint}
+    const input: ShapeKeyboardInput = {type: "keydown", key: "Dead", code: "", altKey: false, shiftKey: false, capsLock: false, repeat: false}
     const rows = [...keyboard.shadowRoot!.querySelectorAll(".brush-grid tr")]
     expect(rows.map(row => [...row.querySelectorAll(".hint")].map(hint => hint.textContent).join(""))).toEqual(hints)
     for(const [rowIndex, row] of rows.entries()) {
       for(const [column, button] of [...row.querySelectorAll<HTMLButtonElement>(".brush")].entries()) {
-        expect(button.getAttribute("aria-keyshortcuts")).toBe(`Alt+${hints[rowIndex][column]}`)
+        expect(button.getAttribute("aria-keyshortcuts")).toBe(hints[rowIndex][column])
         expect(keyboard.handleInput({...input, code: codes[rowIndex][column]})).toBe(true)
-        expect(change.mock.calls.at(-1)![0].detail.paint).toEqual({fill: "#123456", stroke: `#${themeColorColumns[column][0]}`, "stroke-width": String([1,2,4,8][rowIndex]), opacity: ".6"})
+        expect(preview.mock.calls.at(-1)![0].detail).toEqual({
+          paint: {fill: "#123456", stroke: `#${themeColorColumns[column][0]}`, "stroke-width": String([1,2,4,8][rowIndex]), opacity: ".6"}, mode,
+        })
         await keyboard.updateComplete
         expect(button.getAttribute("aria-pressed")).toBe("true")
+        expect(keyboard.paint).toEqual(persistentPaint)
+        expect(keyboard.handleInput({...input, type: "keyup", code: codes[rowIndex][column]})).toBe(true)
+        expect(preview.mock.calls.at(-1)![0].detail).toEqual({paint: null, mode})
+        await keyboard.updateComplete
       }
     }
-    expect(change).toHaveBeenCalledTimes(40)
+    expect(change).not.toHaveBeenCalled()
+    expect(keyboard.paint).toEqual(persistentPaint)
+    expect(keyboard.handleInput({...input, code: "Digit1"})).toBe(true)
+    expect(preview).toHaveBeenCalledTimes(81)
     expect(keyboard.handleInput({...input, code: "Digit1", repeat: true})).toBe(true)
-    expect(keyboard.handleInput({...input, code: "Digit1", altKey: false})).toBe(false)
-    expect(keyboard.handleInput({...input, code: "Digit1", type: "keyup"})).toBe(false)
+    expect(preview).toHaveBeenCalledTimes(81)
+    expect(keyboard.handleInput({...input, code: "Digit1", type: "keyup"})).toBe(true)
+    expect(preview).toHaveBeenCalledTimes(82)
     for(const code of ["Backquote", "Minus", "BracketLeft", "Quote", "Slash"]) expect(keyboard.handleInput({...input, code})).toBe(false)
     keyboard.brushDialogOpen = true
     expect(keyboard.handleInput({...input, code: "Digit1"})).toBe(false)
@@ -590,8 +685,63 @@ describe("shape keyboard", () => {
     keyboard.keyboardInputDisabled = false
     keyboard.insertionDisabled = true
     expect(keyboard.handleInput({...input, code: "Digit1"})).toBe(false)
-    expect(change).toHaveBeenCalledTimes(40)
+    expect(change).not.toHaveBeenCalled()
     expect(insert).not.toHaveBeenCalled()
+  })
+
+  it("clears a held temporary brush on its keyup, cancellation, Escape, tab change, and disconnect", async () => {
+    for(const ending of ["keyup", "cancel", "escape", "tab", "disconnect"] as const) {
+      const keyboard = await mountKeyboard()
+      keyboard.mode = "draw"
+      keyboard.paint = {fill: "#123456", stroke: "#ab1234", "stroke-width": "6", opacity: ".5"}
+      await keyboard.updateComplete
+      const previews: Array<{paint: Record<string, string> | null, mode: string}> = []
+      keyboard.addEventListener("shape-brush-preview", event => previews.push((event as CustomEvent).detail))
+      const input = (changes: Partial<ShapeKeyboardInput>) => keyboard.handleInput({
+        type: "keydown", key: "1", code: "Digit1", altKey: false, shiftKey: false, capsLock: false, repeat: false, ...changes,
+      })
+      expect(input({})).toBe(true)
+      expect(previews).toHaveLength(1)
+      expect(previews[0]).toMatchObject({paint: {fill: "#123456", stroke: `#${themeColorColumns[0][0]}`, "stroke-width": "1", opacity: ".5"}, mode: "draw"})
+      expect(keyboard.paint).toEqual({fill: "#123456", stroke: "#ab1234", "stroke-width": "6", opacity: ".5"})
+
+      if(ending === "keyup") expect(input({type: "keyup", key: "a", code: "KeyA"})).toBe(false)
+      if(ending === "cancel") keyboard.cancelInput()
+      if(ending === "escape") expect(input({key: "Escape", code: "Escape"})).toBe(true)
+      if(ending === "tab") expect(input({key: "Tab", code: "Tab"})).toBe(true)
+      if(ending === "disconnect") keyboard.remove()
+      if(ending === "keyup") {
+        expect(previews).toHaveLength(1)
+        expect(input({type: "keyup", key: "1", code: "Digit1"})).toBe(true)
+      }
+      expect(previews.at(-1)).toEqual({paint: null, mode: "draw"})
+      if(ending !== "disconnect") keyboard.remove()
+    }
+  })
+
+  it("commits a clicked brush over a temporary brush without letting its later keyup undo the choice", async () => {
+    const keyboard = await mountKeyboard()
+    keyboard.mode = "lines"
+    keyboard.paint = {fill: "#123456", stroke: "#ab1234", "stroke-width": "6", opacity: ".5"}
+    await keyboard.updateComplete
+    const previews = vi.fn(), changes = vi.fn()
+    keyboard.addEventListener("shape-brush-preview", previews)
+    keyboard.addEventListener("shape-paint-change", changes)
+    keyboard.handleInput({type: "keydown", key: "1", code: "Digit1", altKey: false, shiftKey: false, capsLock: false, repeat: false})
+    expect(previews).toHaveBeenCalledOnce()
+
+    const committed = keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#5b9bd5, 8 px brush"]')!
+    committed.click()
+    await keyboard.updateComplete
+    expect(changes).toHaveBeenCalledOnce()
+    expect(keyboard.paint).toEqual({fill: "#123456", stroke: "#5b9bd5", "stroke-width": "8", opacity: ".5"})
+    expect(previews).toHaveBeenCalledOnce()
+    expect(committed.getAttribute("aria-pressed")).toBe("true")
+
+    expect(keyboard.handleInput({type: "keyup", key: "1", code: "Digit1", altKey: false, shiftKey: false, capsLock: false, repeat: false})).toBe(false)
+    expect(keyboard.paint).toEqual({fill: "#123456", stroke: "#5b9bd5", "stroke-width": "8", opacity: ".5"})
+    expect(previews).toHaveBeenCalledOnce()
+    expect(committed.getAttribute("aria-pressed")).toBe("true")
   })
 
   it("maps brush labels and shortcuts through the configured keyboard layout", async () => {
@@ -612,9 +762,13 @@ describe("shape keyboard", () => {
       await keyboard.updateComplete
       const hints = () => [...keyboard.shadowRoot!.querySelectorAll(".brush-grid tr")].map(row => [...row.querySelectorAll(".hint")].map(hint => hint.textContent).join(""))
       expect(hints()).toEqual(["1234567890", "qwertzuiop", "asdfghjklö", "yxcvbnm,.-"])
-      const input: ShapeKeyboardInput = {type: "keydown", key: "Dead", code: "Slash", altKey: true, shiftKey: false, capsLock: false, repeat: false}
+      const preview = vi.fn()
+      keyboard.addEventListener("shape-brush-preview", preview)
+      const input: ShapeKeyboardInput = {type: "keydown", key: "Dead", code: "Slash", altKey: false, shiftKey: false, capsLock: false, repeat: false}
+      const paint = {...keyboard.paint}
       expect(keyboard.handleInput(input)).toBe(true)
-      expect(keyboard.paint).toMatchObject({stroke: "#70ad47", "stroke-width": "8"})
+      expect(keyboard.paint).toEqual(paint)
+      expect(preview.mock.calls[0][0].detail).toMatchObject({paint: {stroke: "#70ad47", "stroke-width": "8"}, mode: "curves"})
       map.set("KeyY", "y")
       layout.dispatchEvent(new Event("layoutchange"))
       await Promise.resolve()
@@ -868,7 +1022,7 @@ describe("shape keyboard", () => {
     expect(keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Custom #2468ac, 7.5 px brush"]')!.getAttribute("aria-pressed")).toBe("true")
   })
 
-  it.each(["Freehand", "Lines", "Curves"])("selects the standard brush on opening %s and resets it on tab changes", async page => {
+  it.each(["Freehand", "Lines", "Curves"])("preserves the selected brush when opening %s and across tab changes", async page => {
     const keyboard = await mountKeyboard()
     const events: string[] = []
     keyboard.addEventListener("shape-paint-change", () => events.push("paint"))
@@ -884,29 +1038,30 @@ describe("shape keyboard", () => {
     tab(page).click()
     await keyboard.updateComplete
     const mode = page === "Freehand" ? "draw" : page.toLowerCase()
-    expect(events).toEqual(["paint", `graphic-mode:${mode}`])
-    expect(selected()).toEqual(["#000000, 4 px brush"])
-    expect(keyboard.paint).toEqual({fill: "#123456", stroke: "#000000", "stroke-width": "4", opacity: "1"})
+    expect(events).toEqual([`graphic-mode:${mode}`])
+    expect(selected()).toEqual(["#5b9bd5, 8 px brush"])
+    expect(keyboard.paint).toEqual({fill: "#123456", stroke: "#5b9bd5", "stroke-width": "8", opacity: ".4"})
     const chooseBrush = async () => {
-      keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#5b9bd5, 8 px brush"]')!.click()
+      keyboard.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="#000000, 4 px brush"]')!.click()
       await keyboard.updateComplete
-      expect(selected()).toEqual(["#5b9bd5, 8 px brush"])
+      expect(selected()).toEqual(["#000000, 4 px brush"])
     }
     await chooseBrush()
+    expect(events).toEqual([`graphic-mode:${mode}`, "paint"])
     tab(page).click()
     await keyboard.updateComplete
-    expect(selected()).toEqual(["#5b9bd5, 8 px brush"])
+    expect(selected()).toEqual(["#000000, 4 px brush"])
     tab("Advanced").click()
     await keyboard.updateComplete
     expect(keyboard.mode).toBe("select")
-    expect(keyboard.paint).toEqual({fill: "#123456", stroke: "#000000", "stroke-width": "4", opacity: "1"})
+    expect(keyboard.paint).toEqual({fill: "#123456", stroke: "#000000", "stroke-width": "4", opacity: ".4"})
     tab(page).click()
     await keyboard.updateComplete
     expect(selected()).toEqual(["#000000, 4 px brush"])
-    await chooseBrush()
     tab(page === "Lines" ? "Curves" : "Lines").click()
     await keyboard.updateComplete
     expect(selected()).toEqual(["#000000, 4 px brush"])
+    expect(events.filter(event => event === "paint")).toHaveLength(1)
   })
 
   it("switches among drawing modes while sharing the brush panel", async () => {
@@ -956,7 +1111,7 @@ describe("shape keyboard", () => {
     const event = new Event("dragstart", {bubbles: true, composed: true})
     Object.assign(event, {dataTransfer: data})
     key.dispatchEvent(event)
-    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "ellipse", paint: keyboard.paint})
+    expect(JSON.parse(data.getData(graphicShapeDragType))).toEqual({shape: "ellipse", paint: {fill: "red"}})
     expect(data.effectAllowed).toBe("copy")
     expect(setDragImage).toHaveBeenCalledWith(key.querySelector("svg"), 0, 0)
   })
@@ -995,10 +1150,10 @@ describe("shape keyboard", () => {
     keyboard.paint = {...keyboard.paint, fill: "red"}
     await keyboard.updateComplete
     expect(reads.reduce((sum, read) => sum + read.mock.calls.length, 0)).toBe(count)
-    keyboard.shifted = true
+    keyboard.activePage = "Advanced"
     await keyboard.updateComplete
     const advancedCount = reads.reduce((sum, read) => sum + read.mock.calls.length, 0)
-    keyboard.shifted = false
+    keyboard.activePage = "Basic"
     await keyboard.updateComplete
     expect(reads.reduce((sum, read) => sum + read.mock.calls.length, 0)).toBe(advancedCount)
   })

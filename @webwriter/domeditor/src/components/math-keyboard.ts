@@ -204,6 +204,12 @@ export class MathKeyboard extends LitElement {
   #recognizer: MathHandwritingRecognizer | undefined
   #ready: Promise<void> | undefined
 
+  cycleLayout(backward = false) {
+    const layouts = [...mathKeyboardLayouts.map(layout => layout.id), "handwriting"]
+    const index = layouts.indexOf(this.activeLayout)
+    this.#selectLayout(layouts[(index + (backward ? -1 : 1) + layouts.length) % layouts.length])
+  }
+
   render() {
     const layout = mathKeyboardLayouts.find(item => item.id === this.activeLayout)
       ?? mathKeyboardLayouts[0]

@@ -4,7 +4,7 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, isOnApple} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathStructureOptions, mathToolGroups} from "../math"
-import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
+import {isMarkStateChangeMessage, markStateChangeEvent, isSelectionChangeMessage, selectionChangeEvent, mathKeyboardTabEvent, type SelectionChangeDetail} from "../editor-bridge"
 import * as Y from "yjs"
 
 let editor: DOMEditor
@@ -707,6 +707,62 @@ describe("DOM MathML editing", () => {
     expect(editor.features.selection.captureSelectedElement).toBeNull()
     expect(math.classList.contains("◆element-capture-selected")).toBe(false)
     expect($.isGapSelection).toBe(true)
+  })
+
+  it("routes captured block-formula Tab navigation without changing its content or native selection", () => {
+    const math = load("<mi>abc</mi>")
+    math.setAttribute("display", "block")
+    const text = math.firstChild!.firstChild!
+    $.move(text, 1)
+    editor.features.selection.processSelection()
+    expect(editor.features.selection.captureSelectedElement).toBe(math)
+    const selection = document.getSelection()!
+    const anchor = selection.anchorNode, anchorOffset = selection.anchorOffset
+    const focus = selection.focusNode, focusOffset = selection.focusOffset
+    const original = clean()
+    const post = vi.spyOn(editor, "postHostMessage")
+
+    for(const backward of [false, true]) {
+      const event = key("Tab", {shiftKey: backward})
+      expect(event.defaultPrevented).toBe(true)
+      expect(post.mock.calls.at(-1)?.[0]).toEqual({type: mathKeyboardTabEvent, detail: {backward}})
+      expect(selection.anchorNode).toBe(anchor)
+      expect(selection.anchorOffset).toBe(anchorOffset)
+      expect(selection.focusNode).toBe(focus)
+      expect(selection.focusOffset).toBe(focusOffset)
+      expect(clean()).toBe(original)
+    }
+
+    const count = post.mock.calls.length
+    expect(key("Tab", {repeat: true}).defaultPrevented).toBe(true)
+    expect(post).toHaveBeenCalledTimes(count)
+    expect(selection.anchorNode).toBe(anchor)
+    expect(selection.anchorOffset).toBe(anchorOffset)
+    expect(selection.focusNode).toBe(focus)
+    expect(selection.focusOffset).toBe(focusOffset)
+    expect(clean()).toBe(original)
+  })
+
+  it("leaves modified and composing captured-formula Tab native", () => {
+    const math = load("<mi>abc</mi>")
+    math.setAttribute("display", "block")
+    const text = math.firstChild!.firstChild!
+    $.move(text, 1)
+    editor.features.selection.processSelection()
+    expect(editor.features.selection.captureSelectedElement).toBe(math)
+    const original = clean()
+    const post = vi.spyOn(editor, "postHostMessage")
+    const tabMessages = () => post.mock.calls.filter(([message]) => (message as {type?: string}).type === mathKeyboardTabEvent)
+    const count = tabMessages().length
+
+    for(const modifiers of [{ctrlKey: true}, {altKey: true}, {metaKey: true}, {isComposing: true}]) {
+      const event = key("Tab", modifiers)
+      expect(event.defaultPrevented).toBe(false)
+      expect(tabMessages()).toHaveLength(count)
+      expect(document.getSelection()!.anchorNode).toBe(text)
+      expect(document.getSelection()!.anchorOffset).toBe(1)
+      expect(clean()).toBe(original)
+    }
   })
 
   it("element-selects a block formula through its breadcrumb path and captures an interior click", () => {
