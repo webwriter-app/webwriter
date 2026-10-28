@@ -8,6 +8,7 @@ import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../ribbon-icons"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
+import {isCanvasStartingView} from "../canvas-viewer.js"
 import type {RelativePosition} from "yjs"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
@@ -484,6 +485,7 @@ export class TransformationFeature extends EditorFeature {
     const text = Boolean(this.target && !freeform && this.#isTextContainer(this.target))
     const corner = this.target && this.#resizeAlignment(this.target) === "right" ? "down-left" : "down-right"
     setPart(overlay, "transform-overlay-freeform", freeform)
+    setPart(overlay, "transform-overlay-starting-view", !this.#group.length && Boolean(this.target && isCanvasStartingView(this.target)))
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
       const hide = !freeform || this.#group.length > 0
@@ -509,7 +511,9 @@ export class TransformationFeature extends EditorFeature {
       setPart(control, `transform-overlay-${name}-hidden`, hide)
       control.hidden = hide
     }
-    hidden("rotator", !freeform || (this.#group.length ? !this.#group.every(element => getComputedStyle(element).position === "absolute") : position !== "absolute"))
+    hidden("rotator", !freeform || (this.#group.length
+      ? !this.#group.every(element => getComputedStyle(element).position === "absolute" && !isCanvasStartingView(element))
+      : position !== "absolute" || Boolean(this.target && isCanvasStartingView(this.target))))
     hidden("orderer", true)
     hidden("mover", freeform)
     const captionPosition = this.editor.features.manipulation.getCaptionPosition()
@@ -866,7 +870,7 @@ export class TransformationFeature extends EditorFeature {
 
   #beginGroup(event: MouseEvent, mode: Mode, handle: HTMLElement) {
     if(!this.#validGroupSelection() || !["move", "rotate"].includes(mode)
-      || mode === "rotate" && !this.#group.every(element => getComputedStyle(element).position === "absolute")) return false
+      || mode === "rotate" && !this.#group.every(element => getComputedStyle(element).position === "absolute" && !isCanvasStartingView(element))) return false
     const rect = this.#groupRect()
     const members = this.#group.map(target => {
       const initial = document.createElement("div").style
@@ -949,7 +953,7 @@ export class TransformationFeature extends EditorFeature {
     if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
     if(this.#group.length) return this.#beginGroup(event, mode, handle)
     if(mode === "crop" && !cropDirections.some(direction => direction === handle.dataset.cropDirection)) return false
-    if(mode === "rotate" && (!this.#isFreeformItem(target) || getComputedStyle(target).position !== "absolute")) return false
+    if(mode === "rotate" && (!this.#isFreeformItem(target) || getComputedStyle(target).position !== "absolute" || isCanvasStartingView(target))) return false
     const matrix = this.#matrix(target)
     if(!matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) return false
     const media = mode === "crop" ? this.editor.features.media.cropTargetFor(target) : null

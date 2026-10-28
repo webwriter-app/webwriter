@@ -35,6 +35,7 @@ import {checkGraphicEmptyLabelCaret} from "./graphic-empty-label-caret"
 import {checkGraphicText} from "./graphic-text"
 import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
 import {checkSlideEditing} from "./slide-editing"
+import {checkCanvasStartingView} from "./canvas-starting-view"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -53,6 +54,7 @@ let fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
+await check("canvas starting view frames resize, delete and open without shifting", checkCanvasStartingView)
 await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)
 
 await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)

@@ -47,6 +47,169 @@ afterEach(() => {
 })
 
 describe("canvas document layout", () => {
+  it("saves current camera bounds as one shared, serializable starting view and replaces them on save", () => {
+    document.body.innerHTML = '<!--keep--><test-widget><span>Keep</span></test-widget>'
+    editor.features.canvas.convert("canvas")
+    const canvas = editor.features.canvas
+    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    const origin = canvas.clientPoint(0, 0), zoom = canvas.zoom
+    const widget = document.querySelector("test-widget")!, html = widget.outerHTML
+    const button = editor.appendix.querySelector<HTMLButtonElement>('button[name="starting-view"]')!
+    expect(button).not.toBeNull()
+    button.click()
+    const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
+    expect($.selectedElement).toBe(frame)
+    expect(parseFloat(frame.style.left)).toBeCloseTo(origin.x)
+    expect(parseFloat(frame.style.top)).toBeCloseTo(origin.y)
+    expect(parseFloat(frame.style.width)).toBeCloseTo(window.innerWidth / zoom)
+    expect(parseFloat(frame.style.height)).toBeCloseTo(window.innerHeight / zoom)
+    expect(widget.outerHTML).toBe(html)
+    expect(document.body.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-out"})
+    canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
+    expect(document.querySelectorAll(".ww-canvas-starting-view")).toHaveLength(1)
+    expect(document.querySelector(".ww-canvas-starting-view")).toBe(frame)
+    expect(parseFloat(frame.style.width)).toBeCloseTo(window.innerWidth / canvas.zoom)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).toContain("ww-canvas-starting-view")
+    const saved = editor.toHTML(true)
+    expect(saved).toContain("ww-canvas-starting-view")
+    expect(saved).not.toMatch(/part="canvas-starting-view"|◆/)
+  })
+
+  it("selects the appendix frame with the ordinary resize and delete controls, including undo", async () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    editor.features.canvas.convert("canvas")
+    editor.doc.syncFromDOM()
+    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
+    const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
+    mockGeometry(frame, makeRect(30, 40, 500, 300))
+    editor.features.canvas.refresh()
+    const outline = editor.appendix.querySelector<HTMLElement>("[part=canvas-starting-view]")!
+    expect(outline.style.left).toBe("30px")
+    expect(outline.style.width).toBe("500px")
+    const label = outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!
+    expect(label.textContent).toBe("STARTING VIEW")
+    expect(label.classList.contains("inside")).toBe(false)
+    vi.mocked(frame.getBoundingClientRect).mockReturnValue(makeRect(30, 10, 500, 300))
+    editor.features.canvas.refresh()
+    expect(label.classList.contains("inside")).toBe(true)
+    outline.firstElementChild!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    expect($.selectedElement).toBe(frame)
+    expect(editor.features.transformation.target).toBe(frame)
+    expect(editor.features.transformation.overlay.getAttribute("part")).toContain("transform-overlay-starting-view")
+    expect(editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!.hidden).toBe(true)
+    expect(editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
+    editor.features.transformation.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!.click()
+    await settle()
+    expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
+    expect(outline.hidden).toBe(true)
+    editor.doc.undo()
+    await settle()
+    expect(document.querySelector(".ww-canvas-starting-view")).not.toBeNull()
+    expect(outline.hidden).toBe(false)
+    editor.doc.redo()
+    await settle()
+    expect(outline.hidden).toBe(true)
+  })
+
+  it("updates the outline for external changes and cleans it up without touching authored bounds", async () => {
+    editor.features.canvas.convert("canvas")
+    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
+    const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
+    frame.replaceWith(frame.cloneNode(true))
+    const replacement = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
+    mockGeometry(replacement, makeRect(-120, 80, 400, 220))
+    await settle()
+    const outline = editor.appendix.querySelector<HTMLElement>("[part=canvas-starting-view]")!
+    expect(outline.style.left).toBe("-120px")
+    const html = replacement.outerHTML
+    editor.features.canvas.disable()
+    expect(outline.isConnected).toBe(false)
+    expect(replacement.outerHTML).toBe(html)
+  })
+
+  it("rejects saving the starting view outside Canvas or while editing is locked", () => {
+    const save = () => editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
+    expect(save()).toBe(false)
+    editor.features.canvas.convert("canvas")
+    vi.spyOn(editor, "isEditingLocked", "get").mockReturnValue(true)
+    expect(save()).toBe(false)
+    expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
+  })
+
+  it("groups starting-view navigation and trash, preserves existing bounds, and supports deletion and undo", async () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    const canvas = editor.features.canvas
+    canvas.convert("canvas")
+    const controls = () => editor.appendix.querySelector<HTMLElement>('.◆canvas-starting-view-controls')!
+    expect(controls().getAttribute("role")).toBe("group")
+    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.disabled).toBe(true)
+    controls().querySelector<HTMLButtonElement>('[name="starting-view"]')!.click()
+    const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
+    expect($.selectedElement).toBe(frame)
+    Object.assign(frame.style, {left: "-300px", top: "80px", width: "500px", height: "400px"})
+    const bounds = frame.getAttribute("style")
+    $.move(document.body.firstElementChild!)
+    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-out"})
+    controls().querySelector<HTMLButtonElement>('[name="starting-view"]')!.click()
+    expect($.selectedElement).toBe(frame)
+    expect(frame.getAttribute("style")).toBe(bounds)
+    const remove = controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!
+    expect(remove.disabled).toBe(false)
+    expect(remove.getAttribute("aria-label")).toBe("Delete starting view")
+    remove.querySelector("path")!.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
+    expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
+    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.disabled).toBe(true)
+    editor.doc.undo()
+    await settle()
+    expect(document.querySelector(".ww-canvas-starting-view")).not.toBeNull()
+    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.disabled).toBe(false)
+  })
+
+  it("omits the selected starting view from the breadcrumb", () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    editor.features.canvas.convert("canvas")
+    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
+    editor.postSelectionPath()
+    expect(postMessage.mock.calls.at(-1)![0].detail.path).toEqual([{path: [], name: "Canvas", icon: "Canvas"}])
+    expect($.selectedElement).toBe(document.querySelector(".ww-canvas-starting-view"))
+  })
+
+  it("undoes saving bounds and follows remote starting-view changes without moving the local camera", async () => {
+    document.body.innerHTML = "<p>Keep</p>"
+    const canvas = editor.features.canvas
+    canvas.convert("canvas")
+    editor.doc.syncFromDOM()
+    canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
+    editor.doc.undo()
+    expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
+    editor.doc.redo()
+    expect(document.querySelector(".ww-canvas-starting-view")).not.toBeNull()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc), "initial-sync")
+      const body = sharedDOMBody(remote)
+      const index = body.toArray().findIndex(node => node instanceof Y.XmlElement && node.getAttribute("class") === "ww-canvas-starting-view")
+      expect(index).toBeGreaterThanOrEqual(0)
+      const bounds = body.get(index) as Y.XmlElement
+      bounds.setAttribute("style", "position:absolute;left:-300px;top:80px;width:500px;height:400px")
+      const slot = editor.appendix.querySelector("slot")!, camera = slot.style.transform
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client")
+      await settle()
+      expect(document.querySelector<HTMLElement>(".ww-canvas-starting-view")!.style.left).toBe("-300px")
+      expect(slot.style.transform).toBe(camera)
+      body.delete(index, 1)
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client")
+      await settle()
+      expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
+      expect(editor.appendix.querySelector<HTMLElement>("[part=canvas-starting-view]")!.hidden).toBe(true)
+      expect(slot.style.transform).toBe(camera)
+    }
+    finally { remote.destroy() }
+  })
+
   it("installs a CSP-compatible layout stylesheet and removes it on disable", () => {
     const layout = document.adoptedStyleSheets.find(sheet => Array.from(sheet.cssRules)
       .some(rule => (rule as CSSStyleRule).selectorText === "body.ww-canvas"))

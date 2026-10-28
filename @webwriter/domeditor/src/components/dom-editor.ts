@@ -227,6 +227,7 @@ import {
 } from "../app-settings"
 import {getDocumentRoot} from "../document-template"
 import {canvasStyles, slidesStyles, boardStyles, boardLayoutRole, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
+import {isCanvasStartingView} from "../canvas-viewer.js"
 
 type LocalFileHandle = RecentFileHandle
 
@@ -6599,7 +6600,7 @@ export class DomEditor extends LitElement {
           if(child.nodeType !== Node.ELEMENT_NODE) return
           const childElement = child as Element
           const slideRole = slideLayoutRole(childElement)
-          if(slideRole === "navigation") return
+          if(slideRole === "navigation" || isCanvasStartingView(childElement)) return
           if(childElement.matches("source, caption, figcaption, details > summary")
             || childElement.localName === "math" && childElement.getAttribute("display") !== "block"
             || childElement.matches("img") && childElement.closest("picture")

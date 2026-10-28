@@ -2785,6 +2785,29 @@ describe("transform controls and geometry", () => {
     expect($.selectedElement).toBe(target)
   })
 
+  it("disallows starting-view rotation both alone and in a multi-selection", () => {
+    document.body.classList.add("ww-canvas")
+    const frame = targetElement("div"), other = targetElement()
+    frame.classList.add("ww-canvas-starting-view")
+    for(const target of [frame, other]) {
+      Object.assign(target.style, {position: "absolute", width: "100px", height: "50px", left: "0px", top: "0px"})
+      mockRect(target)
+    }
+    for(const elements of [[frame], [frame, other]]) {
+      if(elements.length === 1) selectNode(frame)
+      else { $.selectElements(elements); editor.features.selection.processSelection(undefined, {scrollIntoView: false}) }
+      expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!.hidden).toBe(true)
+      const initial = elements.map(element => element.style.cssText)
+      feature.handleRotateStart(new MouseEvent("mousedown", {button: 0, clientX: 150, clientY: 100}))
+      feature.handleRotateDrag(new MouseEvent("mousemove", {button: 0, clientX: 200, clientY: 125}))
+      feature.handleRotateEnd()
+      expect(elements.map(element => element.style.cssText)).toEqual(initial)
+    }
+    selectNode(other)
+    expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!.hidden).toBe(false)
+    expect(feature.overlay.getAttribute("part")).not.toContain("transform-overlay-starting-view")
+  })
+
   it("rotates only an absolute target in canvas layout", () => {
     document.body.classList.add("ww-canvas")
     const target = targetElement()

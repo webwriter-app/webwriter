@@ -15,6 +15,7 @@ import { InsertionFeature } from "./features/insertion"
 import { ListFeature } from "./features/list"
 import { TransformationFeature } from "./features/transformation"
 import {CanvasFeature} from "./features/canvas"
+import {isCanvasStartingView} from "./canvas-viewer.js"
 import {SlidesFeature} from "./features/slides"
 import {BoardFeature} from "./features/board"
 import {boardLayoutRole, documentLayoutMode, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "./document-layout"
@@ -869,7 +870,7 @@ export class DOMEditor {
     while(current && current !== root) {
       const role = slideLayoutRole(current)
       if(role === "navigation") elements.length = 0
-      else if(role !== "viewport") elements.unshift(current)
+      else if(role !== "viewport" && !isCanvasStartingView(current)) elements.unshift(current)
       current = current.parentElement
     }
     elements.unshift(root)

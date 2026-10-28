@@ -8615,6 +8615,19 @@ describe("DomEditor.execute()", () => {
     ]})
   })
 
+  it("omits starting-view elements from a canvas outline without changing authored paths or DOM", async () => {
+    const {editor, iframe} = await mountEditor()
+    const body = iframe.contentDocument!.body
+    body.className = "ww-canvas"
+    body.innerHTML = '<!--keep--><div class="ww-canvas-starting-view"></div><p>Before</p><div class="ww-canvas-starting-view"></div><test-widget></test-widget><p>After</p><div class="ww-canvas-starting-view" is="custom-start-view"><p>Custom</p></div><section><div class="ww-canvas-starting-view"><p>Nested</p></div></section>'
+    const before = body.innerHTML
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children.map(item => item.path)).toEqual([[2], [4], [5], [6, 0], [7, 0, 0]])
+    expect(tree.children.map(item => item.name)).toEqual(["Paragraph", "test-widget", "Paragraph", "Paragraph", "Paragraph"])
+    expect(tree.sections).toBeUndefined()
+    expect(body.innerHTML).toBe(before)
+  })
+
   it("keeps board columns, cards, and widget sections in outline menu data", async () => {
     const {editor, iframe} = await mountEditor()
     const body = iframe.contentDocument!.body
