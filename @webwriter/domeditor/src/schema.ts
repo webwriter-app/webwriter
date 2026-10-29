@@ -730,6 +730,14 @@ export class Schema {
       && !(content ?? Array.from(nodeToCheck.childNodes)).every(isParagraphContent)) return false
     // A widget's data containers are valid under any content model.
     const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => child.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(child))
+    const nativeContainer = nodeToCheck.namespaceURI === "http://www.w3.org/1999/xhtml" && !nodeToCheck.localName.includes("-") && !nodeToCheck.hasAttribute("is")
+    if(nativeContainer && !nodeToCheck.matches("table") && contentToCheck.some(child => child instanceof Element && child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.matches("caption:not([is])"))) return false
+    const captions = contentToCheck.filter(child => child instanceof Element && child.namespaceURI === "http://www.w3.org/1999/xhtml" && child.matches("figcaption:not([is])"))
+    if(nativeContainer && captions.length) {
+      if(!nodeToCheck.matches("figure") || captions.length > 1 || !this.hasFigureContent(contentToCheck)) return false
+      const meaningful = contentToCheck.filter(child => child instanceof Element || child instanceof Text && child.data.trim())
+      if(meaningful[0] !== captions[0] && meaningful.at(-1) !== captions[0]) return false
+    }
     if(!rule && contentToCheck.length) return false
     else if(!rule) return true
     if(rule && "transparent" in rule) {
@@ -1091,7 +1099,52 @@ export class Schema {
     }
   }
 
-  /** Apply media constraints and convert legacy preformatted blocks without repairing unrelated content.
+  /** Comments and formatting whitespace do not give a caption a subject. */
+  hasFigureContent(content: Node[]) {
+    return content.some(node => node instanceof Element ? node.namespaceURI !== "http://www.w3.org/1999/xhtml" || !node.matches("figcaption:not([is])")
+      : node instanceof Text && Boolean(node.data.trim()))
+  }
+
+  /** Invalid caption placement becomes ordinary prose, retaining the authored
+   * nodes and attributes. Widget-owned and foreign content stays atomic. */
+  enforceCaptions(root: Node) {
+    const replacements = new Map<Element, Element>()
+    for(let parent = root.parentElement; parent; parent = parent.parentElement) {
+      if(parent.localName.includes("-") || parent.hasAttribute("is")) return replacements
+    }
+    const visit = (node: Node) => {
+      if(node instanceof Element) {
+        if(node.namespaceURI !== "http://www.w3.org/1999/xhtml"
+          || node.localName.includes("-") || node.hasAttribute("is")) return
+        if(node.matches("figure:has(> figcaption)") && !this.hasFigureContent(Array.from(node.childNodes)) && node.parentNode) {
+          const children = Array.from(node.childNodes)
+          node.replaceWith(...children)
+          children.forEach(visit)
+          const first = children.find(child => child instanceof Element) as Element
+          const replacement = replacements.get(first) ?? first
+          for(const attribute of Array.from(node.attributes)) {
+            if(!replacement.hasAttributeNS(attribute.namespaceURI, attribute.localName)) replacement.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          }
+          replacements.set(node, replacement)
+          return
+        }
+        if((node.localName === "figcaption" && node.parentElement?.localName !== "figure"
+          || node.localName === "caption" && node.parentElement?.localName !== "table") && node.parentNode) {
+          const paragraph = node.ownerDocument.createElement("p")
+          for(const attribute of Array.from(node.attributes)) paragraph.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+          paragraph.append(...Array.from(node.childNodes))
+          replacements.set(node, paragraph)
+          node.replaceWith(paragraph)
+          node = paragraph
+        }
+      }
+      Array.from(node.childNodes).forEach(visit)
+    }
+    visit(root)
+    return replacements
+  }
+
+  /** Apply media and caption constraints and convert legacy preformatted blocks without repairing unrelated content.
    * Widget-owned subtrees and foreign namespaces remain untouched. */
   enforceMedia(root: Node, convertPreformatted = true) {
     const replacements = new Map<Element, Element>()
@@ -1143,6 +1196,7 @@ export class Schema {
       Array.from(node.childNodes).forEach(visit)
     }
     visit(root)
+    for(const [node, replacement] of this.enforceCaptions(root)) replacements.set(node, replacement)
     return replacements
   }
 

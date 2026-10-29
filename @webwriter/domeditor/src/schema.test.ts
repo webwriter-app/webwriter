@@ -129,6 +129,103 @@ describe("caption content", () => {
   })
 })
 
+describe("caption placement", () => {
+  it("keeps table captions inside tables", () => {
+    const body = document.createElement("body"), table = document.createElement("table"), caption = document.createElement("caption")
+    caption.textContent = "Table caption"
+    expect(editor.schema.canInsert(body, caption, 0)).toBe(false)
+    expect(editor.schema.canInsert(table, caption, 0)).toBe(true)
+    body.append(caption)
+    editor.schema.enforceCaptions(body)
+    expect(body.innerHTML).toBe("<p>Table caption</p>")
+  })
+
+  it.each(["body", "section", "div[contenteditable=false]"])("rejects figcaption directly inside %s", selector => {
+    const parent = document.createElement(selector.startsWith("div") ? "div" : selector)
+    if(selector.includes("contenteditable")) parent.setAttribute("contenteditable", "false")
+    parent.append(document.createElement("figcaption"))
+    expect(editor.schema.isContentValid(parent)).toBe(false)
+  })
+
+  it("rejects figcaption inside a section within a figure but allows a nested figure with its own caption", () => {
+    const figure = document.createElement("figure")
+    const section = document.createElement("section")
+    section.append(document.createElement("figcaption"))
+    figure.append(document.createElement("picture"), section)
+    expect(editor.schema.isContentValid(section)).toBe(false)
+
+    const nestedFigure = document.createElement("figure")
+    nestedFigure.append(document.createElement("picture"), document.createElement("figcaption"))
+    const outerFigure = document.createElement("figure")
+    outerFigure.append(nestedFigure)
+    expect(editor.schema.isContentValid(nestedFigure)).toBe(true)
+    expect(editor.schema.isContentValid(outerFigure)).toBe(true)
+  })
+
+  it("allows inserting a caption only when a figure has content", () => {
+    const emptyFigure = document.createElement("figure")
+    const populatedFigure = document.createElement("figure")
+    populatedFigure.append(document.createElement("picture"))
+    expect(editor.schema.canInsert(emptyFigure, document.createElement("figcaption"), 0)).toBe(false)
+    expect(editor.schema.canInsert(populatedFigure, document.createElement("figcaption"), 1)).toBe(true)
+  })
+
+  it("rejects an orphan figcaption even when the caption is noneditable", () => {
+    const body = document.createElement("body")
+    const caption = document.createElement("figcaption")
+    caption.setAttribute("contenteditable", "false")
+    body.append(caption)
+    expect(editor.schema.isContentValid(body)).toBe(false)
+  })
+
+  it.each([
+    '<figure><figcaption>Caption</figcaption></figure>',
+    '<figure> \n<!--keep--><figcaption>Caption</figcaption><!--also keep--> </figure>',
+    '<figure><figcaption>First</figcaption><figcaption>Second</figcaption></figure>',
+  ])("rejects caption-only figures: %s", html => {
+    const figure = document.createElement("figure")
+    figure.innerHTML = html.slice("<figure>".length, -"</figure>".length)
+    expect(editor.schema.isContentValid(figure)).toBe(false)
+  })
+
+  it("allows one caption before or after varied figure content", () => {
+    const schema = new Schema()
+    schema.extendWidgets([{tagName: "custom-figure-content"}])
+    for(const html of [
+      '<figcaption>Before</figcaption><picture><img></picture><video controls></video><custom-figure-content></custom-figure-content>text',
+      'text<custom-figure-content></custom-figure-content><picture><img></picture><figcaption>After</figcaption>',
+    ]) {
+      const figure = document.createElement("figure")
+      figure.innerHTML = html
+      expect(schema.isContentValid(figure)).toBe(true)
+    }
+  })
+
+  it("converts orphan and caption-only imported captions to paragraphs without losing content", () => {
+    const {fragment} = editor.parseHTMLFragment(
+      '<figcaption>Orphan <strong>marked</strong><!--orphan comment--></figcaption><figure><figcaption>Figure <em>caption</em><!--figure comment--></figcaption></figure>',
+      false,
+    )
+    expect(fragment.querySelectorAll("figcaption")).toHaveLength(0)
+    expect(fragment.querySelectorAll("p")).toHaveLength(2)
+    expect(fragment.querySelector("p")!.innerHTML).toContain("<strong>marked</strong>")
+    expect(fragment.querySelector("p")!.innerHTML).toContain("<!--orphan comment-->")
+    expect(fragment.querySelectorAll("p")[1].innerHTML).toContain("<em>caption</em>")
+    expect(fragment.querySelectorAll("p")[1].innerHTML).toContain("<!--figure comment-->")
+    expect(fragment.textContent).toContain("Orphan marked")
+    expect(fragment.textContent).toContain("Figure caption")
+  })
+
+  it("leaves valid figures and widget-owned captions intact during repair", () => {
+    const body = document.createElement("body")
+    body.innerHTML = '<figure><!--keep--><picture><img></picture><figcaption>Valid</figcaption></figure><custom-widget><figure><figcaption>Private</figcaption></figure><figcaption>Also private</figcaption></custom-widget>'
+    const nodes = Array.from(body.querySelectorAll("*")), original = body.innerHTML
+    expect(editor.schema.enforceCaptions(body).size).toBe(0)
+    expect(body.innerHTML).toBe(original)
+    expect(Array.from(body.querySelectorAll("*"))).toEqual(nodes)
+  })
+})
+
 describe("widget marks", () => {
   it("parses explicit mark lists and treats underscore as allow-all", () => {
     expect(parseWidgetMarks(" bold  italic ")).toEqual(["bold", "italic"])

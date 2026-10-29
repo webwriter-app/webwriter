@@ -1592,6 +1592,7 @@ export class ManipulationFeature extends EditorFeature {
       const range = this.dropRange(event, source)
       if(!range) return
       if(source) {
+        const sourceParent = source.parentElement
         const inserted = event.ctrlKey || event.altKey ? cloneWithoutEditorMarkers(source, true) : source
         if(inserted.namespaceURI === MATH_NAMESPACE && inserted.localName === "math" && inserted.getAttribute("display") !== "block") this.editor.features.math.adaptToPlacement(inserted, range.startContainer)
         const slide = this.editor.features.slides.active ? this.editor.features.slides.containingSlide(range.startContainer) : null
@@ -1610,6 +1611,7 @@ export class ManipulationFeature extends EditorFeature {
           this.clearDropFloat(inserted)
         }
         if(getDocumentRoot().contains(inserted)) $.selectElement(inserted)
+        if(inserted === source && sourceParent?.matches("figure:not([is])") && source.parentElement !== sourceParent) this.editor.normalizeSurroundingElements(sourceParent)
       }
       else {
         const html = data.getData("text/html")
@@ -1675,6 +1677,7 @@ export class ManipulationFeature extends EditorFeature {
       ? this.editor.features.slides.containingSlide(target) : getDocumentRoot()
     if(!root || target === root || !root.contains(target)) return null
     while(target.parentElement && target.parentElement !== root) target = target.parentElement
+    if(target.matches("caption, figcaption")) return null
     return target.parentElement === root && !slideLayoutRole(target) ? target : null
   }
 
@@ -1713,6 +1716,7 @@ export class ManipulationFeature extends EditorFeature {
     if(this.editor.isEditingLocked) return false
     let target = this.captionTarget()
     if(!target || !target.parentNode) return false
+    if(position !== "none" && target.matches("figure") && !this.editor.schema.hasFigureContent(Array.from(target.childNodes))) return false
     const captured = this.editor.features.selection.captureSelectedElement
     const selected = captured ?? $.selectedElement ?? target
     const end = this.editor.doc.beginUndoGroup()
@@ -1800,6 +1804,7 @@ export class ManipulationFeature extends EditorFeature {
     const figure = this.activeFigure()
     if(!figure || this.directFigureCaption(figure)) return false
     const caption = document.createElement("figcaption")
+    if(!this.editor.schema.hasFigureContent(Array.from(figure.childNodes))) return false
     position === "before" ? figure.prepend(caption) : figure.append(caption)
     this.editor.features.head.ensureCaptionEnumeration()
     this.editor.features.selection.clearSelectedSection(figure)
@@ -3123,7 +3128,12 @@ export class ManipulationFeature extends EditorFeature {
   /** Captions share prose's inline vocabulary, even inside nested marks. Check
    * the live destination before a command moves or replaces any content. */
   allowsCaptionInsertion(nodes: Node[], container: Node | null = $.anchor) {
-    const caption = (container instanceof Element ? container : container?.parentElement)?.closest("caption:not([is]), figcaption:not([is])")
+    const parent = container instanceof Element ? container : container?.parentElement
+    if(nodes.some(node => node instanceof Element && node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("figure:not([is]):has(> figcaption)") && !this.editor.schema.hasFigureContent(Array.from(node.childNodes)))) return false
+    const captions = nodes.filter((node): node is Element => node instanceof Element && node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("caption:not([is]), figcaption:not([is])"))
+    if(captions.length && (captions.some(node => parent?.localName !== (node.localName === "caption" ? "table" : "figure"))
+      || !this.editor.schema.isContentValid(parent!, [...Array.from(parent!.childNodes).filter(node => !nodes.includes(node)), ...nodes]))) return false
+    const caption = parent?.closest("caption:not([is]), figcaption:not([is])")
     return !caption || this.editor.schema.isContentValid(caption, nodes)
   }
 

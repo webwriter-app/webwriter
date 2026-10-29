@@ -431,9 +431,9 @@ export const baseSchema = {
   "figure": {
     group: ["flow", "palpable"],
     content: {options: [
-      {terms: [{selector: "figcaption", min: 0, max: 1}, {group: "flow", min: 0, max: Infinity}]},
-      {terms: [{group: "flow", min: 0, max: Infinity}, {selector: "figcaption", min: 0, max: 1}]},
-    ]}
+      {selector: "figcaption"},
+      {group: "flow"},
+    ], min: 0, max: Infinity}
   },
   "footer": {
     group: ["flow", "palpable"],

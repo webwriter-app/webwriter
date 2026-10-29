@@ -27,7 +27,7 @@ import {isFormElementType} from "./form"
 import { DialogFeature } from "./features/dialog"
 import {floatSideFromStyles} from "./element-styles"
 import { Schema } from "./schema"
-import { $, adoptStylesheet, clearEditorArtifacts, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
+import { $, adoptStylesheet, atomicEditingContainer, clearEditorArtifacts, createStylesheet, findContainingBlock, focusedWidgetHost, getContainer, isAppendixInteraction, isContentfulWidget, isElement, isFormControlInteraction, isWidgetShadowInteraction, pathFromNode, plainTextFromDOM, removeEditorMarker, textOffsetIn, textPointAtOffset } from "./utility"
 import {canonicalMarkName, isMarkElement, normalizeEditingContent, stripExcludedMarks} from "./marks"
 import {
   editorFrameControlMessage,
@@ -339,20 +339,34 @@ export class DOMEditor {
         }
       : null
     const elements = new Set<Element>()
+    const captionRoots = new Set<Element>()
     for(const node of [
       ...nodes,
       selection?.anchorNode,
       selection?.focusNode,
     ]) {
       if(!node) continue
+      const rawElement = node instanceof Element ? node : node.parentElement
+      const captionRoot = rawElement?.closest("figure:not([is])") ?? rawElement?.closest("caption:not([is]), figcaption:not([is])")
+      if(captionRoot?.isConnected && !atomicEditingContainer(captionRoot, this.schema)) captionRoots.add(captionRoot)
       const element = getContainer(node)
       if(isElement(element) && element !== document.body && element !== document.documentElement
         && element !== getDocumentRoot() && element.isConnected) elements.add(element)
     }
-    elements.forEach(element => normalizeEditingContent(element))
+    const captionReplacements = new Map<Element, Element>()
+    for(const root of captionRoots) {
+      for(const [node, replacement] of this.schema.enforceCaptions(root)) captionReplacements.set(node, replacement)
+    }
+    elements.forEach(element => {
+      for(const [node, replacement] of this.schema.enforceCaptions(element)) captionReplacements.set(node, replacement)
+      normalizeEditingContent(captionReplacements.get(element) ?? element)
+    })
     this.features.list.ensureDetailsSummaries(elements)
     if(this.#ensureDocumentContent()) return
     if(selection && savedSelection) {
+      for(const point of [savedSelection.anchor, savedSelection.focus]) {
+        if(point.element) point.element = captionReplacements.get(point.element) ?? point.element
+      }
       const anchor = this.restoreTextPoint(savedSelection.anchor)
       const focus = this.restoreTextPoint(savedSelection.focus)
       if(anchor && focus && (selection.anchorNode !== anchor[0] || selection.anchorOffset !== anchor[1]

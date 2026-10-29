@@ -2496,6 +2496,74 @@ describe("heading groups", () => {
 })
 
 describe("figures", () => {
+  it.each([false, true])("preserves the caption as prose only when moving the last figure content (copy: %s)", copy => {
+    document.body.innerHTML = '<figure><p>Move me</p><figcaption>Keep</figcaption></figure><p id="target">Destination</p>'
+    const figure = document.querySelector("figure")!, source = figure.querySelector("p")!, target = document.querySelector("#target")!
+    const data = new DataTransfer()
+    vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
+    $.selectRange(figure, 0, figure, 1)
+    editor.features.manipulation.startNodeDrag(transferEvent("dragstart", data) as DragEvent, source)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 3})
+    target.dispatchEvent(transferEvent("drop", data, {ctrlKey: copy}))
+    if(copy) {
+      expect(source.parentElement).toBe(figure)
+      expect(figure.querySelector("figcaption")?.textContent).toBe("Keep")
+    }
+    else {
+      expect(document.querySelector("figure, figcaption")).toBeNull()
+      expect(document.querySelector("p")?.textContent).toBe("Keep")
+      expect(source.parentElement).toBe(document.body)
+    }
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["", " \n<!--keep-->", "<figcaption>Only caption</figcaption>"])("does not add or style captions on a figure without content: %s", html => {
+    document.body.innerHTML = `<figure>${html}</figure>`
+    const figure = document.querySelector("figure")!
+    $.selectElement(figure)
+    const original = editor.toHTML(true)
+    expect(editor.features.manipulation.addFigureCaption("before")).toBe(false)
+    expect(editor.features.manipulation.setCaption("below", "center")).toBe(false)
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
+  it("does not caption an orphan caption or insert one outside a populated figure", () => {
+    document.body.innerHTML = '<figcaption>Orphan</figcaption><p>Outside</p>'
+    $.selectElement(document.querySelector("figcaption")!)
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    $.move(document.querySelector("p")!.firstChild!, 3)
+    const original = editor.toHTML(true)
+    editor.features.manipulation.insert(document.createElement("figcaption"))
+    const figure = document.createElement("figure")
+    figure.innerHTML = '<figcaption>Only caption</figcaption>'
+    editor.features.manipulation.insert(figure)
+    expect(editor.toHTML(true)).toBe(original)
+  })
+
+  it("converts the surviving caption to prose when the last figure content is deleted, with undo and redo", () => {
+    document.body.innerHTML = '<figure id="original"><!--keep--><picture><img src="photo.png"></picture><figcaption lang="de"><em>Caption</em><!--caption comment--></figcaption></figure><p>Outside</p>'
+    const figure = document.querySelector("figure")!, caption = document.querySelector("figcaption")!
+    const mark = caption.firstChild!, outside = document.querySelector("p")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.selectRange(figure, 1, figure, 2)
+    editor.features.manipulation.delete()
+    expect(document.querySelector("figure, figcaption")).toBeNull()
+    const paragraph = document.querySelector("p")!
+    expect(paragraph.firstChild).toBe(mark)
+    expect(paragraph).toHaveAttribute("lang", "de")
+    expect(paragraph).toHaveAttribute("id", "original")
+    expect(paragraph.innerHTML).toBe('<em>Caption</em><!--caption comment-->')
+    expect(document.body.lastElementChild).toBe(outside)
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    editor.doc.undo()
+    expect(document.querySelector("figure > picture + figcaption")?.textContent).toBe("Caption")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
   it("adds a caption at either valid edge while preserving irregular authored children", () => {
     document.body.innerHTML = '<figure data-origin="remote"><x-media></x-media><img src="photo.png"><p>Notes</p></figure>'
     const figure = document.querySelector("figure")!
