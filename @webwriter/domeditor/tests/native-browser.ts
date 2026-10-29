@@ -19,6 +19,7 @@ import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
 import {checkBoardMedia} from "./board-media"
 import {checkParagraphCut} from "./paragraph-cut"
+import {checkHistorySelection} from "./history-selection"
 import {checkListClipboard} from "./list-clipboard"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
@@ -63,6 +64,7 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 let fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("undo and redo restore and reveal selections in nested scrollers", checkHistorySelection)
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
 await check("canvas starting view frames resize, delete and open without shifting", checkCanvasStartingView)
 await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)

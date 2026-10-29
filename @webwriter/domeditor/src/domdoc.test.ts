@@ -101,6 +101,170 @@ it("reconciles derived DOM metadata with its source edit in one undoable change"
   expect(shared.body.getAttribute("data-count")).toBe("2")
 })
 
+describe("undo and redo selections", () => {
+  afterEach(() => document.getSelection()!.removeAllRanges())
+
+  function fixture(html = "<p>Hello world</p><p>Elsewhere</p>") {
+    const result = createShared(html)
+    document.body.append(result.root)
+    const selection = document.getSelection()!
+    const select = (anchor: Node, offset: number, focus = anchor, end = offset) => {
+      selection.setBaseAndExtent(anchor, offset, focus, end)
+      result.shared.updateLocalSelection()
+    }
+    return {...result, selection, select}
+  }
+
+  it("restores a backwards deletion range and the final caret despite later navigation", () => {
+    const {root, shared, selection, select} = fixture()
+    const text = root.firstChild!.firstChild! as Text
+    select(text, 11, text, 6)
+    text.deleteData(6, 5)
+    selection.collapse(text, 6)
+    shared.syncFromDOM()
+    select(root.lastChild!.firstChild!, 2)
+    shared.undo()
+    expect(text.data).toBe("Hello world")
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(11)
+    expect(selection.focusOffset).toBe(6)
+    expect(selection.toString()).toBe("world")
+    select(root.lastChild!.firstChild!, 1)
+    shared.redo()
+    expect(text.data).toBe("Hello ")
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(6)
+    expect(selection.isCollapsed).toBe(true)
+    shared.undo()
+    expect(selection.toString()).toBe("world")
+  })
+
+  it("keeps the first selection and the last caret of grouped typing, including pending DOM edits", () => {
+    const {root, shared, selection, select} = fixture()
+    const text = root.firstChild!.firstChild! as Text
+    select(text, 5)
+    text.insertData(5, "!")
+    selection.collapse(text, 6)
+    shared.syncFromDOM()
+    text.insertData(6, "?")
+    selection.collapse(text, 7)
+    // undo() must commit this second edit and its final caret itself.
+    shared.undo()
+    expect(text.data).toBe("Hello world")
+    expect(selection.anchorOffset).toBe(5)
+    shared.redo()
+    expect(text.data).toBe("Hello!? world")
+    expect(selection.anchorOffset).toBe(7)
+    expect(shared.canRedo).toBe(false)
+    shared.undo()
+    expect(shared.canUndo).toBe(false)
+  })
+
+  it("restores deleted custom elements and comments without rebuilding unrelated content", () => {
+    const {root, shared, selection, select} = fixture('<section><!--keep--><unknown-history-widget arbitrary="yes"></unknown-history-widget><em>Keep</em></section>')
+    const section = root.firstChild!, retained = section.lastChild!
+    select(section, 1, section, 2)
+    section.childNodes[1].remove()
+    selection.collapse(section, 1)
+    shared.syncFromDOM()
+    shared.undo()
+    expect(section.childNodes[1]).toBeInstanceOf(Element)
+    expect((section.childNodes[1] as Element).localName).toBe("unknown-history-widget")
+    expect(selection.anchorNode).toBe(section)
+    expect(selection.anchorOffset).toBe(1)
+    expect(selection.focusOffset).toBe(2)
+    expect(section.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(section.lastChild).toBe(retained)
+    shared.redo()
+    expect(selection.isCollapsed).toBe(true)
+    expect(selection.anchorOffset).toBe(1)
+    expect(root.innerHTML).toBe("<section><!--keep--><em>Keep</em></section>")
+  })
+
+  it("maps history endpoints through remote text insertion without revealing remote updates", () => {
+    const {root, shared, selection, select} = fixture()
+    const text = root.firstChild!.firstChild! as Text
+    const reveal = vi.fn()
+    shared.observeHistorySelection(reveal)
+    select(text, 6, text, 11)
+    text.deleteData(6, 5)
+    selection.collapse(text, 6)
+    shared.syncFromDOM()
+    const peer = cloneShared(shared)
+    const remoteText = (peer.shared.body.get(0) as Y.XmlElement).get(0) as Y.XmlText
+    remoteText.insert(0, "Remote ")
+    Y.applyUpdate(shared.doc, Y.encodeStateAsUpdate(peer.shared.doc), "remote-client")
+    expect(reveal).not.toHaveBeenCalled()
+    select(root.lastChild!.firstChild!, 0)
+    shared.undo()
+    expect(text.data).toBe("Remote Hello world")
+    expect(selection.toString()).toBe("world")
+    expect(selection.anchorOffset).toBe(13)
+    expect(reveal).toHaveBeenCalledOnce()
+    shared.redo()
+    expect(text.data).toBe("Remote Hello ")
+    expect(selection.anchorOffset).toBe(13)
+    expect(selection.isCollapsed).toBe(true)
+  })
+
+  it("resolves selection endpoints inside a restored subtree across repeated undo and redo", () => {
+    const {root, shared, selection, select} = fixture("<section><p>Restore me</p><!--keep--></section>")
+    const section = root.firstElementChild!, paragraph = section.firstElementChild!
+    select(paragraph.firstChild!, 0, paragraph.firstChild!, 7)
+    paragraph.remove()
+    selection.collapse(section, 0)
+    shared.syncFromDOM()
+    for(let repeat = 0; repeat < 2; repeat++) {
+      shared.undo()
+      expect(selection.toString()).toBe("Restore")
+      expect(selection.anchorNode).toBe(section.firstChild!.firstChild)
+      shared.redo()
+      expect(selection.isCollapsed).toBe(true)
+      expect(selection.anchorNode).toBe(section)
+      expect(selection.anchorOffset).toBe(0)
+    }
+  })
+
+  it("safely skips endpoints in a remotely removed container and does not reveal empty history", () => {
+    const {root, shared, selection, select} = fixture()
+    const text = root.firstChild!.firstChild! as Text
+    select(text, 5)
+    text.insertData(5, "!")
+    selection.collapse(text, 6)
+    shared.syncFromDOM()
+    const reveal = vi.fn()
+    shared.observeHistorySelection(reveal)
+    shared.doc.transact(() => shared.body.delete(0, 1), "remote-client")
+    select(root.lastChild!.firstChild!, 2)
+    expect(() => shared.undo()).not.toThrow()
+    expect(selection.anchorNode).toBe(root.lastChild!.firstChild)
+    expect(selection.anchorOffset).toBe(2)
+    expect(reveal).not.toHaveBeenCalled()
+    shared.undo()
+    shared.redo()
+    expect(reveal).not.toHaveBeenCalled()
+  })
+
+  it("restores disjoint layout selections and keeps history metadata out of the shared DOM", () => {
+    document.body.innerHTML = "<p>first</p><p>middle</p><p>last</p>"
+    document.body.className = "ww-canvas"
+    const shared = new SharedDOMDoc(undefined, undefined, [], ["◆"])
+    sharedDocs.push(shared)
+    const [first, middle, last] = Array.from(document.body.children)
+    $.selectElements([first, last])
+    shared.updateLocalSelection()
+    $.delete()
+    shared.syncFromDOM()
+    shared.undo()
+    expect($.selectedElements.map(element => element.textContent)).toEqual(["first", "last"])
+    expect(document.body.children[1]).toBe(middle)
+    expect(shared.body.toString()).not.toContain("history-selection")
+    expect(shared.awareness.getLocalState()!.selection.ranges).toHaveLength(2)
+    shared.redo()
+    expect(document.body.innerHTML).toBe("<p>middle</p>")
+  })
+})
+
 describe("concurrent minimum-content repairs", () => {
   it.each([1, 2])("converges nested widget repairs without dropping its minimum of %i children", minimum => {
     const makePeer = (ydoc?: Y.Doc) => {

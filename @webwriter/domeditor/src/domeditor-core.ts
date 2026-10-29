@@ -814,6 +814,7 @@ export class DOMEditor {
 
     let result: unknown
     try {
+      this.doc.updateLocalSelection()
       result = handle(ev.data)
     }
     catch(error) {

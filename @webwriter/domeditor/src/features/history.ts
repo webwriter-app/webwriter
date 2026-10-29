@@ -7,7 +7,7 @@ import {
   type VersionHistoryUser,
   type UndoState,
 } from "../editor-bridge"
-import {authoredClassValue, isEditorOwnedAttribute, isOnApple, modifierKeyDown} from "../utility"
+import {authoredClassValue, isAppendixInteraction, isEditorOwnedAttribute, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, modifierKeyDown} from "../utility"
 import {userInitials} from "../user-identity"
 import {hydrateWidgetGroupings} from "../widget-grouping-dom"
 import {safeCssColor} from "../css-color"
@@ -54,7 +54,9 @@ export class HistoryFeature extends EditorFeature {
   #previewObserver: MutationObserver | undefined
   #previewAttributeNames = new WeakMap<Element, Map<string, string>>()
   #unobserveUndoState: (() => void) | undefined
+  #unobserveHistorySelection: (() => void) | undefined
   #undoState: UndoState | undefined
+  protected captureListenerTarget = window
 
   actions = {
     undo: ({}: {type: "undo"}) => {
@@ -96,7 +98,28 @@ export class HistoryFeature extends EditorFeature {
       this.#addComment(checkpointId, text),
   } as const
 
+  // Capture before native defaults and command handlers can mutate live ranges.
+  readonly #rememberSelection = (event: Event) => {
+    if(isAppendixInteraction(event) || isFormControlInteraction(event)
+      || isWidgetShadowInteraction(event, this.editor.schema)) return
+    this.editor.doc.updateLocalSelection()
+  }
+
+  captureListeners: DocumentListenerMap = {
+    beforeinput: this.#rememberSelection,
+    keydown: this.#rememberSelection,
+    cut: this.#rememberSelection,
+    paste: this.#rememberSelection,
+    drop: this.#rememberSelection,
+  }
+
   activeListeners: DocumentListenerMap = {
+    beforeinput: event => {
+      if(event.defaultPrevented || !["historyUndo", "historyRedo"].includes(event.inputType)) return
+      event.preventDefault()
+      if(event.inputType === "historyUndo") this.editor.doc.undo()
+      else this.editor.doc.redo()
+    },
     "keydown": ev => {
       const key = ev.key.toLowerCase()
       if(ev.altKey || ev.getModifierState("AltGraph") || (isOnApple() ? ev.ctrlKey : ev.metaKey)) return
@@ -146,6 +169,7 @@ export class HistoryFeature extends EditorFeature {
     this.#versions = this.editor.doc.doc.getArray<StoredVersion>("version-history-saves")
     super.enable()
     this.#unobserveUndoState = this.editor.doc.observeHistoryState(this.#handleUndoStateChange)
+    this.#unobserveHistorySelection = this.editor.doc.observeHistorySelection(() => this.editor.features.selection.revealSelection())
     this.#handleUndoStateChange()
     this.#checkpoints.observe(this.#handleHistoryChange)
     this.#comments.observe(this.#handleHistoryChange)
@@ -164,6 +188,8 @@ export class HistoryFeature extends EditorFeature {
     this.#cancelCheckpoint()
     this.#unobserveUndoState?.()
     this.#unobserveUndoState = undefined
+    this.#unobserveHistorySelection?.()
+    this.#unobserveHistorySelection = undefined
     this.#undoState = undefined
     this.#checkpoints.unobserve(this.#handleHistoryChange)
     this.#comments.unobserve(this.#handleHistoryChange)

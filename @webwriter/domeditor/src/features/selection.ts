@@ -1999,6 +1999,17 @@ export class SelectionFeature extends EditorFeature {
     }
   }
 
+  /** Explicit restoration must reveal even an unchanged, manually scrolled caret. */
+  revealSelection() {
+    if(focusedWidgetHost()) focusEditorWindow()
+    this.#releaseCaptureSelection()
+    this.clearSelectedSection()
+    this.#endDrag()
+    this.editor.features.table.clearCellSelection(false)
+    this.#lastScrollSelection = null
+    this.processSelection(false)
+  }
+
   /** Normalizes and re-applies exactly one selection kind for the current
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. Passive refreshes

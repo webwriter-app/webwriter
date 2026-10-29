@@ -23,6 +23,9 @@ const HEAD_INITIALIZED_KEY = "head-initialized"
 const LANGUAGE_INITIALIZED_KEY = "language-initialized"
 const ROOT_INITIALIZED_KEY = "root-attributes-initialized"
 const SHARED_DOCUMENT_KEY = "document"
+const historySelection = Symbol("history-selection")
+
+type HistorySelection = {before: RelativeSelection | null, after: RelativeSelection | null}
 
 /** The elected mirror for a document. Older snapshots used top-level types. */
 export function sharedDOMBody(doc: Y.Doc): Y.XmlElement {
@@ -203,6 +206,9 @@ export class SharedDOMDoc {
   readonly #unobserveDataHistory: () => void
   readonly #unobserveDataHistoryState: () => void
   readonly #historyStateObservers = new Set<() => void>()
+  readonly #historySelectionObservers = new Set<() => void>()
+  #pendingHistorySelection: HistorySelection | undefined
+  #restoredHistorySelection: RelativeSelection | null | undefined
   #historyStateQueued = false
   readonly #documentPermalinks: boolean
   readonly #beforeSyncFromDOM?: (local: boolean) => void
@@ -272,6 +278,7 @@ export class SharedDOMDoc {
       trackedOrigins: new Set([this.#domOrigin]),
     })
     stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo, this.#queueHistoryState)
+    this.#trackHistorySelections()
     this.#unobserveDataHistory = this.widgetData.observeHistory(this.#clearRedo)
     this.#unobserveDataHistoryState = this.widgetData.observeHistoryState(this.#queueHistoryState)
 
@@ -389,6 +396,7 @@ export class SharedDOMDoc {
       this.#undoManager.destroy()
       this.#undoManager = new Y.UndoManager(this.#undoScopes(), {trackedOrigins: new Set([this.#domOrigin])})
       stampUndo(this.#undoManager, () => this.#undoGroup, this.#clearRedo, this.#queueHistoryState)
+      this.#trackHistorySelections()
       this.#queueHistoryState()
     }
   }
@@ -603,6 +611,9 @@ export class SharedDOMDoc {
   }
 
   updateLocalSelection(selection: Selection | null = this.#document.getSelection()) {
+    // A command can move the selection before MutationObserver delivers its
+    // edit. Commit first, while the previous relative selection is retained.
+    this.#commitPendingDOMChanges()
     if(!selection?.anchorNode || !selection.focusNode) {
       this.clearSelection()
       return
@@ -753,6 +764,10 @@ export class SharedDOMDoc {
       (selection.anchorNode === this.root || this.root.contains(selection.anchorNode)) &&
       (selection.focusNode === this.root || this.root.contains(selection.focusNode))) {
       this.updateLocalSelection(selection)
+    }
+    if(this.#pendingHistorySelection) {
+      this.#pendingHistorySelection.after = this.#relativeSelection
+      this.#pendingHistorySelection = undefined
     }
   }
 
@@ -1136,6 +1151,35 @@ export class SharedDOMDoc {
     return () => { this.#historyStateObservers.delete(callback) }
   }
 
+  /** Local history restoration only; remote edits must not reveal a selection. */
+  observeHistorySelection(callback: () => void) {
+    this.#historySelectionObservers.add(callback)
+    return () => { this.#historySelectionObservers.delete(callback) }
+  }
+
+  #trackHistorySelections() {
+    const manager = this.#undoManager
+    const capture = ({stackItem}: {stackItem: {meta: Map<unknown, unknown>}}) => {
+      if(manager.undoing || manager.redoing) {
+        const stored = manager.currStackItem?.meta.get(historySelection)
+        if(stored) stackItem.meta.set(historySelection, stored)
+        return
+      }
+      let stored = stackItem.meta.get(historySelection) as HistorySelection | undefined
+      if(!stored) {
+        stored = {before: this.#relativeSelection, after: null}
+        stackItem.meta.set(historySelection, stored)
+      }
+      this.#pendingHistorySelection = stored
+    }
+    manager.on("stack-item-added", capture)
+    manager.on("stack-item-updated", capture)
+    manager.on("stack-item-popped", ({stackItem, type}) => {
+      const stored = stackItem.meta.get(historySelection) as HistorySelection | undefined
+      this.#restoredHistorySelection = stored?.[type === "undo" ? "before" : "after"]
+    })
+  }
+
   readonly #queueHistoryState = () => {
     if(this.#historyStateQueued || !this.#historyStateObservers.size) return
     this.#historyStateQueued = true
@@ -1161,16 +1205,26 @@ export class SharedDOMDoc {
   }
 
   #applyHistory(kind: "undo" | "redo") {
+    this.#restoredHistorySelection = undefined
     const latest = this.#historyManager(kind)
     const stack = (manager: Y.UndoManager) => kind === "undo" ? manager.undoStack : manager.redoStack
     const group = stack(latest).at(-1)?.meta.get(widgetDataHistoryGroup)
-    if(!group) { latest[kind](); return }
-    // Data must be undone before DOM edits can remove its binding; redo the
-    // DOM first so restored widgets are present when data is rendered.
-    const data = this.widgetData.historyManagers(kind)
-    const managers = kind === "undo" ? [...data, this.#undoManager] : [this.#undoManager, ...data]
-    for(const manager of new Set(managers)) {
-      if(stack(manager).at(-1)?.meta.get(widgetDataHistoryGroup) === group) manager[kind]()
+    if(!group) latest[kind]()
+    else {
+      // Data must be undone before DOM edits can remove its binding; redo the
+      // DOM first so restored widgets are present when data is rendered.
+      const data = this.widgetData.historyManagers(kind)
+      const managers = kind === "undo" ? [...data, this.#undoManager] : [this.#undoManager, ...data]
+      for(const manager of new Set(managers)) {
+        if(stack(manager).at(-1)?.meta.get(widgetDataHistoryGroup) === group) manager[kind]()
+      }
+    }
+    const selection = this.#restoredHistorySelection
+    if(selection && this.#domSelection(selection)) {
+      this.#relativeSelection = selection
+      this.awareness.setLocalStateField("selection", selection)
+      this.writeSelection()
+      this.#historySelectionObservers.forEach(callback => callback())
     }
   }
 
@@ -1187,6 +1241,7 @@ export class SharedDOMDoc {
     this.#unobserveDataHistory()
     this.#unobserveDataHistoryState()
     this.#historyStateObservers.clear()
+    this.#historySelectionObservers.clear()
     this.#minimumRepairs.clear()
     this.stopObserve()
     if(this.#ownsWidgetData) this.widgetData.destroy()

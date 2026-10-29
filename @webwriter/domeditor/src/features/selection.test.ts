@@ -2859,6 +2859,21 @@ describe("scrolling selections into view", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(rect)
   }
 
+  it("explicitly reveals an unchanged caret again after manual scrolling", () => {
+    const paragraph = el("p", "hello")
+    setCaretRect(new DOMRect(10, window.innerHeight + 40, 0, 20))
+    const scroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    try {
+      $.move(paragraph.firstChild!, 2)
+      feature.processSelection()
+      feature.processSelection()
+      expect(scroll).toHaveBeenCalledOnce()
+      feature.revealSelection()
+      expect(scroll).toHaveBeenCalledTimes(2)
+    }
+    finally { vi.restoreAllMocks() }
+  })
+
   it.each(["ul", "p", "canvas-widget"])("does not reveal BODY when modifier-click deselects a canvas %s", tag => {
     document.body.className = "ww-canvas"
     const item = el(tag)
