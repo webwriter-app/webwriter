@@ -1282,6 +1282,14 @@ export class EditingSelection {
       fragment.append(wrapper)
       sharedMark = sharedMark.parentElement
     }
+    // A range inside heading text omits the heading itself. Keep its level
+    // available for a later paste at a structural gap.
+    if(sharedMark && /^h[1-6]$/.test(sharedMark.localName) && !sharedMark.hasAttribute("is")) {
+      const wrapper = cloneInert(sharedMark)
+      wrapper.append(fragment)
+      fragment = wrapper.ownerDocument.createDocumentFragment()
+      fragment.append(wrapper)
+    }
     return fragment
   }
 

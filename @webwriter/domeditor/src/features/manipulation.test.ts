@@ -3435,6 +3435,80 @@ describe("insertion beside a lone float", () => {
 })
 
 describe("paste()", () => {
+  it.each(["native", "native-cut", "beforeinput", "async"].flatMap(method =>
+    ["gap-before", "gap-after", "caret", "range", "empty-block", "element"].map(target => ({method, target})),
+  ))("pastes copied heading text according to the destination ($method, $target)", async ({method, target}) => {
+    document.body.innerHTML = '<h2 id="source" title="authored"><b><i>Heading</i></b><!--source--></h2><section><!--keep--><p title="destination">hello</p><test-widget>Widget</test-widget></section>'
+    const source = document.querySelector("h2")!, paragraph = document.querySelector("p")!, widget = document.querySelector("test-widget")!
+    const text = source.querySelector("i")!.firstChild!
+    $.selectRange(text, 1, text, 5)
+    const data = new DataTransfer()
+    if(method === "async") await editor.features.manipulation.copy()
+    else document.dispatchEvent(new ClipboardEvent(method === "native-cut" ? "cut" : "copy", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    if(target === "gap-before") $.selectGap(paragraph, "before")
+    else if(target === "gap-after") $.selectGap(paragraph)
+    else if(target === "element") $.selectElement(paragraph)
+    else if(target === "empty-block") { paragraph.replaceChildren(); $.move(paragraph) }
+    else if(target === "range") $.selectRange(paragraph.firstChild!, 1, paragraph.firstChild!, 4)
+    else $.move(paragraph.firstChild!, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    if(method === "async") await editor.features.manipulation.paste()
+    else {
+      const event = method === "beforeinput"
+        ? new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true})
+        : new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+
+    const structural = target.startsWith("gap") || target === "element"
+    expect(document.querySelectorAll("h2")).toHaveLength(structural ? 2 : 1)
+    if(structural) {
+      const pasted = document.querySelector("section h2")!
+      expect(pasted.innerHTML).toBe("<b><i>eadi</i></b>")
+      expect(pasted.getAttribute("title")).toBe("authored")
+      if(target === "gap-before") expect(pasted.nextElementSibling).toBe(paragraph)
+      else if(target === "gap-after") expect(pasted.previousElementSibling).toBe(paragraph)
+      else expect(paragraph.isConnected).toBe(false)
+    }
+    else {
+      expect(paragraph.innerHTML).toBe(target === "range" ? "h<b><i>eadi</i></b>o" : target === "empty-block" ? "<b><i>eadi</i></b>" : "he<b><i>eadi</i></b>llo")
+      expect(paragraph.getAttribute("title")).toBe("destination")
+    }
+    expect(document.querySelector("#source")).toBe(source)
+    expect(document.querySelector("test-widget")).toBe(widget)
+    expect(document.querySelector("section")!.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+    const changed = editor.toHTML(true)
+    expect(changed).not.toContain("◆")
+    expect(changed).not.toContain("webwriter-clipboard")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe(original)
+    editor.doc.redo()
+    expectBodyToBe(changed)
+  })
+
+  it.each(["h3", "li", "figcaption"])("pastes heading text within existing marked %s content", tag => {
+    const content = `<${tag}>before <b><i>hello</i></b><!--keep--> after</${tag}>`
+    document.body.innerHTML = tag === "li" ? `<ul>${content}</ul>` : tag === "figcaption" ? `<figure><img src="test.png">${content}</figure>` : content
+    const container = document.querySelector(tag)!, mark = container.querySelector("i")!
+    $.selectRange(mark.firstChild!, 1, mark.firstChild!, 4)
+    const data = new DataTransfer()
+    data.setData("text/html", "<h1>Title</h1>")
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expect(document.querySelector("h1")).toBeNull()
+    expect(document.querySelector(tag)).toBe(container)
+    expect(container.querySelector("i")).toBe(mark)
+    expect(mark.textContent).toBe("hTitleo")
+    expect(container.innerHTML).toContain("<!--keep-->")
+  })
+
   it.each(["native", "beforeinput", "async"].flatMap(method => [false, true].map(internal => ({method, internal}))))("strips clipboard charset metadata when replacing select-all ($method, internal=$internal)", async ({method, internal}) => {
     document.body.innerHTML = "<p>old</p>"
     editor.doc.syncFromDOM()
@@ -3503,6 +3577,8 @@ describe("paste()", () => {
   })
 
   it("keeps block HTML at the document root on native paste", () => {
+    document.body.replaceChildren()
+    $.move(document.body)
     const clipboardData = new DataTransfer()
     clipboardData.setData("text/html", "<h1>Heading</h1>")
     const event = new ClipboardEvent("paste", {bubbles: true, cancelable: true, clipboardData})
@@ -3564,7 +3640,7 @@ describe("paste()", () => {
 
     expectBodyToBe("<p>h<b>new</b>o</p>")
   })
-  it("places pasted blocks beside the split paragraph", async () => {
+  it("inserts pasted heading text into the existing paragraph", async () => {
     await navigator.clipboard.write([new ClipboardItem({
       "text/plain": "Title",
       "text/html": "<h1>Title</h1>",
@@ -3574,7 +3650,7 @@ describe("paste()", () => {
 
     await editor.features.manipulation.paste()
 
-    expectBodyToBe('<p>he</p><h1 id="title">Title</h1><p>llo</p>')
+    expectBodyToBe('<p>heTitlello</p>')
   })
   it("preserves a pasted custom element between paragraph halves", async () => {
     await navigator.clipboard.write([new ClipboardItem({

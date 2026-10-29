@@ -1101,6 +1101,17 @@ describe("slice/copy()", () => {
     expect(fragment.firstElementChild?.outerHTML).toBe("<b>ell</b>")
     expect(document.body.innerHTML).toBe("<p><b>hello</b></p>")
   })
+  it.each(["h1", "h2", "h3", "h4", "h5", "h6"])("retains the %s around copied heading text and nested marks", tag => {
+    setBody(`<${tag} title="authored"><b><i>Heading</i></b><!--keep--></${tag}><p>Other</p>`)
+    const text = document.querySelector("i")!.firstChild!
+    $.selectRange(text, 1, text, 5)
+
+    const fragment = $.copy()
+
+    expect(fragment.firstElementChild?.outerHTML).toBe(`<${tag} title="authored"><b><i>eadi</i></b></${tag}>`)
+    expect(fragment.ownerDocument.defaultView).toBeNull()
+    expect(document.body.innerHTML).toBe(`<${tag} title="authored"><b><i>Heading</i></b><!--keep--></${tag}><p>Other</p>`)
+  })
   it.each([
     ["ol", '<li>First</li><!--keep--><li><b>Second</b><my-widget></my-widget></li>'],
     ["ul", '<li>First</li><!--keep--><li><b>Second</b><my-widget></my-widget></li>'],

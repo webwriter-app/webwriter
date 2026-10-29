@@ -2772,6 +2772,23 @@ export class ManipulationFeature extends EditorFeature {
     })
   }
 
+  /** A single heading joins an existing text container as inline content.
+   * Gaps and whole-element replacements retain its authored heading level. */
+  private insertPastedFragment(fragment: DocumentFragment) {
+    this.selectCapturedElementForInsertion()
+    const container = $.anchorContainer
+    if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
+      && container && container === $.focusContainer && !isDocumentRoot(container)
+      && !isAtomicEditingElement(container, this.editor.schema)) {
+      const nodes = Array.from(fragment.childNodes).filter(node => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim())
+      const heading = nodes.length === 1 ? nodes[0] : null
+      if(isElement(heading) && /^h[1-6]$/.test(heading.localName) && !heading.hasAttribute("is")) {
+        heading.replaceWith(...heading.childNodes)
+      }
+    }
+    return this.insertClipboardFragment(fragment)
+  }
+
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false) {
@@ -3448,11 +3465,14 @@ export class ManipulationFeature extends EditorFeature {
         ev.preventDefault()
         const html = ev.dataTransfer?.getData("text/html")
         if(html && this.editor.features.migration.needsMigration(html)) {
-          void this.#insertMigratedClipboardContent(html)
+          void this.#insertMigratedClipboardContent(html, undefined, ev.inputType === "insertFromPaste")
           return
         }
         const fragment = this.#dataTransferToFragment(ev.dataTransfer)
-        if(fragment) this.insertClipboardFragment(fragment)
+        if(fragment) {
+          if(ev.inputType === "insertFromPaste") this.insertPastedFragment(fragment)
+          else this.insertClipboardFragment(fragment)
+        }
         return
       }
       if($.isMultiElementSelection || $.excludedFlowElements.length) {
@@ -3535,7 +3555,7 @@ export class ManipulationFeature extends EditorFeature {
       const fragment = this.#dataTransferToFragment(ev.clipboardData)
       if(fragment) {
         ev.preventDefault()
-        this.insertClipboardFragment(fragment)
+        this.insertPastedFragment(fragment)
       }
       else if($.isGapSelection || $.isEmptyDocumentSelection) {
         this.ensureTextBlock()
@@ -3553,7 +3573,7 @@ export class ManipulationFeature extends EditorFeature {
       const selected = $.selectedElement
       const fragment = $.copy()
       if(selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length
-        && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu"))) return
+        && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6"))) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment)
       ev.clipboardData.setData("text/html", html)
@@ -4000,7 +4020,7 @@ export class ManipulationFeature extends EditorFeature {
     if(this.editor.features.graphic.textInsertionGraphic) return this.editor.features.graphic.paste()
     if(!navigator.clipboard?.read) return false
     const fragment = await this.#clipboardToFragment()
-    this.insertClipboardFragment(fragment)
+    this.insertPastedFragment(fragment)
     return true
   }
 
@@ -4334,11 +4354,12 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Lets package migrations update pasted or dropped widgets before insertion. */
-  async #insertMigratedClipboardContent(html: string, dropEvent?: MouseEvent) {
+  async #insertMigratedClipboardContent(html: string, dropEvent?: MouseEvent, paste = true) {
     const migrated = await this.#migrateAtSelection(html)
     if(migrated === null) return false
     const fragment = this.#clipboardContentToFragment(migrated, "")
     if(dropEvent) this.insertDroppedFragment(fragment, dropEvent, $.range)
+    else if(paste) this.insertPastedFragment(fragment)
     else this.insertClipboardFragment(fragment)
     return true
   }
