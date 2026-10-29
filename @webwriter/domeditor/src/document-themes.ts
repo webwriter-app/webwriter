@@ -38,7 +38,7 @@ export function ensureDefaultDocumentTheme(root: Document) {
 /** All bundled themes share a low-priority layer in editing and exports. */
 export const editingDocumentThemeSource = (theme: DocumentTheme) => theme.source
 
-/** Default sizing for installed widget hosts in document layouts. Tag names
+/** Default sizing and inherited text colors for installed widgets. Tag names
  * come from the widget schema so arbitrary custom elements remain supported. */
 export function documentWidgetStyleSource(widgets: Iterable<Pick<WidgetSchemaDefinition, "tagName" | "editingConfig">>) {
   const definitions = [...new Map([...widgets].filter(widget => widget.tagName.includes("-"))
@@ -53,5 +53,7 @@ export function documentWidgetStyleSource(widgets: Iterable<Pick<WidgetSchemaDef
   const blockTags = definitions.filter(widget => widget.editingConfig?.inline !== true).map(widget => escape(widget.tagName.toLowerCase()))
   const inlineTags = definitions.filter(widget => widget.editingConfig?.inline === true).map(widget => escape(widget.tagName.toLowerCase()))
   const layoutSelector = `body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])`
-  return `${layoutSelector} :is(${selector}) {\n  box-sizing: border-box;\n  max-inline-size: min(100%, var(--ww-widget-max, var(--ww-prose-max, 45rem)));\n}${blockTags.length ? `\n${layoutSelector} :is(${blockTags.join(", ")}):not([hidden]) {\n  display: block;\n}` : ""}${inlineTags.length ? `\n${layoutSelector} :is(${inlineTags.join(", ")}):not([hidden]) {\n  display: inline-block;\n}` : ""}`
+  // Theme paragraph colors must not override a widget's slotted text color
+  // (for example, white text inside a dark hint popup). Authored styles still win.
+  return `@layer webwriter-theme {\n:is(${selector}) p {\n  color: inherit;\n}\n}\n${layoutSelector} :is(${selector}) {\n  box-sizing: border-box;\n  max-inline-size: min(100%, var(--ww-widget-max, var(--ww-prose-max, 45rem)));\n}${blockTags.length ? `\n${layoutSelector} :is(${blockTags.join(", ")}):not([hidden]) {\n  display: block;\n}` : ""}${inlineTags.length ? `\n${layoutSelector} :is(${inlineTags.join(", ")}):not([hidden]) {\n  display: inline-block;\n}` : ""}`
 }

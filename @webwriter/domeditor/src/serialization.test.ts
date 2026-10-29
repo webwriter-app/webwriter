@@ -52,7 +52,8 @@ it("serializes default sizing for installed nested widgets without affecting oth
   const style = root.querySelector<HTMLStyleElement>("#webwriter-widget-sizing")!
   expect(style.textContent).toContain("body:not([class~=\"ww-canvas\"]):not([class~=\"ww-slides\"]):not([class~=\"ww-board\"]) :is(demo-widget)")
   expect(style.textContent).toContain("max-inline-size: min(100%, var(--ww-widget-max, var(--ww-prose-max, 45rem)));")
-  expect(style.textContent).toContain(":is(demo-widget) {\n  display: block;")
+  expect(style.textContent).toContain(":is(demo-widget):not([hidden]) {\n  display: block;")
+  expect(style.textContent).toContain(":is(demo-widget) p {\n  color: inherit;")
   appendSerializedAssets(root, [pkg])
   expect(root.querySelectorAll("#webwriter-widget-sizing")).toHaveLength(1)
   root.body.className = "ww-canvas"

@@ -113,7 +113,7 @@ export class WidgetFeature extends EditorFeature {
     const current = this.#contentNodes(element)
     if(current.length !== original.length || current.some((child, index) => child !== original[index])) return
     const selection = document.getSelection()
-    const moveSelection = !initial && selection?.isCollapsed && selection.anchorNode === element
+    const moveSelection = selection?.isCollapsed && selection.anchorNode === element
     content.forEach((child, index) => {
       if(!existing.has(child)) element.insertBefore(child, content.slice(index + 1).find(next => existing.has(next)) ?? null)
     })

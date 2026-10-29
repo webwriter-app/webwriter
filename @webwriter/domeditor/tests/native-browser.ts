@@ -7,7 +7,7 @@ import {Schema} from "../src/schema"
 import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode} from "../src/utility"
-import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
+import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
@@ -2138,6 +2138,60 @@ await check("widget shadow interactions capture hosts while slotted children sta
       assert(!editor.toHTML(true).includes("◆"), "capture artifacts leaked into serialized content")
     }
     finally { input.blur(); widget.remove() }
+  }
+})
+
+await check("widget-created hints retain their caret and inherit popup text colors", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:700px;height:350px"
+  frame.srcdoc = '<!doctype html><body><p>Outside</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "hint fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const widgets = [
+      {tagName: "native-hint-task", editingConfig: {content: "flow*"}},
+      {tagName: "native-hint-content", editingConfig: {content: "p"}},
+    ]
+    editor.schema.extendWidgets(widgets)
+    const theme = doc.createElement("style"), widgetStyle = doc.createElement("style")
+    widgetStyle.textContent = documentWidgetStyleSource(widgets)
+    doc.head.append(theme, widgetStyle)
+    const task = doc.createElement("native-hint-task")
+    const root = task.attachShadow({mode: "open"})
+    root.innerHTML = '<button>Add hint</button><div style="color:rgb(250, 250, 250);background:#444;max-width:200px;padding:8px"><slot name="hint"></slot></div>'
+    doc.body.append(task)
+    editor.features.widget.refresh()
+    const button = root.querySelector("button")!
+    button.addEventListener("click", () => {
+      const hint = doc.createElement("native-hint-content")
+      hint.slot = "hint"
+      hint.attachShadow({mode: "open"}).innerHTML = '<slot></slot>'
+      task.append(hint)
+      doc.getSelection()!.setBaseAndExtent(hint, 0, hint, 0)
+    })
+    button.dispatchEvent(new doc.defaultView!.PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true}))
+    button.focus()
+    button.click()
+    await layoutFrame()
+    const hint = task.firstElementChild!, paragraph = hint.querySelector("p")!
+    assert(paragraph && doc.getSelection()!.anchorNode === paragraph, "widget-created caret did not enter its required paragraph")
+    assert(!editor.features.selection.isCaptureSelection, "hint selection retained shadow button capture")
+    doc.execCommand("insertText", false, "Helpful hint")
+    assert(paragraph.textContent === "Helpful hint", "native typing escaped the hint")
+    for(const preset of documentThemes) {
+      theme.textContent = preset.source
+      assert(view.getComputedStyle(paragraph).color === "rgb(250, 250, 250)", `${preset.value} theme overrode the popup text color`)
+    }
+    paragraph.style.color = "rgb(255, 200, 100)"
+    assert(view.getComputedStyle(paragraph).color === "rgb(255, 200, 100)", "widget defaults overrode an authored color")
+    assert(!editor.toHTML(true).includes("◆"), "hint editing artifacts leaked into serialization")
+  }
+  finally {
+    ;(frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
   }
 })
 

@@ -140,6 +140,22 @@ describe("editing nested widget pages", () => {
 })
 
 describe("widget content after local edits", () => {
+  it("moves a widget-created caret into its initial required paragraph", () => {
+    document.body.innerHTML = '<section><p>Keep</p></section>'
+    const parent = document.querySelector("section")!
+    const hint = document.createElement("prompt-widget")
+    parent.prepend(hint)
+    document.getSelection()!.setBaseAndExtent(hint, 0, hint, 0)
+
+    sync()
+
+    expect(hint.firstElementChild?.localName).toBe("p")
+    expect(document.getSelection()!.anchorNode).toBe(hint.firstElementChild)
+    expect(document.getSelection()!.anchorOffset).toBe(0)
+    expect(parent.lastElementChild?.textContent).toBe("Keep")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("restores an empty paragraph when the last required child is removed", () => {
     document.body.innerHTML = '<prompt-widget><p>authored</p></prompt-widget>'
     const widget = document.querySelector("prompt-widget")!

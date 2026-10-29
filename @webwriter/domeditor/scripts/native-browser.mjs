@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "widget-created hints retain their caret and inherit popup text colors",
   "widget shadow interactions capture hosts while slotted children stay editable",
   "nested widget pages keep insertion, splitting and deletion inside their hosts",
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",

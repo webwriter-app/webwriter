@@ -164,6 +164,29 @@ describe("gap clicks inside widget pages", () => {
 })
 
 describe("contentful widget top-bar capture", () => {
+  it("releases shadow button capture when a widget selects newly inserted authored text", () => {
+    editor.schema.extendWidgets([{tagName: "hint-task", editingConfig: {content: "flow*"}}])
+    const widget = document.createElement("hint-task")
+    const root = widget.attachShadow({mode: "open"})
+    root.innerHTML = '<button>Add hint</button><slot></slot>'
+    appendToBody(widget)
+    editor.features.widget.refresh()
+    const button = root.querySelector("button")!
+    button.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true}))
+    button.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+
+    const hint = document.createElement("p")
+    widget.append(hint)
+    document.getSelection()!.setBaseAndExtent(hint, 0, hint, 0)
+    feature.processSelection(false, {scrollIntoView: false})
+
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(document.getSelection()!.anchorNode).toBe(hint)
+    expect(hint).toHaveClass("◆empty-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+  })
+
   it.each([
     ["open", "document"], ["closed", "document"],
     ["open", "canvas"], ["closed", "canvas"],

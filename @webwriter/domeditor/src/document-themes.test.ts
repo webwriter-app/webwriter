@@ -23,6 +23,7 @@ describe("document themes", () => {
       {tagName: "demo-contents", editingConfig: {inline: true}},
     ])
     expect(source).toContain("body:not([class~=\"ww-canvas\"]):not([class~=\"ww-slides\"]):not([class~=\"ww-board\"]) :is(demo-card, demo-contents, demo-inline)")
+    expect(source).toContain("@layer webwriter-theme {\n:is(demo-card, demo-contents, demo-inline) p {\n  color: inherit;")
     expect(source).toContain("max-inline-size: min(100%, var(--ww-widget-max, var(--ww-prose-max, 45rem)));")
     expect(source).toContain(":is(demo-card):not([hidden]) {\n  display: block;")
     expect(source).toContain(":is(demo-inline, demo-contents):not([hidden]) {\n  display: inline-block;")

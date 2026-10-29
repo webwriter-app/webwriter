@@ -2025,8 +2025,8 @@ export class SelectionFeature extends EditorFeature {
     const authoredFocus = nativeRange?.anchorNode && nativeRange.focusNode
       && shadowOwner?.contains(nativeRange.anchorNode) && shadowOwner.contains(nativeRange.focusNode)
       && ($.isTextSelection || $.isEmptySelection || $.isGapSelection)
-    const shadowFocused = shadowOwner && (shadowOwner.shadowRoot?.activeElement
-      || this.#focusedContentfulShadow === shadowOwner && !authoredFocus)
+    const shadowFocused = shadowOwner && !authoredFocus && (shadowOwner.shadowRoot?.activeElement
+      || this.#focusedContentfulShadow === shadowOwner)
     const capturedWidget = this.#capturedElement
     if(!shadowFocused && capturedWidget && isContentfulWidget(capturedWidget, this.editor.schema)
       && nativeRange?.anchorNode && nativeRange.focusNode
