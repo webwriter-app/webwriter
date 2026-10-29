@@ -1,4 +1,5 @@
 import type {DOMEditor} from "../src/domeditor"
+import {previewFrameHTML} from "../src/frame-document"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
 
@@ -92,10 +93,25 @@ export async function checkCanvasStartingView() {
     assert(bounds.getAttribute("style") === authoredBounds, "Starting view button reset the existing authored bounds")
     const saved = editor.toHTML()
     assert(!saved.includes('part="canvas-starting-view"') && !saved.includes('part="canvas-starting-view-label"') && !saved.includes("◆element-selected"), "frame UI leaked into export")
-    for(const [width, height] of [[900, 600], [450, 700], [1400, 400]]) {
+    // Documents created before starting views lack the portable hiding rule.
+    // The editor's adopted layout stylesheet masks that omission until preview.
+    const legacy = new DOMParser().parseFromString(saved, "text/html")
+    for(const style of legacy.head.querySelectorAll("style")) {
+      style.textContent = style.textContent!.replace(/div\.ww-canvas-starting-view:not\(\[is\]\) \{[^}]*\}/g, "")
+    }
+    const widget = legacy.createElement("starting-view-widget")
+    widget.style.cssText = "position:absolute;left:100px;top:100px;width:240px;height:120px;background:white"
+    widget.innerHTML = '<button>Light DOM action</button><input aria-label="Light DOM answer">'
+    legacy.body.insertBefore(widget, legacy.body.firstChild)
+    const previewHTML = previewFrameHTML(legacy.cloneNode(true) as Document, {
+      bridgeNonce: "canvas-starting-view-test", packages: [], importMap: null,
+      hostOrigin: location.origin, frameOrigin: location.origin,
+      entryURL: new URL("../src/preview-entry.ts", import.meta.url).href, executeScripts: true,
+    })
+    for(const html of [legacy.documentElement.outerHTML, previewHTML]) for(const [width, height] of [[900, 600], [450, 700], [1400, 400]]) {
       preview.style.cssText = `width:${width}px;height:${height}px;border:0`
       // Record the camera on the very first animation frame, before load.
-      preview.srcdoc = saved.replace("<head>", '<head><script>window.firstCamera = new Promise(resolve => requestAnimationFrame(() => resolve(document.body?.shadowRoot?.querySelector("slot")?.style.transform)))</script>')
+      preview.srcdoc = html.replace("<head>", '<head><script>window.firstCamera = new Promise(resolve => requestAnimationFrame(() => resolve(document.body?.shadowRoot?.querySelector("slot")?.style.transform)))</script>')
       const loaded = new Promise<void>(resolve => preview.addEventListener("load", () => resolve(), {once: true}))
       document.body.append(preview)
       await loaded
@@ -107,6 +123,26 @@ export async function checkCanvasStartingView() {
       assert(Math.abs((result.left + result.right) / 2 - width / 2) < 1 && Math.abs((result.top + result.bottom) / 2 - height / 2) < 1, "reader did not center starting view")
       assert(result.width <= width + 1 && result.height <= height + 1 && (Math.abs(result.width - width) < 1 || Math.abs(result.height - height) < 1), "reader did not fit starting view to available screen")
       assert(!output.body.shadowRoot!.querySelector("[part=canvas-starting-view]"), "reader exposes the dotted editing outline")
+      const outputWidget = output.querySelector<HTMLElement>("starting-view-widget")!
+      const shadow = outputWidget.attachShadow({mode: "open"})
+      shadow.innerHTML = '<slot></slot><button>Shadow action</button><input aria-label="Shadow answer">'
+      const pan = output.body.shadowRoot!.querySelector<HTMLButtonElement>('[name="hand"]')!
+      // Even with the hand tool enabled, widget controls own their input.
+      pan.click()
+      for(const root of [outputWidget, shadow]) {
+        const action = root.querySelector<HTMLButtonElement>("button")!, input = root.querySelector<HTMLInputElement>("input")!
+        const rect = action.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+        assert(output.elementFromPoint(x, y) === (root === shadow ? outputWidget : action), "starting bounds cover a widget control")
+        if(root === shadow) assert(shadow.elementFromPoint(x, y) === action, "widget shadow action is unreachable")
+        const pointer = new (preview.contentWindow as Window & typeof globalThis).PointerEvent("pointerdown", {button: 0, pointerId: 12, clientX: x, clientY: y, bubbles: true, composed: true, cancelable: true})
+        action.dispatchEvent(pointer)
+        assert(!pointer.defaultPrevented && !output.body.classList.contains("◆canvas-panning"), "reader stole widget input")
+        let clicked = false
+        action.addEventListener("click", () => { clicked = true }, {once: true})
+        action.click()
+        input.focus()
+        assert(clicked && (root === shadow ? shadow.activeElement : output.activeElement) === input, "widget action or editable input failed")
+      }
       preview.remove()
     }
     editor.appendix.querySelector('[name="delete-starting-view"] path')!.dispatchEvent(new view.MouseEvent("click", {bubbles: true, composed: true}))

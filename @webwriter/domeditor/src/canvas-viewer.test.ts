@@ -77,6 +77,25 @@ describe("standalone canvas reader", () => {
     expect(reader.viewer.zoom).toBe(1)
   })
 
+  it("keeps starting bounds out of hit testing without relying on saved layout styles", async () => {
+    document.body.innerHTML += '<div class="ww-canvas-starting-view" style="position:absolute;width:900px;height:600px"></div>'
+    const frame = canvasStartingView()!
+    const authored = document.body.innerHTML
+    expect(getComputedStyle(frame).pointerEvents).not.toBe("none")
+    reader = mountCanvasReader()!
+    expect(getComputedStyle(frame).visibility).toBe("hidden")
+    expect(getComputedStyle(frame).pointerEvents).toBe("none")
+    expect(document.body.innerHTML).toBe(authored)
+    const replacement = frame.cloneNode(true) as HTMLDivElement
+    frame.replaceWith(replacement)
+    await settle()
+    expect(getComputedStyle(replacement).pointerEvents).toBe("none")
+    expect(getComputedStyle(document.querySelector("test-widget")!).visibility).not.toBe("hidden")
+    reader.destroy()
+    expect(getComputedStyle(replacement).pointerEvents).not.toBe("none")
+    expect(document.body.innerHTML).toBe(authored)
+  })
+
   it("keeps authored nodes unchanged while navigating and restores the existing appendix", () => {
     const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
     const slot = document.createElement("slot")
