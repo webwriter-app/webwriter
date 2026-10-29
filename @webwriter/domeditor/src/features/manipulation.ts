@@ -936,38 +936,6 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
-  private floatInsertionContainer(element?: Element, allowEmpty = false) {
-    const selection = document.getSelection()
-    if(!selection?.rangeCount || !selection.isCollapsed || $.isGapSelection
-      || this.editor.features.canvas.active || this.editor.features.slides.active) return null
-    const container = this.floatContainer(selection.getRangeAt(0).startContainer, element)
-    return container && !container.matches("details > summary") && (this.isTextBlock(container) || isSectionElement(container) && this.editor.schema.isBlock(container)
-      && Array.from(container.childNodes).some(child => child instanceof Text || isElement(child) && isMarkElement(child)))
-      && (allowEmpty || container.localName !== "p" || Boolean(container.textContent?.trim())) ? container : null
-  }
-
-  private insertFloat(node: Node, side: "left" | "right" = "right", allowEmpty = false, anyBlock = false) {
-    if(this.ribbonDropInsertion) return false
-    if(getContainer($.range.startContainer).closest("p:not([is])")) return false
-    const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : null
-    const element = node instanceof DocumentFragment && (node.childNodes.length === 1 || anyBlock && node.children.length === 1
-      && Array.from(node.childNodes).every(child => isElement(child) || child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim()))
-      ? node.firstElementChild : node
-    if(!isElement(element) || element.namespaceURI === MATH_NAMESPACE
-      || !(element.matches(mediaElementSelector) || this.insertedWidget(element) && !isContentfulWidget(element, this.editor.schema)
-        || anyBlock && !this.editor.schema.isPhrasing(element) && this.editor.schema.get(element).group?.includes("flow"))) return false
-    const container = this.floatInsertionContainer(element, allowEmpty)
-    if(!container) return false
-    if(anyBlock && !element.matches(mediaElementSelector) && !this.insertedWidget(element)
-      && !this.editor.schema.canInsert(container.parentElement!, element, Array.from(container.parentElement!.childNodes).indexOf(container))) return false
-    if(!this.placeFloat(element, container, side)) return false
-    if(nodes && anyBlock) container.before(...nodes)
-    if(this.insertedWidget(element)) this.editor.features.selection.captureElement(element)
-    else $.selectElement(element)
-    this.editor.postSelectionPath(true)
-    return true
-  }
-
   private hoverInsertion(hovered: boolean, tag?: string) {
     this.insertionPreviewSource = hovered && tag && insertionMenuItems.some(item => item.tag === tag) ? this.ribbonElement(tag) : undefined
     this.insertionHovered = hovered && this.isEnabled && !this.editor.isEditingLocked
@@ -1669,7 +1637,7 @@ export class ManipulationFeature extends EditorFeature {
       range.selectNodeContents(slide); range.collapse(false)
       this.editor.features.selection.selectDropRange(range, {scrollIntoView: false})
       const before = Array.from(slide.children)
-      this.insertClipboardFragment(fragment, false)
+      this.insertClipboardFragment(fragment)
       const added = Array.from(slide.children).filter(element => !before.includes(element))
       this.placeRibbonElements(added, slide, point)
       return
@@ -1679,7 +1647,7 @@ export class ManipulationFeature extends EditorFeature {
     if(container && isElement(element) && this.placeFloat(element, container, this.floatSide(container, event.clientX))) $.selectElement(element)
     else {
       const elements = Array.from(fragment.children)
-      this.insertClipboardFragment(fragment, false)
+      this.insertClipboardFragment(fragment)
       for(const element of elements) if(element.isConnected) this.clearDropFloat(element)
     }
   }
@@ -2797,7 +2765,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
-  private insertClipboardFragment(fragment: DocumentFragment, allowFloat = true, commandInsertion = false) {
+  private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false) {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(commandInsertion) {
       this.hoverInsertion(false)
@@ -2805,7 +2773,6 @@ export class ManipulationFeature extends EditorFeature {
       this.moveCommandInsertionOutsideFloat()
     }
     this.selectCapturedElementForInsertion()
-    if(allowFloat && !commandInsertion && this.insertFloat(fragment)) return
     this.moveInsertionAfterLoneFloat(Array.from(fragment.childNodes))
     for(const math of Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
@@ -2827,7 +2794,7 @@ export class ManipulationFeature extends EditorFeature {
     const isInlineContent = nodes.every(node => this.isInlineClipboardNode(node))
     if(this.editor.features.slides.active && (!isInlineContent || nodes.some(node => node instanceof Element && !isMarkElement(node) && !node.matches("br,wbr"))) && !isSlide($.range.startContainer)) {
       fragment.replaceChildren(...nodes)
-      this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, false, commandInsertion))
+      this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, commandInsertion))
       return
     }
     const widget = nodes.length === 1 ? this.insertedWidget(nodes[0]) : null
@@ -3615,7 +3582,7 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
-    if(isElement(node) && !node.parentNode && getContainer($.range.startContainer).closest("p:not([is])")) {
+    if(isElement(node) && !node.parentNode) {
       const entry = this.editor.schema.get(node)
       if(entry.wrapper || entry.replacement || entry.requiredAttributes) {
         const fragment = document.createDocumentFragment()
@@ -3635,7 +3602,6 @@ export class ManipulationFeature extends EditorFeature {
       if(commandInsertion) this.moveCommandInsertionOutsideFloat()
       this.selectCapturedElementForInsertion()
     }
-    if(node && !commandInsertion && this.insertFloat(node)) return
     if(node) this.moveInsertionAfterLoneFloat(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])
     if(!node && this.ensureTextBlock()) {
       return
@@ -4302,7 +4268,7 @@ export class ManipulationFeature extends EditorFeature {
     const {fragment} = this.editor.parseHTMLFragment(html)
     const insert = () => {
       if(strict) this.insert(fragment, 0, true, commandInsertion)
-      else this.insertClipboardFragment(fragment, true, commandInsertion)
+      else this.insertClipboardFragment(fragment, commandInsertion)
     }
     if(commandInsertion && !this.ribbonDropInsertion) this.editor.features.canvas.insertCentered(insert)
     else insert()

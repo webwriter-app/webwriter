@@ -15,6 +15,7 @@ import {mathElement} from "../math"
 import {graphicShapeDragType} from "../graphic"
 import {elementAttributeState} from "../element-attributes"
 import {floatSideFromStyles} from "../element-styles"
+import {isMediaType, mediaDefaultHTML} from "../media"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType} from "../components/insertion-menu"
 import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type SelectionChangeDetail} from "../editor-bridge"
 
@@ -1210,22 +1211,77 @@ describe("legacy column groups are preserved as authored DOM", () => {
 })
 
 describe("column insertion", () => {
-  it.each(["h2", "blockquote", "pre"])("inserts media at a caret inside %s without splitting it", tag => {
+  it.each(["h2", "blockquote", "pre"])("inserts media in normal flow at a caret inside %s", tag => {
     document.body.innerHTML = `<${tag}>before<b>after</b><!--keep--></${tag}>`
     const block = document.body.firstElementChild!
     const bold = block.querySelector("b")!
     $.move(bold.firstChild!, 2)
     const image = document.createElement("img")
     editor.features.manipulation.insert(image)
-    expect(image.nextElementSibling).toBe(block)
-    expect(image).toHaveClass("ww-float-right")
-    expect(block.textContent).toBe("beforeafter")
+    expectNoFloat(image)
+    expect(block.textContent).toBe(tag === "blockquote" ? "beforeafter" : "beforeaf")
     expect(block.querySelector("b")).toBe(bold)
-    expect(document.body.children).toHaveLength(2)
-    expectFarFloat(image, "right")
-    expect(image.parentElement).toBe(block.parentElement)
-    expect(block.previousElementSibling).toBe(image)
-    expect(bold.innerHTML).toBe("after")
+    const picture = image.parentElement!
+    expect(picture.localName).toBe("picture")
+    expectNoFloat(picture)
+    if(tag === "blockquote") {
+      expect(block.contains(picture)).toBe(true)
+      expect(document.body.children).toHaveLength(1)
+    }
+    else {
+      expect(document.body.children).toHaveLength(3)
+      expect(block.nextElementSibling).toBe(picture)
+      expect(picture.nextElementSibling?.textContent).toBe("ter")
+    }
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+    expect(bold.textContent).toBe(tag === "blockquote" ? "after" : "af")
+  })
+
+  it.each(["picture", "video", "audio", "iframe", "custom-widget"].flatMap(tag =>
+    ["", "Heading"].flatMap(content => ["ribbon", "node", "fragment", "paste"].map(method => ({tag, content, method}))),
+  ))("never automatically floats $tag inserted through $method from heading '$content'", ({tag, content, method}) => {
+    if(tag === "custom-widget") editor.schema.extendWidgets([{tagName: tag, editingConfig: {}}])
+    document.body.innerHTML = `<section><h1>${content}</h1><!--keep--><p>Neighbor</p></section>`
+    const heading = document.querySelector("h1")!, neighbor = document.querySelector("p")!
+    const comment = heading.nextSibling!
+    $.move(heading, -1)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const html = tag === "iframe" && method === "paste" ? '<iframe src="https://example.test"></iframe>'
+      : isMediaType(tag) ? mediaDefaultHTML(tag) : `<${tag}></${tag}>`
+    if(method === "ribbon") {
+      if(tag === "custom-widget") editor.features.manipulation.actions.insert({type: "insert", html: `<${tag}></${tag}>`})
+      else editor.features.manipulation.actions.insertElement({type: "insertElement", tag})
+    }
+    else if(method === "paste") {
+      const clipboardData = new DataTransfer()
+      clipboardData.setData("text/html", html)
+      document.dispatchEvent(new ClipboardEvent("paste", {clipboardData, bubbles: true, cancelable: true}))
+    }
+    else {
+      const template = document.createElement("template")
+      template.innerHTML = html
+      const fragment = template.content
+      const node = fragment.firstChild!
+      if(method === "node") fragment.removeChild(node)
+      editor.features.manipulation.insert(method === "node" ? node : fragment)
+    }
+    const inserted = document.querySelector<HTMLElement>(tag)!
+    expect(inserted, `${content} ${method}: ${editor.toHTML(true)}`).not.toBeNull()
+    expectNoFloat(inserted)
+    expect(inserted.style.getPropertyValue("--ww-float-size")).toBe("")
+    expect(heading.textContent).toBe(content)
+    expect(neighbor.textContent).toBe("Neighbor")
+    expect(comment.isConnected).toBe(true)
+    editor.doc.syncFromDOM()
+    const result = editor.toHTML(true)
+    expect(result).not.toContain("◆")
+    expect(JSON.stringify(editor.doc.body.toJSON())).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(result)
   })
 
   it.each(["", "text*"])("respects widget content declaration %s", content => {
