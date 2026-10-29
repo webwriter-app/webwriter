@@ -228,6 +228,93 @@ describe("contentful widget top-bar capture", () => {
   })
 })
 
+describe("legacy widget options", () => {
+  function widget() {
+    editor.schema.extendWidgets([{tagName: "legacy-options-widget", editingConfig: {content: "flow*"}}])
+    const host = document.createElement("legacy-options-widget")
+    host.innerHTML = '<p>Authored text</p>'
+    const root = host.attachShadow({mode: "open"})
+    root.innerHTML = '<slot></slot><aside part="options"><input aria-label="Setting"></aside>'
+    const panel = root.querySelector<HTMLElement>("aside")!
+    const show = vi.fn(), hide = vi.fn()
+    Object.defineProperties(panel, {showPopover: {value: show}, hidePopover: {value: hide}})
+    return {host, root, panel, show, hide}
+  }
+
+  it("keeps the same live options panel open when capture becomes authored text editing", () => {
+    const {host, root, panel, show, hide} = widget()
+    appendToBody(host)
+    editor.features.widget.refresh()
+    feature.captureElement(host)
+    expect(panel.getAttribute("popover")).toBe("manual")
+    expect(show).toHaveBeenCalledOnce()
+
+    $.move(host.querySelector("p")!.firstChild!, 3)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(host).not.toHaveClass("◆element-capture-selected")
+    expect(host).toHaveClass("◆widget-options")
+    expect(panel.getRootNode()).toBe(root)
+    expect(show).toHaveBeenCalledOnce()
+    expect(hide).not.toHaveBeenCalled()
+
+    editor.doc.syncFromDOM()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).not.toMatch(/popover|part=|◆|contenteditable/)
+
+    const outside = document.createElement("p")
+    outside.textContent = "Outside"
+    document.body.append(outside)
+    $.move(outside.firstChild!, 2)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(hide).toHaveBeenCalledOnce()
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(host).not.toHaveClass("◆widget-options")
+  })
+
+  it("shows only the nearest nested widget's panel and restores its attributes on disable", () => {
+    const outer = widget(), inner = widget()
+    inner.panel.setAttribute("popover", "auto")
+    outer.host.append(inner.host)
+    appendToBody(outer.host)
+    editor.features.widget.refresh()
+    feature.captureElement(outer.host)
+    $.move(inner.host.querySelector("p")!.firstChild!, 2)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(outer.host).not.toHaveClass("◆widget-options")
+    expect(outer.hide).toHaveBeenCalledOnce()
+    expect(inner.host).toHaveClass("◆widget-options")
+    expect(document.querySelectorAll(".◆widget-options")).toHaveLength(1)
+
+    feature.disable()
+    expect(inner.panel.getAttribute("popover")).toBe("auto")
+    expect(inner.hide).toHaveBeenCalledOnce()
+    expect(inner.host).not.toHaveClass("◆widget-options")
+  })
+
+  it("cleans up a concurrently removed options owner", async () => {
+    const {host, panel, hide} = widget()
+    appendToBody(host)
+    editor.features.widget.refresh()
+    feature.captureElement(host)
+    host.remove()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(hide).toHaveBeenCalledOnce()
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(host).not.toHaveClass("◆widget-options")
+  })
+
+  it("cleans up when a widget replaces its panel while the popover is opening", () => {
+    const {host, panel, show} = widget()
+    show.mockImplementation(() => { panel.remove(); throw new Error("Disconnected options") })
+    appendToBody(host)
+    editor.features.widget.refresh()
+    feature.captureElement(host)
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(host).not.toHaveClass("◆widget-options")
+  })
+})
+
 describe("selection preservation across authored DOM shapes", () => {
   it.each(["caret", "element", "gap"])("releases graphic capture when the native selection changes to %s", next => {
     const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")

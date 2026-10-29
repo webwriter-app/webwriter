@@ -662,6 +662,7 @@ export class SelectionFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.editor.features.widget.syncLegacyOptions(null)
     this.#trackSelectionMarkers(this.#floatObserver?.takeRecords() ?? [])
     this.#floatObserver?.disconnect()
     this.#floatObserver = null
@@ -2005,6 +2006,7 @@ export class SelectionFeature extends EditorFeature {
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
     if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
     if(!this.editor.allowsSelection("select")) {
+      this.editor.features.widget.syncLegacyOptions(null)
       this.#releaseCaptureSelection()
       this.clearSelectedSection()
       this.#clearSelections()
@@ -2042,6 +2044,7 @@ export class SelectionFeature extends EditorFeature {
       if(retained) $.selectElement(retained, false)
     }
     if($.isMultiElementSelection) {
+      this.editor.features.widget.syncLegacyOptions(null)
       this.editor.doc.updateLocalSelection()
       this.#releaseCaptureSelection()
       this.#clearSelections()
@@ -2136,6 +2139,7 @@ export class SelectionFeature extends EditorFeature {
     const retained = presentationElement && this.#selectionMarkers.has(presentationElement)
       && presentationElement.isConnected && presentationElement.classList.contains(marker) ? presentationElement : null
     this.#clearSelections(retained, retained ? retainedKind : undefined)
+    this.editor.features.widget.syncLegacyOptions(selectedElement ?? (sel?.rangeCount === 1 ? sel.getRangeAt(0).commonAncestorContainer : null))
     if(sel?.rangeCount && !sel.isCollapsed) {
       $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
     }

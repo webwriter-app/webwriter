@@ -35,6 +35,7 @@ export class WidgetFeature extends EditorFeature {
   #refreshQueued = false
   #observingReferences = false
   #pendingFileAction?: {widget: Element, cancel: () => void}
+  #legacyOptions?: {widget: Element, panel: HTMLElement, popover: string | null}
 
   // Explicit host notifications cross the ordinary widget-interaction boundary.
   captureListeners = {
@@ -61,6 +62,43 @@ export class WidgetFeature extends EditorFeature {
     return groups.includes("widget") || groups.includes("widgetinline")
   }
 
+  /** Keep the public legacy options part in its original shadow/context tree.
+   * A manual popover paints it outside the widget's layout and transforms. */
+  syncLegacyOptions(origin: Node | null) {
+    let widget = origin instanceof Element ? origin : origin?.parentElement
+    let panel: HTMLElement | null = null
+    if(this.isEnabled && !this.editor.isEditingLocked && !this.editor.options.reader && origin && document.body.contains(origin)) {
+      for(; widget && widget !== document.body; widget = widget.parentElement) {
+        if(!this.isWidget(widget)) continue
+        panel = widget.shadowRoot?.querySelector<HTMLElement>('[part~="options"]') ?? null
+        if(panel) break
+      }
+    }
+    if(!panel || !widget) {
+      this.#closeLegacyOptions()
+      return
+    }
+    if(this.#legacyOptions?.widget === widget && this.#legacyOptions.panel === panel) return
+    this.#closeLegacyOptions()
+    this.#legacyOptions = {widget, panel, popover: panel.getAttribute("popover")}
+    widget.classList.add("◆", "◆widget-options")
+    panel.setAttribute("popover", "manual")
+    try { panel.showPopover?.() }
+    catch { this.#closeLegacyOptions() }
+  }
+
+  #closeLegacyOptions() {
+    const previous = this.#legacyOptions
+    this.#legacyOptions = undefined
+    if(previous) {
+      try { previous.panel.hidePopover?.() }
+      catch { /* A widget may replace its options part while it is open. */ }
+      if(previous.popover === null) previous.panel.removeAttribute("popover")
+      else previous.panel.setAttribute("popover", previous.popover)
+      removeEditorMarker(previous.widget, "◆widget-options")
+    }
+  }
+
   /** Assigns missing widget IDs and marks installed widgets as editable. Call
    * after the schema changes. */
   refresh() {
@@ -77,7 +115,8 @@ export class WidgetFeature extends EditorFeature {
    * into their editing presentation. An authored value is left untouched. */
   #connectWidget(element: Element, prefill = true) {
     if(!document.body.contains(element) || !this.isWidget(element) || !this.editor.allows("edit", element)) return
-    if(!element.id && !this.editor.options.reader) element.id = `ww${crypto.randomUUID()}`
+    const id = element.getAttribute("id")
+    if((id === null || id === "") && !this.editor.options.reader) element.setAttribute("id", `ww${crypto.randomUUID()}`)
     if(!this.editor.options.reader && !this.#initializedContent.has(element)) {
       this.#initializedContent.add(element)
       try { if(prefill) this.#prefillContent(element) }
@@ -547,6 +586,7 @@ export class WidgetFeature extends EditorFeature {
 
   #connectAddedWidgets(records: MutationRecord[], prefill = true) {
     if(this.#pendingFileAction && !document.body.contains(this.#pendingFileAction.widget)) this.#pendingFileAction.cancel()
+    if(this.#legacyOptions && !document.body.contains(this.#legacyOptions.widget)) this.#closeLegacyOptions()
     if(this.#observingReferences) this.#queueOptionsRefresh()
     for(const record of records) {
       record.addedNodes.forEach(node => {
@@ -577,6 +617,7 @@ export class WidgetFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.#closeLegacyOptions()
     this.#observer?.disconnect()
     this.#observer = null
     this.#observingReferences = false

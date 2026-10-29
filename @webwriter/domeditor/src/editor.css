@@ -49,6 +49,42 @@ body {
   caret-color: currentColor;
 }
 
+/* Legacy widget-owned controls stay in their original shadow/context tree.
+ * The selected part is a manual popover, outside authored layout and clipping. */
+.◆widget-editable::part(options),
+[contenteditable]::part(options) {
+  display: none !important;
+}
+
+.◆widget-options::part(options) {
+  display: block !important;
+  position: fixed !important;
+  inset: 1rem 1rem auto auto !important;
+  float: none !important;
+  box-sizing: border-box !important;
+  inline-size: min(16rem, calc(100vw - 2rem)) !important;
+  max-inline-size: calc(100vw - 2rem) !important;
+  block-size: auto !important;
+  max-block-size: calc(100dvh - 2rem) !important;
+  overflow: auto !important;
+  overscroll-behavior: contain;
+  margin: 0 !important;
+  padding: 1rem !important;
+  border: 1px solid #d4d4d8;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #3f3f46;
+  box-shadow: 0 4px 16px #0002;
+}
+
+@media (width < 1000px) {
+  .◆widget-options::part(options) {
+    inset: auto 1rem 1rem auto !important;
+    inline-size: min(32rem, calc(100vw - 2rem)) !important;
+    max-block-size: 40dvh !important;
+  }
+}
+
 /* BODY supplies the page and appendix for ordinary and template documents.
  * The base theme caps direct children at the prose measure; authored document
  * styles can opt out without a separate editor sizing rule. */

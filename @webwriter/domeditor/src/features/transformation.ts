@@ -706,6 +706,15 @@ export class TransformationFeature extends EditorFeature {
     }
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
+    // A custom element can paint an out-of-flow shadow child while its host
+    // has no box. Its own controls own that geometry; do not draw at BODY@0.
+    if(rect.width <= 0 || rect.height <= 0) {
+      overlay.setAttribute("visibility", "hidden")
+      this.editor.features.selection.clearTransformCaret()
+      this.#syncControlParts()
+      return
+    }
+    overlay.removeAttribute("visibility")
     Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
     this.#positionCropControls(target, width, height, rect, matrix)
     const floats = this.editor.features.selection.floatExclusions(target, rect, styles)

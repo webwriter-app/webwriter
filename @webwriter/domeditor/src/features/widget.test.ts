@@ -32,6 +32,13 @@ class OptionsWidget extends HTMLElement {
 }
 customElements.define("demo-options", OptionsWidget)
 
+class NumericIdWidget extends HTMLElement {}
+Object.defineProperty(NumericIdWidget.prototype, "id", {
+  get(this: Element) { return Number(this.getAttribute("id") ?? 0) },
+  set(this: Element, value: number) { this.setAttribute("id", String(value)) },
+})
+customElements.define("demo-numeric-id", NumericIdWidget)
+
 const editor = new DOMEditor()
 
 const installWidgets = () => {
@@ -273,6 +280,27 @@ describe("WidgetFeature", () => {
       expect(editor.toHTML(true)).toContain(`id="${id}"`)
       expect(sharedHTML()).toContain(`id="${id}"`)
     })
+  })
+
+  it("preserves numeric zero IDs on refresh and insertion without serializing editor markers", async () => {
+    editor.schema.extendWidgets([{tagName: "demo-numeric-id"}])
+    const existing = document.createElement("demo-numeric-id")
+    existing.setAttribute("id", "0")
+    document.body.append(existing)
+    editor.features.widget.refresh()
+    expect(existing.getAttribute("id")).toBe("0")
+
+    const inserted = document.createElement("demo-numeric-id")
+    inserted.setAttribute("id", "0")
+    document.body.append(inserted)
+    await new Promise(resolve => setTimeout(resolve))
+    editor.features.widget.refresh()
+
+    expect(inserted.getAttribute("id")).toBe("0")
+    expect(editor.toHTML(true)).toContain('<demo-numeric-id id="0"></demo-numeric-id>')
+    expect(sharedHTML()).toContain('<demo-numeric-id id="0"></demo-numeric-id>')
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(sharedHTML()).not.toContain("contenteditable")
   })
 
   it("preserves IDs through refresh, reconnection, disabling, and undo/redo", async () => {

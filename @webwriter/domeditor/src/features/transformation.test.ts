@@ -85,6 +85,25 @@ function captureNode(target: Element) {
   editor.features.selection.captureElement(target)
 }
 
+it("hides transforms for a zero-area widget host and recovers when its live box returns", () => {
+  const target = targetElement("self-positioned-widget")
+  target.attachShadow({mode: "open"}).innerHTML = '<div style="position:absolute;width:200px;height:100px">Popup</div>'
+  let rect = new DOMRect(31, 20, 0, 0)
+  vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => rect)
+  feature.startTransform(target)
+  expect(feature.target).toBe(target)
+  expect(feature.overlay.getAttribute("visibility")).toBe("hidden")
+
+  rect = new DOMRect(100, 100, 200, 100)
+  feature.updateInfo()
+  expect(feature.overlay.hasAttribute("visibility")).toBe(false)
+
+  rect = new DOMRect(31, 20, 0, 0)
+  feature.updateInfo()
+  expect(feature.overlay.getAttribute("visibility")).toBe("hidden")
+  expect(target.hasAttribute("style")).toBe(false)
+})
+
 describe("text container resizing", () => {
   describe("document layout", () => {
     it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6"])("keeps the bottom-right handle horizontal for %s and lets height follow content", async tag => {
@@ -1622,6 +1641,7 @@ describe("selection-owned transformation", () => {
 
     it("shows controls for text, empty, gap, virtual-list and cell selections without selecting the item", () => {
       const article = item(), text = article.querySelector("em")!.firstChild!
+      mockRect(article)
       const check = () => {
         editor.features.selection.processSelection(undefined, {scrollIntoView: false})
         expect(feature.target).toBe(article)

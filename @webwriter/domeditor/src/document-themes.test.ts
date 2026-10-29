@@ -101,24 +101,10 @@ describe("document themes", () => {
       expect(source).toMatch(/@layer webwriter-theme\s*\{[\s\S]*tfoot > tr > :is\(th, td\)\s*\{\s*background-color: #f2f2f2;/)
     }
   })
-  it("shares responsive legacy shadow options placement across saved and editing themes", () => {
+  it("keeps editor-owned legacy options placement out of saved document themes", () => {
     for(const theme of documentThemes) {
-      const source = editingDocumentThemeSource(theme)
-      expect(source).toMatch(/:not\(\[class~="◆element-capture-selected"\]\)::part\(options\)\s*\{\s*display: none;/)
-      expect(source).toMatch(/\[contenteditable\]:not\(\[contenteditable="false"\]\)::part\(options\)\s*\{\s*box-sizing: border-box;\s*float: right;/)
-      expect(source).toMatch(/::part\(options\)\s*\{[^}]*block-size: 100%;\s*overflow-y: auto;\s*background-color: #fff;/)
-      expect(source).toContain("padding-inline-end: 1rem;")
-      expect(source).toContain('body:is([class~="ww-canvas"], [class~="ww-slides"], [class~="ww-board"]) [contenteditable]:not([contenteditable="false"])::part(options)')
-      expect(source).toMatch(/@container \(width >= 1200px\)\s*\{\s*body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\):not\(\[class~="ww-board"\]\)\s*\{\s*\[contenteditable\]:not\(\[contenteditable="false"\]\)::part\(options\)/)
-      expect(source).toContain("inline-size: min(16rem, var(--ww-float-width));")
-      expect(source).toContain("inset-inline-start: calc(max(100%, (100% + var(--ww-prose-max, 45rem)) / 2) + var(--ww-float-gap));")
-      expect(source).not.toMatch(/\[part[~|^$*]?=["']?options/)
-    }
-  })
-  it("places floated widget options inward in both symmetric and single-gutter layouts", () => {
-    for(const theme of documentThemes) {
-      expect(theme.source).toMatch(/@container \(width >= 600px\)\s*\{[\s\S]*?::part\(options\)\s*\{[^}]*left: calc\(100% \+ var\(--ww-float-gap\)\);\s*right: auto;/)
-      expect(theme.source).toMatch(/@container \(600px <= width < 1200px\)\s*\{[^@]*::part\(options\)\s*\{\s*left: auto;\s*right: calc\(100% \+ var\(--ww-float-gap\)\);/)
+      expect(theme.source).not.toContain("::part(options)")
+      expect(theme.source).not.toContain("◆element-capture-selected")
     }
   })
   it("blockifies ordinary top-level media and graphics in document columns across every theme", () => {
