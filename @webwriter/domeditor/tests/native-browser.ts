@@ -1,5 +1,6 @@
 import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
 import {attributionAttributes} from "../src/attribution.js"
+import {graphicShapeSections} from "../src/graphic"
 import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
@@ -4877,24 +4878,39 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
 })
 
 await check("shape ribbon galleries scroll only when the viewport cannot fit their contents", async () => {
-  for(const height of [1000,620]) {
+  const shapeButtons=graphicShapeSections.flatMap(section=>section.rows.flatMap((row,rowIndex)=>[
+    ...row.map((option,column)=>({label:option.label,category:section.label,path:option.path,pathFill:option.pathFill,galleryRowStart:column===0})),
+    ...(section.label==="Basic" && rowIndex===0?[{label:"Import graphic",category:section.label,galleryColumns:3 as const}]:[]),
+  ]))
+  for(const height of [1000,480]) {
     const frame=document.createElement("iframe")
     frame.style.cssText=`width:1600px;height:${height}px;border:0;max-width:none`
-    frame.srcdoc='<!doctype html><style>body{margin:16px;font:16px system-ui}</style><app-ribbon></app-ribbon><script type="module" src="/src/components/ribbon.ts"></script>'
+    frame.srcdoc=height===1000
+      ? '<!doctype html><style>body{margin:16px;font:16px system-ui}</style><app-ribbon></app-ribbon><script type="module" src="/src/components/ribbon.ts"></script>'
+      : '<!doctype html><style>body{margin:16px;font:16px system-ui}</style><ribbon-button></ribbon-button><script type="module" src="/src/components/ribbon-button.ts"></script>'
     document.body.append(frame)
     const view=frame.contentWindow as Window & typeof globalThis
     try {
-      for(let attempt=0;!view.customElements.get("app-ribbon") && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
-      assert(view.customElements.get("app-ribbon"),"Shape gallery fixture did not initialize")
+      const customElement=height===1000?"app-ribbon":"ribbon-button"
+      for(let attempt=0;!view.customElements.get(customElement) && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
+      assert(view.customElements.get(customElement),"Shape gallery fixture did not initialize")
       const doc=frame.contentDocument!
-      const ribbon=doc.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
-      ribbon.activeMenu="Start"
-      await ribbon.updateComplete
-      let graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      for(let attempt=0;!doc.querySelector(customElement) && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
+      let graphic:RibbonButton
+      if(height===1000) {
+        const ribbon=doc.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
+        ribbon.activeMenu="Start"
+        await ribbon.updateComplete
+        graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      }
+      else {
+        graphic=doc.querySelector<RibbonButton>("ribbon-button")!
+        graphic.label="Graphic"
+        graphic.submenu=shapeButtons
+        await graphic.updateComplete
+      }
       await graphic.updateComplete
       await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
-      graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
-      await graphic.updateComplete
       graphic.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!.click()
       await graphic.updateComplete
       const menu=graphic.shadowRoot!.querySelector<import("../src/components/ribbon-menu").RibbonMenu>("ribbon-menu")!
@@ -8421,7 +8437,7 @@ await check("empty document gutters prefer floats throughout the viewport", asyn
         doc.body.append(widget)
         editor.features.selection.selectElement(widget)
       }
-      else data.setData(kind === "shape" ? "application/x-webwriter-graphic-shape" : "application/x-webwriter-element-tag", kind === "shape" ? JSON.stringify({shape:"rectangle"}) : "video")
+      else data.setData(kind === "shape" ? "application/x-webwriter-ribbon-insertion" : "application/x-webwriter-element-tag", kind === "shape" ? "insert-graphic-shape:rectangle" : "video")
       await layoutFrame()
       if(widget) {
         editor.features.selection.selectElement(widget)

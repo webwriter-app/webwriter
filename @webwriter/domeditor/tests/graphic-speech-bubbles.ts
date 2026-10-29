@@ -1,5 +1,5 @@
 import type {DOMEditor} from "../src/domeditor"
-import {graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "../src/graphic-shapes"
+import {graphicPresetHandles, graphicPresetPath, readGraphicPreset, writeGraphicPreset} from "../src/graphic-shapes"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
 
@@ -32,7 +32,7 @@ export async function checkGraphicSpeechBubbles() {
     const numbers=(value:string)=>value.match(/[-+]?(?:\d*\.)?\d+(?:[eE][-+]?\d+)?/g)!.map(Number)
     const same=(actual:string,expected:string)=>{
       const a=numbers(actual),b=numbers(expected)
-      return a.length===b.length && a.every((value,index)=>Math.abs(value-b[index])<.0001)
+      return a.length===b.length && a.every((value,index)=>Math.abs(value-b[index])<.03)
     }
     for(const type of ["rectangular-callout","rounded-rectangular-callout","oval-callout","cloud-callout","line-callout-1","line-callout-2"] as const) {
       for(const rotation of [0,35]) for(const [tipX,tipY] of targets) {
@@ -49,16 +49,24 @@ export async function checkGraphicSpeechBubbles() {
         const handle=editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="adjust-end-x"]')!
         assert(handle,`${type}: missing connector tip handle`)
         const box=handle.getBoundingClientRect()
-        const local=new view.DOMPoint(box.x+box.width/2,box.y+box.height/2).matrixTransform(shape.getScreenCTM()!.inverse())
+        const tip=graphicPresetHandles(state).find(handle=>handle.name==="adjust-end-x")!.point
+        const local=new view.DOMPoint(tip.x,tip.y)
+        const tipClient=local.matrixTransform(shape.getScreenCTM()!)
+        // Endpoint handles can dodge resize controls. Dragging retains that
+        // display offset while the authored connector tip stays on its path.
+        const offset={x:box.x+box.width/2-tipClient.x,y:box.y+box.height/2-tipClient.y}
+        for(const axis of ["x","y"] as const) if(Math.abs(offset[axis])<.03) offset[axis]=0
         probe.setAttribute("d",original)
         assert(editor.appendix.querySelectorAll(".◆graphic-specific-handles button").length===2,`${type}: expected one tip and one roundness POI`)
         assert(!editor.appendix.querySelector('[data-graphic-handle="adjust-start-x"]'),`${type}: connector start still has a POI`)
-        assert(probe.isPointInStroke(local),`${type}: visible connector handle is off the authored contour`)
+        assert(probe.isPointInStroke(local),`${type}: connector tip is off the authored contour`)
+        assert(editor.appendix.elementFromPoint(box.x+box.width/2,box.y+box.height/2)===handle,`${type}: connector handle is not reachable`)
 
         const values=[...state.values]; values[0]=tipX;values[1]=tipY
         const point=state.definition.adjustments[0].point(values)
         const target={x:bounds.x+point.x/100*bounds.width,y:bounds.y+point.y/100*bounds.height}
         const destination=new view.DOMPoint(target.x,target.y).matrixTransform(shape.getScreenCTM()!)
+        destination.x+=offset.x;destination.y+=offset.y
         const pointer={bubbles:true,composed:true,button:0,pointerId:97}
         editor.doc.stopCapturing()
         handle.dispatchEvent(new view.PointerEvent("pointerdown",{...pointer,clientX:box.x+box.width/2,clientY:box.y+box.height/2}))

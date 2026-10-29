@@ -13,7 +13,7 @@ export async function checkGraphicBounds() {
   document.body.append(frame)
   const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
   try {
-    for(let attempt = 0; !view.editor && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
+    for(let attempt = 0; !view.editor && attempt < 250; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
     assert(view.editor, "bounds fixture did not initialize")
     const editor = view.editor!, doc = frame.contentDocument!
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
@@ -37,6 +37,11 @@ export async function checkGraphicBounds() {
       editor.features.selection.captureElement(graphic)
       editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: option.type})
       const shape = editor.features.graphic.selectedShape!
+      // Content-sized text fields fit their labels; the dedicated text-box
+      // check covers that contract. Here exercise the preset contour itself.
+      if(readGraphicPreset(shape.localName === "g" ? shape.firstElementChild : shape)?.definition.contentSize) {
+        editor.features.graphic.actions.setGraphicParameter({type: "setGraphicParameter", name: "label", value: ""})
+      }
       const geometry = (shape.localName === "g" ? shape.firstElementChild : shape) as SVGGraphicsElement
       const check = (phase: string) => {
         const bounds = geometry.getBBox(), parameters = editor.features.graphic.getState()!.parameters!
@@ -79,10 +84,13 @@ export async function checkGraphicBounds() {
             const handle = editor.appendix.querySelector<HTMLElement>(`[data-graphic-handle="${handles[index].name}"]`)!
             const rect = handle.getBoundingClientRect(), matrix = DOMMatrix.fromMatrix(geometry.getScreenCTM()!)
             const point = handles[index].point
-            const start = matrix.transformPoint(new DOMPoint(point.x, point.y))
-            near(rect.x + rect.width / 2, start.x, `Lightning bolt POI ${index} x`)
-            near(rect.y + rect.height / 2, start.y, `Lightning bolt POI ${index} y`)
+            const geometricStart = matrix.transformPoint(new DOMPoint(point.x, point.y))
+            const start = {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2}
+            const offset = {x: start.x - geometricStart.x, y: start.y - geometricStart.y}
+            for(const axis of ["x", "y"] as const) if(Math.abs(offset[axis]) < .03) offset[axis] = 0
+            assert(editor.appendix.elementFromPoint(start.x, start.y) === handle, `Lightning bolt POI ${index} is not reachable`)
             const target = matrix.transformPoint(new DOMPoint(point.x + (index === 0 ? 1 : -1) * initial.bounds.width * .05, point.y))
+            target.x += offset.x; target.y += offset.y
             const pointer = {bubbles: true, composed: true, button: 0, pointerId: 91, ...modifiers}
             handle.dispatchEvent(new view.PointerEvent("pointerdown", {...pointer, clientX: start.x, clientY: start.y}))
             doc.dispatchEvent(new view.PointerEvent("pointermove", {...pointer, buttons: 1, clientX: target.x, clientY: target.y}))

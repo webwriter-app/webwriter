@@ -59,7 +59,24 @@ export async function checkGraphicLabelResizePerformance():Promise<GraphicLabelR
     assert(text.textContent===content,"fixture rich text content was altered")
     const authored=()=> (cloneWithoutEditorMarkers(shape,true) as Element).outerHTML
     const original=authored()
+    const restored=()=>{
+      const clone=cloneWithoutEditorMarkers(shape,true) as Element
+      const restoredText=clone.querySelector("text")!
+      // Native glyph bounds round to subpixels when a restored label is laid
+      // out again. Keep every authored run/style exact, allowing only that
+      // rounding in the generated glyph coordinate lists.
+      const originalText=doc.createElementNS("http://www.w3.org/2000/svg","g")
+      originalText.innerHTML=original
+      for(const name of ["x","y"]) {
+        const expected=originalText.querySelector("text")!.getAttribute(name)!
+        const a=restoredText.getAttribute(name)!.split(/\s+/).map(Number),b=expected.split(/\s+/).map(Number)
+        assert(a.length===b.length && a.every((value,index)=>Math.abs(value-b[index])<.03),`undo shifted label ${name} coordinates`)
+        restoredText.setAttribute(name,expected)
+      }
+      return clone.outerHTML===original
+    }
     const resize=async(cancel:boolean):Promise<{elapsedMs:number,measurements:number}>=>{
+      const baseline=authored()
       const before=counters.getSubStringLength+counters.getStartPositionOfChar+counters.getEndPositionOfChar+counters.getBBox
       const east=editor.appendix.querySelector<HTMLButtonElement>('[data-graphic-handle="resize-e"]')!
       assert(east,"rectangle is missing east resize handle")
@@ -74,17 +91,17 @@ export async function checkGraphicLabelResizePerformance():Promise<GraphicLabelR
       }
       const preview=editor.appendix.querySelector<SVGGElement>(".◆graphic-preview")
       assert(preview,"resize did not create a preview")
-      assert(authored()===original,"resize preview mutated authored label or shape")
+      assert(authored()===baseline,"resize preview mutated authored label or shape")
       if(cancel) {
         doc.dispatchEvent(new view.PointerEvent("pointercancel",pointer))
         await layout()
-        assert(authored()===original,"cancelled resize changed authored DOM")
+        assert(authored()===baseline,"cancelled resize changed authored DOM")
         assert(!editor.appendix.querySelector(".◆graphic-preview"),"cancelled resize left preview UI")
       }
       else {
         doc.dispatchEvent(new view.PointerEvent("pointerup",{...pointer,clientX:start.x+80,clientY:start.y}))
         await layout()
-        assert(authored()!==original,"committed resize did not update the shape")
+        assert(authored()!==baseline,"committed resize did not update the shape")
       }
       const elapsedMs=view.performance.now()-started
       const after=counters.getSubStringLength+counters.getStartPositionOfChar+counters.getEndPositionOfChar+counters.getBBox
@@ -92,13 +109,13 @@ export async function checkGraphicLabelResizePerformance():Promise<GraphicLabelR
     }
     const first=await resize(false)
     editor.doc.undo();await layout()
-    assert(authored()===original,"undo did not restore the authored label and geometry")
+    assert(restored(),"undo did not restore the authored label and geometry")
     const warm=await resize(false)
     assert(warm.measurements<first.measurements*.25,`warm resize repeated native glyph measurements (${warm.measurements} vs ${first.measurements})`)
     editor.doc.undo();await layout()
-    assert(authored()===original,"second undo did not restore authored DOM")
+    assert(restored(),"second undo did not restore authored DOM")
     await resize(true)
-    assert(authored()===original,"cancelled resize did not preserve authored DOM")
+    assert(restored(),"cancelled resize did not preserve authored DOM")
     assert(text.textContent===content,"resize changed authored rich label text")
     assert(!editor.toHTML(true).includes("◆"),"resize markers leaked into serialized HTML")
     return {first,warm}
