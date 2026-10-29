@@ -2499,6 +2499,34 @@ describe("formula input keyboard and autocomplete", () => {
     expect(menu()?.hidden ?? true).toBe(true)
   })
 
+  it.each(["cancel", "bcancel", "xcancel"])("draws %s preview strokes exactly between the box corners", async name => {
+    await ready()
+    type(`\\${name}`)
+    const option = menu()!.querySelector('[aria-selected="true"]')!
+    const icon = option.querySelector("svg")!
+    const box = icon.querySelector("rect")!
+    const lines = Array.from(icon.querySelectorAll("line"))
+    const number = (element: Element, attribute: string) => Number(element.getAttribute(attribute))
+    const left = number(box, "x"), top = number(box, "y")
+    const right = left + number(box, "width"), bottom = top + number(box, "height")
+    expect(lines).toHaveLength(name === "xcancel" ? 2 : 1)
+    expect(icon.getAttribute("stroke")).toBe("currentColor")
+    for(const line of lines) {
+      expect(number(line, "x1")).toBe(left)
+      expect(number(line, "x2")).toBe(right)
+      expect([number(line, "y1"), number(line, "y2")].sort((a, b) => a - b)).toEqual([top, bottom])
+    }
+    const directions = lines.map(line => Math.sign(number(line, "y2") - number(line, "y1")))
+    expect(directions).toEqual(name === "cancel" ? [-1] : name === "bcancel" ? [1] : [-1, 1])
+    expect(editor.appendix.contains(icon)).toBe(true)
+    expect(clean()).not.toContain("<svg")
+    key("Enter")
+    expect(document.querySelector("math menclose")?.getAttribute("notation")).toBe(
+      name === "cancel" ? "updiagonalstrike" : name === "bcancel" ? "downdiagonalstrike" : "updiagonalstrike downdiagonalstrike")
+    editor.features.math.disable()
+    expect(menu()).toBeNull()
+  })
+
   it("keeps the popup previews on one line with wrapping labels and a separate rounded frame", async () => {
     await ready()
     type("a")
