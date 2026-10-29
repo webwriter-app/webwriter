@@ -11,6 +11,7 @@ const expectedChecks = [
   "list editing splits and indents selected items",
   "soft breaks render a new line on the first press and accept native typing",
   "multi-paragraph style presets stay within the selected siblings",
+  "Tab indents paragraphs without moving the centered prose column",
   "undo and redo restore and reveal selections in nested scrollers",
   "SVG empty graphic layout stays stable when the first shape is inserted",
   "SVG preset bounding boxes fit their native contours during insertion and editing",

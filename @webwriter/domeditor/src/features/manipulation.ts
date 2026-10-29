@@ -3477,8 +3477,8 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   /** Applies a conservative two-em paragraph indent at a block boundary or
-   * across a block selection. Existing non-em author values are left alone
-   * rather than rewritten into editor-specific metadata. */
+   * across a block selection. Padding preserves the auto margins that center
+   * prose in its column. Existing non-em author values are left alone. */
   private adjustSelectedBlockIndent(direction: -1 | 1) {
     const selection = document.getSelection()
     const blocks = this.selectedTextBlocks()
@@ -3489,15 +3489,15 @@ export class ManipulationFeature extends EditorFeature {
     this.withNormalization(() => blocks.forEach(block => {
       const style = this.inlineStyleOf(block)
       if(!style) return
-      const authored = style.getPropertyValue("margin-inline-start").trim()
+      const authored = style.getPropertyValue("padding-inline-start").trim()
       const zero = !authored || /^[-+]?0(?:[a-z%]+)?$/i.test(authored)
       const match = authored.match(/^([-+]?(?:\d+(?:\.\d+)?|\.\d+))em$/i)
       if(!zero && !match) return
       const current = zero ? 0 : Number.parseFloat(match![1])
       const next = Math.max(0, current + direction * 2)
       if(next === current) return
-      if(next === 0) style.removeProperty("margin-inline-start")
-      else style.setProperty("margin-inline-start", `${next}em`)
+      if(next === 0) style.removeProperty("padding-inline-start")
+      else style.setProperty("padding-inline-start", `${next}em`)
       changed = true
     }))
     return changed

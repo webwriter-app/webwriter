@@ -26,6 +26,7 @@ import {checkListDeletion} from "./list-deletion"
 import {checkListEditing} from "./list-editing"
 import {checkSoftLineBreak} from "./soft-line-break"
 import {checkParagraphStylePresets} from "./paragraph-style-presets"
+import {checkParagraphIndent} from "./paragraph-indent"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
@@ -74,6 +75,7 @@ await check("heading clipboard preserves gap headings and joins existing text", 
 await check("list editing splits and indents selected items", checkListEditing)
 await check("soft breaks render a new line on the first press and accept native typing", checkSoftLineBreak)
 await check("multi-paragraph style presets stay within the selected siblings", checkParagraphStylePresets)
+await check("Tab indents paragraphs without moving the centered prose column", checkParagraphIndent)
 await check("undo and redo restore and reveal selections in nested scrollers", checkHistorySelection)
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
 await check("canvas starting view frames resize, delete and open without shifting", checkCanvasStartingView)

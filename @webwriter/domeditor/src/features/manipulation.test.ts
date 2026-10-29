@@ -2821,11 +2821,12 @@ describe("Tab paragraph behavior", () => {
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expect(paragraph).toHaveStyle({marginInlineStart: "2em"})
+    expect(paragraph).toHaveStyle({paddingInlineStart: "2em"})
+    expect(paragraph.style.marginInlineStart).toBe("")
   })
 
   it("outdents an indented paragraph with Shift+Tab", () => {
-    document.body.innerHTML = '<p style="margin-inline-start: 2em">text</p>'
+    document.body.innerHTML = '<p style="padding-inline-start: 2em">text</p>'
     const paragraph = document.querySelector("p")!
     $.move(paragraph.firstChild!, 2)
     const event = new KeyboardEvent("keydown", {
@@ -2835,7 +2836,7 @@ describe("Tab paragraph behavior", () => {
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expect(paragraph.style.marginInlineStart).toBe("")
+    expect(paragraph.style.paddingInlineStart).toBe("")
   })
 
   it("indents every paragraph in a cross-block selection", () => {
@@ -2845,7 +2846,58 @@ describe("Tab paragraph behavior", () => {
 
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true}))
 
-    expect(paragraphs.every(paragraph => paragraph.style.marginInlineStart === "2em")).toBe(true)
+    expect(paragraphs.every(paragraph => paragraph.style.paddingInlineStart === "2em")).toBe(true)
+  })
+
+  it("preserves authored margins, children and the caret through repeated indent and outdent", () => {
+    document.body.innerHTML = '<section><!--keep--><p style="margin-inline: auto; color: teal"><b>text</b></p><unknown-widget></unknown-widget><p>Other</p></section>'
+    const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!
+    const siblings = Array.from(paragraph.parentNode!.childNodes)
+    $.move(text, 0)
+    for(const [shiftKey, padding] of [[false, "2em"], [false, "4em"], [true, "2em"], [true, ""]] as const) {
+      const event = new KeyboardEvent("keydown", {key: "Tab", shiftKey, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+
+      expect(event.defaultPrevented).toBe(true)
+      expect(paragraph.style.paddingInlineStart).toBe(padding)
+      expect(paragraph.style.getPropertyValue("margin-inline")).toBe("auto")
+      expect(paragraph.style.color).toBe("teal")
+      expect(Array.from(paragraph.parentNode!.childNodes)).toEqual(siblings)
+      expect(document.getSelection()!.anchorNode).toBe(text)
+      expect(document.getSelection()!.anchorOffset).toBe(0)
+    }
+  })
+
+  it("retains non-em authored padding", () => {
+    document.body.innerHTML = '<p style="padding-inline-start: 24px">text</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 0)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true}))
+    expect(paragraph.style.paddingInlineStart).toBe("24px")
+    expect(paragraph.style.marginInlineStart).toBe("")
+  })
+
+  it("synchronizes paragraph indentation and restores it with undo and redo", () => {
+    document.body.innerHTML = '<p style="margin-inline: auto">text</p>'
+    $.move(document.querySelector("p")!.firstChild!, 0)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Tab", bubbles: true, cancelable: true}))
+    editor.doc.syncFromDOM()
+    const indented = editor.toHTML(true)
+    expect(indented).toContain("padding-inline-start: 2em")
+    expect(indented).not.toContain("◆")
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      expect(sharedDOMBody(remote).toString()).toContain("padding-inline-start: 2em")
+    }
+    finally { remote.destroy() }
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(indented)
   })
 
   it("does not structurally wrap content when Tab is pressed mid-paragraph", () => {
