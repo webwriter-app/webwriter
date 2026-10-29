@@ -297,12 +297,15 @@ const port = await new Promise((resolve, reject) => {
     })
   })
 })
+const profile = await mkdtemp(join(tmpdir(), "domeditor-native-"))
 const vite = await createServer({
+  // Concurrent dev/test servers must not replace this browser's optimized
+  // module graph while its lazy fixtures are still importing dependencies.
+  cacheDir: join(profile, "vite-cache"),
   ...(widgetStateMode || widgetStorageMode ? {logLevel: "silent"} : {}),
   plugins: [resultPlugin],
   server: {host: "127.0.0.1", port, strictPort: true, hmr: false, watch: null},
 })
-const profile = await mkdtemp(join(tmpdir(), "domeditor-native-"))
 if(browserName === "firefox") {
   await writeFile(join(profile, "user.js"), [
     'user_pref("app.update.enabled", false);',
