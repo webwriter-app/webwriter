@@ -2241,6 +2241,20 @@ export class ManipulationFeature extends EditorFeature {
     return target
   }
 
+  private get topLevelStyleTargets(): Element[] {
+    const target = this.topLevelStyleTarget
+    if(!target) return []
+    const root = this.editor.features.slides.active
+      ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
+    if(target !== root || $.isDocumentSelection || $.range.collapsed) return [target]
+    const ranges = $.flowRanges.filter(range => root.contains(range.startContainer) && root.contains(range.endContainer))
+    if(!ranges.length) return [target]
+    // A range across siblings has the root as its common ancestor, but its
+    // styles belong to the selected children rather than the whole document.
+    return Array.from(root.children).filter(element => $.includesNode(element)
+      && ranges.some(range => range.intersectsNode(element)))
+  }
+
   private inlineStyleOf(element: Element | null): CSSStyleDeclaration | null {
     const style = (element as (Element & {style?: CSSStyleDeclaration}) | null)?.style
     return style && typeof style.setProperty === "function"? style: null
@@ -2387,10 +2401,7 @@ export class ManipulationFeature extends EditorFeature {
   getStyleState(properties: string[] = [], target: Element | null = this.styleTarget, includeSelection = true): ElementStyleState {
     const cells = includeSelection && this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
     if(includeSelection && (cells.length || $.isMultiElementSelection)) {
-      const styles = (cells.length ? cells : $.selectedElements).map(element => this.getStyleState(properties, element, false))
-      return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
-        authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
-        computed: commonValues(styles.map(state => state.computed))}
+      return this.getElementsStyleState(properties, cells.length ? cells : $.selectedElements)
     }
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
@@ -2482,6 +2493,14 @@ export class ManipulationFeature extends EditorFeature {
         floatLeftForcedRight: computedStyle.getPropertyValue("--ww-responsive-float").trim() === "right",
         floatRightInFlow: computedStyle.getPropertyValue("--ww-responsive-float").trim() === "none"},
     }
+  }
+
+  private getElementsStyleState(properties: string[] = [], elements: Element[]) {
+    if(!elements.length) return this.getStyleState(properties, null, false)
+    const styles = elements.map(element => this.getStyleState(properties, element, false))
+    return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
+      authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
+      computed: commonValues(styles.map(state => state.computed))}
   }
 
   /** Live authored elements and containers addressed by the current selection. */
@@ -3299,12 +3318,18 @@ export class ManipulationFeature extends EditorFeature {
         throw new TypeError("Style-state property names must be strings")
       }
       return topLevel && !this.editor.features.table.hasCellSelection
-        ? this.getStyleState(properties, this.topLevelStyleTarget, false) : this.getStyleState(properties)
+        ? this.getElementsStyleState(properties, this.topLevelStyleTargets) : this.getStyleState(properties)
     },
     setStyle: ({styles, topLevel}: {type: "setStyle", styles: Record<string, ElementStyleMutation>, topLevel?: boolean}) => {
       if(topLevel && !this.editor.features.table.hasCellSelection) {
-        const target = this.topLevelStyleTarget
-        if(target) this.setElementStyles(target, styles)
+        const targets = this.topLevelStyleTargets
+        if(!targets.length) return
+        const entries = this.validateElementStyles(styles)
+        const end = this.editor.doc.beginUndoGroup()
+        try {
+          for(const target of targets) this.applyElementStyleEntries(target, entries)
+        }
+        finally { end() }
       }
       else this.setStyle(styles)
     },

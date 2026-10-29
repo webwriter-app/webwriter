@@ -8,6 +8,7 @@ import {createServer} from "vite"
 
 const expectedChecks = [
   "converted list items support repeated Backspace without clicking",
+  "multi-paragraph style presets stay within the selected siblings",
   "undo and redo restore and reveal selections in nested scrollers",
   "SVG empty graphic layout stays stable when the first shape is inserted",
   "SVG preset bounding boxes fit their native contours during insertion and editing",

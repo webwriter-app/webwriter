@@ -4413,6 +4413,78 @@ describe("setStyle()", () => {
     expect(previous).not.toHaveAttribute("style")
   })
 
+  it.each([false, true])("styles selected sibling paragraphs in the Edit toolbox (backwards: %s)", backwards => {
+    document.body.innerHTML = '<p style="color: blue">one</p><!--keep--><p><em>two</em></p><p>three</p>'
+    const paragraphs = Array.from(document.querySelectorAll("p"))
+    const first = paragraphs[0].firstChild!, second = paragraphs[1].firstElementChild!.firstChild!
+    $.selectRange(backwards ? second : first, 1, backwards ? first : second, 1)
+    const nodes = Array.from(document.body.childNodes)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const manipulation = editor.features.manipulation
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("p")
+
+    manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {
+      "background-color": "gold", "border-width": "1px", "border-style": "solid", padding: "8px",
+    }})
+
+    expect(paragraphs[0]).toHaveStyle({backgroundColor: "gold", padding: "8px", color: "blue"})
+    expect(paragraphs[1]).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+    expect(paragraphs[2]).not.toHaveAttribute("style")
+    expect(document.body).not.toHaveAttribute("style")
+    expect(Array.from(document.body.childNodes)).toEqual(nodes)
+    expect(document.getSelection()?.toString()).toBe("net")
+    const state = manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["background-color", "color"]})
+    expect(state.inline["background-color"]?.value).toBe("gold")
+    expect(state.inline.color).toBeUndefined()
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toContain("◆")
+    expect(JSON.stringify(editor.doc.body.toJSON())).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it("styles a structural sibling range below a document template without touching its next sibling", () => {
+    document.body.innerHTML = '<demo-document role="document"><p>one</p><!--keep--><unknown-widget><p>private</p></unknown-widget><p>three</p></demo-document>'
+    const root = document.body.firstElementChild!, widget = root.children[1]
+    $.selectRange(root, 0, root, 3)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: "8px"}})
+    expect(root.children[0]).toHaveStyle({padding: "8px"})
+    expect(widget).toHaveStyle({padding: "8px"})
+    expect(widget.firstElementChild).not.toHaveAttribute("style")
+    expect(root.children[2]).not.toHaveAttribute("style")
+    expect(root).not.toHaveAttribute("style")
+    expect(document.body).not.toHaveAttribute("style")
+  })
+
+  it("resolves selected siblings again after a remote removal", async () => {
+    document.body.innerHTML = '<p>one</p><p>two</p><p>three</p>'
+    $.selectRange(document.body, 0, document.body, 2)
+    editor.doc.syncFromDOM()
+    const manipulation = editor.features.manipulation
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("p")
+    const removed = document.body.firstElementChild!
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      sharedDOMBody(remote).delete(0, 1)
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
+      await new Promise<void>(resolve => setTimeout(resolve))
+      $.selectRange(document.body.firstElementChild!.firstChild!, 1, document.body.lastElementChild!.firstChild!, 2)
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: "8px"}})
+      expect(removed.isConnected).toBe(false)
+      expect(removed).not.toHaveAttribute("style")
+      expect(Array.from(document.querySelectorAll("p"))).toHaveLength(2)
+      for(const paragraph of document.querySelectorAll("p")) expect(paragraph).toHaveStyle({padding: "8px"})
+      expect(document.body).not.toHaveAttribute("style")
+    }
+    finally { remote.destroy() }
+  })
+
   it.each(["relative", "absolute", "sticky"])("rejects %s positioning commands in document layout", position => {
     document.body.innerHTML = '<p style="position: relative; left: 12px">text</p>'
     const target = document.body.firstElementChild as HTMLElement
