@@ -2783,7 +2783,12 @@ export class ManipulationFeature extends EditorFeature {
       const proposed = Array.from(parent.childNodes)
       proposed.splice(blockIndex + 1, 0, ...nodes, this.cloneSplitContinuation(block) as ChildNode)
       const containsWidget = nodes.some(node => Boolean(this.insertedWidget(node)))
-      if(!containsWidget && !this.editor.schema.isContentValid(parent, proposed)) {
+      // Unrestricted flow containers accept each incoming block independently.
+      // Unfamiliar existing siblings must not flatten a paste into soft breaks.
+      const contentRule = this.editor.schema.get(parent).content
+      const validationNodes = contentRule && "group" in contentRule && contentRule.group === "flow" && contentRule.max === Infinity
+        ? nodes : proposed
+      if(!containsWidget && !this.editor.schema.isContentValid(parent, validationNodes)) {
         const fallback = this.plainTextClipboardFragment(nodes.map(node => node.textContent ?? "").join("\n"))
         this.insertAtSelection(...Array.from(fallback.childNodes))
         return

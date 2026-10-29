@@ -84,6 +84,7 @@ const expectedChecks = [
   "cut paragraphs retain a visible native caret position",
   "list markers survive native cut and paste",
   "heading clipboard preserves gap headings and joins existing text",
+  "paragraph clipboard preserves separate paragraphs at a text caret",
   "paragraph boundary deletion reverses Enter in Document and Board",
   "triple clicks preserve native paragraph selections in Document and Board",
   "Elements pullout reserves matching padding after its opening animation",

@@ -22,6 +22,7 @@ import {checkParagraphCut} from "./paragraph-cut"
 import {checkHistorySelection} from "./history-selection"
 import {checkListClipboard} from "./list-clipboard"
 import {checkHeadingClipboard} from "./heading-clipboard"
+import {checkParagraphClipboard} from "./paragraph-clipboard"
 import {checkListDeletion} from "./list-deletion"
 import {checkListEditing} from "./list-editing"
 import {checkSoftLineBreak} from "./soft-line-break"
@@ -72,6 +73,7 @@ const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
+await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
 await check("list editing splits and indents selected items", checkListEditing)
 await check("soft breaks render a new line on the first press and accept native typing", checkSoftLineBreak)
 await check("multi-paragraph style presets stay within the selected siblings", checkParagraphStylePresets)

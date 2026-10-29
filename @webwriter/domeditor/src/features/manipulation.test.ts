@@ -3563,6 +3563,82 @@ describe("insertion beside a lone float", () => {
 })
 
 describe("paste()", () => {
+  it("keeps copied paragraphs separate when pasting at the end of a paragraph", () => {
+    document.body.innerHTML = '<p>A</p><p>B</p><p>C</p>'
+    const [target, second, third] = Array.from(document.querySelectorAll("p"))
+    $.selectRange(second.firstChild!, 0, third.firstChild!, 1)
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    expect(data.getData("text/html")).toContain('<p>B</p><p>C</p>')
+    $.move(target.firstChild!, 1)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    expectBodyToBe('<p>A</p><p>B</p><p>C</p><p>B</p><p>C</p>')
+  })
+
+  it("still respects a widget's restricted paragraph content when pasting blocks", () => {
+    editor.schema.extendWidgets([{tagName: "limited-widget", editingConfig: {content: "p"}}])
+    document.body.innerHTML = '<limited-widget id="limited"><p>A</p></limited-widget>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 1)
+    const data = new DataTransfer()
+    data.setData("text/html", '<p>B</p><p>C</p>')
+
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    expectBodyToBe('<limited-widget id="limited"><p>AB<br>C</p></limited-widget>')
+    expect(document.querySelector("p")).toBe(paragraph)
+  })
+
+  it.each(["native", "beforeinput", "async"].flatMap(method =>
+    ["start", "middle", "end", "range", "empty"].map(target => ({method, target})),
+  ))("preserves multiple copied paragraphs within a section ($method, $target)", async ({method, target}) => {
+    document.body.innerHTML = '<p><b>B</b></p><p><i>C</i></p><section><!--keep--><p id="target"><b><i>AD</i></b></p><test-widget>Widget</test-widget></section>'
+    const section = document.querySelector("section")!, paragraph = document.querySelector("#target")!
+    const comment = section.firstChild!, widget = section.lastChild!
+    const [second, third] = Array.from(document.querySelectorAll("p"))
+    $.selectRange(second.querySelector("b")!.firstChild!, 0, third.querySelector("i")!.firstChild!, 1)
+    const data = new DataTransfer()
+    if(method === "async") await editor.features.manipulation.copy()
+    else document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    const text = paragraph.querySelector("i")!.firstChild!
+    if(target === "empty") { paragraph.replaceChildren(); $.move(paragraph) }
+    else if(target === "range") $.selectRange(text, 0, text, 2)
+    else $.move(text, target === "start" ? 0 : target === "middle" ? 1 : 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    if(method === "async") await editor.features.manipulation.paste()
+    else {
+      const event = method === "beforeinput"
+        ? new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true})
+        : new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+
+    const left = target === "end" ? '<p id="target"><b><i>AD</i></b></p>'
+      : target === "middle" ? '<p id="target"><b><i>A</i></b></p>' : ''
+    const right = target === "start" ? '<p><b><i>AD</i></b></p>'
+      : target === "middle" ? '<p><b><i>D</i></b></p>'
+      : target === "range" ? '<p><b><i></i></b></p>' : ''
+    expect(cloneWithoutEditorMarkers(section, true).innerHTML).toBe(`<!--keep-->${left}<p><b>B</b></p><p><i>C</i></p>${right}<test-widget>Widget</test-widget>`)
+    expect(section.firstChild).toBe(comment)
+    expect(section.lastChild).toBe(widget)
+    if(left) expect(section.querySelector("#target")).toBe(paragraph)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    const changed = editor.toHTML(true)
+    expect(changed).not.toContain("◆")
+    expect(changed).not.toContain("webwriter-clipboard")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("webwriter-clipboard")
+    editor.doc.undo()
+    expectBodyToBe(original)
+    editor.doc.redo()
+    expectBodyToBe(changed)
+  })
+
   it.each(["native", "native-cut", "beforeinput", "async"].flatMap(method =>
     ["gap-before", "gap-after", "caret", "range", "empty-block", "element"].map(target => ({method, target})),
   ))("pastes copied heading text according to the destination ($method, $target)", async ({method, target}) => {
