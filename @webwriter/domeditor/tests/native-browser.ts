@@ -2349,6 +2349,9 @@ await check("gap carets track their authored boundary", async () => {
       '<!--keep--><p></p>\n<!--keep too-->',
       '<p style="width:240px;height:80px">Resized</p>',
       '<hr style="width:240px">',
+      '<ul><li>First</li><li>Last</li></ul>', '<ol><li>First</li><li>Last</li></ol>',
+      '<dl><dt>Term</dt><dd>Definition</dd></dl>',
+      '<ul><!--empty--></ul>',
       '<p style="width:100%;max-width:none">Wide block</p>',
       '<section><div id="gap-container" style="padding:24px;border:3px solid"><!--keep--><p style="width:200px;margin-inline:auto">Nested resized block</p></div></section>',
       '<main id="gap-container"><p style="width:240px">Resized in a landmark</p></main>']) {
@@ -2383,6 +2386,36 @@ await check("gap carets track their authored boundary", async () => {
         if(emptyStyle.sheet!.cssRules.length) emptyStyle.sheet!.deleteRule(0)
         doc.body.innerHTML = html
         container = doc.querySelector("#gap-container") ?? doc.body
+      }
+    }
+    // Real hit testing resolves whitespace to list item text in Chromium.
+    // Both pointer and keyboard navigation must retain the outer list gap.
+    const listView = view as Window & typeof globalThis
+    for(const tag of ["ul", "ol", "dl", "menu"]) {
+      for(const placement of ["before", "after"] as const) {
+        const before = placement === "before", itemTag = tag === "dl" ? "dt" : "li"
+        doc.body.innerHTML = `<p>Before</p><${tag}><!--keep--><${itemTag}><b>Item</b></${itemTag}></${tag}><p>After</p>`
+        const list = doc.querySelector(tag)!, text = list.querySelector("b")!.firstChild!
+        const parent = list.parentElement!, index = Array.from(parent.childNodes).indexOf(list)
+        const authored = list.innerHTML
+        selection.setPosition(text, before ? 0 : 4)
+        doc.dispatchEvent(new listView.KeyboardEvent("keydown", {key: before ? "ArrowUp" : "ArrowDown", bubbles: true, cancelable: true}))
+        assert(selection.anchorNode === parent && selection.anchorOffset === index + (before ? 0 : 1), `${tag}: keyboard missed ${placement} gap`)
+        assert(list.classList.contains(`◆gap-${placement}-selected`), `${tag}: missing ${placement} gap marker`)
+        await layoutFrame()
+        const box = list.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
+        assert(caret.width > 0 && Math.abs(caret.top - (before ? box.top : box.bottom + (parseFloat(view.getComputedStyle(list).marginBottom) || 0))) < 1,
+          `${tag}: ${placement} gap caret misses list boundary`)
+        selection.setPosition(text, 2)
+        const x = box.left + box.width / 2, y = before ? box.top - 4 : box.bottom + 4
+        const target = doc.elementFromPoint(x, y) ?? parent
+        target.dispatchEvent(new listView.PointerEvent("pointerdown", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true}))
+        target.dispatchEvent(new listView.PointerEvent("pointerup", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true}))
+        assert(selection.anchorNode === parent && selection.anchorOffset === index + (before ? 0 : 1), `${tag}: pointer missed ${placement} gap`)
+        doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Outside"}))
+        assert((before ? list.previousElementSibling : list.nextElementSibling)?.textContent === "Outside", `${tag}: typing did not stay outside the list`)
+        assert(list.innerHTML === authored, `${tag}: gap editing changed list contents`)
+        assert(!view.editor!.toHTML(true).includes("◆"), `${tag}: gap markers leaked into HTML`)
       }
     }
   }
