@@ -126,6 +126,7 @@ const expectedChecks = [
   "empty document gutters prefer floats throughout the viewport",
   "empty graphics drag through their full capture outline into floats",
   "native MathML editing preserves inline rendering and argument hit targets",
+  "typed formula brackets stretch to their own content and stay paired under scripts",
   "dead-key composition stays outside authored formulas",
   "whole formulas receive one blue selection layer",
   "empty formula carets fit their space and blink across presentation refreshes",

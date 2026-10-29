@@ -81,6 +81,12 @@ export class MathFeature extends EditorFeature {
       if(isToken(element)) {
         const contents = document.createRange()
         contents.selectNodeContents(element)
+        // Browser selections can end inside the adjacent token at offset zero,
+        // or start at its final text offset, without selecting any characters.
+        if(plainToken(element) && element.firstChild instanceof Text && element.lastChild instanceof Text) {
+          contents.setStart(element.firstChild, 0)
+          contents.setEnd(element.lastChild, element.lastChild.length)
+        }
         return range.compareBoundaryPoints(Range.END_TO_START, contents) < 0
           && range.compareBoundaryPoints(Range.START_TO_END, contents) > 0
       }
@@ -195,7 +201,10 @@ export class MathFeature extends EditorFeature {
     }
     const range = selection.getRangeAt(0)
     let changed = false
-    for(const element of Array.from(document.body.querySelectorAll("math, math *"))) {
+    const elements = this.activeMath
+      ? this.formatTargets().flatMap(target => [target, ...target.querySelectorAll("*")])
+      : Array.from(document.body.querySelectorAll("math, math *"))
+    for(const element of elements) {
       if(!isMath(element) || this.inWidget(element) || !element.hasAttribute("style") || !range.intersectsNode(element)) continue
       const style = this.inlineStyle(element)
       if(!formulaStyleNames.some(property => style.getPropertyValue(property))) continue
@@ -223,6 +232,11 @@ export class MathFeature extends EditorFeature {
         if(!root || !this.editRange() || !range.startContainer.isConnected || !range.endContainer.isConnected
           || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return false
         this.dismissCommand()
+        if(command.startsWith("structure:")) {
+          const result = this.insertStructure(range, command.slice(10), true, true)
+          if(result) this.changed()
+          return result
+        }
         document.getSelection()?.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
         return this.execute(command)
       },
@@ -754,16 +768,45 @@ export class MathFeature extends EditorFeature {
     }
     if(styles) tokens.forEach(token => this.writeFormatting(token, styles))
     if(!this.insertNodes(range, tokens)) return false
+    let group: Element | undefined
+    for(const token of tokens) group = this.groupTypedFence(token)
     if(this.spelling) this.input?.recordInput(tokens)
     const last = tokens.at(-1)!
-    $.move(last.firstChild!, last.textContent!.length)
-    if(styles) this.typingPoint = [last.firstChild!, last.textContent!.length]
+    if(group) $.move(...after(group))
+    else $.move(last.firstChild!, last.textContent!.length)
+    if(styles) this.typingPoint = [$.focus!, $.focusOffset]
     return true
   }
 
-  private insertStructure(range: Range, name: string, select = true): boolean {
+  /** A completed fence pair owns a row so native stretching uses only its
+   * contents, and a following script takes the whole group as its base. */
+  private groupTypedFence(close: Element) {
+    const pairs: Record<string, string> = {")": "(", "]": "[", "}": "{", "⟩": "⟨", "⌋": "⌊", "⌉": "⌈"}
+    if(close.localName !== "mo" || !pairs[close.textContent ?? ""] || !close.parentElement || !isRow(close.parentElement)) return
+    const stack = [pairs[close.textContent!]]
+    for(let sibling = close.previousSibling; sibling; sibling = sibling.previousSibling) {
+      if(!(sibling instanceof Element) || !plainToken(sibling) || sibling.localName !== "mo") continue
+      const text = sibling.textContent!
+      if(pairs[text]) stack.push(pairs[text])
+      else if(Object.values(pairs).includes(text)) {
+        if(text !== stack.pop()) return
+        if(stack.length) continue
+        const row = mathElement("mrow")
+        sibling.before(row)
+        while(row.nextSibling) {
+          const next = row.nextSibling
+          row.append(next)
+          if(next === close) break
+        }
+        return row
+      }
+    }
+  }
+
+  private insertStructure(range: Range, name: string, select = true, replace = false): boolean {
     const extra = ["sqrt", "cbrt", "coprod", "norm", "floor", "ceil", "angle", "cancel", "bcancel", "xcancel", "box", "overbrace", "underbrace", "overbracket", "underbracket", "overparen", "underparen", "text"]
     if(!mathStructureOptions.some(option => option.command === `structure:${name}`) && !extra.includes(name)) return false
+    if(replace && !this.removeRange(range)) return false
     // Preserve selected nodes by moving them, retaining identity and attributes.
     let operand: Node[] = []
     if(!range.collapsed) {
@@ -785,7 +828,7 @@ export class MathFeature extends EditorFeature {
     if(!point || !isRow(point[0])) return false
     const [parent, offset] = point
     const previous = parent.childNodes[offset - 1]
-    if(!operand.length && ["frac", "square", "sup", "sub"].includes(name) && previous instanceof Element
+    if(!replace && !operand.length && ["frac", "square", "sup", "sub"].includes(name) && previous instanceof Element
       && previous.namespaceURI === MATH_NAMESPACE && (name !== "frac" || previous.localName !== "mo")) operand = [previous]
     const first = mathElement("mrow")
     const second = mathElement("mrow")

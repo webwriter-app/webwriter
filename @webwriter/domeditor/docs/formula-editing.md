@@ -39,6 +39,8 @@ Empty and filled formulas have 2px of padding inside their background. Text care
 
 Use a structure tool with a selection to wrap whole sibling expressions. Standard clipboard shortcuts copy selected expressions as MathML and plain text; paste accepts MathML formulas or plain text. Edits use the editor's normal collaboration and undo/redo mechanisms.
 
+Closing a typed bracket pair groups its contents in a MathML row. Both brackets stretch to that group's content, and a following superscript or subscript applies to the whole group.
+
 ## Scope
 
 Editing supports token text, row-like containers, fractions, radicals, scripts, limits, and matrix cells. It works with unwrapped arguments and existing rows. Commands preserve comments, authored attributes, and unrelated nesting. Unsupported subtrees are opaque, and widget internals belong to their widget. Selections that partially cross argument boundaries, or malformed fixed-arity structures, are left unchanged by editing commands.

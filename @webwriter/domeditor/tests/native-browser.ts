@@ -3793,6 +3793,50 @@ await check("native MathML editing preserves inline rendering and argument hit t
   paragraph.remove()
 })
 
+await check("typed formula brackets stretch to their own content and stay paired under scripts", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.style.fontSize = "32px"
+  paragraph.innerHTML = '<math><mrow></mrow></math>'
+  fixture.append(paragraph)
+  try {
+    const math = paragraph.querySelector("math")!
+    const row = math.firstElementChild!
+    const edit = (command: string) => assert(editor.features.math.execute(command), `command failed: ${command}`)
+    const type = (text: string) => { for(const character of text) document.dispatchEvent(new KeyboardEvent("keydown", {key: character, bubbles: true, cancelable: true})) }
+    $.move(row, 0)
+    type("(")
+    edit("structure:frac")
+    edit("structure:frac")
+    type("1")
+    edit("move:down")
+    type("2")
+    $.move(row.querySelector("mfrac")!.children[1], 0)
+    edit("structure:frac")
+    type("3")
+    edit("move:down")
+    type("4")
+    $.move(row, row.childNodes.length)
+    type(")+(x+1/2")
+    edit("move:right")
+    type(")^2")
+    await document.fonts.ready
+    await layoutFrame()
+    const first = row.children[0]
+    const second = row.children[2].firstElementChild!.firstElementChild!
+    for(const group of [first, second]) {
+      assert(group.localName === "mrow", "typed pair has no content row")
+      const open = group.firstElementChild!.getBoundingClientRect()
+      const close = group.lastElementChild!.getBoundingClientRect()
+      assert(Math.abs(open.height - close.height) < 1, `paired brackets differ in height: ${open.height}/${close.height}`)
+      assert(Math.abs(open.top - close.top) < 1, "paired brackets differ in vertical alignment")
+    }
+    assert(first.firstElementChild!.getBoundingClientRect().height > second.firstElementChild!.getBoundingClientRect().height + 4,
+      "shorter bracket group stretched to the neighboring nested fraction")
+    assert(!editor.toHTML(true).includes("◆"), "formula markers leaked into serialized content")
+  }
+  finally { paragraph.remove() }
+})
+
 await check("whole formulas receive one blue selection layer", async () => {
   const paragraph = document.createElement("p")
   fixture.append(paragraph)
