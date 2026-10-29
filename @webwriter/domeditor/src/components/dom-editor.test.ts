@@ -8737,7 +8737,7 @@ describe("DomEditor.execute()", () => {
     const before = body.innerHTML
     const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
     expect(tree.children.map(item => item.path)).toEqual([[2], [4], [5], [6, 0], [7, 0, 0]])
-    expect(tree.children.map(item => item.name)).toEqual(["Paragraph", "test-widget", "Paragraph", "Paragraph", "Paragraph"])
+    expect(tree.children.map(item => item.name)).toEqual(["Paragraph", "Widget", "Paragraph", "Paragraph", "Paragraph"])
     expect(tree.sections).toBeUndefined()
     expect(body.innerHTML).toBe(before)
   })
@@ -8753,7 +8753,7 @@ describe("DomEditor.execute()", () => {
         {path: [0, 0], name: "Column Heading", icon: "Heading", children: []},
         {path: [0, 2], name: "Card 1", icon: "BoardCard", children: [
           {path: [0, 2, 0], name: "Paragraph", icon: "Paragraph", children: []},
-          {path: [0, 2, 1, 0], name: "custom-widget", icon: "Packages", children: [], sections: [
+          {path: [0, 2, 1, 0], name: "Widget", icon: "Packages", children: [], sections: [
             {path: [0, 2, 1], type: "section", name: "Section", icon: "Section"},
           ]},
         ]},

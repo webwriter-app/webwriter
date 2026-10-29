@@ -1044,6 +1044,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
   })
 
   it("inserts a line break into an empty text root", () => {
+    document.body.innerHTML = "<section><p></p></section>"
     expect(editor.setDocumentLayout(mode, "document")).toBe(true)
     const paragraph = document.querySelector("p")!, parent = paragraph.parentElement!
     $.move(paragraph)
@@ -1875,7 +1876,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(widget.isConnected).toBe(false)
     expectBodyToBe("<p>before<em>new</em>after</p>")
   })
-  it.each(["empty paragraph", "gap", "block split", "inline", "HTML", "paste"])("element-selects a contentful widget inserted through %s", async context => {
+  it.each(["empty paragraph", "gap", "block split", "inline", "HTML", "paste"])("capture-selects a contentful widget inserted through %s", async context => {
     editor.schema.extendWidgets([{
       tagName: "webwriter-demo",
       editingConfig: {content: "flow*", ...(context === "inline" ? {inline: true, group: "phrasing"} : {})},
@@ -1896,10 +1897,9 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     else editor.features.manipulation.insert(document.createElement("webwriter-demo"))
 
     const widget = document.querySelector("webwriter-demo")!
-    expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
   it("edits and formats a paragraph inside a contentful widget with undo and redo", () => {
@@ -1915,14 +1915,14 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const input = new KeyboardEvent("keydown", {bubbles: true, composed: true, cancelable: true, key: "Enter"})
     paragraph.dispatchEvent(input)
     expect(input.defaultPrevented).toBe(true)
-    expectBodyToBe('<webwriter-demo><!--keep--><div><p>he</p><p>llo</p></div></webwriter-demo>')
+    expectBodyToBe(`<webwriter-demo id="${widget.id}"><!--keep--><div><p>he</p><p>llo</p></div></webwriter-demo>`)
     expect(editor.features.manipulation.setBlockStyle({"text-align": "center"})).toBe(1)
     editor.doc.syncFromDOM()
     expect(widget.querySelectorAll("p")[1]).toHaveStyle({textAlign: "center"})
     expect(editor.features.selection.isCaptureSelection).toBe(false)
 
     editor.doc.undo()
-    expectBodyToBe('<webwriter-demo><!--keep--><div><p>hello</p></div></webwriter-demo>')
+    expectBodyToBe(`<webwriter-demo id="${widget.id}"><!--keep--><div><p>hello</p></div></webwriter-demo>`)
     editor.doc.redo()
     expect(document.querySelectorAll("p")).toHaveLength(2)
     expect(document.querySelectorAll("p")[1]).toHaveStyle({textAlign: "center"})
@@ -1960,7 +1960,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(selection.toString()).toBe("")
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect(editor.toHTML(true)).toBe("<section><p>before</p><webwriter-demo></webwriter-demo><!--keep--><p>after</p></section>")
+    expect(editor.toHTML(true)).toBe(`<section><p>before</p><webwriter-demo id="${widget.id}"></webwriter-demo><!--keep--><p>after</p></section>`)
 
     const editable = shadow.querySelector<HTMLElement>("div")!
     editable.focus()

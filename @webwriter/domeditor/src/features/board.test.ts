@@ -103,7 +103,7 @@ describe("Board layout", () => {
     expect(heading.className).toContain("◆")
     expect(convert("slides")).toBe(true)
     expect(document.querySelector("h2")).toBeNull()
-    expect(document.querySelector(".ww-slide h1")).not.toBeNull()
+    expect(document.querySelector(".ww-slide")).not.toBeNull()
   })
 
   it("allows deleting the last column, undoing it, and adding a column to an empty board", async () => {

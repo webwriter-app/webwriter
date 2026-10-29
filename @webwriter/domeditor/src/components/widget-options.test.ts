@@ -17,7 +17,7 @@ async function mountToolbox() {
   return toolbox
 }
 
-const drawerFor = (toolbox: DomEditorToolbox) => toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Widget"]')!
+const drawerFor = (toolbox: DomEditorToolbox) => toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="demo-controls"]')!
 const settleChildren = async (root: ParentNode) => {
   await Promise.all(Array.from(root.querySelectorAll<HTMLElement>("style-combobox, ribbon-combobox, ribbon-button"), element =>
     (element as HTMLElement & {updateComplete?: Promise<unknown>}).updateComplete ?? Promise.resolve()))

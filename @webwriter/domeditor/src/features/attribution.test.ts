@@ -541,7 +541,7 @@ describe("element attribution editing", () => {
       owner.querySelector("p")!.setAttribute(attributionAttributes.name, "Remote author")
       peer.syncFromDOM()
       Y.applyUpdate(editor!.doc.doc, Y.encodeStateAsUpdate(ydoc), "remote-attribution")
-      await settle()
+      await vi.waitFor(() => expect(notes()).toHaveLength(1))
       expect(notes()[0].textContent).toBe("© Remote author")
       const element = document.querySelector("p")!
       bounds(element); notes()[0].click()

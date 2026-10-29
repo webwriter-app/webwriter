@@ -986,13 +986,14 @@ describe("revealing selections inside details", () => {
     feature.selectElement(details.querySelector("summary")!)
     expect(details.open).toBe(false)
     const widget = document.createElement("test-widget")
+    widget.id = "inserted-widget"
     editor.features.manipulation.insert(widget)
     expect(widget.parentElement).toBe(details)
     expect(feature.captureSelectedElement).toBe(widget)
     expect(details.open).toBe(true)
     expect(details.querySelector("summary")!.textContent).toBe("Title")
     expect(details.querySelector("p")!.textContent).toBe("Body")
-    expect(editor.toHTML(true)).toBe('<details open=""><summary>Title</summary><test-widget></test-widget><!--keep--><p>Body</p></details>')
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>Title</summary><test-widget id="inserted-widget"></test-widget><!--keep--><p>Body</p></details>')
   })
 })
 
@@ -3428,6 +3429,8 @@ describe("document listeners", () => {
         detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
+          distribution: null,
+          distributionGeneral: expect.objectContaining({path: null}),
           documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
           path: [
             {path: [], name: "Document", icon: "Document"},
@@ -3452,6 +3455,8 @@ describe("document listeners", () => {
       detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
+        distribution: null,
+        distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -3724,6 +3729,8 @@ describe("document listeners", () => {
       detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
+        distribution: null,
+        distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -3796,6 +3803,8 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+        distribution: null,
+        distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [{path: [], name: "Document", icon: "Document"}],
         gap: {parentPath: [], offset: 1},

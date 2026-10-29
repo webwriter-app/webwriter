@@ -325,8 +325,9 @@ describe("insertion menu", () => {
     expect(editorHTML()).toBe(`<webwriter-demo id="${widget.id}"></webwriter-demo>`)
     expect(widget.id).toMatch(/^ww[0-9a-f]/)
     expect(widget.hasAttribute("contenteditable")).toBe(true)
-    expect($.selectedElement).toBe(widget)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget.classList.contains("◆element-selected")).toBe(true)
+    expect(widget.classList.contains("◆element-capture-selected")).toBe(true)
     expect(menu.open).toBe(false)
   })
 
