@@ -871,8 +871,9 @@ export class WebWriterPackageRegistry {
   }
 
   private async fetchPackage(summary: Pick<WebWriterPackage, "name" | "version"> & Partial<WebWriterPackage>) {
-    const manifestUrl = `${NPM_REGISTRY_ENDPOINT}/${encodeURIComponent(summary.name)}/${encodeURIComponent(summary.version)}`
-    const response = await this.fetcher(manifestUrl)
+    // Registry metadata can reorder exports; the published file defines member order.
+    const manifestUrl = packageCdnUrl(summary.name, summary.version, "package.json")
+    const response = await fetchNpmFile(manifestUrl, {}, this.fetcher)
     if(!response.ok) throw new Error(`Package metadata failed (${response.status})`)
     const manifest = await response.json() as WebWriterPackageManifest
     const exports = manifest.exports ?? {}

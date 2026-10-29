@@ -141,7 +141,7 @@ describe("WebWriterPackageRegistry", () => {
     }
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if(url === "https://registry.npmjs.org/%40webwriter%2Fchemdraw/2.1.1") return Response.json(manifest)
+      if(url === "https://cdn.jsdelivr.net/npm/@webwriter/chemdraw@2.1.1/package.json") return Response.json(manifest)
       if(url.startsWith(JSDELIVR_PACKAGE_FILES_ENDPOINT)) {
         return Response.json({default: null, files: [
           {name: "/dist/widgets/webwriter-periodic-table.js"},
@@ -168,7 +168,7 @@ describe("WebWriterPackageRegistry", () => {
     }
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if(url === "https://registry.npmjs.org/%40webwriter%2Fbranching-scenario/1.2.1") return Response.json(manifest)
+      if(url === "https://cdn.jsdelivr.net/npm/@webwriter/branching-scenario@1.2.1/package.json") return Response.json(manifest)
       if(url.startsWith(JSDELIVR_PACKAGE_FILES_ENDPOINT)) {
         return Response.json({files: [
           {name: "/dist/widgets/webwriter-branching-scenario.js"},
@@ -200,7 +200,7 @@ describe("WebWriterPackageRegistry", () => {
     }
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if(url === "https://registry.npmjs.org/%40webwriter%2Fbranching-scenario/1.2.1") return Response.json(manifest)
+      if(url === "https://cdn.jsdelivr.net/npm/@webwriter/branching-scenario@1.2.1/package.json") return Response.json(manifest)
       if(url.startsWith(JSDELIVR_PACKAGE_FILES_ENDPOINT)) return new Response(null, {status: 503})
       throw new Error("Unexpected request: " + url)
     })
@@ -212,7 +212,7 @@ describe("WebWriterPackageRegistry", () => {
     ])
   })
 
-  it("discovers scoped packages and preserves ordered widget/snippet exports", async () => {
+  it("discovers scoped packages and uses published export order when registry metadata differs", async () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if(url.startsWith(NPM_SEARCH_ENDPOINT)) {
@@ -229,7 +229,14 @@ describe("WebWriterPackageRegistry", () => {
           links: {npm: "https://www.npmjs.com/package/@webwriter/demo"},
         }}]})
       }
-      if(url === "https://registry.npmjs.org/%40webwriter%2Fdemo/1.2.3") {
+      if(url === "https://registry.npmjs.org/%40webwriter%2Fdemo/1.2.3"
+        || url === "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/package.json") {
+        const exports = {
+          "./icon": "./icon.svg",
+          "./editing-config.json": "./editing-config.json",
+          "./widgets/webwriter-demo.*": {source: "./src/demo.ts", default: "./dist/demo.*"},
+          "./snippets/example.html": "./snippets/example.html",
+        }
         return Response.json({
           name: "@webwriter/demo",
           version: "1.2.3",
@@ -237,12 +244,8 @@ describe("WebWriterPackageRegistry", () => {
           keywords: ["webwriter-widget", "widget-practical"],
           author: {name: "Ada Author"},
           license: "Apache-2.0",
-          exports: {
-            "./icon": "./icon.svg",
-            "./editing-config.json": "./editing-config.json",
-            "./widgets/webwriter-demo.*": {source: "./src/demo.ts", default: "./dist/demo.*"},
-            "./snippets/example.html": "./snippets/example.html",
-          },
+          exports: url.startsWith("https://registry.npmjs.org/")
+            ? Object.fromEntries(Object.entries(exports).reverse()) : exports,
           editingConfig: {
             ".": {label: {de: "Demo-Paket"}},
           },
@@ -274,6 +277,10 @@ describe("WebWriterPackageRegistry", () => {
       ["widget", "Demo Widget"],
       ["snippet", "Example Snippet"],
     ])
+    expect(pkg.members.find(member => member.insertable)?.tagName).toBe("webwriter-demo")
+    expect(Object.keys(pkg.manifest!.exports!)).toEqual([
+      "./icon", "./editing-config.json", "./widgets/webwriter-demo.*", "./snippets/example.html",
+    ])
     expect(pkg.scripts).toEqual(["https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/dist/demo.js"])
     expect(pkg.editingConfig?.["./widgets/webwriter-demo"]).toMatchObject({
       content: "(p | flow)+",
@@ -289,6 +296,22 @@ describe("WebWriterPackageRegistry", () => {
     expect(packageInsertionItems([pkg])).toEqual([
       expect.objectContaining({section: "Packages", kind: "widget", tag: "webwriter-demo"}),
       expect.objectContaining({section: "Packages", kind: "snippet", htmlUrl: "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/snippets/example.html"}),
+    ])
+  })
+
+  it("retries a failed published manifest request instead of caching the failure", async () => {
+    const manifest = {name: "@webwriter/demo", version: "1.2.3", exports: {}}
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(null, {status: 404}))
+      .mockResolvedValueOnce(Response.json(manifest))
+    const registry = new WebWriterPackageRegistry(fetcher as typeof fetch)
+
+    await expect(registry.getPackage(manifest)).rejects.toThrow("Package metadata failed (404)")
+    await expect(registry.getPackage(manifest)).resolves.toMatchObject({manifest})
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/package.json",
+      "https://cdn.jsdelivr.net/npm/@webwriter/demo@1.2.3/package.json",
     ])
   })
 
