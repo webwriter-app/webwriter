@@ -2618,11 +2618,12 @@ export class ManipulationFeature extends EditorFeature {
     $.move(root, Array.from(root.childNodes).indexOf(floats[0]) + 1)
   }
 
-  /** Materializes the virtual insertion point used for an empty document or
-   * an element gap as a real schema-conformant text block. Returns the block
+  /** Materializes the virtual insertion point used for an empty document,
+   * slide, widget or element gap as a real text block. Returns the block
    * when one was created and null for an ordinary editing selection. */
   ensureTextBlock() {
-    return $.isGapSelection || $.isEmptyDocumentSelection || $.isEmptySelection && isContentfulWidget($.anchor, this.editor.schema)
+    return $.isGapSelection || $.isEmptyDocumentSelection || $.isEmptySelection
+      && (isContentfulWidget($.anchor, this.editor.schema) || this.editor.features.slides.active && isSlide($.anchor))
       ? this.insertTextBlockAtSelection() ?? null
       : null
   }
@@ -3502,7 +3503,7 @@ export class ManipulationFeature extends EditorFeature {
       }
 
       const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
-        || $.isEmptySelection && isContentfulWidget($.anchor, this.editor.schema)
+        || $.isEmptySelection && (isContentfulWidget($.anchor, this.editor.schema) || this.editor.features.slides.active && isSlide($.anchor))
       if(!isVirtualSelection) return
 
       if(ev.inputType === "insertParagraph") {

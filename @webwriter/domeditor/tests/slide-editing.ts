@@ -106,11 +106,39 @@ export async function checkSlideEditing() {
     const emptySlide = doc.querySelectorAll<HTMLElement>("section.ww-slide")[1]
     assert(!emptySlide.querySelector("h1, p"), "new slide contains automatic text boxes")
     assert(selection.anchorNode === emptySlide && !editor.features.transformation.target, "blank slide retains text box controls")
+    const firstContent = slide.textContent
+    const typing = new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "New slide text"})
+    doc.body.dispatchEvent(typing)
+    if(!typing.defaultPrevented) doc.execCommand("insertText", false, "New slide text")
+    await settle()
+    assert(emptySlide.querySelector("p")?.textContent === "New slide text", "typing on a blank slide did not create its own text box")
+    assert(slide.textContent === firstContent && editor.features.slides.current() === emptySlide, "typing on a blank slide changed or navigated to another slide")
+    emptySlide.querySelector("p")!.remove()
+    editor.features.slides.selectStart(emptySlide)
     const emptyRect = emptySlide.getBoundingClientRect()
     emptySlide.dispatchEvent(new view.MouseEvent("dblclick", {bubbles: true, cancelable: true,
       button: 0, clientX: emptyRect.left + 200, clientY: emptyRect.top + 150}))
     await settle()
     assert(emptySlide.querySelectorAll("p").length === 1 && selection.anchorNode === emptySlide.querySelector("p"), "blank slide does not accept a text box")
+    editor.features.slides.actions.addSlide({type: "addSlide"})
+    await settle()
+    const third = doc.querySelectorAll<HTMLElement>("section.ww-slide")[2]
+    const paragraph = doc.createElement("p"); paragraph.textContent = "Third slide text"; third.prepend(paragraph)
+    const navigation = doc.querySelectorAll<HTMLAnchorElement>("nav.ww-slides-navigation > a")
+    const navigate = async (index: number, target: HTMLElement) => {
+      navigation[index].click()
+      // Keep the authored smooth scrolling enabled: caret placement must not
+      // replace the fragment's animation with a reveal of an intermediate slide.
+      await new Promise(resolve => setTimeout(resolve, 1200))
+      await settle()
+      assert(editor.features.slides.current() === target, `smooth navigation stopped before slide ${index + 1}`)
+      assert(target.contains(selection.anchorNode), `navigation left the caret outside slide ${index + 1}`)
+      const rect = target.getBoundingClientRect()
+      assert(Math.abs(rect.left + rect.width / 2 - frame.clientWidth / 2) < 1, `slide ${index + 1} is not centered after navigation`)
+    }
+    await navigate(0, slide)
+    await navigate(2, third)
+    await navigate(0, slide)
     assert(!editor.toHTML(true).includes("◆"), "slide editing serialized editor markers")
   }
   finally { view.editor?.destroy(); frame.remove() }

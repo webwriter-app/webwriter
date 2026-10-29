@@ -128,7 +128,9 @@ export class SlidesFeature extends EditorFeature {
     else if(first instanceof Text || first instanceof Element && this.editor.features.manipulation.isTextBlock(first)
       && !first.closest('[contenteditable="false" i], [inert]')) $.move(first)
     else if(first instanceof Element) $.selectGap(first, "before")
-    this.editor.features.selection.selectDropRange($.range)
+    // The fragment owns scrolling. Revealing this caret during its smooth
+    // animation can replace the destination with an intermediate snap point.
+    this.editor.features.selection.selectDropRange($.range, {scrollIntoView: false})
     this.editor.postSelectionPath()
     return true
   }

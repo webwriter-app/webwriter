@@ -562,6 +562,34 @@ describe("CSS-only Slides layout", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it.each(["insertText", "insertReplacementText", "insertCompositionText"])("materializes a text box on the blank slide for %s", async inputType => {
+    const [one, two] = seed()
+    two.querySelector("p")!.remove()
+    editor.features.slides.selectStart(two)
+    const original = cloneWithoutEditorMarkers(one, true).innerHTML
+    expect(two.querySelector("p")).toBeNull()
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const event = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType, data: "New text"})
+    document.body.dispatchEvent(event)
+    expect(two.querySelector("p")).not.toBeNull()
+    expect(two.contains($.anchor)).toBe(true)
+    if(inputType !== "insertCompositionText") {
+      expect(event.defaultPrevented).toBe(true)
+      expect(two.querySelector("p")!.textContent).toBe("New text")
+    }
+    expect(cloneWithoutEditorMarkers(one, true).innerHTML).toBe(original)
+    await settle()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    if(inputType !== "insertCompositionText") {
+      editor.doc.undo(); await settle()
+      expect(slides()).toHaveLength(2)
+      expect(slides()[1].querySelector("p")).toBeNull()
+      editor.doc.redo(); await settle()
+      expect(slides()[1].querySelector("p")!.textContent).toBe("New text")
+    }
+  })
+
   it("uses a gap before non-text content, including widgets, without entering it", async () => {
     const [, two] = seed()
     for(const html of ['<table><tr><td>Cell</td></tr></table>', '<custom-card><p>Private</p></custom-card>', '<p contenteditable="false">Read only</p>', '<article><p>Nested</p></article>']) {
