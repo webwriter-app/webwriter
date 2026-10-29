@@ -988,6 +988,24 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     this.#releaseCaptureSelection()
+    // Let the browser resolve and extend ordinary authored text through the
+    // widget's flattened slot tree. Document hit tests can instead land at a
+    // host boundary; capturing the pointer and rewriting that range then pulls
+    // preceding title text into a backward drag. Special editing surfaces and
+    // positioned layouts keep the editor's explicit range handling below.
+    const authoredOrigin = origin instanceof Node && origin.getRootNode() === document ? origin : null
+    if(ev.pointerType !== "touch" && !this.editor.features.canvas.active && !this.editor.features.slides.active
+      && authoredOrigin && !mathRoot(authoredOrigin) && !atomicEditingContainer(authoredOrigin, this.editor.schema)
+      && editingFlowRoot(authoredOrigin) === getDocumentRoot()) {
+      for(let element = isElement(authoredOrigin) ? authoredOrigin : authoredOrigin.parentElement;
+        element && element !== getDocumentRoot(); element = element.parentElement) {
+        if(isContentfulWidget(element, this.editor.schema)) {
+          this.#clearSelections()
+          this.editor.features.transformation.clearTransform()
+          return
+        }
+      }
+    }
     const canvasItem = this.editor.features.canvas.editingRoot
       ? this.editor.features.canvas.itemAtPoint(ev.clientX, ev.clientY) : null
     if($.isEmptyDocumentSelection && editingFlowRoot(ev.target instanceof Node ? ev.target : null) === getDocumentRoot()

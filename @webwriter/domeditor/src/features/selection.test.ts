@@ -1489,30 +1489,66 @@ describe("contentful widgets", () => {
     }
   })
 
-  it("keeps pointer selection and drags in slotted authored text", () => {
+  it.each([false, true])("keeps native drag endpoints in slotted authored text (backward: %s)", backward => {
     const {widget, paragraph} = timeline(true)
     const text = paragraph.querySelector("b")!.firstChild!
     const rect = new DOMRect(0, 0, 200, 40)
     vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(rect)
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
     const caret = vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1, getClientRect: () => rect})
+    const capture = vi.spyOn(document.body, "setPointerCapture")
     $.selectElement(widget)
     feature.processSelection()
     expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    caret.mockClear()
 
-    const pointerdown = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, clientX: 10, clientY: 10})
+    const pointerdown = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, pointerId: 12, pointerType: "mouse", clientX: 10, clientY: 10})
     paragraph.dispatchEvent(pointerdown)
     expect(pointerdown.defaultPrevented).toBe(false)
+    expect($.selectedElement).toBe(widget)
+    expect(caret).not.toHaveBeenCalled()
+    // Native mousedown places the initial caret; the editor must not replace
+    // it with its own document-level hit test.
+    document.getSelection()!.setPosition(text, 1)
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(1)
+    expect(capture).not.toHaveBeenCalled()
 
-    caret.mockReturnValue({offsetNode: text, offset: 4, getClientRect: () => rect})
-    paragraph.dispatchEvent(new MouseEvent("pointermove", {bubbles: true, composed: true, clientX: 30, clientY: 10}))
-    paragraph.dispatchEvent(new MouseEvent("pointerup", {bubbles: true, composed: true, clientX: 30, clientY: 10}))
+    // The browser extends the range through the flattened slot tree. A
+    // document-level hit test may instead return the outer widget boundary.
+    document.getSelection()!.setBaseAndExtent(text, backward ? 4 : 1, text, backward ? 1 : 4)
+    caret.mockReturnValue({offsetNode: widget, offset: 0, getClientRect: () => rect})
+    paragraph.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, pointerId: 12, clientX: 30, clientY: 10}))
+    const selectstart = new Event("selectstart", {bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(selectstart)
+    expect(selectstart.defaultPrevented).toBe(false)
+    paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 12, clientX: 30, clientY: 10}))
     expect(document.getSelection()!.toString()).toBe("ell")
+    expect($.anchorOffset).toBe(backward ? 4 : 1)
+    expect($.focusOffset).toBe(backward ? 1 : 4)
     expect(feature.isCaptureSelection).toBe(false)
     expect(widget).not.toHaveClass("◆element-selected", "◆element-capture-selected")
     caret.mockRestore()
+  })
+
+  it("allows a native widget drag to intentionally extend into preceding title text", () => {
+    const {widget, paragraph} = timeline(true)
+    const title = document.createElement("h3")
+    title.textContent = "Title"
+    paragraph.before(title)
+    const text = paragraph.querySelector("b")!.firstChild!
+    const rect = new DOMRect(0, 20, 200, 40)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 2, getClientRect: () => rect})
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, pointerId: 13, clientX: 20, clientY: 30}))
+    document.getSelection()!.setBaseAndExtent(text, 2, title.firstChild!, 1)
+    title.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, pointerId: 13, clientX: 20, clientY: 5}))
+    title.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 13, clientX: 20, clientY: 5}))
+    expect($.anchor).toBe(text)
+    expect($.focus).toBe(title.firstChild)
+    expect(widget).not.toHaveClass("◆element-selected")
+    expect(document.body).not.toHaveClass("◆selection-dragging")
+    expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it.each(["host", "open", "closed"] as const)("never promotes repeated modifier clicks on a %s surface to capture", mode => {
