@@ -6594,6 +6594,33 @@ await check("canvas Enter inserts a line break and conversion returns normal flo
   }
 })
 
+await check("empty floated and freeform text roots render the first break", async () => {
+  const original = fixture.innerHTML
+  try {
+    for(const mode of ["float", "canvas", "slides"] as const) {
+      editor.setDocumentLayout("document", editor.getDocumentLayoutState().mode)
+      fixture.innerHTML = '<p style="line-height:20px;margin:0"></p>'
+      const paragraph = fixture.querySelector("p")!
+      if(mode === "float") paragraph.style.float = "right"
+      else assert(editor.setDocumentLayout(mode, "document"), `${mode}: empty text fixture did not convert`)
+      $.move(paragraph)
+      const before = paragraph.getBoundingClientRect().height
+      const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      paragraph.dispatchEvent(event)
+      await layoutFrame()
+      assert(event.defaultPrevented, `${mode}: Enter was not handled`)
+      assert(paragraph.querySelectorAll("br").length === 2, `${mode}: first empty break did not include its rendered terminal break: ${paragraph.innerHTML}`)
+      assert(paragraph.getBoundingClientRect().height > before, `${mode}: first empty break did not render a line`)
+      assert(paragraph.contains($.anchor), `${mode}: first empty break moved the caret outside the text root`)
+      if(mode !== "float") assert(editor.setDocumentLayout("document", mode), `${mode}: empty text fixture did not return to document layout`)
+    }
+  }
+  finally {
+    editor.setDocumentLayout("document", editor.getDocumentLayoutState().mode)
+    fixture.innerHTML = original
+  }
+})
+
 
 await check("canvas and slide Enter preserves empty lists and repeated breaks", async () => {
   for(const mode of ["canvas", "slides"] as const) {
@@ -6619,7 +6646,7 @@ await check("canvas and slide Enter preserves empty lists and repeated breaks", 
         const item = list.querySelector("li")!
         assert(event.defaultPrevented, `${mode}: ${input} was not handled`)
         assert(item && list.querySelectorAll("li").length === 1, `${mode}: ${input} exited or split the list`)
-        assert(item.querySelectorAll("br").length === index + 1 && !item.querySelector("p"), `${mode}: ${input} did not insert only a break`)
+        assert(item.querySelectorAll("br").length === index + 2 && !item.querySelector("p"), `${mode}: ${input} did not insert the requested break and its terminal line break`)
         assert(item.contains(selection.anchorNode), `${mode}: ${input} moved the caret outside the item`)
         assert(list.getAttribute("style") === style, `${mode}: ${input} changed list placement`)
         assert(Array.from(parent.childNodes).length === siblings.length

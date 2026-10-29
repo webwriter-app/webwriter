@@ -2851,6 +2851,30 @@ describe("processSelection()", () => {
 describe("scrolling selections into view", () => {
   const options = {behavior: "smooth", block: "nearest", inline: "nearest"} as const
 
+  it("retains SVG capture when revealing the same range and releases it for changed endpoints", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    feature.captureElement(graphic)
+    feature.revealSelection()
+    expect(feature.captureSelectedElement).toBe(graphic)
+
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside"
+    document.body.append(paragraph)
+    $.move(paragraph.firstChild!, 2)
+    feature.revealSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+    expect($.anchor).toBe(paragraph.firstChild)
+
+    feature.captureElement(graphic)
+    const replacement = graphic.cloneNode(true) as SVGSVGElement
+    graphic.replaceWith(replacement)
+    $.selectElement(replacement, false)
+    feature.revealSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+    expect($.selectedElement).toBe(replacement)
+  })
+
   function setDimension(element: Element, name: string, value: number) {
     Object.defineProperty(element, name, {configurable: true, value})
   }

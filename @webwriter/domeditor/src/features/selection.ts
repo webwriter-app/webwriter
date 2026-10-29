@@ -2009,7 +2009,11 @@ export class SelectionFeature extends EditorFeature {
   /** Explicit restoration must reveal even an unchanged, manually scrolled caret. */
   revealSelection() {
     if(focusedWidgetHost()) focusEditorWindow()
-    this.#releaseCaptureSelection()
+    // Undoing a shape edit restores the same SVG range. Keep its capture so
+    // the active drawing tool and shape selection can continue editing it.
+    const captured = this.captureSelectedElement
+    if(captured?.namespaceURI !== SVG_NAMESPACE || captured.localName !== "svg"
+      || $.selectedElement !== figureSelectionTarget(captured)) this.#releaseCaptureSelection()
     this.clearSelectedSection()
     this.#endDrag()
     this.editor.features.table.clearCellSelection(false)

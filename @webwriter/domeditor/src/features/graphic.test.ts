@@ -2013,8 +2013,10 @@ describe("graphic editing", () => {
     editor.features.history.actions.undo({type: "undo"})
     const graphic = document.querySelector("svg")!
     expect(graphic.querySelector("rect")).not.toBeNull()
-    clickShape(graphic)
+    expect($.selectedElement).toBe(graphic)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
+    clickShape(graphic.querySelector("rect")!)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
     expect(editor.features.graphic.selectedShape).toBe(graphic.querySelector("rect"))
     expect(editor.toHTML(true)).not.toContain("◆")
   })

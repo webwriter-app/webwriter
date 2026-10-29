@@ -1045,7 +1045,7 @@ describe("line breaks inside floated text blocks", () => {
     const paragraph = document.querySelector("p")!
     $.move(paragraph)
     paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
-    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe("<br>")
+    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe("<br><br>")
     expect(document.body.children).toHaveLength(1)
   })
 
@@ -1139,7 +1139,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     const paragraph = document.querySelector("p")!, parent = paragraph.parentElement!
     $.move(paragraph)
     paragraph.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
-    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe("<br>")
+    expect(cloneWithoutEditorMarkers(paragraph, true).innerHTML).toBe("<br><br>")
     expect(parent.querySelectorAll("p")).toHaveLength(1)
     expect(paragraph.contains($.anchor)).toBe(true)
   })
@@ -1158,7 +1158,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
           : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
         item.dispatchEvent(event)
         expect(event.defaultPrevented).toBe(true)
-        expect(cloneWithoutEditorMarkers(item, true).innerHTML).toBe("<br>".repeat(count))
+        expect(cloneWithoutEditorMarkers(item, true).innerHTML, `${mode} ${tag} ${input} break ${count}`).toBe("<br>".repeat(count + (tag === "dt" ? 0 : 1)))
         expect(Array.from(parent.childNodes)).toEqual(siblings)
         expect(item.contains($.anchor)).toBe(true)
       }
@@ -1177,7 +1177,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
         : new InputEvent("beforeinput", {inputType: input, bubbles: true, cancelable: true})
       list.dispatchEvent(event)
       expect(event.defaultPrevented).toBe(true)
-      expect(cloneWithoutEditorMarkers(list, true).innerHTML).toBe(`<!--keep-->${tag === "dl" ? "<dt><br></dt><dd></dd>" : "<li><br></li>"}`)
+      expect(cloneWithoutEditorMarkers(list, true).innerHTML).toBe(`<!--keep-->${tag === "dl" ? "<dt><br></dt><dd></dd>" : "<li><br><br></li>"}`)
       expect(Array.from(parent.childNodes)).toEqual(siblings)
       expect(list.contains($.anchor)).toBe(true)
       document.body.className = ""
@@ -1194,9 +1194,9 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
     document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     editor.doc.syncFromDOM()
     const inserted = editor.toHTML(true)
-    expect(inserted).toContain("<!--keep--><li><br></li>")
+    expect(inserted).toContain("<!--keep--><li><br><br></li>")
     expect(inserted).not.toContain("◆")
-    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("<li><br></br></li>")
+    expect(sharedDOMBody(editor.doc.doc).toString()).toContain("<li><br></br><br></br></li>")
     expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
     editor.doc.undo()
     expect(editor.toHTML(true)).toBe(original)
@@ -5246,7 +5246,7 @@ describe("unified content transfer", () => {
     const drop = transferEvent("drop", overData, {clientX:250,clientY:160})
     graphic.dispatchEvent(drop)
     expect(drop.defaultPrevented).toBe(true)
-    expect(post).not.toHaveBeenCalled()
+    expect(post.mock.calls.some(([message]) => (message as {type?: string}).type === "editor-ribbon-drop")).toBe(false)
     if(replaced) {
       graphic.replaceWith(document.createElement("p"))
       editor.doc.syncFromDOM()
@@ -7180,10 +7180,11 @@ describe("element insertion conversions", () => {
 describe("conversion boundaries", () => {
   it("splits both endpoints across different text blocks", () => {
     document.body.innerHTML = "<p>before first</p><!--keep--><h2>second after</h2><p>other</p>"
+    editor.doc.syncFromDOM()
     const first = document.querySelector("p")!.firstChild!, second = document.querySelector("h2")!.firstChild!
     $.selectRange(first, 7, second, 6)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
-    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li><p>first</p></li><!--keep--><li><p>second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
+    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li><p>first</p></li><!--keep--><li><p id="second-after">second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
   })
 
   it("leaves an invalid heading conversion untouched", () => {

@@ -191,6 +191,7 @@ const expectedChecks = [
   "freeform box selections transform as a group",
   "canvas slot preserves hit testing and document coordinates at different zoom levels",
   "canvas Enter inserts a line break and conversion returns normal flow",
+  "empty floated and freeform text roots render the first break",
   "canvas and slide Enter preserves empty lists and repeated breaks",
   "paragraphs grow with content and retain explicit sizes in canvas",
   "paragraphs grow with content and retain explicit sizes in slides",

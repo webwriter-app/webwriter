@@ -256,6 +256,7 @@ describe("media editing", () => {
     document.body.innerHTML = html
     const video = document.querySelector("video")!
     video.style.cssText = "width:320px;height:180px"
+    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 320, 180))
     editor.features.selection.captureElement(video)
     const authored = editor.toHTML(true)
     expect(editor.features.media.cropTargetFor(video)).toBeNull()
@@ -270,6 +271,7 @@ describe("media editing", () => {
     video.querySelector("source")!.remove()
     editor.features.selection.processSelection()
     expect(editor.features.media.canCrop(video)).toBe(false)
+    expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(true)
   })
 
   const mockImageGeometry = (image: HTMLImageElement, width: number, height: number, naturalWidth: number, naturalHeight: number) => {

@@ -968,7 +968,14 @@ export class SharedDOMDoc {
     return () => {
       if(ended) return
       ended = true
-      try { this.syncFromDOM() }
+      try {
+        this.syncFromDOM()
+        // Commands can restore their selection after their last DOM mutation
+        // has already been synchronized. Redo needs that final selection.
+        const item = this.#undoManager.undoStack.at(-1)
+        const selection = item?.meta.get(historySelection) as HistorySelection | undefined
+        if(selection && item?.meta.get(widgetDataHistoryGroup) === this.#undoGroup) selection.after = this.#relativeSelection
+      }
       finally {
         if(--this.#undoGroupDepth === 0) {
           this.#undoManager.captureTimeout = this.#undoGroupTimeout

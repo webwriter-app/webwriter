@@ -740,11 +740,12 @@ describe("DOM MathML editing", () => {
     const focus = selection.focusNode, focusOffset = selection.focusOffset
     const original = clean()
     const post = vi.spyOn(editor, "postHostMessage")
+    const tabMessages = () => post.mock.calls.filter(([message]) => (message as {type?: string}).type === mathKeyboardTabEvent)
 
     for(const backward of [false, true]) {
       const event = key("Tab", {shiftKey: backward})
       expect(event.defaultPrevented).toBe(true)
-      expect(post.mock.calls.at(-1)?.[0]).toEqual({type: mathKeyboardTabEvent, detail: {backward}})
+      expect(tabMessages().at(-1)?.[0]).toEqual({type: mathKeyboardTabEvent, detail: {backward}})
       expect(selection.anchorNode).toBe(anchor)
       expect(selection.anchorOffset).toBe(anchorOffset)
       expect(selection.focusNode).toBe(focus)
@@ -752,9 +753,9 @@ describe("DOM MathML editing", () => {
       expect(clean()).toBe(original)
     }
 
-    const count = post.mock.calls.length
+    const count = tabMessages().length
     expect(key("Tab", {repeat: true}).defaultPrevented).toBe(true)
-    expect(post).toHaveBeenCalledTimes(count)
+    expect(tabMessages()).toHaveLength(count)
     expect(selection.anchorNode).toBe(anchor)
     expect(selection.anchorOffset).toBe(anchorOffset)
     expect(selection.focusNode).toBe(focus)
@@ -1365,21 +1366,20 @@ describe("DOM MathML editing", () => {
     expect(document.querySelector("p")?.lastChild?.textContent).toBe(" after")
   })
 
-  it.each(["^", "_"])("uses the preceding symbol as the base when typing %s", shortcut => {
-    for(const input of ["keydown", "beforeinput"]) for(const token of ["mi", "mn", "mo"]) {
-      const math = load(`<${token} id="base">${token === "mi" ? "x" : token === "mn" ? "12" : "∑"}</${token}><mi>z</mi>`)
-      const base = math.firstElementChild!
-      $.move(base.firstChild!, base.textContent!.length)
-      if(input === "keydown") key(shortcut)
-      else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: shortcut}))
-      const script = math.querySelector(shortcut === "^" ? "msup" : "msub")!
-      expect(script.firstElementChild!.firstElementChild).toBe(base)
-      expect(document.getSelection()!.focusNode).toBe(script.lastElementChild)
-      expect(math.lastElementChild!.textContent).toBe("z")
-      key("2")
-      expect(script.lastElementChild!.textContent).toBe("2")
-      expect(base.id).toBe("base")
-    }
+  it.each(["^", "_"].flatMap(shortcut => ["keydown", "beforeinput"].flatMap(input =>
+    ["mi", "mn", "mo"].map(token => ({shortcut, input, token})))))("uses the preceding $token as the base when typing $shortcut via $input", ({shortcut, input, token}) => {
+    const math = load(`<${token} id="base">${token === "mi" ? "x" : token === "mn" ? "12" : "∑"}</${token}><mi>z</mi>`)
+    const base = math.firstElementChild!
+    $.move(base.firstChild!, base.textContent!.length)
+    if(input === "keydown") key(shortcut)
+    else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: shortcut}))
+    const script = math.querySelector(shortcut === "^" ? "msup" : "msub")!
+    expect(script.firstElementChild!.firstElementChild).toBe(base)
+    expect(document.getSelection()!.focusNode).toBe(script.lastElementChild)
+    expect(math.lastElementChild!.textContent).toBe("z")
+    key("2")
+    expect(script.lastElementChild!.textContent).toBe("2")
+    expect(base.id).toBe("base")
   })
 
   it.each(["^", "_"])("keeps an empty base when typing %s without a preceding symbol", shortcut => {

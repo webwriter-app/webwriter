@@ -1566,7 +1566,7 @@ describe("selection-owned transformation", () => {
       expect(editor.toHTML(true)).not.toContain("◆")
       editor.doc.undo()
       await mutationsDelivered()
-      expect(document.getElementById("deleted-root")!.innerHTML).toBe(contents.innerHTML)
+      expect(cloneWithoutEditorMarkers(document.getElementById("deleted-root")!, true).innerHTML).toBe(contents.innerHTML)
       editor.doc.redo()
       await mutationsDelivered()
       expect(document.getElementById("deleted-root")).toBeNull()

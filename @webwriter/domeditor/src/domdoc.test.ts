@@ -160,6 +160,33 @@ describe("undo and redo selections", () => {
     expect(shared.canUndo).toBe(false)
   })
 
+  it("records the final group selection after its last DOM edit has already synchronized", () => {
+    const {root, shared, selection, select} = fixture()
+    const text = root.firstChild!.firstChild! as Text
+    select(text, 5)
+    const end = shared.beginUndoGroup()
+    text.insertData(5, "!")
+    selection.collapse(text, 6)
+    shared.syncFromDOM()
+    select(text, 4, text, 1)
+    end()
+    // A later group without edits must not replace the previous history item.
+    const endEmpty = shared.beginUndoGroup()
+    select(root.lastChild!.firstChild!, 2)
+    endEmpty()
+    for(let repeat = 0; repeat < 2; repeat++) {
+      shared.undo()
+      expect(text.data).toBe("Hello world")
+      expect(selection.anchorNode).toBe(text)
+      expect(selection.anchorOffset).toBe(5)
+      shared.redo()
+      expect(text.data).toBe("Hello! world")
+      expect(selection.toString()).toBe("ell")
+      expect(selection.anchorOffset).toBe(4)
+      expect(selection.focusOffset).toBe(1)
+    }
+  })
+
   it("restores deleted custom elements and comments without rebuilding unrelated content", () => {
     const {root, shared, selection, select} = fixture('<section><!--keep--><unknown-history-widget arbitrary="yes"></unknown-history-widget><em>Keep</em></section>')
     const section = root.firstChild!, retained = section.lastChild!
