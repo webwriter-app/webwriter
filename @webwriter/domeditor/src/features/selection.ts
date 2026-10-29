@@ -2141,7 +2141,15 @@ export class SelectionFeature extends EditorFeature {
     }
     const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
+    // Canvas may remove a previously focused empty paragraph before the
+    // selected SVG. Preserve the explicit SVG node selection if that removal
+    // leaves the native Range on the following sibling in this browser.
+    const selectedCapturedSvg = capturedElement?.namespaceURI === SVG_NAMESPACE && capturedElement.localName === "svg"
+      && $.selectedElement === figureSelectionTarget(capturedElement)
     if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)
+    if(selectedCapturedSvg && capturedElement.isConnected && $.selectedElement !== figureSelectionTarget(capturedElement)) {
+      $.selectElement(figureSelectionTarget(capturedElement), false)
+    }
     const transformTarget = layoutItem ?? selectedElement
     this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) && !slideLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
     this.editor.features.board.refresh()
