@@ -9,6 +9,8 @@ npm run test:native-browser
 The command serves `tests/native-browser.html` on `127.0.0.1` and runs it in headless Chrome. It covers native selection preservation, custom-element editing boundaries, `elementFromPoint` layout hit testing, and iframe load/removal lifecycle. Canvas checks exercise conversion with authored transforms, negative coordinates, zoom-aware movement, edge panning and release, text splitting, serialization, and return to normal flow. It exits nonzero if a check fails. Set `CHROME_BIN` to use another installed Chromium based browser.
 
 For focused board media resizing checks, run `node scripts/native-browser.mjs --filter='Board media'`.
+For manual timeline checks with the published widget, open `/tests/timeline-editing.html` on the loopback development server. Check the date caret and highlight, forward/backward details selection, intentional selection across the title, and YouTube playback after capturing the frame. This fixture loads Timeline 2.1.1 and YouTube from the network.
+Open `/tests/breadcrumb-snapshot.html` to check nested widget chevrons and outline selections after an HTML snapshot preserves adjacent and empty text-node boundaries.
 For visual inspection, open `/tests/board-media.html` on the loopback development server.
 It retains the editing board and script-free export after checking native media, captions, direct DOM resizing and overflow.
 
