@@ -3435,6 +3435,47 @@ describe("insertion beside a lone float", () => {
 })
 
 describe("paste()", () => {
+  it.each(["native", "beforeinput", "async"].flatMap(method => [false, true].map(internal => ({method, internal}))))("strips clipboard charset metadata when replacing select-all ($method, internal=$internal)", async ({method, internal}) => {
+    document.body.innerHTML = "<p>old</p>"
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+    const html = '<meta charset="utf-8">' + (internal ? '<meta name="webwriter-clipboard" content="1">' : '') + '<p><b>new</b></p>'
+    const data = new DataTransfer()
+    data.setData("text/html", html)
+    if(method === "async") {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    else {
+      const event = method === "native"
+        ? new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+        : new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    expectBodyToBe("<p><b>new</b></p>")
+    expect(document.body.querySelector("meta")).toBeNull()
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("<meta")
+    editor.doc.undo()
+    expectBodyToBe("<p>old</p>")
+    editor.doc.redo()
+    expectBodyToBe("<p><b>new</b></p>")
+
+    $.move(document.querySelector("b")!.firstChild!, 1)
+    document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertLineBreak", bubbles: true, cancelable: true}))
+    expect(document.querySelector("p br")).not.toBeNull()
+  })
+
+  it("preserves authored metadata outside the clipboard charset prologue", () => {
+    const html = '<meta charset="utf-8"><meta itemprop="name" content="Lesson"><test-widget><meta charset="utf-8"><p>Widget</p></test-widget>'
+    const {fragment} = editor.parseHTMLFragment(html, true, false)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<meta itemprop="name" content="Lesson">')
+    expect(fragment.querySelector("test-widget")?.innerHTML).toBe('<meta charset="utf-8"><p>Widget</p>')
+    expect(editor.parseHTMLFragment('<meta charset="utf-8">', false, false).fragment.firstElementChild?.outerHTML).toBe('<meta charset="utf-8">')
+  })
+
   it("handles a native plain-text paste into an empty document", () => {
     const clipboardData = new DataTransfer()
     clipboardData.setData("text/plain", "pasted text")

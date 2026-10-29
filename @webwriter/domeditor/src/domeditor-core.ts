@@ -1723,6 +1723,11 @@ export class DOMEditor {
   parseHTMLFragment(html: string, transfer=false, repair=true) {
     const template = document.createElement("template")
     template.innerHTML = html
+    // Browsers can prepend encoding metadata to clipboard HTML. Remove it
+    // before the internal clipboard hint disables transfer normalization.
+    if(transfer) Array.from(template.content.children).forEach(element => {
+      if(element.matches("meta[charset]")) element.remove()
+    })
     const clipboardHint = Array.from(template.content.children).find(element => element.matches('meta[name="webwriter-clipboard"][content="1"]'))
     if(clipboardHint) {
       clipboardHint.remove()
