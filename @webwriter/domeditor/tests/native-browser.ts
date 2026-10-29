@@ -869,6 +869,28 @@ await check("Settings tabs share the heading and embed AI provider cards in Clou
     await panel.updateComplete
     assert(!panel.shadowRoot!.querySelector<HTMLElement>("#settings-commands")!.hidden
       && panel.shadowRoot!.querySelector<HTMLElement>("#settings-cloud")!.hidden, "Commands tab does not hide Cloud")
+    const commandsTab = root.querySelector<HTMLButtonElement>("#settings-tab-commands")!
+    const save = panel.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Configure shortcut for Save"]')!
+    const {loadAppSettings} = await import("../src/app-settings")
+    for(const key of ["9", "Escape", "Backspace", "Delete"]) {
+      const originalShortcut = panel.settings.shortcuts["document.save"]
+      commandsTab.focus()
+      save.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+      save.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, cancelable: true}))
+      save.click()
+      await panel.updateComplete
+      assert(panel.shadowRoot!.activeElement === save, "shortcut recording did not take keyboard focus")
+      panel.shadowRoot!.activeElement!.dispatchEvent(new KeyboardEvent("keydown", {
+        key, code: key === "9" ? "Digit9" : key, altKey: key === "9", shiftKey: key === "9",
+        bubbles: true, composed: true, cancelable: true,
+      }))
+      await panel.updateComplete
+      await ribbon.updateComplete
+      const expected = key === "Escape" ? originalShortcut : key === "9" ? "Alt+Shift+9" : ""
+      assert(panel.settings.shortcuts["document.save"] === expected
+        && loadAppSettings().shortcuts["document.save"] === expected, `shortcut ${key} was not applied and persisted`)
+      assert(!save.hasAttribute("data-recording") && dialog.open, `shortcut ${key} left recording active or closed Settings`)
+    }
     const closed = new Promise<void>(resolve => dialog.addEventListener("close", () => resolve(), {once: true}))
     dialog.close()
     await closed

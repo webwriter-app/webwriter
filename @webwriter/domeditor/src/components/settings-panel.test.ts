@@ -427,6 +427,36 @@ describe("settings panel", () => {
     expect(save.hasAttribute("data-recording")).toBe(true)
   })
 
+  it.each(["Alt+Shift+9", "Escape", "Backspace", "Delete"])("focuses the shortcut recorder and handles %s through the settings dialog", async key => {
+    const ribbon = new AppRibbon()
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    await (ribbon as any).showRibbonDialog("settings")
+    const root = ribbon.shadowRoot!
+    const commands = root.querySelector<HTMLButtonElement>("#settings-tab-commands")!
+    commands.click()
+    await ribbon.updateComplete
+    const panel = root.querySelector<SettingsPanel>("settings-panel")!
+    await panel.updateComplete
+    commands.focus()
+    const save = panel.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Configure shortcut for Save"]')!
+    const originalShortcut = panel.settings.shortcuts["document.save"]
+    // The ribbon cancels native pointer focus to preserve the document selection.
+    save.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, cancelable: true}))
+    save.click()
+    await panel.updateComplete
+    expect(panel.shadowRoot!.activeElement).toBe(save)
+    panel.shadowRoot!.activeElement!.dispatchEvent(shortcutEvent(key))
+    await panel.updateComplete
+    await ribbon.updateComplete
+
+    const expectedShortcut = key === "Escape" ? originalShortcut : key === "Alt+Shift+9" ? key : ""
+    expect(panel.settings.shortcuts["document.save"]).toBe(expectedShortcut)
+    expect(loadAppSettings().shortcuts["document.save"]).toBe(expectedShortcut)
+    expect(save.hasAttribute("data-recording")).toBe(false)
+    expect(root.querySelector<HTMLDialogElement>("#settings-dialog")!.open).toBe(true)
+  })
+
   it("keeps the settings dialog open when Escape cancels shortcut recording", async () => {
     const ribbon = new AppRibbon()
     document.body.append(ribbon)

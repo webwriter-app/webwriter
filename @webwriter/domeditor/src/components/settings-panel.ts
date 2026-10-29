@@ -655,7 +655,10 @@ export class SettingsPanel extends LitElement {
     })
   }
 
-  private startRecording(commandId: string) {
+  private startRecording(commandId: string, event: MouseEvent) {
+    // Ribbon pointer handling preserves editor focus; recording needs keyboard focus.
+    const button = event.currentTarget as HTMLButtonElement
+    button.focus({preventScroll: true})
     this.recordingCommandId = commandId
     this.message = "Press a new shortcut. Escape cancels; Backspace removes it."
     this.error = ""
@@ -757,7 +760,7 @@ export class SettingsPanel extends LitElement {
               aria-label=${`Configure shortcut for ${command.label}`}
               aria-pressed=${this.recordingCommandId === command.id}
               ?data-recording=${this.recordingCommandId === command.id}
-              @click=${() => this.startRecording(command.id)}
+              @click=${(event: MouseEvent) => this.startRecording(command.id, event)}
               @keydown=${(event: KeyboardEvent) => this.recordShortcut(command.id, event)}
             >${this.renderShortcut(command.id)}</button>
           </div>
