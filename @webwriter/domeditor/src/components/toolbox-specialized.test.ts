@@ -74,6 +74,25 @@ describe("specialized element toolbox", () => {
       selectionTypes: [{localName, namespaceURI: "http://www.w3.org/1999/xhtml"}]})
   })
 
+  it.each(["ul", "ol"])("exposes list indentation commands for %s", async localName => {
+    const toolbox = await mountElement(localName)
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!
+    const group = drawer.querySelector<HTMLElement>(".list-indent .specialized-choice-group")!
+    const buttons = Array.from(group.querySelectorAll<HTMLButtonElement>("button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Dedent", "Indent"])
+    expect(buttons.map(button => button.textContent!.trim())).toEqual(["Dedent", "Indent"])
+    expect(buttons.every(button => getComputedStyle(button).justifyContent === "space-between")).toBe(true)
+    expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+    expect(group.parentElement!.compareDocumentPosition(drawer.querySelector(".list-type")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(group.parentElement!.querySelector(".develop-field")).toBeNull()
+    expect(getComputedStyle(group.parentElement!).gridColumn).toBe("1 / -1")
+    const commands: string[] = []
+    toolbox.addEventListener("ribbon-button-click", event => commands.push((event as CustomEvent<{label: string}>).detail.label))
+    buttons[0].click()
+    buttons[1].click()
+    expect(commands).toEqual(["outdentListItems", "indentListItems"])
+  })
+
   it("combines selected lists and enumerations into one scoped toolbox", async () => {
     const toolbox = await mountElement("ul")
     toolbox.selectedElementTypes = ["ul", "ol", "p"].map(localName => ({

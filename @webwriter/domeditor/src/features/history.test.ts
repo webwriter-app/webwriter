@@ -57,6 +57,97 @@ describe("history shortcut modifiers", () => {
   })
 })
 
+describe("history selection restoration", () => {
+  it("captures the live native selection before editing handlers and reveals undo/redo", async () => {
+    const text = document.querySelector("p")!.firstChild! as Text
+    const selection = document.getSelection()!
+    selection.setBaseAndExtent(text, 1, text, 4)
+    const remember = vi.spyOn(editor.doc, "updateLocalSelection")
+    // No selectionchange has fired yet. Native beforeinput must remember it.
+    const input = new InputEvent("beforeinput", {
+      bubbles: true, inputType: "deleteContentForward",
+      cancelable: true,
+    })
+    document.querySelector("p")!.dispatchEvent(input)
+    expect(remember).toHaveBeenCalled()
+    expect(editor.doc.domSelection).toMatchObject({anchorNode: text, anchorOffset: 1, focusOffset: 4})
+    if(!input.defaultPrevented) text.deleteData(1, 3)
+    selection.collapse(text, 1)
+    await mutationsDelivered()
+    selection.collapse(text, 0)
+    const reveal = vi.spyOn(editor.features.selection, "revealSelection")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(selection.toString()).toBe("ell")
+    expect(reveal).toHaveBeenCalledOnce()
+    editor.features.history.actions.redo({type: "redo"})
+    expect(text.data).toBe("Ho")
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(1)
+    expect(selection.isCollapsed).toBe(true)
+    expect(reveal).toHaveBeenCalledTimes(2)
+    editor.features.history.disable()
+    reveal.mockClear()
+    editor.doc.undo()
+    expect(reveal).not.toHaveBeenCalled()
+  })
+
+  it("ignores incidental shadow-widget input when remembering authored selections", () => {
+    const text = document.querySelector("p")!.firstChild! as Text
+    const selection = document.getSelection()!
+    selection.setBaseAndExtent(text, 1, text, 4)
+    editor.doc.updateLocalSelection()
+    const widget = document.createElement("history-widget")
+    document.body.append(widget)
+    const shadow = widget.attachShadow({mode: "open"})
+    shadow.innerHTML = "<input>"
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const remember = vi.spyOn(editor.doc, "updateLocalSelection")
+    shadow.querySelector("input")!.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, composed: true, inputType: "insertText"}))
+    expect(remember).not.toHaveBeenCalled()
+  })
+
+  it("routes native history input through collaborative undo and redo", () => {
+    const undo = vi.spyOn(editor.doc, "undo").mockImplementation(() => {})
+    const redo = vi.spyOn(editor.doc, "redo").mockImplementation(() => {})
+    for(const inputType of ["historyUndo", "historyRedo"]) {
+      const event = new InputEvent("beforeinput", {inputType, cancelable: true})
+      editor.features.history.activeListeners.beforeinput!(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    expect(undo).toHaveBeenCalledOnce()
+    expect(redo).toHaveBeenCalledOnce()
+  })
+
+  it("remembers the current selection for a bridge command before selectionchange arrives", () => {
+    const selection = document.getSelection()!, text = document.querySelector("p")!.firstChild!
+    selection.setBaseAndExtent(text, 1, text, 4)
+    window.dispatchEvent(new MessageEvent("message", {data: {type: "delete", direction: "forward"}}))
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(selection.toString()).toBe("ell")
+  })
+
+  it("releases a later widget capture when restoring an earlier text selection", () => {
+    const widget = document.createElement("history-widget")
+    document.body.append(widget)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const text = document.querySelector("p")!.firstChild! as Text
+    const selection = document.getSelection()!
+    selection.setBaseAndExtent(text, 1, text, 4)
+    editor.doc.updateLocalSelection()
+    text.deleteData(1, 3)
+    selection.collapse(text, 1)
+    editor.doc.syncFromDOM()
+    editor.features.selection.captureElement(widget)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    editor.doc.undo()
+    expect(selection.toString()).toBe("ell")
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+  })
+})
+
 describe("collaborative version history", () => {
   it("publishes local undo availability immediately without serializing checkpoints, and cleans up", async () => {
     const history = editor.features.history

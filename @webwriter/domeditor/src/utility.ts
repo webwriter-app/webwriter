@@ -16,7 +16,7 @@ export function isParagraphContent(node: Node): boolean {
   if(node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) return true
   if(!isElement(node) || node.hasAttribute("is")) return false
   if(node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
-  if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return true
+  if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return Array.from(node.childNodes).every(isParagraphContent)
   return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
 }
 
@@ -575,6 +575,18 @@ export class EditingSelection {
         : !(node instanceof Text) || !node.textContent?.trim())) {
       return {node: root, offset: 0, overrideNative: true}
     }
+    // Native hits outside a list often land in its first/last item's text.
+    // Use the outer list box so that position remains outside every item.
+    let list = pointerElement?.closest("ul, ol, dl, menu") ?? caretElement?.closest("ul, ol, dl, menu") ?? null
+    let listGap: ReturnType<typeof gap> | null = null
+    while(list && root.contains(list) && !atomicEditingContainer(list, schema)) {
+      const rect = list.getBoundingClientRect()
+      if(!isOutOfFlow(list) && rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+        listGap = {...gap(list, y < rect.top ? "before" : "after"), overrideNative: true}
+      }
+      list = list.parentElement?.closest("ul, ol, dl, menu") ?? null
+    }
+    if(listGap) return listGap
     let disclosure = pointerElement?.closest("details") ?? caretElement?.closest("details") ?? null
     const insideDisclosure = disclosure?.open && root.contains(disclosure)
       && x >= disclosure.getBoundingClientRect().left && x <= disclosure.getBoundingClientRect().right
@@ -725,7 +737,7 @@ export class EditingSelection {
         return gap(firstRootElement, "before")
       }
       const lastRootElement = Array.from(root.children).reverse().find(element => !isOutOfFlow(element))
-      if(lastRootElement && (lastRootElement.matches("details, figure, table:has(> caption)") || lastRootElement instanceof HTMLParagraphElement && lastRootElement.style.length > 0)
+      if(lastRootElement && (lastRootElement.matches("ul, ol, dl, menu, details, figure, table:has(> caption)") || lastRootElement instanceof HTMLParagraphElement && lastRootElement.style.length > 0)
         && y > lastRootElement.getBoundingClientRect().bottom) {
         return gap(lastRootElement, "after")
       }
@@ -766,7 +778,7 @@ export class EditingSelection {
     }
     if(offsetNode instanceof Element && typeof offset === "number") {
       const gapAddressableElement = (node: Node | null) => !isOutOfFlow(node) && (isAtomicEditingElement(node, schema)
-        || node instanceof Element && node.matches("table, details")
+        || node instanceof Element && node.matches("ul, ol, dl, menu, table, details")
         || node instanceof HTMLParagraphElement && node.style.length > 0)
       const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
       const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
@@ -790,7 +802,7 @@ export class EditingSelection {
         }
       }
       const beforeRect = atomicBeforeCaret?.getBoundingClientRect()
-      if(atomicBeforeCaret?.matches("details, p") && beforeRect && beforeRect.height > 0 && y < beforeRect.top) {
+      if(atomicBeforeCaret?.matches("ul, ol, dl, menu, details, p") && beforeRect && beforeRect.height > 0 && y < beforeRect.top) {
         return gap(atomicBeforeCaret, "before")
       }
       if(atomicBeforeCaret && beforeRect && (beforeRect.right > beforeRect.left || beforeRect.bottom > beforeRect.top)
@@ -798,7 +810,7 @@ export class EditingSelection {
         return gap(atomicBeforeCaret, "after")
       }
       const afterRect = atomicAfterCaret?.getBoundingClientRect()
-      if(atomicAfterCaret?.matches("details, p") && afterRect && afterRect.height > 0 && y < afterRect.top) {
+      if(atomicAfterCaret?.matches("ul, ol, dl, menu, details, p") && afterRect && afterRect.height > 0 && y < afterRect.top) {
         return gap(atomicAfterCaret, "before")
       }
       if(atomicAfterCaret && afterRect && (afterRect.right > afterRect.left || afterRect.bottom > afterRect.top)
@@ -869,7 +881,7 @@ export class EditingSelection {
     if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
     if(mathRoot(anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
-    if(this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
+    if(this.listGap || this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
     if(!isElement(anchor)) return false
     const inSlide = slideLayoutRole(anchor) === "slide"
     const inBoardCard = boardLayoutRole(anchor) === "card"
@@ -896,9 +908,6 @@ export class EditingSelection {
         }
       }
     }
-    const isNestedListBoundary = anchor.matches("li, dt, dd") &&
-      [anchor.childNodes.item(this.anchorOffset - 1), anchor.childNodes.item(this.anchorOffset)]
-        .some(node => isElement(node) && node.matches("ul, ol, dl, menu"))
     const isInsideTable = Boolean(anchor.closest("table"))
     let hasTextOrMarkChild = false
     if(this.isEmpty && !this.isEmptySelection) {
@@ -911,14 +920,18 @@ export class EditingSelection {
     }
     return (!isSectionElement(anchor) || inSlide || inBoardCard) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
       (!hasTextOrMarkChild
-        || isRootBoundaryBeforeFirstElement
-        || isNestedListBoundary)
+        || isRootBoundaryBeforeFirstElement)
   }
 
   /** A disclosure boundary is a gap even in a section, table cell, or parent
    * containing bare text. Formatting whitespace does not change its anchor. */
   static get detailsGap() {
     return this.#gapBeside("details")
+  }
+
+  /** List boundaries remain gaps in sections, cells, and text-bearing items. */
+  static get listGap() {
+    return this.#gapBeside("ul, ol, dl, menu")
   }
 
   /** Figure and captioned-table boundaries remain gaps in any text-bearing container. */
@@ -1252,14 +1265,14 @@ export class EditingSelection {
   static copy() {
     if(this.isMultiElementSelection) {
       const fragment = getInertDocument(this.range.startContainer).createDocumentFragment()
-      for(const range of this.flowRanges) fragment.append(this.cloneFlowContents(range))
+      for(const range of this.flowRanges) fragment.append(this.cloneClipboardContents(range))
       return fragment
     }
     const root = getDocumentRoot()
     const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
     const range = copyingRoot ? document.createRange() : this.range
     if(copyingRoot) range.selectNodeContents(root)
-    let fragment = this.cloneFlowContents(range)
+    let fragment = this.cloneClipboardContents(range)
     const commonAncestor = this.range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
     while(sharedMark && isMarkElement(sharedMark)) {
@@ -1268,6 +1281,28 @@ export class EditingSelection {
       fragment = wrapper.ownerDocument.createDocumentFragment()
       fragment.append(wrapper)
       sharedMark = sharedMark.parentElement
+    }
+    // A range inside heading text omits the heading itself. Keep its level
+    // available for a later paste at a structural gap.
+    if(sharedMark && /^h[1-6]$/.test(sharedMark.localName) && !sharedMark.hasAttribute("is")) {
+      const wrapper = cloneInert(sharedMark)
+      wrapper.append(fragment)
+      fragment = wrapper.ownerDocument.createDocumentFragment()
+      fragment.append(wrapper)
+    }
+    return fragment
+  }
+
+  /** Range cloning omits its common ancestor. Retain a list's authored shell
+   * when copying its items so their marker type survives outside that list. */
+  private static cloneClipboardContents(range: Range) {
+    const fragment = this.cloneFlowContents(range)
+    const list = range.commonAncestorContainer
+    if(isElement(list) && !list.hasAttribute("is") && list.matches("ul, ol, dl, menu")
+      && Array.from(fragment.children).some(child => child.matches("li, dt, dd"))) {
+      const wrapper = cloneInert(list)
+      wrapper.append(fragment)
+      fragment.append(wrapper)
     }
     return fragment
   }

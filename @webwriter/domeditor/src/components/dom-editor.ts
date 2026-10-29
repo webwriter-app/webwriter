@@ -4377,6 +4377,10 @@ export class DomEditor extends LitElement {
       else void this.execute({type: "toggleMark", mark}).finally(restoreFocus)
       return
     }
+    if(label === "indentListItems" || label === "outdentListItems") {
+      void this.execute({type: label}).finally(() => this.focusEditor())
+      return
+    }
     if(label?.startsWith("toggle-list:")) {
       const listType = label.slice("toggle-list:".length) as ListType
       if(listType === "ul" || listType === "ol" || listType === "dl" || listType === "menu") {

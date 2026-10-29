@@ -6,6 +6,15 @@ function hasNot(...selectors: string[]) {
   return selectors.map(selector => `:not(${selector}):not(:has(${selector}))`).join("")
 }
 
+const markedTextContent = {
+  options: [
+    {group: "phrasing", selector: `:is(${[...primaryMarkNames, ...secondaryMarkNames, "strong", "em", "br", "wbr"].join(",")}):not([is])`},
+    {selector: "math|math"},
+    {selector: {type: "text"}},
+    {selector: {type: "comment"}},
+  ], min: 0, max: Infinity,
+}
+
 export const baseSchema = {
 
   // Special nodes
@@ -422,9 +431,9 @@ export const baseSchema = {
   "figure": {
     group: ["flow", "palpable"],
     content: {options: [
-      {terms: [{selector: "figcaption", min: 0, max: 1}, {group: "flow", min: 0, max: Infinity}]},
-      {terms: [{group: "flow", min: 0, max: Infinity}, {selector: "figcaption", min: 0, max: 1}]},
-    ]}
+      {selector: "figcaption"},
+      {group: "flow"},
+    ], min: 0, max: Infinity}
   },
   "footer": {
     group: ["flow", "palpable"],
@@ -452,11 +461,7 @@ export const baseSchema = {
   "p": {
     defaultNode: true,
     group: ["flow", "palpable"],
-    content: {options: [
-      {group: "phrasing", selector: `:is(${[...primaryMarkNames, ...secondaryMarkNames, "strong", "em", "br", "wbr"].join(",")}):not([is])`},
-      {selector: "math|math"},
-      {selector: {type: "text"}},
-    ], min: 0, max: Infinity},
+    content: markedTextContent,
   },
   "pre": {
     directlyInsertable: false,
@@ -485,7 +490,7 @@ export const baseSchema = {
   // Non-flow elements
   "caption": {
     directlyInsertable: false,
-    content: {group: "flow", min: 0, max: Infinity}
+    content: markedTextContent,
   },
   "col": {directlyInsertable: false},
   "colgroup": {
@@ -503,7 +508,7 @@ export const baseSchema = {
     content: {group: "flow", selector: hasNot("header", "footer", "h1", "h2", "h3", "h4", "h5", "h6", "article", "aside", "nav", "section"), min: 0, max: Infinity},
   },
   "figcaption": {
-    content: {group: "flow", min: 0, max: Infinity}
+    content: markedTextContent,
   },
   "li": {
     content: {options: [

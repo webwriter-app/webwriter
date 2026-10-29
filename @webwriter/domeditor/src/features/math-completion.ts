@@ -173,6 +173,22 @@ export class MathCompletionInput {
       preview.textContent = entry.preview
       preview.style.cssText = "font:18px math,serif;white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis"
       preview.setAttribute("aria-hidden", "true")
+      if(["structure:cancel", "structure:bcancel", "structure:xcancel"].includes(entry.command)) {
+        // Draw the box and strokes in one coordinate system. Combining glyphs
+        // depend on font metrics and do not reliably reach the box's corners.
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+        icon.setAttribute("viewBox", "0 0 14 14")
+        icon.setAttribute("width", "14")
+        icon.setAttribute("height", "14")
+        icon.setAttribute("fill", "none")
+        icon.setAttribute("stroke", "currentColor")
+        icon.setAttribute("focusable", "false")
+        icon.style.verticalAlign = "-1px"
+        icon.innerHTML = '<rect x="1" y="1" width="12" height="12"/>'
+          + (entry.command !== "structure:bcancel" ? '<line x1="1" y1="13" x2="13" y2="1"/>' : "")
+          + (entry.command !== "structure:cancel" ? '<line x1="1" y1="1" x2="13" y2="13"/>' : "")
+        preview.replaceChildren(icon)
+      }
       const label = document.createElement("span")
       label.textContent = entry.label
       label.style.cssText = "min-width:0;white-space:normal;overflow-wrap:anywhere"

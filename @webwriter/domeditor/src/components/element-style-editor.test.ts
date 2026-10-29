@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
+import {filterPresetsStorageKey, loadFilterPresets, saveFilterPreset, newFilterPreset} from "../filter-presets"
 import type {ElementStyleState} from "../editor-bridge"
 import {elementStyleCategories, specializedStyleDefinitions} from "../element-styles"
 import {ElementStyleEditor, type ElementStyleChangeDetail} from "./element-style-editor"
@@ -16,7 +17,11 @@ const state = (inline: ElementStyleState["inline"] = {}): ElementStyleState => (
   context: {display: "block", parentDisplay: "block"},
 })
 
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  document.body.replaceChildren()
+  localStorage.removeItem(filterPresetsStorageKey)
+  vi.restoreAllMocks()
+})
 
 describe("media cropping", () => {
   const definitions = specializedStyleDefinitions.filter(definition => definition.name === "object-view-box")
@@ -1044,7 +1049,8 @@ it("paginates box presets with shadows and saturated colors", async () => {
   expect(next().disabled).toBe(false)
 })
 
-it.each(["box-shadow", "filter"])("offers visual presets and custom values for %s", async property => {
+it("offers visual presets and custom values for box-shadow", async () => {
+  const property = "box-shadow"
   const editor = await mount([], state(), "compact")
   editor.propertyNames = [property]
   await editor.updateComplete
@@ -1053,7 +1059,10 @@ it.each(["box-shadow", "filter"])("offers visual presets and custom values for %
   expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(true)
   const buttons = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".effect-presets button")
   expect(buttons).toHaveLength(6)
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
+  await editor.updateComplete
   buttons[1].click()
+  await editor.updateComplete
   expect(changes.at(-1).property).toBe(property)
   const input = editor.shadowRoot!.querySelector<HTMLInputElement>(".effect-control input")!
   editor.shadowRoot!.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
@@ -1064,7 +1073,7 @@ it.each(["box-shadow", "filter"])("offers visual presets and custom values for %
   await editor.updateComplete
   expect(editor.shadowRoot!.activeElement).toBe(input)
   expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(true)
-  input.value = property === "filter" ? "contrast(1.2)" : "2px 2px 4px black"
+  input.value = "2px 2px 4px black"
   input.dispatchEvent(new Event("change", {bubbles: true}))
   expect(changes.at(-1)).toEqual({property, mutation: {value: input.value, priority: ""}})
   input.value = ""
@@ -1082,13 +1091,225 @@ it.each(["box-shadow", "filter"])("offers visual presets and custom values for %
 it("groups shadow and filter preview fields and reflects their current effects", async () => {
   const editor = await mount([], state({
     "box-shadow": {value: "2px 2px 4px black", priority: ""},
-    filter: {value: "sepia(1)", priority: ""},
+    filter: {value: "sepia(1) blur(2px) saturate(2)", priority: ""},
   }), "compact")
   editor.propertyNames = ["box-shadow", "filter"]
   await editor.updateComplete
   expect(editor.shadowRoot!.querySelectorAll(".effect-fields > .effect-control")).toHaveLength(2)
   expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .shadow-preview")!.style.boxShadow).toBe("2px 2px 4px black")
-  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .filter-preview")!.style.filter).toBe("sepia(1)")
+  expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .filter-preview")!.style.filter).toBe("sepia(1) blur(2px) saturate(2)")
+})
+
+describe("filter stacks", () => {
+  async function mountFilters(style = state()) {
+    const editor = await mount([], style, "compact")
+    editor.propertyNames = ["filter"]
+    await editor.updateComplete
+    const changes: ElementStyleChangeDetail[] = []
+    editor.addEventListener("element-style-change", event => {
+      const change = (event as CustomEvent<ElementStyleChangeDetail>).detail
+      changes.push(change)
+      const inline = {...editor.state.inline}
+      if(change.mutation) inline.filter = typeof change.mutation === "string" ? {value: change.mutation, priority: ""} : change.mutation
+      else delete inline.filter
+      editor.state = {...editor.state, inline}
+    })
+    editor.shadowRoot!.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
+    await editor.updateComplete
+    const preset = (title: string) => editor.shadowRoot!.querySelector<HTMLButtonElement>(`[aria-label="Filter: ${title}"]`)!
+    const preview = () => editor.shadowRoot!.querySelector<HTMLElement>(".effect-trigger .filter-preview")!
+    return {editor, changes, preset, preview}
+  }
+
+  it("toggles multiple presets in application order and previews the whole stack", async () => {
+    const {editor, changes, preset, preview} = await mountFilters()
+    expect(preset("None").getAttribute("aria-pressed")).toBe("true")
+    for(const title of ["Sepia", "Blur", "Vivid"]) {
+      preset(title).click()
+      await editor.updateComplete
+      expect(preset(title).getAttribute("aria-pressed")).toBe("true")
+      expect(editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(false)
+    }
+    expect(changes.at(-1)?.mutation).toEqual({value: "sepia(1) blur(2px) saturate(2)", priority: ""})
+    expect(preview().style.filter).toBe("sepia(1) blur(2px) saturate(2)")
+    expect(preset("None").getAttribute("aria-pressed")).toBe("false")
+    preset("Blur").click()
+    await editor.updateComplete
+    expect(preview().style.filter).toBe("sepia(1)  saturate(2)")
+    expect(preset("Sepia").getAttribute("aria-pressed")).toBe("true")
+    expect(preset("Blur").getAttribute("aria-pressed")).toBe("false")
+    preset("None").click()
+    await editor.updateComplete
+    expect(preview().style.filter).toBe("none")
+    expect(preset("None").getAttribute("aria-pressed")).toBe("true")
+  })
+
+  it("preserves complex custom filters, their order and priority when toggling presets", async () => {
+    const custom = 'url("#sepia(1)") drop-shadow(0 2px 4px rgb(0 0 0 / .5)) blur(calc(1px + 2px))'
+    const {editor, changes, preset} = await mountFilters(state({filter: {value: custom, priority: "important"}}))
+    expect(preset("Sepia").getAttribute("aria-pressed")).toBe("false")
+    expect(preset("Blur").getAttribute("aria-pressed")).toBe("false")
+    preset("Sepia").click()
+    await editor.updateComplete
+    expect(changes.at(-1)?.mutation).toEqual({value: `${custom} sepia(1)`, priority: "important"})
+    preset("Sepia").click()
+    await editor.updateComplete
+    expect(changes.at(-1)?.mutation).toEqual({value: custom, priority: "important"})
+  })
+
+  it("removes the last active preset with an explicit none", async () => {
+    const {editor, changes, preset, preview} = await mountFilters(state({filter: {value: "invert(1)", priority: "important"}}))
+    preset("Invert").click()
+    await editor.updateComplete
+    expect(changes.at(-1)?.mutation).toEqual({value: "none", priority: "important"})
+    expect(preview().style.filter).toBe("none")
+    expect(preset("Invert").getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it.each([undefined, "inherit"])("extends computed filters when the authored value is %s", async value => {
+    const style = state(value ? {filter: {value, priority: ""}} : {})
+    style.computed.filter = "grayscale(1)"
+    const {editor, changes, preset, preview} = await mountFilters(style)
+    expect(preset("Grayscale").getAttribute("aria-pressed")).toBe("true")
+    expect(preview().style.filter).toBe("grayscale(1)")
+    preset("Sepia").click()
+    await editor.updateComplete
+    expect(changes.at(-1)?.mutation).toEqual({value: "grayscale(1) sepia(1)", priority: ""})
+  })
+
+  it("uses the latest selection state and refreshes the stack preview after external updates", async () => {
+    const {editor, changes, preset, preview} = await mountFilters(state({filter: {value: "blur(2px)", priority: ""}}))
+    const button = preset("Sepia")
+    editor.state = state({filter: {value: "saturate(2)", priority: "important"}})
+    button.click()
+    await editor.updateComplete
+    expect(changes.at(-1)?.mutation).toEqual({value: "saturate(2) sepia(1)", priority: "important"})
+    editor.state = state({filter: {value: "invert(1) grayscale(1)", priority: ""}})
+    await editor.updateComplete
+    expect(preview().style.filter).toBe("invert(1) grayscale(1)")
+    expect(preset("Invert").getAttribute("aria-pressed")).toBe("true")
+    expect(preset("Grayscale").getAttribute("aria-pressed")).toBe("true")
+    expect(preset("Sepia").getAttribute("aria-pressed")).toBe("false")
+  })
+
+  async function openCustomFilter(editor: ElementStyleEditor) {
+    editor.shadowRoot!.querySelector<HTMLButtonElement>(".effect-custom")!.click()
+    await editor.updateComplete
+    await editor.updateComplete
+    const dialog = editor.shadowRoot!.querySelector<HTMLDialogElement>(".filter-dialog")!
+    expect(dialog.open).toBe(true)
+    return dialog
+  }
+
+  const inputValue = (input: HTMLInputElement, value: string) => {
+    input.value = value
+    input.dispatchEvent(new Event("input", {bubbles: true}))
+  }
+
+  it("adds a configured filter to the current stack and persists a reusable preset", async () => {
+    const {editor, changes, preview} = await mountFilters(state({filter: {value: "sepia(1)", priority: "important"}}))
+    const dialog = await openCustomFilter(editor)
+    expect(dialog.classList.contains("document-dialog")).toBe(true)
+    expect(dialog.querySelector("h2")!.textContent).toBe("Custom filter")
+    expect(dialog.querySelectorAll("select option")).toHaveLength(10)
+    expect(editor.shadowRoot!.querySelector('[data-property="filter"] input')).toBeNull()
+    inputValue(dialog.querySelector<HTMLInputElement>('input[type="number"]')!, "4.5")
+    await editor.updateComplete
+    expect(dialog.querySelector<HTMLElement>(".filter-preview")!.style.filter).toBe("sepia(1) blur(4.5px)")
+    expect(changes).toHaveLength(0)
+    dialog.querySelector<HTMLButtonElement>('[type="submit"]')!.click()
+    await editor.updateComplete
+    expect(dialog.open).toBe(false)
+    expect(changes.at(-1)?.mutation).toEqual({value: "sepia(1) blur(4.5px)", priority: "important"})
+    expect(preview().style.filter).toBe("sepia(1) blur(4.5px)")
+    expect(loadFilterPresets()).toEqual([{...newFilterPreset(), values: [4.5]}])
+    editor.remove()
+    const reloaded = await mountFilters()
+    const custom = reloaded.preset("Blur (4.5px)")
+    custom.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true}))
+    await reloaded.editor.updateComplete
+    expect(reloaded.editor.shadowRoot!.querySelector<HTMLElement>(".effect-popup")!.hidden).toBe(false)
+    custom.click()
+    await reloaded.editor.updateComplete
+    expect(reloaded.changes.at(-1)?.mutation).toEqual({value: "blur(4.5px)", priority: ""})
+    custom.click()
+    await reloaded.editor.updateComplete
+    expect(reloaded.preview().style.filter).toBe("none")
+  })
+
+  it("configures drop shadow offsets, blur and color without leaking dialog events", async () => {
+    const {editor, changes} = await mountFilters()
+    const dialog = await openCustomFilter(editor)
+    const select = dialog.querySelector("select")!
+    const committed = vi.fn()
+    editor.addEventListener("ribbon-input-commit", committed)
+    select.value = "drop-shadow"
+    select.dispatchEvent(new Event("change", {bubbles: true}))
+    await editor.updateComplete
+    const inputs = dialog.querySelectorAll<HTMLInputElement>('input[type="number"]')
+    expect(inputs).toHaveLength(3)
+    ;["-3", "5.5", "8"].forEach((value, index) => inputValue(inputs[index], value))
+    inputValue(dialog.querySelector<HTMLInputElement>('input[type="color"]')!, "#123456")
+    inputs[0].dispatchEvent(new Event("change", {bubbles: true}))
+    await editor.updateComplete
+    expect(committed).not.toHaveBeenCalled()
+    dialog.querySelector<HTMLButtonElement>('[type="submit"]')!.click()
+    await editor.updateComplete
+    expect(changes.at(-1)?.mutation).toEqual({value: "drop-shadow(-3px 5.5px 8px #123456)", priority: ""})
+  })
+
+  it.each(["cancel", "close", "selection", "disconnect"])("discards an unconfirmed filter on %s", async action => {
+    const {editor, changes} = await mountFilters()
+    const dialog = await openCustomFilter(editor)
+    inputValue(dialog.querySelector<HTMLInputElement>('input[type="number"]')!, "9")
+    if(action === "cancel") dialog.querySelector<HTMLButtonElement>("footer button")!.click()
+    else if(action === "close") dialog.close()
+    else if(action === "selection") editor.selectionKey = "new-selection"
+    else editor.remove()
+    await editor.updateComplete
+    expect(dialog.open).toBe(false)
+    expect(changes).toHaveLength(0)
+    expect(loadFilterPresets()).toEqual([])
+  })
+
+  it.each(["", "-2"])("keeps invalid custom blur %s out of the document and presets", async value => {
+    const {editor, changes} = await mountFilters()
+    const dialog = await openCustomFilter(editor)
+    inputValue(dialog.querySelector<HTMLInputElement>('input[type="number"]')!, value)
+    await editor.updateComplete
+    dialog.querySelector<HTMLButtonElement>('[type="submit"]')!.click()
+    await editor.updateComplete
+    expect(dialog.open).toBe(true)
+    expect(changes).toHaveLength(0)
+    expect(loadFilterPresets()).toEqual([])
+  })
+
+  it("refreshes other mounted pickers and storage changes without duplicating built-in presets", async () => {
+    const first = await mountFilters()
+    const second = await mountFilters()
+    saveFilterPreset({...newFilterPreset("contrast"), values: [150]})
+    await Promise.all([first.editor.updateComplete, second.editor.updateComplete])
+    expect(first.preset("Contrast (150%)")).not.toBeNull()
+    expect(second.preset("Contrast (150%)")).not.toBeNull()
+    saveFilterPreset(newFilterPreset())
+    await first.editor.updateComplete
+    expect(first.editor.shadowRoot!.querySelectorAll(".effect-presets button")).toHaveLength(7)
+    localStorage.removeItem(filterPresetsStorageKey)
+    window.dispatchEvent(new StorageEvent("storage", {key: filterPresetsStorageKey}))
+    await first.editor.updateComplete
+    expect(first.preset("Contrast (150%)")).toBeNull()
+  })
+
+  it("keeps the dialog open and reports persistence failures without applying the draft", async () => {
+    const {editor, changes} = await mountFilters()
+    const dialog = await openCustomFilter(editor)
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {throw new Error("Storage full")})
+    dialog.querySelector<HTMLButtonElement>('[type="submit"]')!.click()
+    await editor.updateComplete
+    expect(dialog.open).toBe(true)
+    expect(dialog.querySelector("[role=alert]")!.textContent).toContain("Could not save this filter")
+    expect(changes).toHaveLength(0)
+  })
 })
 
 it.each([

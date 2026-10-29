@@ -495,18 +495,18 @@ export class SelectionFeature extends EditorFeature {
       && Math.abs((end ? caret.bottom : caret.top) - (end ? boundary.bottom : boundary.top)) < 2
   }
 
-  #navigateDisclosureGap(direction: "backward" | "forward", vertical: boolean) {
+  #navigateContainerGap(direction: "backward" | "forward", vertical: boolean) {
     const selected = $.selectedElement
-    if(selected?.matches("details")) {
+    if(selected?.matches("ul, ol, dl, menu, details")) {
       $.selectGap(selected, direction === "backward" ? "before" : "after")
       this.processSelection()
       return true
     }
     if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
     const adjacent = this.#adjacentNavigationElement(direction)
-    if($.detailsGap) {
-      const outer = getContainer($.anchor).closest("details")
-      if(outer?.open && this.#atDisclosureEdge(outer, direction, false)) {
+    if($.listGap || $.detailsGap) {
+      const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details")
+      if(outer && (!outer.matches("details") || outer.hasAttribute("open")) && this.#atDisclosureEdge(outer, direction, false)) {
         $.selectGap(outer, direction === "backward" ? "before" : "after")
         this.processSelection()
         return true
@@ -518,16 +518,16 @@ export class SelectionFeature extends EditorFeature {
       else $.move(edge, direction === "forward" ? 0 : -1)
     }
     else {
-      const details = getContainer($.anchor).closest("details")
-      const scope = details?.open ? details : details?.querySelector(":scope > summary")
-      if(details && scope && this.#atDisclosureEdge(scope, direction, vertical)) {
-        $.selectGap(details, direction === "backward" ? "before" : "after")
+      const container = getContainer($.anchor).closest("ul, ol, dl, menu, details")
+      const scope = container?.matches("details:not([open])") ? container.querySelector(":scope > summary") : container
+      if(container && scope && this.#atDisclosureEdge(scope, direction, vertical)) {
+        $.selectGap(container, direction === "backward" ? "before" : "after")
       }
       else {
         const block = this.#selectionBlock()
         const neighbor = adjacent ?? (block && this.#atDisclosureEdge(block, direction, vertical)
           ? this.#adjacentNavigationElement(direction, true) : null)
-        if(!neighbor?.matches("details")) return false
+        if(!neighbor?.matches("ul, ol, dl, menu, details")) return false
         $.selectGap(neighbor, direction === "forward" ? "before" : "after")
       }
     }
@@ -949,7 +949,7 @@ export class SelectionFeature extends EditorFeature {
     if(ev.pointerType === "touch" && ev.isPrimary === false) return
     if(this.#handleModifierClick(ev)) return
     if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
-      || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) return
+      || ev.button !== 0) return
     const origin = ev.composedPath()[0] ?? ev.target
     if(this.editor.features.slides.active && (origin === document.body || origin === document.documentElement
       || origin instanceof Element && (isSlide(origin) || origin.matches("body > .ww-slides-viewport")))) {
@@ -1096,6 +1096,13 @@ export class SelectionFeature extends EditorFeature {
       const drag = this.#drag
       if(this.#boxDrag) { event.preventDefault(); return }
       if(!drag) return
+      // MOUSEDOWN carries the click count (POINTERDOWN does not). Release
+      // editor capture before the native default starts word/paragraph
+      // selection, so subsequent moves retain the browser's granularity.
+      if(drag.nativeClick && event.detail >= 2 && this.#hitsText(event)) {
+        this.#endDrag()
+        return
+      }
       if(!drag.nativeClick) event.preventDefault()
       else queueMicrotask(() => {
         // Save the browser's actual click endpoints after its default action
@@ -1999,6 +2006,21 @@ export class SelectionFeature extends EditorFeature {
     }
   }
 
+  /** Explicit restoration must reveal even an unchanged, manually scrolled caret. */
+  revealSelection() {
+    if(focusedWidgetHost()) focusEditorWindow()
+    // Undoing a shape edit restores the same SVG range. Keep its capture so
+    // the active drawing tool and shape selection can continue editing it.
+    const captured = this.captureSelectedElement
+    if(captured?.namespaceURI !== SVG_NAMESPACE || captured.localName !== "svg"
+      || $.selectedElement !== figureSelectionTarget(captured)) this.#releaseCaptureSelection()
+    this.clearSelectedSection()
+    this.#endDrag()
+    this.editor.features.table.clearCellSelection(false)
+    this.#lastScrollSelection = null
+    this.processSelection(false)
+  }
+
   /** Normalizes and re-applies exactly one selection kind for the current
    * document Selection. This is the invariant boundary used by native
    * selectionchange events and every editor-driven refresh. Passive refreshes
@@ -2080,8 +2102,11 @@ export class SelectionFeature extends EditorFeature {
     if(formula && this.editor.features.math.selectedMath !== formula && !inlineMathRoot(formula) && !this.captureSelectedElement) this.#capturedElement = formula
     // SVG capture follows the live document selection. A native caret move
     // outside the graphic may arrive without an ordinary editor pointer event.
+    // Media source controls own their shadow selection while configuring an
+    // embedded image; that selection does not leave the captured graphic.
     const nativeSelection = document.getSelection()
-    if(this.#capturedElement?.namespaceURI === SVG_NAMESPACE && this.#capturedElement.localName === "svg"
+    if(!this.editor.features.media.isPlaceholderInteraction
+      && this.#capturedElement?.namespaceURI === SVG_NAMESPACE && this.#capturedElement.localName === "svg"
       && $.selectedElement !== figureSelectionTarget(this.#capturedElement)
       && (!nativeSelection?.anchorNode || !nativeSelection.focusNode
         || !this.#capturedElement.contains(nativeSelection.anchorNode) || !this.#capturedElement.contains(nativeSelection.focusNode))) {
@@ -2215,7 +2240,7 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const structuralGap = $.mathBoundary ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap ?? $.captionedGap
+        const structuralGap = $.mathBoundary ?? $.listGap ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap ?? $.captionedGap
         const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
@@ -2319,10 +2344,6 @@ export class SelectionFeature extends EditorFeature {
 
   }
 
-  /** Whether the last click was part of a double click (suppresses the
-   * subsequent pointerdown handling). */
-  hasDoubleClicked = false
-
   /** Read the final selection after native defaults and other feature handlers.
    * Local input can move the caret visually without changing its live Range. */
   #scheduleSelectionReveal(event: Event) {
@@ -2345,7 +2366,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Pointer behavior: 
    * pointerdown starts a drag selection at the pointer (modifier-click selects the whole element instead), 
-   * double/triple click select the word/paragraph,
+   * native double/triple clicks select and drag by word/paragraph,
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "beforeinput": event => this.#scheduleSelectionReveal(event),
@@ -2373,7 +2394,7 @@ export class SelectionFeature extends EditorFeature {
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
         && (this.#navigateMathBoundary(direction)
-          || this.#navigateDisclosureGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
+          || this.#navigateContainerGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
         ev.preventDefault()
       }
@@ -2439,24 +2460,6 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => this.#handlePointerDown(ev),
-    "click": ev => {
-      this.hasDoubleClicked = false
-      if(this.captureSelectedElement && ev.target instanceof Node && this.captureSelectedElement.contains(ev.target)) return
-      if(ev.detail >= 2 && !this.#hitsText(ev)) return
-      if(this.editor.features.list.isDetailsToggleInteraction(ev) || ev.button === 2 || $.isElementSelection || $.isMultiElementSelection) {
-        return
-      }
-      else if(ev.detail === 2) {
-        this.hasDoubleClicked = true
-        $.moveBy("word", "backward")
-        $.extendBy("word")
-      }
-      else if(ev.detail >= 3) {
-        this.hasDoubleClicked = true
-        // Keep the browser's paragraph selection. Moving by a line from its
-        // boundary can reach into the preceding (longer) paragraph.
-      }
-    },
     "pointerup": event => {
       if(event.pointerType === "touch" && event.isPrimary === false) return
       this.isInDragSelection = false

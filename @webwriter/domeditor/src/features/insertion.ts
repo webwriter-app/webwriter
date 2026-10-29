@@ -439,6 +439,13 @@ export class InsertionFeature extends EditorFeature {
       this.close()
       return
     }
+    if(item.tag === "math" && !item.html && !item.htmlUrl && getContainer(range.startContainer).closest("caption, figcaption")) {
+      range.deleteContents()
+      $.move(range.startContainer, range.startOffset)
+      this.editor.features.math.insert()
+      this.close(false)
+      return
+    }
     let fragment: DocumentFragment
     try {
       fragment = this.editor.parseHTMLFragment(html).fragment
@@ -452,6 +459,10 @@ export class InsertionFeature extends EditorFeature {
       this.close()
       return
     }
+    if(!this.editor.features.manipulation.allowsCaptionInsertion(nodes, range.startContainer)) {
+      this.close(false)
+      return
+    }
     range.deleteContents()
     if(!item.html && !item.htmlUrl && item.tag) {
       $.move(range.startContainer, range.startOffset)
@@ -460,7 +471,7 @@ export class InsertionFeature extends EditorFeature {
         return
       }
     }
-    const replacement = this.emptyTextBlock?.isConnected && !isDocumentRoot(this.emptyTextBlock) && !this.emptyTextBlock.textContent && this.emptyTextBlock
+    const replacement = this.emptyTextBlock?.isConnected && !isDocumentRoot(this.emptyTextBlock) && !this.emptyTextBlock.matches("caption, figcaption") && !this.emptyTextBlock.textContent && this.emptyTextBlock
     if((item.kind === "widget" || isMediaType(item.tag) && !replacement) && nodes.length === 1 && isElement(nodes[0])) {
       $.move(range.startContainer, range.startOffset)
       this.editor.features.manipulation.insert(nodes[0])

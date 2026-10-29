@@ -1144,6 +1144,39 @@ describe("bridge origin binding", () => {
 })
 
 describe("command normalization boundaries", () => {
+  it("keeps unrelated figure content unchanged while normalizing its caption", () => {
+    document.body.innerHTML = '<figure><p><b>one</b><b>two</b></p><figcaption>Caption</figcaption></figure>'
+    const editor = new DOMEditor()
+    try {
+      const content = document.querySelector("p")!, marks = Array.from(content.children)
+      const caption = document.querySelector("figcaption")!
+      $.move(caption.firstChild!, 3)
+      editor.normalizeSurroundingElements(caption)
+      expect(Array.from(content.children)).toEqual(marks)
+      expect(content.innerHTML).toBe("<b>one</b><b>two</b>")
+      expect(caption.isConnected).toBe(true)
+    }
+    finally { editor.destroy() }
+  })
+
+  it("preserves a caption caret when native input leaves a caption-only figure", () => {
+    document.body.innerHTML = '<figure><picture><img src="photo.png"></picture><figcaption>Caption</figcaption></figure><p>Outside</p>'
+    const editor = new DOMEditor()
+    try {
+      const figure = document.querySelector("figure")!, caption = document.querySelector("figcaption")!
+      const text = caption.firstChild!
+      figure.querySelector("picture")!.remove()
+      $.move(text, 3)
+      caption.dispatchEvent(new InputEvent("input", {inputType: "deleteContentBackward", bubbles: true}))
+      expect(document.querySelector("figure, figcaption")).toBeNull()
+      expect(document.querySelector("p")!.firstChild).toBe(text)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(3)
+      expect(editor.toHTML(true)).not.toContain("◆")
+    }
+    finally { editor.destroy() }
+  })
+
   it.each([undefined, [17]])("preserves authored node identity for a style read with properties %s", async properties => {
     document.body.innerHTML = '<p><b>one</b><b>two</b></p><test-widget></test-widget>'
     const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)

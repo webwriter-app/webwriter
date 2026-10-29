@@ -10367,6 +10367,16 @@ it("updates the dev-server username without reconnecting or losing the saved doc
 
 
 describe("list toolbox type changes", () => {
+  it.each(["indentListItems", "outdentListItems"])("routes %s from the toolbox to the frame", async type => {
+    const editor = new DomEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const focus = vi.spyOn(editor as any, "focusEditor").mockImplementation(() => {})
+    ;(editor as any).editingUIListeners["ribbon-button-click"](new CustomEvent("ribbon-button-click", {detail: {label: type}}))
+    expect(execute).toHaveBeenCalledWith({type})
+    await Promise.resolve()
+    expect(focus).toHaveBeenCalled()
+  })
+
   it("forwards scoped list commands and rejects invalid types and scopes", async () => {
     const editor = new DomEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

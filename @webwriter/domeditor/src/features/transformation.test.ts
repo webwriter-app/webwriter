@@ -1566,7 +1566,7 @@ describe("selection-owned transformation", () => {
       expect(editor.toHTML(true)).not.toContain("◆")
       editor.doc.undo()
       await mutationsDelivered()
-      expect(document.getElementById("deleted-root")!.innerHTML).toBe(contents.innerHTML)
+      expect(cloneWithoutEditorMarkers(document.getElementById("deleted-root")!, true).innerHTML).toBe(contents.innerHTML)
       editor.doc.redo()
       await mutationsDelivered()
       expect(document.getElementById("deleted-root")).toBeNull()
@@ -2399,6 +2399,69 @@ describe("transform controls and geometry", () => {
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0}))
     feature.handleMoveEnd()
     expect(second.style.cssText).toBe(style)
+  })
+
+  it.each((["canvas", "slides"] as const).flatMap(mode => ["p", "img", "demo-widget"].map(tag => ({mode, tag}))))("keeps a released $tag drag in $mode when capture loss arrives before pointerup", async ({mode, tag}) => {
+    const target = targetElement(tag)
+    target.id = "quick-drag"
+    document.body.className = `ww-${mode}`
+    if(mode === "slides") {
+      const viewport = document.createElement("div"), slide = document.createElement("section")
+      viewport.className = "ww-slides-viewport"; slide.className = "ww-slide"
+      viewport.append(slide); document.body.append(viewport); slide.append(target)
+    }
+    Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
+    mockRect(target)
+    selectNode(target)
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const initial = editor.toHTML(true)
+    const handle = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 17, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 17, buttons: 1, clientX: 400, clientY: 250}))
+    expect(target.style.left).toBe("300px")
+    expect(target.style.top).toBe("150px")
+    handle.dispatchEvent(pointer("lostpointercapture", {pointerId: 17, buttons: 0, clientX: 400, clientY: 250}))
+    document.dispatchEvent(pointer("pointerup", {pointerId: 17, clientX: 400, clientY: 250}))
+    expect(target.style.left).toBe("300px")
+    expect(target.style.top).toBe("150px")
+    expect(document.body).not.toHaveClass("◆transform-moving")
+    await mutationsDelivered()
+    editor.doc.syncFromDOM()
+    const moved = editor.toHTML(true)
+    expect(moved).not.toMatch(/◆|transform-overlay/)
+    expect(editor.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(initial)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(moved)
+  })
+
+  it.each(["held", "pointercancel", "changed", "removed", "reparented", "other-pointer"])("handles %s during a quick move without committing an invalid gesture", scenario => {
+    const target = targetElement("img")
+    document.body.className = "ww-canvas"
+    Object.assign(target.style, {position: "absolute", left: "0px", top: "0px"})
+    mockRect(target)
+    selectNode(target)
+    const handle = feature.overlay.querySelector<HTMLElement>(".◆transform-overlay-edge")!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 17, clientX: 100, clientY: 100}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 17, buttons: 1, clientX: 400, clientY: 250}))
+    if(scenario === "changed") target.style.top = "777px"
+    else if(scenario === "removed") target.remove()
+    else if(scenario === "reparented") append(document.createElement("section")).append(target)
+    handle.dispatchEvent(pointer(scenario === "pointercancel" ? "pointercancel" : "lostpointercapture", {
+      pointerId: scenario === "other-pointer" ? 99 : 17, buttons: scenario === "held" ? 1 : 0,
+    }))
+    if(scenario === "other-pointer") {
+      expect(target.style.left).toBe("300px")
+      document.dispatchEvent(pointer("pointerup", {pointerId: 17}))
+    }
+    else {
+      expect(target.style.left).toBe("0px")
+      expect(target.style.top).toBe(scenario === "changed" ? "777px" : "0px")
+    }
+    expect(document.body).not.toHaveClass("◆transform-moving")
   })
 
   it.each(["document", "slides", "nested-canvas", "right-button", "locked", "disconnected"])("does not automatically raise a move in %s", scenario => {

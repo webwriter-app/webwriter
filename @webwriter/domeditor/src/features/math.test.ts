@@ -37,6 +37,25 @@ beforeEach(() => {
 })
 afterEach(() => editor.destroy())
 
+describe("caption formulas", () => {
+  it.each(["caption", "figcaption"])("inserts inline formulas in %s and rejects display conversion", tag => {
+    document.body.innerHTML = tag === "caption"
+      ? '<table><caption><b>Text</b></caption><tbody><tr><td>Cell</td></tr></tbody></table>'
+      : '<figure><p>Content</p><figcaption><b>Text</b></figcaption></figure>'
+    const caption = document.querySelector(tag)!
+    $.move(caption.querySelector("b")!.firstChild!, 2)
+    expect(editor.features.math.insert()).toBe(true)
+    const math = caption.querySelector("math")!
+    expect(math.namespaceURI).toBe(MATH_NAMESPACE)
+    expect(math.getAttribute("display")).not.toBe("block")
+    expect(math.parentElement?.localName).toBe("b")
+    const original = clean()
+    expect(command("display:block")).toBe(false)
+    expect(clean()).toBe(original)
+    expect(caption.isConnected).toBe(true)
+  })
+})
+
 describe("formula shortcut modifiers", () => {
   afterEach(() => vi.restoreAllMocks())
 
@@ -721,11 +740,12 @@ describe("DOM MathML editing", () => {
     const focus = selection.focusNode, focusOffset = selection.focusOffset
     const original = clean()
     const post = vi.spyOn(editor, "postHostMessage")
+    const tabMessages = () => post.mock.calls.filter(([message]) => (message as {type?: string}).type === mathKeyboardTabEvent)
 
     for(const backward of [false, true]) {
       const event = key("Tab", {shiftKey: backward})
       expect(event.defaultPrevented).toBe(true)
-      expect(post.mock.calls.at(-1)?.[0]).toEqual({type: mathKeyboardTabEvent, detail: {backward}})
+      expect(tabMessages().at(-1)?.[0]).toEqual({type: mathKeyboardTabEvent, detail: {backward}})
       expect(selection.anchorNode).toBe(anchor)
       expect(selection.anchorOffset).toBe(anchorOffset)
       expect(selection.focusNode).toBe(focus)
@@ -733,9 +753,9 @@ describe("DOM MathML editing", () => {
       expect(clean()).toBe(original)
     }
 
-    const count = post.mock.calls.length
+    const count = tabMessages().length
     expect(key("Tab", {repeat: true}).defaultPrevented).toBe(true)
-    expect(post).toHaveBeenCalledTimes(count)
+    expect(tabMessages()).toHaveLength(count)
     expect(selection.anchorNode).toBe(anchor)
     expect(selection.anchorOffset).toBe(anchorOffset)
     expect(selection.focusNode).toBe(focus)
@@ -1052,8 +1072,6 @@ describe("DOM MathML editing", () => {
     try {
       for(const [y, offset] of [[10, 0], [100, 1]]) for(const detail of [1, 2, 3, 1]) {
         $.move(token, 1)
-        // A preceding word selection must not suppress blank-space placement.
-        editor.features.selection.hasDoubleClicked = true
         const options = {bubbles: true, cancelable: true, clientX: 140, clientY: y, detail}
         const down = new MouseEvent("pointerdown", options)
         parent.dispatchEvent(down)
@@ -1348,21 +1366,20 @@ describe("DOM MathML editing", () => {
     expect(document.querySelector("p")?.lastChild?.textContent).toBe(" after")
   })
 
-  it.each(["^", "_"])("uses the preceding symbol as the base when typing %s", shortcut => {
-    for(const input of ["keydown", "beforeinput"]) for(const token of ["mi", "mn", "mo"]) {
-      const math = load(`<${token} id="base">${token === "mi" ? "x" : token === "mn" ? "12" : "∑"}</${token}><mi>z</mi>`)
-      const base = math.firstElementChild!
-      $.move(base.firstChild!, base.textContent!.length)
-      if(input === "keydown") key(shortcut)
-      else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: shortcut}))
-      const script = math.querySelector(shortcut === "^" ? "msup" : "msub")!
-      expect(script.firstElementChild!.firstElementChild).toBe(base)
-      expect(document.getSelection()!.focusNode).toBe(script.lastElementChild)
-      expect(math.lastElementChild!.textContent).toBe("z")
-      key("2")
-      expect(script.lastElementChild!.textContent).toBe("2")
-      expect(base.id).toBe("base")
-    }
+  it.each(["^", "_"].flatMap(shortcut => ["keydown", "beforeinput"].flatMap(input =>
+    ["mi", "mn", "mo"].map(token => ({shortcut, input, token})))))("uses the preceding $token as the base when typing $shortcut via $input", ({shortcut, input, token}) => {
+    const math = load(`<${token} id="base">${token === "mi" ? "x" : token === "mn" ? "12" : "∑"}</${token}><mi>z</mi>`)
+    const base = math.firstElementChild!
+    $.move(base.firstChild!, base.textContent!.length)
+    if(input === "keydown") key(shortcut)
+    else document.dispatchEvent(new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: shortcut}))
+    const script = math.querySelector(shortcut === "^" ? "msup" : "msub")!
+    expect(script.firstElementChild!.firstElementChild).toBe(base)
+    expect(document.getSelection()!.focusNode).toBe(script.lastElementChild)
+    expect(math.lastElementChild!.textContent).toBe("z")
+    key("2")
+    expect(script.lastElementChild!.textContent).toBe("2")
+    expect(base.id).toBe("base")
   })
 
   it.each(["^", "_"])("keeps an empty base when typing %s without a preceding symbol", shortcut => {
@@ -1992,6 +2009,23 @@ describe("DOM MathML editing", () => {
 
 
 describe("formula marks", () => {
+  it.each([false, true])("formats only the selected number at a neighboring token boundary (backward: %s)", backward => {
+    const math = load('<mi>x</mi><mo style="color: blue">+</mo><!--keep--><mn>1</mn><mo>=</mo><mn>2</mn>')
+    const nodes = Array.from(math.childNodes)
+    const start = nodes[1].firstChild!
+    const end = nodes[4].firstChild!
+    document.getSelection()!.setBaseAndExtent(...(backward
+      ? [end, 0, start, 1] : [start, 1, end, 0]) as [Node, number, Node, number])
+    editor.features.mark.setStyleMark("color", "red")
+    expect(nodes[3] instanceof Element && nodes[3].getAttribute("style")).toContain("color: red")
+    expect((nodes[1] as Element).getAttribute("style")).toBe("color: blue")
+    for(const index of [0, 4, 5]) expect((nodes[index] as Element).hasAttribute("style")).toBe(false)
+    editor.features.mark.removeMarks()
+    expect((nodes[3] as Element).hasAttribute("style")).toBe(false)
+    expect((nodes[1] as Element).getAttribute("style")).toBe("color: blue")
+    expect(Array.from(math.childNodes)).toEqual(nodes)
+  })
+
   it("styles a selected token without replacing or splitting its DOM", () => {
     const math = load('<mi data-author="yes">abc</mi>')
     const token = math.firstElementChild!
@@ -2146,6 +2180,88 @@ describe("formula input keyboard and autocomplete", () => {
     editor.features.math.refresh()
     return math
   }
+
+  it.each(["Enter", "Tab", " ", "pointer"])("replaces a spelled structure name with an empty root via %s", async accept => {
+    const math = await ready('<mrow><mi id="keep">x</mi><!--keep--></mrow>')
+    const kept = Array.from(math.firstElementChild!.childNodes)
+    $.move(math.firstElementChild!, 2)
+    type("sqrt")
+    if(accept === "pointer") menu()!.querySelector('[aria-label="Square root: sqrt"]')!
+      .dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true}))
+    else key(accept)
+    const argument = math.querySelector("msqrt > mrow")!
+    expect(argument.childNodes).toHaveLength(0)
+    expect(document.getSelection()!.anchorNode).toBe(argument)
+    expect(Array.from(math.firstElementChild!.childNodes).slice(0, 2)).toEqual(kept)
+    expect(math.textContent).toBe("x")
+    expect(clean()).not.toContain("◆")
+  })
+
+  it("keeps the preceding operand out of a completed fraction", async () => {
+    const math = await ready('<mrow><mi id="keep">x</mi><!--keep--></mrow>')
+    $.move(math.firstElementChild!, 2)
+    type("frac")
+    key("Enter")
+    expect(math.querySelector("mfrac")!.textContent).toBe("")
+    expect(math.querySelector("#keep")!.parentElement).toBe(math.firstElementChild)
+  })
+
+  it("groups typed bracket pairs before applying scripts and keeps their nodes", async () => {
+    const math = await ready()
+    type("(1/2")
+    key("ArrowRight")
+    type(")+([x+1/2")
+    key("ArrowRight")
+    const fraction = math.querySelectorAll("mfrac")[1]
+    type("])^2")
+    const row = math.firstElementChild!
+    const first = row.children[0]
+    const power = row.children[2]
+    expect(first.localName).toBe("mrow")
+    expect(Array.from(first.children).map(node => node.localName)).toEqual(["mo", "mfrac", "mo"])
+    expect(power.localName).toBe("msup")
+    const outer = power.firstElementChild!.firstElementChild!
+    expect(outer.localName).toBe("mrow")
+    expect(outer.firstElementChild!.textContent).toBe("(")
+    expect(outer.lastElementChild!.textContent).toBe(")")
+    expect(outer.children[1].localName).toBe("mrow")
+    expect(outer.contains(fraction)).toBe(true)
+  })
+
+  it("preserves comments and unfamiliar content when grouping typed brackets", async () => {
+    const math = await ready('<mrow><mo id="open">[</mo><!--keep--><munknown><mi>z</mi></munknown></mrow>')
+    const row = math.firstElementChild!
+    const nodes = Array.from(row.childNodes)
+    $.move(row, row.childNodes.length)
+    command("keyboard:text:]")
+    expect(Array.from(row.firstElementChild!.childNodes).slice(0, 3)).toEqual(nodes)
+    expect(row.firstElementChild!.lastElementChild!.textContent).toBe("]")
+  })
+
+  it.each(["()", "[]", "{}", "⟨⟩", "⌊⌋", "⌈⌉"])("groups %s without changing existing content and supports undo and redo", async pair => {
+    const math = await ready()
+    type(`${pair[0]}x`)
+    const row = math.firstElementChild!
+    const nodes = Array.from(row.childNodes)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    type(pair[1])
+    expect(Array.from(row.firstElementChild!.childNodes).slice(0, 2)).toEqual(nodes)
+    expect(document.getSelection()!.anchorNode).toBe(row)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("math")!.textContent).toBe(`${pair[0]}x`)
+    editor.doc.redo()
+    expect(document.querySelector("math mrow > mrow")!.textContent).toBe(`${pair[0]}x${pair[1]}`)
+    expect(clean()).not.toContain("◆")
+  })
+
+  it("leaves mismatched brackets ungrouped", async () => {
+    const math = await ready()
+    type("([x)")
+    expect(math.querySelector("mrow > mrow")).toBeNull()
+    expect(math.textContent).toBe("([x)")
+  })
 
   it("sets up autocomplete synchronously and cleans up when disabled", async () => {
     expect((editor.features.math as any).input).not.toBeNull()
@@ -2309,10 +2425,10 @@ describe("formula input keyboard and autocomplete", () => {
     expect(math.contains($.focus)).toBe(true)
   })
 
-  it("does not apply a popup entry after remote text or selection replacement", async () => {
+  it.each(["alp", "sqrt"])("does not apply %s after remote text or selection replacement", async word => {
     const math = await ready()
-    type("alp")
-    const option = menu()!.querySelector<HTMLElement>('[aria-label="Greek letter alpha: alpha"]')!
+    type(word)
+    const option = menu()!.querySelector<HTMLElement>('[aria-selected="true"]')!
     math.querySelector("mi")!.textContent = "z"
     const original = clean()
     option.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
@@ -2381,6 +2497,34 @@ describe("formula input keyboard and autocomplete", () => {
     expect(menu()?.hidden ?? true).toBe(true)
   })
 
+  it.each(["cancel", "bcancel", "xcancel"])("draws %s preview strokes exactly between the box corners", async name => {
+    await ready()
+    type(`\\${name}`)
+    const option = menu()!.querySelector('[aria-selected="true"]')!
+    const icon = option.querySelector("svg")!
+    const box = icon.querySelector("rect")!
+    const lines = Array.from(icon.querySelectorAll("line"))
+    const number = (element: Element, attribute: string) => Number(element.getAttribute(attribute))
+    const left = number(box, "x"), top = number(box, "y")
+    const right = left + number(box, "width"), bottom = top + number(box, "height")
+    expect(lines).toHaveLength(name === "xcancel" ? 2 : 1)
+    expect(icon.getAttribute("stroke")).toBe("currentColor")
+    for(const line of lines) {
+      expect(number(line, "x1")).toBe(left)
+      expect(number(line, "x2")).toBe(right)
+      expect([number(line, "y1"), number(line, "y2")].sort((a, b) => a - b)).toEqual([top, bottom])
+    }
+    const directions = lines.map(line => Math.sign(number(line, "y2") - number(line, "y1")))
+    expect(directions).toEqual(name === "cancel" ? [-1] : name === "bcancel" ? [1] : [-1, 1])
+    expect(editor.appendix.contains(icon)).toBe(true)
+    expect(clean()).not.toContain("<svg")
+    key("Enter")
+    expect(document.querySelector("math menclose")?.getAttribute("notation")).toBe(
+      name === "cancel" ? "updiagonalstrike" : name === "bcancel" ? "downdiagonalstrike" : "updiagonalstrike downdiagonalstrike")
+    editor.features.math.disable()
+    expect(menu()).toBeNull()
+  })
+
   it("keeps the popup previews on one line with wrapping labels and a separate rounded frame", async () => {
     await ready()
     type("a")
@@ -2394,18 +2538,19 @@ describe("formula input keyboard and autocomplete", () => {
     expect((option.children[1] as HTMLElement).style.overflowWrap).toBe("anywhere")
   })
 
-  it("synchronizes completions with history and removes all UI and markers on disable", async () => {
+  it.each(["alpha", "sqrt"])("synchronizes %s with history and removes all UI and markers on disable", async name => {
     const math = await ready()
-    type("alpha")
+    type(name)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     key("Enter")
     editor.doc.syncFromDOM()
-    expect(math.textContent).toBe("α")
+    expect(math.textContent).toBe(name === "alpha" ? "α" : "")
+    if(name === "sqrt") expect(math.querySelector("msqrt > mrow")!.childNodes).toHaveLength(0)
     editor.doc.undo()
-    expect(document.querySelector("math")!.textContent).toBe("alpha")
+    expect(document.querySelector("math")!.textContent).toBe(name)
     editor.doc.redo()
-    expect(document.querySelector("math")!.textContent).toBe("α")
+    expect(document.querySelector("math")!.textContent).toBe(name === "alpha" ? "α" : "")
     editor.features.math.disable()
     expect(menu()).toBeNull()
     expect(document.querySelector("math")!.className).not.toContain("◆math")

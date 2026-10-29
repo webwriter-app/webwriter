@@ -66,6 +66,42 @@ describe("package embeds", () => {
     expect(fragment.innerHTML).toBe("<p>Keep</p>")
   })
 
+  it.each([
+    "blob:https://example.com/58b8f420-8b88-4d50-a38d-d4fd8427ddec",
+    "data:text/html;charset=utf-8,%3Cp%3ELocal%3C/p%3E",
+  ])("retains a local preview iframe in an opaque script sandbox: %s", src => {
+    const fragment = document.createElement("template")
+    fragment.innerHTML = `<iframe src="${src}" title="Local"></iframe>`
+
+    stripActiveContent(fragment.content, {allowLocalIframes: true})
+    expect(fragment.innerHTML).toBe(`<iframe src="${src}" title="Local" sandbox="allow-scripts"></iframe>`)
+
+    stripActiveContent(fragment.content, {allowLocalIframes: true})
+    expect(fragment.innerHTML).toBe(`<iframe src="${src}" title="Local" sandbox="allow-scripts"></iframe>`)
+  })
+
+  it("keeps local preview iframe exceptions narrow and strips active attributes", () => {
+    const fragment = document.createElement("template")
+    fragment.innerHTML = '<iframe src="data:text/htmlx,not-html" title="bad"></iframe><iframe src="data:image/svg+xml,%3Csvg/%3E"></iframe><iframe src="javascript:alert(1)"></iframe><iframe src="data:text/html,%3Cp%3ESafe%3C/p%3E" srcdoc="<script>bad()</script>" onload="bad()" sandbox="allow-same-origin allow-top-navigation"></iframe><p href="data:text/html,unsafe" onclick="bad()">Keep</p>'
+
+    stripActiveContent(fragment.content, {allowLocalIframes: true})
+    expect(fragment.innerHTML).toBe('<iframe src="data:text/html,%3Cp%3ESafe%3C/p%3E" sandbox="allow-scripts"></iframe><p>Keep</p>')
+  })
+
+  it("does not allow an unsandboxed root iframe to retain an unsafe data source", () => {
+    const iframe = document.createElement("iframe")
+    iframe.setAttribute("src", "data:text/html,%3Cp%3ELocal%3C/p%3E")
+
+    stripActiveContent(iframe, {allowLocalIframes: true})
+    expect(iframe.hasAttribute("src")).toBe(false)
+    expect(iframe.hasAttribute("sandbox")).toBe(false)
+  })
+
+  it("does not enable local iframe URLs under the package embed policy", () => {
+    expect(sanitizePackageSnippet('<iframe src="blob:https://example.com/id"></iframe><iframe src="data:text/html,%3Cp%3ELocal%3C/p%3E"></iframe>'))
+      .toBe("")
+  })
+
   it("sanitizes the root element attributes while preserving safe unfamiliar namespaced content", () => {
     const parsed = new DOMParser().parseFromString(
       '<svg xmlns="http://www.w3.org/2000/svg" xmlns:ww="urn:example:widget" viewBox="0 0 10 10" onload="run()" href="javascript:run()" style="background:url(javascript:run())"><!--keep--><g onclick="run()"><ww:widget data-safe="yes"><ww:part/></ww:widget><script>run()</script></g></svg>',

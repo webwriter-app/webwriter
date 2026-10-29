@@ -239,7 +239,17 @@ describe("document state operation boundaries", () => {
       document.getSelection()!.setPosition(document.querySelector("p")!.firstChild!, 2)
       state.beginHTMLSelectionEdit({type: "beginHTMLSelectionEdit"})
       state.setHTMLSelectionEditPending({type: "setHTMLSelectionEditPending", pending: true})
-      const sync = vi.spyOn(editor.doc, "syncFromDOM").mockImplementationOnce(() => { throw new Error("Sync failed") })
+      const syncFromDOM = editor.doc.syncFromDOM.bind(editor.doc)
+      let failed = false
+      const sync = vi.spyOn(editor.doc, "syncFromDOM").mockImplementation((...args) => {
+        // Happy DOM dispatches selection changes synchronously while replacing
+        // the range. Fail the command's explicit sync after those notifications.
+        if(!failed && args.length === 0) {
+          failed = true
+          throw new Error("Sync failed")
+        }
+        return syncFromDOM(...args)
+      })
       expect(() => state.applyHTMLSelectionEdit({type: "applyHTMLSelectionEdit", html: "<p>After</p>"})).toThrow("Sync failed")
       expect(editor.features.state.isHTMLSelectionEditPending).toBe(true)
       expect(editor.isEditingLocked).toBe(true)

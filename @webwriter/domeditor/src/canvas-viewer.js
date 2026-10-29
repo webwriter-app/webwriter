@@ -196,6 +196,10 @@ export const canvasControlsStyles = `
 `
 
 const canvasViewportStyles = `
+/* Older documents may lack this rule in their portable layout stylesheet.
+ * Keep the camera bounds measurable without letting them cover content. */
+body.ww-canvas > div.ww-canvas-starting-view:not([is]) { visibility: hidden; pointer-events: none; }
+
 @media screen {
 /* The viewport is finite; the appendix slot supplies an unbounded camera. */
 html.◆canvas-active:has(> body.ww-canvas) {

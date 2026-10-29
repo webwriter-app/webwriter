@@ -676,6 +676,8 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: .6rem system-ui, sans-serif;}
     .specialized-choice-group button {display: flex; align-items: center; justify-content: center; gap: .2rem;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    .list-indent {grid-column: 1 / -1; width: 100%; margin-bottom: .4rem;}
+    .list-indent button {justify-content: space-between; padding-inline: .5rem; font-size: .68rem;}
     .media-toolbox-controls .media-attribute style-combobox {width: 100%;}
     .specialized-options {display: flex; flex-direction: column; gap: .4rem; min-width: 0;}
     .document-primary, .document-options {grid-column: 1 / -1; width: 100%;}
@@ -1176,7 +1178,20 @@ export class DomEditorToolbox extends EditingControls {
             }))}><span aria-hidden="true">${ribbonIcon(`Heading ${level}`)}</span></button>`)}
         </div>
       </div></div>` : nothing}
-      ${list ? html`<div class="specialized-widget-primary list-type"><div class="develop-field">
+      ${list ? html`<div class="specialized-widget-primary list-indent">
+        <div class="specialized-choice-group" style="--choice-columns: 2" role="group" aria-label="List indentation">
+          <button type="button" data-bottom-left aria-label="Dedent" title="Dedent"
+            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+            @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+              detail: {label: "outdentListItems"}, bubbles: true, composed: true,
+            }))}><span aria-hidden="true">${ribbonIcon("ArrowLeft")}</span>Dedent</button>
+          <button type="button" data-top-right aria-label="Indent" title="Indent"
+            @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+            @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+              detail: {label: "indentListItems"}, bubbles: true, composed: true,
+            }))}>Indent<span aria-hidden="true">${ribbonIcon("ArrowRight")}</span></button>
+        </div>
+      </div><div class="specialized-widget-primary list-type"><div class="develop-field">
         <span class="field-label" id=${`list-type-${localName}`}>Type</span>
         <div class="specialized-choice-group" style="--choice-columns: 2" role="group" aria-labelledby=${`list-type-${localName}`}>
           ${(["ul", "ol"] as const).map(type => html`<button type="button"

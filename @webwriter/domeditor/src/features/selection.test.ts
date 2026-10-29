@@ -2851,6 +2851,30 @@ describe("processSelection()", () => {
 describe("scrolling selections into view", () => {
   const options = {behavior: "smooth", block: "nearest", inline: "nearest"} as const
 
+  it("retains SVG capture when revealing the same range and releases it for changed endpoints", () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const graphic = document.querySelector("svg")!
+    feature.captureElement(graphic)
+    feature.revealSelection()
+    expect(feature.captureSelectedElement).toBe(graphic)
+
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside"
+    document.body.append(paragraph)
+    $.move(paragraph.firstChild!, 2)
+    feature.revealSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+    expect($.anchor).toBe(paragraph.firstChild)
+
+    feature.captureElement(graphic)
+    const replacement = graphic.cloneNode(true) as SVGSVGElement
+    graphic.replaceWith(replacement)
+    $.selectElement(replacement, false)
+    feature.revealSelection()
+    expect(feature.captureSelectedElement).toBeNull()
+    expect($.selectedElement).toBe(replacement)
+  })
+
   function setDimension(element: Element, name: string, value: number) {
     Object.defineProperty(element, name, {configurable: true, value})
   }
@@ -2858,6 +2882,21 @@ describe("scrolling selections into view", () => {
   function setCaretRect(rect: DOMRect) {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(rect)
   }
+
+  it("explicitly reveals an unchanged caret again after manual scrolling", () => {
+    const paragraph = el("p", "hello")
+    setCaretRect(new DOMRect(10, window.innerHeight + 40, 0, 20))
+    const scroll = vi.spyOn(window, "scrollBy").mockImplementation(() => {})
+    try {
+      $.move(paragraph.firstChild!, 2)
+      feature.processSelection()
+      feature.processSelection()
+      expect(scroll).toHaveBeenCalledOnce()
+      feature.revealSelection()
+      expect(scroll).toHaveBeenCalledTimes(2)
+    }
+    finally { vi.restoreAllMocks() }
+  })
 
   it.each(["ul", "p", "canvas-widget"])("does not reveal BODY when modifier-click deselects a canvas %s", tag => {
     document.body.className = "ww-canvas"
@@ -5264,6 +5303,49 @@ describe("selection invariants", () => {
     })
   })
 
+  it.each(["ul", "ol", "dl", "menu"])("clicks the outer gaps of a %s with text, parent, or missing native hits", tag => {
+    document.body.innerHTML = `<section>Before<!--keep--><${tag}><${tag === "dl" ? "dt" : "li"}>Item</${tag === "dl" ? "dt" : "li"}></${tag}>After</section>`
+    const list = document.querySelector(tag)!, item = list.firstElementChild!
+    const parent = list.parentElement!, index = Array.from(parent.childNodes).indexOf(list)
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 180, 80))
+    vi.spyOn(item, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 100, 160, 80))
+    for(const hit of ["text", "parent", "missing"] as const) {
+      for(const placement of ["before", "after"] as const) {
+        vi.spyOn(document, "caretPositionFromPoint").mockReturnValue(hit === "missing" ? null : {
+          offsetNode: hit === "parent" ? parent : item.firstChild!,
+          offset: hit === "parent" ? index : placement === "before" ? 0 : 4,
+        } as unknown as CaretPosition)
+        const target = hit === "text" ? item : parent
+        // A missing caret is only recoverable from the actual pointer target.
+        const origin = hit === "missing" ? list : target
+        const y = placement === "before" ? 95 : 185
+        expect(pointer(origin, "pointerdown", 50, y).defaultPrevented).toBe(true)
+        pointer(origin, "pointerup", 50, y)
+        expect($.isGapSelection).toBe(true)
+        expect($.anchor).toBe(parent)
+        expect($.anchorOffset).toBe(index + (placement === "after" ? 1 : 0))
+        expect(list).toHaveClass(`◆gap-${placement}-selected`)
+        expect(item).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+      }
+    }
+  })
+
+  it("leaves list text and the space between its items to native editing", () => {
+    document.body.innerHTML = '<ul><li>First</li><li>Last</li></ul>'
+    const list = document.querySelector("ul")!, item = list.firstElementChild!
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 180, 80))
+    vi.spyOn(item, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 100, 160, 30))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: item.firstChild!, offset: 2} as unknown as CaretPosition)
+    expect(pointer(item, "pointerdown", 70, 115).defaultPrevented).toBe(false)
+    pointer(item, "pointerup", 70, 115)
+    expect($.listGap).toBeNull()
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: list, offset: 1} as unknown as CaretPosition)
+    pointer(list, "pointerdown", 70, 140)
+    pointer(list, "pointerup", 70, 140)
+    expect($.listGap).toBeNull()
+    expect($.anchor).toBe(list)
+  })
+
   it.each(["before", "after"] as const)("clicks the gap %s a divider using native parent hit testing", placement => {
     document.body.innerHTML = '<section>before<!--break--><hr>after</section>'
     const divider = document.querySelector("hr")!
@@ -5475,17 +5557,60 @@ describe("selection invariants", () => {
     expect(extend).not.toHaveBeenCalled()
   })
 
-  it("still expands a double click on text", () => {
+  it("preserves the browser's double click selection on text", () => {
     const paragraph = textDocument()
     hitTest()
     vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(0, 20, 50, 20)] as unknown as DOMRectList)
-    $.move(paragraph.firstChild!, 2)
+    $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)
     const move = vi.spyOn($, "moveBy").mockImplementation(() => {})
     const extend = vi.spyOn($, "extendBy").mockImplementation(() => {})
     expect(pointer(paragraph, "mousedown", 20, 25, {detail: 2}).defaultPrevented).toBe(false)
     pointer(paragraph, "click", 20, 25, {detail: 2})
-    expect(move).toHaveBeenCalledWith("word", "backward")
-    expect(extend).toHaveBeenCalledWith("word")
+    expect(document.getSelection()!.toString()).toBe("hello")
+    expect(move).not.toHaveBeenCalled()
+    expect(extend).not.toHaveBeenCalled()
+  })
+
+  it.each([2, 3])("leaves click %s drags native in both directions and preserves them on release", async detail => {
+    document.body.innerHTML = '<section><!--keep--><p>one <b>two</b> three</p><p>four five</p></section>'
+    const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!
+    const first = paragraph.firstChild!, last = paragraph.nextElementSibling!.firstChild!
+    const authored = editor.toHTML(true)
+    const rect = new DOMRect(0, 20, 200, 20)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1, getClientRect: () => rect})
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([rect] as unknown as DOMRectList)
+    vi.spyOn(document.body, "hasPointerCapture").mockReturnValue(true)
+    const release = vi.spyOn(document.body, "releasePointerCapture")
+    for(const backward of [false, true]) {
+      paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 7,
+        pointerType: "mouse", clientX: 20, clientY: 25}))
+      expect(feature.isInDragSelection).toBe(true)
+      expect(pointer(paragraph, "mousedown", 20, 25, {detail}).defaultPrevented).toBe(false)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(release).toHaveBeenCalledWith(7)
+      // Model native defaults. The editor's hit test still returns a point
+      // inside "two"; it must not replace the browser's whole-word/block range.
+      const anchor = backward ? last : first, focus = backward ? first : last
+      const anchorOffset = backward ? last.textContent!.length : 0
+      const focusOffset = backward ? 0 : last.textContent!.length
+      document.getSelection()!.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset)
+      await Promise.resolve()
+      const move = new PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerId: 7,
+        pointerType: "mouse", buttons: 1, clientX: 80, clientY: 60})
+      paragraph.dispatchEvent(move)
+      const start = new Event("selectstart", {bubbles: true, cancelable: true})
+      paragraph.dispatchEvent(start)
+      expect(move.defaultPrevented).toBe(false)
+      expect(start.defaultPrevented).toBe(false)
+      paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 7}))
+      pointer(paragraph, "click", 80, 60, {detail})
+      expect($.anchor).toBe(anchor); expect($.anchorOffset).toBe(anchorOffset)
+      expect($.focus).toBe(focus); expect($.focusOffset).toBe(focusOffset)
+      expect(document.body).not.toHaveClass("◆selection-dragging")
+      expect(document.querySelector(".◆pointer-hovered")).toBeNull()
+      expect(editor.toHTML(true)).toBe(authored)
+    }
   })
 
   it.each([3, 4])("preserves the native paragraph selection after a click of detail %s", detail => {
@@ -5771,6 +5896,141 @@ describe("selection invariants", () => {
     expect(feature.isInDragSelection).toBe(false)
     expect(feature.dragAnchor).toBeNull()
     expect(document.body).not.toHaveClass("◆selection-dragging")
+  })
+})
+
+describe("list gap selection", () => {
+  const press = (key: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true, ...init})
+    document.dispatchEvent(event)
+    return event
+  }
+  const mount = (tag: string) => {
+    document.body.innerHTML = `<p>Before</p>\n<${tag}><!--keep--><${tag === "dl" ? "dt" : "li"}><b>First</b></${tag === "dl" ? "dt" : "li"}><${tag === "dl" ? "dd" : "li"}>Last</${tag === "dl" ? "dd" : "li"}></${tag}>\n<p>After</p>`
+    return document.querySelector(tag)!
+  }
+
+  it.each(["ul", "ol", "dl", "menu"])("navigates through both outer gaps of a %s", tag => {
+    const list = mount(tag)
+    for(const key of ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"]) {
+      const backward = key === "ArrowLeft" || key === "ArrowUp"
+      const text = backward ? list.querySelector("b")!.firstChild! : list.lastElementChild!.firstChild!
+      $.move(text, backward ? 0 : -1)
+      expect(press(key).defaultPrevented).toBe(true)
+      expect($.listGap).toEqual({element: list, placement: backward ? "before" : "after"})
+      expect(list).toHaveClass(`◆gap-${backward ? "before" : "after"}-selected`)
+      expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-gap")
+      expect(press(backward ? "ArrowRight" : "ArrowLeft").defaultPrevented).toBe(true)
+      expect($.anchor).toBe(text)
+      expect($.anchorOffset).toBe(backward ? 0 : 4)
+      expect(list).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    }
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"])("stops when approaching a list with %s", key => {
+    const list = mount("ol")
+    const forward = key === "ArrowRight" || key === "ArrowDown"
+    const sibling = forward ? list.previousElementSibling! : list.nextElementSibling!
+    $.move(sibling.firstChild!, forward ? -1 : 0)
+    expect(press(key).defaultPrevented).toBe(true)
+    expect($.listGap).toEqual({element: list, placement: forward ? "before" : "after"})
+  })
+
+  it.each(["section", "div", "li", "td"])("paints list gaps beside text and comments in a %s", tag => {
+    document.body.innerHTML = `<${tag}>Before<!--keep--><ul><li>Item</li></ul>\n<!--keep too-->After</${tag}>`
+    const list = document.querySelector("ul")!
+    for(const placement of ["before", "after"] as const) {
+      $.selectGap(list, placement)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(true)
+      expect(list).toHaveClass(`◆gap-${placement}-selected`)
+    }
+  })
+
+  it("crosses nested list edges one at a time", () => {
+    document.body.innerHTML = '<ul><li>Outer<ol><!--keep--><li>Inner</li></ol></li></ul>'
+    const outer = document.querySelector("ul")!, inner = document.querySelector("ol")!
+    $.move(inner.querySelector("li")!.firstChild!, -1)
+    press("ArrowRight")
+    expect($.listGap).toEqual({element: inner, placement: "after"})
+    press("ArrowRight")
+    expect($.listGap).toEqual({element: outer, placement: "after"})
+    press("ArrowLeft")
+    expect($.anchor).toBe(inner.querySelector("li")!.firstChild)
+  })
+
+  it("keeps empty lists virtual between their selectable outer gaps", () => {
+    document.body.innerHTML = '<ul><!--empty--></ul>'
+    const list = document.querySelector("ul")!
+    $.selectGap(list, "before")
+    press("ArrowUp")
+    expect($.listGap?.placement).toBe("before")
+    press("ArrowDown")
+    expect(editor.features.list.isVirtualSelection).toBe(true)
+    press("ArrowDown")
+    expect($.listGap?.placement).toBe("after")
+    press("ArrowDown")
+    expect($.listGap?.placement).toBe("after")
+    expect(list.childNodes).toHaveLength(1)
+  })
+
+  it("preserves ordinary item editing, extended selections, and replaced endpoints", () => {
+    const list = mount("ul"), text = list.querySelector("b")!.firstChild!
+    $.move(text, 2)
+    expect(press("ArrowRight").defaultPrevented).toBe(false)
+    $.move(text, 0)
+    expect(press("ArrowLeft", {shiftKey: true}).defaultPrevented).toBe(false)
+    list.replaceWith(document.createElement("p"))
+    expect(() => press("ArrowRight")).not.toThrow()
+    feature.processSelection()
+    expect(list).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+  })
+
+  it("leaves a widget at a list edge atomic while navigating to the outer gap", () => {
+    document.body.innerHTML = '<ul><li><list-gap-widget><ol><li>Private</li></ol></list-gap-widget></li></ul>'
+    const widget = document.querySelector("list-gap-widget")!, list = document.querySelector("ul")!
+    $.selectElement(widget)
+    press("ArrowRight")
+    expect($.anchor).toBe(widget.parentElement)
+    press("ArrowRight")
+    expect($.listGap).toEqual({element: list, placement: "after"})
+    press("ArrowLeft")
+    expect($.selectedElement).toBe(widget)
+  })
+
+  it("clears gap presentation when another source replaces the list", () => {
+    const list = mount("ul")
+    $.selectGap(list, "after")
+    feature.processSelection()
+    expect(list).toHaveClass("◆gap-after-selected")
+    list.replaceWith(document.createElement("p"))
+    feature.processSelection()
+    expect(list).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    expect($.listGap).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["before", "after"] as const)("types outside the list from its %s gap and supports undo", async placement => {
+    const list = mount("ol")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = list.innerHTML
+    $.selectGap(list, placement)
+    feature.processSelection()
+    document.body.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "New", bubbles: true, cancelable: true}))
+    expect((placement === "before" ? list.previousElementSibling : list.nextElementSibling)?.textContent).toBe("New")
+    expect(list.innerHTML).toBe(original)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.querySelector("ol")!.innerHTML).toBe(original)
+    expect(document.body.textContent).not.toContain("New")
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(document.body.textContent).toContain("New")
   })
 })
 

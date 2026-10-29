@@ -19,6 +19,15 @@ import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
 import {checkBoardMedia} from "./board-media"
 import {checkParagraphCut} from "./paragraph-cut"
+import {checkHistorySelection} from "./history-selection"
+import {checkListClipboard} from "./list-clipboard"
+import {checkHeadingClipboard} from "./heading-clipboard"
+import {checkParagraphClipboard} from "./paragraph-clipboard"
+import {checkListDeletion} from "./list-deletion"
+import {checkListEditing} from "./list-editing"
+import {checkSoftLineBreak} from "./soft-line-break"
+import {checkParagraphStylePresets} from "./paragraph-style-presets"
+import {checkParagraphIndent} from "./paragraph-indent"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
@@ -37,6 +46,7 @@ import {checkGraphicLabels} from "./graphic-labels"
 import {checkGraphicLabelResizePerformance} from "./graphic-label-resize-performance"
 import {checkGraphicEmptyLabelCaret} from "./graphic-empty-label-caret"
 import {checkGraphicText} from "./graphic-text"
+import {checkGraphicImage} from "./graphic-image"
 import {checkGraphicGrid} from "./graphic-grid"
 import {checkKeyboardTabs} from "./keyboard-tabs"
 import {checkGraphicBrushes} from "./graphic-brushes"
@@ -61,6 +71,14 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 let fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("converted list items support repeated Backspace without clicking", checkListDeletion)
+await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
+await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
+await check("list editing splits and indents selected items", checkListEditing)
+await check("soft breaks render a new line on the first press and accept native typing", checkSoftLineBreak)
+await check("multi-paragraph style presets stay within the selected siblings", checkParagraphStylePresets)
+await check("Tab indents paragraphs without moving the centered prose column", checkParagraphIndent)
+await check("undo and redo restore and reveal selections in nested scrollers", checkHistorySelection)
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
 await check("canvas starting view frames resize, delete and open without shifting", checkCanvasStartingView)
 await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)
@@ -79,6 +97,7 @@ await check("SVG rotated POI edits keep unedited geometry fixed on screen", chec
 await check("shape keyboard drops stay within the captured graphic", checkGraphicKeyboardDrag)
 await check("shape keys preview and place at the cursor without Alt", checkGraphicKeyboardHeld)
 await check("SVG shape text entry keeps capture and native typing stable", checkGraphicText)
+await check("SVG embedded images retain selection while entering their source", checkGraphicImage)
 await check("SVG snapping follows the visible grid through viewport changes", checkGraphicGrid)
 await check("Tab cycles captured graphic and formula keyboard tabs without changing content", checkKeyboardTabs)
 await check("Drawing brush keys are temporary and inserted shapes keep their defaults", checkGraphicBrushes)
@@ -866,6 +885,28 @@ await check("Settings tabs share the heading and embed AI provider cards in Clou
     await panel.updateComplete
     assert(!panel.shadowRoot!.querySelector<HTMLElement>("#settings-commands")!.hidden
       && panel.shadowRoot!.querySelector<HTMLElement>("#settings-cloud")!.hidden, "Commands tab does not hide Cloud")
+    const commandsTab = root.querySelector<HTMLButtonElement>("#settings-tab-commands")!
+    const save = panel.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Configure shortcut for Save"]')!
+    const {loadAppSettings} = await import("../src/app-settings")
+    for(const key of ["9", "Escape", "Backspace", "Delete"]) {
+      const originalShortcut = panel.settings.shortcuts["document.save"]
+      commandsTab.focus()
+      save.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
+      save.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, cancelable: true}))
+      save.click()
+      await panel.updateComplete
+      assert(panel.shadowRoot!.activeElement === save, "shortcut recording did not take keyboard focus")
+      panel.shadowRoot!.activeElement!.dispatchEvent(new KeyboardEvent("keydown", {
+        key, code: key === "9" ? "Digit9" : key, altKey: key === "9", shiftKey: key === "9",
+        bubbles: true, composed: true, cancelable: true,
+      }))
+      await panel.updateComplete
+      await ribbon.updateComplete
+      const expected = key === "Escape" ? originalShortcut : key === "9" ? "Alt+Shift+9" : ""
+      assert(panel.settings.shortcuts["document.save"] === expected
+        && loadAppSettings().shortcuts["document.save"] === expected, `shortcut ${key} was not applied and persisted`)
+      assert(!save.hasAttribute("data-recording") && dialog.open, `shortcut ${key} left recording active or closed Settings`)
+    }
     const closed = new Promise<void>(resolve => dialog.addEventListener("close", () => resolve(), {once: true}))
     dialog.close()
     await closed
@@ -1337,6 +1378,84 @@ await check("Style dropdowns draw a single border and focus ring", async () => {
     combo.close()
   }
   finally { controls.remove() }
+})
+
+await check("custom filters persist and toggle after native CSS serialization", async () => {
+  const {ElementStyleEditor} = await import("../src/components/element-style-editor")
+  const {filterPresetsStorageKey, filterPresetLabel, loadFilterPresets} = await import("../src/filter-presets")
+  const previous = localStorage.getItem(filterPresetsStorageKey)
+  localStorage.removeItem(filterPresetsStorageKey)
+  const controls = new ElementStyleEditor()
+  const target = document.createElement("p")
+  target.style.setProperty("filter", "sepia(1)", "important")
+  controls.mode = "compact"
+  controls.propertyNames = ["filter"]
+  controls.style.width = "216px"
+  const project = () => controls.state = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
+    inline: {filter: {value: target.style.filter, priority: "important"}}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  project()
+  controls.addEventListener("element-style-change", event => {
+    const {mutation} = (event as CustomEvent<import("../src/components/element-style-editor").ElementStyleChangeDetail>).detail
+    if(mutation === null) target.style.removeProperty("filter")
+    else if(typeof mutation === "string") target.style.filter = mutation
+    else target.style.setProperty("filter", mutation.value, mutation.priority)
+    project()
+  })
+  fixture.append(controls)
+  try {
+    await controls.updateComplete
+    const root = controls.shadowRoot!
+    root.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
+    await controls.updateComplete
+    root.querySelector<HTMLButtonElement>(".effect-custom")!.click()
+    await controls.updateComplete
+    await controls.updateComplete
+    const dialog = root.querySelector<HTMLDialogElement>(".filter-dialog")!
+    assert(dialog.open && dialog.matches(":modal"), "custom filter did not open as a native modal")
+    const select = dialog.querySelector("select")!
+    select.value = "drop-shadow"
+    select.dispatchEvent(new Event("change", {bubbles: true}))
+    await controls.updateComplete
+    const inputs = dialog.querySelectorAll<HTMLInputElement>('input[type="number"]')
+    for(const [index, value] of ["-3", "5.5", "8"].entries()) {
+      inputs[index].value = value
+      inputs[index].dispatchEvent(new Event("input", {bubbles: true}))
+    }
+    await controls.updateComplete
+    await layoutFrame()
+    const bounds = dialog.getBoundingClientRect()
+    assert(bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight,
+      "filter dialog escaped the viewport")
+    assert(dialog.scrollWidth <= dialog.clientWidth, "filter dialog overflows horizontally")
+    dialog.querySelector<HTMLButtonElement>('[type="submit"]')!.click()
+    await controls.updateComplete
+    assert(!dialog.open && loadFilterPresets().length === 1, "confirm did not close and save the filter")
+    assert(target.style.filter.includes("rgb(0, 0, 0)") && target.style.filter.startsWith("sepia(1)"), "filter lost its native serialization or existing stack")
+    const label = filterPresetLabel(loadFilterPresets()[0])
+    const preset = () => root.querySelector<HTMLButtonElement>(`[title="${label}"]`)!
+    assert(preset().getAttribute("aria-pressed") === "true", "native color serialization hid the active custom filter")
+    root.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
+    await controls.updateComplete
+    preset().dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true}))
+    await controls.updateComplete
+    assert(!root.querySelector<HTMLElement>(".effect-popup")!.hidden, "preset pointerdown dismissed the picker")
+    preset().click()
+    await controls.updateComplete
+    assert(target.style.filter === "sepia(1)", "toggling custom filter removed other filters or added a duplicate")
+    preset().click()
+    await controls.updateComplete
+    const preview = root.querySelector<HTMLElement>(".effect-trigger .filter-preview")!
+    assert(preview.style.filter === target.style.filter, "preview lost the complete native filter stack")
+    controls.remove()
+    fixture.append(controls)
+    await controls.updateComplete
+    assert(preset().getAttribute("aria-pressed") === "true", "saved custom filter did not survive reconnection")
+  }
+  finally {
+    controls.remove()
+    if(previous === null) localStorage.removeItem(filterPresetsStorageKey)
+    else localStorage.setItem(filterPresetsStorageKey, previous)
+  }
 })
 
 await check("marker image uploads preview before applying", async () => {
@@ -2346,6 +2465,9 @@ await check("gap carets track their authored boundary", async () => {
       '<!--keep--><p></p>\n<!--keep too-->',
       '<p style="width:240px;height:80px">Resized</p>',
       '<hr style="width:240px">',
+      '<ul><li>First</li><li>Last</li></ul>', '<ol><li>First</li><li>Last</li></ol>',
+      '<dl><dt>Term</dt><dd>Definition</dd></dl>',
+      '<ul><!--empty--></ul>',
       '<p style="width:100%;max-width:none">Wide block</p>',
       '<section><div id="gap-container" style="padding:24px;border:3px solid"><!--keep--><p style="width:200px;margin-inline:auto">Nested resized block</p></div></section>',
       '<main id="gap-container"><p style="width:240px">Resized in a landmark</p></main>']) {
@@ -2380,6 +2502,36 @@ await check("gap carets track their authored boundary", async () => {
         if(emptyStyle.sheet!.cssRules.length) emptyStyle.sheet!.deleteRule(0)
         doc.body.innerHTML = html
         container = doc.querySelector("#gap-container") ?? doc.body
+      }
+    }
+    // Real hit testing resolves whitespace to list item text in Chromium.
+    // Both pointer and keyboard navigation must retain the outer list gap.
+    const listView = view as Window & typeof globalThis
+    for(const tag of ["ul", "ol", "dl", "menu"]) {
+      for(const placement of ["before", "after"] as const) {
+        const before = placement === "before", itemTag = tag === "dl" ? "dt" : "li"
+        doc.body.innerHTML = `<p>Before</p><${tag}><!--keep--><${itemTag}><b>Item</b></${itemTag}></${tag}><p>After</p>`
+        const list = doc.querySelector(tag)!, text = list.querySelector("b")!.firstChild!
+        const parent = list.parentElement!, index = Array.from(parent.childNodes).indexOf(list)
+        const authored = list.innerHTML
+        selection.setPosition(text, before ? 0 : 4)
+        doc.dispatchEvent(new listView.KeyboardEvent("keydown", {key: before ? "ArrowUp" : "ArrowDown", bubbles: true, cancelable: true}))
+        assert(selection.anchorNode === parent && selection.anchorOffset === index + (before ? 0 : 1), `${tag}: keyboard missed ${placement} gap`)
+        assert(list.classList.contains(`◆gap-${placement}-selected`), `${tag}: missing ${placement} gap marker`)
+        await layoutFrame()
+        const box = list.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
+        assert(caret.width > 0 && Math.abs(caret.top - (before ? box.top : box.bottom + (parseFloat(view.getComputedStyle(list).marginBottom) || 0))) < 1,
+          `${tag}: ${placement} gap caret misses list boundary`)
+        selection.setPosition(text, 2)
+        const x = box.left + box.width / 2, y = before ? box.top - 4 : box.bottom + 4
+        const target = doc.elementFromPoint(x, y) ?? parent
+        target.dispatchEvent(new listView.PointerEvent("pointerdown", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true}))
+        target.dispatchEvent(new listView.PointerEvent("pointerup", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true}))
+        assert(selection.anchorNode === parent && selection.anchorOffset === index + (before ? 0 : 1), `${tag}: pointer missed ${placement} gap`)
+        doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Outside"}))
+        assert((before ? list.previousElementSibling : list.nextElementSibling)?.textContent === "Outside", `${tag}: typing did not stay outside the list`)
+        assert(list.innerHTML === authored, `${tag}: gap editing changed list contents`)
+        assert(!view.editor!.toHTML(true).includes("◆"), `${tag}: gap markers leaked into HTML`)
       }
     }
   }
@@ -3218,6 +3370,7 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
 })
 
 await check("cut paragraphs retain a visible native caret position", checkParagraphCut)
+await check("list markers survive native cut and paste", checkListClipboard)
 
 await check("paragraph boundary deletion reverses Enter in Document and Board", async () => {
   const frame = document.createElement("iframe")
@@ -3676,6 +3829,50 @@ await check("native MathML editing preserves inline rendering and argument hit t
   assert(!editor.features.selection.captureSelectedElement, "formula retained capture after exit")
   assert(getComputedStyle(math).backgroundColor === "rgba(0, 0, 0, 0)", "formula kept its editing background after exit")
   paragraph.remove()
+})
+
+await check("typed formula brackets stretch to their own content and stay paired under scripts", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.style.fontSize = "32px"
+  paragraph.innerHTML = '<math><mrow></mrow></math>'
+  fixture.append(paragraph)
+  try {
+    const math = paragraph.querySelector("math")!
+    const row = math.firstElementChild!
+    const edit = (command: string) => assert(editor.features.math.execute(command), `command failed: ${command}`)
+    const type = (text: string) => { for(const character of text) document.dispatchEvent(new KeyboardEvent("keydown", {key: character, bubbles: true, cancelable: true})) }
+    $.move(row, 0)
+    type("(")
+    edit("structure:frac")
+    edit("structure:frac")
+    type("1")
+    edit("move:down")
+    type("2")
+    $.move(row.querySelector("mfrac")!.children[1], 0)
+    edit("structure:frac")
+    type("3")
+    edit("move:down")
+    type("4")
+    $.move(row, row.childNodes.length)
+    type(")+(x+1/2")
+    edit("move:right")
+    type(")^2")
+    await document.fonts.ready
+    await layoutFrame()
+    const first = row.children[0]
+    const second = row.children[2].firstElementChild!.firstElementChild!
+    for(const group of [first, second]) {
+      assert(group.localName === "mrow", "typed pair has no content row")
+      const open = group.firstElementChild!.getBoundingClientRect()
+      const close = group.lastElementChild!.getBoundingClientRect()
+      assert(Math.abs(open.height - close.height) < 1, `paired brackets differ in height: ${open.height}/${close.height}`)
+      assert(Math.abs(open.top - close.top) < 1, "paired brackets differ in vertical alignment")
+    }
+    assert(first.firstElementChild!.getBoundingClientRect().height > second.firstElementChild!.getBoundingClientRect().height + 4,
+      "shorter bracket group stretched to the neighboring nested fraction")
+    assert(!editor.toHTML(true).includes("◆"), "formula markers leaked into serialized content")
+  }
+  finally { paragraph.remove() }
 })
 
 await check("whole formulas receive one blue selection layer", async () => {
@@ -5465,6 +5662,80 @@ await check("bundled layouts render under the strict editor CSP without widgets"
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("local HTML websites load as isolated blob and saved data frames", async () => {
+  const {editorFrameHTML} = await import("../src/frame-document")
+  const frame = document.createElement("iframe")
+  const nonce = "local-website-csp-test"
+  const token = crypto.randomUUID()
+  const options = {bridgeNonce: nonce, revision: 0, language: "en", packages: [], hostOrigin: location.origin,
+    entryURL: new URL("./native-browser-frame.ts", location.href).href, executeScripts: true}
+  const reports: {source: MessageEventSource | null, isolated: boolean, text: string}[] = []
+  const onMessage = (event: MessageEvent) => {
+    if(event.data?.token === token) reports.push({source: event.source, ...event.data})
+  }
+  window.addEventListener("message", onMessage)
+  const load = async (html: string) => {
+    frame.contentWindow?.editor?.destroy()
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = editorFrameHTML(html, options)
+    if(!frame.isConnected) document.body.append(frame)
+    await loaded
+    for(let count = 0; count < 200; count++) {
+      const editor = frame.contentWindow?.editor
+      if(editor && frame.contentDocument?.querySelector('meta[name="webwriter-editor-bridge"]')) return editor
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    throw new Error("website editor did not initialize")
+  }
+  const waitForWebsite = async (count: number) => {
+    for(let attempt = 0; attempt < 200 && reports.length < count; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    const report = reports[count - 1]
+    assert(report?.source === frame.contentDocument?.querySelector("iframe")?.contentWindow, "local HTML did not load under the frame CSP")
+    assert(report.isolated && report.text.includes("Local lesson"), "local HTML lost its content or can access the editor")
+  }
+  try {
+    const editor = await load("<body><p>Before</p></body>")
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "iframe"})
+    // Sign only this diagnostic script so it can report from the opaque child
+    // under the editing frame's inherited CSP without loosening script-src.
+    const html = `<!doctype html><body><p style="color:rgb(24,100,48)">Local lesson</p><script nonce="${nonce}">let isolated = false; try { parent.document.body } catch { isolated = true }; top.postMessage({token:${JSON.stringify(token)}, isolated, text:document.body.innerText}, "*")</script></body>`
+    const view = frame.contentWindow as Window & typeof globalThis
+    assert(editor.features.media.actions.setMediaFile({type: "setMediaFile", file: new view.File([html], "lesson.html", {type: "text/html"})}), "local file upload failed")
+    assert(frame.contentDocument?.querySelector("iframe")?.getAttribute("src")?.startsWith("blob:"), "upload did not use a blob URL")
+    await waitForWebsite(1)
+    const saved = await editor.serializeHTML()
+    assert(new DOMParser().parseFromString(saved, "text/html").querySelector("iframe")?.getAttribute("src")?.startsWith("data:text/html;"), "save did not embed the local file")
+    await load(saved)
+    await waitForWebsite(2)
+    // Also exercise the host-to-editor File transfer across the real origins.
+    const appFrame = document.createElement("iframe")
+    appFrame.src = "/editor/"
+    document.body.append(appFrame)
+    try {
+      let app: DomEditor | null = null
+      for(let count = 0; count < 200; count++) {
+        app = appFrame.contentDocument?.querySelector<DomEditor>("dom-editor") ?? null
+        if((app as any)?.editorWindow) break
+        await new Promise(resolve => setTimeout(resolve, 25))
+      }
+      assert(app && (app as any).editorWindow, "app editor did not initialize")
+      const host = app as any
+      await host.waitForEditorWindow()
+      await app!.execute({type: "insertMedia", media: "iframe"})
+      const file = new File([html.replace(nonce, host.bridgeNonce)], "lesson.html", {type: "text/html"})
+      assert(await app!.execute({type: "setMediaFile", file}), "host file upload failed")
+      for(let count = 0; count < 200 && reports.length < 3; count++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(reports[2]?.isolated && reports[2]?.text.includes("Local lesson"), "host-uploaded HTML did not load in its isolated frame")
+    }
+    finally { appFrame.remove() }
+  }
+  finally {
+    window.removeEventListener("message", onMessage)
+    frame.contentWindow?.editor?.destroy()
+    frame.remove()
+  }
+})
+
 await check("uploaded videos survive installing and removing packages", async () => {
   const frame = document.createElement("iframe")
   frame.src = "/editor/"
@@ -6323,6 +6594,33 @@ await check("canvas Enter inserts a line break and conversion returns normal flo
   }
 })
 
+await check("empty floated and freeform text roots render the first break", async () => {
+  const original = fixture.innerHTML
+  try {
+    for(const mode of ["float", "canvas", "slides"] as const) {
+      editor.setDocumentLayout("document", editor.getDocumentLayoutState().mode)
+      fixture.innerHTML = '<p style="line-height:20px;margin:0"></p>'
+      const paragraph = fixture.querySelector("p")!
+      if(mode === "float") paragraph.style.float = "right"
+      else assert(editor.setDocumentLayout(mode, "document"), `${mode}: empty text fixture did not convert`)
+      $.move(paragraph)
+      const before = paragraph.getBoundingClientRect().height
+      const event = new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true})
+      paragraph.dispatchEvent(event)
+      await layoutFrame()
+      assert(event.defaultPrevented, `${mode}: Enter was not handled`)
+      assert(paragraph.querySelectorAll("br").length === 2, `${mode}: first empty break did not include its rendered terminal break: ${paragraph.innerHTML}`)
+      assert(paragraph.getBoundingClientRect().height > before, `${mode}: first empty break did not render a line`)
+      assert(paragraph.contains($.anchor), `${mode}: first empty break moved the caret outside the text root`)
+      if(mode !== "float") assert(editor.setDocumentLayout("document", mode), `${mode}: empty text fixture did not return to document layout`)
+    }
+  }
+  finally {
+    editor.setDocumentLayout("document", editor.getDocumentLayoutState().mode)
+    fixture.innerHTML = original
+  }
+})
+
 
 await check("canvas and slide Enter preserves empty lists and repeated breaks", async () => {
   for(const mode of ["canvas", "slides"] as const) {
@@ -6348,7 +6646,7 @@ await check("canvas and slide Enter preserves empty lists and repeated breaks", 
         const item = list.querySelector("li")!
         assert(event.defaultPrevented, `${mode}: ${input} was not handled`)
         assert(item && list.querySelectorAll("li").length === 1, `${mode}: ${input} exited or split the list`)
-        assert(item.querySelectorAll("br").length === index + 1 && !item.querySelector("p"), `${mode}: ${input} did not insert only a break`)
+        assert(item.querySelectorAll("br").length === index + 2 && !item.querySelector("p"), `${mode}: ${input} did not insert the requested break and its terminal line break`)
         assert(item.contains(selection.anchorNode), `${mode}: ${input} moved the caret outside the item`)
         assert(list.getAttribute("style") === style, `${mode}: ${input} changed list placement`)
         assert(Array.from(parent.childNodes).length === siblings.length

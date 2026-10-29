@@ -609,6 +609,15 @@ describe("graphic editing", () => {
     placeholder.root.querySelector(".url")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0}))
     expect(editor.features.selection.captureSelectedElement).toBe(graphic)
     const input = placeholder.root.querySelector<HTMLInputElement>(".url")!
+    // Native shadow-input selection can be exposed as a collapsed BODY
+    // range. Shared DOM refreshes still process selection during input focus.
+    document.getSelection()!.collapse(document.body, 0)
+    editor.features.selection.processSelection(undefined, {scrollIntoView: false})
+    await mutationsDelivered()
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
+    expect(editor.features.graphic.selectedShape).toBe(image)
+    expect(placeholder.target).toBe(image)
+    expect(placeholder.root.activeElement).toBe(input)
     for(const event of [
       new KeyboardEvent("keydown", {key: "Delete", bubbles: true, composed: true, cancelable: true}),
       new KeyboardEvent("keydown", {key: "a", bubbles: true, composed: true, cancelable: true}),
@@ -631,6 +640,26 @@ describe("graphic editing", () => {
     expect(editor.doc.body.toString()).not.toContain("◆")
     expect(editor.doc.body.toString()).toContain("https://example.com/photo.png")
     expect(editor.toHTML(true)).not.toContain("media-placeholder")
+  })
+
+  it("releases graphic image selection when source input focus moves back to authored text", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
+    const image = document.querySelector("svg image")!
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Outside the graphic"
+    document.body.append(paragraph)
+    const placeholder = editor.features.media.placeholder
+    expect(placeholder.root.activeElement).toBe(placeholder.root.querySelector(".url"))
+    document.body.focus()
+    $.move(paragraph.firstChild!, 1)
+    await mutationsDelivered()
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(editor.features.selection.captureSelectedElement).toBeNull()
+    expect(editor.features.graphic.selectedShape).toBeNull()
+    expect(image).not.toHaveClass("◆graphic-shape-selected")
+    expect(placeholder.element).not.toHaveAttribute("data-open")
+    expect(document.getSelection()!.anchorNode).toBe(paragraph.firstChild)
   })
 
   it("loads a graphic image from the shared file picker", async () => {
@@ -1984,8 +2013,10 @@ describe("graphic editing", () => {
     editor.features.history.actions.undo({type: "undo"})
     const graphic = document.querySelector("svg")!
     expect(graphic.querySelector("rect")).not.toBeNull()
-    clickShape(graphic)
+    expect($.selectedElement).toBe(graphic)
     expect(editor.features.selection.captureSelectedElement).toBeNull()
+    clickShape(graphic.querySelector("rect")!)
+    expect(editor.features.selection.captureSelectedElement).toBe(graphic)
     expect(editor.features.graphic.selectedShape).toBe(graphic.querySelector("rect"))
     expect(editor.toHTML(true)).not.toContain("◆")
   })

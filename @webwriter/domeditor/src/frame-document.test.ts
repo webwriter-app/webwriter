@@ -110,6 +110,24 @@ describe("local live preview bundles", () => {
 })
 
 describe("isolated frame documents", () => {
+  it.each([null, '<iframe src="data:text/html,%3Cp%3ELocal%3C/p%3E" sandbox="allow-scripts"></iframe>'])("allows uploaded and saved local websites in editing frames", html => {
+    const root = parse(editorFrameHTML(html, editorOptions()))
+    const policy = root.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content
+    expect(policy).toContain("frame-src https: blob: data:")
+    expect(policy).toContain("object-src 'none'")
+  })
+
+  it.each(["blob:https://editor.example/local", "data:text/html;base64,PHA+TG9jYWw8L3A+"])("preserves local websites through repeated preview preparation: %s", src => {
+    let source = parse(`<section><!--keep--><iframe title="Local" src="${src}" sandbox="allow-scripts allow-same-origin"></iframe></section>`)
+    for(let pass = 0; pass < 2; pass++) {
+      source = parse(previewFrameHTML(source, previewOptions()))
+      expect(source.querySelector("iframe")?.getAttribute("src")).toBe(src)
+      expect(source.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts")
+      expect(source.querySelector("section")?.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+      expect(source.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content).toContain("frame-src https: blob: data:;")
+    }
+  })
+
   it("defers authored module URLs until before the trusted editor initializes", () => {
     const source = '<html><head><script type="module" class="authored" src="https://cdn.example/widget.js"></script><script src="./classic.js"></script></head><body><script type="module" src="./body.js"></script><template><script type="module" src="./inert.js"></script></template></body></html>'
     const root = parse(editorFrameHTML(source, editorOptions()))
@@ -132,7 +150,7 @@ describe("isolated frame documents", () => {
     try {
       const root = parse(editorFrameHTML(null, editorOptions({entryURL: "http://localhost:5173/nested/assets/editor-entry.js"})))
       const policy = root.querySelector<HTMLMetaElement>('meta[http-equiv="Content-Security-Policy"]')!.content
-      expect(policy).toContain("frame-src https: http://localhost:5173/nested/frame-shell.html;")
+      expect(policy).toContain("frame-src https: blob: data: http://localhost:5173/nested/frame-shell.html;")
       expect(policy).not.toContain("frame-src https: http:;")
     }
     finally { vi.unstubAllEnvs() }

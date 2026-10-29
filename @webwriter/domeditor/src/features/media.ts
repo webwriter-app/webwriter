@@ -1633,6 +1633,8 @@ export class MediaFeature extends EditorFeature {
     const source = this.editor.createMediaURL(file)
     this.rememberSource(element, source, file instanceof File ? file.name : "Media file", "file")
     this.editor.doc.stopCapturing()
+    // Local HTML stays isolated when saving replaces its blob URL with data.
+    if(element.matches("iframe")) element.setAttribute("sandbox", "allow-scripts")
     const changed = this.setSource(element, source, true, attribute)
     this.editor.doc.stopCapturing()
     return changed

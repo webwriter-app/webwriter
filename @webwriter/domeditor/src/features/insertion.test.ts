@@ -30,6 +30,39 @@ beforeEach(() => {
 })
 
 describe("insertion menu", () => {
+  it.each(["caption", "figcaption"])("inserts a formula without replacing an empty %s", async tag => {
+    document.body.innerHTML = tag === "caption"
+      ? '<table><caption></caption><tbody><tr><td>Cell</td></tr></tbody></table>'
+      : '<figure><p>Content</p><figcaption></figcaption></figure>'
+    const caption = document.querySelector(tag)!
+    $.move(caption)
+    typeCommand()
+    const menu = editor.features.insertion.menu
+    menu.dispatchEvent(new CustomEvent("insertion-menu-select", {detail: {tag: "math"}}))
+    await menu.updateComplete
+    expect(caption.isConnected).toBe(true)
+    expect(caption.firstElementChild?.localName).toBe("math")
+    expect(caption.firstElementChild?.getAttribute("display")).not.toBe("block")
+    expect(caption.textContent).toBe("")
+  })
+
+  it.each(["caption", "figcaption"])("rejects block insertion commands in an empty %s", async tag => {
+    document.body.innerHTML = tag === "caption"
+      ? '<table><caption></caption><tbody><tr><td>Cell</td></tr></tbody></table>'
+      : '<figure><p>Content</p><figcaption></figcaption></figure>'
+    const caption = document.querySelector(tag)!
+    $.move(caption)
+    typeCommand()
+    typeText("table")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
+    expect(caption.isConnected).toBe(true)
+    expect(caption.textContent).toBe("++table")
+    expect(caption.children).toHaveLength(0)
+    expect(menu.open).toBe(false)
+  })
+
   it.each(["<p></p>", "<p></p><p>Text</p>", "<h1></h1>"])("keeps empty blocks free of the ++ placeholder in %s while allowing typed commands", async html => {
     document.body.innerHTML = html
     $.move(document.body.firstElementChild!)
