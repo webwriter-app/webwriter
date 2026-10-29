@@ -2,6 +2,8 @@
 
 Declare option groups, options, and actions on the class or instance. Instance declarations take precedence over the matching class declaration, including an explicitly supplied empty map. Getters can provide dynamic declarations; if something outside a getter changes their result, dispatch a bubbling `optionschange` event from the widget host so the editor rereads them.
 
+Legacy `dynamicOptions` declarations are accepted as an alias for `options`. When both declare the same name, `options` takes precedence.
+
 ```js
 static optionGroups = {
   appearance: {

@@ -70,6 +70,7 @@ export class TableFeature extends EditorFeature {
   private gapControls: Array<{button: HTMLButtonElement, axis: "row" | "column", index: number, map: TableMap}> = []
   private anchorCell: HTMLTableCellElement | null = null
   private focusCell: HTMLTableCellElement | null = null
+  private pasteLifecycle = 0
   private pendingCell: HTMLTableCellElement | null = null
   private pointerSelecting = false
   private textDragAnchor: SelectionPoint | null = null
@@ -158,6 +159,7 @@ export class TableFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.pasteLifecycle++
     window.removeEventListener("blur", this.finishResize)
     window.removeEventListener("resize", this.scheduleGaps)
     this.gapResizeObserver?.disconnect()
@@ -244,7 +246,8 @@ export class TableFeature extends EditorFeature {
       return
     }
     const map = buildTableMap(table)
-    const geometry = this.editor.features.transformation.boxGeometry(table)
+    const matrices = new WeakMap<Element, DOMMatrix>()
+    const geometry = this.editor.features.transformation.boxGeometry(table, true, matrices)
     const {matrix, corners: [origin], width, height} = geometry
     if(!map.rows.length || !map.width || !width || !height
       || !matrix.is2D || Math.abs(matrix.a * matrix.d - matrix.b * matrix.c) < 1e-8) {
@@ -264,17 +267,39 @@ export class TableFeature extends EditorFeature {
     // edge positions at steep rotations; reuse the selection overlay geometry.
     const inverse = matrix.inverse()
     const localRect = (element: HTMLElement) => {
-      const points = this.editor.features.transformation.boxGeometry(element).corners.map(point => {
+      const points = this.editor.features.transformation.boxGeometry(element, true, matrices).corners.map(point => {
         const x = point.x - origin.x, y = point.y - origin.y
         return {x: inverse.a * x + inverse.c * y, y: inverse.b * x + inverse.d * y}
       })
       const left = Math.min(...points.map(point => point.x)), right = Math.max(...points.map(point => point.x))
       return {left, right, width: right - left, top: Math.min(...points.map(point => point.y)), bottom: Math.max(...points.map(point => point.y))}
     }
-    const cellRects = new Map(map.placements.map(placement => [placement, localRect(placement.cell)]))
+    // Only the cells bordering a column gap contribute to its position. Most
+    // cells in a tall table never need geometry for these controls.
+    const cellRects = new Map<HTMLTableCellElement, ReturnType<typeof localRect>>()
+    const cellRect = (cell: HTMLTableCellElement) => {
+      let rect = cellRects.get(cell)
+      if(!rect) { rect = localRect(cell); cellRects.set(cell, rect) }
+      return rect
+    }
     const rowRects = map.rows.map(localRect)
     const top = rowRects[0].top
     const bottom = rowRects.at(-1)!.bottom
+    // Finish all measurements before updating any control styles. A layout
+    // read after even one overlay write can flush the whole edited table.
+    const columnPositions = Array.from({length: map.width + 1}, (_, index) => {
+      const before = map.placements.find(cell => cell.column + cell.columnSpan === index)
+      const after = map.placements.find(cell => cell.column === index)
+      const end = before && cellRect(before.cell)[rtl ? "left" : "right"]
+      const start = after && cellRect(after.cell)[rtl ? "right" : "left"]
+      if(end !== undefined && start !== undefined) return (end + start) / 2
+      if(end !== undefined || start !== undefined) return (end ?? start)!
+      const cell = map.placements.find(cell => cell.column < index && cell.column + cell.columnSpan > index)
+      if(!cell) return undefined
+      const box = cellRect(cell.cell)
+      return rtl ? box.right - box.width * (index - cell.column) / cell.columnSpan
+        : box.left + box.width * (index - cell.column) / cell.columnSpan
+    })
     let controlIndex = 0
     for(const axis of ["column", "row"] as const) {
       const count = axis === "column" ? map.width : map.rows.length
@@ -284,19 +309,9 @@ export class TableFeature extends EditorFeature {
           position = index === 0 ? top : index === count ? bottom : (rowRects[index - 1].bottom + rowRects[index].top) / 2
         }
         else {
-          const before = map.placements.find(cell => cell.column + cell.columnSpan === index)
-          const after = map.placements.find(cell => cell.column === index)
-          const end = before && cellRects.get(before)![rtl ? "left" : "right"]
-          const start = after && cellRects.get(after)![rtl ? "right" : "left"]
-          if(end !== undefined && start !== undefined) position = (end + start) / 2
-          else if(end !== undefined || start !== undefined) position = (end ?? start)!
-          else {
-            const cell = map.placements.find(cell => cell.column < index && cell.column + cell.columnSpan > index)
-            if(!cell) continue
-            const box = cellRects.get(cell)!
-            position = rtl ? box.right - box.width * (index - cell.column) / cell.columnSpan
-              : box.left + box.width * (index - cell.column) / cell.columnSpan
-          }
+          const column = columnPositions[index]
+          if(column === undefined) continue
+          position = column
         }
         let control = this.gapControls[controlIndex++]
         if(!control) {
@@ -369,16 +384,18 @@ export class TableFeature extends EditorFeature {
   }
 
   get selectedCells() {
-    const map = this.selectionMap()
+    return this.hasCellSelection ? this.selectedCellsIn(this.selectionMap()) : []
+  }
+
+  private selectedCellsIn(map: TableMap | null) {
     const rectangle = this.cellRectangle(map)
     return map && rectangle
       ? placementsInRectangle(map, rectangle.top, rectangle.left, rectangle.bottom, rectangle.right).map(({cell}) => cell)
       : []
   }
 
-  private actionCells(map: TableMap) {
+  private actionCells(map: TableMap, selected = this.selectedCellsIn(map)) {
     if(map.limited) return []
-    const selected = this.selectedCells
     if(selected.length) return selected
     const current = cellForNode($.anchor)
     if(current && tableForNode(current) === map.table) return [current]
@@ -481,8 +498,8 @@ export class TableFeature extends EditorFeature {
   getState(): TableSelectionState | undefined {
     const map = this.selectionMap()
     if(!map) return
-    const cells = this.actionCells(map)
-    const selected = this.selectedCells
+    const selected = this.selectedCellsIn(map)
+    const cells = this.actionCells(map, selected)
     return {
       active: true,
       cellSelection: this.hasCellSelection,
@@ -998,12 +1015,39 @@ export class TableFeature extends EditorFeature {
   /** Missing clipboard capabilities return false; supported API failures are
    * deliberately propagated without changing the selected cells. */
   async paste() {
-    if(!this.hasCellSelection || !navigator.clipboard?.read) return false
+    if(!this.isEnabled || !this.hasCellSelection || !navigator.clipboard?.read) return false
+    const table = this.selectedTable
+    if(!this.editableTable(table)) return false
+    const anchor = this.anchorCell
+    const focus = this.focusCell
+    const selected = this.selectedCells
+    const tableRange = table.ownerDocument.createRange()
+    tableRange.selectNodeContents(table)
+    const identity = captureRangeIdentity(tableRange)
+    const htmlBefore = (cloneWithoutEditorMarkers(table, true, {inert: true}) as Element).outerHTML
+    const lifecycle = this.pasteLifecycle
+    const stillCurrent = () => {
+      if(!this.isEnabled || lifecycle !== this.pasteLifecycle || !this.editableTable(table)
+        || this.anchorCell !== anchor || this.focusCell !== focus
+        || this.selectedTable !== table) return false
+      const current = this.selectedCells
+      if(current.length !== selected.length || current.some((cell, index) => cell !== selected[index])) return false
+      if((cloneWithoutEditorMarkers(table, true, {inert: true}) as Element).outerHTML !== htmlBefore) return false
+      const range = table.ownerDocument.createRange()
+      range.selectNodeContents(table)
+      const currentIdentity = captureRangeIdentity(range)
+      return currentIdentity.size === identity.size && [...identity].every(node => currentIdentity.has(node))
+    }
     const items = await navigator.clipboard.read()
     const htmlItem = items.find(item => item.types.includes("text/html"))
     const textItem = items.find(item => item.types.includes("text/plain"))
-    const html = htmlItem ? await (await htmlItem.getType("text/html")).text() : ""
+    let html = ""
+    if(htmlItem) {
+      html = await (await htmlItem.getType("text/html")).text()
+      if(!stillCurrent()) return false
+    }
     const plain = textItem ? await (await textItem.getType("text/plain")).text() : ""
+    if(!stillCurrent()) return false
     return this.pasteMatrix(this.clipboardMatrix(html, plain))
   }
 

@@ -5,6 +5,8 @@ import {clearEditorArtifacts} from "./editor-artifacts"
 import type {LiveSession, LiveSessionRegion as SessionRegion, LiveSessionWidgetState} from "./live-session"
 import type {LiveWidgetAggregateInput, WidgetDataSnapshot} from "./widget-aggregate"
 import {WidgetAggregateViews} from "./widget-aggregate-view"
+import {effectiveDistribution} from "./distribution-dom"
+import {encodeDistributionConfig} from "./distribution.js"
 
 type PublishPreviewStep = (step: Parameters<LiveSession["publish"]>[0]) => void
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
@@ -79,7 +81,13 @@ export class LivePreview {
   }
 
   private dataSignature(widget: Element, block: Element) {
-    return JSON.stringify([widget.id, widget.getAttribute("shared"), block.getAttribute("type"),
+    let policy: string
+    try {
+      const effective = widget.isConnected ? effectiveDistribution(widget) : null
+      policy = effective ? encodeDistributionConfig(effective.config) : `legacy:${widget.getAttribute("shared") ?? "individual"}`
+    }
+    catch(error) { policy = `invalid:${error instanceof Error ? error.message : String(error)}` }
+    return JSON.stringify([widget.id, policy, block.getAttribute("type"),
       Array.from(widget.childNodes).filter(node => node.nodeType === 7).map(node => node.nodeValue)])
   }
 

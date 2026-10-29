@@ -1,5 +1,5 @@
 import {describe, expect, it} from "vitest"
-import {defaultGroupingRules, formWidgetGroups, validateGroupingRules} from "./widget-grouping"
+import {defaultGroupingRules, distributionGroupingRevision, formWidgetGroups, validateGroupingRules} from "./widget-grouping"
 
 const people = (count = 8) => Array.from({length: count}, (_, index) => ({
   id: `u${index + 1}`, firstName: `First${String.fromCharCode(65 + index)}`,
@@ -10,6 +10,16 @@ const people = (count = 8) => Array.from({length: count}, (_, index) => ({
 const configured = overrides => validateGroupingRules({...defaultGroupingRules("fixed"), ...overrides})
 
 describe("widget grouping rules", () => {
+  it("derives stable formation rules for explicit distribution sizes, including long targets", () => {
+    const config = {scope: "group", target: "x".repeat(256), groupSize: 4}
+    const revision = distributionGroupingRevision(config)
+    expect(distributionGroupingRevision(config)).toBe(revision)
+    const rules = validateGroupingRules(JSON.parse(decodeURIComponent(revision)))
+    expect(rules).toMatchObject({groupBy: "members", number: 4, seed: config.target})
+    expect(distributionGroupingRevision({...config, groupSize: undefined})).toBeUndefined()
+    expect(distributionGroupingRevision({...config, scope: "all"})).toBeUndefined()
+  })
+
   it("filters automatic participants by scope and already grouped status", () => {
     const result = formWidgetGroups(configured({
       roleId: "student", cohortId: "red", sourceGroupId: "g0", sourceGroupingId: "set0",

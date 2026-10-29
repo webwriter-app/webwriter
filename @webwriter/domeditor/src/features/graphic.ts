@@ -7,7 +7,7 @@ import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormCo
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {isAuthoredMutation} from "../editor-artifacts"
-import {elementDragType, ribbonInsertionDragType} from "../components/insertion-menu"
+import {elementDragType, ribbonInsertionDragType} from "../insertion"
 import {getDocumentRoot} from "../document-template"
 import {
   graphicShapeDragType,

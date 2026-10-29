@@ -1,3 +1,5 @@
+import {validateDistributionConfig} from "./distribution.js"
+import type {DistributionSelection} from "./features/distribution"
 import {isCaptionEnumeration} from "./caption-enumeration"
 import {isLinkSelectionState, type LinkSelectionState} from "./links"
 import {
@@ -23,6 +25,7 @@ import type {ElementAttributeState} from "./element-attributes"
 import {isWidgetOptionsState, type WidgetOptionsState} from "./widget-options"
 import type {LayoutSelectionState} from "./layouts"
 import type {DocumentLayoutState} from "./document-layout"
+import {nodeAtPath} from "./utility"
 
 export const executeCompleteEvent = "dom-editor-execute-complete"
 export const executeFailureEvent = "dom-editor-execute-failure"
@@ -42,6 +45,82 @@ export const editorFrameControlMessage = "editor-frame-control"
 export const aiEditReviewEvent = "dom-editor-ai-edit-review"
 export const shapeKeyboardInputEvent = "dom-editor-shape-keyboard-input"
 export const mathKeyboardTabEvent = "dom-editor-math-keyboard-tab"
+
+/** Text-node boundaries lost when a DOM snapshot is serialized as HTML. */
+export type SnapshotTextNodeRun = {
+  /** Child-node path from the snapshot root to the first text node in the run. */
+  path: number[]
+  /** UTF-16 lengths of each consecutive text node in the run. */
+  lengths: number[]
+}
+
+/** Captures adjacent and empty text nodes without changing the live DOM. */
+export function captureSnapshotTextNodeRuns(root: Node): SnapshotTextNodeRun[] {
+  const runs: SnapshotTextNodeRun[] = []
+  const visit = (parent: Node, parentPath: number[]) => {
+    const children = parent.childNodes
+    for(let index = 0; index < children.length;) {
+      const child = children[index]
+      if(child.nodeType === 3) {
+        const path = [...parentPath, index]
+        const lengths: number[] = []
+        while(index < children.length && children[index].nodeType === 3) {
+          lengths.push((children[index] as Text).data.length)
+          index++
+        }
+        if(lengths.length > 1 || lengths[0] === 0) runs.push({path, lengths})
+      }
+      else {
+        visit(child, [...parentPath, index])
+        index++
+      }
+    }
+  }
+  visit(root, [])
+  return runs
+}
+
+/** Restores captured text-node boundaries in a parsed snapshot. Invalid or
+ * stale paths are ignored so malformed metadata cannot disturb the snapshot. */
+export function restoreSnapshotTextNodeRuns(root: Node, runs: unknown): void {
+  if(!Array.isArray(runs)) return
+  for(const value of runs) {
+    if(!value || typeof value !== "object" || Array.isArray(value)) continue
+    const run = value as Partial<SnapshotTextNodeRun>
+    if(!Array.isArray(run.path) || run.path.length === 0 || !Array.isArray(run.lengths) || run.lengths.length === 0) continue
+    let valid = true
+    for(const index of run.path) if(!Number.isSafeInteger(index) || index < 0) valid = false
+    let total = 0
+    for(const length of run.lengths) {
+      if(!Number.isSafeInteger(length) || length < 0 || length > Number.MAX_SAFE_INTEGER - total) {
+        valid = false
+        break
+      }
+      total += length
+    }
+    if(!valid) continue
+
+    const path = run.path as number[]
+    const lengths = run.lengths as number[]
+    const index = path[path.length - 1]
+    const parent = nodeAtPath(root, path.slice(0, -1))
+    if(!parent || index > parent.childNodes.length) continue
+
+    if(total === 0) {
+      if(parent.nodeType !== 1 && parent.nodeType !== 11) continue
+      const reference = parent.childNodes[index] ?? null
+      const doc = parent.ownerDocument
+      if(!doc) continue
+      for(let part = 0; part < lengths.length; part++) parent.insertBefore(doc.createTextNode(""), reference)
+      continue
+    }
+
+    const first = parent.childNodes[index]
+    if(!first || first.nodeType !== 3 || (first as Text).data.length !== total) continue
+    let text = first as Text
+    for(let part = 0; part < lengths.length - 1; part++) text = text.splitText(lengths[part])
+  }
+}
 
 export type ShapeKeyboardInput = {
   type: "keydown" | "keyup"
@@ -421,6 +500,8 @@ export type FigureSelectionState = {
 }
 
 export type SelectionChangeDetail = {
+  distribution?: DistributionSelection | null
+  distributionGeneral?: DistributionSelection | null
   path: SelectionPathItem[]
   /** True when a structural selection can be wrapped even if its common path is BODY. */
   canSection?: boolean
@@ -884,6 +965,8 @@ export function isSelectionChangeMessage(value: unknown): value is SelectionChan
   const detail = value.detail
   return Array.isArray(detail.path) && detail.path.every(isSelectionPathItem)
     && [detail.nodeSelected, detail.capture, detail.inserted, detail.canSection].every(isOptionalBoolean)
+    && (detail.distribution === undefined || detail.distribution === null || isDistributionSelection(detail.distribution))
+    && (detail.distributionGeneral === undefined || detail.distributionGeneral === null || isDistributionSelection(detail.distributionGeneral))
     && isOptionalFeature(detail.section, isSectionSelection)
     && isOptionalFeature(detail.gap, isSelectionGap)
     && isOptionalFeature(detail.list, isListSelection)
@@ -1038,4 +1121,15 @@ export function isDocumentHeadStateChangeMessage(value: unknown): value is Docum
         && typeof attribute.name === "string"
         && typeof attribute.value === "string")
   })
+}
+
+function isDistributionSelection(value: unknown): boolean {
+  if(!isRecord(value) || typeof value.target !== "string" || typeof value.identity !== "string"
+    || !(value.path === null || Array.isArray(value.path) && value.path.every(isNonnegativeInteger))
+    || !(value.inheritedFrom === null || typeof value.inheritedFrom === "string")
+    || !(value.error === undefined || typeof value.error === "string")) return false
+  try {
+    for(const config of [value.local, value.effective]) if(config !== null) validateDistributionConfig(config)
+    return true
+  } catch { return false }
 }

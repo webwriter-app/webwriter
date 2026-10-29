@@ -47,6 +47,41 @@ afterEach(() => {
 })
 
 describe("DependencyFeature", () => {
+  it("keeps live widget sizing ephemeral across install, reload, and removal", async () => {
+    vi.spyOn(document.head, "append").mockImplementation((...assets: (string | Node)[]) => {
+      assets.forEach(asset => {
+        if(asset instanceof HTMLStyleElement && asset.id === "webwriter-widget-sizing") document.head.appendChild(asset)
+        else queueMicrotask(() => asset instanceof HTMLElement && asset.dispatchEvent(new Event("load")))
+      })
+    })
+    const editor = new DOMEditor()
+    const load = editor.getActionHandler(loadWidgetsMessage)
+    const request = (pkg?: WebWriterPackage) => load({
+      type: loadWidgetsMessage,
+      importMap: {},
+      widgets: pkg ? [{name: pkg.name, version: pkg.version}] : [],
+      packages: pkg ? [pkg] : [],
+    })
+
+    await request(demoPackage)
+    const liveStyle = document.querySelector<HTMLStyleElement>("#webwriter-widget-sizing")!
+    expect(liveStyle.nonce).toBe(editor.trustedScriptNonce)
+    expect(liveStyle.classList.contains("◆editor-only")).toBe(true)
+    expect(liveStyle.textContent).toContain("webwriter-demo")
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    const savedStyle = saved.querySelector<HTMLStyleElement>("#webwriter-widget-sizing")!
+    expect(savedStyle.hasAttribute("nonce")).toBe(false)
+    expect(savedStyle.classList.contains("◆editor-only")).toBe(false)
+
+    const replacement = {...demoPackage, editingConfig: {}, members: demoPackage.members.map(member => ({...member, tagName: `replacement-${member.tagName}`}))}
+    await request(replacement)
+    expect(document.querySelector("#webwriter-widget-sizing")?.textContent).toContain("replacement-webwriter-demo")
+    expect(document.querySelector("#webwriter-widget-sizing")?.textContent).not.toContain(", webwriter-demo-item")
+    await request()
+    expect(document.querySelector("#webwriter-widget-sizing")).toBeNull()
+    editor.destroy()
+  })
+
   it("registers a supplied import map before widget modules and exports it", async () => {
     const pkg: WebWriterPackage = {
       ...demoPackage,
@@ -240,6 +275,7 @@ describe("DependencyFeature", () => {
     expect(script.nonce).toBe(editor.trustedScriptNonce)
     expect(globalThis.DOMEDITOR_PACKAGE_ITEMS).toEqual([
       expect.objectContaining({name: "Demo Widget", tag: "webwriter-demo"}),
+      expect.objectContaining({name: "Demo Item", tag: "webwriter-demo-item", insertable: false}),
     ])
     editor.destroy()
   })

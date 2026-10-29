@@ -24,6 +24,7 @@ import crop from "@tabler/icons/outline/crop.svg?raw"
 import blur from "@tabler/icons/outline/blur.svg?raw"
 import scan from "@tabler/icons/outline/scan.svg?raw"
 import clock from "@tabler/icons/outline/clock.svg?raw"
+import checkbox from "@tabler/icons/outline/checkbox.svg?raw"
 import hyphen from "@tabler/icons/outline/minus.svg?raw"
 import signRight from "@tabler/icons/outline/sign-right.svg?raw"
 import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
@@ -34,7 +35,9 @@ import arrowBigRight from "@tabler/icons/outline/arrow-big-right.svg?raw"
 import arrowRotaryRight from "@tabler/icons/outline/arrow-rotary-right.svg?raw"
 import userShare from "./assets/user-share.svg?raw"
 import userEdit from "@tabler/icons/outline/user-edit.svg?raw"
+import usersGroup from "@tabler/icons/outline/users-group.svg?raw"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
+export {captionIconSource} from "./caption-icon"
 
 import anchor from "@tabler/icons/outline/anchor.svg?raw"
 import artboard from "@tabler/icons/outline/artboard.svg?raw"
@@ -172,7 +175,7 @@ import forms from "@tabler/icons/outline/forms.svg?raw"
 import input from "@tabler/icons/outline/input-search.svg?raw"
 import quote from "@tabler/icons/outline/quote.svg?raw"
 import qrcode from "@tabler/icons/outline/qrcode.svg?raw"
-import section from "@tabler/icons/outline/section.svg?raw"
+import squareDashed from "@tabler/icons/outline/square-dashed.svg?raw"
 import settings from "@tabler/icons/outline/settings.svg?raw"
 import settings2 from "@tabler/icons/outline/settings-2.svg?raw"
 import sparkles2 from "@tabler/icons/outline/sparkles-2.svg?raw"
@@ -293,7 +296,7 @@ const icons: Record<string, string> = {
   ArrowRight: arrowRight,
   ArrowBigRight: arrowBigRight,
   ArrowRotaryRight: arrowRotaryRight,
-  Section: section,
+  Section: squareDashed,
   Article: article,
   Layout: layout,
   Link: link,
@@ -333,6 +336,8 @@ const icons: Record<string, string> = {
   QR: qrcode,
   Share: share,
   UserShare: userShare,
+  Checkbox: checkbox,
+  "users-group": usersGroup,
   UserEdit: userEdit,
   Paste: clipboard,
   Cut: scissors,
@@ -534,16 +539,6 @@ const fallbackIcon = dots
 export const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparent.svg`
 
 export const ribbonIcon = (label: string) => unsafeSVG(icons[label] ?? fallbackIcon)
-
-export function captionIconSource(position: "none" | "above" | "below", alignment: "left" | "center" | "right" = "left", add = false) {
-  const x = alignment === "left" ? 6 : alignment === "center" ? 9 : 12
-  const y = position === "above" ? 3 : 21
-  const annotation = position === "none"
-    ? add ? '<path d="M9 10.143h6M12 7.143v6M6 16.857h12"/>' : ""
-    : `<line x1="${x}" x2="${x + 6}" y1="${y}" y2="${y}"/>`
-  const content = position === "none" && add ? annotation : `<rect x="6" y="6" width="12" height="12" rx="1"/>${annotation}`
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${add ? 3 : 1.75}" stroke-linecap="round" aria-hidden="true">${content}</svg>`
-}
 
 /** Tabler glyphs for compact option groups; labels remain on each button. */
 const optionIcons: Record<string, Record<string, string>> = {

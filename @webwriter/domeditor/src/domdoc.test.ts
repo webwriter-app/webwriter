@@ -55,6 +55,29 @@ async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
 }
 
+it("does not reapply identical live selection endpoints and still restores a changed selection", () => {
+  const {root, shared} = createShared("<p>Selected text</p>")
+  document.body.append(root)
+  const text = root.firstChild!.firstChild!, selection = document.getSelection()!
+  selection.setBaseAndExtent(text, 2, text, 6)
+  shared.updateLocalSelection(selection)
+  const write = vi.spyOn(selection, "setBaseAndExtent")
+  try {
+    shared.writeSelection()
+    expect(write).not.toHaveBeenCalled()
+    selection.setBaseAndExtent(text, 0, text, 0)
+    write.mockClear()
+    shared.writeSelection()
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(selection.anchorNode).toBe(text)
+    expect(selection.anchorOffset).toBe(2)
+    expect(selection.focusOffset).toBe(6)
+    shared.writeSelection()
+    expect(write).toHaveBeenCalledTimes(1)
+  }
+  finally { write.mockRestore(); selection.removeAllRanges(); root.remove() }
+})
+
 it("reconciles derived DOM metadata with its source edit in one undoable change", async () => {
   const root = document.createElement("main")
   root.innerHTML = "<p>First</p>"
@@ -79,6 +102,43 @@ it("reconciles derived DOM metadata with its source edit in one undoable change"
 })
 
 describe("concurrent minimum-content repairs", () => {
+  it.each([1, 2])("converges nested widget repairs without dropping its minimum of %i children", minimum => {
+    const makePeer = (ydoc?: Y.Doc) => {
+      const root = document.createElement("main")
+      root.innerHTML = '<prompt-widget id="prompt"><p>Last authored paragraph</p></prompt-widget>'
+      const shared = new SharedDOMDoc(undefined, undefined, [], [], {root, ydoc,
+        canRemoveMinimumContentRepair: element => element.parentElement?.localName === "prompt-widget"
+          && element.parentElement.children.length > minimum,
+      })
+      sharedDocs.push(shared)
+      return {root, shared}
+    }
+    const first = makePeer()
+    const ydoc = new Y.Doc()
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(first.shared.doc), "initial-sync")
+    const second = makePeer(ydoc)
+    for(const peer of [first, second]) {
+      const prompt = peer.root.firstElementChild!
+      prompt.replaceChildren()
+      peer.shared.syncFromDOM()
+      for(let index = 0; index < minimum; index++) {
+        const paragraph = document.createElement("p")
+        prompt.append(paragraph)
+        peer.shared.markMinimumContentRepair(paragraph)
+      }
+      peer.shared.syncFromDOM()
+    }
+    const left = Y.encodeStateAsUpdate(first.shared.doc)
+    const right = Y.encodeStateAsUpdate(second.shared.doc)
+    Y.applyUpdate(first.shared.doc, right, "remote")
+    Y.applyUpdate(second.shared.doc, left, "remote")
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    Y.applyUpdate(second.shared.doc, Y.encodeStateAsUpdate(first.shared.doc), "remote")
+    expect(first.root.querySelectorAll("prompt-widget > p")).toHaveLength(minimum)
+    expect(second.root.innerHTML).toBe(first.root.innerHTML)
+    expect(first.root.innerHTML).not.toContain("__domeditor_minimum_repair")
+  })
+
   function repair(peer: ReturnType<typeof createShared>) {
     peer.root.replaceChildren()
     peer.shared.syncFromDOM()
@@ -619,6 +679,36 @@ describe("SharedDOMDoc initialization", () => {
     expect(root.firstElementChild!.localName).toBe("hr")
     expect(children).not.toHaveBeenCalled()
     expect(attributes).not.toHaveBeenCalled()
+  })
+
+  it("reconciles overlapping nested mutation containers using their parent chains", async () => {
+    const depth = 30
+    const {root, shared} = createShared(`${"<div>".repeat(depth)}${"</div>".repeat(depth)}`)
+    const containers: Element[] = [root]
+    let current: Element = root
+    for(let index = 0; index < depth; index++) {
+      current = current.firstElementChild!
+      containers.push(current)
+    }
+    const contains = containers.map(container => vi.spyOn(container, "contains"))
+
+    containers.forEach((container, index) => {
+      const child = document.createElement("b")
+      container.append(child)
+      child.setAttribute("data-depth", String(index))
+    })
+    await mutationsDelivered()
+
+    contains.forEach(spy => expect(spy).not.toHaveBeenCalled())
+    expect(shared.body.toString()).toContain('<b data-depth="0"></b>')
+    expect(shared.body.toString()).toContain(`<b data-depth="${depth}"></b>`)
+
+    const updatedHTML = root.innerHTML
+    shared.undo()
+    expect(root.innerHTML).toBe(`${"<div>".repeat(depth)}${"</div>".repeat(depth)}`)
+    shared.redo()
+    expect(root.innerHTML).toBe(updatedHTML)
+    expect(cloneShared(shared).root.innerHTML).toBe(updatedHTML)
   })
 
   it("maps new descendant mutations within their changed container", async () => {

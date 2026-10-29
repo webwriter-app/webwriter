@@ -144,7 +144,7 @@ describe("canvas document layout", () => {
     canvas.convert("canvas")
     const controls = () => editor.appendix.querySelector<HTMLElement>('.◆canvas-starting-view-controls')!
     expect(controls().getAttribute("role")).toBe("group")
-    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.disabled).toBe(true)
+    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.hidden).toBe(true)
     controls().querySelector<HTMLButtonElement>('[name="starting-view"]')!.click()
     const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
     expect($.selectedElement).toBe(frame)
@@ -156,15 +156,15 @@ describe("canvas document layout", () => {
     expect($.selectedElement).toBe(frame)
     expect(frame.getAttribute("style")).toBe(bounds)
     const remove = controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!
-    expect(remove.disabled).toBe(false)
+    expect(remove.hidden).toBe(false)
     expect(remove.getAttribute("aria-label")).toBe("Delete starting view")
     remove.querySelector("path")!.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
     expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
-    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.disabled).toBe(true)
+    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.hidden).toBe(true)
     editor.doc.undo()
     await settle()
     expect(document.querySelector(".ww-canvas-starting-view")).not.toBeNull()
-    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.disabled).toBe(false)
+    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.hidden).toBe(false)
   })
 
   it("omits the selected starting view from the breadcrumb", () => {
@@ -452,12 +452,34 @@ describe("canvas document layout", () => {
     }
   })
 
+  it("stops empty-paragraph discovery after two eligible items", () => {
+    const canvas = editor.features.canvas
+    // This checks a bounded DOM query, not reconciliation of a large edit.
+    // Stop observers before mounting the large fixture so teardown does not
+    // synchronize all 1000 paragraphs after the query has already completed.
+    editor.destroy()
+    document.body.innerHTML = Array.from({length: 1000}, (_, index) => `<p>${index}</p>`).join("")
+    const getState = vi.spyOn(canvas, "getState")
+    const matches = vi.spyOn(HTMLElement.prototype, "matches")
+
+    expect(canvas.emptyParagraph()).toBeNull()
+    expect(matches).toHaveBeenCalledTimes(2)
+    expect(getState).not.toHaveBeenCalled()
+  })
+
   it("recognizes an empty paragraph alongside bootstrap and metadata elements", () => {
-    document.body.innerHTML = '<p></p><script class="◆editor-only" type="module"></script><style></style>'
+    document.body.innerHTML = '<p></p><script class="◆editor-only" type="module"></script><style></style><link rel="stylesheet" href="/unused.css"><meta name="viewport"><template><p>Template content</p></template>'
     const paragraph = document.body.querySelector("p")!
     expect(editor.features.canvas.emptyParagraph()).toBe(paragraph)
     paragraph.textContent = "Authored content"
     expect(editor.features.canvas.emptyParagraph()).toBeNull()
+  })
+
+  it("treats custom elements and SVG as eligible layout items", () => {
+    for(const html of ["<p></p><custom-card></custom-card>", '<p></p><svg><circle r="2"></circle></svg>']) {
+      document.body.innerHTML = html
+      expect(editor.features.canvas.emptyParagraph()).toBeNull()
+    }
   })
 
   it("rechecks a stale startCanvas request against current DOM", () => {

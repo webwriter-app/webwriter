@@ -1,3 +1,4 @@
+import {hydrateDistributionInstructions} from "./distribution-dom"
 import {groupingTarget, validateGroupingRules} from "./widget-grouping.js"
 import type {WidgetGroupingRules} from "./widget-grouping.js"
 
@@ -63,6 +64,7 @@ export function widgetGroupingRevision(widget: Element): string | undefined {
 }
 
 export function hydrateWidgetGroupings(root: Node) {
+  hydrateDistributionInstructions(root)
   visit(root, node => {
     if(node.nodeType !== 8) return
     const comment = node as Comment

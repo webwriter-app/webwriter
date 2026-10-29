@@ -27,15 +27,29 @@ export class PlaceholderFeature extends EditorFeature {
   }
 
   generatePlaceholderStylesheet() {
-    const contentRules = this.editor.schema.placeholderKeys.map(k => {
+    const contentRules = this.editor.schema.placeholderKeys.flatMap(k => {
       const {emptySelector, emptyStyle, placeholderStyle} = this.editor.schema.get(k)
       const sel = emptySelector
       const elStyle = emptyStyle && this.styleMapToCssString(emptyStyle)
-      const beforeStyle = placeholderStyle && `${this.styleMapToCssString(placeholderStyle)};visibility: visible`
-      return `${sel} {& {${elStyle ?? ""}} &::before {${beforeStyle ?? ""}}}`
+      const beforeStyle = placeholderStyle && `${this.styleMapToCssString({
+        ...placeholderStyle,
+        ...(placeholderStyle.content ? {
+          content: `var(--ww-placeholder, ${placeholderStyle.content})`,
+          whiteSpace: "nowrap"
+        } : {})
+      })};visibility: visible`
+      return [
+        elStyle && `${sel} {${elStyle}}`,
+        beforeStyle && `${sel}::before {${beforeStyle}}`
+      ].filter((rule): rule is string => Boolean(rule))
     })
+    // Widget styles may set --ww-placeholder on a shadow slot. The inherited
+    // value reaches its assigned light-DOM block, where generated content can
+    // display it without adding anything to the authored document. Keep the
+    // schema's heading placeholders in charge of headings.
+    const placeholderBlocks = `:is(address, article, aside, blockquote, dd, details, dialog, div, dt, fieldset, figure, footer, form, header, legend, li, main, nav, p, pre, search, section, summary, td, th):empty::before {content: var(--ww-placeholder, "\u200B"); display: inline-block; width: 0; overflow: visible; white-space: nowrap; color: darkgray; pointer-events: none; user-select: none;}`
     const styleSheet = new CSSStyleSheet()
-    styleSheet.replaceSync(contentRules.join("\n"))
+    styleSheet.replaceSync([placeholderBlocks, ...contentRules].join("\n"))
     return styleSheet
   }
 

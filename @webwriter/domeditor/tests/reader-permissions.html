@@ -1,0 +1,23 @@
+<!doctype html>
+<html id="reader-permissions-fixture"><head><meta charset="utf-8"><title>Reader permissions</title>
+<style>body { margin: 3rem auto; max-width: 52rem; font: 18px/1.6 system-ui; color: #243447; } h1 {font-size: 1.8rem} p {padding: .5rem} .locked {color: #666} </style>
+</head><body><h1>Reader editing</h1><p id="editable">Edit this text directly. Select the paragraph with the modifier key to use its move and delete controls.</p><p id="movable">This paragraph can be moved or deleted, but its text is locked.</p><section id="locked" class="locked"><p>This area stays read-only. Links and widgets keep their reading interactions.</p><button>Normal reader button</button></section>
+<script type="module">
+import sources from "virtual:distribution-reader-sources"
+import {writeDistributionConfig} from "../src/distribution-dom.ts"
+import {emptyDistributionConfig} from "../src/distribution.js"
+const layout = new URLSearchParams(location.search).get("layout")
+if(layout === "canvas") {
+  document.body.classList.add("ww-canvas")
+  Array.from(document.body.children).filter(element => element.localName !== "script").forEach((element, index) => {
+    Object.assign(element.style, {position: "absolute", left: "100px", top: `${50 + index * 120}px`, width: "760px"})
+  })
+}
+writeDistributionConfig(document.documentElement, {...emptyDistributionConfig(document.documentElement.id), permissions: ["edit", "move", "delete"]})
+writeDistributionConfig(document.getElementById("movable"), {...emptyDistributionConfig("movable"), permissions: ["move", "delete"]})
+writeDistributionConfig(document.getElementById("locked"), emptyDistributionConfig("locked"))
+const script = document.createElement("script")
+script.type = "module"
+script.textContent = sources.core + "\ndistributionReader.mountDistributionReader(document)"
+document.head.append(script)
+</script></body></html>

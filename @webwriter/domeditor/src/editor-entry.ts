@@ -1,9 +1,10 @@
 import { DOMEditor } from "./domeditor"
 import {openFrameLinksInNewTabs} from "./frame-links"
-import {editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
+import {captureSnapshotTextNodeRuns, editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
 import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
 import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
 import {isAuthoredMutation} from "./editor-artifacts"
+import {serializeDoctype} from "./serialization-primitives"
 
 /** Shortest time between two document snapshots posted to the host. */
 const snapshotInterval = 250
@@ -90,7 +91,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
   let motionSheet: CSSStyleSheet | null = null
   let shortcuts = settings.shortcuts ?? {}
   const post = (message: object) => window.parent.postMessage({...message, bridgeNonce: nonce}, origin)
-  const snapshot = () => `${document.doctype ? `<!doctype ${document.doctype.name}>` : ""}${document.documentElement.outerHTML}`
+  const snapshot = () => `${serializeDoctype(document.doctype)}${document.documentElement.outerHTML}`
   const setMotion = (disabled: boolean) => {
     if(motionSheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== motionSheet)
     motionSheet = null
@@ -114,7 +115,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     pending = false
     const treeChanged = pendingTreeChanged
     pendingTreeChanged = false
-    post({type: "editor-frame-snapshot", html: snapshot(), treeChanged})
+    post({type: "editor-frame-snapshot", html: snapshot(), textNodeRuns: captureSnapshotTextNodeRuns(document.body), treeChanged})
     timer = setTimeout(flushSnapshot, snapshotInterval)
   }
   const publishSnapshot = (mutations?: MutationRecord[]) => {
@@ -164,7 +165,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
     const data = event.data as {command?: string, requestId?: string, disabled?: boolean, restoreSelection?: boolean,
       shortcuts?: Record<string, string>, tags?: string[], username?: string}
     if(data.command === "snapshot") {
-      post({type: "editor-frame-response", requestId: data.requestId, html: snapshot()})
+      post({type: "editor-frame-response", requestId: data.requestId, html: snapshot(), textNodeRuns: captureSnapshotTextNodeRuns(document.body)})
     }
     else if(data.command === "disconnect-collaboration") editor.doc?.disconnectCollaboration()
     else if(data.command === "registered-tags") {

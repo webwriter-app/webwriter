@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterAll, beforeEach, describe, expect, it, vi} from "vitest"
+import {afterAll, afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
@@ -7,6 +7,7 @@ import {Schema} from "../schema"
 import {$, isWidgetShadowInteraction} from "../utility"
 import {isDataBlockType, stripActiveContent} from "../active-content"
 import {isWidgetOptionsState} from "../widget-options"
+import {effectiveDistribution} from "../distribution-dom"
 import type {ActionDeclaration, OptionDeclaration} from "../../../lit/index"
 
 class OptionsWidget extends HTMLElement {
@@ -30,6 +31,13 @@ class OptionsWidget extends HTMLElement {
   }
 }
 customElements.define("demo-options", OptionsWidget)
+
+class NumericIdWidget extends HTMLElement {}
+Object.defineProperty(NumericIdWidget.prototype, "id", {
+  get(this: Element) { return Number(this.getAttribute("id") ?? 0) },
+  set(this: Element, value: number) { this.setAttribute("id", String(value)) },
+})
+customElements.define("demo-numeric-id", NumericIdWidget)
 
 const editor = new DOMEditor()
 
@@ -57,6 +65,129 @@ beforeEach(() => {
 afterAll(() => editor.destroy())
 
 describe("WidgetFeature", () => {
+  it("prefills newly connected empty widgets recursively from their content rules", async () => {
+    editor.schema.extendWidgets([
+      {tagName: "demo-choice", editingConfig: {content: "demo-choice-item+"}},
+      {tagName: "demo-choice-item", editingConfig: {content: "p+"}},
+    ])
+    const choice = document.createElement("demo-choice")
+    document.body.append(choice)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(choice.querySelectorAll(":scope > demo-choice-item > p")).toHaveLength(1)
+    const item = choice.firstElementChild!
+    expect(item.id).toMatch(/^ww[0-9a-f]/)
+    expect(item.hasAttribute("contenteditable")).toBe(true)
+    expect(editor.schema.isContentValid(choice)).toBe(true)
+    expect(editor.schema.isContentValid(item)).toBe(true)
+    expect(sharedHTML()).toContain(`<demo-choice-item id="${item.id}"><p></p></demo-choice-item>`)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(sharedHTML()).not.toContain("contenteditable")
+    editor.features.widget.refresh()
+    expect(choice.firstElementChild).toBe(item)
+    expect(choice.children).toHaveLength(1)
+  })
+
+  it("preserves comments, data, and authored irregular content when prefilling", () => {
+    document.body.innerHTML = '<demo-note><!--keep--><script type="application/json" slot="data">{}</script></demo-note><demo-note><unknown-node title="keep"><!--inside--></unknown-node></demo-note><demo-note contenteditable="false"></demo-note>'
+    const [empty, authored, locked] = Array.from(document.querySelectorAll("demo-note"))
+    const comment = empty.firstChild!, data = empty.lastChild!, unknown = authored.firstChild!
+    editor.features.widget.refresh()
+    expect(empty.firstChild).toBe(comment)
+    expect(empty.childNodes[1]).toBe(data)
+    expect(empty.lastChild!.nodeName).toBe("P")
+    expect(authored.childNodes).toHaveLength(1)
+    expect(authored.firstChild).toBe(unknown)
+    expect(unknown).toMatchObject({outerHTML: '<unknown-node title="keep"><!--inside--></unknown-node>'})
+    expect(locked.childNodes).toHaveLength(0)
+  })
+
+  it("keeps a single required child after edits, undo/redo, refresh, and reconnection", async () => {
+    const note = document.createElement("demo-note")
+    document.body.append(note)
+    await new Promise(resolve => setTimeout(resolve))
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    note.firstChild!.remove()
+    editor.doc.syncFromDOM()
+    await new Promise(resolve => setTimeout(resolve))
+    editor.features.widget.refresh()
+    expect(note.children).toHaveLength(1)
+    editor.doc.undo()
+    expect(note.querySelector("p")).not.toBeNull()
+    editor.doc.redo()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(note.children).toHaveLength(1)
+    note.remove()
+    document.body.append(note)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(note.children).toHaveLength(1)
+  })
+
+  it("shares prefilling with the insertion and restores both in one undo step", async () => {
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const snapshots: string[] = []
+    const updated = () => snapshots.push(sharedDOMBody(editor.doc.doc).toString())
+    editor.doc.doc.on("update", updated)
+    try {
+      document.body.append(document.createElement("demo-note"))
+      editor.doc.syncFromDOM()
+      expect(snapshots).toHaveLength(1)
+      expect(snapshots[0]).toMatch(/<demo-note[^>]*><p><\/p><\/demo-note>/)
+      editor.doc.undo()
+      expect(document.querySelector("demo-note")).toBeNull()
+      editor.doc.redo()
+      await new Promise(resolve => setTimeout(resolve))
+      expect(document.querySelectorAll("demo-note > p")).toHaveLength(1)
+    }
+    finally { editor.doc.doc.off("update", updated) }
+  })
+
+  it("does not prefill empty widgets arriving through collaboration", async () => {
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const note = new Y.XmlElement("demo-note")
+      note.setAttribute("id", "remote-empty-widget")
+      sharedDOMBody(remote).push([note])
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+      await new Promise(resolve => setTimeout(resolve))
+      editor.features.widget.refresh()
+      expect(document.getElementById("remote-empty-widget")!.children).toHaveLength(0)
+    }
+    finally { remote.destroy() }
+  })
+
+  it("leaves recursive unfillable schemas and disconnected widgets untouched", async () => {
+    editor.schema.extendWidgets([
+      {tagName: "demo-cycle-a", editingConfig: {content: "demo-cycle-b+"}},
+      {tagName: "demo-cycle-b", editingConfig: {content: "demo-cycle-a+"}},
+    ])
+    document.body.innerHTML = '<demo-cycle-a></demo-cycle-a>'
+    editor.features.widget.refresh()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(document.querySelector("demo-cycle-a")!.childNodes).toHaveLength(0)
+    const disconnected = document.createElement("demo-note")
+    document.body.append(disconnected)
+    disconnected.remove()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(disconnected.childNodes).toHaveLength(0)
+  })
+
+  it("prunes concurrent pristine repairs while respecting a bounded widget schema", () => {
+    editor.schema.extendWidgets([{tagName: "two-paragraphs", editingConfig: {content: "p{2}"}}])
+    document.body.innerHTML = '<two-paragraphs><p></p><p></p><p></p><p></p></two-paragraphs>'
+    const widget = document.querySelector("two-paragraphs")!
+    editor.features.widget.refresh()
+    const original = Array.from(widget.children)
+    original.forEach(child => editor.doc.markMinimumContentRepair(child))
+    editor.doc.syncFromDOM()
+    expect(Array.from(widget.children)).toEqual(original.slice(0, 2))
+    expect(editor.schema.isContentValid(widget)).toBe(true)
+    expect(editor.toHTML(true)).not.toContain("__domeditor_minimum_repair")
+  })
+
   it("sets options on all currently selected widgets of one type as one undo step", () => {
     document.body.innerHTML = '<demo-options count="1"></demo-options><demo-options count="2"></demo-options><demo-options count="3"></demo-options><p>Other</p>'
     editor.features.widget.refresh()
@@ -149,6 +280,27 @@ describe("WidgetFeature", () => {
       expect(editor.toHTML(true)).toContain(`id="${id}"`)
       expect(sharedHTML()).toContain(`id="${id}"`)
     })
+  })
+
+  it("preserves numeric zero IDs on refresh and insertion without serializing editor markers", async () => {
+    editor.schema.extendWidgets([{tagName: "demo-numeric-id"}])
+    const existing = document.createElement("demo-numeric-id")
+    existing.setAttribute("id", "0")
+    document.body.append(existing)
+    editor.features.widget.refresh()
+    expect(existing.getAttribute("id")).toBe("0")
+
+    const inserted = document.createElement("demo-numeric-id")
+    inserted.setAttribute("id", "0")
+    document.body.append(inserted)
+    await new Promise(resolve => setTimeout(resolve))
+    editor.features.widget.refresh()
+
+    expect(inserted.getAttribute("id")).toBe("0")
+    expect(editor.toHTML(true)).toContain('<demo-numeric-id id="0"></demo-numeric-id>')
+    expect(sharedHTML()).toContain('<demo-numeric-id id="0"></demo-numeric-id>')
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(sharedHTML()).not.toContain("contenteditable")
   })
 
   it("preserves IDs through refresh, reconnection, disabling, and undo/redo", async () => {
@@ -319,18 +471,37 @@ describe("widget options", () => {
   })
 
   it("writes options to their reflected attributes", () => {
-    document.body.innerHTML = '<demo-options count="3" shuffled></demo-options>'
+    document.body.innerHTML = '<demo-options id="options-widget" count="3" shuffled></demo-options>'
     const widget = document.querySelector("demo-options") as OptionsWidget
     const set = editor.getActionHandler("setWidgetOption")
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "count", value: 5})
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "shuffled", value: false})
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "data", value: {a: [1]}})
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "internal", value: "kept"})
-    expect(editor.toHTML(true)).toBe('<demo-options count="5" widget-data="{&quot;a&quot;:[1]}"></demo-options>')
+    expect(editor.toHTML(true)).toBe('<demo-options id="options-widget" count="5" widget-data="{&quot;a&quot;:[1]}"></demo-options>')
     expect(widget.internal).toBe("kept")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "handler", value: "evil()"})).toThrow("cannot be set")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "unknown", value: 1})).toThrow("no option")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "other-widget", name: "count", value: 1})).toThrow("changed")
+  })
+
+  it("accepts legacy dynamicOptions and reads their current reflected values", () => {
+    document.body.innerHTML = '<demo-options detailed-feedback grading-method="partial" count="3"></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    Object.defineProperty(widget, "dynamicOptions", {get: () => ({
+      "detailed-feedback": {type: "boolean", label: {_: "Show detailed feedback"}},
+      "grading-method": {type: "select", options: [{value: "pass-fail"}, {value: "partial"}]},
+      count: {type: String, label: {_: "Legacy count"}},
+    })})
+    const options = () => editor.features.widget.getOptionsState([widget])!.options
+    expect(options().find(option => option.name === "detailed-feedback")).toMatchObject({type: "boolean", value: true})
+    expect(options().find(option => option.name === "grading-method")).toMatchObject({value: "partial"})
+    expect(options().find(option => option.name === "count")).toMatchObject({type: "number", value: 3})
+    editor.features.widget.setOption(widget, "detailed-feedback", false)
+    editor.features.widget.setOption(widget, "grading-method", "pass-fail")
+    expect(widget.hasAttribute("detailed-feedback")).toBe(false)
+    expect(options().find(option => option.name === "detailed-feedback")!.value).toBe(false)
+    expect(options().find(option => option.name === "grading-method")!.value).toBe("pass-fail")
   })
 
   it("runs an action as one undo step", async () => {
@@ -451,6 +622,8 @@ describe("widget contract edge cases", () => {
 })
 
 describe("widget sharing controls", () => {
+  afterEach(() => document.head.replaceChildren())
+
   it.each(["application/json", "application/xml"])("reports only the direct scoped %s data block", type => {
     editor.schema.extendWidgets([{tagName: "demo-widget", editingConfig: {sharedData: true}}])
     const value = type === "application/json" ? '{"answers":{}}' : '<answers />'
@@ -475,10 +648,12 @@ describe("widget sharing controls", () => {
     expect(editor.features.widget.getOptionsState([document.body, widget])?.sharing?.mode).toBe("individual")
     const share = editor.getActionHandler("setWidgetSharing"), group = editor.getActionHandler("setWidgetGrouping")
     share({type: "setWidgetSharing", ...reference, enabled: true})
-    expect(widget.getAttribute("shared")).toBe("")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("all")
     const rules = defaultGroupingRules("stable")
     group({type: "setWidgetGrouping", ...reference, grouping: rules})
-    expect(widget.getAttribute("shared")).toBe("group")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("group")
     expect(widget.lastChild?.nodeType).toBe(7)
     expect(readWidgetGrouping(widget)).toEqual(rules)
     const state = editor.features.widget.getOptionsState([document.body, widget])!
@@ -486,11 +661,14 @@ describe("widget sharing controls", () => {
     expect(isWidgetOptionsState({...state, sharing: {...state.sharing, grouping: {version: 99}}})).toBe(false)
     share({type: "setWidgetSharing", ...reference, enabled: false})
     expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("individual")
     expect(readWidgetGrouping(widget)).toEqual(rules)
     share({type: "setWidgetSharing", ...reference, enabled: true})
-    expect(widget.getAttribute("shared")).toBe("group")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("group")
     group({type: "setWidgetGrouping", ...reference, grouping: null})
-    expect(widget.getAttribute("shared")).toBe("")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("all")
     expect(readWidgetGrouping(widget)).toBeNull()
   })
 
@@ -506,9 +684,11 @@ describe("widget sharing controls", () => {
       widgetId: widget.id, grouping: defaultGroupingRules("undo")})
     editor.doc.undo()
     expect(widget.getAttribute("shared")).toBe("")
+    expect(effectiveDistribution(widget)).toBeNull()
     expect(readWidgetGrouping(widget)).toBeNull()
     editor.doc.redo()
-    expect(widget.getAttribute("shared")).toBe("group")
+    expect(widget.hasAttribute("shared")).toBe(false)
+    expect(effectiveDistribution(widget)?.config.scope).toBe("group")
     expect(readWidgetGrouping(widget)?.seed).toBe("undo")
   })
 

@@ -6,6 +6,7 @@ import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, s
 /** A CSS carousel with authored fragment links. Authoring and caret placement
  * belong to the editor; navigating and reading the saved deck need no script. */
 export class SlidesFeature extends EditorFeature {
+  readonly readerPermission = "view" as const
   protected handlesAppendixInteractions = true
   private zoomControls: HTMLElement | null = null
   private removeZoomStyle: (() => void) | null = null
@@ -216,7 +217,8 @@ export class SlidesFeature extends EditorFeature {
   }
 
   convert(mode: "slides" | "document", captureUndo = true) {
-    if(this.editor.isEditingLocked || mode === "slides" && (documentLayoutMode() !== "document" || this.conversionReason()) || mode === "document" && !this.active) return false
+    if(this.editor.isEditingLocked || !this.editor.allows("edit", document.body)
+      || mode === "slides" && (documentLayoutMode() !== "document" || this.conversionReason()) || mode === "document" && !this.active) return false
     const end = captureUndo ? this.editor.doc.beginUndoGroup() : () => {}
     try {
       if(mode === "slides") {
@@ -311,6 +313,8 @@ export class SlidesFeature extends EditorFeature {
     const viewport = this.viewport(), nav = this.navigation(), slides = this.slides(), visible = this.current(), index = slides.indexOf(current!)
     if(!this.active || this.editor.isEditingLocked || !viewport || !nav || current && index < 0 || operation !== "add" && !current
       || operation === "earlier" && index <= 0 || operation === "later" && index >= slides.length - 1) return false
+    const permission = operation === "add" ? "insert" : operation === "remove" ? "delete" : "move"
+    if(!this.editor.allows(permission, current ?? viewport)) return false
     let selected = current
     const end = this.editor.doc.beginUndoGroup()
     try {
@@ -462,7 +466,9 @@ export class SlidesFeature extends EditorFeature {
       this.activeLink = activeLink
       activeLink?.classList.add("◆slide-current")
     }
-    const signature = JSON.stringify([this.active, this.editor.isEditingLocked, slides.length])
+    const canInsert = this.editor.allows("insert", this.viewport() ?? document.body)
+    const signature = JSON.stringify([this.active, this.editor.isEditingLocked, slides.length, canInsert,
+      ...slides.map(slide => this.editor.allows("delete", slide))])
     if(signature !== this.signature || selected !== this.selected || targets.length !== this.removalTargets.length
       || targets.some((target, i) => target.slide !== this.removalTargets[i].slide || target.link !== this.removalTargets[i].link)) {
       this.signature = signature; this.selected = selected
@@ -476,9 +482,11 @@ export class SlidesFeature extends EditorFeature {
         this.controls!.append(button)
         return button
       }
-      button("add", "Add slide", "+", () => this.actions.addSlide({type: "addSlide"}))
+      button("add", "Add slide", "+", () => this.actions.addSlide({type: "addSlide"})).hidden = !canInsert
       this.removalTargets = targets.map(({slide, link}, i) => ({slide, link,
-        button: button("remove", `Remove slide ${i + 1}`, "×", () => this.edit("remove", slide))}))
+        button: Object.assign(button("remove", `Remove slide ${i + 1}`, "×", () => this.edit("remove", slide)), {
+          hidden: !this.editor.allows("delete", slide),
+        })}))
     }
     if(nav) {
       const rect = nav.getBoundingClientRect(), add = this.controls.querySelector<HTMLElement>('[name="add"]')!

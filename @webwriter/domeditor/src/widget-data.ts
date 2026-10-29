@@ -1,7 +1,9 @@
 import {widgetGroupingRevision} from "./widget-grouping-dom"
+import {distributionGroupingRevision} from "./widget-grouping.js"
 import * as Y from "yjs"
 import {messageSync, WebsocketProvider} from "y-websocket"
 import {WidgetDataStorage, type WidgetDataPersistenceState} from "./widget-data-storage"
+import {effectiveDistribution} from "./distribution-dom"
 
 export type WidgetDataMode = "individual" | "all" | "group"
 export type WidgetDataRequest = {document: string, widget: string, mode: WidgetDataMode, format: "json" | "xml", documentRoom?: string, groupingRevision?: string}
@@ -259,14 +261,23 @@ export class WidgetDataBindings {
         }
         else if(!widget.id) widget.id = `ww${crypto.randomUUID()}`
         ids.set(widget.id, widget)
-        const shared = widget.getAttribute("shared")
+        let policy: ReturnType<typeof effectiveDistribution>
+        try { policy = widget.isConnected ? effectiveDistribution(widget) : null }
+        catch(error) {
+          const previous = this.#bindings.get(block)
+          if(previous) { block.textContent = previous.defaults; this.#dispose(previous); this.#bindings.delete(block) }
+          this.#error(block, error)
+          continue
+        }
+        const shared = policy ? null : widget.getAttribute("shared")
         if(shared !== null && shared !== "" && shared !== "group") {
           const previous = this.#bindings.get(block)
           if(previous) { block.textContent = previous.defaults; this.#dispose(previous); this.#bindings.delete(block) }
           this.#error(block, new TypeError("Unknown widget sharing mode")); continue
         }
-        const mode: WidgetDataMode = shared === null ? "individual" : shared === "group" ? "group" : "all"
-        const groupingRevision = mode === "group" ? widgetGroupingRevision(widget) : undefined
+        const mode: WidgetDataMode = policy?.config.scope ?? (shared === null ? "individual" : shared === "group" ? "group" : "all")
+        const policyGrouping = policy ? distributionGroupingRevision(policy.config) ?? widgetGroupingRevision(policy.element) : undefined
+        const groupingRevision = mode === "group" ? (policyGrouping ?? widgetGroupingRevision(widget)) : undefined
         const key = `${this.documentId}:${widget.id}:${mode}:${block.type}:${groupingRevision ?? ""}`
         let binding = this.#bindings.get(block)
         if(binding && binding.key !== key) {

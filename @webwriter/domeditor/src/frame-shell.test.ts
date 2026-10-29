@@ -6,6 +6,21 @@ vi.mock("./frame-local-packages", () => ({connectFrameLocalPackages: vi.fn()}))
 describe("frame shell refresh handling without Navigation API", () => {
   afterEach(() => vi.restoreAllMocks())
 
+  it("cannot bootstrap authored HTML on the default application origin", async () => {
+    const win = window as Window & {happyDOM?: {setURL(url: string): Promise<void>}}
+    const previous = location.href
+    const write = vi.spyOn(document, "write")
+    const addListener = vi.spyOn(window, "addEventListener")
+    try {
+      await win.happyDOM!.setURL("http://127.0.0.1:5173/frame-shell.html?kind=editor#nonce=untrusted-content-nonce")
+      vi.resetModules()
+      await expect(import("./frame-shell")).rejects.toThrow("VITE_APP_ORIGIN")
+      expect(addListener.mock.calls.some(([type]) => type === "message")).toBe(false)
+      expect(write).not.toHaveBeenCalled()
+    }
+    finally { await win.happyDOM!.setURL(previous) }
+  })
+
   it("refuses head and body refresh while preserving ordinary and template documents in both frames", async () => {
     const win = window as Window & {happyDOM?: {setURL(url: string): Promise<void>}, navigation?: unknown}
     const navigationDescriptor = Object.getOwnPropertyDescriptor(window, "navigation")

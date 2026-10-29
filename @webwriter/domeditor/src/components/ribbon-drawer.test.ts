@@ -8,6 +8,22 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+it("superimposes a checkbox badge while preserving the layout icon and cutout background", async () => {
+  const drawer = new RibbonDrawer()
+  drawer.pane = true
+  drawer.showPaneIcon = true
+  drawer.icon = "Canvas"
+  drawer.iconBadge = "Checkbox"
+  drawer.style.setProperty("--ribbon-drawer-icon-background", "#f2f2f2")
+  document.body.append(drawer)
+  await drawer.updateComplete
+  const icon = drawer.shadowRoot!.querySelector('.pane-icon')!
+  expect(icon.querySelector('.icon-composite > .icon-tabler-artboard')).not.toBeNull()
+  const badge = icon.querySelector('.icon-badge')!
+  expect(badge.querySelector('.icon-tabler-checkbox')).not.toBeNull()
+  expect(getComputedStyle(badge).borderRadius).toBe("50%")
+})
+
 async function mountDrawer(collapsed = true) {
   const drawer = new RibbonDrawer()
   drawer.label = "Paragraph"

@@ -4,10 +4,30 @@ import "./breadcrumb"
 import type {DomEditorBreadcrumb} from "./breadcrumb"
 import "./ribbon-menu"
 import type {RibbonMenu} from "./ribbon-menu"
+import {getElementPresentation} from "../element-names"
 
 afterEach(() => {
   document.querySelectorAll("dom-editor-breadcrumb").forEach(element => element.remove())
   vi.unstubAllGlobals()
+})
+
+describe("generic element icons", () => {
+  it.each(["section", "div", "figure", "template", "unfamiliar"])("uses square-dashed for %s in the selection path", async tag => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [{path: [0], ...getElementPresentation(tag)}]
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector(".icon-tabler-square-dashed")).not.toBeNull()
+    expect(breadcrumb.shadowRoot!.querySelector(".icon-tabler-section")).toBeNull()
+  })
+
+  it("retains the dedicated paragraph icon", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [{path: [0], ...getElementPresentation("p")}]
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    expect(breadcrumb.shadowRoot!.querySelector(".icon-tabler-pilcrow")).not.toBeNull()
+  })
 })
 
 describe("breadcrumb float indicators", () => {

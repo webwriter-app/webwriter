@@ -1024,9 +1024,9 @@ export class Schema {
    * rebuilding existing content or entering positioned widgets. */
   ensureStaticContent(body: HTMLElement): Element | null {
     const view = body.ownerDocument.defaultView
-    if(Array.from(body.children).some(element =>
-      (view?.getComputedStyle(element).position || (element as HTMLElement).style?.position || "static") === "static"
-    )) return null
+    for(const element of body.children) {
+      if((view?.getComputedStyle(element).position || (element as HTMLElement).style?.position || "static") === "static") return null
+    }
     const node = this.create(this.defaultNodeKey.startsWith("#") ? "p" : this.defaultNodeKey, body.ownerDocument)
     if(!(node instanceof Element)) return null
     body.append(node)

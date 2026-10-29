@@ -1,12 +1,14 @@
 import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-enumeration"
 import {attributionAttributes} from "../src/attribution.js"
+import {graphicShapeSections} from "../src/graphic"
 import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
+import {Schema} from "../src/schema"
 import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode} from "../src/utility"
-import {defaultDocumentTheme, documentThemes} from "../src/document-themes"
+import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
@@ -321,7 +323,9 @@ for(const large of [false, true]) await check(large
   : "standalone live learners open the document without editor controls or an iframe", async () => {
   const {LiveSession, liveSessionHostKey} = await import("../src/live-session")
   const {previewFrameHTML} = await import("../src/frame-document")
+  const {pairedLoopbackOrigin} = await import("../src/frame-origins")
   const serverUrl = new URL(location.href).searchParams.get("liveServer")!
+  const httpOrigin = new URL(serverUrl.replace(/^ws/, "http")).origin
   const script = `data:text/javascript,${encodeURIComponent(`import {label} from "live-label";
     customElements.define("standalone-live-widget", class extends HTMLElement {
       connectedCallback() {
@@ -341,10 +345,12 @@ for(const large of [false, true]) await check(large
           };
           reportEnded();
         });
-        requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
+          const apiBlocked = await fetch(${JSON.stringify(new URL("/api/documents", httpOrigin).href)})
+            .then(response => response.status === 403, () => true);
           window.opener.postMessage({type:'live-learner-check', topLevel:window===parent,
             noEditor:!customElements.get('dom-editor') && !document.querySelector('dom-editor,app-ribbon,iframe'),
-            title:document.title, text:button.textContent, width:this.getBoundingClientRect().width}, '*');
+            apiBlocked, title:document.title, text:button.textContent, width:this.getBoundingClientRect().width}, '*');
           button.click();
         });
       }
@@ -354,10 +360,9 @@ for(const large of [false, true]) await check(large
     importMap: {imports: {"live-label": `data:text/javascript,${encodeURIComponent('export const label="Answer the question"')}`}}}
   const token = "standalone-live-token-0123456789"
   const id = `standalone-${crypto.randomUUID()}`
-  const httpOrigin = new URL(serverUrl.replace(/^ws/, "http")).origin
   const source = new DOMParser().parseFromString('<!doctype html><html lang="en"><head><title>Live lesson</title><style>body{margin:24px;font:18px system-ui;background:#f8fafc}article{max-width:640px;margin:auto;padding:24px;background:white}</style></head><body><article><h1>Live lesson</h1><p>Explore the question below.</p><!--keep--><standalone-live-widget></standalone-live-widget></article></body></html>', "text/html")
   const html = previewFrameHTML(source, {...dependencies, standalone: true, bridgeNonce: "", hostOrigin: location.origin,
-    frameOrigin: httpOrigin, entryURL: "", learnerEntryURL: new URL("../src/live-learner-entry.ts", import.meta.url).href, executeScripts: true})
+    frameOrigin: pairedLoopbackOrigin(new URL(httpOrigin))!, entryURL: "", learnerEntryURL: new URL("../src/live-learner-entry.ts", import.meta.url).href, executeScripts: true})
   const publication = await fetch(new URL(`/api/live-sessions/${id}`, httpOrigin), {method: "PUT", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({token, hostKey: liveSessionHostKey(id, token), html})})
   assert(publication.ok, `initial HTTP document publication failed (${publication.status})`)
@@ -384,6 +389,7 @@ for(const large of [false, true]) await check(large
     learnerWindow = window.open(learnerURL, "live-learner-check")
     assert(learnerWindow, "learner window did not open")
     const result = await report
+    assert(result.apiBlocked, "learner content could read application documents")
     assert(result.topLevel && result.noEditor, "learner was wrapped in an editor or iframe")
     assert(result.title === "Live lesson" && result.text === "Answer the question" && result.width === 240, "learner document or widget did not render")
     assert(!host.doc.getMap("live-session-meta").has("baseHTML") && !host.doc.getMap("live-session-meta").has("previewDependencies"), "initial document was sent through Yjs")
@@ -2086,6 +2092,206 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 })
 
 const editor = new DOMEditor()
+
+await check("widget shadow interactions capture hosts while slotted children stay editable", async () => {
+  editor.schema.extendWidgets([{tagName: "native-content-capture-widget", editingConfig: {content: "flow*"}}])
+  for(const mode of ["open", "closed"] as const) {
+    const widget = document.createElement("native-content-capture-widget")
+    widget.tabIndex = -1
+    widget.innerHTML = '<p>Authored <b>child text</b></p>'
+    const root = widget.attachShadow({mode})
+    root.innerHTML = '<div role="toolbar">Top bar</div><input value="2000"><slot></slot>'
+    const input = root.querySelector("input")!, paragraph = widget.querySelector("p")!
+    fixture.append(widget)
+    try {
+      await layoutFrame()
+      root.querySelector('[role="toolbar"]')!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      widget.focus()
+      document.getSelection()!.setPosition(widget.parentNode!, Array.from(widget.parentNode!.childNodes).indexOf(widget))
+      document.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame()
+      assert(editor.features.selection.captureSelectedWidget === widget, `${mode} top-bar host focus lost capture`)
+      assert(!document.body.classList.contains("◆gap-caret-visible"), `${mode} top bar painted a gap instead of capture`)
+      assert(editor.features.selection.selectionCaret!.getAttribute("part")!.includes("selection-caret-capture"), `${mode} top bar lost the capture outline`)
+      assert(getComputedStyle(widget).outlineStyle === "none", `${mode} top bar retained the native inner focus outline`)
+      input.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      input.focus()
+      input.setSelectionRange(1, 3)
+      document.dispatchEvent(new Event("selectionchange"))
+      assert(editor.features.selection.captureSelectedWidget === widget, `${mode} shadow input did not capture its host`)
+      assert(input.selectionStart === 1 && input.selectionEnd === 3, `${mode} shadow input lost its native selection`)
+      assert(widget.classList.contains("◆element-capture-selected"), "capture outline marker is missing")
+      const caret = editor.features.selection.selectionCaret!
+      assert(getComputedStyle(caret).display !== "none", "capture outline is hidden")
+      assert(caret.getBoundingClientRect().width > 0, "capture outline has no width")
+      const beforeinput = new InputEvent("beforeinput", {bubbles: true, composed: true, cancelable: true, inputType: "insertText", data: "1"})
+      input.dispatchEvent(beforeinput)
+      assert(!beforeinput.defaultPrevented, "capture blocked native shadow input")
+
+      paragraph.querySelector("b")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      input.blur()
+      const text = paragraph.querySelector("b")!.firstChild!
+      document.getSelection()!.setBaseAndExtent(text, 1, text, 5)
+      document.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame()
+      assert(!editor.features.selection.isCaptureSelection, "slotted authored child retained widget capture")
+      assert(document.getSelection()!.toString() === "hild", "slotted child text selection was changed")
+      assert(!editor.toHTML(true).includes("◆"), "capture artifacts leaked into serialized content")
+    }
+    finally { input.blur(); widget.remove() }
+  }
+})
+
+await check("widget-created hints retain their caret and inherit popup text colors", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:700px;height:350px"
+  frame.srcdoc = '<!doctype html><body><p>Outside</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "hint fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const widgets = [
+      {tagName: "native-hint-task", editingConfig: {content: "flow*"}},
+      {tagName: "native-hint-content", editingConfig: {content: "p"}},
+    ]
+    editor.schema.extendWidgets(widgets)
+    const theme = doc.createElement("style"), widgetStyle = doc.createElement("style")
+    widgetStyle.textContent = documentWidgetStyleSource(widgets)
+    doc.head.append(theme, widgetStyle)
+    const task = doc.createElement("native-hint-task")
+    const root = task.attachShadow({mode: "open"})
+    root.innerHTML = '<button>Add hint</button><div style="color:rgb(250, 250, 250);background:#444;max-width:200px;padding:8px"><slot name="hint"></slot></div>'
+    doc.body.append(task)
+    editor.features.widget.refresh()
+    const button = root.querySelector("button")!
+    button.addEventListener("click", () => {
+      const hint = doc.createElement("native-hint-content")
+      hint.slot = "hint"
+      hint.attachShadow({mode: "open"}).innerHTML = '<slot></slot>'
+      task.append(hint)
+      doc.getSelection()!.setBaseAndExtent(hint, 0, hint, 0)
+    })
+    button.dispatchEvent(new doc.defaultView!.PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true}))
+    button.focus()
+    button.click()
+    await layoutFrame()
+    const hint = task.firstElementChild!, paragraph = hint.querySelector("p")!
+    assert(paragraph && doc.getSelection()!.anchorNode === paragraph, "widget-created caret did not enter its required paragraph")
+    assert(!editor.features.selection.isCaptureSelection, "hint selection retained shadow button capture")
+    doc.execCommand("insertText", false, "Helpful hint")
+    assert(paragraph.textContent === "Helpful hint", "native typing escaped the hint")
+    for(const preset of documentThemes) {
+      theme.textContent = preset.source
+      assert(view.getComputedStyle(paragraph).color === "rgb(250, 250, 250)", `${preset.value} theme overrode the popup text color`)
+    }
+    paragraph.style.color = "rgb(255, 200, 100)"
+    assert(view.getComputedStyle(paragraph).color === "rgb(255, 200, 100)", "widget defaults overrode an authored color")
+    assert(!editor.toHTML(true).includes("◆"), "hint editing artifacts leaked into serialization")
+  }
+  finally {
+    ;(frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
+    frame.remove()
+  }
+})
+
+await check("nested widget pages keep insertion, splitting and deletion inside their hosts", async () => {
+  const originalSchema = editor.schema
+  const placeholder = editor.features.media.placeholder
+  editor.schema = new Schema()
+  editor.schema.extendWidgets([
+    {tagName: "native-organizer", editingConfig: {content: "native-organizer-page*"}},
+    {tagName: "native-organizer-page", editingConfig: {content: "flow*"}},
+  ])
+  const organizer = document.createElement("native-organizer")
+  organizer.innerHTML = '<native-organizer-page node-id="first"></native-organizer-page><native-organizer-page node-id="second"><p>Other page</p></native-organizer-page>'
+  const page = organizer.firstElementChild as HTMLElement
+  const other = organizer.lastElementChild!
+  const root = organizer.attachShadow({mode: "open", slotAssignment: "manual"})
+  root.innerHTML = '<section style="padding:32px"><slot></slot><button>Private toolbar</button></section>'
+  root.querySelector("slot")!.assign(page, other)
+  const pageRoot = page.attachShadow({mode: "open"})
+  pageRoot.innerHTML = '<slot></slot><input value="Private UI">'
+  fixture.append(organizer)
+  editor.features.widget.refresh()
+  const key = (key: string, extra = {}) => {
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true, ...extra})
+    page.dispatchEvent(event)
+    return event
+  }
+  try {
+    await layoutFrame()
+    page.focus()
+    $.move(page)
+    const input = new InputEvent("beforeinput", {inputType: "insertText", data: "abcd", bubbles: true, composed: true, cancelable: true})
+    page.dispatchEvent(input)
+    assert(input.defaultPrevented && page.querySelector("p")?.textContent === "abcd", "typing did not materialize a page paragraph")
+    $.move(page.querySelector("p")!.firstChild!, 2)
+    assert(key("Enter", {ctrlKey: true, metaKey: true}).defaultPrevented, "page host Enter was ignored")
+    assert(page.querySelectorAll("p").length === 2 && page.children[0].textContent === "ab" && page.children[1].textContent === "cd", "Enter did not split inside the page")
+    assert(organizer.children.length === 2 && organizer.lastElementChild === other, "Enter split a widget host")
+    key("Backspace")
+    assert(page.querySelectorAll("p").length === 1 && page.textContent === "abcd", "Backspace did not reverse the paragraph split")
+    $.move(page.querySelector("p")!.firstChild!, 2)
+    editor.features.manipulation.actions.insert({type: "insert", html: '<img alt="Example" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2240%22/%3E">'})
+    assert(page.querySelector("img") && page.querySelectorAll("p").length === 2, "image insertion escaped the page")
+    assert(!editor.features.selection.isCaptureSelection, "page text editing became widget capture")
+    const image = page.querySelector("img")!
+    image.removeAttribute("src")
+    placeholder.showFor(image.closest("picture") ?? image)
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.value = new URL("/assets/app-icon-transparent.svg", location.href).href
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    assert(image.hasAttribute("src"), "image source picker retained the schema from before package loading")
+    $.move(page.querySelector("p")!.firstChild!, 0)
+    key("Backspace")
+    assert(page.textContent === "abcd" && other.textContent === "Other page", "boundary deletion changed a sibling page")
+    page.replaceChildren()
+    $.move(page)
+    key("Backspace")
+    key("Delete")
+    assert(page.isConnected && document.getSelection()!.anchorNode === page, "empty page deletion lost the page or caret")
+    key("Enter")
+    assert(page.firstElementChild?.localName === "p", "empty page Enter did not create an editing target")
+    const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    graphic.setAttribute("viewBox", "0 0 100 100")
+    graphic.innerHTML = '<rect width="100" height="100" fill="steelblue"/>'
+    graphic.style.cssText = "display:block;width:240px;height:120px"
+    page.style.cssText = "display:block;padding:40px 16px"
+    for(const [placement, surface] of [["before", "page"], ["after", "page"], ["before", "slot padding"], ["after", "slot padding"]] as const) {
+      page.replaceChildren(graphic)
+      await layoutFrame()
+      editor.features.selection.captureElement(graphic)
+      const rect = graphic.getBoundingClientRect()
+      const boundary = surface === "page" ? rect : page.getBoundingClientRect()
+      const pointer = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0,
+        clientX: rect.left + rect.width / 2, clientY: placement === "before" ? boundary.top - 10 : boundary.bottom + 10})
+      ;(surface === "page" ? page : root.querySelector("section")!).dispatchEvent(pointer)
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+      assert(pointer.defaultPrevented, `${placement} page gap was left to native text selection`)
+      assert($.anchor === page && $.anchorOffset === (placement === "before" ? 0 : 1) && $.isGapSelection, `${placement} graphic gap escaped its page`)
+      assert(!editor.features.selection.isCaptureSelection && graphic.classList.contains(`◆gap-${placement}-selected`), `${placement} gap retained graphic or widget capture`)
+      assert(document.body.classList.contains("◆gap-caret-visible"), `${placement} page gap caret is hidden`)
+      page.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Inserted", bubbles: true, composed: true, cancelable: true}))
+      assert(page.querySelector("p")?.textContent === "Inserted" && graphic.isConnected, "typing at a graphic gap did not stay in the page")
+    }
+    const paragraph = page.querySelector("p")!
+    const textRange = document.createRange()
+    textRange.selectNodeContents(paragraph)
+    const textRect = textRange.getBoundingClientRect()
+    const textPointer = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0,
+      clientX: textRect.left + textRect.width / 2, clientY: textRect.top + textRect.height / 2})
+    paragraph.dispatchEvent(textPointer)
+    assert(!textPointer.defaultPrevented && !editor.features.selection.isInDragSelection, "slotted text clicks lost native selection")
+    const privateInput = pageRoot.querySelector("input")!
+    privateInput.focus()
+    const privateKey = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true})
+    privateInput.dispatchEvent(privateKey)
+    assert(!privateKey.defaultPrevented, "page commands intercepted private shadow input")
+    assert(!editor.toHTML(true).includes("◆"), "page editing markers leaked into serialized content")
+  }
+  finally { pageRoot.querySelector("input")!.blur(); organizer.remove(); editor.schema = originalSchema }
+})
 
 await check("global directional shorthands preserve authored overrides in native CSSOM", () => {
   const target = document.createElement("aside")
@@ -4672,24 +4878,39 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
 })
 
 await check("shape ribbon galleries scroll only when the viewport cannot fit their contents", async () => {
-  for(const height of [1000,620]) {
+  const shapeButtons=graphicShapeSections.flatMap(section=>section.rows.flatMap((row,rowIndex)=>[
+    ...row.map((option,column)=>({label:option.label,category:section.label,path:option.path,pathFill:option.pathFill,galleryRowStart:column===0})),
+    ...(section.label==="Basic" && rowIndex===0?[{label:"Import graphic",category:section.label,galleryColumns:3 as const}]:[]),
+  ]))
+  for(const height of [1000,480]) {
     const frame=document.createElement("iframe")
     frame.style.cssText=`width:1600px;height:${height}px;border:0;max-width:none`
-    frame.srcdoc='<!doctype html><style>body{margin:16px;font:16px system-ui}</style><app-ribbon></app-ribbon><script type="module" src="/src/components/ribbon.ts"></script>'
+    frame.srcdoc=height===1000
+      ? '<!doctype html><style>body{margin:16px;font:16px system-ui}</style><app-ribbon></app-ribbon><script type="module" src="/src/components/ribbon.ts"></script>'
+      : '<!doctype html><style>body{margin:16px;font:16px system-ui}</style><ribbon-button></ribbon-button><script type="module" src="/src/components/ribbon-button.ts"></script>'
     document.body.append(frame)
     const view=frame.contentWindow as Window & typeof globalThis
     try {
-      for(let attempt=0;!view.customElements.get("app-ribbon") && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
-      assert(view.customElements.get("app-ribbon"),"Shape gallery fixture did not initialize")
+      const customElement=height===1000?"app-ribbon":"ribbon-button"
+      for(let attempt=0;!view.customElements.get(customElement) && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
+      assert(view.customElements.get(customElement),"Shape gallery fixture did not initialize")
       const doc=frame.contentDocument!
-      const ribbon=doc.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
-      ribbon.activeMenu="Start"
-      await ribbon.updateComplete
-      let graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      for(let attempt=0;!doc.querySelector(customElement) && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
+      let graphic:RibbonButton
+      if(height===1000) {
+        const ribbon=doc.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
+        ribbon.activeMenu="Start"
+        await ribbon.updateComplete
+        graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
+      }
+      else {
+        graphic=doc.querySelector<RibbonButton>("ribbon-button")!
+        graphic.label="Graphic"
+        graphic.submenu=shapeButtons
+        await graphic.updateComplete
+      }
       await graphic.updateComplete
       await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
-      graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
-      await graphic.updateComplete
       graphic.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!.click()
       await graphic.updateComplete
       const menu=graphic.shadowRoot!.querySelector<import("../src/components/ribbon-menu").RibbonMenu>("ribbon-menu")!
@@ -8216,7 +8437,7 @@ await check("empty document gutters prefer floats throughout the viewport", asyn
         doc.body.append(widget)
         editor.features.selection.selectElement(widget)
       }
-      else data.setData(kind === "shape" ? "application/x-webwriter-graphic-shape" : "application/x-webwriter-element-tag", kind === "shape" ? JSON.stringify({shape:"rectangle"}) : "video")
+      else data.setData(kind === "shape" ? "application/x-webwriter-ribbon-insertion" : "application/x-webwriter-element-tag", kind === "shape" ? "insert-graphic-shape:rectangle" : "video")
       await layoutFrame()
       if(widget) {
         editor.features.selection.selectElement(widget)

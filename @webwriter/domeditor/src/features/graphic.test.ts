@@ -104,7 +104,6 @@ describe("graphic editing", () => {
 
   it.each(["cleared", "removed"])("relays held shape keys while retaining the legacy unselected insertion guard until selection is %s", state => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
-    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
     editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "rectangle"})
     const selected = editor.features.graphic.selectedShape!
@@ -258,7 +257,13 @@ describe("graphic editing", () => {
     const paste = new ClipboardEvent("paste", {bubbles: true, cancelable: true})
     Object.defineProperty(paste, "clipboardData", {value: data})
     graphic.dispatchEvent(paste)
-    graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data}))
+    const caretPosition=Object.getOwnPropertyDescriptor(document,"caretPositionFromPoint")
+    Object.defineProperty(document,"caretPositionFromPoint",{configurable:true,value:()=>null})
+    try { graphic.dispatchEvent(imageDragEvent("drop", {bubbles: true, cancelable: true, dataTransfer: data})) }
+    finally {
+      if(caretPosition) Object.defineProperty(document,"caretPositionFromPoint",caretPosition)
+      else Reflect.deleteProperty(document,"caretPositionFromPoint")
+    }
     expect(graphic.querySelector("text")).toBeNull()
   })
 

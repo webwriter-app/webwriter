@@ -11,6 +11,12 @@ import {isTextFieldInteraction} from "../utility"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
+const selectionPresentationMarkers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
+  "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
+  "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
+  "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
+const selectionPresentationSelector = selectionPresentationMarkers.map(marker => `.${marker}`).join(",")
+
 function arrowDirection(key: string) {
   return key === "ArrowUp" || key === "ArrowLeft"
     ? "backward" as const
@@ -51,6 +57,7 @@ function isCaretAtStartOf(element: Element) {
  * state onto the body, and implements
  * pointer-based selection (drag selection, modifier-click element selection). */
 export class SelectionFeature extends EditorFeature {
+  readonly readerPermission = "select" as const
   // Window capture precedes document feature handlers, even after re-enabling.
   protected captureListenerTarget = window
 
@@ -70,13 +77,35 @@ export class SelectionFeature extends EditorFeature {
   #lastScrollSelection: {element: Element} | {range: Range, backwards: boolean} | null = null
   #hoverFrame: number | null = null
   #nativeHoverTarget: Element | null = null
+  #focusedContentfulShadow: Element | null = null
   #hoverOwner: Element | null = null
   #floatObserver: MutationObserver | null = null
   #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
   readonly #invalidateFloatCandidates = () => { this.#floatCandidates = null }
 
+  #trackSelectionMarkers(records: MutationRecord[]) {
+    const track = (node: Node) => {
+      if(isElement(node) && node.getRootNode() === document && node.matches(selectionPresentationSelector)) this.#selectionMarkers.add(node)
+    }
+    for(const record of records) {
+      if(record.type === "attributes" && record.attributeName === "class") track(record.target)
+      else if(record.type === "childList") for(const node of record.addedNodes) {
+        track(node)
+        if(isElement(node) && node.getRootNode() === document) node.querySelectorAll(selectionPresentationSelector).forEach(track)
+      }
+    }
+  }
+
+  readonly #handlePresentationChanges = (records: MutationRecord[]) => {
+    this.#trackSelectionMarkers(records)
+    if(records.some(isAuthoredMutation)) {
+      this.#invalidateFloatCandidates()
+      this.#refreshGapCaretInlinePosition()
+    }
+  }
+
   #currentFloatCandidates() {
-    if(this.#floatObserver?.takeRecords().some(isAuthoredMutation)) this.#invalidateFloatCandidates()
+    this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
     const root = getDocumentRoot()
     // CSSOM edits have no mutation event. Periodically rediscover candidates;
     // running authored animations can change float membership every frame.
@@ -209,7 +238,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   selectSectionElement(section: Element) {
-    if(!section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section) || slideLayoutRole(section) || boardLayoutRole(section)) return false
+    if(!this.editor.allows("select", section) || !section.isConnected || !getDocumentRoot().contains(section) || !isSectionElement(section) || slideLayoutRole(section) || boardLayoutRole(section)) return false
     this.#releaseCaptureSelection()
     this.#selectedSection = section
     this.processSelection()
@@ -222,21 +251,14 @@ export class SelectionFeature extends EditorFeature {
 
   /** Capture-selects an authored element while keeping its internal pointer
    * interactions available to a focused feature such as SVG graphics.
-   * Focused appendix controls can preserve their native text selection.
-   * Contentful widgets use ordinary element selection so their content stays editable. */
+   * Focused appendix controls can preserve their native text selection. */
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
-    if(!element.isConnected || element === document.body || !document.body.contains(element)) return
+    if(!this.editor.allows("select", element) || !element.isConnected || element === document.body || !document.body.contains(element)) return
     if(element.matches("caption, figcaption, details > summary")) {
       this.selectElement(element)
       return
     }
     this.clearSelectedSection()
-    if(isContentfulWidget(element, this.editor.schema)) {
-      this.#releaseCaptureSelection()
-      $.selectElement(element)
-      this.processSelection()
-      return
-    }
     this.#capturedElement = element
     if(!preserveNativeSelection) {
       if(element.localName.includes("-") || element.hasAttribute("is")) {
@@ -266,7 +288,7 @@ export class SelectionFeature extends EditorFeature {
   }
 
   selectElement(element: Element) {
-    if(!element.isConnected || element === document.body || !document.body.contains(element) || slideLayoutRole(element)) return
+    if(!this.editor.allows("select", element) || !element.isConnected || element === document.body || !document.body.contains(element) || slideLayoutRole(element)) return
     const focused = document.activeElement === document.body ? this.editor.appendix.activeElement : null
     if(focused instanceof HTMLElement) focused.blur()
     this.#releaseCaptureSelection()
@@ -621,14 +643,10 @@ export class SelectionFeature extends EditorFeature {
     const first = document.body.firstElementChild
     if(first?.localName === this.editor.schema.defaultNodeKey
       && document.body.childNodes.length === 1 && !first.childNodes.length) $.move(first)
-    else $.selectDocumentStart()
+    else if(!this.editor.options.reader) $.selectDocumentStart()
     super.enable()
-    this.#floatObserver = new MutationObserver(records => {
-      if(records.some(isAuthoredMutation)) {
-        this.#invalidateFloatCandidates()
-        this.#refreshGapCaretInlinePosition()
-      }
-    })
+    this.#selectionMarkers = new Set(document.querySelectorAll(selectionPresentationSelector))
+    this.#floatObserver = new MutationObserver(this.#handlePresentationChanges)
     this.#floatObserver.observe(document.documentElement, {
       subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true,
     })
@@ -644,6 +662,8 @@ export class SelectionFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.editor.features.widget.syncLegacyOptions(null)
+    this.#trackSelectionMarkers(this.#floatObserver?.takeRecords() ?? [])
     this.#floatObserver?.disconnect()
     this.#floatObserver = null
     this.#invalidateFloatCandidates()
@@ -654,6 +674,7 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
     this.#endDrag()
+    this.#focusedContentfulShadow = null
     this.#modifierClick = false
     this.#touchSelection = false
     this.#atomicExtension = null
@@ -963,6 +984,32 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     this.#releaseCaptureSelection()
+    const widgetGap = $.widgetGapFromCoords(ev.clientX, ev.clientY, origin, this.editor.schema)
+    if(widgetGap) {
+      ev.preventDefault()
+      ev.shiftKey ? $.extend(widgetGap.node, widgetGap.offset) : $.selectRange(widgetGap.node, widgetGap.offset)
+      this.#beginDrag(ev, false)
+      this.processSelection(true)
+      return
+    }
+    // Let the browser resolve and extend ordinary authored text through the
+    // widget's flattened slot tree. Document hit tests can instead land at a
+    // host boundary; capturing the pointer and rewriting that range then pulls
+    // preceding title text into a backward drag. Special editing surfaces and
+    // positioned layouts keep the editor's explicit range handling below.
+    const authoredOrigin = origin instanceof Node && origin.getRootNode() === document ? origin : null
+    if(ev.pointerType !== "touch" && !this.editor.features.canvas.active && !this.editor.features.slides.active
+      && authoredOrigin && !mathRoot(authoredOrigin) && !atomicEditingContainer(authoredOrigin, this.editor.schema)
+      && editingFlowRoot(authoredOrigin) === getDocumentRoot()) {
+      for(let element = isElement(authoredOrigin) ? authoredOrigin : authoredOrigin.parentElement;
+        element && element !== getDocumentRoot(); element = element.parentElement) {
+        if(isContentfulWidget(element, this.editor.schema)) {
+          this.#clearSelections()
+          this.editor.features.transformation.clearTransform()
+          return
+        }
+      }
+    }
     const canvasItem = this.editor.features.canvas.editingRoot
       ? this.editor.features.canvas.itemAtPoint(ev.clientX, ev.clientY) : null
     if($.isEmptyDocumentSelection && editingFlowRoot(ev.target instanceof Node ? ev.target : null) === getDocumentRoot()
@@ -1075,10 +1122,20 @@ export class SelectionFeature extends EditorFeature {
     dblclick: event => { this.#handleModifierClick(event) },
     focusin: event => {
       this.#invalidateFloatCandidates()
+      const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+      this.#focusedContentfulShadow = widget && isContentfulWidget(widget, this.editor.schema) ? widget : null
       this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
         this.processSelection(undefined, {scrollIntoView: false})
       }
+    },
+    focusout: event => {
+      const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+      if(!widget || !isContentfulWidget(widget, this.editor.schema)) return
+      queueMicrotask(() => {
+        if(this.#focusedContentfulShadow === widget && focusedWidgetHost() !== widget) this.#focusedContentfulShadow = null
+        if(this.isEnabled) this.processSelection(undefined, {scrollIntoView: false})
+      })
     },
     keydown: event => {
       this.#handleKeyState(event)
@@ -1194,21 +1251,19 @@ export class SelectionFeature extends EditorFeature {
 
   /** Keeps widget shadow trees atomic without cancelling their own controls.
    * Regular feature listeners ignore these events, so they cannot start or
-   * extend an editor drag selection. Contentful widgets only acquire an
-   * element selection on modifier-click; other widgets capture the host while
+   * extend an editor drag selection. Widgets capture the host while
    * leaving their native focus, caret, input, and event handling untouched. */
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
-    if(!widget) return
-    if(isContentfulWidget(widget, this.editor.schema)) {
-      const hadCapture = this.isCaptureSelection
-      this.#releaseCaptureSelection()
-      if(event.type === "pointerdown") {
-        this.#endDrag()
-        this.clearSelectedSection()
-        if(hadCapture) focusedWidgetHost()?.blur()
+    if(!widget) {
+      const origin = event.composedPath()[0]
+      const captured = this.captureSelectedWidget
+      if(event.type === "pointerdown" && captured && (captured.localName.includes("-") || captured.hasAttribute("is"))
+        && origin instanceof Node && captured.contains(origin)) {
+        this.#releaseCaptureSelection()
+        this.#clearSelections()
+        this.editor.features.transformation.clearTransform()
       }
-      if(hadCapture) this.processSelection(undefined, {scrollIntoView: false})
       return
     }
     if(widget === this.captureSelectedWidget) return
@@ -1219,7 +1274,7 @@ export class SelectionFeature extends EditorFeature {
     // Keep capture on the host without selecting its light or shadow text;
     // later widget focus, keyboard, and input events own their native selection.
     if(event.type === "pointerdown") this.#collapseBeforeCapturedWidget(widget)
-    this.processSelection()
+    this.processSelection(undefined, {scrollIntoView: !isContentfulWidget(widget, this.editor.schema)})
     this.editor.postSelectionPath()
   }
 
@@ -1387,7 +1442,7 @@ export class SelectionFeature extends EditorFeature {
     const candidate = explicit ?? (freeform ? this.#layoutSelectionItem(native, native)
       : atomicEditingContainer(native, this.editor.schema) ?? (native ? mediaContainerForNode(native) ?? graphicContainerForNode(native) : null) ?? this.#modifierSelectionTarget(native))
     const target = candidate ? figureSelectionTarget(candidate) : null
-    if(!this.isEnabled
+    if(!this.isEnabled || !this.editor.allows("select", target)
       || !(target instanceof HTMLElement || target instanceof SVGSVGElement) || !getDocumentRoot().contains(target) || isDocumentRoot(target) || slideLayoutRole(target)) {
       this.#clearHoverGeometry()
       return
@@ -1723,16 +1778,11 @@ export class SelectionFeature extends EditorFeature {
   /** Clears the previous presentation, including markers on removed nodes. */
   #clearSelections(retainedElement: Element | null = null, retainedKind?: "node" | "capture" | "text" | "empty") {
     this.#clearAtomicOverlays()
-    const markers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
-      "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
-      "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
-      "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
-    const elements = new Set([...this.#selectionMarkers,
-      ...document.querySelectorAll(markers.map(marker => `.${marker}`).join(","))])
+    this.#handlePresentationChanges(this.#floatObserver?.takeRecords() ?? [])
     const retainedMarker = retainedKind === "text" ? "◆text-selected"
       : retainedKind === "empty" ? "◆empty-selected" : "◆element-selected"
-    elements.forEach(element => {
-      const removed = markers.filter(marker => !(
+    this.#selectionMarkers.forEach(element => {
+      const removed = selectionPresentationMarkers.filter(marker => !(
         element === retainedElement && (marker === retainedMarker || marker === "◆element-capture-selected" && retainedKind === "capture")
         || element === document.body && retainedElement && (retainedKind === "node" || retainedKind === "capture") && marker === "◆node-selection-active"
       ))
@@ -1955,10 +2005,35 @@ export class SelectionFeature extends EditorFeature {
    * preserve the last interaction's scroll target without revealing it again. */
   processSelection(inDragSelection=this.isInDragSelection, {scrollIntoView = true} = {}) {
     if(this.#boxDrag || this.#settingBoxSelection || $.isSettingRanges) return
+    if(!this.editor.allowsSelection("select")) {
+      this.editor.features.widget.syncLegacyOptions(null)
+      this.#releaseCaptureSelection()
+      this.clearSelectedSection()
+      this.#clearSelections()
+      this.#clearElementHover()
+      this.editor.features.transformation.clearTransform()
+      this.editor.features.manipulation.refreshNodeDragTarget(null)
+      return
+    }
     // Appendix inputs and SVG label ranges own their text selection. Clamping
     // them into BODY disrupts typing and clears the graphic's capture outline.
     if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused
       || this.editor.features.graphic.textEditingRange) return
+    // Shadow controls own capture and their native selection. Focus on a
+    // contentful host with a range in its authored children stays ordinary
+    // document editing, including when those children are slotted.
+    const shadowOwner = focusedWidgetHost()
+    const nativeRange = document.getSelection()
+    const authoredFocus = nativeRange?.anchorNode && nativeRange.focusNode
+      && shadowOwner?.contains(nativeRange.anchorNode) && shadowOwner.contains(nativeRange.focusNode)
+      && ($.isTextSelection || $.isEmptySelection || $.isGapSelection)
+    const shadowFocused = shadowOwner && !authoredFocus && (shadowOwner.shadowRoot?.activeElement
+      || this.#focusedContentfulShadow === shadowOwner)
+    const capturedWidget = this.#capturedElement
+    if(!shadowFocused && capturedWidget && isContentfulWidget(capturedWidget, this.editor.schema)
+      && nativeRange?.anchorNode && nativeRange.focusNode
+      && capturedWidget.contains(nativeRange.anchorNode) && capturedWidget.contains(nativeRange.focusNode)
+      && ($.isTextSelection || $.isEmptySelection || $.isGapSelection)) this.#releaseCaptureSelection()
     // Chromium can clear its native range when focusing an SVG-only document.
     // Keep capture or ordinary node selection until actual new endpoints exist.
     if(!document.getSelection()?.rangeCount) {
@@ -1969,6 +2044,7 @@ export class SelectionFeature extends EditorFeature {
       if(retained) $.selectElement(retained, false)
     }
     if($.isMultiElementSelection) {
+      this.editor.features.widget.syncLegacyOptions(null)
       this.editor.doc.updateLocalSelection()
       this.#releaseCaptureSelection()
       this.#clearSelections()
@@ -1995,9 +2071,9 @@ export class SelectionFeature extends EditorFeature {
     }
     const focusedWidget = focusedWidgetHost()
     if(focusedWidget && !this.isInDragSelection) {
-      this.#capturedElement = isContentfulWidget(focusedWidget, this.editor.schema) ? null : focusedWidget
+      this.#capturedElement = !isContentfulWidget(focusedWidget, this.editor.schema)
+        || shadowFocused ? focusedWidget : null
     }
-    if(isContentfulWidget(this.#capturedElement, this.editor.schema)) this.#releaseCaptureSelection()
     const formula = this.editor.features.math.activeMath
     if(this.#capturedElement?.localName === "math" && (this.#capturedElement !== formula || inlineMathRoot(formula))) this.#releaseCaptureSelection()
     if(formula && inlineMathRoot(formula) && !focusedWidget) this.#releaseCaptureSelection()
@@ -2063,12 +2139,21 @@ export class SelectionFeature extends EditorFeature {
     const retained = presentationElement && this.#selectionMarkers.has(presentationElement)
       && presentationElement.isConnected && presentationElement.classList.contains(marker) ? presentationElement : null
     this.#clearSelections(retained, retained ? retainedKind : undefined)
+    this.editor.features.widget.syncLegacyOptions(selectedElement ?? (sel?.rangeCount === 1 ? sel.getRangeAt(0).commonAncestorContainer : null))
     if(sel?.rangeCount && !sel.isCollapsed) {
       $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
     }
     const selectionOwner = selectedElement ?? (kind === "cell" ? this.editor.features.table.selectedTable : null)
     const layoutItem = this.#layoutSelectionItem(selectionOwner ?? sel?.anchorNode ?? null, selectionOwner ?? sel?.focusNode ?? null)
+    // Canvas may remove a previously focused empty paragraph before the
+    // selected SVG. Preserve the explicit SVG node selection if that removal
+    // leaves the native Range on the following sibling in this browser.
+    const selectedCapturedSvg = capturedElement?.namespaceURI === SVG_NAMESPACE && capturedElement.localName === "svg"
+      && $.selectedElement === figureSelectionTarget(capturedElement)
     if(!inDragSelection) this.editor.features.canvas.syncSelection(layoutItem ?? selectedElement)
+    if(selectedCapturedSvg && capturedElement.isConnected && $.selectedElement !== figureSelectionTarget(capturedElement)) {
+      $.selectElement(figureSelectionTarget(capturedElement), false)
+    }
     const transformTarget = layoutItem ?? selectedElement
     this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) && !slideLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
     this.editor.features.board.refresh()

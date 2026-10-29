@@ -7,7 +7,7 @@ const maps = (doc: Y.Doc) => ({
   meta: doc.getMap("live-session-meta"),
   learners: doc.getMap("live-session-learners"),
   steps: doc.getArray("live-session-steps"),
-  states: doc.getMap("live-session-states"),
+  states: doc.getMap<{learner: string, time: number, html?: string}>("live-session-states"),
 })
 
 const learner = {id: "ada", name: "Ada", color: "#f00", firstSeen: 1, lastSeen: 1, connected: true}
@@ -66,6 +66,52 @@ describe("acceptLearnerUpdate", () => {
       maps(doc).learners.set("ada", {...learner, color: "red; background-image:url(https://attacker.test)", lastSeen: 2})
     })
     expect(acceptLearnerUpdate(target, update, "ada")).toBe(false)
+  })
+
+  it("rejects an unauthorized intermediate document step even when a later step restores valid HTML", () => {
+    const {target, update} = updateFrom(doc => {
+      const {steps, states} = maps(doc)
+      steps.push([
+        {...step, id: "step-injection", time: 2, html: "<script>alert(1)</script>"},
+        {...step, id: "step-restored", time: 3, html: "<p>Hi</p>"},
+      ])
+      states.set("ada", {...state, time: 3, html: "<p>Hi</p>"})
+    })
+    const calls: [string | undefined, string][] = []
+    const validate = (before: string | undefined, after: string) => {
+      calls.push([before, after])
+      return after !== "<script>alert(1)</script>"
+    }
+
+    expect(acceptLearnerUpdate(target, update, "ada", validate)).toBe(false)
+    expect(calls).toEqual([["<p>Hi</p>", "<script>alert(1)</script>"]])
+    expect(maps(target).steps.length).toBe(1)
+    expect(maps(target).states.get("ada")?.html).toBe("<p>Hi</p>")
+  })
+
+  it("validates state-only HTML and leaves the target document unchanged on rejection", () => {
+    const {target, update} = updateFrom(doc => {
+      maps(doc).states.set("ada", {...state, time: 2, html: "<img src=x onerror=alert(1)>"})
+    })
+    const validate = (_before: string | undefined, after: string) => after === "<p>Hi</p>"
+
+    expect(acceptLearnerUpdate(target, update, "ada", validate)).toBe(false)
+    expect(maps(target).states.get("ada")?.html).toBe("<p>Hi</p>")
+    expect(maps(target).states.get("ada")?.time).toBe(1)
+  })
+
+  it("accepts valid document snapshots while validating against a temporary copy", () => {
+    const {target, update} = updateFrom(doc => {
+      const {steps, states} = maps(doc)
+      steps.push([{...step, id: "step-2", time: 2, html: "<p>Hello</p>"}])
+      states.set("ada", {...state, time: 2, html: "<p>Hello</p>"})
+    })
+    const validate = (before: string | undefined, after: string) =>
+      (before === "<p>Hi</p>" && after === "<p>Hello</p>") || (before === after && after === "<p>Hello</p>")
+
+    expect(acceptLearnerUpdate(target, update, "ada", validate)).toBe(true)
+    expect(maps(target).steps.length).toBe(1)
+    expect(maps(target).states.get("ada")?.html).toBe("<p>Hi</p>")
   })
 
   it("accepts a concurrent step insertion before an existing step", () => {

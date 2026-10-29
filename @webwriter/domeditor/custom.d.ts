@@ -40,6 +40,14 @@ declare module 'virtual:reference-formatter-source' {
   export default source
 }
 
+declare module 'virtual:distribution-reader-sources' {
+  const sources: {
+    core: string
+    insert: string
+  }
+  export default sources
+}
+
 declare module '@citation-js/core' {
   export class Cite {
     constructor(data: unknown)

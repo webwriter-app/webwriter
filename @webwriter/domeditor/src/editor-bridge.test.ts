@@ -1,7 +1,9 @@
+// @vitest-environment happy-dom
 import {defaultCaptionEnumeration} from "./caption-enumeration"
 import {describe, expect, it} from "vitest"
 import {
   aiEditReviewEvent,
+  captureSnapshotTextNodeRuns,
   executeCompleteEvent,
   executeFailureEvent,
   initializeEditorMessage,
@@ -26,6 +28,7 @@ import {
   historyStateChangeEvent,
   undoStateChangeEvent,
   isUndoStateChangeMessage,
+  restoreSnapshotTextNodeRuns,
 } from "./editor-bridge"
 import {emptyDocumentHeadState, isDocumentHeadAction} from "./document-head"
 
@@ -635,4 +638,82 @@ it("validates caption alignment in selection updates", () => {
   const message = {type: selectionChangeEvent, detail: {path: [], captionAlignment: "center"}}
   expect(isSelectionChangeMessage(message)).toBe(true)
   expect(isSelectionChangeMessage({...message, detail: {...message.detail, captionAlignment: "justify"}})).toBe(false)
+})
+
+describe("snapshot text-node boundary transport", () => {
+  const nodeShape = (node: Node): unknown => [
+    node.nodeType,
+    node.nodeType === 1 ? (node as Element).localName : node.nodeType === 3 || node.nodeType === 8 ? node.nodeValue : null,
+    node.nodeType === 1 ? (node as Element).getAttribute("id") : null,
+    Array.from(node.childNodes, nodeShape),
+  ]
+
+  const elementPaths = (root: Node) => {
+    const paths: Record<string, number[]> = {}
+    const visit = (node: Node, path: number[]) => {
+      if(node.nodeType === 1) {
+        const id = (node as Element).getAttribute("id")
+        if(id) paths[id] = path
+      }
+      Array.from(node.childNodes).forEach((child, index) => visit(child, [...path, index]))
+    }
+    visit(root, [])
+    return paths
+  }
+
+  it("round-trips adjacent and empty text nodes at multiple depths", () => {
+    const source = document.createElement("div")
+    source.innerHTML = '<p id="p">left<!--keep--><b id="b">inner</b>right</p><section id="section"><i id="i"></i></section>'
+    const p = source.querySelector("p")!
+    const firstText = p.firstChild as Text
+    p.insertBefore(document.createTextNode(""), firstText)
+    firstText.splitText(2)
+    const nested = source.querySelector("b")!
+    const nestedText = nested.firstChild as Text
+    nestedText.splitText(2)
+    nested.appendChild(document.createTextNode(""))
+    source.querySelector("i")!.appendChild(document.createTextNode(""))
+
+    const beforeHTML = source.innerHTML
+    const originalNodes = Array.from(source.querySelectorAll("*")).flatMap(element => [element, ...Array.from(element.childNodes)])
+    const runs = captureSnapshotTextNodeRuns(source)
+    expect(runs).toEqual([
+      {path: [0, 0], lengths: [0, 2, 2]},
+      {path: [0, 4, 0], lengths: [2, 3, 0]},
+      {path: [1, 0, 0], lengths: [0]},
+    ])
+    expect(source.innerHTML).toBe(beforeHTML)
+    expect(Array.from(source.querySelectorAll("*")).flatMap(element => [element, ...Array.from(element.childNodes)]))
+      .toEqual(originalNodes)
+
+    const parsed = document.createElement("div")
+    parsed.innerHTML = source.innerHTML
+    restoreSnapshotTextNodeRuns(parsed, runs)
+    expect(nodeShape(parsed)).toEqual(nodeShape(source))
+    expect(elementPaths(parsed)).toEqual(elementPaths(source))
+  })
+
+  it("ignores malformed or stale metadata while restoring valid runs", () => {
+    const parsed = document.createElement("div")
+    parsed.innerHTML = "<p>abc</p>"
+    restoreSnapshotTextNodeRuns(parsed, [
+      null,
+      {path: "0.0", lengths: [1, 2]},
+      {path: [-1, 0], lengths: [1, 2]},
+      {path: [0, 0], lengths: [1, -1]},
+      {path: [0, 0], lengths: [Number.MAX_SAFE_INTEGER, 1]},
+      {path: [0, 0], lengths: []},
+      {path: [4, 0], lengths: [1, 2]},
+      {path: [0, 0], lengths: [1, 1]},
+      {path: [0, 0], lengths: [1, 2]},
+      {path: [0, 0, 0], lengths: [0]},
+    ])
+    const p = parsed.querySelector("p")!
+    expect(Array.from(p.childNodes, node => (node as Text).data)).toEqual(["a", "bc"])
+
+    const documentRoot = document.implementation.createHTMLDocument()
+    const originalChildren = Array.from(documentRoot.childNodes)
+    expect(() => restoreSnapshotTextNodeRuns(documentRoot, [{path: [0], lengths: [0]}])).not.toThrow()
+    expect(Array.from(documentRoot.childNodes)).toEqual(originalChildren)
+  })
 })

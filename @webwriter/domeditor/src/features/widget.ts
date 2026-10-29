@@ -1,9 +1,12 @@
 import type {ElementSelectionType} from "../editor-bridge"
 import {readWidgetGrouping, writeWidgetGrouping} from "../widget-grouping-dom"
 import type {WidgetGroupingRules, WidgetGroupingContext} from "../widget-grouping.js"
+import {effectiveDistribution, ensureDistributionTarget, writeDistributionConfig} from "../distribution-dom"
+import {emptyDistributionConfig, type DistributionConfig} from "../distribution.js"
 import {EditorFeature} from "."
 import {isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
-import {isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
+import {isWidgetDataContainer} from "../active-content"
+import {$, isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
 import {
   widgetActionState,
   widgetOptionAttributeValue,
@@ -28,9 +31,11 @@ export class WidgetFeature extends EditorFeature {
   #observer: MutationObserver | null = null
   readonly #runningActions = new WeakSet<Element>()
   readonly #actionErrors = new WeakMap<Element, Map<string, string>>()
+  readonly #initializedContent = new WeakSet<Element>()
   #refreshQueued = false
   #observingReferences = false
   #pendingFileAction?: {widget: Element, cancel: () => void}
+  #legacyOptions?: {widget: Element, panel: HTMLElement, popover: string | null}
 
   // Explicit host notifications cross the ordinary widget-interaction boundary.
   captureListeners = {
@@ -57,6 +62,43 @@ export class WidgetFeature extends EditorFeature {
     return groups.includes("widget") || groups.includes("widgetinline")
   }
 
+  /** Keep the public legacy options part in its original shadow/context tree.
+   * A manual popover paints it outside the widget's layout and transforms. */
+  syncLegacyOptions(origin: Node | null) {
+    let widget = origin instanceof Element ? origin : origin?.parentElement
+    let panel: HTMLElement | null = null
+    if(this.isEnabled && !this.editor.isEditingLocked && !this.editor.options.reader && origin && document.body.contains(origin)) {
+      for(; widget && widget !== document.body; widget = widget.parentElement) {
+        if(!this.isWidget(widget)) continue
+        panel = widget.shadowRoot?.querySelector<HTMLElement>('[part~="options"]') ?? null
+        if(panel) break
+      }
+    }
+    if(!panel || !widget) {
+      this.#closeLegacyOptions()
+      return
+    }
+    if(this.#legacyOptions?.widget === widget && this.#legacyOptions.panel === panel) return
+    this.#closeLegacyOptions()
+    this.#legacyOptions = {widget, panel, popover: panel.getAttribute("popover")}
+    widget.classList.add("◆", "◆widget-options")
+    panel.setAttribute("popover", "manual")
+    try { panel.showPopover?.() }
+    catch { this.#closeLegacyOptions() }
+  }
+
+  #closeLegacyOptions() {
+    const previous = this.#legacyOptions
+    this.#legacyOptions = undefined
+    if(previous) {
+      try { previous.panel.hidePopover?.() }
+      catch { /* A widget may replace its options part while it is open. */ }
+      if(previous.popover === null) previous.panel.removeAttribute("popover")
+      else previous.panel.setAttribute("popover", previous.popover)
+      removeEditorMarker(previous.widget, "◆widget-options")
+    }
+  }
+
   /** Assigns missing widget IDs and marks installed widgets as editable. Call
    * after the schema changes. */
   refresh() {
@@ -71,12 +113,90 @@ export class WidgetFeature extends EditorFeature {
   /** IDs are authored state and survive removal and reconnection.
    * Widgets observe `contenteditable` (or `isContentEditable`) to switch
    * into their editing presentation. An authored value is left untouched. */
-  #connectWidget(element: Element) {
-    if(!document.body.contains(element) || !this.isWidget(element)) return
-    if(!element.id) element.id = `ww${crypto.randomUUID()}`
+  #connectWidget(element: Element, prefill = true) {
+    if(!document.body.contains(element) || !this.isWidget(element) || !this.editor.allows("edit", element)) return
+    const id = element.getAttribute("id")
+    if((id === null || id === "") && !this.editor.options.reader) element.setAttribute("id", `ww${crypto.randomUUID()}`)
+    if(!this.editor.options.reader && !this.#initializedContent.has(element)) {
+      this.#initializedContent.add(element)
+      try { if(prefill) this.#prefillContent(element) }
+      catch { /* An unfillable schema leaves the original widget untouched. */ }
+    }
     if(element.hasAttribute("contenteditable")) return
     element.classList.add("◆", widgetEditableMarker)
     element.setAttribute("contenteditable", "")
+  }
+
+  #contentNodes(element: Element) {
+    return Array.from(element.childNodes).filter(node => node.nodeType !== Node.COMMENT_NODE
+      && node.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(node))
+  }
+
+  /** Add missing required children, preserving the identity and order of every
+   * existing node. This never removes, wraps or normalizes authored content. */
+  #prefillContent(element: Element, ancestors = new Set<string>(), initial = true) {
+    if(element.getAttribute("contenteditable") === "false" || !this.editor.schema.get(element)?.content) return
+    const original = this.#contentNodes(element)
+    if((initial && original.length) || this.editor.schema.isContentValid(element, original)) return
+    const key = `${element.namespaceURI}:${element.localName}`
+    if(ancestors.has(key)) throw new Error("Cannot prefill recursive widget content")
+    const nextAncestors = new Set([...ancestors, key])
+    const content = this.editor.schema.fillByRule(element, undefined, [...original])
+    if(!this.editor.schema.isContentValid(element, content)) throw new Error("Cannot prefill widget content")
+    const existing = new Set<Node>(original)
+    const added = content.filter(child => !existing.has(child))
+    const preserved = content.filter(child => existing.has(child))
+    if(preserved.length !== original.length || preserved.some((child, index) => child !== original[index])) return
+    for(const child of added) if(child instanceof Element) this.#prefillContent(child, nextAncestors)
+    // Constructors may deliberately mutate their owner document while filling.
+    const current = this.#contentNodes(element)
+    if(current.length !== original.length || current.some((child, index) => child !== original[index])) return
+    const selection = document.getSelection()
+    const moveSelection = selection?.isCollapsed && selection.anchorNode === element
+    content.forEach((child, index) => {
+      if(!existing.has(child)) element.insertBefore(child, content.slice(index + 1).find(next => existing.has(next)) ?? null)
+    })
+    if(document.body.contains(element)) for(const child of added) if(child instanceof Element) {
+      this.#connectWidget(child, false)
+      child.querySelectorAll("*").forEach(descendant => this.#connectWidget(descendant, false))
+      if(!initial) this.editor.doc.markMinimumContentRepair(child)
+    }
+    if(moveSelection && added[0]?.isConnected) $.move(added[0])
+  }
+
+  /** Concurrent pristine repairs can be removed only if the declared minimum
+   * remains satisfied; authored children and higher minimum counts survive. */
+  canRemoveMinimumContentRepair(element: Element, repairs: readonly Element[] = []) {
+    const parent = element.parentElement
+    if(!parent || !this.isWidget(parent)) return false
+    const content = this.#contentNodes(parent)
+    if(this.editor.schema.isContentValid(parent, content.filter(child => child !== element))) return true
+    // With an upper bound (e.g. p{2}), removing just one of four concurrent
+    // repairs is still invalid. Find the minimum subsequence of pristine
+    // repairs that completes the authored children without moving any node.
+    const candidates = new Set<Node>(repairs)
+    const authored = content.filter(child => !candidates.has(child))
+    try {
+      const required = this.editor.schema.fillByRule(parent, undefined, [...authored])
+      const authoredSet = new Set<Node>(authored)
+      const retained = new Set<Node>()
+      let index = 0
+      for(const child of content) {
+        const expected = required[index]
+        if(!candidates.has(child)) {
+          if(child !== expected) return false
+          index++
+        }
+        else if(expected instanceof Element && child instanceof Element && !authoredSet.has(expected)
+          && expected.namespaceURI === child.namespaceURI && expected.localName === child.localName) {
+          retained.add(child)
+          index++
+        }
+      }
+      return index === required.length && this.editor.schema.isContentValid(parent,
+        content.filter(child => !candidates.has(child) || retained.has(child))) && !retained.has(element)
+    }
+    catch { return false }
   }
 
   #unmarkEditable(element: Element) {
@@ -165,19 +285,20 @@ export class WidgetFeature extends EditorFeature {
     return document.documentElement.lang || navigator.language || "en"
   }
 
-  /** A widget's option or action declarations: a `LitElementWw` instance
-   * getter when present, otherwise the static class declarations. */
+  /** Instance declarations override static maps. Legacy dynamicOptions are an
+   * alias, with canonical options taking precedence for duplicate names. */
   #declarations(widget: Element, kind: "options" | "actions" | "optionGroups"): Declarations {
     const isRecord = (value: unknown): value is Declarations => !!value && typeof value === "object" && !Array.isArray(value)
-    try {
-      const own = (widget as unknown as Record<string, unknown>)[kind]
-      if(isRecord(own)) return own
-      const inherited = (widget.constructor as unknown as Record<string, unknown>)[kind]
-      return isRecord(inherited) ? inherited : {}
+    const read = (name: string) => {
+      try {
+        const own = (widget as unknown as Record<string, unknown>)[name]
+        if(isRecord(own)) return own
+        const inherited = (widget.constructor as unknown as Record<string, unknown>)[name]
+        return isRecord(inherited) ? inherited : {}
+      }
+      catch { return {} }
     }
-    catch {
-      return {}
-    }
+    return kind === "options" ? {...read("dynamicOptions"), ...read(kind)} : read(kind)
   }
 
   #widgetAt(path: number[], localName: string) {
@@ -202,7 +323,15 @@ export class WidgetFeature extends EditorFeature {
       let value: unknown = null
       try { value = (widget as unknown as Record<string, unknown>)[name] }
       catch { /* A failing widget getter leaves the field empty. */ }
-      const option = widgetOptionState(name, declaration, value, locale)
+      let option = widgetOptionState(name, declaration, value, locale)
+      // Legacy dynamicOptions use attribute names (e.g. detailed-feedback)
+      // instead of their corresponding camel-cased property names.
+      if(value === undefined && option.attribute !== null) {
+        const attribute = widget.getAttribute(option.attribute)
+        const parsed = option.type === "boolean" ? attribute !== null
+          : option.type === "number" && attribute !== null ? Number(attribute) : attribute
+        option = widgetOptionState(name, declaration, parsed, locale)
+      }
       if(option.type === "reference" && !this.#observingReferences) {
         this.#observingReferences = true
         this.#observer?.observe(document.body, {childList: true, subtree: true, attributes: true, characterData: true})
@@ -223,7 +352,12 @@ export class WidgetFeature extends EditorFeature {
       try { grouping = readWidgetGrouping(widget) }
       catch(reason) { error = reason instanceof Error ? reason.message : String(reason) }
     }
-    const mode = !widget.hasAttribute("shared") ? "individual" : widget.getAttribute("shared") === "group" ? "group" : "all"
+    let mode: "individual" | "group" | "all" = "individual"
+    try {
+      const policy = effectiveDistribution(widget)
+      mode = policy?.config.scope ?? (!widget.hasAttribute("shared") ? "individual" : widget.getAttribute("shared") === "group" ? "group" : "all")
+    }
+    catch(reason) { error = reason instanceof Error ? reason.message : String(reason) }
     const data = supported ? Array.from(widget.children).find(child => child.localName === "script"
       && child.getAttribute("slot") === "data" && !child.hasAttribute("src")
       && ["application/json", "application/xml"].includes(child.getAttribute("type") ?? "")) : undefined
@@ -262,8 +396,14 @@ export class WidgetFeature extends EditorFeature {
 
   setSharing(widget: Element, enabled: boolean) {
     if(this.editor.isEditingLocked) return false
-    if(enabled) widget.setAttribute("shared", readWidgetGrouping(widget) ? "group" : "")
-    else widget.removeAttribute("shared")
+    const effective = effectiveDistribution(widget)?.config
+    const scope = enabled ? (readWidgetGrouping(widget) ? "group" : "all") : "individual"
+    const current = effective ?? emptyDistributionConfig(widget.id || "pending")
+    const target = ensureDistributionTarget(widget)
+    const config: DistributionConfig = {...current, target, scope}
+    writeDistributionConfig(widget, config)
+    widget.removeAttribute("shared")
+    this.editor.doc.syncFromDOM()
     this.editor.postSelectionPath()
     return true
   }
@@ -272,8 +412,18 @@ export class WidgetFeature extends EditorFeature {
     if(this.editor.isEditingLocked) return false
     const end = this.editor.doc.beginUndoGroup()
     try {
+      const effective = effectiveDistribution(widget)
+      const legacyShared = !effective && widget.hasAttribute("shared")
+      let updated: DistributionConfig | undefined
+      if((effective && effective.config.scope !== "individual") || legacyShared) {
+        const current = effective?.config ?? emptyDistributionConfig(widget.id || "pending")
+        updated = {...current, target: ensureDistributionTarget(widget), scope: grouping ? "group" : "all"}
+      }
       writeWidgetGrouping(widget, grouping)
-      if(widget.hasAttribute("shared")) widget.setAttribute("shared", grouping ? "group" : "")
+      if(updated) {
+        writeDistributionConfig(widget, updated)
+        widget.removeAttribute("shared")
+      }
       this.editor.doc.syncFromDOM()
     }
     finally { end() }
@@ -426,15 +576,33 @@ export class WidgetFeature extends EditorFeature {
     return true
   }
 
-  readonly #handleMutations = (records: MutationRecord[]) => {
+  /** Finish local initialization and minimum-content repairs before sharing
+   * the DOM batch. Remote deletions and undo use the same additive repair. */
+  flushMutations(prefill = true) {
+    this.#connectAddedWidgets(this.#observer?.takeRecords() ?? [], prefill)
+  }
+
+  readonly #handleMutations = (records: MutationRecord[]) => this.#connectAddedWidgets(records)
+
+  #connectAddedWidgets(records: MutationRecord[], prefill = true) {
     if(this.#pendingFileAction && !document.body.contains(this.#pendingFileAction.widget)) this.#pendingFileAction.cancel()
+    if(this.#legacyOptions && !document.body.contains(this.#legacyOptions.widget)) this.#closeLegacyOptions()
     if(this.#observingReferences) this.#queueOptionsRefresh()
     for(const record of records) {
       record.addedNodes.forEach(node => {
         if(!(node instanceof Element) || !document.body.contains(node)) return
-        this.#connectWidget(node)
-        node.querySelectorAll("*").forEach(element => this.#connectWidget(element))
+        this.#connectWidget(node, prefill)
+        node.querySelectorAll("*").forEach(element => this.#connectWidget(element, prefill))
       })
+    }
+    if(!this.editor.options.reader && !this.editor.isEditingLocked) {
+      const changedWidgets = new Set(records.filter(record => record.type === "childList" && record.removedNodes.length
+        && record.target instanceof Element && document.body.contains(record.target) && this.isWidget(record.target))
+        .map(record => record.target as Element))
+      for(const widget of changedWidgets) {
+        try { this.#prefillContent(widget, new Set(), false) }
+        catch { /* Unfillable or incompatible authored content remains intact. */ }
+      }
     }
   }
 
@@ -449,6 +617,7 @@ export class WidgetFeature extends EditorFeature {
 
   disable() {
     if(!this.isEnabled) return
+    this.#closeLegacyOptions()
     this.#observer?.disconnect()
     this.#observer = null
     this.#observingReferences = false

@@ -689,7 +689,7 @@ describe("primary media Source control", () => {
 
 
 describe("primary media alternative text", () => {
-  it.each(["picture", "img"] as const)("separates %s alternative text from Language using the standard field spacing", async type => {
+  it.each(["picture", "img"] as const)("keeps %s alternative text primary and Language in advanced options", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.media = {type, attributes: {alt: "Description"}}
@@ -700,7 +700,8 @@ describe("primary media alternative text", () => {
     const alt = drawer.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
     const attributes = drawer.querySelector("element-attribute-editor")!
     expect(alt.compareDocumentPosition(attributes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(getComputedStyle(attributes).marginTop).toBe("6.4px")
+    expect(alt.closest('[slot="more"]')).toBeNull()
+    expect(attributes.closest('[slot="more"]')).not.toBeNull()
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("edits %s alternative text in primary options", async type => {

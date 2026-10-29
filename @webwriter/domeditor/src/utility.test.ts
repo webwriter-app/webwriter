@@ -1555,10 +1555,41 @@ describe("getContainer()", () => {
     setBody("<p>hello</p>")
     expect(getContainer(document.body.firstElementChild!)).toBe(document.body.firstElementChild)
   })
+  it("does not compute style for nontransparent paragraph, cell, or media containers", () => {
+    setBody("")
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle")
+    try {
+      for(const tag of ["p", "td", "img"]) {
+        const element = document.createElement(tag)
+        document.body.append(element)
+        expect(getContainer(element)).toBe(element)
+      }
+      expect(getComputedStyle).not.toHaveBeenCalled()
+    }
+    finally {
+      getComputedStyle.mockRestore()
+    }
+  })
   it("treats nested mark wrappers as part of their text container", () => {
     setBody("<p><b><span>hello</span></b></p>")
     expect(getContainer(document.querySelector("span")!.firstChild!)).toBe(document.querySelector("p"))
     expect(getContainer(document.querySelector("b")!)).toBe(document.querySelector("p"))
+  })
+  it("keeps positioned marks and sections as editing-flow boundaries", () => {
+    setBody('<p><b>hello</b></p><section>separate flow</section>')
+    const mark = document.querySelector("b")!
+    const section = document.querySelector("section")!
+    const getComputedStyle = vi.spyOn(window, "getComputedStyle").mockImplementation(() => ({
+      position: "absolute", float: "none",
+    }) as CSSStyleDeclaration)
+    try {
+      expect(getContainer(mark.firstChild!)).toBe(mark)
+      expect(getContainer(section)).toBe(section)
+      expect(getComputedStyle).toHaveBeenCalledTimes(2)
+    }
+    finally {
+      getComputedStyle.mockRestore()
+    }
   })
   it("skips stacked section wrappers around structural and inline content", () => {
     setBody("<section><article><p>hello</p></article></section><aside>inline</aside>")
@@ -1927,6 +1958,20 @@ describe("DOM path and text point helpers", () => {
     expect(nodeAtPath(root, [-1])).toBeNull()
     expect(nodeAtPath(root, [0.5])).toBeNull()
     expect(nodeAtPath(root, [0, 99])).toBeNull()
+  })
+
+  it("does not enumerate siblings when building a path to an early child", () => {
+    setBody(Array.from({length: 1000}, (_, index) => `<p>${index}</p>`).join(""))
+    const root = document.body
+    const first = root.firstChild!
+    const childNodes = vi.spyOn(root, "childNodes", "get")
+    try {
+      expect(pathFromNode(root, first)).toEqual([0])
+      expect(childNodes).not.toHaveBeenCalled()
+    }
+    finally {
+      childNodes.mockRestore()
+    }
   })
 
   it("maps text offsets across descendants and falls back to the final text point", () => {

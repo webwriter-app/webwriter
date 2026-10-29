@@ -7,6 +7,8 @@ import {RibbonDrawer} from "./ribbon-drawer"
 import {AIProviderStore} from "../ai-provider"
 import {emptyProofreadingState, emptyVersionHistoryState} from "../editor-bridge"
 import {emptyDocumentHeadState} from "../document-head"
+import type {DistributionConfig, DistributionItem} from "../distribution.js"
+import type {DistributionSelectionState} from "./distribution-controls"
 
 it("combines document options without exposing a root widget or separate language attribute", async () => {
   const toolbox = await mountToolbox()
@@ -160,6 +162,7 @@ describe("toolbox", () => {
     toolbox.preview = true
     await toolbox.updateComplete
     expect(toolbox.activeTool).toBeNull()
+    expect(toolButton(toolbox, "Distribute")).toBeNull()
     expect(Array.from(toolbox.shadowRoot!.querySelectorAll('[role="tab"]'), tab => tab.getAttribute("data-tool"))).toEqual(["Feedback"])
     const tab = toolButton(toolbox, "Feedback")
     expect(tab.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(true)
@@ -738,7 +741,7 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>("#toolbox-pane")!.hidden).toBe(true)
   })
 
-  it("renders Edit, Style, Ask AI, and Review as icon-only tabs on the breadcrumb baseline", async () => {
+  it("renders Edit, Style, Ask AI, Review, and Distribute as icon-only tabs on the breadcrumb baseline", async () => {
     const toolbox = await mountToolbox()
     const tablist = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-tabs")!
     const tabs = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab"))
@@ -746,19 +749,133 @@ describe("toolbox", () => {
     const labels = Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLElement>(".toolbox-tab-label"))
 
     expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual([
-      "Edit", "Style", "Ask AI", "Review",
+      "Edit", "Style", "Ask AI", "Review", "Distribute",
     ])
     expect(buttons.map(button => button.getAttribute("aria-selected"))).toEqual([
-      "false", "false", "false", "false",
+      "false", "false", "false", "false", "false",
     ])
-    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Ask AI", "Review"])
+    expect(labels.map(label => label.textContent)).toEqual(["Edit", "Style", "Ask AI", "Review", "Distribute"])
     expect(labels.every(label => getComputedStyle(label).opacity === "0")).toBe(true)
     expect(tabs.every(tab => getComputedStyle(tab).width === "28px")).toBe(true)
     expect(getComputedStyle(tablist).borderBottomWidth).toBe("0.5px")
     expect(getComputedStyle(tablist).borderBottomColor).toBe("#a8a8a8")
     expect(buttons[0].querySelector(".icon-tabler-pencil")).not.toBeNull()
+    expect(buttons[1].querySelector("svg")).not.toBeNull()
     expect(buttons[1].querySelector(".icon-tabler-palette")).not.toBeNull()
     expect(buttons[3].querySelector(".icon-tabler-text-grammar")).not.toBeNull()
+    expect(buttons[4].querySelector(".icon-tabler-users-group")).not.toBeNull()
+  })
+
+  it("shows distribution controls with host state and pending status, without authoring drawers", async () => {
+    const toolbox = await mountToolbox()
+    const local: DistributionConfig = {
+      version: 1,
+      target: "element-1",
+      scope: "group",
+      permissions: ["edit"],
+      add: ["user-snippet:quote"],
+      items: [{id: "user-snippet:quote", label: "Quote", html: "<blockquote></blockquote>"}],
+    }
+    const state: DistributionSelectionState = {
+      target: "element-1",
+      local,
+      effective: local,
+      inheritedFrom: null,
+    }
+    const items: DistributionItem[] = [
+      {id: "element:section", label: "Section", html: "<section></section>"},
+      {id: "user-snippet:quote", label: "Quote", html: "<blockquote></blockquote>"},
+    ]
+    toolbox.distributionGeneral = state
+    toolbox.distribution = state
+    toolbox.elementAttributes = {path: [0], localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Paragraph", icon: "Paragraph", attributes: {}}
+    toolbox.elementSelected = true
+    toolbox.distributionItems = items
+    toolbox.distributionPending = true
+    toolbox.distributionInsertDragActive = true
+    toolButton(toolbox, "Distribute").click()
+    await toolbox.updateComplete
+    const controls = Array.from(toolbox.shadowRoot!.querySelectorAll("distribution-controls")) as Array<HTMLElement & {
+      state: DistributionSelectionState | null
+      items: DistributionItem[]
+      pending: boolean
+      insertDragActive: boolean
+      view: string
+      compact: boolean
+      disabled: boolean
+    }>
+    await Promise.all(controls.map((control) => (control as unknown as {updateComplete: Promise<unknown>}).updateComplete))
+    expect(controls).toHaveLength(3)
+    expect(controls[0].state).toBe(state)
+    expect(controls[0].items).toBe(items)
+    expect(controls[0].pending).toBe(true)
+    expect(controls[0].insertDragActive).toBe(true)
+    expect(controls[1].state).toBe(state)
+    expect(controls[1].items).toBe(items)
+    expect(controls[1].pending).toBe(true)
+    expect(controls[1].view).toBe("grouping")
+    expect(controls[2].state).toBe(state)
+    expect(controls[2].view).toBe("permissions")
+    expect(controls[2].compact).toBe(true)
+    expect(controls[2].insertDragActive).toBe(true)
+    const permissionsDrawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Document permissions"]')!
+    expect(permissionsDrawer).not.toBeNull()
+    expect(permissionsDrawer.icon).toBe("Document")
+    expect(permissionsDrawer.iconBadge).toBe("Checkbox")
+    expect(permissionsDrawer.layout).toBe("distribution")
+    expect(permissionsDrawer.showPaneIcon).toBe(true)
+    expect(permissionsDrawer.querySelector("distribution-controls")).toBe(controls[0])
+    const sharingDrawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Paragraph permissions"]')!
+    expect(sharingDrawer).not.toBeNull()
+    expect(sharingDrawer.icon).toBe("Paragraph")
+    expect(sharingDrawer.iconBadge).toBe("Checkbox")
+    expect(sharingDrawer.layout).toBe("distribution")
+    expect(sharingDrawer.showPaneIcon).toBe(true)
+    expect(sharingDrawer.querySelector("distribution-controls")).toBe(controls[1])
+    expect(controls[1].shadowRoot!.querySelector("h2")?.textContent).toBe("Grouping")
+    expect(controls[2].shadowRoot!.querySelector("h2")?.textContent).toBe("Permissions")
+    expect(sharingDrawer.hasAttribute("data-selected")).toBe(true)
+    expect([...sharingDrawer.querySelectorAll("distribution-controls")]).toEqual([controls[1], controls[2]])
+    expect(toolbox.shadowRoot!.querySelector("details")).toBeNull()
+    toolbox.elementSelected = false
+    await toolbox.updateComplete
+    expect(sharingDrawer.label).toBe("Permissions")
+    expect(sharingDrawer.hasAttribute("data-selected")).toBe(false)
+    expect(controls[1].disabled).toBe(true)
+    expect(controls[2].disabled).toBe(true)
+    expect(toolbox.shadowRoot!.querySelector("element-style-editor, .widget-sharing, .specialized-widget-primary")).toBeNull()
+    expect(toolbox.activeTool).toBe("Distribute")
+  })
+
+  it.each([
+    ["document", "Document", "Document"], ["canvas", "Canvas", "Canvas"],
+    ["slides", "Slides", "KeywordPresentation"], ["board", "Board", "Columns"],
+  ] as const)("uses the %s layout name and icon for document distribution", async (mode, label, icon) => {
+    const toolbox = await mountToolbox()
+    toolbox.documentLayout = {mode, canConvert: true, zoom: 100}
+    toolButton(toolbox, "Distribute").click()
+    await toolbox.updateComplete
+    const drawers = [...toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>('ribbon-drawer[layout="distribution"]')]
+    expect(drawers).toHaveLength(2)
+    expect(drawers[0].label).toBe(`${label} permissions`)
+    expect(drawers[0].icon).toBe(icon)
+    expect(drawers[0].iconBadge).toBe("Checkbox")
+    expect(drawers[1].label).toBe("Permissions")
+    expect(drawers[1].iconBadge).toBe("Checkbox")
+  })
+
+  it("keeps the Grouping control visible and disabled when no element is selected", async () => {
+    const toolbox = await mountToolbox()
+    toolButton(toolbox, "Distribute").click()
+    await toolbox.updateComplete
+    const grouping = toolbox.shadowRoot!.querySelector<HTMLElement & {disabled: boolean, updateComplete: Promise<unknown>}>('distribution-controls[view="grouping"]')!
+    await grouping.updateComplete
+    expect(grouping.disabled).toBe(true)
+    const control = grouping.shadowRoot!.querySelector('.grouping')!
+    expect(control.getAttribute("aria-disabled")).toBe("true")
+    expect(grouping.shadowRoot!.textContent).toContain("single")
+    expect(grouping.shadowRoot!.textContent).not.toContain("Select an element")
+    expect([...grouping.shadowRoot!.querySelectorAll("button")].every(button => button.disabled)).toBe(true)
   })
 
   it("does not install app-only AI or resize listeners across reconnects", async () => {
@@ -829,7 +946,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(tablist).paddingRight).toBe("4px")
     expect(getComputedStyle(tablist).paddingLeft).toBe("0px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0", "0"])
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["1", "0", "0", "0", "0"])
     expect(getComputedStyle(style).width).toBe("28px")
     expect(getComputedStyle(editTab).transition).toContain("width")
     expect(getComputedStyle(edit.querySelector<HTMLElement>(".toolbox-tab-label")!).opacity).toBe("1")
@@ -846,7 +963,7 @@ describe("toolbox", () => {
     expect(getComputedStyle(editTab).width).toBe("28px")
     expect(getComputedStyle(styleTab).width).toBe("128px")
     expect(Array.from(tablist.querySelectorAll<HTMLElement>(".toolbox-tab"))
-      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0", "0"])
+      .map(tab => getComputedStyle(tab).flexGrow)).toEqual(["0", "1", "0", "0", "0"])
     expect(editClose.disabled).toBe(true)
 
     const pane = toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane")!
@@ -939,8 +1056,8 @@ describe("toolbox", () => {
       {path: [0], name: "Demo widget", icon: "Packages"},
     ]
     await toolbox.updateComplete
-    expect(label.textContent).toBe("Widget")
-    expect(edit.getAttribute("aria-label")).toBe("Edit Widget")
+    expect(label.textContent).toBe("Demo widget")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Demo widget")
 
     toolbox.selectionPath = [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}]
     await toolbox.updateComplete
@@ -1396,7 +1513,7 @@ describe("widget options drawer", () => {
       actions: [{name: "reset", label: "Reset"}],
     }
     await toolbox.updateComplete
-    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Widget"]')!
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Quiz"]')!
     const changes: unknown[] = []
     toolbox.addEventListener("widget-option-change", event => changes.push((event as CustomEvent).detail))
     const actions: unknown[] = []

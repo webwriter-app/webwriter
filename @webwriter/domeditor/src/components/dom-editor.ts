@@ -1,3 +1,7 @@
+import type {DistributionSelection} from "../features/distribution"
+import type {DistributionConfig, DistributionItem} from "../distribution.js"
+import {emptyDistributionConfig} from "../distribution.js"
+import type {DistributionInsertDrop} from "./distribution-controls"
 import type {FloatInfo} from "./float-info"
 import type {DOMEditor} from "../domeditor"
 import type {LiveWidgetAggregateInput} from "../widget-aggregate"
@@ -31,7 +35,7 @@ import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
-import {elementDragType, insertionMenuItems, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
+import {elementDragType, insertionMenuItems, ribbonElementInsertionAction, ribbonInsertionAction, ribbonInsertionDragType} from "./insertion-menu"
 import type {EditorStateSnapshot} from "../editor-state"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {
@@ -51,6 +55,7 @@ import {
   withPackageExportSource,
   type PackageEditingConfig,
   type PackageMember,
+  packageInsertionItems,
   type PackageExportTarget,
   type PackageTestResult,
   type WebWriterPackage,
@@ -89,6 +94,7 @@ import {widgetOptionValue, type WidgetOptionsState} from "../widget-options"
 import {
   aiEditReviewEvent,
   editorFrameControlMessage,
+  restoreSnapshotTextNodeRuns,
   executeCompleteEvent,
   emptyVersionHistoryState,
   initializeEditorMessage,
@@ -152,7 +158,7 @@ import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../
 import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
-import {editorFrameOrigin} from "../frame-origins"
+import {editorFrameOrigin, pairedLoopbackOrigin} from "../frame-origins"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "../frame-local-packages"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
@@ -324,6 +330,10 @@ type LiveSessionIdentity = {
 export class DomEditor extends LitElement {
   static properties = {
     selectionPath: {attribute: false, state: true},
+    distributionSelection: {attribute: false, state: true},
+    distributionGeneral: {attribute: false, state: true},
+    distributionItems: {attribute: false, state: true},
+    distributionPending: {state: true},
     captureSelection: {attribute: false, state: true},
     selectionGap: {attribute: false, state: true},
     documentTree: {attribute: false, state: true},
@@ -467,12 +477,21 @@ export class DomEditor extends LitElement {
   private savedEditorSelection: SelectionBookmark | "remote" | null = null
   private ribbonInputSession = false
   private restoreEditorAfterRibbonInput = false
+  private distributionGeneral: DistributionSelection | null = null
+  private distributionSelection: DistributionSelection | null = null
+  private distributionItems: DistributionItem[] = []
+  private distributionPending = false
+  private distributionGeneration = 0
+  private distributionWriteRevision = 0
+  private distributionWriteQueue: Promise<unknown> = Promise.resolve()
+  private distributionPendingConfigs = new Map<string, {revision: number, config: DistributionConfig | null}>()
+  private distributionAcceptedStates = new Map<string, DistributionSelection>()
   private selectionPath: SelectionPathItem[] = []
   private nodeSelection = false
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
-  private frameSnapshot: {document: Document, html: string} | null = null
+  private frameSnapshot: {document: Document, html: string, textNodeRunsKey: string} | null = null
   private authoredSnapshotCache: {document: Document, value: string} | null = null
   private canMark = false
   private canSection = false
@@ -1169,7 +1188,9 @@ export class DomEditor extends LitElement {
     await this.waitForEditorWindow()
     const response = await this.requestFrameControl("snapshot")
     if(typeof response.html !== "string") throw new Error("The editor did not return its document")
-    return this.preparePreviewDocument(new DOMParser().parseFromString(response.html, "text/html"))
+    const source = new DOMParser().parseFromString(response.html, "text/html")
+    restoreSnapshotTextNodeRuns(source.body, response.textNodeRuns)
+    return this.preparePreviewDocument(source)
   }
 
   private preparePreviewDocument(source: Document, dependencies = {packages: this.installedPackages, importMap: this.packageImportMap}) {
@@ -2231,8 +2252,17 @@ export class DomEditor extends LitElement {
       this.documentLayoutsDismissed = false
       return
     }
-    const body = this.editorDocument?.body.cloneNode(true) as HTMLElement | undefined
-    if(!body) return
+    const current = this.editorDocument?.body
+    if(!current) return
+    // Any authored text rules out an empty layout. Short-circuit before
+    // cloning, cleaning and reparsing a large document on every snapshot.
+    const text = current.ownerDocument.createTreeWalker(current, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+      acceptNode: node => node.nodeType === Node.ELEMENT_NODE
+        ? (node as Element).matches(".◆editor-only, [data-webwriter-editor-only]") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
+        : node.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+    })
+    if(text.nextNode()) { this.documentLayoutsDismissed = true; return }
+    const body = current.cloneNode(true) as HTMLElement
     clearEditorArtifacts(body)
     this.documentLayoutsDismissed = this.pristineDocumentLayoutSnapshot(body.outerHTML) === null
   }
@@ -2245,6 +2275,7 @@ export class DomEditor extends LitElement {
       if(revision !== this.frameRevision) return
       if(typeof response.html !== "string") throw new Error("The editor did not return its document")
       this.editorDocument = new DOMParser().parseFromString(response.html, "text/html")
+      restoreSnapshotTextNodeRuns(this.editorDocument.body, response.textNodeRuns)
       this.documentTree = this.buildDocumentTree()
     }
     if(revision !== this.frameRevision || this.fileHandle !== null || this.backendDocumentId !== null) return
@@ -2728,7 +2759,9 @@ export class DomEditor extends LitElement {
       if(serverUrl && sessionToken) {
         if(!this.backendClient) throw new Error("Connect to a server to share a live document")
         const backendOrigin = new URL(this.backendClient.apiBaseUrl).origin
-        const documentOrigin = backendOrigin === location.origin ? editorFrameOrigin() : backendOrigin
+        const documentOrigin = this.backendSession?.kind === "webwriter-dev-server"
+          ? pairedLoopbackOrigin(new URL(backendOrigin)) ?? editorFrameOrigin()
+          : backendOrigin === location.origin ? editorFrameOrigin() : backendOrigin
         const html = previewFrameHTML(previewSource, {
           bridgeNonce: "", hostOrigin: location.origin, frameOrigin: documentOrigin,
           entryURL: "", learnerEntryURL: new URL(liveLearnerEntryUrl, editorFrameOrigin()).href,
@@ -5045,14 +5078,19 @@ export class DomEditor extends LitElement {
       if(!snippet || typeof snippet !== "object" || !("html" in snippet) || typeof snippet.html !== "string"
         || !("label" in snippet) || typeof snippet.label !== "string" || !snippet.html) return
       if(this.settings.userSnippets.some(saved => saved.html === snippet.html)) return
-      const id = crypto.randomUUID()
-      this.editingSnippetId = id
-      this.settings = {...this.settings, userSnippets: [{id, label: snippet.label.slice(0, SNIPPET_LABEL_MAX_LENGTH), html: snippet.html},
-        ...this.settings.userSnippets]}
-      persistAppSettings(this.settings)
+      this.editingSnippetId = this.saveUserSnippet({html: snippet.html, label: snippet.label}).id
     }
     catch(error) { this.packageError = error instanceof Error ? error.message : String(error) }
     finally { if(!this.editingSnippetId) this.focusEditor() }
+  }
+
+  private saveUserSnippet(snippet: {html: string, label: string}, id: string = crypto.randomUUID()) {
+    const existing = this.settings.userSnippets.find(saved => saved.html === snippet.html)
+    if(existing) return existing
+    const saved = {id, label: snippet.label.slice(0, SNIPPET_LABEL_MAX_LENGTH), html: snippet.html}
+    this.settings = {...this.settings, userSnippets: [saved, ...this.settings.userSnippets]}
+    persistAppSettings(this.settings)
+    return saved
   }
 
   private handleSnippetNameChange(event: CustomEvent<{action: string, label: string}>) {
@@ -6065,8 +6103,137 @@ export class DomEditor extends LitElement {
     else if(toolbox?.activeTool === "AI") toolbox.selectTool(null)
   }
 
+  private async loadDistributionItems() {
+    const generation = ++this.distributionGeneration
+    this.distributionPending = true
+    try {
+      const builtins = await this.execute({type: "getDistributionInsertionItems"}) as DistributionItem[]
+      const members = await Promise.all(this.installedPackages.flatMap(pkg => pkg.members.filter(member => member.insertable).map(async member => ({
+        id: packageMemberAction(member), label: member.label,
+        html: member.kind === "snippet" ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
+          : member.tagName ? `<${member.tagName}></${member.tagName}>` : "",
+      }))))
+      if(generation !== this.distributionGeneration) return
+      this.distributionItems = [...builtins, ...members.filter(item => item.html),
+        ...this.settings.userSnippets.map(snippet => ({id: `user-snippet:${snippet.id}`, label: snippet.label, html: snippet.html}))]
+    }
+    catch(error) {
+      if(generation === this.distributionGeneration && this.distributionSelection) this.distributionSelection = {
+        ...this.distributionSelection, error: error instanceof Error ? error.message : String(error),
+      }
+    }
+    finally { if(generation === this.distributionGeneration) this.distributionPending = false }
+  }
+
+  private projectDistributionState(state: DistributionSelection | null): DistributionSelection | null {
+    if(!state) return null
+    this.distributionAcceptedStates.set(state.identity, state)
+    const pending = this.distributionPendingConfigs.get(state.identity)
+    if(!pending) return state
+    const config = pending.config ? {...pending.config, target: state.target || pending.config.target} : null
+    return {...state, local: config, effective: config ?? state.effective, inheritedFrom: config ? null : state.inheritedFrom}
+  }
+
+  private refreshDistributionState(identity: string, error?: string) {
+    const accepted = this.distributionAcceptedStates.get(identity)
+    if(!accepted) return
+    const projected = this.projectDistributionState({...accepted, ...(error ? {error} : {})})
+    if(this.distributionGeneral?.identity === identity) this.distributionGeneral = projected
+    if(this.distributionSelection?.identity === identity) this.distributionSelection = projected
+  }
+
+  private handleDistributionConfigChange = (event: CustomEvent<{target: string, config: DistributionConfig | null, general?: boolean}>) => {
+    const state = event.detail.general ? this.distributionGeneral : this.distributionSelection
+    if(!state || this.distributionPending || event.detail.target !== state.target) return
+    void this.writeDistributionConfig(state, event.detail.config)
+  }
+
+  private writeDistributionConfig(state: DistributionSelection, config: DistributionConfig | null) {
+    if(!this.distributionAcceptedStates.has(state.identity)) this.distributionAcceptedStates.set(state.identity, state)
+    const revision = ++this.distributionWriteRevision
+    const frame = this.frameRevision
+    this.distributionPendingConfigs.set(state.identity, {revision, config})
+    // Keep cards enabled and preserve the newest local choice through older frame acknowledgements.
+    this.refreshDistributionState(state.identity)
+    const write = this.distributionWriteQueue.then(async () => {
+      if(frame !== this.frameRevision) return false
+      let failure: string | undefined
+      try {
+        const applied = await this.execute({type: "setDistributionConfig", path: state.path, identity: state.identity, config})
+        if(applied === false) failure = "The distribution target changed. Select it again."
+      }
+      catch(error) { failure = error instanceof Error ? error.message : String(error) }
+      finally {
+        if(frame === this.frameRevision && this.distributionPendingConfigs.get(state.identity)?.revision === revision) {
+          this.distributionPendingConfigs.delete(state.identity)
+          this.refreshDistributionState(state.identity, failure)
+        }
+      }
+      return !failure && frame === this.frameRevision
+    })
+    this.distributionWriteQueue = write
+    return write
+  }
+
+  private handleDistributionInsertDrop = async (event: CustomEvent<DistributionInsertDrop>) => {
+    const {general, target, action, token} = event.detail
+    const initial = general ? this.distributionGeneral : this.distributionSelection
+    if(!initial || initial.target !== target || this.htmlPending || this.historyState.preview !== null) return
+    this.handleRibbonDragEnd()
+    const frame = this.frameRevision
+    try {
+      let item: DistributionItem | undefined
+      let snippet: {id: string, html: string, label: string} | undefined
+      let install: WebWriterPackage | undefined
+      if(token) {
+        const captured = await this.execute({type: "getDraggedSnippet", token})
+        if(!captured || typeof captured !== "object" || !("html" in captured) || typeof captured.html !== "string" || !captured.html
+          || !("label" in captured) || typeof captured.label !== "string") return
+        const existing = this.settings.userSnippets.find(saved => saved.html === captured.html)
+        snippet = existing ?? {id: crypto.randomUUID(), html: captured.html, label: captured.label.slice(0, SNIPPET_LABEL_MAX_LENGTH)}
+        item = {id: `user-snippet:${snippet.id}`, label: snippet.label, html: snippet.html}
+      } else if(action) {
+        item = this.distributionItems.find(candidate => candidate.id === action)
+        if(!item && ribbonElementInsertionAction(action)) {
+          const builtins = await this.execute({type: "getDistributionInsertionItems"}) as DistributionItem[]
+          item = builtins.find(candidate => candidate.id === action)
+        }
+        if(!item && ribbonInsertionAction(action)) {
+          const saved = this.settings.userSnippets.find(candidate => `user-snippet:${candidate.id}` === action)
+          if(saved) item = {id: action, label: saved.label, html: saved.html}
+          else {
+            const packages = [...this.installedPackages, ...this.localPackages, ...this.packages]
+            const pkg = packages.find(candidate => action === `package:${candidate.name}`
+              || candidate.members.some(member => packageMemberAction(member) === action && member.insertable))
+            const member = pkg?.members.find(member => member.insertable && (action === `package:${pkg.name}` || packageMemberAction(member) === action))
+            if(!pkg || !member) return
+            const html = member.kind === "snippet" ? await this.packageRegistry.fetchSnippet(member, this.documentLanguage)
+              : member.tagName ? `<${member.tagName}></${member.tagName}>` : ""
+            if(!html) return
+            item = {id: packageMemberAction(member), label: member.label, html}
+            if(!this.installedPackages.some(candidate => candidate.name === pkg.name)) install = pkg
+          }
+        }
+      }
+      // Resolve against the latest projected policy without applying an asynchronous drop to a new selection.
+      const current = general ? this.distributionGeneral : this.distributionSelection
+      if(!item || !current || current.identity !== initial.identity || frame !== this.frameRevision) return
+      const config = current.local ?? current.effective ?? emptyDistributionConfig(current.target || "selection")
+      const next: DistributionConfig = {...config, target: current.target || "selection", permissions: config.permissions.includes("insert") ? [...config.permissions] : [...config.permissions, "insert"],
+        add: config.add.includes(item.id) ? [...config.add] : [...config.add, item.id],
+        items: [...config.items.filter(candidate => candidate.id !== item!.id), item]}
+      if(!await this.writeDistributionConfig(current, next)) return
+      if(snippet) this.saveUserSnippet(snippet, snippet.id)
+      this.distributionItems = [...this.distributionItems.filter(candidate => candidate.id !== item!.id), item]
+      // Save the policy before package installation reloads the frame, preserving its authored target.
+      if(install) await this.setPackageInstalled(install, true)
+    }
+    catch(error) { this.refreshDistributionState(initial.identity, error instanceof Error ? error.message : String(error)) }
+  }
+
   private handleToolboxChange = (event: Event) => {
     const tool = (event as CustomEvent<{tool?: unknown}>).detail?.tool
+    if(tool === "Distribute") void this.loadDistributionItems()
     const expandDockedToolbox = this.narrowLayout && this.bottomPanelOpen
     if(expandDockedToolbox) {
       this.mathKeyboardHidden = true
@@ -6603,6 +6770,7 @@ export class DomEditor extends LitElement {
     const body = this.editorDocument?.body
     if(!body) return null
     const root = getDocumentRoot(body)
+    const packageItems = packageInsertionItems(this.installedPackages, true)
 
     const sectionItem = (element: Element, path: number[]): SelectionPathSection => ({
       path: [...path],
@@ -6619,7 +6787,7 @@ export class DomEditor extends LitElement {
     const build = (element: Element, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem => {
       const item: DocumentTreeItem = {
         path: [...path],
-        ...this.elementPresentation(element),
+        ...getElementPresentation(element, packageItems),
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
@@ -6670,23 +6838,6 @@ export class DomEditor extends LitElement {
       ? []
       : [Array.from(body.childNodes).indexOf(root as ChildNode)]
     return build(root, rootPath)
-  }
-
-  private elementPresentation(element: Element) {
-    for(const pkg of this.installedPackages) {
-      const member = pkg.members.find(candidate => (
-        candidate.kind === "widget" && candidate.tagName?.toLowerCase() === element.localName
-      ))
-      if(member) {
-        const iconUrl = member.iconUrl ?? pkg.iconUrl
-        return {
-          name: member.label,
-          icon: "Packages",
-          ...(iconUrl ? {iconUrl} : {}),
-        }
-      }
-    }
-    return getElementPresentation(element)
   }
 
   private handleBreadcrumbTreeToggle = () => {
@@ -7001,13 +7152,16 @@ export class DomEditor extends LitElement {
     if(this.handlePreviewMessage(event)) return
     if(event.data?.type === "editor-frame-snapshot") {
       if(!this.editorOpaque || !this.isEditorMessage(event) || typeof event.data.html !== "string") return
-      if(this.frameSnapshot?.document === this.editorDocument && this.frameSnapshot.html === event.data.html) return
+      const textNodeRunsKey = JSON.stringify(event.data.textNodeRuns ?? [])
+      if(this.frameSnapshot?.document === this.editorDocument && this.frameSnapshot.html === event.data.html
+        && this.frameSnapshot.textNodeRunsKey === textNodeRunsKey) return
       // Current frames filter editor artifacts before publishing. Older frames
       // still need the canonical comparison for marker-only snapshots.
       const authoredChange = typeof event.data.treeChanged === "boolean"
       const before = authoredChange ? null : this.authoredDocumentSnapshot(true)
       this.editorDocument = new DOMParser().parseFromString(event.data.html, "text/html")
-      this.frameSnapshot = {document: this.editorDocument, html: event.data.html}
+      restoreSnapshotTextNodeRuns(this.editorDocument.body, event.data.textNodeRuns)
+      this.frameSnapshot = {document: this.editorDocument, html: event.data.html, textNodeRunsKey}
       if(event.data.treeChanged !== false || !this.documentTree) this.documentTree = this.buildDocumentTree()
       if(authoredChange || before !== null && before !== this.authoredDocumentSnapshot(true)) {
         this.dismissGuidedTour()
@@ -7186,6 +7340,8 @@ export class DomEditor extends LitElement {
       const selectionGap = gap
         ? {parentPath: [...gap.parentPath], offset: gap.offset}
         : null
+      this.distributionSelection = this.projectDistributionState(event.data.detail.distribution ?? null)
+      this.distributionGeneral = this.projectDistributionState(event.data.detail.distributionGeneral ?? null)
       this.selectionPath = path
       const selectedSection = event.data.detail.section
       const activeSection = path.flatMap(item => item.sections ?? []).at(-1)
@@ -7610,6 +7766,12 @@ export class DomEditor extends LitElement {
     this.editorReadyPromise = null
     this.editorReadyResolve = null
     this.editorReadyReject = null
+    this.distributionGeneration++
+    this.distributionPendingConfigs.clear()
+    this.distributionAcceptedStates.clear()
+    this.distributionGeneral = null
+    this.distributionSelection = null
+    this.distributionItems = []
     this.selectionPath = []
     this.nodeSelection = false
     this.captureSelection = false
@@ -8010,6 +8172,13 @@ export class DomEditor extends LitElement {
         .proofreadingState=${this.proofreadingState}
         .disableAI=${this.settings.disableAI}
         ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
+        .distributionGeneral=${this.distributionGeneral}
+        .distribution=${this.distributionSelection}
+        .distributionItems=${this.distributionItems}
+        .distributionPending=${this.distributionPending}
+        .distributionInsertDragActive=${Boolean(this.ribbonDrag)}
+        @distribution-config-change=${this.handleDistributionConfigChange}
+        @distribution-insert-drop=${this.handleDistributionInsertDrop}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}
         .documentSelected=${this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1}

@@ -1,6 +1,6 @@
 import {createServer as createHTTPServer} from "node:http"
 import {createHash, randomBytes, randomUUID} from "node:crypto"
-import {mkdir, readFile, readdir, rename, rm, writeFile} from "node:fs/promises"
+import {mkdir, readFile, readdir, realpath, rename, rm, writeFile} from "node:fs/promises"
 import {dirname, extname, join, resolve} from "node:path"
 import {fileURLToPath, pathToFileURL} from "node:url"
 import OpenAI from "openai"
@@ -8,8 +8,10 @@ import * as WebSocketPackage from "ws"
 import {setupWSConnection, getYDoc, docs} from "@y/websocket-server/utils"
 import * as Y from "yjs"
 import * as decoding from "lib0/decoding"
-import {acceptLearnerUpdate} from "../src/live-session-permissions.js"
-import {formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
+import {acceptLearnerUpdate, encodeLiveSessionFeedback, liveSessionFeedbackMessage, readLiveSessionFeedback} from "../src/live-session-permissions.js"
+import {createDistributionValidator} from "./distribution.mjs"
+import {distributionGroupingRevision, formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
+import {decodeDistributionConfig, distributionTarget} from "../src/distribution.js"
 import {fetchGitPackage, gitPackageSource, gitPackageMimeType} from "./git-packages.mjs"
 
 const serverDirectory = dirname(fileURLToPath(import.meta.url))
@@ -100,6 +102,24 @@ const widgetGroupingDeclaration = (documentId, widgetId) => {
   if(elements.length > 1) throw Object.assign(new Error("Widget ID is ambiguous in the shared document"), {status: 409})
   const widget = elements[0]
   if(!widget) return null
+  const head = isYMap(mirror) ? mirror.get("head") : document.getXmlElement("document-head")
+  const configs = new Map()
+  for(const node of isYXmlElement(head) ? head.toArray() : []) {
+    if(!isYXmlElement(node) || node.getAttribute(widgetNodeKind) !== widgetProcessingInstructionKind
+      || node.getAttribute(widgetProcessingInstructionTarget) !== distributionTarget) continue
+    const config = decodeDistributionConfig(node.toArray().map(child => child.toString()).join(""))
+    if(!config || configs.has(config.target)) throw Object.assign(new Error("Invalid distribution grouping declaration"), {status: 409})
+    configs.set(config.target, config)
+  }
+  let policy
+  for(let element = widget; isYXmlElement(element); element = element.parent) {
+    policy = configs.get(element.getAttribute("id"))
+    if(policy) break
+  }
+  const attributes = isYMap(mirror) ? mirror.get("attributes") : document.getXmlElement("document-attributes")
+  if(!policy && isYXmlElement(attributes)) policy = configs.get(attributes.getAttribute("id"))
+  const distributionRevision = distributionGroupingRevision(policy)
+  if(distributionRevision) return distributionRevision
   const instructions = widget.toArray().filter(node => isYXmlElement(node)
     && node.getAttribute(widgetNodeKind) === widgetProcessingInstructionKind
     && node.getAttribute(widgetProcessingInstructionTarget) === groupingTarget)
@@ -301,6 +321,17 @@ export async function createDevServer(options = {}) {
   }
   const appOrigin = privateTesting ? privateOrigin("VITE_APP_ORIGIN") : undefined
   const editorOrigin = privateTesting ? privateOrigin("VITE_EDITOR_ORIGIN") : undefined
+  const localOrigin = (name, value) => {
+    if(!value) return undefined
+    const url = new URL(value)
+    if(!isAllowedOrigin(value) || url.href !== `${url.origin}/` || url.username || url.password) {
+      throw new Error(`${name} must be an exact loopback HTTP(S) origin`)
+    }
+    return url.origin
+  }
+  const localAppOrigin = privateTesting ? undefined : localOrigin("VITE_APP_ORIGIN", options.appOrigin ?? process.env.VITE_APP_ORIGIN)
+  const localEditorOrigin = privateTesting ? undefined : localOrigin("VITE_EDITOR_ORIGIN", options.editorOrigin ?? process.env.VITE_EDITOR_ORIGIN)
+  if(localAppOrigin && localAppOrigin === localEditorOrigin) throw new Error("Development requires separate application and editor origins")
   if(privateTesting && appOrigin === editorOrigin) throw new Error("Private testing requires separate application and editor origins")
   const allowedHosts = privateTesting ? new Set([new URL(appOrigin).host, new URL(editorOrigin).host]) : undefined
   const allowedHost = value => privateTesting ? typeof value === "string" && allowedHosts.has(value.toLowerCase()) : isAllowedHost(value)
@@ -535,8 +566,16 @@ export async function createDevServer(options = {}) {
       })
     }
     setupWSConnection(socket, request)
-    if(request.liveRole !== "learner") return
+    if(!request.liveRole) return
     const shared = getYDoc(request.liveRoom)
+    const session = liveSessionTokens.get(request.liveRoom)
+    session.feedback ??= new Map()
+    session.sockets ??= new Map()
+    session.sockets.set(socket, {role: request.liveRole, learner: request.liveLearner})
+    socket.once("close", () => session.sockets.delete(socket))
+    for(const message of session.feedback.values()) {
+      if(request.liveRole === "host" || message.participant === request.liveLearner) socket.send(encodeLiveSessionFeedback(message))
+    }
     const handlers = socket.listeners("message")
     socket.removeAllListeners("message")
     socket.on("message", message => {
@@ -545,20 +584,42 @@ export async function createDevServer(options = {}) {
         if(bytes.byteLength > 8 * 1024 * 1024) throw new Error("Oversized live update")
         const decoder = decoding.createDecoder(bytes)
         const type = decoding.readVarUint(decoder)
+        if(type === liveSessionFeedbackMessage) {
+          if(request.liveRole !== "host" || bytes.byteLength > 32_768) throw new Error("Forbidden feedback message")
+          const feedback = readLiveSessionFeedback(decoder)
+          if(!session.learners.has(feedback.participant)) throw new Error("Unknown feedback participant")
+          if(session.feedback.has(feedback.id)) return
+          session.feedback.set(feedback.id, feedback)
+          const encoded = encodeLiveSessionFeedback(feedback)
+          for(const [recipient, identity] of session.sockets) {
+            if(recipient.readyState === 1 && (identity.role === "host" || identity.learner === feedback.participant)) recipient.send(encoded)
+          }
+          return
+        }
+        if(request.liveRole === "host") {
+          handlers.forEach(handler => handler.call(socket, message))
+          return
+        }
         if(type === 0) {
           const syncType = decoding.readVarUint(decoder)
-          if(syncType !== 0 && (syncType > 2 || !acceptLearnerUpdate(shared, decoding.readVarUint8Array(decoder), request.liveLearner))) {
+          const distribution = liveSessionTokens.get(request.liveRoom)?.distribution
+          if(syncType !== 0 && (syncType > 2 || !acceptLearnerUpdate(shared, decoding.readVarUint8Array(decoder), request.liveLearner,
+            distribution?.configured ? distribution.validate : undefined))) {
             throw new Error("Forbidden live update")
           }
         }
         else if(type === 1) {
           const awareness = decoding.createDecoder(decoding.readVarUint8Array(decoder))
           const count = decoding.readVarUint(awareness)
-          if(count > 1) throw new Error("Forbidden presence update")
+          if(count > shared.awareness.meta.size + 1) throw new Error("Forbidden presence update")
           for(let index = 0; index < count; index++) {
             const client = decoding.readVarUint(awareness)
-            decoding.readVarUint(awareness)
+            const clock = decoding.readVarUint(awareness)
             const state = JSON.parse(decoding.readVarString(awareness))
+            // y-websocket reflects received awareness updates. An unchanged
+            // older/equal-clock echo cannot impersonate or change that client.
+            if(client !== request.liveClient && clock <= (shared.awareness.meta.get(client)?.clock ?? -1)
+              && JSON.stringify(state) === JSON.stringify(shared.awareness.getStates().get(client) ?? null)) continue
             if(request.liveClient !== undefined && request.liveClient !== client) throw new Error("Forbidden presence identity")
             if(request.liveClient === undefined && shared.awareness.getStates().has(client)) throw new Error("Presence identity already in use")
             if(state !== null && (state.liveSession?.role !== "learner" || state.liveSession?.learner?.id !== request.liveLearner)) {
@@ -576,13 +637,44 @@ export async function createDevServer(options = {}) {
     })
   })
 
+  const backendOrigin = () => {
+    const address = server.address()
+    const port = typeof address === "object" && address ? address.port : requestedPort
+    return `http://${host === "::1" ? "[::1]" : host}:${port}`
+  }
+  const browserAppOrigin = () => appOrigin ?? localAppOrigin ?? backendOrigin()
+  const liveDocumentOrigin = () => {
+    if(editorOrigin) return editorOrigin
+    // Published documents are served by this backend, including when the
+    // frontend runs on a separately configured loopback port.
+    const url = new URL(backendOrigin())
+    url.hostname = url.hostname === "localhost" ? "127.0.0.1" : "localhost"
+    return url.origin
+  }
   const requestHandler = async (request, response) => {
     if(!allowedHost(request.headers.host)) {
       apiError(response, 403, privateTesting ? "Host is not configured for private testing" : "Only loopback hosts may use this development server")
       return
     }
-    applyCors(request, response, allowedOrigin)
-    if(typeof request.headers.origin === "string" && !allowedOrigin(request.headers.origin)) {
+    let url
+    try { url = new URL(request.url || "/", appOrigin ?? requestOrigin(request)) }
+    catch { return apiError(response, 400, "Invalid request URL") }
+    const path = url.pathname
+    const origin = appOrigin ?? backendOrigin()
+    const method = request.method === "OPTIONS" ? request.headers["access-control-request-method"] : request.method
+    // Frames need scoped widget services and immutable package resources. All
+    // document, provider and administration endpoints belong to the app only.
+    const frameAPI = method === "GET" && ["/api/session", "/api/widget-grouping/context"].includes(path)
+      || method === "POST" && path === "/api/widget-data/resolve"
+      || ["GET", "HEAD"].includes(method) && path.startsWith("/api/developer-packages/git/")
+      || request.method === "OPTIONS" && !method && ["/api/widget-data/resolve", "/api/widget-grouping/context"].includes(path)
+    const privileged = path.startsWith("/api/") && !frameAPI || path === "/admin" || path === "/admin/"
+    if(privileged && request.headers.host.toLowerCase() !== new URL(appOrigin ?? backendOrigin()).host) {
+      return apiError(response, 403, "Privileged endpoints require the application host")
+    }
+    const requestAllowedOrigin = value => allowedOrigin(value) && (!privileged || value === browserAppOrigin())
+    applyCors(request, response, requestAllowedOrigin)
+    if(typeof request.headers.origin === "string" && !requestAllowedOrigin(request.headers.origin)) {
       apiError(response, 403, privateTesting ? "Origin is not configured for private testing" : "Only loopback browser origins may use this development server")
       return
     }
@@ -592,13 +684,27 @@ export async function createDevServer(options = {}) {
       return
     }
 
-    const url = new URL(request.url || "/", appOrigin ?? requestOrigin(request))
-    const path = url.pathname
-    const origin = appOrigin ?? url.origin
+    // The application must start on its canonical origin: reversing the
+    // application/content pair blocks both privileged APIs and frame startup.
+    if(!privateTesting && ["GET", "HEAD"].includes(request.method)
+      && ["/", "/index.html", "/editor", "/editor/", "/editor/index.html"].includes(path)
+      && requestOrigin(request) !== browserAppOrigin()) {
+      response.writeHead(307, {Location: new URL(path + url.search, browserAppOrigin()).href, "Cache-Control": "no-store"})
+      response.end()
+      return
+    }
+
+    const isLiveDocument = (path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")
     if(privateTesting) {
-      const isLiveDocument = (path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")
       const isEditorHost = request.headers.host.toLowerCase() === new URL(editorOrigin).host
       if(isEditorHost !== isLiveDocument) return apiError(response, 403, "Live documents require the editor origin; APIs and administration require the application origin")
+    }
+    else if(isLiveDocument && request.headers.host.toLowerCase() !== new URL(liveDocumentOrigin()).host) {
+      // A learner document contains widget scripts and must never execute on
+      // the origin that can read documents or configure provider secrets.
+      response.writeHead(307, {Location: new URL(path + url.search, liveDocumentOrigin()).href, "Cache-Control": "no-store"})
+      response.end()
+      return
     }
 
     try {
@@ -608,6 +714,9 @@ export async function createDevServer(options = {}) {
         if(!safeSessionToken(token) || !safeSessionToken(hostKey) || typeof html !== "string" || !html.trim()) {
           return apiError(response, 400, "A live session needs host credentials and an HTML document")
         }
+        let distribution
+        try { distribution = createDistributionValidator(html) }
+        catch { return apiError(response, 400, "Invalid distribution instructions") }
         const id = liveDocument[1], room = `live-session-${id}`
         let session = liveSessionTokens.get(room)
         if(session && (session.token !== token || session.hostKey !== hostKey)) return apiError(response, 403, "Live session permission denied")
@@ -624,7 +733,8 @@ export async function createDevServer(options = {}) {
           session.timer.unref()
         }
         session.html = html
-        const documentURL = new URL("/live/", editorOrigin ?? origin)
+        session.distribution = distribution
+        const documentURL = new URL("/live/", liveDocumentOrigin())
         documentURL.search = new URLSearchParams({liveSession: id, liveToken: token, liveServer: origin.replace(/^http/, "ws")}).toString()
         return json(response, 201, {url: documentURL.href})
       }
@@ -1080,11 +1190,13 @@ export async function createDevServer(options = {}) {
 
   const server = createHTTPServer((request, response) => void requestHandler(request, response))
   if(useVite) {
-    const {createServer: createViteServer} = await import("vite")
+    const {createServer: createViteServer, normalizePath} = await import("vite")
+    const privatePaths = [...new Set([dataDirectory, await realpath(dataDirectory)])]
+      .map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
     viteServer = await createViteServer({
       root: projectRoot,
       appType: "mpa",
-      server: {middlewareMode: true, hmr: {server}},
+      server: {middlewareMode: true, hmr: {server}, fs: {deny: privatePaths}},
     })
   }
 

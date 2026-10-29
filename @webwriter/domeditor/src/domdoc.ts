@@ -86,10 +86,14 @@ export type DOMChangePreview = {
 
 export type SharedDOMDocOptions = {
   /** Derives owned DOM metadata before seeding/sync; must be idempotent. */
-  beforeSyncFromDOM?: () => void
+  beforeSyncFromDOM?: (local: boolean) => void
+  /** Whether a pristine generated child can be removed from a nested container. */
+  canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
   documentPermalinks?: boolean
   widgetData?: WidgetDataOptions
   supportsWidgetData?: (widget: Element) => boolean
+  /** Nested elements whose initial authored state is mirrored but then owned by another scope. */
+  scopeBoundary?: (element: Element) => boolean
   root?: HTMLElement
   ydoc?: Y.Doc
   awareness?: Awareness
@@ -102,6 +106,10 @@ type DOMAttribute = {
   name: string
   namespaceURI: string | null
 }
+
+type ScopeBoundarySnapshot =
+  | {text: string}
+  | {name: string; attrs: Record<string, string>; children: ScopeBoundarySnapshot[]}
 
 const childContainer = (element: Element): Element | DocumentFragment =>
   element.localName === "template" && "content" in element
@@ -175,6 +183,7 @@ export class SharedDOMDoc {
   readonly #renderedTransactions = new WeakSet<Y.Transaction>()
   readonly #nodes = new WeakMap<YXmlNode, Node>()
   readonly #xmlNodes = new WeakMap<Node, YXmlNode>()
+  readonly #scopeBoundaryBaselines = new WeakMap<Element, ScopeBoundarySnapshot>()
   readonly #minimumRepairs = new Set<Element>()
   readonly #repairBaselines = new WeakMap<Element, string>()
   readonly #document: Document
@@ -196,7 +205,9 @@ export class SharedDOMDoc {
   readonly #historyStateObservers = new Set<() => void>()
   #historyStateQueued = false
   readonly #documentPermalinks: boolean
-  readonly #beforeSyncFromDOM?: () => void
+  readonly #beforeSyncFromDOM?: (local: boolean) => void
+  readonly #canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
+  readonly #scopeBoundary?: (element: Element) => boolean
 
   constructor(
     readonly serverUrl?: string,
@@ -209,6 +220,8 @@ export class SharedDOMDoc {
   ) {
     this.root = options.root ?? document.body
     this.#beforeSyncFromDOM = options.beforeSyncFromDOM
+    this.#canRemoveMinimumContentRepair = options.canRemoveMinimumContentRepair
+    this.#scopeBoundary = options.scopeBoundary
     this.#documentPermalinks = options.documentPermalinks ?? false
     this.#document = this.root.ownerDocument
     this.doc = options.ydoc ?? new Y.Doc()
@@ -326,7 +339,7 @@ export class SharedDOMDoc {
         this.#selectMirror(mirror)
       }
       if(!hasSharedDOM) {
-        this.#beforeSyncFromDOM?.()
+        this.#beforeSyncFromDOM?.(true)
         if(this.#documentPermalinks) updateDocumentPermalinks(this.root)
         this.#metadata.set(INITIALIZED_KEY, true)
         this.#reconcileYElement(this.root, this.#body)
@@ -689,6 +702,9 @@ export class SharedDOMDoc {
         return
       }
       if(this.#document === document) $.clearLayoutRanges()
+      if(selectionAPI.rangeCount === 1 && selectionAPI.anchorNode === domSelection.anchorNode
+        && selectionAPI.anchorOffset === domSelection.anchorOffset && selectionAPI.focusNode === domSelection.focusNode
+        && selectionAPI.focusOffset === domSelection.focusOffset) return
       selectionAPI.setBaseAndExtent(
         domSelection.anchorNode,
         domSelection.anchorOffset,
@@ -705,9 +721,10 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
-    this.#beforeSyncFromDOM?.()
+    this.#beforeSyncFromDOM?.(origin !== this.#remoteReactionOrigin)
     const pending = this.#isObserving ? this.#observer.takeRecords() : undefined
     let records = mutations ? [...mutations, ...(pending ?? [])] : pending
+    if(records) records = records.filter(record => !this.#insideScopeBoundary(record.target))
     // Explicit synchronization without pending records still discovers upgrades
     // and retries invalid data. Ordinary edits inspect only affected bindings.
     const discover = !mutations && !records?.length
@@ -742,9 +759,20 @@ export class SharedDOMDoc {
   /** Transient collaboration provenance for a generated minimum flow child.
    * The authored DOM stays authoritative, and any authored edit ends it. */
   markMinimumContentRepair(element: Element) {
-    if(element.parentElement !== this.root) return
-    this.#repairBaselines.set(element, this.#repairMarkup(element))
+    const baseline = this.#repairBaseline(element)
+    if(!baseline) return
+    this.#repairBaselines.set(element, baseline)
     this.#minimumRepairs.add(element)
+  }
+
+  #repairBaseline(element: Element) {
+    if(!this.root.contains(element)) return null
+    if(element.parentElement === this.root) return this.#repairMarkup(element)
+    // Parent identity keeps provenance from following a child moved into a
+    // different widget. The metadata stays in Yjs, never in authored HTML.
+    const parentId = element.parentElement?.id
+    return parentId && this.#canRemoveMinimumContentRepair
+      ? JSON.stringify([parentId, this.#repairMarkup(element)]) : null
   }
 
   #repairMarkup(element: Element) {
@@ -764,7 +792,7 @@ export class SharedDOMDoc {
         continue
       }
       const baseline = shared.getAttribute(INTERNAL_MINIMUM_REPAIR)
-      if(!baseline || element.parentElement !== this.root || this.#repairMarkup(element) !== baseline) {
+      if(!baseline || this.#repairBaseline(element) !== baseline) {
         if(baseline) shared.removeAttribute(INTERNAL_MINIMUM_REPAIR)
         this.#repairBaselines.delete(element)
         this.#minimumRepairs.delete(element)
@@ -782,6 +810,8 @@ export class SharedDOMDoc {
       const candidates = new Set(repairs)
       const ordered = Array.from(parent.children).filter(child => candidates.has(child))
       for(const duplicate of ordered.slice(1)) {
+        if(parent !== this.root && !this.#canRemoveMinimumContentRepair?.(duplicate,
+          ordered.filter(element => element.parentElement === parent))) continue
         duplicate.remove()
         this.#minimumRepairs.delete(duplicate)
         this.#repairBaselines.delete(duplicate)
@@ -812,12 +842,19 @@ export class SharedDOMDoc {
       const shared = this.#xmlNodes.get(node)
       return isElement(node) && shared instanceof Y.XmlElement && this.#isSelectionNode(shared)
     })
+    const mappedContainerSet = new Set(mappedContainers)
+    const hasContainerAncestor = (node: Node, candidates: ReadonlySet<Node>, includeSelf = false) => {
+      for(let current: Node | null = includeSelf ? node : node.parentNode; current; current = current.parentNode) {
+        if(candidates.has(current)) return true
+      }
+      return false
+    }
     // Changes to template fragments, ignored-node membership and unmapped
     // structure need the full reconciler. Ordinary typing/attribute changes
     // only inspect their current DOM targets.
     if(relevant.some(record => !this.#xmlNodes.has(record.target)
       && record.target !== this.#document.documentElement
-      && !mappedContainers.some(parent => parent.contains(record.target))
+      && !hasContainerAncestor(record.target, mappedContainerSet, true)
       || record.type === "attributes" && (record.attributeName === "data-webwriter-editor-only"
         || record.attributeName === "class" && ((record.oldValue ?? "").includes("◆editor-only")
           || (record.target as Element).classList.contains("◆editor-only"))))) {
@@ -830,14 +867,14 @@ export class SharedDOMDoc {
       for(let node: Node | null = record.target; node && !changed.has(node); node = node.parentNode) changed.add(node)
     }
     for(const node of containers) {
-      if([...containers].some(parent => parent !== node && parent.contains(node))) continue
+      if(hasContainerAncestor(node, containers)) continue
       const yNode = this.#xmlNodes.get(node)
       if(isElement(node) && yNode instanceof Y.XmlElement && this.#isSelectionNode(yNode)) {
         this.#reconcileYElement(node, yNode, changed)
       }
     }
     for(const node of new Set(relevant.filter(record => record.type !== "childList").map(record => record.target))) {
-      if([...containers].some(parent => parent.contains(node))) continue
+      if(hasContainerAncestor(node, containers, true)) continue
       if(node === this.#document.documentElement && this.#documentAttributes) {
         this.#reconcileDocumentAttributes()
         continue
@@ -1401,6 +1438,19 @@ export class SharedDOMDoc {
     return Boolean(element?.closest(".◆editor-only, [data-webwriter-editor-only]"))
   }
 
+  #isScopeBoundary(element: Element) {
+    return element !== this.root && Boolean(this.#scopeBoundary?.(element))
+  }
+
+  #insideScopeBoundary(node: Node) {
+    let element: Element | null = isElement(node) ? node : node.parentElement
+    while(element && element !== this.root) {
+      if(this.#isScopeBoundary(element)) return true
+      element = element.parentElement
+    }
+    return false
+  }
+
   #undoScopes() {
     return this.#documentHead
       ? [this.#body, this.#documentHead, this.#headMetadata, this.#documentAttributes!]
@@ -1469,6 +1519,18 @@ export class SharedDOMDoc {
     }
     if(!isElement(node) || this.#isInsideIgnoredElement(node)) return null
 
+    // A boundary may have been moved within this outer scope. Its live DOM can
+    // already contain private state, so rebuild the moved node from the last
+    // outer-mirror snapshot rather than capturing those current descendants.
+    const prior = this.#xmlNodes.get(node)
+    if(this.#isScopeBoundary(node) && prior instanceof Y.XmlElement && this.#isCompatiblePair(node, prior)) {
+      const baseline = this.#scopeBoundaryBaselines.get(node) ?? (prior.doc ? this.#snapshotYNode(prior) : null)
+      if(!baseline) return null
+      const clone = this.#restoreYNode(baseline) as Y.XmlElement
+      if(addPair) this.#addNodePair(node, clone)
+      return clone
+    }
+
     const yElement = new Y.XmlElement(node.localName)
     const repair = this.#repairBaselines.get(node)
     if(repair) yElement.setAttribute(INTERNAL_MINIMUM_REPAIR, repair)
@@ -1495,6 +1557,21 @@ export class SharedDOMDoc {
     if(children.length) yElement.insert(0, children)
     if(addPair) this.#addNodePair(node, yElement)
     return yElement
+  }
+
+  #snapshotYNode(node: YXmlNode): ScopeBoundarySnapshot {
+    if(node instanceof Y.XmlText) return {text: node.toString()}
+    if(!(node instanceof Y.XmlElement)) return {text: node.toString()}
+    return {name: node.nodeName, attrs: node.getAttributes(), children: node.toArray().map(child => this.#snapshotYNode(child as YXmlNode))}
+  }
+
+  #restoreYNode(snapshot: ScopeBoundarySnapshot): YXmlNode {
+    if("text" in snapshot) return new Y.XmlText(snapshot.text)
+    const clone = new Y.XmlElement(snapshot.name)
+    for(const [name, value] of Object.entries(snapshot.attrs)) clone.setAttribute(name, value)
+    const children = snapshot.children.map(child => this.#restoreYNode(child))
+    if(children.length) clone.insert(0, children as (Y.XmlElement | Y.XmlText)[])
+    return clone
   }
 
   #createDOMNode(yNode: YXmlNode, addPair = true): Node | null {
@@ -1714,6 +1791,12 @@ export class SharedDOMDoc {
 
   #reconcileYElement(domElement: Element, yElement: Y.XmlElement, changed?: ReadonlySet<Node>) {
     this.#addNodePair(domElement, yElement)
+    if(this.#isScopeBoundary(domElement)) {
+      if(!this.#scopeBoundaryBaselines.has(domElement) && yElement.doc) {
+        this.#scopeBoundaryBaselines.set(domElement, this.#snapshotYNode(yElement))
+      }
+      return
+    }
     this.#copyDOMAttributesToY(domElement, yElement)
     if(this.widgetData.isBlock(domElement)) return
 
@@ -1725,11 +1808,19 @@ export class SharedDOMDoc {
       return mapped && currentYSet.has(mapped) && this.#isCompatiblePair(child, mapped) ? [mapped] : []
     })
     const retained = longestOrderedSubset(currentYChildren, desiredExisting)
-    const desiredYChildren = domChildren.map(child => {
+    const desiredYChildren: YXmlNode[] = []
+    for(const child of domChildren) {
       const mapped = this.#xmlNodes.get(child)
-      if(mapped && retained.has(mapped) && this.#isCompatiblePair(child, mapped)) return mapped
-      return this.#createYNode(child)!
-    })
+      if(mapped && retained.has(mapped) && this.#isCompatiblePair(child, mapped)) {
+        desiredYChildren.push(mapped)
+        continue
+      }
+      const created = this.#createYNode(child)
+      // A moved boundary whose baseline is unavailable must not be rebuilt
+      // from participant DOM. Leave the current shared parent intact.
+      if(!created) return
+      desiredYChildren.push(created)
+    }
 
     for(let index = currentYChildren.length - 1; index >= 0; index--) {
       if(!retained.has(currentYChildren[index])) yElement.delete(index, 1)
@@ -1775,18 +1866,67 @@ export class SharedDOMDoc {
    * changes; created children already mirror their Y subtree. */
   #reconcileDOMElement(yElement: Y.XmlElement, domElement: Element, deep = true) {
     this.#addNodePair(domElement, yElement)
+    if(this.#isScopeBoundary(domElement)) {
+      if(!this.#scopeBoundaryBaselines.has(domElement) && yElement.doc) this.#scopeBoundaryBaselines.set(domElement, this.#snapshotYNode(yElement))
+      return
+    }
     this.#copyYAttributesToDOM(yElement, domElement)
     if(this.widgetData.isBlock(domElement)) return
 
     const container = childContainer(domElement)
     const yChildren = yElement.toArray() as YXmlNode[]
-    const renderableChildren = yChildren.flatMap(yChild => {
-      const mapped = this.#nodes.get(yChild)
-      const domChild = mapped && mapped.parentNode === container && this.#isCompatiblePair(mapped, yChild)
-        ? mapped
-        : this.#createDOMNode(yChild)
-      return domChild ? [{yChild, domChild}] : []
-    })
+    const usedDOMChildren = new Set<Node>()
+    let boundaryCandidates: Map<string, IterableIterator<Element>> | undefined
+    const BoundaryObserver = this.#document.defaultView?.MutationObserver ?? MutationObserver
+    const boundaryObserver = this.#scopeBoundary ? new BoundaryObserver(() => {}) : null
+    boundaryObserver?.observe(container, {subtree: true, childList: true, attributes: true})
+    const renderableChildren: {yChild: YXmlNode, domChild: Node}[] = []
+    try {
+      for(const yChild of yChildren) {
+        const mapped = this.#nodes.get(yChild)
+        let domChild = mapped && mapped.parentNode === container && !usedDOMChildren.has(mapped) && this.#isCompatiblePair(mapped, yChild)
+          ? mapped : null
+        // A joining participant may already have a private live subtree at
+        // the same boundary. Index those candidates once for this parent.
+        if(!domChild && this.#scopeBoundary && yChild instanceof Y.XmlElement && !this.#isYComment(yChild) && !this.#isYProcessingInstruction(yChild)) {
+          // Constructing a custom element can deliberately replace another
+          // boundary. Pending native records invalidate this read-batch index.
+          if(boundaryObserver?.takeRecords().length) boundaryCandidates = undefined
+          if(!boundaryCandidates) {
+            const buckets = new Map<string, Element[]>()
+            for(const child of Array.from(container.childNodes)) {
+              if(!isElement(child) || !this.#isScopeBoundary(child)) continue
+              const name = child.prefix ? `${child.prefix}:${child.localName}` : child.localName
+              for(const id of child.id ? [null, child.id] : [null]) {
+                const key = JSON.stringify([child.namespaceURI, name, id])
+                const bucket = buckets.get(key) ?? []
+                bucket.push(child); buckets.set(key, bucket)
+              }
+            }
+            boundaryCandidates = new Map([...buckets].map(([key, children]) => [key, children.values()]))
+          }
+          const id = yChild.getAttribute("id")
+          const namespace = yChild.hasAttribute(INTERNAL_NAMESPACE)
+            ? yChild.getAttribute(INTERNAL_NAMESPACE) || null : this.#document.documentElement.namespaceURI
+          const name = yChild.getAttribute(INTERNAL_QUALIFIED_NAME) ?? yChild.nodeName
+          const candidates = boundaryCandidates.get(JSON.stringify([namespace, name, id || null]))
+          for(let next = candidates?.next(); next && !next.done; next = candidates?.next()) {
+            const child = next.value
+            if(child.parentNode === container && !usedDOMChildren.has(child) && this.#isScopeBoundary(child)
+              && this.#isCompatiblePair(child, yChild) && (!id || child.getAttribute("id") === id)) {
+              domChild = child
+              break
+            }
+          }
+        }
+        if(!domChild) domChild = this.#createDOMNode(yChild)
+        if(domChild) {
+          usedDOMChildren.add(domChild)
+          renderableChildren.push({yChild, domChild})
+        }
+      }
+    }
+    finally { boundaryObserver?.disconnect() }
     const desiredDOMChildren = renderableChildren.map(({domChild}) => domChild)
     const desiredSet = new Set(desiredDOMChildren)
     const currentChildren = Array.from(container.childNodes)

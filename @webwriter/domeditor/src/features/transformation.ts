@@ -5,7 +5,7 @@ import {standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../element-styles"
 import {mediaCropInsets} from "../media"
-import {captionIconSource} from "../ribbon-icons"
+import {captionIconSource} from "../caption-icon"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
 import {isCanvasStartingView} from "../canvas-viewer.js"
@@ -80,6 +80,7 @@ type Gesture = {
  * on the current DOM. Escape, pointer cancellation and teardown cancel a drag.
  */
 export class TransformationFeature extends EditorFeature {
+  readonly readerPermission = "select" as const
   protected handlesAppendixInteractions = true
   protected handlesCapturedElementInteractions = true
   #target: TransformElement | null = null
@@ -405,7 +406,7 @@ export class TransformationFeature extends EditorFeature {
     return (element instanceof HTMLElement || element instanceof SVGSVGElement
       || mathRoot(element) === element && element.getAttribute("display") === "block")
       && element !== document.documentElement && element !== document.head
-      && !isDocumentRoot(element) && getDocumentRoot().contains(element)
+      && !isDocumentRoot(element) && getDocumentRoot().contains(element) && this.editor.allows("select", element)
   }
 
   /** Called at the selection feature's invariant boundary, including capture
@@ -480,6 +481,8 @@ export class TransformationFeature extends EditorFeature {
 
   #syncControlParts() {
     const overlay = this.overlay
+    const allows = (permission: "move" | "delete" | "style" | "edit") => this.#group.length
+      ? this.#group.every(element => this.editor.allows(permission, element)) : this.editor.allows(permission, this.target)
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
     const text = Boolean(this.target && !freeform && this.#isTextContainer(this.target))
@@ -488,19 +491,20 @@ export class TransformationFeature extends EditorFeature {
     setPart(overlay, "transform-overlay-starting-view", !this.#group.length && Boolean(this.target && isCanvasStartingView(this.target)))
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      const hide = !freeform || this.#group.length > 0
+      const hide = !allows("style") || !freeform || this.#group.length > 0
       midpoint.hidden = hide
       setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = this.#group.length > 0 || !freeform && scaler.dataset.resizeDirection !== corner
+      const hide = !allows("style") || this.#group.length > 0 || !freeform && scaler.dataset.resizeDirection !== corner
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
       setPart(scaler, "transform-overlay-scale-text", text)
     }
     for(const edge of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
       edge.dataset.transformMode = "move"
-      edge.draggable = !this.editor.features.canvas.active && !this.editor.features.slides.active
+      edge.style.pointerEvents = allows("move") ? "" : "none"
+      edge.draggable = allows("move") && !this.editor.features.canvas.active && !this.editor.features.slides.active
       edge.title = "Move"
       setPart(edge, "transform-overlay-edge-move", true)
     }
@@ -511,21 +515,21 @@ export class TransformationFeature extends EditorFeature {
       setPart(control, `transform-overlay-${name}-hidden`, hide)
       control.hidden = hide
     }
-    hidden("rotator", !freeform || (this.#group.length
+    hidden("rotator", !allows("style") || !freeform || (this.#group.length
       ? !this.#group.every(element => getComputedStyle(element).position === "absolute" && !isCanvasStartingView(element))
       : position !== "absolute" || Boolean(this.target && isCanvasStartingView(this.target))))
     hidden("orderer", true)
-    hidden("mover", freeform)
+    hidden("mover", freeform || !allows("move"))
     const captionPosition = this.editor.features.manipulation.getCaptionPosition()
     const captionAlignment = this.editor.features.manipulation.getCaptionAlignment() ?? "left"
     const caption = overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-caption")!
-    hidden("caption", freeform || !this.target || captionPosition === null)
+    hidden("caption", !allows("edit") || freeform || !this.target || captionPosition === null)
     caption.style.setProperty("--icon", `url("data:image/svg+xml,${encodeURIComponent(captionIconSource(captionPosition ?? "none", captionAlignment, true))}")`)
     caption.title = captionPosition === "none" ? "Add caption" : `Caption ${captionPosition}, align ${captionAlignment}: cycle position`
     caption.setAttribute("aria-label", caption.title)
     overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-mover")!.draggable =
       !this.editor.features.canvas.active && !this.editor.features.slides.active
-    hidden("delete", false)
+    hidden("delete", !allows("delete"))
     setPart(overlay.querySelector("#◆transform-overlay-delete")!, "transform-overlay-delete-freeform", freeform)
     hidden("arranger", true)
     hidden("anchor", true)
@@ -548,8 +552,10 @@ export class TransformationFeature extends EditorFeature {
 
   /** The linear part of the actual CSS transform, including ancestors.
    * Translation and transform-origin are already reflected in the live rect. */
-  #matrix(element: Element | null): DOMMatrix {
+  #matrix(element: Element | null, matrices?: WeakMap<Element, DOMMatrix>): DOMMatrix {
     if(!element) return new DOMMatrix()
+    const cached = matrices?.get(element)
+    if(cached) return cached
     const style = getComputedStyle(element)
     const angle = this.#angle(style.getPropertyValue("rotate"))
     const scale = this.#scale(style.getPropertyValue("scale"))
@@ -557,7 +563,9 @@ export class TransformationFeature extends EditorFeature {
     const own = new DOMMatrix().scale(zoom).rotate(angle).scale(scale[0], scale[1])
       .multiply(new DOMMatrix(style.transform && style.transform !== "none" ? style.transform : undefined))
     own.e = own.f = 0
-    return this.#matrix(renderedParentElement(element)).multiply(own)
+    const matrix = this.#matrix(renderedParentElement(element), matrices).multiply(own)
+    matrices?.set(element, matrix)
+    return matrix
   }
 
   #angle(value: string) {
@@ -574,7 +582,7 @@ export class TransformationFeature extends EditorFeature {
     return [values[0], values[1] ?? values[0]]
   }
 
-  #size(element: TransformElement) {
+  #size(element: TransformElement, matrices?: WeakMap<Element, DOMMatrix>) {
     const style = getComputedStyle(element)
     const extra = (properties: string[]) => properties.reduce((sum, property) => sum + (parseFloat(style.getPropertyValue(property)) || 0), 0)
     const paddingWidth = style.boxSizing === "border-box" ? 0 : extra(["padding-left", "padding-right", "border-left-width", "border-right-width"])
@@ -586,7 +594,7 @@ export class TransformationFeature extends EditorFeature {
       // The live rect is already a border box; transformed hosts need their
       // local layout dimensions so the overlay does not apply scale twice.
       const rect = element.getBoundingClientRect()
-      const matrix = this.#matrix(element)
+      const matrix = this.#matrix(element, matrices)
       const transformed = matrix.a !== 1 || matrix.b !== 0 || matrix.c !== 0 || matrix.d !== 1
       const width = transformed && element instanceof HTMLElement ? element.offsetWidth || rect.width : rect.width
       const height = transformed && element instanceof HTMLElement ? element.offsetHeight || rect.height : rect.height
@@ -624,26 +632,27 @@ export class TransformationFeature extends EditorFeature {
     return crop?.target === media ? crop.edges : null
   }
 
-  /** Border-box geometry shared by transform, selection and hover overlays. */
-  boxGeometry(element: TransformElement, cropped = true): BoxGeometry {
+  /** Border-box geometry shared by transform, selection and hover overlays.
+   * Matrices may be shared only within one synchronous batch of layout reads. */
+  boxGeometry(element: TransformElement, cropped = true, matrices?: WeakMap<Element, DOMMatrix>): BoxGeometry {
     if(element.localName === "figure" && Array.from(element.classList).some(name => name.startsWith("◆figure-flow-"))) {
       const content = captionedFigureContent(element)
-      if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped)
+      if(content && this.#canTransform(content)) return this.boxGeometry(content, cropped, matrices)
     }
     let rect = element.getBoundingClientRect()
-    let {width, height} = this.#size(element)
-    let matrix = this.#matrix(element)
+    let {width, height} = this.#size(element, matrices)
+    let matrix = this.#matrix(element, matrices)
     const media = cropped ? this.editor.features.media.cropTargetFor(element) : null
     const insets = media && this.#mediaCropInsets(media)
     if(media && insets?.some(value => value)) {
-      const source = this.boxGeometry(media, false)
+      const source = this.boxGeometry(media, false, matrices)
       if(element.localName === "figure") {
-        const visible = this.boxGeometry(media)
+        const visible = this.boxGeometry(media, true, matrices)
         const caption = element.querySelector<HTMLElement>(":scope > figcaption")
         const inverse = matrix.inverse()
         const local = (point: {x: number, y: number}) => this.#vector(inverse, point.x - rect.left - rect.width / 2, point.y - rect.top - rect.height / 2)
         const mediaPoints = visible.corners.map(local)
-        const points = [...mediaPoints, ...(caption ? this.boxGeometry(caption, false).corners.map(local) : [])]
+        const points = [...mediaPoints, ...(caption ? this.boxGeometry(caption, false, matrices).corners.map(local) : [])]
         const left = Math.min(...mediaPoints.map(point => point.x)), right = Math.max(...mediaPoints.map(point => point.x))
         const top = Math.min(...points.map(point => point.y)), bottom = Math.max(...points.map(point => point.y))
         width = right - left
@@ -697,6 +706,15 @@ export class TransformationFeature extends EditorFeature {
     }
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
+    // A custom element can paint an out-of-flow shadow child while its host
+    // has no box. Its own controls own that geometry; do not draw at BODY@0.
+    if(rect.width <= 0 || rect.height <= 0) {
+      overlay.setAttribute("visibility", "hidden")
+      this.editor.features.selection.clearTransformCaret()
+      this.#syncControlParts()
+      return
+    }
+    overlay.removeAttribute("visibility")
     Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
     this.#positionCropControls(target, width, height, rect, matrix)
     const floats = this.editor.features.selection.floatExclusions(target, rect, styles)
@@ -950,6 +968,7 @@ export class TransformationFeature extends EditorFeature {
 
   #begin(event: MouseEvent, mode: Mode, handle: HTMLElement) {
     const target = this.target
+    if(!(this.#group.length ? this.#group : target ? [target] : []).every(element => this.editor.allows(mode === "move" ? "move" : "style", element))) return false
     if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
     if(this.#group.length) return this.#beginGroup(event, mode, handle)
     if(mode === "crop" && !cropDirections.some(direction => direction === handle.dataset.cropDirection)) return false
@@ -1676,7 +1695,7 @@ export class TransformationFeature extends EditorFeature {
       }
       if(handle instanceof HTMLElement && handle.id === "◆transform-overlay-delete" && this.overlay.contains(handle)) {
         const target = this.target
-        if(target && !this.#gesture && !this.editor.isEditingLocked) {
+        if(target && !this.#gesture && !this.editor.isEditingLocked && this.editor.allowsSelection("delete")) {
           if(this.#group.length) {
             if(this.#validGroupSelection()) {
               const end = this.editor.doc.beginUndoGroup()

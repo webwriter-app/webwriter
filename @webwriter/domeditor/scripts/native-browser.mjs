@@ -7,6 +7,16 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "SVG empty graphic layout stays stable when the first shape is inserted",
+  "SVG preset bounding boxes fit their native contours during insertion and editing",
+  "SVG shape text boxes fit content and wrap while preserving native editing",
+  "SVG shape text empty label carets stay centered through rotation and zoom",
+  "SVG shape text labels wrap and shrink within their geometry",
+  "SVG speech bubbles attach their connector to the edge facing the tip",
+  "shape keyboard drops stay within the captured graphic",
+  "widget-created hints retain their caret and inherit popup text colors",
+  "widget shadow interactions capture hosts while slotted children stay editable",
+  "nested widget pages keep insertion, splitting and deletion inside their hosts",
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",
   "Drawing brush keys are temporary and inserted shapes keep their defaults",
   "Tab cycles captured graphic and formula keyboard tabs without changing content",
@@ -14,6 +24,7 @@ const expectedChecks = [
   "SVG snapping follows the visible grid through viewport changes",
   "SVG arrowheads select their connector, fit its outline and resize independently",
   "SVG shape fills keep overlaps solid and intentional holes open",
+  "SVG shape text resize reuses glyph metrics and preserves undo",
   "SVG preset POIs stay on their actual contours through adjustments",
   "SVG curved shape POIs follow contours while dragging and undoing",
   "SVG Chord endpoint POIs retain their ellipse through circular edits",
@@ -104,11 +115,11 @@ const expectedChecks = [
   "block splitting retains attribution only on the original part",
   "new paragraphs and line breaks reveal the caret at the document end",
   "native drag floats in preview areas and preserves ordinary gap drops",
-  "document shape drops use float lanes and ordinary content flow",
-  "keyboard shape drags capture graphics and finish drops through appendix surfaces",
+  "shape keyboard drops stay in captured graphics and ribbon shapes use document flow",
+  "shape keyboard drags retain capture through appendix surfaces",
   "shape keys preview and place at the cursor without Alt",
   "SVG shape text entry keeps capture and native typing stable",
-  "ribbon elements drop inside captured graphics with native content and cleanup",
+  "ribbon elements are rejected over captured graphics with native content and cleanup",
   "empty document gutters prefer floats throughout the viewport",
   "empty graphics drag through their full capture outline into floats",
   "native MathML editing preserves inline rendering and argument hit targets",
@@ -148,6 +159,7 @@ const expectedChecks = [
   "standalone SVG affordances refit rotated elements and resize beyond their original size",
   "ribbon shapes retain their aspect ratio under the document theme",
   "ribbon dropdowns join their triggers without gaps at viewport edges",
+  "shape ribbon galleries scroll only when the viewport cannot fit their contents",
   "font dropdowns join their white controls at viewport edges",
   "font list previews only load the active web font",
   "font searches split installed and web results without scrolling",
@@ -285,12 +297,15 @@ const port = await new Promise((resolve, reject) => {
     })
   })
 })
+const profile = await mkdtemp(join(tmpdir(), "domeditor-native-"))
 const vite = await createServer({
+  // Concurrent dev/test servers must not replace this browser's optimized
+  // module graph while its lazy fixtures are still importing dependencies.
+  cacheDir: join(profile, "vite-cache"),
   ...(widgetStateMode || widgetStorageMode ? {logLevel: "silent"} : {}),
   plugins: [resultPlugin],
   server: {host: "127.0.0.1", port, strictPort: true, hmr: false, watch: null},
 })
-const profile = await mkdtemp(join(tmpdir(), "domeditor-native-"))
 if(browserName === "firefox") {
   await writeFile(join(profile, "user.js"), [
     'user_pref("app.update.enabled", false);',
@@ -315,7 +330,8 @@ try {
   if(!smoke && !mathVisual && !importMapMode && !performanceMode && !widgetStateMode && !widgetStorageMode && !widgetAggregationMode
     && filteredChecks.some(name => name.startsWith("standalone live learners"))) {
     const {createDevServer} = await import("../dev-server/server.mjs")
-    liveServer = await createDevServer({vite: false, port: 0, dataDirectory: join(profile, "live-session")})
+    liveServer = await createDevServer({vite: false, port: 0, dataDirectory: join(profile, "live-session"),
+      appOrigin: `http://127.0.0.1:${port}`, editorOrigin: `http://localhost:${port}`})
     const address = await liveServer.listen()
     liveServerURL = address.url.replace(/^http/, "ws")
   }

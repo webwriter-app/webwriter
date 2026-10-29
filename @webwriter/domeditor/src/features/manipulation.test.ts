@@ -15,12 +15,26 @@ import {mathElement} from "../math"
 import {graphicShapeDragType} from "../graphic"
 import {elementAttributeState} from "../element-attributes"
 import {floatSideFromStyles} from "../element-styles"
-import {elementDragType, insertionMenuItems, ribbonInsertionDragType} from "../components/insertion-menu"
+import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType} from "../components/insertion-menu"
 import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type SelectionChangeDetail} from "../editor-bridge"
 
 let editor: DOMEditor
 
 describe("paragraph insertion content", () => {
+  it("keeps an authored identity on the original paragraph when Enter creates a continuation", () => {
+    document.body.innerHTML = '<p id="original" title="keep">Before</p>'
+    const paragraph = document.querySelector("p")!
+    editor.doc.syncFromDOM()
+    $.move(paragraph.firstChild!, 2)
+    editor.features.manipulation.insert()
+    expect(paragraph.id).toBe("original")
+    expect(paragraph.nextElementSibling?.hasAttribute("id")).toBe(false)
+    expect(paragraph.nextElementSibling?.getAttribute("title")).toBe("keep")
+    expect(paragraph.nextElementSibling?.textContent).toBe("fore")
+    expect(document.querySelectorAll("#original")).toHaveLength(1)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("retains an empty paragraph when inserting a mark", () => {
     const paragraph = document.querySelector("p")!
     $.move(paragraph)
@@ -1030,6 +1044,7 @@ describe.each(["canvas", "slides"] as const)("line breaks inside %s text roots",
   })
 
   it("inserts a line break into an empty text root", () => {
+    document.body.innerHTML = "<section><p></p></section>"
     expect(editor.setDocumentLayout(mode, "document")).toBe(true)
     const paragraph = document.querySelector("p")!, parent = paragraph.parentElement!
     $.move(paragraph)
@@ -1861,7 +1876,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(widget.isConnected).toBe(false)
     expectBodyToBe("<p>before<em>new</em>after</p>")
   })
-  it.each(["empty paragraph", "gap", "block split", "inline", "HTML", "paste"])("element-selects a contentful widget inserted through %s", async context => {
+  it.each(["empty paragraph", "gap", "block split", "inline", "HTML", "paste"])("capture-selects a contentful widget inserted through %s", async context => {
     editor.schema.extendWidgets([{
       tagName: "webwriter-demo",
       editingConfig: {content: "flow*", ...(context === "inline" ? {inline: true, group: "phrasing"} : {})},
@@ -1882,10 +1897,9 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     else editor.features.manipulation.insert(document.createElement("webwriter-demo"))
 
     const widget = document.querySelector("webwriter-demo")!
-    expect($.selectedElement).toBe(widget)
-    expect(widget).toHaveClass("◆element-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
-    expect(editor.features.selection.isCaptureSelection).toBe(false)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
+    expect(editor.features.selection.isCaptureSelection).toBe(true)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
   it("edits and formats a paragraph inside a contentful widget with undo and redo", () => {
@@ -1901,14 +1915,14 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     const input = new KeyboardEvent("keydown", {bubbles: true, composed: true, cancelable: true, key: "Enter"})
     paragraph.dispatchEvent(input)
     expect(input.defaultPrevented).toBe(true)
-    expectBodyToBe('<webwriter-demo><!--keep--><div><p>he</p><p>llo</p></div></webwriter-demo>')
+    expectBodyToBe(`<webwriter-demo id="${widget.id}"><!--keep--><div><p>he</p><p>llo</p></div></webwriter-demo>`)
     expect(editor.features.manipulation.setBlockStyle({"text-align": "center"})).toBe(1)
     editor.doc.syncFromDOM()
     expect(widget.querySelectorAll("p")[1]).toHaveStyle({textAlign: "center"})
     expect(editor.features.selection.isCaptureSelection).toBe(false)
 
     editor.doc.undo()
-    expectBodyToBe('<webwriter-demo><!--keep--><div><p>hello</p></div></webwriter-demo>')
+    expectBodyToBe(`<webwriter-demo id="${widget.id}"><!--keep--><div><p>hello</p></div></webwriter-demo>`)
     editor.doc.redo()
     expect(document.querySelectorAll("p")).toHaveLength(2)
     expect(document.querySelectorAll("p")[1]).toHaveStyle({textAlign: "center"})
@@ -1946,7 +1960,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     expect(selection.toString()).toBe("")
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect(editor.toHTML(true)).toBe("<section><p>before</p><webwriter-demo></webwriter-demo><!--keep--><p>after</p></section>")
+    expect(editor.toHTML(true)).toBe(`<section><p>before</p><webwriter-demo id="${widget.id}"></webwriter-demo><!--keep--><p>after</p></section>`)
 
     const editable = shadow.querySelector<HTMLElement>("div")!
     editable.focus()
@@ -5113,6 +5127,38 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(transferEvent("dragstart", data))
     return {data, surface}
   }
+
+  it("captures a dragged element after dragend from its current DOM, once, without moving it", () => {
+    document.body.innerHTML = '<section><demo-widget class="authored ◆temporary"><!--keep--><span>before</span></demo-widget></section><p>Outside</p>'
+    const source = document.querySelector("demo-widget")!
+    $.selectElement(source)
+    expect($.selectedElement).toBe(source)
+    const data = new DataTransfer()
+    editor.features.manipulation.startNodeDrag(transferEvent("dragstart", data) as DragEvent, source)
+    const token = data.getData(nodeDragType)
+    expect(token).not.toBe("")
+    const action = editor.features.manipulation.actions.getDraggedSnippet
+    expect(action({type: "getDraggedSnippet", token: "foreign"})).toBeNull()
+    editor.features.manipulation.endNodeDrag()
+    source.querySelector("span")!.textContent = "current"
+    const snippet = action({type: "getDraggedSnippet", token})!
+    expect(snippet.html).toContain('<demo-widget class="authored"><!--keep--><span>current</span></demo-widget>')
+    expect(snippet.html).not.toContain("◆")
+    expect(source.isConnected).toBe(true)
+    expect(action({type: "getDraggedSnippet", token})).toBeNull()
+  })
+
+  it.each(["replace", "disable"])("rejects a dragged snippet after %s", ending => {
+    document.body.innerHTML = '<section><demo-widget>old</demo-widget></section><p>Outside</p>'
+    const source = document.querySelector("demo-widget")!
+    $.selectElement(source)
+    const data = new DataTransfer()
+    editor.features.manipulation.startNodeDrag(transferEvent("dragstart", data) as DragEvent, source)
+    expect(data.getData(nodeDragType)).not.toBe("")
+    if(ending === "replace") source.replaceWith(source.cloneNode(true))
+    else editor.features.manipulation.disable()
+    expect(editor.features.manipulation.actions.getDraggedSnippet({type: "getDraggedSnippet", token: data.getData(nodeDragType)})).toBeNull()
+  })
 
   function dropAt(data: DataTransfer, node: Node, offset: number, extra: Record<string, unknown> = {}) {
     vi.spyOn($, "pointFromCoords").mockReturnValue({node, offset})

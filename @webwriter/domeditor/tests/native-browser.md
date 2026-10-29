@@ -9,6 +9,8 @@ npm run test:native-browser
 The command serves `tests/native-browser.html` on `127.0.0.1` and runs it in headless Chrome. It covers native selection preservation, custom-element editing boundaries, `elementFromPoint` layout hit testing, and iframe load/removal lifecycle. Canvas checks exercise conversion with authored transforms, negative coordinates, zoom-aware movement, edge panning and release, text splitting, serialization, and return to normal flow. It exits nonzero if a check fails. Set `CHROME_BIN` to use another installed Chromium based browser.
 
 For focused board media resizing checks, run `node scripts/native-browser.mjs --filter='Board media'`.
+For manual timeline checks with the published widget, open `/tests/timeline-editing.html` on the loopback development server. Check the date caret and highlight, forward/backward details selection, intentional selection across the title, and YouTube playback after capturing the frame. This fixture loads Timeline 2.1.1 and YouTube from the network.
+Open `/tests/breadcrumb-snapshot.html` to check nested widget chevrons and outline selections after an HTML snapshot preserves adjacent and empty text-node boundaries.
 For visual inspection, open `/tests/board-media.html` on the loopback development server.
 It retains the editing board and script-free export after checking native media, captions, direct DOM resizing and overflow.
 
@@ -39,6 +41,35 @@ It also checks that the ribbon settles while idle and after responsive resizing,
 and that the actual host/ribbon bindings settle after selection-state changes.
 These idle checks use a synthetic catalog and an isolated host with network and
 iframe startup withheld; they do not rule out loops driven by real editor events.
+
+For broader document scaling measurements and native editing with the actual
+frame snapshot bridge, run:
+
+```sh
+node scripts/performance-profile.mjs --production --output=.cache/performance/measurements
+node scripts/performance-profile.mjs --production --profile --output=.cache/performance/profiles
+```
+
+Omit `--production` to compare the development build. The production command
+builds the profiling fixtures in an isolated directory without replacing `dist/`. The first command
+records unprofiled medians, p95s and maxima for 100–10,000 top-level elements,
+existing-DOM hydration, batches of changed containers, selection conversion,
+host snapshots, serialization, undo/redo, idle behavior and native insertText,
+including typing/selection in 100-row and 500-row tables with six columns.
+The live fixture is 1200×800 CSS pixels and uses the real editor and frame
+bridge with proofreading disabled and collaboration disconnected. The host
+snapshot handler is real but isolated from host UI rendering. The next-frame
+checkpoint is rAF followed by a timer, not an INP or physical keyboard measurement.
+
+Use `--only=live`, `--only=tables` or `--only=reconciliation` for a focused run.
+The second command selects representative large cases and saves one Chrome CPU
+profile (`.cpuprofile`), Performance timeline (`.trace.json`) and metric summary
+per operation. Load these in Chrome DevTools Performance. Profiling runs for at
+least 350 ms per stage; use the separate unprofiled results for latency claims.
+Both commands use disposable Chrome profiles and loopback-only HTTP/debugging
+servers. Output includes environment information and browser exceptions. These
+synthetic fixtures exclude external widget startup, real network latency and
+proofreading; the separate widget benchmarks cover widget data and persistence.
 
 ## Cross-browser smoke matrix
 

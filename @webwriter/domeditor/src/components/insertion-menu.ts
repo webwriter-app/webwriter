@@ -1,125 +1,15 @@
 import { LitElement, css, html } from "lit"
 import { property, state } from "lit/decorators.js"
 import {fixedClientX, uiMotionDisabled} from "../utility"
-import {getElementPresentation} from "../element-names"
 import { ribbonIcon } from "../ribbon-icons"
 import {packageNameLabel, type PackageInsertionItem} from "../packages"
-import {formElementTypes} from "../form"
-import {sectionNames} from "../sections"
-import {isGraphicShapeType} from "../graphic"
-import {mathStructureOptions} from "../math"
-
-export type InsertionMenuItem = {
-  tag?: string
-  /** Complete authored markup used instead of an empty element. */
-  html?: string
-  name: string
-  section: "Text" | "Lists" | "Media" | "Forms" | "Packages"
-  packageName?: string
-  kind?: "widget" | "snippet" | "html"
-  description?: string
-  icon?: string
-  iconUrl?: string
-  htmlUrl?: string
-}
-
-type BuiltinInsertionMenuItem = InsertionMenuItem & {
-  tag: string
-  section: "Text" | "Lists" | "Media" | "Forms"
-}
-
-const insertionMenuItem = (
-  section: BuiltinInsertionMenuItem["section"],
-  tag: string,
-  name?: string,
-): BuiltinInsertionMenuItem => {
-  const presentation = getElementPresentation(tag)
-  return {section, tag, name: name ?? presentation.name, icon: presentation.icon}
-}
-
-export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6"] as const
-export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
-export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", "dialog", "hgroup", "hr", "dl", ...formElementTypes] as const
-
-export const insertionMenuItems: InsertionMenuItem[] = [
-  insertionMenuItem("Text", "p"),
-  insertionMenuItem("Text", "h1"),
-  ...headingInsertionTags.map(tag => insertionMenuItem("Text", tag)),
-  insertionMenuItem("Lists", "ul"),
-  insertionMenuItem("Lists", "ol"),
-  insertionMenuItem("Lists", "details"),
-  insertionMenuItem("Media", "table"),
-  insertionMenuItem("Media", "picture"),
-  insertionMenuItem("Media", "svg"),
-  insertionMenuItem("Media", "audio"),
-  insertionMenuItem("Media", "iframe"),
-  insertionMenuItem("Media", "video"),
-  insertionMenuItem("Media", "math"),
-  insertionMenuItem("Media", "section"),
-  ...sectionInsertionTags.map(tag => insertionMenuItem("Media", tag, tag === "div" ? "Division" : undefined)),
-]
-
-/** Returns valid empty-element markup using the browser's HTML serializer. */
-export const emptyElementHTML = (tag: string) => document.createElement(tag).outerHTML
-
-export const elementDragType = "application/x-webwriter-element-tag"
-export const ribbonInsertionDragType = "application/x-webwriter-ribbon-insertion"
-
-/** Returns whether an action inserts a package, package member, or saved snippet. */
-export function ribbonInsertionAction(action: string) {
-  return ["package:", "package-member:", "user-snippet:"].some(prefix =>
-    action.startsWith(prefix) && action.length > prefix.length,
-  )
-}
-
-/** Returns whether a ribbon action inserts a supported built-in element. */
-export function ribbonElementInsertionAction(action: string) {
-  if(action.startsWith("element:")) return insertionMenuItems.some(item => item.tag === action.slice("element:".length))
-  const listMatch = /^list-style:(ul|ol):(.+)$/.exec(action)
-  if(listMatch) {
-    const styles = listMatch[1] === "ul"
-      ? ["disc", "circle", "square", "none"]
-      : ["decimal", "decimal-leading-zero", "lower-alpha", "upper-alpha", "lower-roman", "upper-roman", "none"]
-    return styles.includes(listMatch[2])
-  }
-  const shapePrefix = "insert-graphic-shape:"
-  if(action.startsWith(shapePrefix)) return isGraphicShapeType(action.slice(shapePrefix.length))
-  const mathPrefix = "insert-math:"
-  if(action.startsWith(mathPrefix)) {
-    const structure = action.slice(mathPrefix.length)
-    return mathStructureOptions.some(option => option.command === `structure:${structure}`)
-  }
-  return false
-}
-
-/** Starts a copy drag for a ribbon insertion action. */
-export function startRibbonInsertionDrag(event: DragEvent, action: string, icon: Element | null, html?: string) {
-  if(!event.dataTransfer || (!ribbonInsertionAction(action) && !ribbonElementInsertionAction(action))) return
-  event.dataTransfer.setData(ribbonInsertionDragType, action)
-  if(html) event.dataTransfer.setData("text/html", html)
-  event.dataTransfer.effectAllowed = "copy"
-  if(icon instanceof HTMLElement || icon instanceof SVGElement) event.dataTransfer.setDragImage?.(icon, 12, 12)
-}
-
-/** Only insertion commands that create an element can be dragged from the ribbon. */
-export function ribbonElementTag(label: string, action = label) {
-  if(label === "Heading") return "h1"
-  if(action === "toggle-list:ul") return "ul"
-  if(action === "toggle-list:ol") return "ol"
-  if(action === "insert-details") return "details"
-  if(action === "toggle-section") return "section"
-  return insertionMenuItems.find(item => (item.name === action || item.name === label) && item.tag)?.tag ?? null
-}
-
-export function startElementDrag(event: DragEvent, tag: string, icon: Element | null) {
-  if(!event.dataTransfer || !insertionMenuItems.some(item => item.tag === tag)) return
-  // Use the same boundary-routing marker as widgets. During dragover the
-  // payload may be hidden, but the drag must still reach editor overlays.
-  startRibbonInsertionDrag(event, `element:${tag}`, icon, emptyElementHTML(tag))
-  event.dataTransfer.setData(elementDragType, tag)
-  // Dragover may inspect types, but browsers hide data values until drop.
-  event.dataTransfer.setData(`${elementDragType}-${tag}`, tag)
-}
+import {insertionMenuItems, sectionInsertionTags, type InsertionMenuItem} from "../insertion"
+export {
+  deliberatelyUnsupportedInsertionTags, elementDragType, emptyElementHTML, headingInsertionTags,
+  insertionMenuItems, nodeDragType, ribbonElementInsertionAction, ribbonElementTag,
+  ribbonInsertionAction, ribbonInsertionDragType, sectionInsertionTags, startElementDrag,
+  startRibbonInsertionDrag, type InsertionMenuItem,
+} from "../insertion"
 
 /** A searchable element picker for the editor's element command. The editor
  * supplies the query from the text typed after the command trigger. */
@@ -133,6 +23,11 @@ export class InsertionMenu extends LitElement {
       color: #1f2937;
       font: 14px/1.35 system-ui, sans-serif;
       pointer-events: auto;
+    }
+
+    :host([inline]) {
+      position: static;
+      width: 100%;
     }
 
     [hidden] { display: none; }
@@ -161,6 +56,7 @@ export class InsertionMenu extends LitElement {
     .menu { position: relative; }
     .close:hover { background: transparent; color: #111827; }
     .sections { max-height: min(24rem, calc(100vh - 6rem)); overflow: auto; scrollbar-width: thin; padding: 0.35rem; }
+    :host([inline]) .sections { max-height: min(14rem, calc(100vh - 2rem)); }
     section + section { margin-top: 0.25rem; }
     h2 { margin: 0.45rem 0.4rem 0.2rem; color: #6b7280; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
 
@@ -211,18 +107,20 @@ export class InsertionMenu extends LitElement {
 
   @property({type: Boolean, reflect: true}) open = false
   @property({type: String}) query = ""
+  @property({attribute: false}) items: InsertionMenuItem[] | null = null
+  @property({type: Boolean, reflect: true}) inline = false
   @state() private activeIndex = -1
 
   get filteredItems() {
     const query = this.query.trim().toLowerCase()
-    const items: InsertionMenuItem[] = [
+    const items: InsertionMenuItem[] = this.items ?? [
       ...insertionMenuItems.filter(item => item.kind !== "html" && item.tag !== "pre"
         && !sectionInsertionTags.some(tag => tag === item.tag)),
       ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
     ]
-    return items.filter(item => !query || [item.name, item.tag, item.packageName,
+    return items.filter(item => (!("insertable" in item) || item.insertable !== false) && (!query || [item.name, item.id, item.tag, item.packageName,
       item.packageName && packageNameLabel(item.packageName), item.kind]
-      .filter(Boolean).join(" ").toLowerCase().includes(query))
+      .filter(Boolean).join(" ").toLowerCase().includes(query)))
   }
 
   get activeItem() {

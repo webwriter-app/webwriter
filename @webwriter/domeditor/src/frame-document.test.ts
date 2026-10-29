@@ -21,6 +21,18 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
 
 describe("local live preview bundles", () => {
+  it("preserves the validated YouTube sandbox policy through repeated preview preparation", () => {
+    let source = parse('<iframe src="https://www.youtube.com/embed/aPweFhhXFvY" sandbox="allow-scripts" srcdoc="<script>bad()</script>"></iframe><iframe src="https://example.com/embed"></iframe>')
+    for(let pass = 0; pass < 2; pass++) {
+      const preview = parse(previewFrameHTML(source, previewOptions()))
+      const frames = preview.querySelectorAll("iframe")
+      expect(frames[0].getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+      expect(frames[0].hasAttribute("srcdoc")).toBe(false)
+      expect(frames[1].getAttribute("sandbox")).toBe("allow-scripts")
+      source = preview
+    }
+  })
+
   it("allows Bunny Fonts stylesheets in an editing frame without installed widgets", () => {
     const source = editorFrameHTML('<p style="font-family: Alegreya, serif">Text</p>', editorOptions({bridgeNonce: "font-test"}))
     const policy = parse(source).head.querySelector('meta[http-equiv="Content-Security-Policy"]')!.getAttribute("content")!

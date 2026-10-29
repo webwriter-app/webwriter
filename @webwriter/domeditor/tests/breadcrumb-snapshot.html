@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Breadcrumb snapshot regression</title>
+<style>
+  body { max-width: 1000px; margin: 2rem auto; font: 16px system-ui; }
+  iframe { box-sizing: border-box; width: 100%; height: 240px; border: 1px solid #ccc; }
+  #result { display: block; margin-block: 1rem; }
+</style>
+<h1>Nested widget breadcrumb</h1>
+<p>The source contains adjacent and empty text nodes. Open each chevron and select Paragraph to verify its live path.</p>
+<dom-editor-breadcrumb></dom-editor-breadcrumb>
+<iframe title="Timeline source" srcdoc="<style>body {font:16px system-ui} webwriter-timeline,webwriter-timeline-event,webwriter-timeline-event-title,webwriter-timeline-event-details {display:block;padding:8px} webwriter-timeline-event-title {font-weight:bold}</style><webwriter-timeline><webwriter-timeline-event><webwriter-timeline-event-title>Event title</webwriter-timeline-event-title><webwriter-timeline-event-details><p>Event details paragraph</p></webwriter-timeline-event-details></webwriter-timeline-event></webwriter-timeline>"></iframe>
+<output id="result">Loading…</output>
+<script type="module">
+  import {DomEditor} from "../src/components/dom-editor.ts"
+  import {captureSnapshotTextNodeRuns, restoreSnapshotTextNodeRuns} from "../src/editor-bridge.ts"
+  import {pathFromNode, nodeAtPath} from "../src/utility.ts"
+  import {getElementPresentation} from "../src/element-names.ts"
+  const frame = document.querySelector("iframe")
+  if(!frame.contentDocument?.querySelector("webwriter-timeline")) await new Promise(resolve => frame.addEventListener("load", resolve, {once:true}))
+  const source = frame.contentDocument
+  const timeline = source.querySelector("webwriter-timeline")
+  const event = source.querySelector("webwriter-timeline-event")
+  const details = source.querySelector("webwriter-timeline-event-details")
+  timeline.prepend(source.createTextNode("\n"), source.createTextNode("\n"))
+  event.prepend(source.createTextNode(""))
+  details.prepend(source.createTextNode(""), source.createTextNode(" "))
+  const snapshot = new DOMParser().parseFromString(source.documentElement.outerHTML, "text/html")
+  restoreSnapshotTextNodeRuns(snapshot.body, captureSnapshotTextNodeRuns(source.body))
+  const breadcrumb = document.querySelector("dom-editor-breadcrumb")
+  breadcrumb.tree = DomEditor.prototype.buildDocumentTree.call({editorDocument: snapshot, installedPackages: []})
+  breadcrumb.path = [source.body, timeline, event, details, details.querySelector("p")]
+    .map(element => ({path:pathFromNode(source.body, element), ...getElementPresentation(element)}))
+  breadcrumb.addEventListener("breadcrumb-item-select", event => {
+    const node = nodeAtPath(source.body, event.detail.path)
+    document.querySelector("#result").textContent = `Selected ${node?.nodeName} at live path ${event.detail.path.join(",")}`
+  })
+  await breadcrumb.updateComplete
+  document.querySelector("#result").textContent = "Ready: nested chevrons use the live DOM paths."
+</script>
+</html>

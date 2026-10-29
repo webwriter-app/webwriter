@@ -63,11 +63,7 @@ function positiveSpan(cell: Element, name: "rowspan" | "colspan") {
   return name === "colspan" ? Math.min(value, maximumColumnSpan) : value
 }
 
-function effectiveRowSpan(cell: HTMLTableCellElement, rows: HTMLTableRowElement[], rowIndex: number) {
-  const group = rows[rowIndex]?.parentElement
-  let end = rowIndex + 1
-  while(end < rows.length && rows[end].parentElement === group) end++
-  const available = Math.max(1, end - rowIndex)
+function effectiveRowSpan(cell: HTMLTableCellElement, available: number) {
   return cell.getAttribute("rowspan") === "0"
     ? available
     : Math.min(positiveSpan(cell, "rowspan"), available)
@@ -81,15 +77,22 @@ export function buildTableMap(table: HTMLTableElement): TableMap {
   const matrix: Array<Array<TableCellPlacement | undefined>> = rows.map(() => [])
   const placements: TableCellPlacement[] = []
   let width = 0
+  let groupEnd = 0
 
   for(let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex]
+    // A span cannot cross its row group. Find each group's end once, rather
+    // than scanning all remaining rows again for every cell (including 1×1).
+    if(rowIndex === groupEnd) {
+      groupEnd = rowIndex + 1
+      while(groupEnd < rows.length && rows[groupEnd].parentElement === row.parentElement) groupEnd++
+    }
     let column = 0
     const cells = Array.from(row.children)
       .filter((child): child is HTMLTableCellElement => child.matches(tableCellSelector))
     for(const cell of cells) {
       const columnSpan = positiveSpan(cell, "colspan")
-      const rowSpan = Math.min(effectiveRowSpan(cell, rows, rowIndex), rows.length - rowIndex)
+      const rowSpan = effectiveRowSpan(cell, groupEnd - rowIndex)
       while(matrix[rowIndex][column]) column++
       while(true) {
         let occupied = false

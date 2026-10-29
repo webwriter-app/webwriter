@@ -57,6 +57,10 @@ describe("LiveSession", () => {
     expect(host.feedback).toEqual([message])
     expect(ada.feedback).toEqual([message])
     expect(lin.feedback).toEqual([])
+    for(const session of [host, ada, lin]) {
+      expect(session.doc.getArray("live-session-feedback").length).toBe(0)
+      expect(new TextDecoder().decode(Y.encodeStateAsUpdate(session.doc))).not.toContain(message.text)
+    }
     expect(changes).toHaveBeenCalled()
     expect(host.baseHTML).toBe("<p>Document</p>")
     expect(host.steps).toEqual([])
@@ -72,6 +76,20 @@ describe("LiveSession", () => {
     const cleanActivity = lin.publish({kind: "pointer", pointer: {x: 0.4, y: 0.5}})
     expect(host.steps.map(step => step.id)).toContain(cleanActivity.id)
     expect(host.steps.map(step => step.id)).not.toContain(activity.id)
+  })
+
+  it("replays only the recipient's feedback when a learner rejoins", () => {
+    const host = create({id: "feedback-rejoin", role: "host"})
+    const learner = (id: string) => create({id: host.id, role: "learner", learner: {id, name: id, color: "#08c"}})
+    const ada = learner("ada")
+    learner("lin")
+    const message = host.sendFeedback("ada", "For Ada only")!
+    ada.destroy()
+    const rejoined = learner("ada")
+    const unrelated = learner("grace")
+    expect(rejoined.feedback).toEqual([message])
+    expect(unrelated.feedback).toEqual([])
+    expect(new TextDecoder().decode(Y.encodeStateAsUpdate(unrelated.doc))).not.toContain(message.text)
   })
 
   it("rejects empty, oversized, disconnected, unknown, and stopped-session feedback", () => {

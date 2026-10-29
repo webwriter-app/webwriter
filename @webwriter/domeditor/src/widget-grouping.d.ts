@@ -34,6 +34,7 @@ export type WidgetGroupingResult = {
   grouping: {mode: string, id?: string, name?: string}
 }
 export const groupingTarget: "ww-grouping"
+export function distributionGroupingRevision(config: import("./distribution.js").DistributionConfig | null | undefined): string | undefined
 export function defaultGroupingRules(seed?: string): WidgetGroupingRules
 export function validateGroupingRules(value: unknown): WidgetGroupingRules
 export function formWidgetGroups(rules: WidgetGroupingRules, context: WidgetGroupingContext): WidgetGroupingResult

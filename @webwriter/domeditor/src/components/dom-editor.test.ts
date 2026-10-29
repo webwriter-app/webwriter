@@ -17,6 +17,7 @@ import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonTab} from "./ribbon-tab"
 import type {OpenDocumentMenu} from "./open-document-menu"
 import {
+  captureSnapshotTextNodeRuns,
   editorFrameControlMessage,
   executeCompleteEvent,
   executeFailureEvent,
@@ -219,6 +220,65 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
 }
 
 describe("filtered frame snapshots", () => {
+  it("keeps deeper widget chevrons and outline actions aligned with adjacent text-node paths", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    host.fileHandle = {}
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const live = iframe.contentDocument!
+    live.body.innerHTML = '<webwriter-timeline><webwriter-timeline-event><webwriter-timeline-event-title>Title</webwriter-timeline-event-title><webwriter-timeline-event-details><p>Details</p></webwriter-timeline-event-details></webwriter-timeline-event></webwriter-timeline>'
+    const timeline = live.querySelector("webwriter-timeline")!
+    const event = live.querySelector("webwriter-timeline-event")!
+    const details = live.querySelector("webwriter-timeline-event-details")!
+    timeline.prepend(live.createTextNode("\n"), live.createTextNode("\n"))
+    event.prepend(live.createTextNode(""))
+    details.prepend(live.createTextNode(""), live.createTextNode(" "))
+    const html = live.documentElement.outerHTML
+    const publish = () => window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: "editor-frame-snapshot", html: live.documentElement.outerHTML,
+        textNodeRuns: captureSnapshotTextNodeRuns(live.body), treeChanged: true},
+    }))
+    const selectParagraph = (eventIndex: number) => host.selectionPath = [
+      {path: [], name: "Document"}, {path: [0], name: "Timeline"},
+      {path: [0, eventIndex], name: "Timeline Event"},
+      {path: [0, eventIndex, 2], name: "Timeline Event Details"},
+      {path: [0, eventIndex, 2, 2], name: "Paragraph"},
+    ]
+    publish()
+    selectParagraph(2)
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    const toggle = (name: string) => breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(`.separator-trigger[aria-label="Show ${name} tree"]`)
+    expect(toggle("Timeline Event")).not.toBeNull()
+    expect(toggle("Timeline Event Details")).not.toBeNull()
+    expect(toggle("Paragraph")).toBeNull()
+    expect(host.editorDocument.body.innerHTML).toBe(live.body.innerHTML)
+    toggle("Timeline Event")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    const menu = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.action))
+      .toEqual(["outline:0,2,1", "outline:0,2,2"])
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="outline:0,2,2"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2, 2]})
+
+    // An empty text node changes live paths without changing serialized HTML.
+    ;(timeline.firstChild as Text).splitText(0)
+    expect(live.documentElement.outerHTML).toBe(html)
+    publish()
+    selectParagraph(3)
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(host.documentTree.children[0].children[0].path).toEqual([0, 3])
+    expect(toggle("Timeline Event")).not.toBeNull()
+    expect(toggle("Timeline Event Details")).not.toBeNull()
+  })
+
   it("updates text without rebuilding the tree or canonical snapshots, and ignores duplicate snapshots", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -245,12 +305,12 @@ describe("filtered frame snapshots", () => {
     expect(host.editorDocument).toBe(currentDocument)
     publish(html.replace("</body>", "<custom-widget></custom-widget></body>"), true)
     expect(tree).toHaveBeenCalledTimes(1)
-    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
     window.dispatchEvent(new MessageEvent("message", {
       source: iframe.contentWindow,
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
     }))
-    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
     expect(tree).toHaveBeenCalledTimes(1)
   })
 
@@ -279,7 +339,7 @@ describe("filtered frame snapshots", () => {
     iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("custom-widget"))
     await flushMutations()
     expect(tree.mock.calls.length).toBeGreaterThan(presentations)
-    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
     const structuralChange = tree.mock.calls.length
     select()
     expect(tree).toHaveBeenCalledTimes(structuralChange)
@@ -7567,7 +7627,7 @@ describe("DomEditor.execute()", () => {
     await host.enterPreview()
     let finish!: (value: {url: string}) => void
     const publishLiveSession = vi.fn().mockReturnValue(new Promise(resolve => {finish = resolve}))
-    host.backendSession = {collaborationUrl: "ws://localhost:1234", user: {id: "host", name: "Host"}}
+    host.backendSession = {kind: "webwriter-dev-server", collaborationUrl: "ws://localhost:1234", user: {id: "host", name: "Host"}}
     host.backendClient = {apiBaseUrl: "http://localhost:1234/api", publishLiveSession}
     const starting = host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
     await vi.waitFor(() => expect(publishLiveSession).toHaveBeenCalledOnce())
@@ -7578,7 +7638,8 @@ describe("DomEditor.execute()", () => {
     expect(html).toContain("data:text/javascript")
     expect(html).toContain("data:text/css")
     expect(html).not.toContain(LOCAL_PACKAGE_ROUTE_PREFIX)
-    finish({url: `http://localhost:1234/live/?liveSession=${id}&liveToken=${token}&liveServer=ws%3A%2F%2Flocalhost%3A1234`})
+    expect(new DOMParser().parseFromString(html, "text/html").querySelector("base")?.href).toBe("http://127.0.0.1:1234/")
+    finish({url: `http://127.0.0.1:1234/live/?liveSession=${id}&liveToken=${token}&liveServer=ws%3A%2F%2Flocalhost%3A1234`})
     await starting
     const session = host.liveSession as LiveSession
     expect(session.doc.getMap("live-session-meta").has("baseHTML")).toBe(false)
@@ -8169,6 +8230,29 @@ describe("DomEditor.execute()", () => {
     expect(editor.shadowRoot!.querySelector(".document-layouts-panel:not([inert]) .document-layouts-bar")).not.toBeNull()
   })
 
+  it("rejects nonempty layout snapshots without cloning and still recognizes cleared content", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    host.fileHandle = {}
+    const body = iframe.contentDocument!.body
+    body.innerHTML = '<p>Authored text</p>'.repeat(1000)
+    host.fileDirty = true
+    const clone = vi.spyOn(body, "cloneNode")
+    host.updateDocumentLayoutsVisibility()
+    expect(host.documentLayoutsDismissed).toBe(true)
+    expect(clone).not.toHaveBeenCalled()
+    clone.mockRestore()
+
+    body.innerHTML = '<p><span class="◆editor-only">Editor text</span><br></p>'
+    host.updateDocumentLayoutsVisibility()
+    expect(host.documentLayoutsDismissed).toBe(false)
+    expect(body.querySelector("span")?.textContent).toBe("Editor text")
+    body.firstElementChild!.append('Authored again')
+    host.updateDocumentLayoutsVisibility()
+    expect(host.documentLayoutsDismissed).toBe(true)
+  })
+
   it.each([false, true])("restores Layouts after clearing a saved document unless manually dismissed (isolated frame: %s)", async isolated => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
@@ -8557,6 +8641,34 @@ describe("DomEditor.execute()", () => {
     }))
   })
 
+  it("uses package presentation for nested uninsertable widgets in the outline", async () => {
+    const {editor, iframe} = await mountEditor()
+    const pkg: WebWriterPackage = {
+      ...demoPackage,
+      iconUrl: "https://example.com/package.svg",
+      members: [{
+        ...demoPackage.members[0],
+        id: "@webwriter/demo@1.0.0:./widgets/webwriter-task-prompt",
+        label: "webwriter-task-prompt",
+        tagName: "webwriter-task-prompt",
+        insertable: false,
+        iconUrl: "https://example.com/member.svg",
+      }],
+    }
+    ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [pkg]
+    iframe.contentDocument!.body.innerHTML = "<blockquote><webwriter-task-prompt></webwriter-task-prompt></blockquote>"
+
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    const findWidget = (item: DocumentTreeItem): DocumentTreeItem | undefined =>
+      item.path.length > 0 && item.name === "Task Prompt" ? item : item.children.map(findWidget).find(Boolean)
+    const widget = findWidget(tree)
+    expect(widget).toMatchObject({
+      name: "Task Prompt",
+      icon: "Packages",
+      iconUrl: "https://example.com/package.svg",
+    })
+  })
+
   it("omits summary and formula descendants from outline data while preserving authored paths", async () => {
     const {editor, iframe} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = '<details open><summary><b>Title</b><test-widget></test-widget></summary><!--keep--><p>Body<math><mi>x</mi></math></p></details><math display="block"><mfrac><mn>1</mn><mn>2</mn></mfrac></math>'
@@ -8625,7 +8737,7 @@ describe("DomEditor.execute()", () => {
     const before = body.innerHTML
     const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
     expect(tree.children.map(item => item.path)).toEqual([[2], [4], [5], [6, 0], [7, 0, 0]])
-    expect(tree.children.map(item => item.name)).toEqual(["Paragraph", "test-widget", "Paragraph", "Paragraph", "Paragraph"])
+    expect(tree.children.map(item => item.name)).toEqual(["Paragraph", "Widget", "Paragraph", "Paragraph", "Paragraph"])
     expect(tree.sections).toBeUndefined()
     expect(body.innerHTML).toBe(before)
   })
@@ -8641,7 +8753,7 @@ describe("DomEditor.execute()", () => {
         {path: [0, 0], name: "Column Heading", icon: "Heading", children: []},
         {path: [0, 2], name: "Card 1", icon: "BoardCard", children: [
           {path: [0, 2, 0], name: "Paragraph", icon: "Paragraph", children: []},
-          {path: [0, 2, 1, 0], name: "custom-widget", icon: "Packages", children: [], sections: [
+          {path: [0, 2, 1, 0], name: "Widget", icon: "Packages", children: [], sections: [
             {path: [0, 2, 1], type: "section", name: "Section", icon: "Section"},
           ]},
         ]},
@@ -8997,7 +9109,7 @@ describe("DomEditor.execute()", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     await toolbox.updateComplete
     await ribbon.updateComplete
-    expect([...toolbox.shadowRoot!.querySelectorAll("[role=tab]")].map(tab => tab.getAttribute("data-tool"))).toEqual(["Edit", "AI", "Review"])
+    expect([...toolbox.shadowRoot!.querySelectorAll("[role=tab]")].map(tab => tab.getAttribute("data-tool"))).toEqual(["Edit", "AI", "Review", "Distribute"])
     toolbox.selectTool("AI")
     await editor.updateComplete
     await ribbon.updateComplete

@@ -155,6 +155,18 @@ describe("insertion menu", () => {
     expect(menu.filteredItems[0].packageName).toBe(packageName)
   })
 
+  it("keeps non-insertable child widgets out of package search results", async () => {
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages", name: "Task Prompt", packageName: "@webwriter/quiz", kind: "widget", tag: "webwriter-task-prompt", insertable: false,
+    }]
+    typeCommand()
+    typeText("task")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    expect(menu.filteredItems).toHaveLength(0)
+    expect(menu.shadowRoot!.textContent).not.toContain("Task Prompt")
+  })
+
   it("anchors the initial typed command to an empty block", async () => {
     document.body.innerHTML = "<p></p>"
     const block = document.querySelector("p")!
@@ -309,11 +321,13 @@ describe("insertion menu", () => {
     menu.shadowRoot?.querySelector<HTMLButtonElement>('.item img[src="https://example.com/demo.svg"]')
       ?.closest<HTMLButtonElement>("button")?.click()
 
-    expect(editorHTML()).toBe("<webwriter-demo></webwriter-demo>")
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.hasAttribute("contenteditable")).toBe(false)
-    expect($.selectedElement).toBe(widget)
+    expect(editorHTML()).toBe(`<webwriter-demo id="${widget.id}"></webwriter-demo>`)
+    expect(widget.id).toMatch(/^ww[0-9a-f]/)
+    expect(widget.hasAttribute("contenteditable")).toBe(true)
+    expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget.classList.contains("◆element-selected")).toBe(true)
+    expect(widget.classList.contains("◆element-capture-selected")).toBe(true)
     expect(menu.open).toBe(false)
   })
 
@@ -353,8 +367,8 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe('<p>before</p><webwriter-demo></webwriter-demo>')
     const widget = document.querySelector("webwriter-demo")!
+    expect(editorHTML()).toBe(`<p>before</p><webwriter-demo id="${widget.id}"></webwriter-demo>`)
     expect(widget.previousElementSibling).toBe(document.querySelector("p"))
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")

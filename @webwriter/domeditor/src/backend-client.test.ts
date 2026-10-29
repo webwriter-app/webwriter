@@ -239,6 +239,51 @@ describe("authenticated cloud services", () => {
     expect(fetch.mock.calls[1][0]).toBe("http://localhost:1234/api/session")
   })
 
+  it.each(["", "unused-password"])("accepts a no-auth session from the sign-in form without submitting credentials (%s)", async password => {
+    const fetch = vi.fn().mockResolvedValue(response(session))
+    const result = await connectCloudService({...cloudService, url: session.apiBaseUrl,
+      accessToken: "old-token", expiresAt: Date.now() - 1}, {password, fetchImplementation: fetch})
+    expect(result.session).toEqual(session)
+    expect(result.service).toMatchObject({authentication: "none"})
+    expect(result.service.accessToken).toBeUndefined()
+    expect(result.service.expiresAt).toBeUndefined()
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(fetch.mock.calls[0][1].body).toBeUndefined()
+    expect(fetch.mock.calls[0][1].headers).not.toHaveProperty("Authorization")
+  })
+
+  it("accepts a private no-auth cloud service from the sign-in form", async () => {
+    const privateSession = {...cloudSession, authentication: "none" as const}
+    const fetch = vi.fn().mockResolvedValue(response(privateSession))
+    const result = await connectCloudService(cloudService, {password: "", fetchImplementation: fetch})
+    expect(result.service.authentication).toBe("none")
+    expect(fetch).toHaveBeenCalledOnce()
+  })
+
+  it.each(["http://127.0.0.1:1234", "http://[::1]:1234/api/"])("uses the development server's canonical loopback URL when connecting to %s", async url => {
+    const fetch = vi.fn().mockResolvedValue(response(session))
+    const result = await connectCloudService({...cloudService, url}, {fetchImplementation: fetch})
+    expect(result.service.url).toBe(session.apiBaseUrl)
+    expect(result.session).toEqual(session)
+  })
+
+  it.each([
+    {...session, apiBaseUrl: "http://localhost:5678/api"},
+    {...session, apiBaseUrl: "http://localhost:1234/other/api"},
+    {...session, apiBaseUrl: "https://localhost:1234/api"},
+    {...session, apiBaseUrl: "https://other.example/api"},
+    {...session, kind: "unrelated-service"},
+    {...session, user: null},
+    {...session, kind: "webwriter-cloud-service"},
+  ])("rejects unrelated or mismatched no-auth metadata before submitting credentials ($kind, $apiBaseUrl)", async metadata => {
+    const fetch = vi.fn().mockResolvedValue(response(metadata))
+    await expect(connectCloudService({...cloudService, url: "http://127.0.0.1:1234"}, {
+      password: "unused-password", fetchImplementation: fetch,
+    })).rejects.toThrow("supported WebWriter cloud service")
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(fetch.mock.calls[0][1].body).toBeUndefined()
+  })
+
   it("discovers public metadata on the current host and ignores a different advertised origin", async () => {
     const origin = location.origin
     const metadata = {...cloudSession, apiBaseUrl: `${origin}/api`, user: null,

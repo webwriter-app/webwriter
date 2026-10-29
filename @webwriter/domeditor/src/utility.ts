@@ -32,6 +32,20 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+function editingLayoutChildren(element: Element, selectionRoot?: Element) {
+  return Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
+    // Closed disclosures can retain measurable boxes for hidden body content.
+    if(element.matches("details:not([open])") && node !== element.querySelector(":scope > summary")) return []
+    if(node instanceof Element && (!isOutOfFlow(node) || selectionRoot?.contains(node)) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
+    if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
+      const range = document.createRange()
+      range.selectNode(node)
+      return [{node, rect: range.getBoundingClientRect()}]
+    }
+    return []
+  }).filter(({rect}) => rect.bottom > rect.top)
+}
+
 const fixedGutterOffsets = new WeakMap<Document, {key: string, offset: number}>()
 
 /** Client rects include the root's leading gutter; fixed CSS insets start
@@ -472,10 +486,63 @@ export class EditingSelection {
     return point
   }
 
+  /** Finds gaps from a widget's authored child boxes without querying native
+   * caret hit testing, which may cross its flattened slot boundaries. */
+  static widgetGapFromCoords(x: number, y: number, pointerTarget: EventTarget | null | undefined, schema?: Schema): {node: Node, offset: number, overrideNative: boolean} | undefined {
+    if(pointerTarget instanceof Element && pointerTarget.getRootNode() instanceof ShadowRoot
+      && (pointerTarget.getRootNode() as ShadowRoot).host !== document.body) {
+      // A widget can render padding around a slot outside the authored page.
+      // Only that slot's immediate container exposes content boundaries;
+      // descendants such as toolbar buttons remain private widget controls.
+      const slots = pointerTarget instanceof HTMLSlotElement ? [pointerTarget]
+        : Array.from(pointerTarget.children).filter((child): child is HTMLSlotElement => child instanceof HTMLSlotElement)
+      const pages = slots.flatMap(slot => slot.assignedElements({flatten: true}))
+        .filter(page => isContentfulWidget(page, schema) && document.body.contains(page))
+        .map(page => ({page, rect: page.getBoundingClientRect()}))
+        .filter(({rect}) => rect.height > 0 && x >= rect.left && x <= rect.right && (y < rect.top || y > rect.bottom))
+        .sort((a, b) => Math.min(Math.abs(y - a.rect.top), Math.abs(y - a.rect.bottom)) - Math.min(Math.abs(y - b.rect.top), Math.abs(y - b.rect.bottom)))
+      if(pages[0]) return this.widgetGapFromCoords(x, y, pages[0].page, schema)
+      return
+    }
+    const point = (node: Node, offset: number) => {
+      const summary = this.summaryAtLeadingBoundary(node, offset)
+      return {node: summary ?? node, offset: summary ? 0 : offset, overrideNative: true}
+    }
+    const gap = (element: Element, placement: "before" | "after") => {
+      const parent = element.parentNode!
+      return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
+    }
+    let widget = pointerTarget instanceof Node && pointerTarget.getRootNode() === document
+      ? isElement(pointerTarget) ? pointerTarget : pointerTarget.parentElement : null
+    while(widget && !isContentfulWidget(widget, schema)) widget = widget.parentElement
+    if(widget && !atomicEditingContainer(pointerTarget as Node, schema)) {
+      let container = widget
+      const distance = (rect: DOMRect) => Math.hypot(
+        Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),
+      )
+      while(true) {
+        const nearest = editingLayoutChildren(container).sort((a, b) => distance(a.rect) - distance(b.rect))[0]
+        if(!nearest) break
+        const {node, rect} = nearest
+        if(y < rect.top || y > rect.bottom) {
+          if(node instanceof Text && container === widget) {
+            return point(container, Array.from(container.childNodes).indexOf(node) + (y > rect.bottom ? 1 : 0))
+          }
+          const element = node instanceof Element ? node : node.parentElement!
+          return gap(element, y < rect.top ? "before" : "after")
+        }
+        if(!(node instanceof Element) || node.matches("table") || isAtomicEditingElement(node, schema)) break
+        container = node
+      }
+    }
+  }
+
   /** Resolves text and structural gaps identically for clicks and drags,
    * without installing an intermediate selection inside atomic content.
    * A selectionRoot confines hit testing to one canvas/slide item's content. */
   static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element, selectionRoot?: Element): {node: Node, offset: number, overrideNative?: boolean} | undefined {
+    const widgetGap = this.widgetGapFromCoords(x, y, pointerTarget, schema)
+    if(widgetGap && (!selectionRoot || selectionRoot.contains(widgetGap.node))) return widgetGap
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = selectionRoot ?? getDocumentRoot()
     let overrideNative = false
@@ -491,17 +558,7 @@ export class EditingSelection {
     }
     const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
       && element !== document.documentElement && root.contains(element))
-    const layoutChildren = (element: Element) => Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
-      // Closed disclosures can retain measurable boxes for hidden body content.
-      if(element.matches("details:not([open])") && node !== element.querySelector(":scope > summary")) return []
-      if(node instanceof Element && (!isOutOfFlow(node) || selectionRoot?.contains(node)) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
-      if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
-        const range = document.createRange()
-        range.selectNode(node)
-        return [{node, rect: range.getBoundingClientRect()}]
-      }
-      return []
-    }).filter(({rect}) => rect.bottom > rect.top)
+    const layoutChildren = (element: Element) => editingLayoutChildren(element, selectionRoot)
     // Native hit testing often returns summary text (or hidden body content)
     // for space outside a disclosure. Resolve its outer edge before looking
     // for atomic descendants or gaps around individual text blocks.
@@ -1341,7 +1398,8 @@ export const $ = EditingSelection
  * and semantic section wrappers are transparent to ordinary selection. */
 export function getContainer(node: Node) {
   let element = node?.nodeType === Node.TEXT_NODE? node.parentElement: node as Element
-  while(element && !isOutOfFlow(element) && !boardLayoutRole(element) && slideLayoutRole(element) !== "slide" && (isMarkElement(element) || isSectionElement(element))) element = element.parentElement
+  while(element && (isMarkElement(element) || isSectionElement(element))
+    && !boardLayoutRole(element) && slideLayoutRole(element) !== "slide" && !isOutOfFlow(element)) element = element.parentElement
   return element!
 }
 
@@ -1512,8 +1570,8 @@ export function pathFromNode(root: Node, node: Node): number[] | null {
   while(current && current !== root) {
     const parent: ParentNode | null = current.parentNode
     if(!parent) return null
-    const index = Array.from(parent.childNodes).indexOf(current as ChildNode)
-    if(index < 0) return null
+    let index = 0
+    for(let sibling = current.previousSibling; sibling; sibling = sibling.previousSibling) index++
     path.unshift(index)
     current = parent
   }
@@ -1747,12 +1805,12 @@ export function focusedWidgetHost() {
     : null
 }
 
-/** The editable widget host whose surface, light DOM, or shadow tree originated an
+/** The editable widget host whose surface or shadow tree originated an
  * event. Composed events are retargeted to the host by the time they reach
  * document listeners, so inspect the full path instead. Hosts in the body's
  * own shadow tree belong to the editor appendix and are intentionally
  * excluded. */
-function widgetHostForEventPath(event: Event, schema?: Schema) {
+function widgetHostForEventPath(event: Event) {
   const origin = event.composedPath()[0] as Node | undefined
   if(typeof origin?.getRootNode !== "function") return null
   let root = origin.getRootNode()
@@ -1762,23 +1820,14 @@ function widgetHostForEventPath(event: Event, schema?: Schema) {
     if(host !== body && body.contains(host)) return host
     root = host.getRootNode()
   }
-  // Selected opaque widgets also own light-DOM and slotted interactions.
-  // Contentful widgets always expose those children to document editing.
   // Closed shadow roots expose only their host as the origin.
-  let element = isElement(origin) ? origin : origin.parentElement
-  while(element && element !== element.ownerDocument.body && element.ownerDocument.body.contains(element)) {
-    if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
-      && (element.localName.includes("-") || element.hasAttribute("is"))
-      && (element === origin || !isContentfulWidget(element, schema))
-      && (element === origin || $.selectedElement === element || element.classList.contains("◆element-capture-selected"))) {
-      return element
-    }
-    element = element.parentElement
-  }
+  if(isElement(origin) && origin !== origin.ownerDocument.body && origin.ownerDocument.body.contains(origin)
+    && origin.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && (origin.localName.includes("-") || origin.hasAttribute("is"))) return origin
   return null
 }
 
-/** The editable widget host whose surface or contents originated an interaction. */
+/** The editable widget host whose surface or shadow tree originated an interaction. */
 export function widgetHostForShadowInteraction(event: Event, schema?: Schema) {
   if(event.type === "scroll") return null
   // Text controls report their internal caret changes as document-level
@@ -1792,12 +1841,32 @@ export function widgetHostForShadowInteraction(event: Event, schema?: Schema) {
       && widget.contains(selection.anchorNode) && widget.contains(selection.focusNode)) return null
     return widget
   }
-  return widgetHostForEventPath(event, schema)
+  const widget = widgetHostForEventPath(event)
+  const origin = event.composedPath()[0]
+  if(widget && origin instanceof Node && origin.getRootNode() instanceof ShadowRoot && event instanceof MouseEvent
+    && ["pointerdown", "pointermove", "pointerup", "mousedown", "mouseup", "click", "dblclick"].includes(event.type)
+    && EditingSelection.widgetGapFromCoords(event.clientX, event.clientY, origin, schema)) return null
+  // Open shadow trees expose their private origins in composedPath(). A
+  // pointer originating on the contentful host itself is authored padding,
+  // including the whitespace used to address gaps around slotted children.
+  if(widget?.shadowRoot && event.composedPath()[0] === widget && isContentfulWidget(widget, schema)
+    && ["pointerdown", "pointermove", "pointerup", "mousedown", "mouseup", "click", "dblclick"].includes(event.type)) return null
+  // Browsers target editing events at the contenteditable host, even when
+  // its caret is in slotted light DOM. Private shadow controls still own
+  // their events; a host target alone does not imply a shadow interaction.
+  if(widget && event.composedPath()[0] === widget && isContentfulWidget(widget, schema)
+    && ["keydown", "keyup", "beforeinput", "input", "compositionstart", "compositionend", "paste", "copy", "cut"].includes(event.type)
+    && !widget.shadowRoot?.activeElement) {
+    const selection = document.getSelection()
+    if(selection?.anchorNode && selection.focusNode
+      && widget.contains(selection.anchorNode) && widget.contains(selection.focusNode)) return null
+  }
+  return widget
 }
 
 /** The mounted widget whose own surface or shadow tree originated a scroll. */
 export function widgetHostForScrollEvent(event: Event, schema?: Schema) {
-  return event.type === "scroll" ? widgetHostForEventPath(event, schema) : null
+  return event.type === "scroll" ? widgetHostForEventPath(event) : null
 }
 
 /** Whether a non-scroll interaction originated in a mounted widget's shadow
@@ -1863,9 +1932,6 @@ export function formControlForInteraction(event: Event) {
   if(!(origin instanceof Element)) return null
   const interaction = origin.closest(formInteractionSelector)
   if(!interaction || !document.body.contains(interaction)) return null
-  for(let ancestor = interaction.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
-    if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")) return null
-  }
   if(interaction instanceof HTMLLabelElement) {
     return interaction.control && document.body.contains(interaction.control)
       ? interaction.control

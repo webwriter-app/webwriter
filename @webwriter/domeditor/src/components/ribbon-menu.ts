@@ -45,7 +45,7 @@ export class RibbonMenu extends LitElement {
     ${editorInteractionStyles}
     ${dropdownContentStyles}
     .submenu.form-submenu { width: 19rem; }
-    .submenu.shape-gallery { width: min(32rem, calc(100vw - 1rem)); }
+    .submenu.shape-gallery { width: min(25rem, calc(100vw - 1rem)); }
     :host {
       position: absolute;
       top: 39px;
@@ -96,7 +96,7 @@ export class RibbonMenu extends LitElement {
     }
 
     :host([variant="button"][gallery]) {
-      width: min(32rem, calc(100vw - 1rem));
+      width: min(25rem, calc(100vw - 1rem));
       max-width: calc(100vw - 1rem);
     }
 
@@ -434,7 +434,7 @@ export class RibbonMenu extends LitElement {
     .shape-gallery {
       display: grid;
       grid-template-columns: repeat(11, minmax(0, 1fr));
-      gap: 0.2rem;
+      gap: 0.15rem;
       width: 100%;
       box-sizing: border-box;
     }
@@ -452,7 +452,7 @@ export class RibbonMenu extends LitElement {
       justify-content: flex-start;
       gap: 0.2rem;
       min-width: 0;
-      padding: 0.35rem 0.2rem;
+      padding: 0.25rem 0.15rem;
       text-align: center;
     }
 
@@ -462,6 +462,7 @@ export class RibbonMenu extends LitElement {
       grid-column: -4 / -1;
       border: 1px solid #d8dee6;
       border-radius: 0.35rem;
+      font-size: 0.65rem;
       flex-direction: row;
       align-items: center;
       justify-content: center;
@@ -479,9 +480,9 @@ export class RibbonMenu extends LitElement {
     }
 
     .shape-gallery .item-icon {
-      flex-basis: 1.85rem;
-      width: 1.85rem;
-      height: 1.85rem;
+      flex-basis: 1.4rem;
+      width: 1.4rem;
+      height: 1.4rem;
       margin-inline: auto;
     }
 

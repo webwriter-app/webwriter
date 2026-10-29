@@ -42,6 +42,279 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("gap clicks inside widget pages", () => {
+  const originalCaretPosition = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+  const originalElementsFromPoint = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+  beforeEach(() => {
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: vi.fn()})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn()})
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    for(const [name, descriptor] of [["caretPositionFromPoint", originalCaretPosition], ["elementsFromPoint", originalElementsFromPoint]] as const) {
+      if(descriptor) Object.defineProperty(document, name, descriptor)
+      else Reflect.deleteProperty(document, name)
+    }
+  })
+  const mount = (mode: ShadowRootMode = "open") => {
+    editor.schema.extendWidgets([
+      {tagName: "gap-organizer", editingConfig: {content: "gap-organizer-page*"}},
+      {tagName: "gap-organizer-page", editingConfig: {content: "flow*"}},
+    ])
+    document.body.innerHTML = '<gap-organizer><gap-organizer-page><p>Before</p><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100"/></svg><p>After</p></gap-organizer-page></gap-organizer><p>Outside</p>'
+    const organizer = document.querySelector("gap-organizer")!, page = document.querySelector("gap-organizer-page")!
+    organizer.attachShadow({mode}).innerHTML = '<section><button>Private toolbar</button><slot></slot></section>'
+    page.attachShadow({mode: "open"}).innerHTML = '<slot></slot><input value="Private UI">'
+    const [before, graphic, after] = Array.from(page.children)
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 400))
+    vi.spyOn(before, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 260, 30))
+    vi.spyOn(graphic, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 260, 100))
+    vi.spyOn(after, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 250, 260, 30))
+    editor.features.widget.refresh()
+    return {organizer, page, before, graphic, after}
+  }
+
+  it.each([
+    ["before", "text"], ["after", "text"],
+    ["before", "outer host"], ["after", "outer host"],
+    ["before", "missing"], ["after", "missing"],
+  ] as const)("selects the gap %s a graphic from page whitespace with a %s caret hit", (placement, hit) => {
+    const {page, graphic, before, after} = mount()
+    const textBlock = placement === "before" ? before : after
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue(hit === "missing" ? null : {
+      offsetNode: hit === "outer host" ? document.body : textBlock.firstChild!,
+      offset: hit === "outer host" ? 0 : placement === "before" ? 6 : 0,
+      getClientRect: () => null,
+    })
+    vi.spyOn(document, "elementsFromPoint").mockReturnValue([page])
+    feature.captureElement(page)
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: placement === "before" ? 90 : 210})
+    page.dispatchEvent(event)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(page)
+    expect($.anchorOffset).toBe(placement === "before" ? 1 : 2)
+    expect($.isGapSelection).toBe(true)
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(document.body).toHaveClass("◆gap-caret-visible")
+    expect(placement === "after" ? graphic : before).toHaveClass("◆gap-after-selected")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("keeps clicks on slotted text browser managed", () => {
+    const {before, page} = mount()
+    const text = before.firstChild!
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 2, getClientRect: () => null})
+    vi.spyOn(document, "elementsFromPoint").mockReturnValue([before, page])
+    $.move(text, 2)
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 35})
+    before.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+    expect($.anchor).toBe(text)
+  })
+
+  it("keeps padding inside a slotted table cell browser managed", () => {
+    const {page} = mount()
+    page.innerHTML = '<table><tbody><tr><td><p>Cell text</p></td></tr></tbody></table>'
+    for(const element of page.querySelectorAll("*")) {
+      vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 260, element.localName === "p" ? 30 : 100))
+    }
+    const cell = page.querySelector("td")!
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 180})
+    cell.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+  })
+
+  it.each(["before", "after"] as const)("selects the %s gap through shadow padding around the page slot", placement => {
+    const {organizer, page, graphic} = mount()
+    page.replaceChildren(graphic)
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 300, 100))
+    const padding = organizer.shadowRoot!.querySelector("section")!
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true,
+      clientX: 100, clientY: placement === "before" ? 90 : 210})
+    padding.dispatchEvent(event)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(page)
+    expect($.anchorOffset).toBe(placement === "before" ? 0 : 1)
+    expect(graphic).toHaveClass(`◆gap-${placement}-selected`)
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+
+  it("leaves toolbar controls beside the page slot private", () => {
+    const {organizer} = mount()
+    const button = organizer.shadowRoot!.querySelector("button")!
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 90})
+    button.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.captureSelectedWidget).toBe(organizer)
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+  })
+
+  it("keeps retargeted closed-shadow controls private even beside a graphic", () => {
+    const {organizer} = mount("closed")
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 90})
+    organizer.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.captureSelectedWidget).toBe(organizer)
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+  })
+})
+
+describe("contentful widget top-bar capture", () => {
+  it("releases shadow button capture when a widget selects newly inserted authored text", () => {
+    editor.schema.extendWidgets([{tagName: "hint-task", editingConfig: {content: "flow*"}}])
+    const widget = document.createElement("hint-task")
+    const root = widget.attachShadow({mode: "open"})
+    root.innerHTML = '<button>Add hint</button><slot></slot>'
+    appendToBody(widget)
+    editor.features.widget.refresh()
+    const button = root.querySelector("button")!
+    button.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true}))
+    button.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+
+    const hint = document.createElement("p")
+    widget.append(hint)
+    document.getSelection()!.setBaseAndExtent(hint, 0, hint, 0)
+    feature.processSelection(false, {scrollIntoView: false})
+
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(document.getSelection()!.anchorNode).toBe(hint)
+    expect(hint).toHaveClass("◆empty-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+  })
+
+  it.each([
+    ["open", "document"], ["closed", "document"],
+    ["open", "canvas"], ["closed", "canvas"],
+    ["open", "slides"], ["closed", "slides"],
+  ] as const)("keeps %s host focus in capture in %s when its native range is above the widget", (mode, layout) => {
+    editor.schema.extendWidgets([{tagName: "topbar-widget", editingConfig: {content: "flow*"}}])
+    const widget = document.createElement("topbar-widget")
+    widget.tabIndex = -1
+    widget.innerHTML = '<p>Authored content</p>'
+    const root = widget.attachShadow({mode})
+    root.innerHTML = '<div role="toolbar"><span>Top bar</span></div><slot></slot>'
+    appendToBody(widget)
+    if(layout !== "document") editor.setDocumentLayout(layout, "document")
+    editor.features.widget.refresh()
+    const selection = document.getSelection()!
+    root.querySelector("span")!.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true}))
+    widget.focus()
+    selection.setPosition(document.body, 0)
+    document.dispatchEvent(new Event("selectionchange"))
+    feature.processSelection(false, {scrollIntoView: false})
+    const post = vi.spyOn(editor, "postHostMessage")
+    editor.postSelectionPath()
+
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
+    const message = post.mock.calls.at(-1)![0] as {detail: {capture?: boolean, gap?: unknown}}
+    expect(message.detail.capture).toBe(true)
+    expect(message.detail.gap).toBeUndefined()
+
+    widget.blur()
+    $.move(widget.querySelector("p")!.firstChild!, 2)
+    document.dispatchEvent(new Event("selectionchange"))
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+  })
+})
+
+describe("legacy widget options", () => {
+  function widget() {
+    editor.schema.extendWidgets([{tagName: "legacy-options-widget", editingConfig: {content: "flow*"}}])
+    const host = document.createElement("legacy-options-widget")
+    host.innerHTML = '<p>Authored text</p>'
+    const root = host.attachShadow({mode: "open"})
+    root.innerHTML = '<slot></slot><aside part="options"><input aria-label="Setting"></aside>'
+    const panel = root.querySelector<HTMLElement>("aside")!
+    const show = vi.fn(), hide = vi.fn()
+    Object.defineProperties(panel, {showPopover: {value: show}, hidePopover: {value: hide}})
+    return {host, root, panel, show, hide}
+  }
+
+  it("keeps the same live options panel open when capture becomes authored text editing", () => {
+    const {host, root, panel, show, hide} = widget()
+    appendToBody(host)
+    editor.features.widget.refresh()
+    feature.captureElement(host)
+    expect(panel.getAttribute("popover")).toBe("manual")
+    expect(show).toHaveBeenCalledOnce()
+
+    $.move(host.querySelector("p")!.firstChild!, 3)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(host).not.toHaveClass("◆element-capture-selected")
+    expect(host).toHaveClass("◆widget-options")
+    expect(panel.getRootNode()).toBe(root)
+    expect(show).toHaveBeenCalledOnce()
+    expect(hide).not.toHaveBeenCalled()
+
+    editor.doc.syncFromDOM()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    expect(editor.toHTML(true)).not.toMatch(/popover|part=|◆|contenteditable/)
+
+    const outside = document.createElement("p")
+    outside.textContent = "Outside"
+    document.body.append(outside)
+    $.move(outside.firstChild!, 2)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(hide).toHaveBeenCalledOnce()
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(host).not.toHaveClass("◆widget-options")
+  })
+
+  it("shows only the nearest nested widget's panel and restores its attributes on disable", () => {
+    const outer = widget(), inner = widget()
+    inner.panel.setAttribute("popover", "auto")
+    outer.host.append(inner.host)
+    appendToBody(outer.host)
+    editor.features.widget.refresh()
+    feature.captureElement(outer.host)
+    $.move(inner.host.querySelector("p")!.firstChild!, 2)
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(outer.host).not.toHaveClass("◆widget-options")
+    expect(outer.hide).toHaveBeenCalledOnce()
+    expect(inner.host).toHaveClass("◆widget-options")
+    expect(document.querySelectorAll(".◆widget-options")).toHaveLength(1)
+
+    feature.disable()
+    expect(inner.panel.getAttribute("popover")).toBe("auto")
+    expect(inner.hide).toHaveBeenCalledOnce()
+    expect(inner.host).not.toHaveClass("◆widget-options")
+  })
+
+  it("cleans up a concurrently removed options owner", async () => {
+    const {host, panel, hide} = widget()
+    appendToBody(host)
+    editor.features.widget.refresh()
+    feature.captureElement(host)
+    host.remove()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(hide).toHaveBeenCalledOnce()
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(host).not.toHaveClass("◆widget-options")
+  })
+
+  it("cleans up when a widget replaces its panel while the popover is opening", () => {
+    const {host, panel, show} = widget()
+    show.mockImplementation(() => { panel.remove(); throw new Error("Disconnected options") })
+    appendToBody(host)
+    editor.features.widget.refresh()
+    feature.captureElement(host)
+    expect(panel.hasAttribute("popover")).toBe(false)
+    expect(host).not.toHaveClass("◆widget-options")
+  })
+})
+
 describe("selection preservation across authored DOM shapes", () => {
   it.each(["caret", "element", "gap"])("releases graphic capture when the native selection changes to %s", next => {
     const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
@@ -800,13 +1073,14 @@ describe("revealing selections inside details", () => {
     feature.selectElement(details.querySelector("summary")!)
     expect(details.open).toBe(false)
     const widget = document.createElement("test-widget")
+    widget.id = "inserted-widget"
     editor.features.manipulation.insert(widget)
     expect(widget.parentElement).toBe(details)
     expect(feature.captureSelectedElement).toBe(widget)
     expect(details.open).toBe(true)
     expect(details.querySelector("summary")!.textContent).toBe("Title")
     expect(details.querySelector("p")!.textContent).toBe("Body")
-    expect(editor.toHTML(true)).toBe('<details open=""><summary>Title</summary><test-widget></test-widget><!--keep--><p>Body</p></details>')
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>Title</summary><test-widget id="inserted-widget"></test-widget><!--keep--><p>Body</p></details>')
   })
 })
 
@@ -1156,12 +1430,11 @@ describe("capture outline selection", () => {
 describe.each(["document", "canvas", "slides"] as const)("widget capture parity in %s", mode => {
   afterEach(() => { document.body.className = "" })
 
-  it.each(["light", "open", "closed"] as const)("captures %s content, preserves widget input, and leaves capture through its frame", kind => {
+  it.each(["open", "closed"] as const)("captures %s content, preserves widget input, and leaves capture through its frame", kind => {
     const widget = el("interactive-capture-widget")
     const button = document.createElement("button")
     button.textContent = "Widget control"
-    if(kind === "light") widget.append(button)
-    else widget.attachShadow({mode: kind}).append(button)
+    widget.attachShadow({mode: kind}).append(button)
     if(mode !== "document") expect(editor.setDocumentLayout(mode, "document")).toBe(true)
     feature.selectElement(widget)
     const event = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0})
@@ -1489,30 +1762,66 @@ describe("contentful widgets", () => {
     }
   })
 
-  it("keeps pointer selection and drags in slotted authored text", () => {
+  it.each([false, true])("keeps native drag endpoints in slotted authored text (backward: %s)", backward => {
     const {widget, paragraph} = timeline(true)
     const text = paragraph.querySelector("b")!.firstChild!
     const rect = new DOMRect(0, 0, 200, 40)
     vi.spyOn(widget, "getBoundingClientRect").mockReturnValue(rect)
     vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
     const caret = vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1, getClientRect: () => rect})
+    const capture = vi.spyOn(document.body, "setPointerCapture")
     $.selectElement(widget)
     feature.processSelection()
     expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    caret.mockClear()
 
-    const pointerdown = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, clientX: 10, clientY: 10})
+    const pointerdown = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, pointerId: 12, pointerType: "mouse", clientX: 10, clientY: 10})
     paragraph.dispatchEvent(pointerdown)
     expect(pointerdown.defaultPrevented).toBe(false)
+    expect($.selectedElement).toBe(widget)
+    expect(caret).not.toHaveBeenCalled()
+    // Native mousedown places the initial caret; the editor must not replace
+    // it with its own document-level hit test.
+    document.getSelection()!.setPosition(text, 1)
     expect($.anchor).toBe(text)
     expect($.anchorOffset).toBe(1)
+    expect(capture).not.toHaveBeenCalled()
 
-    caret.mockReturnValue({offsetNode: text, offset: 4, getClientRect: () => rect})
-    paragraph.dispatchEvent(new MouseEvent("pointermove", {bubbles: true, composed: true, clientX: 30, clientY: 10}))
-    paragraph.dispatchEvent(new MouseEvent("pointerup", {bubbles: true, composed: true, clientX: 30, clientY: 10}))
+    // The browser extends the range through the flattened slot tree. A
+    // document-level hit test may instead return the outer widget boundary.
+    document.getSelection()!.setBaseAndExtent(text, backward ? 4 : 1, text, backward ? 1 : 4)
+    caret.mockReturnValue({offsetNode: widget, offset: 0, getClientRect: () => rect})
+    paragraph.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, pointerId: 12, clientX: 30, clientY: 10}))
+    const selectstart = new Event("selectstart", {bubbles: true, cancelable: true})
+    paragraph.dispatchEvent(selectstart)
+    expect(selectstart.defaultPrevented).toBe(false)
+    paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 12, clientX: 30, clientY: 10}))
     expect(document.getSelection()!.toString()).toBe("ell")
+    expect($.anchorOffset).toBe(backward ? 4 : 1)
+    expect($.focusOffset).toBe(backward ? 1 : 4)
     expect(feature.isCaptureSelection).toBe(false)
     expect(widget).not.toHaveClass("◆element-selected", "◆element-capture-selected")
     caret.mockRestore()
+  })
+
+  it("allows a native widget drag to intentionally extend into preceding title text", () => {
+    const {widget, paragraph} = timeline(true)
+    const title = document.createElement("h3")
+    title.textContent = "Title"
+    paragraph.before(title)
+    const text = paragraph.querySelector("b")!.firstChild!
+    const rect = new DOMRect(0, 20, 200, 40)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 2, getClientRect: () => rect})
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, pointerId: 13, clientX: 20, clientY: 30}))
+    document.getSelection()!.setBaseAndExtent(text, 2, title.firstChild!, 1)
+    title.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true, pointerId: 13, clientX: 20, clientY: 5}))
+    title.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 13, clientX: 20, clientY: 5}))
+    expect($.anchor).toBe(text)
+    expect($.focus).toBe(title.firstChild)
+    expect(widget).not.toHaveClass("◆element-selected")
+    expect(document.body).not.toHaveClass("◆selection-dragging")
+    expect(editor.toHTML(true)).not.toContain("◆")
   })
 
   it.each(["host", "open", "closed"] as const)("never promotes repeated modifier clicks on a %s surface to capture", mode => {
@@ -1528,7 +1837,7 @@ describe("contentful widgets", () => {
     }
   })
 
-  it.each(["open", "closed"] as const)("leaves %s shadow controls independent without capturing their host", mode => {
+  it.each(["open", "closed"] as const)("captures %s shadow controls without interfering with native input", mode => {
     const {widget, paragraph} = timeline()
     const control = document.createElement("input")
     widget.attachShadow({mode}).append(control)
@@ -1544,17 +1853,54 @@ describe("contentful widgets", () => {
     expect(received).toHaveBeenCalledOnce()
     expect(input.defaultPrevented).toBe(false)
     expect(paragraph.innerHTML).toBe("<b>hello</b> world")
-    expect($.selectedElement).toBe(paragraph)
-    expect(feature.isCaptureSelection).toBe(false)
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(paragraph).not.toHaveClass("◆element-selected")
+    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+  })
+
+  it.each(["open", "closed"] as const)("replaces a gap with capture while a %s nested shadow input is focused", async mode => {
+    const {widget, paragraph} = timeline()
+    const shell = document.createElement("date-field")
+    const input = document.createElement("input")
+    const root = widget.attachShadow({mode})
+    root.append(shell)
+    shell.attachShadow({mode: "open"}).append(input)
+    input.value = "2000"
+    $.selectGap(widget, "before")
+    feature.processSelection()
+    expect(document.body).toHaveClass("◆gap-caret-visible")
+    const authored = editor.toHTML(true)
+    const selection = document.getSelection()!
+    const anchor = selection.anchorNode, offset = selection.anchorOffset
+    input.focus()
+    input.setSelectionRange(1, 3)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(widget).not.toHaveClass("◆gap-before-selected")
+    expect(input.selectionStart).toBe(1)
+    expect(input.selectionEnd).toBe(3)
+    expect(selection.anchorNode).toBe(anchor)
+    expect(selection.anchorOffset).toBe(offset)
+    expect(editor.toHTML(true)).toBe(authored)
+    input.blur()
+    $.move(paragraph.querySelector("b")!.firstChild!, 2)
+    await Promise.resolve()
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(paragraph).toHaveClass("◆text-selected")
     expect(widget).not.toHaveClass("◆element-capture-selected")
   })
 
-  it("keeps focused light-DOM selections and styling on the inner paragraph", () => {
-    const {widget, paragraph} = timeline(true)
+  it.each([false, true])("keeps focused light-DOM selections and styling on the inner paragraph (slotted: %s)", slotted => {
+    const {widget, paragraph} = timeline(slotted)
     widget.tabIndex = 0
     widget.focus()
     $.selectRange(paragraph.firstChild!.firstChild!, 1)
     document.dispatchEvent(new Event("selectionchange"))
+    expect(paragraph).toHaveClass("◆text-selected")
     editor.features.manipulation.setStyle({color: "red"})
     expect(feature.isCaptureSelection).toBe(false)
     expect(paragraph).toHaveStyle({color: "red"})
@@ -1575,7 +1921,7 @@ describe("contentful widgets", () => {
     widget.dispatchEvent(key)
     expect(key.defaultPrevented).toBe(false)
     expect(paragraph.isConnected).toBe(true)
-    expect(feature.isCaptureSelection).toBe(false)
+    expect(feature.captureSelectedWidget).toBe(widget)
   })
 
   it("lets a contentful widget scroll without capture", () => {
@@ -1595,7 +1941,7 @@ describe("contentful widgets", () => {
     expect(feature.isCaptureSelection).toBe(false)
   })
 
-  it("releases another widget's capture when focus moves to a contentful widget", () => {
+  it("transfers capture when focus moves to a contentful widget shadow control", () => {
     const {widget} = timeline()
     const opaque = document.createElement("opaque-widget")
     document.body.append(opaque)
@@ -1604,9 +1950,9 @@ describe("contentful widgets", () => {
     const control = document.createElement("input")
     widget.attachShadow({mode: "open"}).append(control)
     control.focus()
-    expect(feature.isCaptureSelection).toBe(false)
+    expect(feature.captureSelectedWidget).toBe(widget)
     expect(opaque).not.toHaveClass("◆element-capture-selected")
-    expect(widget).not.toHaveClass("◆element-capture-selected")
+    expect(widget).toHaveClass("◆element-capture-selected")
   })
 
   it.each(["open", "closed"] as const)("does not reveal the outer selection while a %s shadow control is active", async mode => {
@@ -1638,7 +1984,7 @@ describe("contentful widgets", () => {
       await Promise.resolve()
       expect(scrollIntoView).not.toHaveBeenCalled()
       expect(scrollBy).not.toHaveBeenCalled()
-      expect(feature.isCaptureSelection).toBe(false)
+      expect(feature.captureSelectedWidget).toBe(widget)
 
     }
     finally {
@@ -1647,7 +1993,7 @@ describe("contentful widgets", () => {
     }
   })
 
-  it("does not scroll when a contentful shadow interaction releases another widget's capture", () => {
+  it("does not scroll when a contentful shadow interaction takes capture", () => {
     const {widget} = timeline()
     const control = document.createElement("button")
     widget.attachShadow({mode: "open"}).append(control)
@@ -1678,7 +2024,10 @@ describe("contentful widgets", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(editor.toHTML(true)).toContain("<!--keep-->")
     feature.disable()
-    expect(widget.querySelector('[class*="◆"]')).toBeNull()
+    expect(widget.querySelector('[class*="selected"]')).toBeNull()
+    expect(document.body).not.toHaveClass("◆gap-caret-visible", "◆node-selection-active")
+    // Widget editing remains enabled independently of selection presentation.
+    expect(widget.querySelector("timeline-item")).toHaveClass("◆widget-editable")
   })
 })
 
@@ -2283,6 +2632,38 @@ describe("processSelection()", () => {
     feature.disable()
     expect(replaced.hasAttribute("class")).toBe(false)
     expect(editor.toHTML()).not.toContain("◆text-selected")
+  })
+
+  it("cleans markers introduced by pending DOM edits without rescanning the document", () => {
+    const target = el("p", "Current")
+    const other = el("p", "Other")
+    $.move(target.firstChild!, 1)
+    feature.processSelection()
+    const queries = vi.spyOn(document, "querySelectorAll")
+    other.classList.add("◆", "◆text-selected")
+    const inserted = document.createElement("div")
+    inserted.innerHTML = '<p class="◆ ◆element-selected">Inserted marker</p>'
+    document.body.append(inserted)
+    feature.processSelection()
+    expect(other).not.toHaveClass("◆text-selected", "◆")
+    expect(inserted.firstElementChild).not.toHaveClass("◆element-selected", "◆")
+    expect(target).toHaveClass("◆text-selected")
+    expect(queries.mock.calls.filter(([selector]) => selector.includes("◆gap-before-selected"))).toHaveLength(0)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    queries.mockRestore()
+  })
+
+  it("clears pending and disconnected markers when disabled", () => {
+    const target = el("p", "Current")
+    $.move(target.firstChild!, 1)
+    feature.processSelection()
+    target.remove()
+    const foreign = el("p", "Foreign")
+    foreign.classList.add("◆", "◆text-selected")
+    feature.disable()
+    expect(target).not.toHaveClass("◆text-selected", "◆")
+    expect(foreign).not.toHaveClass("◆text-selected", "◆")
+    feature.enable()
   })
   it("hides the gap caret when leaving a gap selection", () => {
     const p1 = el("p", "a"); el("p", "b")
@@ -3135,6 +3516,8 @@ describe("document listeners", () => {
         detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
+          distribution: null,
+          distributionGeneral: expect.objectContaining({path: null}),
           documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
           path: [
             {path: [], name: "Document", icon: "Document"},
@@ -3159,6 +3542,8 @@ describe("document listeners", () => {
       detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
+        distribution: null,
+        distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -3207,17 +3592,19 @@ describe("document listeners", () => {
           slides: "A custom document template owns this document's layout.",
           board: "A custom document template owns this document's layout.",
         }},
-        path: [{path: [0], name: "demo-widget", icon: "Packages"}],
+        path: [{path: [0], name: "Widget", icon: "Packages"}],
         nodeSelected: true,
         element: {
           path: [0],
           targetId: expect.any(String),
           localName: "demo-widget",
           namespaceURI: "http://www.w3.org/1999/xhtml",
-          name: "demo-widget",
+          name: "Widget",
           icon: "Packages",
           attributes: {role: "document"},
         },
+        distribution: expect.objectContaining({path: [0]}),
+        distributionGeneral: expect.objectContaining({path: null}),
       },
     }, window.location.origin)
   })
@@ -3429,6 +3816,8 @@ describe("document listeners", () => {
       detail: {
           captionPosition: "none",
           selectedElementTypes: expect.any(Array),
+        distribution: null,
+        distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [
           {path: [], name: "Document", icon: "Document"},
@@ -3501,6 +3890,8 @@ describe("document listeners", () => {
       type: selectionChangeEvent,
       bridgeNonce: editor.trustedScriptNonce,
       detail: {
+        distribution: null,
+        distributionGeneral: expect.objectContaining({path: null}),
         documentLayout: {mode: "document", canConvert: true, zoom: 100, conversions: {document: null, canvas: null, slides: null, board: null}},
         path: [{path: [], name: "Document", icon: "Document"}],
         gap: {parentPath: [], offset: 1},
@@ -3768,18 +4159,10 @@ describe("document listeners", () => {
     expect(event.defaultPrevented).toBe(true)
     expect(boxSelection).not.toHaveBeenCalled()
   })
-  it.each(["host", "light", "slotted", "open", "closed"] as const)("capture-selects an element-selected widget on an ordinary click in its %s content", kind => {
+  it.each(["host", "open", "closed"] as const)("capture-selects an element-selected widget on an ordinary click in its %s content", kind => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
-    if(kind === "open" || kind === "closed") {
-      widget.attachShadow({mode: kind}).append(button)
-    }
-    else {
-      const wrapper = document.createElement("span")
-      wrapper.append(button)
-      widget.append(wrapper)
-      if(kind === "slotted") widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
-    }
+    if(kind !== "host") widget.attachShadow({mode: kind}).append(button)
     appendToBody(widget)
     $.selectElement(widget)
     feature.processSelection()
@@ -3803,13 +4186,11 @@ describe("document listeners", () => {
     expect(feature.captureSelectedWidget).toBe(widget)
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
   })
-  it.each(["light", "slotted", "open", "closed"] as const)("does not select %s widget text when capturing its interaction", kind => {
+  it.each(["open", "closed"] as const)("does not select %s widget text when capturing its interaction", kind => {
     const widget = document.createElement("interactive-widget")
     const text = document.createElement("span")
     text.textContent = "Widget text"
-    if(kind === "light" || kind === "slotted") widget.append(text)
-    if(kind === "open" || kind === "closed") widget.attachShadow({mode: kind}).append(text)
-    if(kind === "slotted") widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    widget.attachShadow({mode: kind}).append(text)
     appendToBody(widget)
     $.selectElement(widget)
     feature.processSelection()
@@ -3821,6 +4202,28 @@ describe("document listeners", () => {
     expect(selection.isCollapsed).toBe(true)
     expect(selection.anchorNode).toBe(widget.parentNode)
     expect(selection.toString()).toBe("")
+  })
+  it.each([false, true])("does not capture a widget through its light DOM children (slotted: %s)", slotted => {
+    const widget = el("interactive-widget")
+    widget.innerHTML = '<span><!--keep--><button>Child control</button></span>'
+    if(slotted) widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
+    const button = widget.querySelector("button")!
+    const received = vi.fn()
+    button.addEventListener("pointerdown", received)
+    for(const state of ["none", "element", "capture"]) {
+      if(state === "element") feature.selectElement(widget)
+      else if(state === "capture") feature.captureElement(widget)
+      received.mockClear()
+      const event = new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true})
+      button.dispatchEvent(event)
+      button.focus()
+      button.dispatchEvent(new KeyboardEvent("keydown", {key: "a", bubbles: true, composed: true}))
+      expect(received).toHaveBeenCalledOnce()
+      expect(event.defaultPrevented).toBe(false)
+      expect(feature.captureSelectedWidget).toBeNull()
+      expect(widget).not.toHaveClass("◆element-capture-selected")
+    }
+    expect(editor.toHTML(true)).toContain('<!--keep--><button>Child control</button>')
   })
   it("capture-selects a widget without starting an editor drag from its shadow DOM", () => {
     const widget = document.createElement("interactive-widget")

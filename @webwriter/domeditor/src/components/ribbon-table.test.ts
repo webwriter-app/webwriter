@@ -53,7 +53,7 @@ describe("table controls", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Table"] ribbon-button[action="table-header"]')).not.toBeNull()
   })
 
-  it("keeps table commands at the top of the drawer and Languages visible", async () => {
+  it("keeps table commands at the top of the drawer and Language in advanced options", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -89,7 +89,7 @@ describe("table controls", () => {
     expect(controls.closest('[slot="more"]')).toBeNull()
     expect(drawers[1].querySelector("element-style-editor")!.previousElementSibling).toBe(controls)
     expect(controls.querySelector(".table-sections")).toBeNull()
-    expect(drawers[1].querySelector("element-attribute-editor")!.closest('[slot="more"]')).toBeNull()
+    expect(drawers[1].querySelector("element-attribute-editor")!.closest('[slot="more"]')).not.toBeNull()
     expect(drawers[1].shadowRoot!.querySelector('slot[name="more"]')!.hasAttribute("hidden")).toBe(true)
   })
 

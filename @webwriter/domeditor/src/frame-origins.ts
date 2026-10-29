@@ -9,7 +9,7 @@ const configuredOrigin = (value: string | undefined, name: string) => {
   return url.origin
 }
 
-const pairedLoopbackOrigin = (location: Pick<Location, "protocol" | "hostname" | "port">) => {
+export const pairedLoopbackOrigin = (location: Pick<Location, "protocol" | "hostname" | "port">) => {
   const hostname = location.hostname === "localhost" ? "127.0.0.1"
     : location.hostname === "127.0.0.1" ? "localhost" : null
   return hostname ? `${location.protocol}//${hostname}${location.port ? `:${location.port}` : ""}` : null
@@ -24,7 +24,9 @@ export function editorFrameOrigin(location: Location = window.location) {
 
 export function editorHostOrigin(location: Location = window.location) {
   const origin = configuredOrigin(import.meta.env.VITE_APP_ORIGIN, "VITE_APP_ORIGIN")
-    ?? pairedLoopbackOrigin(location)
+    // The default application is 127.0.0.1. Reversing the pair on that
+    // origin would let a content window bootstrap a document on the app.
+    ?? (location.hostname === "localhost" ? pairedLoopbackOrigin(location) : null)
   if(!origin || origin === location.origin) throw new Error("Configure VITE_APP_ORIGIN as the application origin for editor frames")
   return origin
 }

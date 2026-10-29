@@ -5,6 +5,7 @@ import {
   documentThemes,
   documentTheme,
   editingDocumentThemeSource,
+  documentWidgetStyleSource,
 } from "./document-themes"
 
 const ruleHeaders = (source: string) => Array.from(
@@ -15,6 +16,20 @@ const ruleHeaders = (source: string) => Array.from(
 const layoutExamples = import.meta.glob("../examples/layouts/**/*.html", {query: "?raw", import: "default", eager: true}) as Record<string, string>
 
 describe("document themes", () => {
+  it("bounds installed widget hosts in document layouts while retaining sizing overrides", () => {
+    const source = documentWidgetStyleSource([
+      {tagName: "demo-card"}, {tagName: "demo-card"},
+      {tagName: "demo-inline", editingConfig: {inline: true}},
+      {tagName: "demo-contents", editingConfig: {inline: true}},
+    ])
+    expect(source).toContain("body:not([class~=\"ww-canvas\"]):not([class~=\"ww-slides\"]):not([class~=\"ww-board\"]) :is(demo-card, demo-contents, demo-inline)")
+    expect(source).toContain("@layer webwriter-theme {\n:is(demo-card, demo-contents, demo-inline) p {\n  color: inherit;")
+    expect(source).toContain("max-inline-size: min(100%, var(--ww-widget-max, var(--ww-prose-max, 45rem)));")
+    expect(source).toContain(":is(demo-card):not([hidden]) {\n  display: block;")
+    expect(source).toContain(":is(demo-inline, demo-contents):not([hidden]) {\n  display: inline-block;")
+    expect(documentWidgetStyleSource([{tagName: "div"}])).toBe("")
+  })
+
   it("defaults iframes to 16:9 with low-priority CSS in editing and exports", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain(":where(iframe:not([is])) {\n    aspect-ratio: 16 / 9;\n  }")
@@ -86,24 +101,10 @@ describe("document themes", () => {
       expect(source).toMatch(/@layer webwriter-theme\s*\{[\s\S]*tfoot > tr > :is\(th, td\)\s*\{\s*background-color: #f2f2f2;/)
     }
   })
-  it("shares responsive legacy shadow options placement across saved and editing themes", () => {
+  it("keeps editor-owned legacy options placement out of saved document themes", () => {
     for(const theme of documentThemes) {
-      const source = editingDocumentThemeSource(theme)
-      expect(source).toMatch(/:not\(\[class~="◆element-capture-selected"\]\)::part\(options\)\s*\{\s*display: none;/)
-      expect(source).toMatch(/\[contenteditable\]:not\(\[contenteditable="false"\]\)::part\(options\)\s*\{\s*box-sizing: border-box;\s*float: right;/)
-      expect(source).toMatch(/::part\(options\)\s*\{[^}]*block-size: 100%;\s*overflow-y: auto;\s*background-color: #fff;/)
-      expect(source).toContain("padding-inline-end: 1rem;")
-      expect(source).toContain('body:is([class~="ww-canvas"], [class~="ww-slides"], [class~="ww-board"]) [contenteditable]:not([contenteditable="false"])::part(options)')
-      expect(source).toMatch(/@container \(width >= 1200px\)\s*\{\s*body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\):not\(\[class~="ww-board"\]\)\s*\{\s*\[contenteditable\]:not\(\[contenteditable="false"\]\)::part\(options\)/)
-      expect(source).toContain("inline-size: min(16rem, var(--ww-float-width));")
-      expect(source).toContain("inset-inline-start: calc(max(100%, (100% + var(--ww-prose-max, 45rem)) / 2) + var(--ww-float-gap));")
-      expect(source).not.toMatch(/\[part[~|^$*]?=["']?options/)
-    }
-  })
-  it("places floated widget options inward in both symmetric and single-gutter layouts", () => {
-    for(const theme of documentThemes) {
-      expect(theme.source).toMatch(/@container \(width >= 600px\)\s*\{[\s\S]*?::part\(options\)\s*\{[^}]*left: calc\(100% \+ var\(--ww-float-gap\)\);\s*right: auto;/)
-      expect(theme.source).toMatch(/@container \(600px <= width < 1200px\)\s*\{[^@]*::part\(options\)\s*\{\s*left: auto;\s*right: calc\(100% \+ var\(--ww-float-gap\)\);/)
+      expect(theme.source).not.toContain("::part(options)")
+      expect(theme.source).not.toContain("◆element-capture-selected")
     }
   })
   it("blockifies ordinary top-level media and graphics in document columns across every theme", () => {

@@ -725,9 +725,10 @@ describe("widget shadow interactions", () => {
 
   it("continues to handle a widget's slotted light-DOM content", () => {
     const widget = document.createElement("slotted-widget")
-    const input = document.createElement("input")
+    const content = document.createElement("p")
+    content.textContent = "Slotted content"
     widget.attachShadow({mode: "open"}).append(document.createElement("slot"))
-    widget.append(input)
+    widget.append(content)
     document.body.append(widget)
 
     const event = new KeyboardEvent("keydown", {
@@ -737,7 +738,7 @@ describe("widget shadow interactions", () => {
       composed: true,
       cancelable: true,
     })
-    input.dispatchEvent(event)
+    content.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
     widget.remove()

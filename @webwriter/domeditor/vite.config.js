@@ -1,7 +1,10 @@
 import { fileURLToPath } from 'url'
-import { defineConfig } from 'vite'
+import {existsSync, realpathSync} from 'node:fs'
+import {resolve} from 'node:path'
+import { defineConfig, loadEnv, normalizePath } from 'vite'
 import {componentLicensesPlugin} from './scripts/component-licenses.mjs'
 import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs'
+import {distributionReaderPlugin} from './scripts/distribution-reader-plugin.mjs'
 import {documentationPlugin} from './scripts/documentation-plugin.mjs'
 import {siteHeaderPlugin} from './scripts/site-header.mjs'
 
@@ -37,10 +40,21 @@ function localPackageServiceWorkerPlugin() {
   }
 }
 
-export default defineConfig({
+export default defineConfig(({mode}) => {
+  const root = fileURLToPath(new URL('.', import.meta.url))
+  const configuredDataDirectory = loadEnv(mode, root, 'WEBWRITER_DEV_DATA_DIR').WEBWRITER_DEV_DATA_DIR
+  const privateDirectories = configuredDataDirectory ? [resolve(root, configuredDataDirectory)] : []
+  for(const directory of [...privateDirectories]) if(existsSync(directory)) privateDirectories.push(realpathSync(directory))
+  const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
+  return {
     plugins: [siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
-      referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url)))],
+      referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))), distributionReaderPlugin()],
     appType: "mpa",
+    server: {
+      // Preserve Vite's default secret-file exclusions and protect the backend
+      // data even when running the standalone frontend development server.
+      fs: {deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/.webwriter-dev/**", ...privatePaths]},
+    },
     publicDir: "../../static",
     resolve: {
       dedupe: ["yjs"],
@@ -119,4 +133,5 @@ export default defineConfig({
           },
         },
     }
+  }
 })

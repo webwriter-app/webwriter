@@ -1,3 +1,6 @@
+import "./distribution-controls"
+import type {DistributionSelectionState} from "./distribution-controls"
+import type {DistributionItem} from "../distribution.js"
 import type {LiveSessionFeedback, LiveSessionLearner} from "../live-session"
 import "./float-info"
 import type {FloatInfo} from "./float-info"
@@ -17,7 +20,7 @@ import {EditingControls} from "./editing-controls"
 import {contextDrawerPolicy} from "./ribbon-menu-config"
 import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonMenuGroup} from "./ribbon-menu"
-import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
+import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes, documentLayoutLabel, documentLayoutIcon} from "./layout-preview"
 import {choiceGroupStyles} from "./choice-group.styles"
 import type {DocumentLayoutMode, DocumentLayoutState} from "../document-layout"
 import {floatSideFromStyles, elementStyleCategories, listMarkerImageProperty, specializedStyleDefinitions, specializedElementStyle, type FloatSide} from "../element-styles"
@@ -27,14 +30,16 @@ import {canonicalMarkName} from "../marks"
 import "./style-combobox"
 import {defaultGraphicShapePaint, graphicShapeOptions, SVG_NAMESPACE, type GraphicShapePaint} from "../graphic"
 import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
+import {getElementPresentation} from "../element-names"
 
-export type ToolboxTool = "Edit" | "Style" | "AI" | "Review" | "Feedback"
+export type ToolboxTool = "Edit" | "Distribute" | "Style" | "AI" | "Review" | "Feedback"
 
 const tools: readonly {label: ToolboxTool, icon: string}[] = [
   {label: "Edit", icon: "Pencil"},
   {label: "Style", icon: "Theme"},
   {label: "AI", icon: "AI"},
   {label: "Review", icon: "Grammar"},
+  {label: "Distribute", icon: "users-group"},
 ]
 
 /** Document toolbox presented beside the breadcrumb rather than as top-level
@@ -45,7 +50,7 @@ export class DomEditorToolbox extends EditingControls {
   protected get commentReviewMode() { return this.activeTool === "Review" }
 
   protected usesNativePointerInteraction(event: MouseEvent) {
-    return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content")))
+    return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content") || target.localName === "distribution-controls"))
   }
 
   protected renderGraphicDrawer() {
@@ -58,6 +63,11 @@ export class DomEditorToolbox extends EditingControls {
 
   static properties = {
     ...EditingControls.properties,
+    distribution: {attribute: false},
+    distributionGeneral: {attribute: false},
+    distributionItems: {attribute: false},
+    distributionPending: {type: Boolean},
+    distributionInsertDragActive: {type: Boolean},
     shapePaint: {attribute: false},
     preview: {type: Boolean, reflect: true},
     feedbackActive: {type: Boolean},
@@ -85,6 +95,12 @@ export class DomEditorToolbox extends EditingControls {
     proofreadingState: {attribute: false},
   }
 
+  distributionGeneral: DistributionSelectionState | null = null
+  distribution: DistributionSelectionState | null = null
+  distributionItems: DistributionItem[] = []
+  distributionPending = false
+  distributionInsertDragActive = false
+
   shapePaint: Required<GraphicShapePaint> = {...defaultGraphicShapePaint}
   private shapeFillColor = "#ffffff"
   private selectedShapeFillColor = "#ffffff"
@@ -103,12 +119,13 @@ export class DomEditorToolbox extends EditingControls {
   aiSidebar = false
 
   static styles = css`
+    .distribution-drawer {--ribbon-drawer-icon-background: #f2f2f2;}
+    .distribution-drawer[data-selected] {--ribbon-drawer-heading-color: var(--sl-color-primary-400, #38bdf8);}
     ${aiChatStyles}
     ${proofreadingCardStyles}
     ${EditingControls.styles}
     .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-options > .media-source {margin-bottom: 0;}
-    ribbon-drawer:is([data-specialized="picture"], [data-specialized="img"]) > element-attribute-editor {margin-top: .4rem;}
     .media-source .media-source-buttons {border-radius: 4px 4px 0 0; background: transparent;}
     .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
     .media-source-controls {min-width: 0; border-radius: 4px;}
@@ -847,7 +864,7 @@ export class DomEditorToolbox extends EditingControls {
           ? "Video"
           : "Website"
     if(this.dialog) return "Dialog"
-    if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
+    if(this.selectionPath.at(-1)?.icon === "Packages") return this.selectionPath.at(-1)!.name
     if(this.elementSelected) return this.elementAttributes?.name
       ?? this.selectionPath.at(-1)?.name ?? this.selectedElementTypes.at(-1)?.element.name ?? "Selection"
     if(this.paragraphSelected) return null
@@ -856,7 +873,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   protected get currentMenuGroups(): RibbonMenuGroup[] {
-    if(this.activeTool === "AI" || this.activeTool === "Feedback") return []
+    if(this.activeTool === "AI" || this.activeTool === "Feedback" || this.activeTool === "Distribute") return []
     return contextDrawerPolicy({
       menu: "Edit",
       surface: "toolbox",
@@ -1124,7 +1141,8 @@ export class DomEditorToolbox extends EditingControls {
     const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
-    const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
+      + (attributes?.attributes.lang ? 1 : 0)
+    const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? attributes?.name ?? getElementPresentation(localName).name : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
       ?? this.selectedElementTypes.find(item => ["td", "th"].includes(item.element.localName))
@@ -1132,7 +1150,7 @@ export class DomEditorToolbox extends EditingControls {
     const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
-    const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
+    const hasOptions = Boolean(attributes) || advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
@@ -1191,12 +1209,12 @@ export class DomEditorToolbox extends EditingControls {
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
           : [[namespaceURI, localName, attributes?.path, 1]])}
         .state=${list ? {...style, target: {...style.target, localName, namespaceURI}} : style}></element-style-editor>
-      ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       ${hasOptions ? html`<div slot="more" class="specialized-options">
         ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
         ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
         ${this.media?.type === "video" && (!group || singleTarget) ? this.renderMediaSource(true) : nothing}
+        ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
@@ -1430,8 +1448,8 @@ export class DomEditorToolbox extends EditingControls {
     if(this.activeTool === "Edit" && !this.elementAttributes && !this.math?.active
       && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
       const drawers = [html`
-        <ribbon-drawer label="Attributes" icon="Develop" layout="attributes">
-          <element-attribute-editor disabled></element-attribute-editor>
+        <ribbon-drawer label="Attributes" icon="Develop" layout="attributes" expandable>
+          <element-attribute-editor slot="more" disabled></element-attribute-editor>
         </ribbon-drawer>
       `]
       return drawers
@@ -1571,7 +1589,7 @@ export class DomEditorToolbox extends EditingControls {
     const previousMenu = this.activeMenu
     this.activeTool = nextTool
     if(nextTool) {
-      this.activeMenu = nextTool === "Review" || nextTool === "AI" || nextTool === "Feedback" ? "Edit" : nextTool
+      this.activeMenu = nextTool === "Review" || nextTool === "AI" || nextTool === "Feedback" || nextTool === "Distribute" ? "Edit" : nextTool
       if(nextTool !== "Feedback" && nextTool !== "AI" && (nextTool !== "Style" || previousMenu === nextTool)) {
         this.dispatchEvent(new Event("element-style-state-request", {bubbles: true, composed: true}))
       }
@@ -1726,6 +1744,10 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   render() {
+    const distributionElement = this.elementAttributes ?? this.selectionPath.at(-1)
+    const distributionPresentation = distributionElement ?? {name: "element", icon: "Section", iconUrl: undefined}
+    const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
+    const distributionSelected = this.elementSelected && Boolean(this.distribution)
     return html`
       <div
         class="toolbox"
@@ -1816,6 +1838,24 @@ export class DomEditorToolbox extends EditingControls {
           ?hidden=${this.activeTool === null || this.collapsed}
         >
           <div class="toolbox-pane-content" ?inert=${this.htmlPending || this.historyState.preview !== null && this.activeTool !== "Review"}>
+            ${this.activeTool === "Distribute" ? html`<ribbon-drawer class="distribution-drawer" label=${`${documentLayoutLabel(this.documentLayout.mode)} permissions`}
+              icon=${documentLayoutIcon(this.documentLayout.mode)} icon-badge="Checkbox" layout="distribution" show-pane-icon>
+            <distribution-controls general hide-heading .state=${this.distributionGeneral}
+              .insertDragActive=${this.distributionInsertDragActive}
+              .items=${this.distributionItems} .pending=${this.distributionPending}
+              .disabled=${this.htmlPending || this.historyState.preview !== null}></distribution-controls>
+            </ribbon-drawer>
+            <ribbon-drawer class="distribution-drawer" label=${distributionSelected ? `${distributionPresentation.name} permissions` : "Permissions"}
+              icon=${distributionSelected ? distributionIcon : "Section"} .iconUrl=${distributionSelected ? distributionPresentation.iconUrl ?? "" : ""}
+              icon-badge="Checkbox" ?data-selected=${distributionSelected} layout="distribution" show-pane-icon>
+            <distribution-controls heading="Grouping" view="grouping" .state=${this.distribution}
+              .items=${this.distributionItems} .pending=${this.distributionPending}
+              .disabled=${!this.elementSelected || this.htmlPending || this.historyState.preview !== null}></distribution-controls>
+            <distribution-controls heading="Permissions" view="permissions" compact .state=${this.distribution}
+              .insertDragActive=${this.distributionInsertDragActive}
+              .items=${this.distributionItems} .pending=${this.distributionPending}
+              .disabled=${!this.elementSelected || this.htmlPending || this.historyState.preview !== null}></distribution-controls>
+            </ribbon-drawer>` : ""}
             ${this.activeTool === "Feedback" ? this.renderFeedback() : ""}
             ${this.activeTool === "Review" ? html`
               <div class="review-section review-comments">${this.renderCommentDrawer()}</div>
@@ -1826,7 +1866,7 @@ export class DomEditorToolbox extends EditingControls {
             ` : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderWidgetSharing() : ""}
-            ${this.activeTool && this.activeTool !== "AI" && this.activeTool !== "Review" ? this.renderDrawers() : ""}
+            ${this.activeTool && this.activeTool !== "AI" && this.activeTool !== "Review" && this.activeTool !== "Distribute" ? this.renderDrawers() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>

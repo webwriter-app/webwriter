@@ -1,4 +1,5 @@
-import {appendSerializedAssets, escapeHTMLAttribute, scopedCustomElementRegistryScript} from "../serialization"
+import {escapeHTMLAttribute} from "../serialization-primitives"
+import {scopedCustomElementRegistryScript} from "../scoped-custom-element-registry-script"
 import { EditorFeature } from "."
 import type { DOMEditor } from "../domeditor"
 import {isLoadWidgetsMessage, loadWidgetsMessage, type LoadWidgetsMessage} from "../editor-bridge"
@@ -8,6 +9,7 @@ import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
 import {relayFrameLocalPackageRequest} from "../frame-local-packages"
 import {editorHostOrigin} from "../frame-origins"
+import {documentWidgetStyleSource} from "../document-themes"
 
 
 export class DependencyFeature extends EditorFeature {
@@ -120,7 +122,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
 
   /** Adds runtime resources required by the detached authored document. */
   appendSerializedAssets(root: Document) {
-    appendSerializedAssets(root, this.widgetPackages, this.dependencyPlan?.map)
+    this.editor.appendSerializedAssets(root, this.widgetPackages, this.dependencyPlan?.map)
   }
 
   get packageDependencyPlan() { return this.dependencyPlan }
@@ -149,7 +151,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     const entries = packageModuleEntries(packages)
     if(entries.length && !message.importMap) throw new Error("Widget scripts require a resolved import map before loading")
     const plan: PackageDependencyPlan = {entries, map: message.importMap ?? null}
-    globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages)
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = packageInsertionItems(packages, true)
     const widgetDefinitions = packageWidgetSchemaDefinitions(packages)
     this.editor.schema = new Schema()
     this.editor.schema.extendWidgets(widgetDefinitions)
@@ -215,6 +217,13 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     document.head.append(...styles, ...scripts)
     await Promise.all(assetLoads)
     if(sequence !== this.widgetLoadSequence) return
+    document.getElementById("webwriter-widget-sizing")?.remove()
+    const sizingStyle = document.createElement("style")
+    sizingStyle.id = "webwriter-widget-sizing"
+    sizingStyle.nonce = this.editor.trustedScriptNonce
+    sizingStyle.classList.add("◆", "◆editor-only")
+    sizingStyle.textContent = documentWidgetStyleSource(widgetDefinitions)
+    if(sizingStyle.textContent) document.head.append(sizingStyle)
     this.editor.features.insertion.menu.requestUpdate()
   }
 
@@ -229,6 +238,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     this.pendingAssetCancellations.forEach(cancel => cancel())
     this.pendingAssetCancellations.clear()
     this.widgetAssets.forEach(element => element.remove())
+    document.getElementById("webwriter-widget-sizing")?.remove()
     this.widgetAssets = []
     this.widgetPackages = []
     this.dependencyPlan = null
