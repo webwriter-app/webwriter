@@ -2091,6 +2091,45 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 
 const editor = new DOMEditor()
 
+await check("widget shadow interactions capture hosts while slotted children stay editable", async () => {
+  editor.schema.extendWidgets([{tagName: "native-content-capture-widget", editingConfig: {content: "flow*"}}])
+  for(const mode of ["open", "closed"] as const) {
+    const widget = document.createElement("native-content-capture-widget")
+    widget.innerHTML = '<p>Authored <b>child text</b></p>'
+    const root = widget.attachShadow({mode})
+    root.innerHTML = '<input value="2000"><slot></slot>'
+    const input = root.querySelector("input")!, paragraph = widget.querySelector("p")!
+    fixture.append(widget)
+    try {
+      await layoutFrame()
+      input.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      input.focus()
+      input.setSelectionRange(1, 3)
+      document.dispatchEvent(new Event("selectionchange"))
+      assert(editor.features.selection.captureSelectedWidget === widget, `${mode} shadow input did not capture its host`)
+      assert(input.selectionStart === 1 && input.selectionEnd === 3, `${mode} shadow input lost its native selection`)
+      assert(widget.classList.contains("◆element-capture-selected"), "capture outline marker is missing")
+      const caret = editor.features.selection.selectionCaret!
+      assert(getComputedStyle(caret).display !== "none", "capture outline is hidden")
+      assert(caret.getBoundingClientRect().width > 0, "capture outline has no width")
+      const beforeinput = new InputEvent("beforeinput", {bubbles: true, composed: true, cancelable: true, inputType: "insertText", data: "1"})
+      input.dispatchEvent(beforeinput)
+      assert(!beforeinput.defaultPrevented, "capture blocked native shadow input")
+
+      paragraph.querySelector("b")!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      input.blur()
+      const text = paragraph.querySelector("b")!.firstChild!
+      document.getSelection()!.setBaseAndExtent(text, 1, text, 5)
+      document.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame()
+      assert(!editor.features.selection.isCaptureSelection, "slotted authored child retained widget capture")
+      assert(document.getSelection()!.toString() === "hild", "slotted child text selection was changed")
+      assert(!editor.toHTML(true).includes("◆"), "capture artifacts leaked into serialized content")
+    }
+    finally { input.blur(); widget.remove() }
+  }
+})
+
 await check("global directional shorthands preserve authored overrides in native CSSOM", () => {
   const target = document.createElement("aside")
   document.body.append(target)

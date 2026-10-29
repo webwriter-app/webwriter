@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "widget shadow interactions capture hosts while slotted children stay editable",
   "Crossing graphic resize edges reflects shapes and preserves fixed anchors",
   "Drawing brush keys are temporary and inserted shapes keep their defaults",
   "Tab cycles captured graphic and formula keyboard tabs without changing content",

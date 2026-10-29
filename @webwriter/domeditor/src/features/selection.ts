@@ -77,6 +77,7 @@ export class SelectionFeature extends EditorFeature {
   #lastScrollSelection: {element: Element} | {range: Range, backwards: boolean} | null = null
   #hoverFrame: number | null = null
   #nativeHoverTarget: Element | null = null
+  #focusedContentfulShadow: Element | null = null
   #hoverOwner: Element | null = null
   #floatObserver: MutationObserver | null = null
   #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
@@ -250,8 +251,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Capture-selects an authored element while keeping its internal pointer
    * interactions available to a focused feature such as SVG graphics.
-   * Focused appendix controls can preserve their native text selection.
-   * Contentful widgets use ordinary element selection so their content stays editable. */
+   * Focused appendix controls can preserve their native text selection. */
   captureElement(element: Element, {preserveNativeSelection = false} = {}) {
     if(!this.editor.allows("select", element) || !element.isConnected || element === document.body || !document.body.contains(element)) return
     if(element.matches("caption, figcaption, details > summary")) {
@@ -259,12 +259,6 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     this.clearSelectedSection()
-    if(isContentfulWidget(element, this.editor.schema)) {
-      this.#releaseCaptureSelection()
-      $.selectElement(element)
-      this.processSelection()
-      return
-    }
     this.#capturedElement = element
     if(!preserveNativeSelection) {
       if(element.localName.includes("-") || element.hasAttribute("is")) {
@@ -679,6 +673,7 @@ export class SelectionFeature extends EditorFeature {
     window.removeEventListener("focus", this.#handleWindowFocus)
     window.removeEventListener("blur", this.#handleWindowBlur)
     this.#endDrag()
+    this.#focusedContentfulShadow = null
     this.#modifierClick = false
     this.#touchSelection = false
     this.#atomicExtension = null
@@ -1118,10 +1113,20 @@ export class SelectionFeature extends EditorFeature {
     dblclick: event => { this.#handleModifierClick(event) },
     focusin: event => {
       this.#invalidateFloatCandidates()
+      const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+      this.#focusedContentfulShadow = widget && isContentfulWidget(widget, this.editor.schema) ? widget : null
       this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
         this.processSelection(undefined, {scrollIntoView: false})
       }
+    },
+    focusout: event => {
+      const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+      if(!widget || !isContentfulWidget(widget, this.editor.schema)) return
+      queueMicrotask(() => {
+        if(this.#focusedContentfulShadow === widget && focusedWidgetHost() !== widget) this.#focusedContentfulShadow = null
+        if(this.isEnabled) this.processSelection(undefined, {scrollIntoView: false})
+      })
     },
     keydown: event => {
       this.#handleKeyState(event)
@@ -1237,21 +1242,19 @@ export class SelectionFeature extends EditorFeature {
 
   /** Keeps widget shadow trees atomic without cancelling their own controls.
    * Regular feature listeners ignore these events, so they cannot start or
-   * extend an editor drag selection. Contentful widgets only acquire an
-   * element selection on modifier-click; other widgets capture the host while
+   * extend an editor drag selection. Widgets capture the host while
    * leaving their native focus, caret, input, and event handling untouched. */
   readonly #handleWidgetShadowInteraction = (event: Event) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
-    if(!widget) return
-    if(isContentfulWidget(widget, this.editor.schema)) {
-      const hadCapture = this.isCaptureSelection
-      this.#releaseCaptureSelection()
-      if(event.type === "pointerdown") {
-        this.#endDrag()
-        this.clearSelectedSection()
-        if(hadCapture) focusedWidgetHost()?.blur()
+    if(!widget) {
+      const origin = event.composedPath()[0]
+      const captured = this.captureSelectedWidget
+      if(event.type === "pointerdown" && captured && (captured.localName.includes("-") || captured.hasAttribute("is"))
+        && origin instanceof Node && captured.contains(origin)) {
+        this.#releaseCaptureSelection()
+        this.#clearSelections()
+        this.editor.features.transformation.clearTransform()
       }
-      if(hadCapture) this.processSelection(undefined, {scrollIntoView: false})
       return
     }
     if(widget === this.captureSelectedWidget) return
@@ -1262,7 +1265,7 @@ export class SelectionFeature extends EditorFeature {
     // Keep capture on the host without selecting its light or shadow text;
     // later widget focus, keyboard, and input events own their native selection.
     if(event.type === "pointerdown") this.#collapseBeforeCapturedWidget(widget)
-    this.processSelection()
+    this.processSelection(undefined, {scrollIntoView: !isContentfulWidget(widget, this.editor.schema)})
     this.editor.postSelectionPath()
   }
 
@@ -2006,6 +2009,21 @@ export class SelectionFeature extends EditorFeature {
     // them into BODY disrupts typing and clears the graphic's capture outline.
     if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused
       || this.editor.features.graphic.textEditingRange) return
+    // Shadow controls own capture and their native selection. Focus on a
+    // contentful host with a range in its authored children stays ordinary
+    // document editing, including when those children are slotted.
+    const shadowOwner = focusedWidgetHost()
+    const nativeRange = document.getSelection()
+    const authoredFocus = nativeRange?.anchorNode && nativeRange.focusNode
+      && shadowOwner?.contains(nativeRange.anchorNode) && shadowOwner.contains(nativeRange.focusNode)
+      && ($.isTextSelection || $.isEmptySelection)
+    const shadowFocused = shadowOwner && (shadowOwner.shadowRoot?.activeElement
+      || !shadowOwner.shadowRoot && this.#focusedContentfulShadow === shadowOwner && !authoredFocus)
+    const capturedWidget = this.#capturedElement
+    if(!shadowFocused && capturedWidget && isContentfulWidget(capturedWidget, this.editor.schema)
+      && nativeRange?.anchorNode && nativeRange.focusNode
+      && capturedWidget.contains(nativeRange.anchorNode) && capturedWidget.contains(nativeRange.focusNode)
+      && ($.isTextSelection || $.isEmptySelection)) this.#releaseCaptureSelection()
     // Chromium can clear its native range when focusing an SVG-only document.
     // Keep capture or ordinary node selection until actual new endpoints exist.
     if(!document.getSelection()?.rangeCount) {
@@ -2042,9 +2060,9 @@ export class SelectionFeature extends EditorFeature {
     }
     const focusedWidget = focusedWidgetHost()
     if(focusedWidget && !this.isInDragSelection) {
-      this.#capturedElement = isContentfulWidget(focusedWidget, this.editor.schema) ? null : focusedWidget
+      this.#capturedElement = !isContentfulWidget(focusedWidget, this.editor.schema)
+        || shadowFocused ? focusedWidget : null
     }
-    if(isContentfulWidget(this.#capturedElement, this.editor.schema)) this.#releaseCaptureSelection()
     const formula = this.editor.features.math.activeMath
     if(this.#capturedElement?.localName === "math" && (this.#capturedElement !== formula || inlineMathRoot(formula))) this.#releaseCaptureSelection()
     if(formula && inlineMathRoot(formula) && !focusedWidget) this.#releaseCaptureSelection()

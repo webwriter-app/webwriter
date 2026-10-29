@@ -1748,12 +1748,12 @@ export function focusedWidgetHost() {
     : null
 }
 
-/** The editable widget host whose surface, light DOM, or shadow tree originated an
+/** The editable widget host whose surface or shadow tree originated an
  * event. Composed events are retargeted to the host by the time they reach
  * document listeners, so inspect the full path instead. Hosts in the body's
  * own shadow tree belong to the editor appendix and are intentionally
  * excluded. */
-function widgetHostForEventPath(event: Event, schema?: Schema) {
+function widgetHostForEventPath(event: Event) {
   const origin = event.composedPath()[0] as Node | undefined
   if(typeof origin?.getRootNode !== "function") return null
   let root = origin.getRootNode()
@@ -1763,23 +1763,14 @@ function widgetHostForEventPath(event: Event, schema?: Schema) {
     if(host !== body && body.contains(host)) return host
     root = host.getRootNode()
   }
-  // Selected opaque widgets also own light-DOM and slotted interactions.
-  // Contentful widgets always expose those children to document editing.
   // Closed shadow roots expose only their host as the origin.
-  let element = isElement(origin) ? origin : origin.parentElement
-  while(element && element !== element.ownerDocument.body && element.ownerDocument.body.contains(element)) {
-    if(element.namespaceURI === "http://www.w3.org/1999/xhtml"
-      && (element.localName.includes("-") || element.hasAttribute("is"))
-      && (element === origin || !isContentfulWidget(element, schema))
-      && (element === origin || $.selectedElement === element || element.classList.contains("◆element-capture-selected"))) {
-      return element
-    }
-    element = element.parentElement
-  }
+  if(isElement(origin) && origin !== origin.ownerDocument.body && origin.ownerDocument.body.contains(origin)
+    && origin.namespaceURI === "http://www.w3.org/1999/xhtml"
+    && (origin.localName.includes("-") || origin.hasAttribute("is"))) return origin
   return null
 }
 
-/** The editable widget host whose surface or contents originated an interaction. */
+/** The editable widget host whose surface or shadow tree originated an interaction. */
 export function widgetHostForShadowInteraction(event: Event, schema?: Schema) {
   if(event.type === "scroll") return null
   // Text controls report their internal caret changes as document-level
@@ -1793,12 +1784,12 @@ export function widgetHostForShadowInteraction(event: Event, schema?: Schema) {
       && widget.contains(selection.anchorNode) && widget.contains(selection.focusNode)) return null
     return widget
   }
-  return widgetHostForEventPath(event, schema)
+  return widgetHostForEventPath(event)
 }
 
 /** The mounted widget whose own surface or shadow tree originated a scroll. */
 export function widgetHostForScrollEvent(event: Event, schema?: Schema) {
-  return event.type === "scroll" ? widgetHostForEventPath(event, schema) : null
+  return event.type === "scroll" ? widgetHostForEventPath(event) : null
 }
 
 /** Whether a non-scroll interaction originated in a mounted widget's shadow
@@ -1864,9 +1855,6 @@ export function formControlForInteraction(event: Event) {
   if(!(origin instanceof Element)) return null
   const interaction = origin.closest(formInteractionSelector)
   if(!interaction || !document.body.contains(interaction)) return null
-  for(let ancestor = interaction.parentElement; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
-    if(ancestor.localName.includes("-") || ancestor.hasAttribute("is")) return null
-  }
   if(interaction instanceof HTMLLabelElement) {
     return interaction.control && document.body.contains(interaction.control)
       ? interaction.control
