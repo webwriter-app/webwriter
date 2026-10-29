@@ -21,6 +21,7 @@ import {checkBoardMedia} from "./board-media"
 import {checkParagraphCut} from "./paragraph-cut"
 import {checkHistorySelection} from "./history-selection"
 import {checkListClipboard} from "./list-clipboard"
+import {checkListDeletion} from "./list-deletion"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
@@ -64,6 +65,7 @@ const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() =>
 let fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
+await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("undo and redo restore and reveal selections in nested scrollers", checkHistorySelection)
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
 await check("canvas starting view frames resize, delete and open without shifting", checkCanvasStartingView)

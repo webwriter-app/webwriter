@@ -3789,6 +3789,9 @@ export class ManipulationFeature extends EditorFeature {
         && !commonContainer.matches("details, details > summary")
         && !isDocumentRoot(commonContainer) && !boardLayoutRole(commonContainer) && !isOutOfFlow(commonContainer) && commonContainer.nodeName !== "HTML") {
         const emptyContainer = commonContainer
+        const parent = emptyContainer.parentNode
+        if(!parent) return
+        const offset = Array.from(parent.childNodes).indexOf(emptyContainer)
         const previous = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "previous")
         const next = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "next")
         $.delete()
@@ -3803,7 +3806,9 @@ export class ManipulationFeature extends EditorFeature {
           $.move(next)
         }
         else {
-          $.move(scope ?? getDocumentRoot())
+          // A sole empty paragraph may still be inside an authored list item
+          // or another container. Keep editing at its former position.
+          $.move(parent, Math.min(offset, parent.childNodes.length))
         }
         return
       }

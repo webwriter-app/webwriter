@@ -507,6 +507,63 @@ describe("semantic list editing", () => {
     expect(cleanHTML()).toBe("<ol><li><p>A</p></li><li><p>B</p></li></ol>")
   })
 
+  it.each(["ul", "ol"] as const)("keeps Backspace inside a converted %s item after its paragraph becomes empty", type => {
+    document.body.innerHTML = "<p>One</p><p>Two</p><p>Three</p>"
+    $.selectRange(document.body, 0, document.body, 3)
+    editor.features.list.toggleList(type)
+    const items = Array.from(document.querySelectorAll("li"))
+    const text = items[2].querySelector("p")!.firstChild!
+    $.selectRange(text, 0, text, text.textContent!.length)
+    keydown("Backspace")
+
+    keydown("Backspace")
+
+    expect(items[2].childNodes).toHaveLength(0)
+    expect($.anchor).toBe(items[2])
+    expect($.anchorOffset).toBe(0)
+    keydown("Backspace")
+    expect(cleanHTML()).toBe(`<${type}><li><p>One</p></li><li><p>Two</p></li></${type}>`)
+    expect($.anchor).toBe(items[1])
+    expect($.anchorOffset).toBe(items[1].childNodes.length)
+  })
+
+  it("keeps the former paragraph offset beside an out-of-flow widget", () => {
+    document.body.innerHTML = '<ul><li><test-widget style="position: absolute"></test-widget><p></p></li></ul>'
+    const item = document.querySelector("li")!
+    const widget = item.firstElementChild!
+    $.move(item.querySelector("p")!)
+
+    keydown("Backspace")
+
+    expect(item.firstElementChild).toBe(widget)
+    expect(widget.isConnected).toBe(true)
+    expect(item.childNodes).toHaveLength(1)
+    expect($.anchor).toBe(item)
+    expect($.anchorOffset).toBe(1)
+  })
+
+  it("shares empty paragraph and bullet deletion and supports undo and redo", async () => {
+    document.body.innerHTML = '<ul><!--keep--><li><p>One</p></li><li><p></p></li></ul>'
+    $.move(document.querySelectorAll("p")[1])
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    keydown("Backspace")
+    keydown("Backspace")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+
+    expect(cleanHTML()).toBe('<ul><!--keep--><li><p>One</p></li></ul>')
+    expect(editor.doc.body.toString()).toContain('<li><p>One</p></li></ul>')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ul><!--keep--><li><p>One</p></li><li><p></p></li></ul>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ul><!--keep--><li><p>One</p></li></ul>')
+  })
+
   it("switches the active list type without losing item content", () => {
     document.body.innerHTML = "<ul><li><p>A</p></li></ul>"
     const text = document.querySelector("p")!.firstChild!
