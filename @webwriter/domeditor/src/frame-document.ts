@@ -110,7 +110,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   const entryURL = new URL(options.entryURL, /^[a-z]+:/i.test(options.entryURL) ? options.hostOrigin : editorFrameOrigin())
   const workerSource = new URL(proofreadingWorkerURL, entryURL).origin
   const testShell = new URL(`${import.meta.env.BASE_URL}frame-shell.html`, `${entryURL.origin}/`).href
-  const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https: ${testShell}; worker-src blob: https: ${workerSource}; object-src 'none'; base-uri 'none'; form-action 'none'`
+  const policy = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation} 'wasm-unsafe-eval'; style-src 'none'; style-src-elem ${packageStyles}; style-src-attr 'unsafe-inline'; img-src * data: blob:; font-src * data:; connect-src * data: blob:; media-src * data: blob:; frame-src https: blob: data: ${testShell}; worker-src blob: https: ${workerSource}; object-src 'none'; base-uri 'none'; form-action 'none'`
   const csp = `<meta class="◆ ◆editor-only" http-equiv="Content-Security-Policy" content="${escapeHTMLAttribute(policy)}">`
   const bridge = `<meta class="◆ ◆editor-only" name="webwriter-editor-bridge" data-nonce="${nonce}" data-host-origin="${escapeHTMLAttribute(options.hostOrigin)}">`
   // Happy DOM deliberately disables external script execution but reports
@@ -176,7 +176,7 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
 
   // Remove authored executable content before installing the trusted widget
   // and preview bridge scripts in the isolated frame.
-  stripActiveContent(source, {allowStyles: true, allowIframes: true})
+  stripActiveContent(source, {allowStyles: true, allowIframes: true, allowLocalIframes: true})
 
   // Use the same dependency selection as saving, after stripping authored code.
   if(options.executeScripts) {
@@ -216,7 +216,7 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
     policy.className = "◆ ◆editor-only"
     policy.httpEquiv = "Content-Security-Policy"
     const packageEvaluation = scripts.some(script => script.hasAttribute("src")) ? " 'unsafe-eval'" : ""
-    policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https:; worker-src blob: https:; object-src 'none'; base-uri ${options.standalone ? "'self'" : "'none'"}; form-action 'none'`
+    policy.content = `default-src 'none'; script-src 'nonce-${nonce}' 'strict-dynamic'${packageEvaluation}; style-src * data: 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; connect-src * data: blob:; frame-src https: blob: data:; worker-src blob: https:; object-src 'none'; base-uri ${options.standalone ? "'self'" : "'none'"}; form-action 'none'`
     source.head.prepend(policy)
     if(options.executeScripts && (!options.standalone || options.learnerEntryURL)) {
       if(!options.standalone) {

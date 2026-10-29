@@ -48,6 +48,32 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it("isolates an uploaded local website and preserves its bytes and undo history", async () => {
+    document.body.innerHTML = '<section><!--keep--><iframe title="Lesson" sandbox="allow-scripts allow-same-origin"></iframe></section>'
+    const frame = document.querySelector("iframe")!
+    $.selectElement(frame)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const html = '<!doctype html><p>Local lesson</p>'
+    const file = new File([html], "lesson.html", {type: "text/html"})
+
+    expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file})).toBe(true)
+    expect(frame.getAttribute("src")).toMatch(/^blob:/)
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(frame.getAttribute("title")).toBe("Lesson")
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(saved.querySelector("iframe")?.getAttribute("src")).toBe(`data:text/html;base64,${btoa(html)}`)
+    expect(saved.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(saved.body.innerHTML).not.toContain("◆")
+    const uploaded = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(uploaded)
+  })
+
   it.each(["url", "file"])("uses the current widget schema for %s image sources after packages load", mode => {
     const placeholder = editor.features.media.placeholder
     editor.schema = new Schema()

@@ -45,6 +45,8 @@ export type ActiveContentStripOptions = {
   allowStyles?: boolean
   /** Retain remote HTTPS embeds in a script sandbox. */
   allowIframes?: boolean
+  /** Retain local blob and HTML data URL embeds in a script sandbox. */
+  allowLocalIframes?: boolean
   /** Strip dialog and heading-group wrappers from incoming content, retaining their children. */
   unwrapUnsupportedElements?: boolean
   removeAttribute?: (attribute: Attr) => boolean
@@ -56,6 +58,7 @@ export type ActiveContentStripOptions = {
  * are traversed explicitly because they are not descendants in the DOM tree. */
 export function stripActiveContent(root: ParentNode, options: ActiveContentStripOptions = {}) {
   let removed = 0
+  const localIframes = new Set<Element>()
   if(options.unwrapUnsupportedElements) {
     root.querySelectorAll("dialog, hgroup").forEach(element => {
       if(element.namespaceURI !== "http://www.w3.org/1999/xhtml") return
@@ -66,13 +69,19 @@ export function stripActiveContent(root: ParentNode, options: ActiveContentStrip
   root.querySelectorAll(unsafeElementSelector).forEach(element => {
     if(isWidgetDataContainer(element)) return
     if(options.allowStyles && (element.localName === "style" || element.matches("link[rel~=stylesheet]"))) return
-    if(options.allowIframes && element.localName === "iframe") {
+    if((options.allowIframes || options.allowLocalIframes) && element.localName === "iframe") {
       try {
-        const url = new URL(element.getAttribute("src") ?? "")
-        if(url.protocol === "https:" && !url.username && !url.password) {
+        const source = element.getAttribute("src") ?? ""
+        const url = new URL(source)
+        const isLocalHTMLDataURL = url.protocol === "data:"
+          && /^text\/html(?:;[^,]*)?,/i.test(url.pathname)
+        const isLocal = options.allowLocalIframes
+          && (url.protocol === "blob:" || isLocalHTMLDataURL)
+        const isRemote = options.allowIframes && url.protocol === "https:" && !url.username && !url.password
+        if(isLocal || isRemote) {
           element.setAttribute("sandbox", isYoutubeEmbedURL(url)
-            ? "allow-scripts allow-same-origin"
-            : "allow-scripts")
+            && isRemote ? "allow-scripts allow-same-origin" : "allow-scripts")
+          if(isLocal) localIframes.add(element)
           return
         }
       }
@@ -87,8 +96,9 @@ export function stripActiveContent(root: ParentNode, options: ActiveContentStrip
   elements.forEach(element => {
     for(const attribute of Array.from(element.attributes)) {
       const name = attribute.name.toLowerCase()
+      const isValidatedLocalIframeSource = localIframes.has(element) && name === "src"
       if(isUnsafeElementAttributeName(name)
-        || isUnsafeElementAttributeValue(name, attribute.value)
+        || isUnsafeElementAttributeValue(name, attribute.value) && !isValidatedLocalIframeSource
         || options.removeAttribute?.(attribute)) {
         element.removeAttribute(attribute.name)
         removed++

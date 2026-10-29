@@ -169,6 +169,7 @@ const expectedChecks = [
   "iframe lifecycle reaches load and cleans up",
   "New discards the previous canvas iframe and its document state",
   "uploaded videos survive installing and removing packages",
+  "local HTML websites load as isolated blob and saved data frames",
   "canvas and slide delete affordances follow rotation placement",
   "canvas and slide element selections keep Delete borderless",
   "canvas and slide copyright controls share freeform placement",
