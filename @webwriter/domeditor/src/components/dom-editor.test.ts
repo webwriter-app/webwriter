@@ -17,6 +17,7 @@ import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonTab} from "./ribbon-tab"
 import type {OpenDocumentMenu} from "./open-document-menu"
 import {
+  captureSnapshotTextNodeRuns,
   editorFrameControlMessage,
   executeCompleteEvent,
   executeFailureEvent,
@@ -219,6 +220,65 @@ async function mountEditor(configure?: (editor: DomEditor) => void) {
 }
 
 describe("filtered frame snapshots", () => {
+  it("keeps deeper widget chevrons and outline actions aligned with adjacent text-node paths", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    host.editorOpaque = true
+    host.fileHandle = {}
+    vi.spyOn(host, "isEditorMessage").mockReturnValue(true)
+    const live = iframe.contentDocument!
+    live.body.innerHTML = '<webwriter-timeline><webwriter-timeline-event><webwriter-timeline-event-title>Title</webwriter-timeline-event-title><webwriter-timeline-event-details><p>Details</p></webwriter-timeline-event-details></webwriter-timeline-event></webwriter-timeline>'
+    const timeline = live.querySelector("webwriter-timeline")!
+    const event = live.querySelector("webwriter-timeline-event")!
+    const details = live.querySelector("webwriter-timeline-event-details")!
+    timeline.prepend(live.createTextNode("\n"), live.createTextNode("\n"))
+    event.prepend(live.createTextNode(""))
+    details.prepend(live.createTextNode(""), live.createTextNode(" "))
+    const html = live.documentElement.outerHTML
+    const publish = () => window.dispatchEvent(new MessageEvent("message", {
+      source: iframe.contentWindow,
+      data: {type: "editor-frame-snapshot", html: live.documentElement.outerHTML,
+        textNodeRuns: captureSnapshotTextNodeRuns(live.body), treeChanged: true},
+    }))
+    const selectParagraph = (eventIndex: number) => host.selectionPath = [
+      {path: [], name: "Document"}, {path: [0], name: "Timeline"},
+      {path: [0, eventIndex], name: "Timeline Event"},
+      {path: [0, eventIndex, 2], name: "Timeline Event Details"},
+      {path: [0, eventIndex, 2, 2], name: "Paragraph"},
+    ]
+    publish()
+    selectParagraph(2)
+    await editor.updateComplete
+    const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
+    await breadcrumb.updateComplete
+    const toggle = (name: string) => breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(`.separator-trigger[aria-label="Show ${name} tree"]`)
+    expect(toggle("Timeline Event")).not.toBeNull()
+    expect(toggle("Timeline Event Details")).not.toBeNull()
+    expect(toggle("Paragraph")).toBeNull()
+    expect(host.editorDocument.body.innerHTML).toBe(live.body.innerHTML)
+    toggle("Timeline Event")!.click()
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    const menu = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    expect(menu.groups[0].buttons.map(button => typeof button === "string" ? button : button.action))
+      .toEqual(["outline:0,2,1", "outline:0,2,2"])
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="outline:0,2,2"]')!.click()
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: [0, 2, 2]})
+
+    // An empty text node changes live paths without changing serialized HTML.
+    ;(timeline.firstChild as Text).splitText(0)
+    expect(live.documentElement.outerHTML).toBe(html)
+    publish()
+    selectParagraph(3)
+    await editor.updateComplete
+    await breadcrumb.updateComplete
+    expect(host.documentTree.children[0].children[0].path).toEqual([0, 3])
+    expect(toggle("Timeline Event")).not.toBeNull()
+    expect(toggle("Timeline Event Details")).not.toBeNull()
+  })
+
   it("updates text without rebuilding the tree or canonical snapshots, and ignores duplicate snapshots", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any

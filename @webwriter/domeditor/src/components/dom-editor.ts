@@ -94,6 +94,7 @@ import {widgetOptionValue, type WidgetOptionsState} from "../widget-options"
 import {
   aiEditReviewEvent,
   editorFrameControlMessage,
+  restoreSnapshotTextNodeRuns,
   executeCompleteEvent,
   emptyVersionHistoryState,
   initializeEditorMessage,
@@ -490,7 +491,7 @@ export class DomEditor extends LitElement {
   private captureSelection = false
   private selectionGap: SelectionGap | null = null
   private documentTree: DocumentTreeItem | null = null
-  private frameSnapshot: {document: Document, html: string} | null = null
+  private frameSnapshot: {document: Document, html: string, textNodeRunsKey: string} | null = null
   private authoredSnapshotCache: {document: Document, value: string} | null = null
   private canMark = false
   private canSection = false
@@ -1187,7 +1188,9 @@ export class DomEditor extends LitElement {
     await this.waitForEditorWindow()
     const response = await this.requestFrameControl("snapshot")
     if(typeof response.html !== "string") throw new Error("The editor did not return its document")
-    return this.preparePreviewDocument(new DOMParser().parseFromString(response.html, "text/html"))
+    const source = new DOMParser().parseFromString(response.html, "text/html")
+    restoreSnapshotTextNodeRuns(source.body, response.textNodeRuns)
+    return this.preparePreviewDocument(source)
   }
 
   private preparePreviewDocument(source: Document, dependencies = {packages: this.installedPackages, importMap: this.packageImportMap}) {
@@ -2272,6 +2275,7 @@ export class DomEditor extends LitElement {
       if(revision !== this.frameRevision) return
       if(typeof response.html !== "string") throw new Error("The editor did not return its document")
       this.editorDocument = new DOMParser().parseFromString(response.html, "text/html")
+      restoreSnapshotTextNodeRuns(this.editorDocument.body, response.textNodeRuns)
       this.documentTree = this.buildDocumentTree()
     }
     if(revision !== this.frameRevision || this.fileHandle !== null || this.backendDocumentId !== null) return
@@ -7148,13 +7152,16 @@ export class DomEditor extends LitElement {
     if(this.handlePreviewMessage(event)) return
     if(event.data?.type === "editor-frame-snapshot") {
       if(!this.editorOpaque || !this.isEditorMessage(event) || typeof event.data.html !== "string") return
-      if(this.frameSnapshot?.document === this.editorDocument && this.frameSnapshot.html === event.data.html) return
+      const textNodeRunsKey = JSON.stringify(event.data.textNodeRuns ?? [])
+      if(this.frameSnapshot?.document === this.editorDocument && this.frameSnapshot.html === event.data.html
+        && this.frameSnapshot.textNodeRunsKey === textNodeRunsKey) return
       // Current frames filter editor artifacts before publishing. Older frames
       // still need the canonical comparison for marker-only snapshots.
       const authoredChange = typeof event.data.treeChanged === "boolean"
       const before = authoredChange ? null : this.authoredDocumentSnapshot(true)
       this.editorDocument = new DOMParser().parseFromString(event.data.html, "text/html")
-      this.frameSnapshot = {document: this.editorDocument, html: event.data.html}
+      restoreSnapshotTextNodeRuns(this.editorDocument.body, event.data.textNodeRuns)
+      this.frameSnapshot = {document: this.editorDocument, html: event.data.html, textNodeRunsKey}
       if(event.data.treeChanged !== false || !this.documentTree) this.documentTree = this.buildDocumentTree()
       if(authoredChange || before !== null && before !== this.authoredDocumentSnapshot(true)) {
         this.dismissGuidedTour()
