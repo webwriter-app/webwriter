@@ -2419,8 +2419,9 @@ export abstract class EditingControls extends LitElement {
   protected renderElementAttributesDrawer() {
     if(!this.elementAttributes) return nothing
     return html`
-      <ribbon-drawer label="Attributes" icon=${this.elementAttributes.icon ?? "Develop"} layout="attributes">
-        <element-attribute-editor .state=${this.elementAttributes}></element-attribute-editor>
+      <ribbon-drawer label="Attributes" icon=${this.elementAttributes.icon ?? "Develop"} layout="attributes" expandable
+        .advancedCount=${this.elementAttributes.attributes.lang ? 1 : 0}>
+        <element-attribute-editor slot="more" .state=${this.elementAttributes}></element-attribute-editor>
       </ribbon-drawer>
     `
   }

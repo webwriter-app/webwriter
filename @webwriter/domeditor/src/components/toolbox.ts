@@ -126,7 +126,6 @@ export class DomEditorToolbox extends EditingControls {
     ${EditingControls.styles}
     .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
     .specialized-options > .media-source {margin-bottom: 0;}
-    ribbon-drawer:is([data-specialized="picture"], [data-specialized="img"]) > element-attribute-editor {margin-top: .4rem;}
     .media-source .media-source-buttons {border-radius: 4px 4px 0 0; background: transparent;}
     .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
     .media-source-controls {min-width: 0; border-radius: 4px;}
@@ -1142,6 +1141,7 @@ export class DomEditorToolbox extends EditingControls {
     const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
+      + (attributes?.attributes.lang ? 1 : 0)
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
@@ -1150,7 +1150,7 @@ export class DomEditorToolbox extends EditingControls {
     const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
-    const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
+    const hasOptions = Boolean(attributes) || advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
@@ -1209,12 +1209,12 @@ export class DomEditorToolbox extends EditingControls {
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
           : [[namespaceURI, localName, attributes?.path, 1]])}
         .state=${list ? {...style, target: {...style.target, localName, namespaceURI}} : style}></element-style-editor>
-      ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       ${hasOptions ? html`<div slot="more" class="specialized-options">
         ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
         ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
         ${this.media?.type === "video" && (!group || singleTarget) ? this.renderMediaSource(true) : nothing}
+        ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
@@ -1448,8 +1448,8 @@ export class DomEditorToolbox extends EditingControls {
     if(this.activeTool === "Edit" && !this.elementAttributes && !this.math?.active
       && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
       const drawers = [html`
-        <ribbon-drawer label="Attributes" icon="Develop" layout="attributes">
-          <element-attribute-editor disabled></element-attribute-editor>
+        <ribbon-drawer label="Attributes" icon="Develop" layout="attributes" expandable>
+          <element-attribute-editor slot="more" disabled></element-attribute-editor>
         </ribbon-drawer>
       `]
       return drawers
