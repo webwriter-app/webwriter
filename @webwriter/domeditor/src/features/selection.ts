@@ -2080,8 +2080,11 @@ export class SelectionFeature extends EditorFeature {
     if(formula && this.editor.features.math.selectedMath !== formula && !inlineMathRoot(formula) && !this.captureSelectedElement) this.#capturedElement = formula
     // SVG capture follows the live document selection. A native caret move
     // outside the graphic may arrive without an ordinary editor pointer event.
+    // Media source controls own their shadow selection while configuring an
+    // embedded image; that selection does not leave the captured graphic.
     const nativeSelection = document.getSelection()
-    if(this.#capturedElement?.namespaceURI === SVG_NAMESPACE && this.#capturedElement.localName === "svg"
+    if(!this.editor.features.media.isPlaceholderInteraction
+      && this.#capturedElement?.namespaceURI === SVG_NAMESPACE && this.#capturedElement.localName === "svg"
       && $.selectedElement !== figureSelectionTarget(this.#capturedElement)
       && (!nativeSelection?.anchorNode || !nativeSelection.focusNode
         || !this.#capturedElement.contains(nativeSelection.anchorNode) || !this.#capturedElement.contains(nativeSelection.focusNode))) {

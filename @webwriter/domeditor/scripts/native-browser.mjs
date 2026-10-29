@@ -119,6 +119,7 @@ const expectedChecks = [
   "shape keyboard drags retain capture through appendix surfaces",
   "shape keys preview and place at the cursor without Alt",
   "SVG shape text entry keeps capture and native typing stable",
+  "SVG embedded images retain selection while entering their source",
   "ribbon elements are rejected over captured graphics with native content and cleanup",
   "empty document gutters prefer floats throughout the viewport",
   "empty graphics drag through their full capture outline into floats",

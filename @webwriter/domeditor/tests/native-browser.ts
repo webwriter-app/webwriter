@@ -37,6 +37,7 @@ import {checkGraphicLabels} from "./graphic-labels"
 import {checkGraphicLabelResizePerformance} from "./graphic-label-resize-performance"
 import {checkGraphicEmptyLabelCaret} from "./graphic-empty-label-caret"
 import {checkGraphicText} from "./graphic-text"
+import {checkGraphicImage} from "./graphic-image"
 import {checkGraphicGrid} from "./graphic-grid"
 import {checkKeyboardTabs} from "./keyboard-tabs"
 import {checkGraphicBrushes} from "./graphic-brushes"
@@ -79,6 +80,7 @@ await check("SVG rotated POI edits keep unedited geometry fixed on screen", chec
 await check("shape keyboard drops stay within the captured graphic", checkGraphicKeyboardDrag)
 await check("shape keys preview and place at the cursor without Alt", checkGraphicKeyboardHeld)
 await check("SVG shape text entry keeps capture and native typing stable", checkGraphicText)
+await check("SVG embedded images retain selection while entering their source", checkGraphicImage)
 await check("SVG snapping follows the visible grid through viewport changes", checkGraphicGrid)
 await check("Tab cycles captured graphic and formula keyboard tabs without changing content", checkKeyboardTabs)
 await check("Drawing brush keys are temporary and inserted shapes keep their defaults", checkGraphicBrushes)
