@@ -949,7 +949,7 @@ export class SelectionFeature extends EditorFeature {
     if(ev.pointerType === "touch" && ev.isPrimary === false) return
     if(this.#handleModifierClick(ev)) return
     if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
-      || this.hasDoubleClicked && this.#hitsText(ev) || ev.button !== 0) return
+      || ev.button !== 0) return
     const origin = ev.composedPath()[0] ?? ev.target
     if(this.editor.features.slides.active && (origin === document.body || origin === document.documentElement
       || origin instanceof Element && (isSlide(origin) || origin.matches("body > .ww-slides-viewport")))) {
@@ -1096,6 +1096,13 @@ export class SelectionFeature extends EditorFeature {
       const drag = this.#drag
       if(this.#boxDrag) { event.preventDefault(); return }
       if(!drag) return
+      // MOUSEDOWN carries the click count (POINTERDOWN does not). Release
+      // editor capture before the native default starts word/paragraph
+      // selection, so subsequent moves retain the browser's granularity.
+      if(drag.nativeClick && event.detail >= 2 && this.#hitsText(event)) {
+        this.#endDrag()
+        return
+      }
       if(!drag.nativeClick) event.preventDefault()
       else queueMicrotask(() => {
         // Save the browser's actual click endpoints after its default action
@@ -2333,10 +2340,6 @@ export class SelectionFeature extends EditorFeature {
 
   }
 
-  /** Whether the last click was part of a double click (suppresses the
-   * subsequent pointerdown handling). */
-  hasDoubleClicked = false
-
   /** Read the final selection after native defaults and other feature handlers.
    * Local input can move the caret visually without changing its live Range. */
   #scheduleSelectionReveal(event: Event) {
@@ -2359,7 +2362,7 @@ export class SelectionFeature extends EditorFeature {
 
   /** Pointer behavior: 
    * pointerdown starts a drag selection at the pointer (modifier-click selects the whole element instead), 
-   * double/triple click select the word/paragraph,
+   * native double/triple clicks select and drag by word/paragraph,
    * pointerup ends the drag selection. */
   activeListeners: DocumentListenerMap = {
     "beforeinput": event => this.#scheduleSelectionReveal(event),
@@ -2453,24 +2456,6 @@ export class SelectionFeature extends EditorFeature {
       }
     },
     "pointerdown": ev => this.#handlePointerDown(ev),
-    "click": ev => {
-      this.hasDoubleClicked = false
-      if(this.captureSelectedElement && ev.target instanceof Node && this.captureSelectedElement.contains(ev.target)) return
-      if(ev.detail >= 2 && !this.#hitsText(ev)) return
-      if(this.editor.features.list.isDetailsToggleInteraction(ev) || ev.button === 2 || $.isElementSelection || $.isMultiElementSelection) {
-        return
-      }
-      else if(ev.detail === 2) {
-        this.hasDoubleClicked = true
-        $.moveBy("word", "backward")
-        $.extendBy("word")
-      }
-      else if(ev.detail >= 3) {
-        this.hasDoubleClicked = true
-        // Keep the browser's paragraph selection. Moving by a line from its
-        // boundary can reach into the preceding (longer) paragraph.
-      }
-    },
     "pointerup": event => {
       if(event.pointerType === "touch" && event.isPrimary === false) return
       this.isInDragSelection = false

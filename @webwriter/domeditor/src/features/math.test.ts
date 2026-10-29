@@ -1071,8 +1071,6 @@ describe("DOM MathML editing", () => {
     try {
       for(const [y, offset] of [[10, 0], [100, 1]]) for(const detail of [1, 2, 3, 1]) {
         $.move(token, 1)
-        // A preceding word selection must not suppress blank-space placement.
-        editor.features.selection.hasDoubleClicked = true
         const options = {bubbles: true, cancelable: true, clientX: 140, clientY: y, detail}
         const down = new MouseEvent("pointerdown", options)
         parent.dispatchEvent(down)

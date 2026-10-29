@@ -5533,17 +5533,60 @@ describe("selection invariants", () => {
     expect(extend).not.toHaveBeenCalled()
   })
 
-  it("still expands a double click on text", () => {
+  it("preserves the browser's double click selection on text", () => {
     const paragraph = textDocument()
     hitTest()
     vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(0, 20, 50, 20)] as unknown as DOMRectList)
-    $.move(paragraph.firstChild!, 2)
+    $.selectRange(paragraph.firstChild!, 0, paragraph.firstChild!, 5)
     const move = vi.spyOn($, "moveBy").mockImplementation(() => {})
     const extend = vi.spyOn($, "extendBy").mockImplementation(() => {})
     expect(pointer(paragraph, "mousedown", 20, 25, {detail: 2}).defaultPrevented).toBe(false)
     pointer(paragraph, "click", 20, 25, {detail: 2})
-    expect(move).toHaveBeenCalledWith("word", "backward")
-    expect(extend).toHaveBeenCalledWith("word")
+    expect(document.getSelection()!.toString()).toBe("hello")
+    expect(move).not.toHaveBeenCalled()
+    expect(extend).not.toHaveBeenCalled()
+  })
+
+  it.each([2, 3])("leaves click %s drags native in both directions and preserves them on release", async detail => {
+    document.body.innerHTML = '<section><!--keep--><p>one <b>two</b> three</p><p>four five</p></section>'
+    const paragraph = document.querySelector("p")!, text = paragraph.querySelector("b")!.firstChild!
+    const first = paragraph.firstChild!, last = paragraph.nextElementSibling!.firstChild!
+    const authored = editor.toHTML(true)
+    const rect = new DOMRect(0, 20, 200, 20)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(rect)
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 1, getClientRect: () => rect})
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([rect] as unknown as DOMRectList)
+    vi.spyOn(document.body, "hasPointerCapture").mockReturnValue(true)
+    const release = vi.spyOn(document.body, "releasePointerCapture")
+    for(const backward of [false, true]) {
+      paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 7,
+        pointerType: "mouse", clientX: 20, clientY: 25}))
+      expect(feature.isInDragSelection).toBe(true)
+      expect(pointer(paragraph, "mousedown", 20, 25, {detail}).defaultPrevented).toBe(false)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(release).toHaveBeenCalledWith(7)
+      // Model native defaults. The editor's hit test still returns a point
+      // inside "two"; it must not replace the browser's whole-word/block range.
+      const anchor = backward ? last : first, focus = backward ? first : last
+      const anchorOffset = backward ? last.textContent!.length : 0
+      const focusOffset = backward ? 0 : last.textContent!.length
+      document.getSelection()!.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset)
+      await Promise.resolve()
+      const move = new PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerId: 7,
+        pointerType: "mouse", buttons: 1, clientX: 80, clientY: 60})
+      paragraph.dispatchEvent(move)
+      const start = new Event("selectstart", {bubbles: true, cancelable: true})
+      paragraph.dispatchEvent(start)
+      expect(move.defaultPrevented).toBe(false)
+      expect(start.defaultPrevented).toBe(false)
+      paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, pointerId: 7}))
+      pointer(paragraph, "click", 80, 60, {detail})
+      expect($.anchor).toBe(anchor); expect($.anchorOffset).toBe(anchorOffset)
+      expect($.focus).toBe(focus); expect($.focusOffset).toBe(focusOffset)
+      expect(document.body).not.toHaveClass("◆selection-dragging")
+      expect(document.querySelector(".◆pointer-hovered")).toBeNull()
+      expect(editor.toHTML(true)).toBe(authored)
+    }
   })
 
   it.each([3, 4])("preserves the native paragraph selection after a click of detail %s", detail => {
