@@ -224,7 +224,7 @@ describe("semantic list editing", () => {
 
     keydown("Enter", {altKey: true})
 
-    expect(cleanHTML()).toBe("<ul><li><br></li></ul>")
+    expect(cleanHTML()).toBe("<ul><li><br><br></li></ul>")
   })
 
   it("uses Shift+Enter for a soft break instead of creating another list item", () => {
@@ -242,7 +242,7 @@ describe("semantic list editing", () => {
 
     keydown("Enter", {shiftKey: true})
 
-    expect(cleanHTML()).toBe("<ul><li><br></li></ul>")
+    expect(cleanHTML()).toBe("<ul><li><br><br></li></ul>")
   })
 
   it("materializes the virtual item before Alt+Shift+Enter inserts a word break", () => {

@@ -1803,7 +1803,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
     document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expectBodyToBe("<p><br></p>")
+    expectBodyToBe("<p><br><br></p>")
     expect($.anchor).toBe(document.body.firstElementChild)
     expect($.anchorOffset).toBe(1)
   })
@@ -1847,6 +1847,82 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 
     expect(event.defaultPrevented).toBe(true)
     expectBodyToBe("<p>a<br>b</p>")
+  })
+
+  it.each(["key", "beforeinput"])("renders a terminal soft break from %s and reuses the final break", input => {
+    document.body.innerHTML = '<p><!--keep--><b><i>Text</i></b><!--after--></p><p>Other</p>'
+    const paragraph = document.querySelector("p")!
+    const following = paragraph.nextElementSibling
+    $.move(paragraph.querySelector("i")!.firstChild!, 4)
+    const press = () => document.dispatchEvent(input === "key"
+      ? new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true})
+      : new InputEvent("beforeinput", {inputType: "insertLineBreak", bubbles: true, cancelable: true}))
+
+    press()
+
+    expectBodyToBe('<p><!--keep--><b><i>Text<br><br></i></b><!--after--></p><p>Other</p>')
+    expect($.anchor).toBe(paragraph.querySelector("i"))
+    expect($.anchorOffset).toBe(2)
+    press()
+    expect(paragraph.querySelectorAll("br")).toHaveLength(3)
+    expect($.anchorOffset).toBe(3)
+    expect(paragraph.nextElementSibling).toBe(following)
+  })
+
+  it.each(["after", "<span>after</span>", "<br>"])("keeps a single break before following inline content: %s", after => {
+    document.body.innerHTML = `<p><b>Text</b>${after}</p>`
+    $.move(document.querySelector("b")!.firstChild!, 4)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true}))
+
+    expect(document.querySelectorAll("br"), document.body.innerHTML).toHaveLength(after === "<br>" ? 2 : 1)
+  })
+
+  it("preserves an atomic widget following the break in a list item", () => {
+    editor.schema.extendWidgets([{tagName: "break-widget"}])
+    document.body.innerHTML = "<ul><li><b>Text</b><break-widget></break-widget></li></ul>"
+    const widget = document.querySelector("break-widget")!
+    $.move(document.querySelector("b")!.firstChild!, 4)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true}))
+
+    expect(document.querySelectorAll("br")).toHaveLength(1)
+    expect(document.querySelector("break-widget")).toBe(widget)
+  })
+
+  it.each(["normal", "pre-wrap", "pre-line"])("accounts for trailing whitespace under %s when inserting a soft break", whitespace => {
+    document.body.innerHTML = `<p style="white-space: ${whitespace}"><b>Text</b> \n</p>`
+    $.move(document.querySelector("b")!.firstChild!, 4)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true}))
+
+    expect(document.querySelectorAll("br")).toHaveLength(whitespace === "normal" ? 2 : 1)
+    expect(document.querySelector("p")!.lastChild!.textContent).toBe(" \n")
+  })
+
+  it("opens the final empty line when a soft break replaces trailing text", () => {
+    document.body.innerHTML = "<p>Text</p>"
+    $.selectRange(document.querySelector("p")!.firstChild!, 2, document.querySelector("p")!.firstChild!, 4)
+
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true}))
+
+    expectBodyToBe("<p>Te<br><br></p>")
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("synchronizes terminal breaks and restores them with undo and redo", () => {
+    document.body.innerHTML = "<p>Text</p>"
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    $.move(document.querySelector("p")!.firstChild!, 4)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", shiftKey: true, bubbles: true, cancelable: true}))
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+
+    expect(editor.toHTML(true)).toBe("<p>Text<br><br></p>")
+    expect(editor.doc.body.toString()).toContain("Text<br></br><br></br>")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe("<p>Text</p>")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe("<p>Text<br><br></p>")
   })
 
   it("does not insert a break where the schema allows only text", () => {

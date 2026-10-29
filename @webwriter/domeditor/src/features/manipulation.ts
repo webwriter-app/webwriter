@@ -3198,7 +3198,36 @@ export class ManipulationFeature extends EditorFeature {
     if(preserveContainer) this.editor.features.list.materializeVirtualItem()
     else this.ensureTextBlock()
     const element = document.createElement(type)
-    if(this.canInsertAtSelection(element)) this.insertAtSelection(element)
+    if(!this.canInsertAtSelection(element)) return
+    this.insertAtSelection(element)
+    if(type !== "br" || !element.isConnected) return
+
+    // Like native editing, represent a final empty line with two breaks.
+    // A lone trailing BR is collapsed by the browser, including for typing.
+    // Inspect the live inline run, including siblings outside nested marks,
+    // so an existing following break or other content can supply the line.
+    const hasContent = (node: Node): boolean => {
+      if(node instanceof Text) {
+        if(!node.data) return false
+        if(node.data.trim()) return true
+        const whitespace = getComputedStyle(node.parentElement!).whiteSpace
+        return ["pre", "pre-wrap", "break-spaces"].includes(whitespace) ? Boolean(node.data)
+          : whitespace === "pre-line" && /[\r\n]/.test(node.data)
+      }
+      return node instanceof Element && (!isMarkElement(node) || Array.from(node.childNodes).some(hasContent))
+    }
+    let end: Node = element
+    while(end.parentElement) {
+      const parent = end.parentElement
+      const siblings = Array.from(parent.childNodes)
+      if(siblings.slice(siblings.indexOf(end as ChildNode) + 1).some(hasContent)) return
+      if(parent === document.body || this.editor.schema.isBlock(parent)) break
+      end = parent
+    }
+    const terminal = document.createElement("br")
+    if(!this.canInsertAtSelection(terminal)) return
+    element.after(terminal)
+    this.moveAfterInsertedNode(element)
   }
 
   private freeformTextBreak(event: Event) {
