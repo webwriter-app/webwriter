@@ -397,7 +397,8 @@ export class RibbonButton extends LitElement {
       font-size: 0.7rem;
     }
 
-    ribbon-menu:has(.mark-dropdown-list) {
+    ribbon-menu:has(.mark-dropdown-list),
+    ribbon-menu:has(.table-size-picker) {
       width: max-content;
     }
 
