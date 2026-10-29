@@ -21,6 +21,30 @@ describe("package embeds", () => {
     expect(html).toBe('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" title="Neuron" sandbox="allow-scripts"></iframe>')
   })
 
+  it.each([
+    "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=10",
+  ])("allows same-origin only for validated YouTube embeds: %s", src => {
+    expect(sanitizePackageSnippet(`<iframe src="${src}" sandbox="allow-scripts"></iframe>`))
+      .toBe(`<iframe src="${src}" sandbox="allow-scripts allow-same-origin"></iframe>`)
+  })
+
+  it.each([
+    "https://youtube.com/embed/dQw4w9WgXcQ",
+    "https://evil.www.youtube.com/embed/dQw4w9WgXcQ",
+    "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "https://www.youtube.com/embed/not-a-video-id",
+    "https://www.youtube.com:8443/embed/dQw4w9WgXcQ",
+  ])("keeps non-validated YouTube-like embeds opaque: %s", src => {
+    expect(sanitizePackageSnippet(`<iframe src="${src}"></iframe>`))
+      .toBe(`<iframe src="${src}" sandbox="allow-scripts"></iframe>`)
+  })
+
+  it("rejects credentials and non-HTTPS URLs from the YouTube exception", () => {
+    expect(sanitizePackageSnippet('<iframe src="https://user:pass@www.youtube.com/embed/dQw4w9WgXcQ"></iframe><iframe src="http://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'))
+      .toBe("")
+  })
+
   it("removes inline code and unrestricted sandbox permissions from remote embeds", () => {
     const html = sanitizePackageSnippet('<iframe src="https://example.com/lesson" srcdoc="<script>bad()</script>" onload="bad()" sandbox="allow-scripts allow-same-origin allow-top-navigation"></iframe>')
     expect(html).toBe('<iframe src="https://example.com/lesson" sandbox="allow-scripts"></iframe>')

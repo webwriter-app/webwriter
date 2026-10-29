@@ -26,11 +26,24 @@ export function isWidgetDataContainer(node: Node | null): node is HTMLScriptElem
 }
 
 const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import'], link[rel~='stylesheet']"
+const youtubeEmbedHosts = new Set(["www.youtube.com", "www.youtube-nocookie.com"])
+
+/** YouTube's documented `/embed/VIDEO_ID` endpoint needs a non-opaque origin
+ * for its player cache access. Keep this exception limited to the two exact
+ * HTTPS hosts and the video embed path; all other frames stay opaque-origin. */
+function isYoutubeEmbedURL(url: URL) {
+  return url.protocol === "https:"
+    && youtubeEmbedHosts.has(url.hostname)
+    && !url.username
+    && !url.password
+    && !url.port
+    && /^\/embed\/[A-Za-z0-9_-]{11}$/.test(url.pathname)
+}
 
 export type ActiveContentStripOptions = {
   /** Retain document CSS in a preview constrained by its own CSP. */
   allowStyles?: boolean
-  /** Retain remote HTTPS embeds in an opaque-origin script sandbox. */
+  /** Retain remote HTTPS embeds in a script sandbox. */
   allowIframes?: boolean
   /** Strip dialog and heading-group wrappers from incoming content, retaining their children. */
   unwrapUnsupportedElements?: boolean
@@ -57,7 +70,9 @@ export function stripActiveContent(root: ParentNode, options: ActiveContentStrip
       try {
         const url = new URL(element.getAttribute("src") ?? "")
         if(url.protocol === "https:" && !url.username && !url.password) {
-          element.setAttribute("sandbox", "allow-scripts")
+          element.setAttribute("sandbox", isYoutubeEmbedURL(url)
+            ? "allow-scripts allow-same-origin"
+            : "allow-scripts")
           return
         }
       }
