@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ElementSelectionType, ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isCaretAtBoundary, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
 import {isDocumentRoot} from "../document-template"
 import {listMarkerImageProperty} from "../element-styles"
 
@@ -41,6 +41,8 @@ export class ListFeature extends EditorFeature {
   }
 
   actions = {
+    indentListItems: ({}: {type: "indentListItems"}) => this.indentItems(),
+    outdentListItems: ({}: {type: "outdentListItems"}) => this.indentItems(true),
     toggleList: ({listType}: {type: "toggleList", listType: ListType}) => {
       this.toggleList(listType)
     },
@@ -304,6 +306,7 @@ export class ListFeature extends EditorFeature {
    * preserves the rendered value of its first ordered item. Called by generic
    * parent splitting as well as list-specific exit behavior. */
   prepareSplitContinuation(source: Element, continuation: Element, movedContent: Node[]) {
+    if(source.matches("li") && continuation.matches("li")) continuation.removeAttribute("value")
     if(!source.matches(listSelector) || !continuation.matches(listSelector)) return
     continuation.removeAttribute("id")
     Array.from(continuation.classList)
@@ -396,7 +399,13 @@ export class ListFeature extends EditorFeature {
   }
 
   private handleBeforeInput(event: InputEvent) {
+    if(event.defaultPrevented) return
     const point = this.virtualPoint
+    if(!point && event.inputType === "insertParagraph" && this.enterItem()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
     if(!point) return
 
     if(event.inputType === "insertParagraph") {
@@ -436,14 +445,9 @@ export class ListFeature extends EditorFeature {
         this.advanceVirtualItem(point, true)
         return
       }
-      const item = this.activeItem()
-      if(item) {
+      if(this.enterItem()) {
         event.preventDefault()
         event.stopImmediatePropagation()
-        const selectionWasCollapsed = Boolean(document.getSelection()?.isCollapsed)
-        const itemWasEmpty = selectionWasCollapsed && this.isEmptyTextBlock(item)
-        if(!selectionWasCollapsed) $.delete()
-        itemWasEmpty ? this.liftOrExitEmptyItem(item) : this.insertEmptyItemAfter(item)
       }
       return
     }
@@ -455,15 +459,14 @@ export class ListFeature extends EditorFeature {
       return
     }
 
-    if(event.key === "Tab" && (point || this.activeItem())) {
+    if(event.key === "Tab" && !event.altKey && !modifierKeyDown(event) && (point || this.selectedItems().length)) {
       event.preventDefault()
       event.stopImmediatePropagation()
       if(point) {
         if(event.shiftKey) this.outdentVirtualItem(point)
       }
       else {
-        const item = this.activeItem()!
-        event.shiftKey ? this.outdentItem(item) : this.nestItem(item)
+        this.indentItems(event.shiftKey)
       }
       this.syncVirtualMarker()
       return
@@ -512,9 +515,34 @@ export class ListFeature extends EditorFeature {
     const selected = $.selectedElement
     const anchor = $.anchor
     const element = selected ?? (anchor ? getContainer(anchor) : null)
-    if(!isElement(element)) return null
+    if(!isElement(element) || !element.isConnected || atomicEditingContainer(element, this.editor.schema)) return null
     const item = element.matches(listItemSelector) ? element : element.closest(listItemSelector)
     return item?.parentElement?.matches(listSelector) ? item as HTMLElement : null
+  }
+
+  private enterItem() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount) return false
+    const range = selection.getRangeAt(0)
+    const start = getContainer(range.startContainer)
+    const item = start?.closest<HTMLElement>(listItemSelector)
+    if(!item?.isConnected || !item.parentElement?.matches(listSelector)
+      || !item.parentElement.contains(range.endContainer)
+      || atomicEditingContainer(range.startContainer, this.editor.schema)
+      || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
+    const wasEmpty = selection.isCollapsed && !item.textContent?.replace(/\u200B/g, "").trim()
+      && Array.from(item.querySelectorAll("*")).every(element => element.matches("br")
+        || !isAtomicEditingElement(element, this.editor.schema)
+          && (this.editor.schema.isPhrasing(element) || this.editor.features.manipulation.isTextBlock(element)))
+    if(!selection.isCollapsed) $.delete()
+    if(!item.isConnected || !item.contains($.anchor)) return true
+    if(wasEmpty) this.liftOrExitEmptyItem(item)
+    else if(item.parentElement?.matches("dl") || isCaretAtBoundary(item, "end")) this.insertEmptyItemAfter(item)
+    else {
+      this.editor.features.manipulation.splitListItem(item)
+    }
+    this.syncVirtualMarker()
+    return true
   }
 
   /** Enter on the virtual first item exits an empty top-level list. For an
@@ -656,58 +684,146 @@ export class ListFeature extends EditorFeature {
     $.move(paragraph)
   }
 
-  private nestedList(owner: HTMLElement, type: ListType) {
-    const existing = Array.from(owner.children).reverse()
-      .find(element => element.localName === type) as HTMLElement | undefined
-    if(existing) return existing
-    const nested = document.createElement(type)
-    owner.append(nested)
-    return nested
+  /** Resolve text, node and list-container ranges against the live DOM. An
+   * ancestor item is not selected merely because the range is in its sublist. */
+  private selectedItems() {
+    const ranges = $.ranges
+    const items = Array.from(document.body.querySelectorAll<HTMLElement>(listItemSelector))
+      .filter(item => item.parentElement?.matches(listSelector)
+        && !atomicEditingContainer(item, this.editor.schema)
+        && ($.includesNode(item) || $.selectedElements.some(element => item.contains(element))))
+    const selected = items.filter(item => ranges.some(range => {
+      if(!document.body.contains(range.startContainer) || !document.body.contains(range.endContainer)) return false
+      if(atomicEditingContainer(range.startContainer, this.editor.schema)
+        || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
+      if(range.collapsed) return item === this.activeItem()
+      const parent = item.parentNode!
+      const index = Array.from(parent.childNodes).indexOf(item)
+      if(range.comparePoint(parent, index) === 0 && range.comparePoint(parent, index + 1) === 0) return true
+      const start = range.cloneRange(), end = range.cloneRange()
+      start.collapse(true)
+      end.collapse(false)
+      const intersectsContent = (node: ChildNode): boolean => {
+        if(isElement(node) && node.matches(listSelector)) return false
+        if(isText(node)) return start.comparePoint(node, node.length) > 0 && end.comparePoint(node, 0) < 0
+        if(node.hasChildNodes() && !isAtomicEditingElement(node, this.editor.schema)) {
+          return Array.from(node.childNodes).some(intersectsContent)
+        }
+        const parent = node.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(node)
+        return start.comparePoint(parent, index + 1) > 0 && end.comparePoint(parent, index) < 0
+      }
+      return Array.from(item.childNodes).some(intersectsContent)
+    }))
+    return selected.filter(item => !selected.some(other => other !== item && other.contains(item)))
   }
 
-  private nestItem(item: HTMLElement) {
-    const list = item.parentElement as HTMLElement
-    const items = this.directItems(list)
-    const index = items.indexOf(item)
-    if(index <= 0) return
-    const restoreSelection = this.captureItemSelection(item)
-    const nested = this.nestedList(items[index - 1], list.localName as ListType)
-    nested.append(item)
-    restoreSelection()
+  /** Consecutive selected siblings move together, retaining their order. */
+  indentItems(outdent = false) {
+    const point = this.virtualPoint
+    if(point) {
+      if(outdent) this.outdentVirtualItem(point)
+      this.syncVirtualMarker()
+      return
+    }
+    const items = this.selectedItems()
+    if(!items.length) return
+    const restore = this.captureItemSelection(items)
+    const groups: HTMLElement[][] = []
+    for(const item of items) {
+      const previous = groups.at(-1)?.at(-1)
+      const peers = this.directItems(item.parentElement!)
+      if(previous?.parentElement === item.parentElement && peers[peers.indexOf(item) - 1] === previous) groups.at(-1)!.push(item)
+      else groups.push([item])
+    }
+    let changed = false
+    for(const group of groups) {
+      changed = (outdent ? this.outdentItems(group) : this.nestItems(group)) || changed
+    }
+    if(changed) restore()
+    this.syncVirtualMarker()
+  }
+
+  private nestItems(items: HTMLElement[]) {
+    const list = items[0].parentElement!
+    const peers = this.directItems(list)
+    const owner = peers[peers.indexOf(items[0]) - 1]
+    if(!owner || !isListType(list.localName)) return false
+    let nested = owner.lastElementChild?.localName === list.localName ? owner.lastElementChild as HTMLElement : null
+    for(const item of items) {
+      // Keep descendants at their current depth. Reuse their authored list
+      // containers (including attributes and comments) at the new owner's level.
+      const children = Array.from(item.querySelectorAll<HTMLElement>(listSelector))
+        .filter(child => child.parentElement?.closest(listItemSelector) === item
+          && !atomicEditingContainer(child, this.editor.schema))
+      if(!nested && children[0]?.localName === list.localName) {
+        nested = children.shift()!
+        owner.append(nested)
+        nested.prepend(item)
+      }
+      else {
+        if(!nested) {
+          nested = this.editor.features.manipulation.cloneSplitContinuation(list) as HTMLElement
+          nested.removeAttribute("start")
+          owner.append(nested)
+        }
+        nested.append(item)
+      }
+      for(const child of children) {
+        owner.append(child)
+        nested = child.localName === list.localName ? child : null
+      }
+    }
+    return true
+  }
+
+  private outdentItems(items: HTMLElement[]) {
+    const list = items[0].parentElement!
+    const owner = list.parentElement?.closest(listItemSelector)
+    const outer = owner?.parentElement
+    if(!owner?.matches(listItemSelector) || !outer?.matches(listSelector)) return false
+    const last = items.at(-1)!
+    const following = Array.from(list.childNodes).slice(Array.from(list.childNodes).indexOf(last) + 1)
+    if(following.length) {
+      const continuation = this.editor.features.manipulation.cloneSplitContinuation(list)
+      this.prepareSplitContinuation(list, continuation, following)
+      continuation.append(...following)
+      last.append(continuation)
+    }
+    owner.after(...items)
+    if(!list.childNodes.length) list.remove()
+    return true
   }
 
   private outdentItem(item: HTMLElement) {
-    const list = item.parentElement as HTMLElement
-    const owner = list.parentElement?.closest(listItemSelector) as HTMLElement | null
-    const outer = owner?.parentElement?.matches(listSelector) ? owner.parentElement as HTMLElement : null
-    if(!owner || !outer) return
-    const restoreSelection = this.captureItemSelection(item)
-    owner.after(item)
-    if(!this.directItems(list).length) list.remove()
-    restoreSelection()
+    const restore = this.captureItemSelection([item])
+    if(this.outdentItems([item])) restore()
   }
 
-  /** Moving an LI/DT/DD can cause browsers to collapse a selection whose
-   * boundary was represented through the old parent. Restore element and
-   * text selections explicitly after the move. */
-  private captureItemSelection(item: HTMLElement) {
+  /** Reparenting invalidates parent-offset ranges in native selections. Keep
+   * text endpoints when possible and reconstruct structural ranges by identity. */
+  private captureItemSelection(items: HTMLElement[]) {
     const selection = document.getSelection()
-    const selectedItem = $.selectedElement === item
-    const anchor = selection?.anchorNode
-    const focus = selection?.focusNode
-    const anchorOffset = selection?.anchorOffset ?? 0
-    const focusOffset = selection?.focusOffset ?? 0
+    const selected = $.selectedElements
+    const anchor = selection?.anchorNode, focus = selection?.focusNode
+    const anchorOffset = selection?.anchorOffset ?? 0, focusOffset = selection?.focusOffset ?? 0
+    const backward = Boolean(selection?.rangeCount && (anchor !== selection.getRangeAt(0).startContainer
+      || anchorOffset !== selection.getRangeAt(0).startOffset))
     return () => {
-      if(selectedItem) {
-        $.selectElement(item)
+      if(selected.length && selected.every(element => element.isConnected)) {
+        selected.length === 1 ? $.selectElement(selected[0]) : $.selectElements(selected)
       }
       else if(selection && anchor?.isConnected && focus?.isConnected
-        && (anchor === item || item.contains(anchor))
-        && (focus === item || item.contains(focus))) {
-        selection.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset)
+        && items.some(item => item.contains(anchor)) && items.some(item => item.contains(focus))) {
+        const length = (node: Node) => isText(node) ? node.length : node.childNodes.length
+        selection.setBaseAndExtent(anchor, Math.min(anchorOffset, length(anchor)), focus, Math.min(focusOffset, length(focus)))
       }
       else {
-        $.move(item)
+        const first = items[0], last = items.at(-1)!
+        if(!first.isConnected || !last.isConnected) return
+        const start: [Node, number] = [first.parentNode!, Array.from(first.parentNode!.childNodes).indexOf(first)]
+        const end: [Node, number] = [last.parentNode!, Array.from(last.parentNode!.childNodes).indexOf(last) + 1]
+        backward ? $.selectRange(...end, ...start) : $.selectRange(...start, ...end)
       }
     }
   }
@@ -1112,27 +1228,8 @@ export class ListFeature extends EditorFeature {
     return replacement
   }
 
-  private selectedDirectItems(list: HTMLElement) {
-    const items = this.directItems(list)
-    const selected = $.selectedElement
-    if(selected === list) return items
-    const current = this.activeItem()
-    const selection = document.getSelection()
-    if(selection?.isCollapsed) return current?.parentElement === list ? [current] : []
-    if(!selection?.rangeCount) return []
-    const range = selection.getRangeAt(0)
-    return items.filter(item => {
-      try {
-        return $.includesNode(item) && range.intersectsNode(item)
-      }
-      catch {
-        return false
-      }
-    })
-  }
-
   private unwrapSelectedItems(list: HTMLElement) {
-    const selected = this.selectedDirectItems(list)
+    const selected = this.selectedItems().filter(item => item.parentElement === list)
     if(!selected.length) return
     const children = Array.from(list.childNodes)
     const indexes = selected.map(item => children.indexOf(item))

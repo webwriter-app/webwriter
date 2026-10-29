@@ -393,21 +393,27 @@ export class ManipulationFeature extends EditorFeature {
       event.preventDefault()
       return
     }
-    const fragment = getInertDocument(element).createDocumentFragment()
-    fragment.append(cloneWithoutEditorMarkers(element, true, {inert: true}))
-    const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment, element instanceof HTMLElement ? element.innerText : undefined)
+    // A paragraph directly inside a list item is the item's text block, not
+    // an independent reorderable block. Drag the authored li so its marker,
+    // attributes, and descendants travel together.
+    const dragElement = element.localName === "p" && !isOutOfFlow(element) && !atomicEditingContainer(element, this.editor.schema)
+      && element.parentElement?.localName === "li" && element.parentElement.parentElement?.matches("ul, ol, menu")
+      ? element.parentElement : element
+    const fragment = getInertDocument(dragElement).createDocumentFragment()
+    fragment.append(cloneWithoutEditorMarkers(dragElement, true, {inert: true}))
+    const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment, dragElement instanceof HTMLElement ? dragElement.innerText : undefined)
     const token = crypto.randomUUID()
     event.dataTransfer.setData("text/html", html)
     event.dataTransfer.setData("text/plain", text)
     event.dataTransfer.setData(this.dragType, token)
     event.dataTransfer.effectAllowed = "copyMove"
-    event.dataTransfer.setDragImage?.(element, 0, 0)
+    event.dataTransfer.setDragImage?.(dragElement, 0, 0)
     // Keep the source hit-testable: Chromium cancels native dragging if its
     // pointer-events becomes none during dragstart. Its own drop listeners
     // already handle hovering back over the source surface.
-    this.nodeDrag = {element, token}
+    this.nodeDrag = {element: dragElement, token}
     this.snippetDrag = this.nodeDrag
-    this.prepareFloatDropTargets(element)
+    this.prepareFloatDropTargets(dragElement)
   }
 
   private acceptsDrop(event: DragEvent) {
@@ -1120,6 +1126,17 @@ export class ManipulationFeature extends EditorFeature {
     if(source && !this.allowsCaptionInsertion([source], point.node)) return null
     const range = document.createRange()
     if(source?.contains(point.node)) return null
+    if(source?.localName === "li") {
+      const targetItem = getContainer(point.node).closest("li")
+      if(targetItem && targetItem !== source && root.contains(targetItem)
+        && targetItem.parentElement?.matches("ul, ol, menu") && !atomicEditingContainer(targetItem, this.editor.schema)) {
+        const rect = targetItem.getBoundingClientRect()
+        if(event.clientY < rect.top + rect.height / 2) range.setStartBefore(targetItem)
+        else range.setStartAfter(targetItem)
+        range.collapse(true)
+        return range
+      }
+    }
     range.setStart(point.node, point.offset)
     range.collapse(true)
     if(source && !getContainer(point.node).closest("p:not([is])")
@@ -3215,6 +3232,32 @@ export class ManipulationFeature extends EditorFeature {
       const details = target.closest("details") as HTMLDetailsElement | null
       if(details && !target.matches("summary")) details.open = true
     }
+  }
+
+  /** Split a list item using the current live range while keeping the split
+   * within the authored item's current DOM shape. */
+  splitListItem(item: HTMLElement) {
+    const root = getDocumentRoot()
+    const selection = document.getSelection()
+    if(item.localName !== "li" || !item.isConnected || !root.contains(item)
+      || !item.parentElement?.matches("ul, ol, menu") || !selection?.rangeCount) return
+    const range = $.range
+    if(!item.contains(range.startContainer) || !item.contains(range.endContainer)
+      || atomicEditingContainer(range.startContainer, this.editor.schema)
+      || atomicEditingContainer(range.endContainer, this.editor.schema)) return
+
+    let container: Element | null = this.splitContainer(range)
+    let depth = 0
+    while(container && container !== item) {
+      if(!item.contains(container)) return
+      container = container.parentElement
+      depth++
+    }
+    if(container !== item) return
+    this.withNormalization(() => {
+      $.delete()
+      this.splitAtSelection(depth, false)
+    })
   }
 
   private get snippetTarget() {

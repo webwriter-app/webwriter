@@ -6616,6 +6616,56 @@ describe("unified content transfer", () => {
     expectBodyToBe('<ul><li>tar<p>source</p>get</li></ul>')
   })
 
+  it.each([
+    {operation: "move", position: "before"},
+    {operation: "move", position: "after"},
+    {operation: "copy", position: "before"},
+    {operation: "copy", position: "after"},
+  ] as const)("$operation reorders the owning list item to $position when dragging its paragraph", ({operation, position}) => {
+    const copy = operation === "copy"
+    document.body.innerHTML = '<ol id="ordered" data-authored="keep" style="list-style-type: lower-alpha"><li id="first"><p>first</p></li><li id="middle"><p>middle</p></li><li id="last"><p>last <x-note></x-note></p></li></ol>'
+    const list = document.querySelector("ol")!
+    const first = list.querySelector("#first")!
+    const middle = list.querySelector("#middle")!
+    const last = list.querySelector("#last")!
+    const source = last.querySelector("p")!
+    const custom = source.querySelector("x-note")!
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    vi.spyOn(editor.features.manipulation, "floatDropTarget").mockReturnValue(null)
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 20))
+    const {data} = beginDrag(source)
+
+    dropAt(data, first.querySelector("p")!.firstChild!, 2, {clientY: position === "before" ? 5 : 15, ctrlKey: copy})
+
+    const movedItem = Array.from(list.children).find(item => item.querySelector("p")?.textContent?.startsWith("last"))!
+    expect(Array.from(list.children).map(item => item.textContent)).toEqual(copy
+      ? position === "before" ? ["last ", "first", "middle", "last "] : ["first", "last ", "middle", "last "]
+      : position === "before" ? ["last ", "first", "middle"] : ["first", "last ", "middle"])
+    if(copy) expect(movedItem).toBeInstanceOf(HTMLLIElement)
+    else expect(movedItem).toBe(last)
+    expect(document.querySelector("ol")).toBe(list)
+    expect(list.getAttribute("data-authored")).toBe("keep")
+    expect(list.style.listStyleType).toBe("lower-alpha")
+    expect(last.querySelector("p")).toBe(source)
+    expect(source.querySelector("x-note")).toBe(custom)
+    if(copy) {
+      expect(movedItem).not.toBe(last)
+      expect(movedItem.querySelector("x-note")).not.toBe(custom)
+    }
+    else {
+      editor.doc.syncFromDOM()
+      const changed = editor.toHTML(true)
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(original)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(changed)
+    }
+    expect(document.body).not.toHaveClass("◆drop-selection-active")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(editor.features.manipulation.draggedElement).toBeNull()
+  })
+
   it("moves a collapsed drop selection between text and gaps, then removes its blue state on drop", () => {
     document.body.innerHTML = '<p>first</p><p>last</p>'
     const text = document.querySelector("p")!.firstChild!

@@ -23,6 +23,7 @@ import {checkHistorySelection} from "./history-selection"
 import {checkListClipboard} from "./list-clipboard"
 import {checkHeadingClipboard} from "./heading-clipboard"
 import {checkListDeletion} from "./list-deletion"
+import {checkListEditing} from "./list-editing"
 import {checkParagraphStylePresets} from "./paragraph-style-presets"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
@@ -69,6 +70,7 @@ const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
+await check("list editing splits and indents selected items", checkListEditing)
 await check("multi-paragraph style presets stay within the selected siblings", checkParagraphStylePresets)
 await check("undo and redo restore and reveal selections in nested scrollers", checkHistorySelection)
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)

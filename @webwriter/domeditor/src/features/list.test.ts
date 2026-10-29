@@ -377,6 +377,206 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(1)
   })
 
+  it.each(["ul", "ol", "menu"])("splits %s text and inline marks at the caret", type => {
+    document.body.innerHTML = `<${type}><li id="original" class="authored"><b>Hello World</b><!--keep--><my-widget></my-widget></li></${type}>`
+    const widget = document.querySelector("my-widget")!
+    $.move(document.querySelector("b")!.firstChild!, 6)
+    keydown("Enter")
+    expect(cleanHTML()).toBe(`<${type}><li id="original" class="authored"><b>Hello </b></li><li class="authored"><b>World</b><!--keep--><my-widget></my-widget></li></${type}>`)
+    expect(document.querySelectorAll("li")[1].querySelector("my-widget")).toBe(widget)
+    expect($.anchor?.textContent).toBe("World")
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("splits converted paragraph items through their wrappers on Enter and beforeinput", () => {
+    for(const input of ["keydown", "beforeinput"]) {
+      document.body.innerHTML = '<ol type="a"><li><p><em>Hello World</em></p><p>Next paragraph</p></li><li>Last</li></ol>'
+      $.move(document.querySelector("em")!.firstChild!, 6)
+      const event = input === "keydown" ? keydown("Enter")
+        : new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+      if(input === "beforeinput") document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(cleanHTML()).toBe('<ol type="a"><li><p><em>Hello </em></p></li><li><p><em>World</em></p><p>Next paragraph</p></li><li>Last</li></ol>')
+      expect($.anchor?.textContent).toBe("World")
+    }
+  })
+
+  it("replaces a backward text selection before splitting and exits an empty wrapped item", () => {
+    document.body.innerHTML = '<ul><li><p>Hello dear World</p></li></ul>'
+    const text = document.querySelector("p")!.firstChild!
+    $.selectRange(text, 11, text, 6)
+    keydown("Enter")
+    expect(cleanHTML()).toBe('<ul><li><p>Hello </p></li><li><p>World</p></li></ul>')
+    document.body.innerHTML = '<ul><li><p><br></p></li></ul>'
+    $.move(document.querySelector("p")!, 0)
+    keydown("Enter")
+    expect(cleanHTML()).toBe('<p></p>')
+  })
+
+  it.each([false, true])("nests and outdents every text-selected item (backward: %s)", backward => {
+    document.body.innerHTML = '<ol type="a"><li>A</li><li><p>B</p></li><li><b>C</b></li><li>D</li></ol>'
+    const b = document.querySelector("p")!.firstChild!, c = document.querySelector("b")!.firstChild!
+    backward ? $.selectRange(c, 1, b, 0) : $.selectRange(b, 0, c, 1)
+    keydown("Tab")
+    expect(cleanHTML()).toBe('<ol type="a"><li>A<ol type="a"><li><p>B</p></li><li><b>C</b></li></ol></li><li>D</li></ol>')
+    expect($.anchor).toBe(backward ? c : b)
+    expect($.focus).toBe(backward ? b : c)
+    keydown("Tab", {shiftKey: true})
+    expect(cleanHTML()).toBe('<ol type="a"><li>A</li><li><p>B</p></li><li><b>C</b></li><li>D</li></ol>')
+  })
+
+  it("nests item ranges anchored on the list without CSS indentation", () => {
+    document.body.innerHTML = '<ul><li>A</li><!--keep--><li>B</li><li>C</li><li>D</li></ul>'
+    const list = document.querySelector("ul")!
+    $.selectRange(list, 2, list, 4)
+    keydown("Tab")
+    expect(cleanHTML()).toBe('<ul><li>A<ul><li>B</li><li>C</li></ul></li><!--keep--><li>D</li></ul>')
+    keydown("Tab", {shiftKey: true})
+    expect(Array.from(list.querySelectorAll(":scope > li"), item => item.textContent)).toEqual(["A", "B", "C", "D"])
+    expect(list.querySelector("[style]")).toBeNull()
+    expect(list.innerHTML).toContain("<!--keep-->")
+  })
+
+  it("keeps existing descendant lists at their depth when their parent is indented", () => {
+    document.body.innerHTML = '<ul><li>A</li><li>B<ul id="children" class="authored"><!--keep--><li>C<ul><li>D</li></ul></li></ul></li></ul>'
+    const children = document.querySelector("#children")!, c = children.querySelector("li")!
+    $.move(document.querySelectorAll("li")[1].firstChild!, 1)
+    keydown("Tab")
+    expect(cleanHTML()).toBe('<ul><li>A<ul id="children" class="authored"><li>B</li><!--keep--><li>C<ul><li>D</li></ul></li></ul></li></ul>')
+    expect(document.querySelector("#children")).toBe(children)
+    expect(c.parentElement).toBe(children)
+    expect($.anchor?.textContent).toBe("B")
+  })
+
+  it("retains descendant containers beside existing sublists while nesting multiple parents", () => {
+    document.body.innerHTML = '<ul><li>A<ul><li>X</li></ul></li><li>B<ol id="children" type="a"><li>C</li></ol></li><li>D</li></ul>'
+    const list = document.querySelector("ul")!
+    $.selectRange(list, 1, list, 3)
+    editor.features.list.actions.indentListItems({type: "indentListItems"})
+    expect(cleanHTML()).toBe('<ul><li>A<ul><li>X</li><li>B</li></ul><ol id="children" type="a"><li>C</li></ol><ul><li>D</li></ul></li></ul>')
+  })
+
+  it("outdents a selected run in order, retaining following items as descendants", () => {
+    document.body.innerHTML = '<ul><li>A<ul><!--keep--><li>B</li><li>C</li><li>D</li></ul></li><li>E</li></ul>'
+    const inner = document.querySelector("ul ul")!
+    $.selectRange(inner, 1, inner, 3)
+    editor.features.list.actions.outdentListItems({type: "outdentListItems"})
+    expect(cleanHTML()).toBe('<ul><li>A<ul><!--keep--></ul></li><li>B</li><li>C<ul><li>D</li></ul></li><li>E</li></ul>')
+  })
+
+  it("excludes an item touched only by the selection's ending text boundary", () => {
+    document.body.innerHTML = '<ul><li>A</li><li>B</li><li><b>C</b></li></ul>'
+    const items = Array.from(document.querySelectorAll("li"))
+    $.selectRange(items[1].firstChild!, 0, items[2].firstChild!.firstChild!, 0)
+    keydown("Tab")
+    expect(cleanHTML()).toBe('<ul><li>A<ul><li>B</li></ul></li><li><b>C</b></li></ul>')
+  })
+
+  it("resolves selections inside wrapped nested lists without moving their ancestor item", () => {
+    document.body.innerHTML = '<ul><li>A<div title="keep"><ul><li>B</li><li>C</li></ul></div></li><li>D</li></ul>'
+    const list = document.querySelector("div ul")!, ancestor = document.querySelector("body > ul > li")!
+    $.selectRange(list.querySelector("li + li")!.firstChild!, 0, list.querySelector("li + li")!.firstChild!, 1)
+    keydown("Tab")
+    expect(list.querySelector("li > ul > li")?.textContent).toBe("C")
+    expect(ancestor.parentElement).toBe(document.querySelector("body > ul"))
+    expect(document.querySelector("div")?.getAttribute("title")).toBe("keep")
+    keydown("Tab", {shiftKey: true})
+    keydown("Tab", {shiftKey: true})
+    expect(Array.from(document.querySelector("body > ul")!.children, item => item.textContent)).toEqual(["AB", "C", "D"])
+    expect(document.querySelector("div")?.getAttribute("title")).toBe("keep")
+  })
+
+  it("preserves disjoint element selections while indenting their owning items", () => {
+    document.body.innerHTML = '<ul><li>A</li><li><p>B</p></li><li>C</li><li><p>D</p></li></ul>'
+    editor.setDocumentLayout("canvas", "document")
+    try {
+      const paragraphs = Array.from(document.querySelectorAll("p"))
+      $.selectElements(paragraphs)
+      editor.features.list.indentItems()
+      expect(document.querySelectorAll("body > ul > li > ul > li")).toHaveLength(2)
+      expect($.selectedElements).toEqual(paragraphs)
+    }
+    finally { editor.setDocumentLayout("document", "canvas") }
+  })
+
+  it("splits an explicitly numbered item without copying its number override", () => {
+    document.body.innerHTML = '<ol type="a"><li value="7">AB</li></ol>'
+    $.move(document.querySelector("li")!.firstChild!, 1)
+    keydown("Enter")
+    expect(cleanHTML()).toBe('<ol type="a"><li value="7">A</li><li>B</li></ol>')
+  })
+
+  it("handles whole-list selections and first-item runs without paragraph indentation", () => {
+    document.body.innerHTML = '<ul><li><p>A</p></li><li><p>B</p></li></ul>'
+    const list = document.querySelector("ul")!, before = cleanHTML()
+    $.selectElement(list)
+    expect(keydown("Tab").defaultPrevented).toBe(true)
+    expect(cleanHTML()).toBe(before)
+    $.selectRange(list, 0, list, 2)
+    keydown("Tab")
+    expect(cleanHTML()).toBe(before)
+  })
+
+  it("ignores list-like widget internals and uses replacement items from the current DOM", () => {
+    document.body.innerHTML = '<my-widget><ul><li>A</li><li>B</li></ul></my-widget><ul><li>C</li><li>D</li></ul>'
+    $.move(document.querySelector("my-widget li + li")!.firstChild!)
+    editor.features.list.indentItems()
+    expect(document.querySelector("my-widget ul ul")).toBeNull()
+    const list = document.querySelector("body > ul")!
+    list.lastElementChild!.outerHTML = '<li><b>Replacement</b></li>'
+    $.move(list.querySelector("b")!.firstChild!, 3)
+    editor.features.list.indentItems()
+    expect(list.querySelector("ul b")?.textContent).toBe("Replacement")
+    expect($.anchorOffset).toBe(3)
+  })
+
+  it("uses the current predecessor after a remote insertion and keeps that remote edit on undo", async () => {
+    document.body.innerHTML = '<ul><li>A</li><li id="local">B</li></ul>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(document.querySelector("#local")!.firstChild!, 1)
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const list = sharedDOMBody(remote).get(0) as Y.XmlElement
+      const inserted = new Y.XmlElement("li")
+      inserted.insert(0, [new Y.XmlText("Remote")])
+      remote.transact(() => list.insert(1, [inserted]))
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
+      await new Promise<void>(resolve => setTimeout(resolve))
+      // Re-read the editing point just as the host selection bridge does.
+      $.move(document.querySelector("#local")!.firstChild!, 1)
+      editor.features.list.indentItems()
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      expect(cleanHTML()).toBe('<ul><li>A</li><li>Remote<ul><li id="local">B</li></ul></li></ul>')
+      editor.doc.undo()
+      await Promise.resolve()
+      expect(cleanHTML()).toBe('<ul><li>A</li><li>Remote</li><li id="local">B</li></ul>')
+    }
+    finally { remote.destroy() }
+  })
+
+  it("shares item nesting and splitting with undo and redo without editor artifacts", async () => {
+    document.body.innerHTML = '<ol type="a"><li>A</li><li><p>Hello World</p></li><li>C</li></ol>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(document.querySelector("p")!.firstChild!, 6)
+    keydown("Enter")
+    editor.features.list.indentItems()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const changed = cleanHTML()
+    expect(changed).toContain('<ol type="a"><li><p>World</p></li></ol>')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ol type="a"><li>A</li><li><p>Hello World</p></li><li>C</li></ol>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe(changed)
+  })
+
   it("promotes a nested real empty item by one level with Enter", () => {
     document.body.innerHTML = "<ul><li>A<ul><li>B</li></ul></li></ul>"
     const innerItem = document.querySelector("ul ul li")!
@@ -504,7 +704,7 @@ describe("semantic list editing", () => {
 
     editor.features.list.toggleList("ol")
 
-    expect(cleanHTML()).toBe("<ol><li><p>A</p></li><li><p>B</p></li></ol>")
+    expect(cleanHTML()).toBe('<ol><li><p>A</p></li><li><p id="b">B</p></li></ol>')
   })
 
   it.each(["ul", "ol"] as const)("keeps Backspace inside a converted %s item after its paragraph becomes empty", type => {
