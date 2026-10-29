@@ -167,19 +167,20 @@ export class WidgetFeature extends EditorFeature {
     return document.documentElement.lang || navigator.language || "en"
   }
 
-  /** A widget's option or action declarations: a `LitElementWw` instance
-   * getter when present, otherwise the static class declarations. */
+  /** Instance declarations override static maps. Legacy dynamicOptions are an
+   * alias, with canonical options taking precedence for duplicate names. */
   #declarations(widget: Element, kind: "options" | "actions" | "optionGroups"): Declarations {
     const isRecord = (value: unknown): value is Declarations => !!value && typeof value === "object" && !Array.isArray(value)
-    try {
-      const own = (widget as unknown as Record<string, unknown>)[kind]
-      if(isRecord(own)) return own
-      const inherited = (widget.constructor as unknown as Record<string, unknown>)[kind]
-      return isRecord(inherited) ? inherited : {}
+    const read = (name: string) => {
+      try {
+        const own = (widget as unknown as Record<string, unknown>)[name]
+        if(isRecord(own)) return own
+        const inherited = (widget.constructor as unknown as Record<string, unknown>)[name]
+        return isRecord(inherited) ? inherited : {}
+      }
+      catch { return {} }
     }
-    catch {
-      return {}
-    }
+    return kind === "options" ? {...read("dynamicOptions"), ...read(kind)} : read(kind)
   }
 
   #widgetAt(path: number[], localName: string) {
@@ -204,7 +205,15 @@ export class WidgetFeature extends EditorFeature {
       let value: unknown = null
       try { value = (widget as unknown as Record<string, unknown>)[name] }
       catch { /* A failing widget getter leaves the field empty. */ }
-      const option = widgetOptionState(name, declaration, value, locale)
+      let option = widgetOptionState(name, declaration, value, locale)
+      // Legacy dynamicOptions use attribute names (e.g. detailed-feedback)
+      // instead of their corresponding camel-cased property names.
+      if(value === undefined && option.attribute !== null) {
+        const attribute = widget.getAttribute(option.attribute)
+        const parsed = option.type === "boolean" ? attribute !== null
+          : option.type === "number" && attribute !== null ? Number(attribute) : attribute
+        option = widgetOptionState(name, declaration, parsed, locale)
+      }
       if(option.type === "reference" && !this.#observingReferences) {
         this.#observingReferences = true
         this.#observer?.observe(document.body, {childList: true, subtree: true, attributes: true, characterData: true})

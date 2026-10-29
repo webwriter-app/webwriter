@@ -320,18 +320,37 @@ describe("widget options", () => {
   })
 
   it("writes options to their reflected attributes", () => {
-    document.body.innerHTML = '<demo-options count="3" shuffled></demo-options>'
+    document.body.innerHTML = '<demo-options id="options-widget" count="3" shuffled></demo-options>'
     const widget = document.querySelector("demo-options") as OptionsWidget
     const set = editor.getActionHandler("setWidgetOption")
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "count", value: 5})
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "shuffled", value: false})
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "data", value: {a: [1]}})
     set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "internal", value: "kept"})
-    expect(editor.toHTML(true)).toBe('<demo-options count="5" widget-data="{&quot;a&quot;:[1]}"></demo-options>')
+    expect(editor.toHTML(true)).toBe('<demo-options id="options-widget" count="5" widget-data="{&quot;a&quot;:[1]}"></demo-options>')
     expect(widget.internal).toBe("kept")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "handler", value: "evil()"})).toThrow("cannot be set")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "unknown", value: 1})).toThrow("no option")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "other-widget", name: "count", value: 1})).toThrow("changed")
+  })
+
+  it("accepts legacy dynamicOptions and reads their current reflected values", () => {
+    document.body.innerHTML = '<demo-options detailed-feedback grading-method="partial" count="3"></demo-options>'
+    const widget = document.querySelector("demo-options")!
+    Object.defineProperty(widget, "dynamicOptions", {get: () => ({
+      "detailed-feedback": {type: "boolean", label: {_: "Show detailed feedback"}},
+      "grading-method": {type: "select", options: [{value: "pass-fail"}, {value: "partial"}]},
+      count: {type: String, label: {_: "Legacy count"}},
+    })})
+    const options = () => editor.features.widget.getOptionsState([widget])!.options
+    expect(options().find(option => option.name === "detailed-feedback")).toMatchObject({type: "boolean", value: true})
+    expect(options().find(option => option.name === "grading-method")).toMatchObject({value: "partial"})
+    expect(options().find(option => option.name === "count")).toMatchObject({type: "number", value: 3})
+    editor.features.widget.setOption(widget, "detailed-feedback", false)
+    editor.features.widget.setOption(widget, "grading-method", "pass-fail")
+    expect(widget.hasAttribute("detailed-feedback")).toBe(false)
+    expect(options().find(option => option.name === "detailed-feedback")!.value).toBe(false)
+    expect(options().find(option => option.name === "grading-method")!.value).toBe("pass-fail")
   })
 
   it("runs an action as one undo step", async () => {
