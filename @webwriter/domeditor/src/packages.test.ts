@@ -381,6 +381,19 @@ describe("package contents", () => {
   const manifest = (exports: Record<string, string>) => ({name: "@webwriter/demo", version: "1.0.0", exports})
   const urlFor = (path: string) => `https://cdn.test/${path}`
 
+  it("includes non-insertable widgets for presentation with their package icon and readable names", () => {
+    const contents = packageContents(manifest({
+      "./widgets/webwriter-quiz.js": "./dist/quiz.js",
+      "./widgets/webwriter-task-prompt.js": "./dist/prompt.js",
+    }), {"./widgets/webwriter-task-prompt": {uninsertable: true}}, urlFor, "https://cdn.test/old.svg", "en")
+    const pkg = {iconUrl: "https://cdn.test/package.svg", members: contents.members.map(({member}) => member)} as WebWriterPackage
+    expect(packageInsertionItems([pkg]).map(item => item.name)).toEqual(["Quiz"])
+    expect(packageInsertionItems([pkg], true)).toEqual([
+      expect.objectContaining({name: "Quiz", iconUrl: pkg.iconUrl}),
+      expect.objectContaining({name: "Task Prompt", tag: "webwriter-task-prompt", iconUrl: pkg.iconUrl, insertable: false}),
+    ])
+  })
+
   it("pretty prints widget names without their first dash-separated part", () => {
     const contents = packageContents(manifest({
       "./widgets/webwriter-automaton-thing.*": "./dist/automaton.*",

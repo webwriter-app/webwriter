@@ -55,6 +55,7 @@ import {
   withPackageExportSource,
   type PackageEditingConfig,
   type PackageMember,
+  packageInsertionItems,
   type PackageExportTarget,
   type PackageTestResult,
   type WebWriterPackage,
@@ -6765,6 +6766,7 @@ export class DomEditor extends LitElement {
     const body = this.editorDocument?.body
     if(!body) return null
     const root = getDocumentRoot(body)
+    const packageItems = packageInsertionItems(this.installedPackages, true)
 
     const sectionItem = (element: Element, path: number[]): SelectionPathSection => ({
       path: [...path],
@@ -6781,7 +6783,7 @@ export class DomEditor extends LitElement {
     const build = (element: Element, path: number[], sections: SelectionPathSection[] = []): DocumentTreeItem => {
       const item: DocumentTreeItem = {
         path: [...path],
-        ...this.elementPresentation(element),
+        ...getElementPresentation(element, packageItems),
         ...(sections.length ? {sections: sections.map(section => ({...section, path: [...section.path]}))} : {}),
         children: [],
       }
@@ -6832,23 +6834,6 @@ export class DomEditor extends LitElement {
       ? []
       : [Array.from(body.childNodes).indexOf(root as ChildNode)]
     return build(root, rootPath)
-  }
-
-  private elementPresentation(element: Element) {
-    for(const pkg of this.installedPackages) {
-      const member = pkg.members.find(candidate => (
-        candidate.kind === "widget" && candidate.tagName?.toLowerCase() === element.localName
-      ))
-      if(member) {
-        const iconUrl = member.iconUrl ?? pkg.iconUrl
-        return {
-          name: member.label,
-          icon: "Packages",
-          ...(iconUrl ? {iconUrl} : {}),
-        }
-      }
-    }
-    return getElementPresentation(element)
   }
 
   private handleBreadcrumbTreeToggle = () => {

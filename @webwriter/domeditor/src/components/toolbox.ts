@@ -864,7 +864,7 @@ export class DomEditorToolbox extends EditingControls {
           ? "Video"
           : "Website"
     if(this.dialog) return "Dialog"
-    if(this.selectionPath.at(-1)?.icon === "Packages") return "Widget"
+    if(this.selectionPath.at(-1)?.icon === "Packages") return this.selectionPath.at(-1)!.name
     if(this.elementSelected) return this.elementAttributes?.name
       ?? this.selectionPath.at(-1)?.name ?? this.selectedElementTypes.at(-1)?.element.name ?? "Selection"
     if(this.paragraphSelected) return null
@@ -1142,7 +1142,7 @@ export class DomEditorToolbox extends EditingControls {
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
       + (attributes?.attributes.lang ? 1 : 0)
-    const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? "Widget" : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
+    const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? attributes?.name ?? getElementPresentation(localName).name : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
       ?? this.selectedElementTypes.find(item => ["td", "th"].includes(item.element.localName))

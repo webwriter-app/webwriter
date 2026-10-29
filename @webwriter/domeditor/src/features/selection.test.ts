@@ -3242,17 +3242,19 @@ describe("document listeners", () => {
           slides: "A custom document template owns this document's layout.",
           board: "A custom document template owns this document's layout.",
         }},
-        path: [{path: [0], name: "demo-widget", icon: "Packages"}],
+        path: [{path: [0], name: "Widget", icon: "Packages"}],
         nodeSelected: true,
         element: {
           path: [0],
           targetId: expect.any(String),
           localName: "demo-widget",
           namespaceURI: "http://www.w3.org/1999/xhtml",
-          name: "demo-widget",
+          name: "Widget",
           icon: "Packages",
           attributes: {role: "document"},
         },
+        distribution: expect.objectContaining({path: [0]}),
+        distributionGeneral: expect.objectContaining({path: null}),
       },
     }, window.location.origin)
   })

@@ -245,12 +245,12 @@ describe("filtered frame snapshots", () => {
     expect(host.editorDocument).toBe(currentDocument)
     publish(html.replace("</body>", "<custom-widget></custom-widget></body>"), true)
     expect(tree).toHaveBeenCalledTimes(1)
-    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
     window.dispatchEvent(new MessageEvent("message", {
       source: iframe.contentWindow,
       data: {type: selectionChangeEvent, detail: {path: [{path: [], name: "Document"}]}},
     }))
-    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
     expect(tree).toHaveBeenCalledTimes(1)
   })
 
@@ -279,7 +279,7 @@ describe("filtered frame snapshots", () => {
     iframe.contentDocument!.body.append(iframe.contentDocument!.createElement("custom-widget"))
     await flushMutations()
     expect(tree.mock.calls.length).toBeGreaterThan(presentations)
-    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "custom-widget"])
+    expect(host.documentTree.children.map((item: DocumentTreeItem) => item.name)).toEqual(["Paragraph", "Widget"])
     const structuralChange = tree.mock.calls.length
     select()
     expect(tree).toHaveBeenCalledTimes(structuralChange)
@@ -8579,6 +8579,34 @@ describe("DomEditor.execute()", () => {
       icon: "Packages",
       iconUrl: "https://example.com/demo.svg",
     }))
+  })
+
+  it("uses package presentation for nested uninsertable widgets in the outline", async () => {
+    const {editor, iframe} = await mountEditor()
+    const pkg: WebWriterPackage = {
+      ...demoPackage,
+      iconUrl: "https://example.com/package.svg",
+      members: [{
+        ...demoPackage.members[0],
+        id: "@webwriter/demo@1.0.0:./widgets/webwriter-task-prompt",
+        label: "webwriter-task-prompt",
+        tagName: "webwriter-task-prompt",
+        insertable: false,
+        iconUrl: "https://example.com/member.svg",
+      }],
+    }
+    ;(editor as unknown as {installedPackages: WebWriterPackage[]}).installedPackages = [pkg]
+    iframe.contentDocument!.body.innerHTML = "<blockquote><webwriter-task-prompt></webwriter-task-prompt></blockquote>"
+
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    const findWidget = (item: DocumentTreeItem): DocumentTreeItem | undefined =>
+      item.path.length > 0 && item.name === "Task Prompt" ? item : item.children.map(findWidget).find(Boolean)
+    const widget = findWidget(tree)
+    expect(widget).toMatchObject({
+      name: "Task Prompt",
+      icon: "Packages",
+      iconUrl: "https://example.com/package.svg",
+    })
   })
 
   it("omits summary and formula descendants from outline data while preserving authored paths", async () => {

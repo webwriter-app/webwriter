@@ -118,9 +118,9 @@ export class InsertionMenu extends LitElement {
         && !sectionInsertionTags.some(tag => tag === item.tag)),
       ...(globalThis.DOMEDITOR_PACKAGE_ITEMS ?? []) as PackageInsertionItem[],
     ]
-    return items.filter(item => !query || [item.name, item.id, item.tag, item.packageName,
+    return items.filter(item => (!("insertable" in item) || item.insertable !== false) && (!query || [item.name, item.id, item.tag, item.packageName,
       item.packageName && packageNameLabel(item.packageName), item.kind]
-      .filter(Boolean).join(" ").toLowerCase().includes(query))
+      .filter(Boolean).join(" ").toLowerCase().includes(query)))
   }
 
   get activeItem() {

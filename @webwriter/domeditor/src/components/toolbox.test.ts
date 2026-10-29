@@ -1056,8 +1056,8 @@ describe("toolbox", () => {
       {path: [0], name: "Demo widget", icon: "Packages"},
     ]
     await toolbox.updateComplete
-    expect(label.textContent).toBe("Widget")
-    expect(edit.getAttribute("aria-label")).toBe("Edit Widget")
+    expect(label.textContent).toBe("Demo widget")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Demo widget")
 
     toolbox.selectionPath = [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}]
     await toolbox.updateComplete
@@ -1513,7 +1513,7 @@ describe("widget options drawer", () => {
       actions: [{name: "reset", label: "Reset"}],
     }
     await toolbox.updateComplete
-    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Widget"]')!
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Quiz"]')!
     const changes: unknown[] = []
     toolbox.addEventListener("widget-option-change", event => changes.push((event as CustomEvent).detail))
     const actions: unknown[] = []

@@ -9,6 +9,7 @@ import type {RibbonDrawer} from "./ribbon-drawer"
 import type {RibbonButton} from "./ribbon-button"
 import type {WidgetOptionsState} from "../widget-options"
 import {markNames} from "../marks"
+import {getElementPresentation} from "../element-names"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -40,6 +41,19 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it("labels a child widget drawer with its readable name and package icon", async () => {
+    const toolbox = await mountElement("webwriter-task-prompt")
+    toolbox.elementAttributes = {...toolbox.elementAttributes!, ...getElementPresentation("webwriter-task-prompt", [{
+      section: "Packages", kind: "widget", packageName: "@webwriter/quiz", name: "Task Prompt", tag: "webwriter-task-prompt", iconUrl: "https://example.test/quiz.svg", insertable: false,
+    }])}
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="webwriter-task-prompt"]')!
+    await drawer.updateComplete
+    expect(drawer.label).toBe("Task Prompt")
+    expect(drawer.iconUrl).toBe("https://example.test/quiz.svg")
+    expect(drawer.shadowRoot!.querySelector('img[src="https://example.test/quiz.svg"]')).not.toBeNull()
+  })
+
   it.each(["ul", "ol"])("uses the shared List toolbox with a type switch for %s", async localName => {
     const toolbox = await mountElement(localName)
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!

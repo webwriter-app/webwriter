@@ -1,4 +1,5 @@
 import {boardLayoutRole, documentLayoutMode, isBoardCard, isBoardColumn, isSlide, slideLayoutRole} from "./document-layout"
+import {widgetNameLabel, type PackageInsertionItem} from "./packages"
 
 export type ElementPresentation = {
   name: string
@@ -113,7 +114,7 @@ const presentations: Record<string, ElementPresentation> = {
 const fallbackPresentation = {name: "Content", icon: "Section"}
 
 /** Returns a user-facing name and icon key for an HTML element. */
-export function getElementPresentation(elementOrTagName: Element | string): ElementPresentation {
+export function getElementPresentation(elementOrTagName: Element | string, packageItems: readonly PackageInsertionItem[] | undefined = globalThis.DOMEDITOR_PACKAGE_ITEMS): ElementPresentation {
   if(typeof elementOrTagName !== "string") {
     if(elementOrTagName.matches("h2:not([is])") && isBoardColumn(elementOrTagName.parentElement)) {
       return {name: "Column Heading", icon: "Heading"}
@@ -140,10 +141,10 @@ export function getElementPresentation(elementOrTagName: Element | string): Elem
     ? elementOrTagName
     : elementOrTagName.tagName
   const normalizedTagName = tagName.toLowerCase()
-  const packageItem = globalThis.DOMEDITOR_PACKAGE_ITEMS?.find(item => item.kind === "widget" && item.tag?.toLowerCase() === normalizedTagName)
+  const packageItem = packageItems?.find(item => item.kind === "widget" && item.tag?.toLowerCase() === normalizedTagName)
   if(packageItem) return {name: packageItem.name, icon: "Packages", ...(packageItem.iconUrl ? {iconUrl: packageItem.iconUrl} : {})}
   const known = presentations[normalizedTagName]
   if(known) return known
 
-  return normalizedTagName.includes("-") ? {name: normalizedTagName, icon: "Packages"} : fallbackPresentation
+  return normalizedTagName.includes("-") ? {name: widgetNameLabel(normalizedTagName), icon: "Packages"} : fallbackPresentation
 }

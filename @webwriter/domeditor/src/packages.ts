@@ -183,6 +183,8 @@ export type PackageInsertionItem = {
   iconUrl?: string
   tag?: string
   htmlUrl?: string
+  /** Non-insertable members still provide names and icons for existing widgets. */
+  insertable?: boolean
 }
 
 export type WebWriterPackage = {
@@ -288,18 +290,20 @@ export const packageMemberAction = (member: Pick<PackageMember, "id">) => `packa
 export const packageAction = (pkg: Pick<WebWriterPackage, "name">) => `package:${pkg.name}`
 export const packageToggleAction = (pkg: Pick<WebWriterPackage, "name">) => `package-toggle:${pkg.name}`
 
-export function packageInsertionItems(packages: WebWriterPackage[]): PackageInsertionItem[] {
+export function packageInsertionItems(packages: WebWriterPackage[], includeUninsertable = false): PackageInsertionItem[] {
   return packages.flatMap(pkg => pkg.members
-    .filter(member => member.insertable)
+    .filter(member => member.insertable || includeUninsertable)
     .map(member => ({
       section: "Packages" as const,
-      name: member.label,
+      name: member.kind === "widget" && member.tagName && (!member.label || member.label === member.tagName || member.label === titleCase(member.exportName))
+        ? widgetNameLabel(member.tagName) : member.label,
       packageName: member.packageName,
       kind: member.kind,
       description: member.description,
-      iconUrl: member.iconUrl ?? pkg.iconUrl,
+      iconUrl: member.kind === "widget" ? pkg.iconUrl ?? member.iconUrl : member.iconUrl ?? pkg.iconUrl,
       ...(member.tagName ? {tag: member.tagName} : {}),
       ...(member.htmlUrl ? {htmlUrl: member.htmlUrl} : {}),
+      ...(!member.insertable ? {insertable: false} : {}),
     })))
 }
 
@@ -318,7 +322,7 @@ export function packageWidgetSchemaDefinitions(packages: WebWriterPackage[]): Wi
 }
 
 declare global {
-  /** Installed package members resolved by the editor iframe's widget loader. */
+  /** Installed package members, including non-insertable widgets for presentation. */
   var DOMEDITOR_PACKAGE_ITEMS: PackageInsertionItem[] | undefined
 }
 
@@ -350,7 +354,7 @@ const titleCase = (value: string) => value
 
 export const packageNameLabel = (name: string) => titleCase(name.split("/").at(-1) ?? name)
 
-const widgetNameLabel = (name: string) => titleCase(name.replace(/^[^-]+-/, ""))
+export const widgetNameLabel = (name: string) => titleCase(name.replace(/^[^-]+-/, ""))
 
 /** The editing-config key of an export or config entry: its subpath without
  * a wildcard or file extension, so `./widgets/x`, `./widgets/x.*` and

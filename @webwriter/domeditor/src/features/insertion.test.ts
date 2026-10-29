@@ -155,6 +155,18 @@ describe("insertion menu", () => {
     expect(menu.filteredItems[0].packageName).toBe(packageName)
   })
 
+  it("keeps non-insertable child widgets out of package search results", async () => {
+    globalThis.DOMEDITOR_PACKAGE_ITEMS = [{
+      section: "Packages", name: "Task Prompt", packageName: "@webwriter/quiz", kind: "widget", tag: "webwriter-task-prompt", insertable: false,
+    }]
+    typeCommand()
+    typeText("task")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    expect(menu.filteredItems).toHaveLength(0)
+    expect(menu.shadowRoot!.textContent).not.toContain("Task Prompt")
+  })
+
   it("anchors the initial typed command to an empty block", async () => {
     document.body.innerHTML = "<p></p>"
     const block = document.querySelector("p")!

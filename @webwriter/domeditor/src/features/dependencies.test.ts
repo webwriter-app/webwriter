@@ -275,6 +275,7 @@ describe("DependencyFeature", () => {
     expect(script.nonce).toBe(editor.trustedScriptNonce)
     expect(globalThis.DOMEDITOR_PACKAGE_ITEMS).toEqual([
       expect.objectContaining({name: "Demo Widget", tag: "webwriter-demo"}),
+      expect.objectContaining({name: "Demo Item", tag: "webwriter-demo-item", insertable: false}),
     ])
     editor.destroy()
   })
