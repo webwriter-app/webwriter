@@ -1342,6 +1342,84 @@ await check("Style dropdowns draw a single border and focus ring", async () => {
   finally { controls.remove() }
 })
 
+await check("custom filters persist and toggle after native CSS serialization", async () => {
+  const {ElementStyleEditor} = await import("../src/components/element-style-editor")
+  const {filterPresetsStorageKey, filterPresetLabel, loadFilterPresets} = await import("../src/filter-presets")
+  const previous = localStorage.getItem(filterPresetsStorageKey)
+  localStorage.removeItem(filterPresetsStorageKey)
+  const controls = new ElementStyleEditor()
+  const target = document.createElement("p")
+  target.style.setProperty("filter", "sepia(1)", "important")
+  controls.mode = "compact"
+  controls.propertyNames = ["filter"]
+  controls.style.width = "216px"
+  const project = () => controls.state = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
+    inline: {filter: {value: target.style.filter, priority: "important"}}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  project()
+  controls.addEventListener("element-style-change", event => {
+    const {mutation} = (event as CustomEvent<import("../src/components/element-style-editor").ElementStyleChangeDetail>).detail
+    if(mutation === null) target.style.removeProperty("filter")
+    else if(typeof mutation === "string") target.style.filter = mutation
+    else target.style.setProperty("filter", mutation.value, mutation.priority)
+    project()
+  })
+  fixture.append(controls)
+  try {
+    await controls.updateComplete
+    const root = controls.shadowRoot!
+    root.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
+    await controls.updateComplete
+    root.querySelector<HTMLButtonElement>(".effect-custom")!.click()
+    await controls.updateComplete
+    await controls.updateComplete
+    const dialog = root.querySelector<HTMLDialogElement>(".filter-dialog")!
+    assert(dialog.open && dialog.matches(":modal"), "custom filter did not open as a native modal")
+    const select = dialog.querySelector("select")!
+    select.value = "drop-shadow"
+    select.dispatchEvent(new Event("change", {bubbles: true}))
+    await controls.updateComplete
+    const inputs = dialog.querySelectorAll<HTMLInputElement>('input[type="number"]')
+    for(const [index, value] of ["-3", "5.5", "8"].entries()) {
+      inputs[index].value = value
+      inputs[index].dispatchEvent(new Event("input", {bubbles: true}))
+    }
+    await controls.updateComplete
+    await layoutFrame()
+    const bounds = dialog.getBoundingClientRect()
+    assert(bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight,
+      "filter dialog escaped the viewport")
+    assert(dialog.scrollWidth <= dialog.clientWidth, "filter dialog overflows horizontally")
+    dialog.querySelector<HTMLButtonElement>('[type="submit"]')!.click()
+    await controls.updateComplete
+    assert(!dialog.open && loadFilterPresets().length === 1, "confirm did not close and save the filter")
+    assert(target.style.filter.includes("rgb(0, 0, 0)") && target.style.filter.startsWith("sepia(1)"), "filter lost its native serialization or existing stack")
+    const label = filterPresetLabel(loadFilterPresets()[0])
+    const preset = () => root.querySelector<HTMLButtonElement>(`[title="${label}"]`)!
+    assert(preset().getAttribute("aria-pressed") === "true", "native color serialization hid the active custom filter")
+    root.querySelector<HTMLButtonElement>(".effect-trigger")!.click()
+    await controls.updateComplete
+    preset().dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true}))
+    await controls.updateComplete
+    assert(!root.querySelector<HTMLElement>(".effect-popup")!.hidden, "preset pointerdown dismissed the picker")
+    preset().click()
+    await controls.updateComplete
+    assert(target.style.filter === "sepia(1)", "toggling custom filter removed other filters or added a duplicate")
+    preset().click()
+    await controls.updateComplete
+    const preview = root.querySelector<HTMLElement>(".effect-trigger .filter-preview")!
+    assert(preview.style.filter === target.style.filter, "preview lost the complete native filter stack")
+    controls.remove()
+    fixture.append(controls)
+    await controls.updateComplete
+    assert(preset().getAttribute("aria-pressed") === "true", "saved custom filter did not survive reconnection")
+  }
+  finally {
+    controls.remove()
+    if(previous === null) localStorage.removeItem(filterPresetsStorageKey)
+    else localStorage.setItem(filterPresetsStorageKey, previous)
+  }
+})
+
 await check("marker image uploads preview before applying", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
   const toolbox = new DomEditorToolbox()

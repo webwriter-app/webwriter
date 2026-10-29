@@ -73,6 +73,7 @@ const expectedChecks = [
   "Toolbox choices distinguish defaults from explicit matching values",
   "Style dropdowns draw a single border and focus ring",
   "marker image uploads preview before applying",
+  "custom filters persist and toggle after native CSS serialization",
   "character deletion preserves adjacent spaces",
   "cut paragraphs retain a visible native caret position",
   "list markers survive native cut and paste",

@@ -1,4 +1,5 @@
 import {LitElement, css, html, nothing} from "lit"
+import {tokenize} from "@csstools/css-tokenizer"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
@@ -8,6 +9,11 @@ import {mediaCropInsets} from "../media"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {colorPaletteStyles, renderColorPalette} from "./color-palette"
 import {ref} from "lit/directives/ref.js"
+import {documentDialogStyles} from "./document-dialog.styles"
+import {
+  filterTypes, newFilterPreset, filterPresetValue, filterPresetLabel, loadFilterPresets, saveFilterPreset,
+  filterPresetsStorageKey, filterPresetsChangeEvent, type FilterPreset, type FilterType,
+} from "../filter-presets"
 import "./style-combobox"
 import type {StyleCombobox} from "./style-combobox"
 import type {ElementStyleDeclaration, ElementStyleMutation, ElementStyleState} from "../editor-bridge"
@@ -33,6 +39,31 @@ const emptyStyleState = (): ElementStyleState => ({
 })
 
 const filterPreview = html`<svg viewBox="0 0 32 24" aria-hidden="true"><rect width="32" height="24" rx="2" fill="#5b9bd5"/><circle cx="24" cy="6" r="3" fill="#ffc000"/><path d="M0 24 10 8 20 24M12 24 24 12 32 24" fill="#70ad47"/></svg>`
+
+// Match whole top-level functions, preserving custom filters, nested arguments,
+// comments and URLs when a preset is removed from an authored filter list.
+const filterPresetRanges = (value: string, preset: string) => {
+  const ranges: {start: number, end: number}[] = []
+  const style = document.createElement("span").style
+  style.filter = preset
+  const expected = style.filter
+  let depth = 0, start = -1
+  for(const [type, , from, to] of tokenize({css: value})) {
+    if(type === "function-token" || type === "(-token") {
+      if(depth === 0) start = from
+      depth++
+    }
+    else if(type === ")-token" && depth > 0) {
+      depth--
+      if(depth === 0) {
+        style.filter = ""
+        style.filter = value.slice(start, to + 1)
+        if(expected && style.filter === expected) ranges.push({start, end: to + 1})
+      }
+    }
+  }
+  return ranges
+}
 
 const simpleDimension = (value: string, units: readonly string[]) => {
   const match = value.trim().match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))([a-z%]*)$/i)
@@ -76,6 +107,9 @@ export class ElementStyleEditor extends LitElement {
     compactMenu: {state: true},
     galleryPage: {state: true},
     customEffect: {state: true},
+    customFilters: {state: true},
+    filterDraft: {state: true},
+    filterError: {state: true},
     directionalProperty: {state: true},
     customProperty: {type: String, state: true},
     customValue: {type: String, state: true},
@@ -88,6 +122,7 @@ export class ElementStyleEditor extends LitElement {
 
   static styles = css`
     ${editorInteractionStyles}
+    ${documentDialogStyles}
     :host {
       box-sizing: border-box;
       display: block;
@@ -152,6 +187,17 @@ export class ElementStyleEditor extends LitElement {
     .filter-preview { display: block; width: 100%; min-width: 0; }
     .filter-preview svg { display: block; width: 2rem; max-width: 100%; height: auto; }
     .effect-popup .effect-custom { border-top: 1px solid #d8dee6; margin-top: 0.3rem; }
+    .effect-control .effect-presets {max-height: 16rem; overflow-y: auto;}
+    .filter-dialog {font: .8rem/1.4 system-ui, sans-serif;}
+    .filter-dialog form {display: grid; gap: 1rem;}
+    .filter-dialog label {display: grid; gap: .3rem; min-width: 0;}
+    .filter-dialog input, .filter-dialog select {box-sizing: border-box; width: 100%; min-width: 0; min-height: 2.25rem; padding: .4rem .5rem; border: 1px solid #cbd5e1; border-radius: .35rem; color: #202833; background: white; font: inherit;}
+    .filter-dialog input[type="color"] {padding: .2rem;}
+    .filter-parameters {display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: .75rem;}
+    .filter-dialog figure {display: grid; justify-items: center; gap: .5rem; margin: 0; padding: 1rem; overflow: hidden; border: 1px solid #e2e8f0; border-radius: .35rem; background: #f8fafc;}
+    .filter-dialog .filter-preview {width: 8rem;}
+    .filter-dialog .filter-preview svg {width: 100%;}
+    .filter-error {margin: 0; color: #b42318;}
     .effect-control button:focus-visible, .gallery-page:focus-visible { outline: 2px solid #b9d7f5; outline-offset: 2px; }
     .style-gallery {
       display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -824,6 +870,10 @@ export class ElementStyleEditor extends LitElement {
   showPresets = false
   private galleryPage = 0
   private customEffect: string | null = null
+  private customFilters: FilterPreset[] = []
+  private filterDraft = newFilterPreset()
+  private filterError = ""
+  private filterSelectionKey = ""
   private compactMenu: string | null = null
   private directionalProperty: string | null = null
   private directionalSelectionKey = ""
@@ -850,7 +900,7 @@ export class ElementStyleEditor extends LitElement {
       focused.blur()
     }
     const active = this.compactMenu
-      ? this.renderRoot.querySelector(`#compact-${this.compactMenu}`)?.closest(".compact-value")
+      ? this.renderRoot.querySelector(`#compact-${this.compactMenu}, [data-property="${this.compactMenu}"] .effect-trigger`)?.closest(".compact-value")
       : null
     if(!active || !path.includes(active)) this.compactMenu = null
     this.renderRoot.querySelectorAll<StyleCombobox>("style-combobox").forEach(combobox => {
@@ -871,6 +921,9 @@ export class ElementStyleEditor extends LitElement {
     if(changed.has("selectionKey") && this.selectionKey !== this.directionalSelectionKey) {
       this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")?.close()
     }
+    if(changed.has("selectionKey") && this.selectionKey !== this.filterSelectionKey) {
+      this.renderRoot.querySelector<HTMLDialogElement>(".filter-dialog")?.close()
+    }
     if((changed.has("state") || changed.has("selectionKey")) && this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")?.open && !this.markerImageSelectionUnchanged) {
       this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")?.close()
       this.cancelMarkerImageRead()
@@ -882,16 +935,22 @@ export class ElementStyleEditor extends LitElement {
     super.connectedCallback()
     this.ownerDocument.addEventListener("pointerdown", this.dismissMenus, true)
     this.ownerDocument.addEventListener("focusin", this.dismissMenus, true)
+    this.customFilters = loadFilterPresets()
+    this.ownerDocument.defaultView?.addEventListener("storage", this.refreshFilterPresets)
+    this.ownerDocument.defaultView?.addEventListener(filterPresetsChangeEvent, this.refreshFilterPresets)
   }
 
   disconnectedCallback() {
     this.ownerDocument.removeEventListener("pointerdown", this.dismissMenus, true)
     this.ownerDocument.removeEventListener("focusin", this.dismissMenus, true)
+    this.ownerDocument.defaultView?.removeEventListener("storage", this.refreshFilterPresets)
+    this.ownerDocument.defaultView?.removeEventListener(filterPresetsChangeEvent, this.refreshFilterPresets)
     this.compactMenu = null
     this.cancelMarkerImageRead()
     const dialog = this.renderRoot.querySelector<HTMLDialogElement>(".marker-image-dialog")
     if(dialog?.open) dialog.close()
     this.renderRoot.querySelector<HTMLDialogElement>(".directional-dialog")?.close()
+    this.renderRoot.querySelector<HTMLDialogElement>(".filter-dialog")?.close()
     super.disconnectedCallback()
   }
 
@@ -1322,6 +1381,92 @@ export class ElementStyleEditor extends LitElement {
     return this.state.target?.documentRoot === true || this.state.target?.localName === "body"
   }
 
+  private refreshFilterPresets = (event: Event) => {
+    if(event instanceof StorageEvent && event.key !== null && event.key !== filterPresetsStorageKey) return
+    this.customFilters = loadFilterPresets()
+  }
+
+  private currentEffectValue(name: "box-shadow" | "filter") {
+    const value = this.declaration(name)?.value
+    return value && !cssWideKeywords.includes(value as typeof cssWideKeywords[number])
+      ? value : this.state.computed[name] || "none"
+  }
+
+  private commitFilterPreset(css: string, toggle = true) {
+    const current = this.currentEffectValue("filter")
+    let stack = current === "none" ? "" : current
+    const ranges = filterPresetRanges(stack, css)
+    if(css === "none") stack = "none"
+    else if(ranges.length && toggle) {
+      for(const {start, end} of ranges.reverse()) stack = stack.slice(0, start) + stack.slice(end)
+    }
+    else if(!ranges.length) stack = `${stack} ${css}`
+    this.commitValue("filter", stack.trim() || "none")
+  }
+
+  private async openFilterDialog() {
+    this.filterDraft = newFilterPreset()
+    this.filterError = ""
+    this.filterSelectionKey = this.selectionKey
+    this.compactMenu = null
+    await this.updateComplete
+    if(!this.isConnected || this.selectionKey !== this.filterSelectionKey) return
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>(".filter-dialog")!
+    if(!dialog.open) dialog.showModal()
+  }
+
+  private addCustomFilter(event: SubmitEvent) {
+    event.preventDefault()
+    const form = event.currentTarget as HTMLFormElement
+    const dialog = form.closest("dialog")!
+    if(!this.isConnected || !dialog.open || this.selectionKey !== this.filterSelectionKey || !form.reportValidity()) return
+    const value = filterPresetValue(this.filterDraft)
+    if(!value || !CSS.supports("filter", value)) {this.filterError = "Choose valid filter settings."; return}
+    try { saveFilterPreset(this.filterDraft) }
+    catch {this.filterError = "Could not save this filter. Check that browser storage is available and try again."; return}
+    this.commitFilterPreset(value, false)
+    dialog.close()
+  }
+
+  private renderFilterDialog() {
+    const definition = filterTypes.find(filter => filter.type === this.filterDraft.type)!
+    const value = filterPresetValue(this.filterDraft)
+    const current = this.currentEffectValue("filter")
+    const preview = value && !filterPresetRanges(current, value).length ? `${current === "none" ? "" : current} ${value}`.trim() : current
+    const stop = (event: Event) => event.stopPropagation()
+    const close = () => this.renderRoot.querySelector<HTMLDialogElement>(".filter-dialog")!.close()
+    return html`<dialog class="document-dialog confirmation-dialog filter-dialog" aria-labelledby="filter-dialog-title"
+      @pointerdown=${stop} @mousedown=${stop} @focusin=${stop} @focusout=${stop} @change=${stop} @keydown=${stop}
+      @close=${() => {
+        if(this.isConnected) this.renderRoot.querySelector<HTMLButtonElement>('[data-property="filter"] .effect-trigger')?.focus()
+      }}>
+      <header><h2 id="filter-dialog-title">Custom filter</h2>
+        <button class="dialog-close" type="button" aria-label="Close custom filter" @click=${close}>${ribbonIcon("Reject")}</button>
+      </header>
+      <form @submit=${this.addCustomFilter}>
+        <label>Filter type<select autofocus .value=${this.filterDraft.type} @change=${(event: Event) => {
+          this.filterDraft = newFilterPreset((event.currentTarget as HTMLSelectElement).value as FilterType)
+          this.filterError = ""
+        }}>${filterTypes.map(filter => html`<option value=${filter.type}>${filter.label}</option>`)}</select></label>
+        <div class="filter-parameters">
+          ${definition.parameters.map((parameter, index) => html`<label>${parameter.label} (${parameter.unit})
+            <input type="number" required step="any" min=${parameter.min ?? nothing} max=${parameter.max ?? nothing}
+              .value=${Number.isFinite(this.filterDraft.values[index]) ? String(this.filterDraft.values[index]) : ""}
+              @input=${(event: Event) => {
+                this.filterDraft = {...this.filterDraft, values: this.filterDraft.values.map((value, i) => i === index ? (event.currentTarget as HTMLInputElement).valueAsNumber : value)}
+                this.filterError = ""
+              }}>
+          </label>`)}
+          ${this.filterDraft.type === "drop-shadow" ? html`<label>Color<input type="color" .value=${this.filterDraft.color}
+            @input=${(event: Event) => this.filterDraft = {...this.filterDraft, color: (event.currentTarget as HTMLInputElement).value}}></label>` : nothing}
+        </div>
+        <figure><span class="filter-preview" style=${`filter:${preview}`}>${filterPreview}</span><figcaption>Preview</figcaption></figure>
+        <p class="filter-error" role="alert" ?hidden=${!this.filterError}>${this.filterError}</p>
+        <footer><button type="button" @click=${close}>Cancel</button><button class="primary" type="submit">Add filter</button></footer>
+      </form>
+    </dialog>`
+  }
+
   private renderCompactEffect(name: "box-shadow" | "filter") {
     const label = name === "box-shadow" ? "Shadow" : "Filter"
     const presets = name === "box-shadow" ? [
@@ -1331,7 +1476,15 @@ export class ElementStyleEditor extends LitElement {
       ["None", "none"], ["Grayscale", "grayscale(1)"], ["Sepia", "sepia(1)"],
       ["Blur", "blur(2px)"], ["Vivid", "saturate(2)"], ["Invert", "invert(1)"],
     ]
+    if(name === "filter") {
+      for(const preset of this.customFilters) {
+        const css = filterPresetValue(preset)!
+        if(!presets.some(([, value]) => value === css)) presets.push([filterPresetLabel(preset), css])
+      }
+    }
     const value = this.declaration(name)?.value ?? ""
+    const current = this.currentEffectValue(name)
+    const stack = current === "none" ? "" : current
     const open = this.compactMenu === name
     return html`<div class="compact-row effect-control" data-property=${name}>
       ${this.renderCompactLabel(name, label, `label-${name}`)}
@@ -1350,13 +1503,13 @@ export class ElementStyleEditor extends LitElement {
         }}>
         <div class="compact-input">
           <button type="button" class="effect-trigger" ?hidden=${this.customEffect === name} aria-labelledby=${`label-${name}`}
-            aria-expanded=${open} aria-controls=${`presets-${name}`} title=${value || "Default"}
+            aria-expanded=${open} aria-controls=${`presets-${name}`} title=${current}
             @click=${() => this.compactMenu = open ? null : name}>
-            <span class=${name === "filter" ? "filter-preview" : "shadow-preview"} style=${`${name}:${value || this.state.computed[name] || "none"}`}>
+            <span class=${name === "filter" ? "filter-preview" : "shadow-preview"} style=${`${name}:${current}`}>
               ${name === "filter" ? filterPreview : nothing}
             </span>
           </button>
-          <input ?hidden=${this.customEffect !== name} id=${`compact-${name}`} aria-label=${label} role="combobox" aria-autocomplete="none"
+          ${name === "box-shadow" ? html`<input ?hidden=${this.customEffect !== name} id=${`compact-${name}`} aria-label=${label} role="combobox" aria-autocomplete="none"
             aria-expanded=${open} aria-controls=${`presets-${name}`} .value=${value} placeholder="Default"
             @focus=${() => this.compactMenu = name}
             @input=${(event: Event) => (event.currentTarget as HTMLInputElement).setCustomValidity("")}
@@ -1366,7 +1519,7 @@ export class ElementStyleEditor extends LitElement {
               if(next && !CSS.supports(name, next)) {input.setCustomValidity(`Enter a valid CSS ${label.toLowerCase()}`); input.reportValidity(); return}
               input.setCustomValidity("")
               this.commitValue(name, next)
-            }}>
+            }}>` : nothing}
           <button type="button" class="compact-toggle dropdown-chevron" aria-label=${`${label} presets`} aria-expanded=${open}
             @click=${() => this.compactMenu = open ? null : name}>${ribbonIcon("ChevronRight")}</button>
         </div>
@@ -1374,11 +1527,14 @@ export class ElementStyleEditor extends LitElement {
           @pointerdown=${(event: PointerEvent) => event.preventDefault()} @mousedown=${(event: MouseEvent) => event.preventDefault()}>
           <div class="effect-presets">
             ${presets.map(([title, css]) => html`<button type="button" title=${title} aria-label=${`${label}: ${title}`}
-              aria-pressed=${value === css} @click=${() => {
-                this.commitValue(name, css)
+              aria-pressed=${name === "filter" ? css === "none" ? !stack : filterPresetRanges(stack, css).length > 0 : value === css} @click=${() => {
+                if(name === "filter") this.commitFilterPreset(css)
+                else this.commitValue(name, css)
                 this.customEffect = null
-                this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!.value = css
-                this.compactMenu = null
+                if(name !== "filter") {
+                  this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!.value = css
+                  this.compactMenu = null
+                }
               }}>
               <span class=${name === "filter" ? "filter-preview" : "shadow-preview"} style=${`${name}:${css}`}>
                 ${name === "filter" ? filterPreview : nothing}
@@ -1386,6 +1542,7 @@ export class ElementStyleEditor extends LitElement {
             </button>`)}
           </div>
           <button type="button" class="effect-custom" @click=${async () => {
+            if(name === "filter") {await this.openFilterDialog(); return}
             this.customEffect = name
             await this.updateComplete
             const input = this.renderRoot.querySelector<HTMLInputElement>(`#compact-${name}`)!
@@ -1881,6 +2038,7 @@ export class ElementStyleEditor extends LitElement {
         </div>`
       })}
       ${this.propertyNames?.includes("list-style-type") ? this.renderMarkerImageDialog() : nothing}
+      ${properties.includes("filter") ? this.renderFilterDialog() : nothing}
       ${this.renderDirectionalDialog()}
     </div>`
   }
