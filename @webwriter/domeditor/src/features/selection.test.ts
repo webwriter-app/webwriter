@@ -42,6 +42,169 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("gap clicks inside widget pages", () => {
+  const originalCaretPosition = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+  const originalElementsFromPoint = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+  beforeEach(() => {
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: vi.fn()})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: vi.fn()})
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    for(const [name, descriptor] of [["caretPositionFromPoint", originalCaretPosition], ["elementsFromPoint", originalElementsFromPoint]] as const) {
+      if(descriptor) Object.defineProperty(document, name, descriptor)
+      else Reflect.deleteProperty(document, name)
+    }
+  })
+  const mount = (mode: ShadowRootMode = "open") => {
+    editor.schema.extendWidgets([
+      {tagName: "gap-organizer", editingConfig: {content: "gap-organizer-page*"}},
+      {tagName: "gap-organizer-page", editingConfig: {content: "flow*"}},
+    ])
+    document.body.innerHTML = '<gap-organizer><gap-organizer-page><p>Before</p><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100"/></svg><p>After</p></gap-organizer-page></gap-organizer><p>Outside</p>'
+    const organizer = document.querySelector("gap-organizer")!, page = document.querySelector("gap-organizer-page")!
+    organizer.attachShadow({mode}).innerHTML = '<section><button>Private toolbar</button><slot></slot></section>'
+    page.attachShadow({mode: "open"}).innerHTML = '<slot></slot><input value="Private UI">'
+    const [before, graphic, after] = Array.from(page.children)
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 300, 400))
+    vi.spyOn(before, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 260, 30))
+    vi.spyOn(graphic, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 260, 100))
+    vi.spyOn(after, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 250, 260, 30))
+    editor.features.widget.refresh()
+    return {organizer, page, before, graphic, after}
+  }
+
+  it.each([
+    ["before", "text"], ["after", "text"],
+    ["before", "outer host"], ["after", "outer host"],
+    ["before", "missing"], ["after", "missing"],
+  ] as const)("selects the gap %s a graphic from page whitespace with a %s caret hit", (placement, hit) => {
+    const {page, graphic, before, after} = mount()
+    const textBlock = placement === "before" ? before : after
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue(hit === "missing" ? null : {
+      offsetNode: hit === "outer host" ? document.body : textBlock.firstChild!,
+      offset: hit === "outer host" ? 0 : placement === "before" ? 6 : 0,
+      getClientRect: () => null,
+    })
+    vi.spyOn(document, "elementsFromPoint").mockReturnValue([page])
+    feature.captureElement(page)
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: placement === "before" ? 90 : 210})
+    page.dispatchEvent(event)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(page)
+    expect($.anchorOffset).toBe(placement === "before" ? 1 : 2)
+    expect($.isGapSelection).toBe(true)
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(document.body).toHaveClass("◆gap-caret-visible")
+    expect(placement === "after" ? graphic : before).toHaveClass("◆gap-after-selected")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("keeps clicks on slotted text browser managed", () => {
+    const {before, page} = mount()
+    const text = before.firstChild!
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 2, getClientRect: () => null})
+    vi.spyOn(document, "elementsFromPoint").mockReturnValue([before, page])
+    $.move(text, 2)
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 35})
+    before.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+    expect($.anchor).toBe(text)
+  })
+
+  it("keeps padding inside a slotted table cell browser managed", () => {
+    const {page} = mount()
+    page.innerHTML = '<table><tbody><tr><td><p>Cell text</p></td></tr></tbody></table>'
+    for(const element of page.querySelectorAll("*")) {
+      vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 100, 260, element.localName === "p" ? 30 : 100))
+    }
+    const cell = page.querySelector("td")!
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 180})
+    cell.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.isInDragSelection).toBe(false)
+  })
+
+  it.each(["before", "after"] as const)("selects the %s gap through shadow padding around the page slot", placement => {
+    const {organizer, page, graphic} = mount()
+    page.replaceChildren(graphic)
+    vi.spyOn(page, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 300, 100))
+    const padding = organizer.shadowRoot!.querySelector("section")!
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true,
+      clientX: 100, clientY: placement === "before" ? 90 : 210})
+    padding.dispatchEvent(event)
+    document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(page)
+    expect($.anchorOffset).toBe(placement === "before" ? 0 : 1)
+    expect(graphic).toHaveClass(`◆gap-${placement}-selected`)
+    expect(feature.isCaptureSelection).toBe(false)
+  })
+
+  it("leaves toolbar controls beside the page slot private", () => {
+    const {organizer} = mount()
+    const button = organizer.shadowRoot!.querySelector("button")!
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 90})
+    button.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.captureSelectedWidget).toBe(organizer)
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+  })
+
+  it("keeps retargeted closed-shadow controls private even beside a graphic", () => {
+    const {organizer} = mount("closed")
+    const event = new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 100, clientY: 90})
+    organizer.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect(feature.captureSelectedWidget).toBe(organizer)
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+  })
+})
+
+describe("contentful widget top-bar capture", () => {
+  it.each([
+    ["open", "document"], ["closed", "document"],
+    ["open", "canvas"], ["closed", "canvas"],
+    ["open", "slides"], ["closed", "slides"],
+  ] as const)("keeps %s host focus in capture in %s when its native range is above the widget", (mode, layout) => {
+    editor.schema.extendWidgets([{tagName: "topbar-widget", editingConfig: {content: "flow*"}}])
+    const widget = document.createElement("topbar-widget")
+    widget.tabIndex = -1
+    widget.innerHTML = '<p>Authored content</p>'
+    const root = widget.attachShadow({mode})
+    root.innerHTML = '<div role="toolbar"><span>Top bar</span></div><slot></slot>'
+    appendToBody(widget)
+    if(layout !== "document") editor.setDocumentLayout(layout, "document")
+    editor.features.widget.refresh()
+    const selection = document.getSelection()!
+    root.querySelector("span")!.dispatchEvent(new PointerEvent("pointerdown", {button: 0, bubbles: true, composed: true, cancelable: true}))
+    widget.focus()
+    selection.setPosition(document.body, 0)
+    document.dispatchEvent(new Event("selectionchange"))
+    feature.processSelection(false, {scrollIntoView: false})
+    const post = vi.spyOn(editor, "postHostMessage")
+    editor.postSelectionPath()
+
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(widget).toHaveClass("◆element-capture-selected")
+    expect(document.body).toHaveClass("◆node-selection-active")
+    expect(document.body).not.toHaveClass("◆gap-caret-visible")
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
+    const message = post.mock.calls.at(-1)![0] as {detail: {capture?: boolean, gap?: unknown}}
+    expect(message.detail.capture).toBe(true)
+    expect(message.detail.gap).toBeUndefined()
+
+    widget.blur()
+    $.move(widget.querySelector("p")!.firstChild!, 2)
+    document.dispatchEvent(new Event("selectionchange"))
+    feature.processSelection(false, {scrollIntoView: false})
+    expect(feature.isCaptureSelection).toBe(false)
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+  })
+})
+
 describe("selection preservation across authored DOM shapes", () => {
   it.each(["caret", "element", "gap"])("releases graphic capture when the native selection changes to %s", next => {
     const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")

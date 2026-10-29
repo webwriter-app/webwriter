@@ -7,6 +7,7 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
+import {Schema} from "../schema"
 import {createImageMapPopoverController, imageMapHotspotBounds} from "../media"
 
 let editor: DOMEditor
@@ -47,6 +48,32 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each(["url", "file"])("uses the current widget schema for %s image sources after packages load", mode => {
+    const placeholder = editor.features.media.placeholder
+    editor.schema = new Schema()
+    editor.schema.extendWidgets([
+      {tagName: "media-organizer", editingConfig: {content: "media-organizer-page*"}},
+      {tagName: "media-organizer-page", editingConfig: {content: "flow*"}},
+    ])
+    document.body.innerHTML = '<media-organizer><media-organizer-page><picture><img></picture></media-organizer-page></media-organizer>'
+    editor.features.widget.refresh()
+    const target = document.querySelector("picture")!
+    placeholder.showFor(target)
+    if(mode === "url") {
+      placeholder.root.querySelector<HTMLInputElement>(".url")!.value = "https://example.test/image.png"
+      placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+      expect(target.querySelector("img")?.getAttribute("src")).toBe("https://example.test/image.png")
+    }
+    else {
+      const picker = placeholder.root.querySelector<HTMLInputElement>(".picker")!
+      Object.defineProperty(picker, "files", {value: [new File(["image"], "example.png", {type: "image/png"})]})
+      picker.dispatchEvent(new Event("change"))
+      expect(target.querySelector("img")?.getAttribute("src")).toMatch(/^blob:/)
+    }
+    expect(target.closest("media-organizer-page")).not.toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it.each([
     {readyState: 0},
     {readyState: 1, videoWidth: 640, videoHeight: 360},

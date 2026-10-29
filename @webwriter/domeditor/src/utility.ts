@@ -32,6 +32,20 @@ export function adoptStylesheet(root: Document | ShadowRoot, stylesheet: CSSStyl
   }
 }
 
+function editingLayoutChildren(element: Element, selectionRoot?: Element) {
+  return Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
+    // Closed disclosures can retain measurable boxes for hidden body content.
+    if(element.matches("details:not([open])") && node !== element.querySelector(":scope > summary")) return []
+    if(node instanceof Element && (!isOutOfFlow(node) || selectionRoot?.contains(node)) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
+    if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
+      const range = document.createRange()
+      range.selectNode(node)
+      return [{node, rect: range.getBoundingClientRect()}]
+    }
+    return []
+  }).filter(({rect}) => rect.bottom > rect.top)
+}
+
 const fixedGutterOffsets = new WeakMap<Document, {key: string, offset: number}>()
 
 /** Client rects include the root's leading gutter; fixed CSS insets start
@@ -472,10 +486,63 @@ export class EditingSelection {
     return point
   }
 
+  /** Finds gaps from a widget's authored child boxes without querying native
+   * caret hit testing, which may cross its flattened slot boundaries. */
+  static widgetGapFromCoords(x: number, y: number, pointerTarget: EventTarget | null | undefined, schema?: Schema): {node: Node, offset: number, overrideNative: boolean} | undefined {
+    if(pointerTarget instanceof Element && pointerTarget.getRootNode() instanceof ShadowRoot
+      && (pointerTarget.getRootNode() as ShadowRoot).host !== document.body) {
+      // A widget can render padding around a slot outside the authored page.
+      // Only that slot's immediate container exposes content boundaries;
+      // descendants such as toolbar buttons remain private widget controls.
+      const slots = pointerTarget instanceof HTMLSlotElement ? [pointerTarget]
+        : Array.from(pointerTarget.children).filter((child): child is HTMLSlotElement => child instanceof HTMLSlotElement)
+      const pages = slots.flatMap(slot => slot.assignedElements({flatten: true}))
+        .filter(page => isContentfulWidget(page, schema) && document.body.contains(page))
+        .map(page => ({page, rect: page.getBoundingClientRect()}))
+        .filter(({rect}) => rect.height > 0 && x >= rect.left && x <= rect.right && (y < rect.top || y > rect.bottom))
+        .sort((a, b) => Math.min(Math.abs(y - a.rect.top), Math.abs(y - a.rect.bottom)) - Math.min(Math.abs(y - b.rect.top), Math.abs(y - b.rect.bottom)))
+      if(pages[0]) return this.widgetGapFromCoords(x, y, pages[0].page, schema)
+      return
+    }
+    const point = (node: Node, offset: number) => {
+      const summary = this.summaryAtLeadingBoundary(node, offset)
+      return {node: summary ?? node, offset: summary ? 0 : offset, overrideNative: true}
+    }
+    const gap = (element: Element, placement: "before" | "after") => {
+      const parent = element.parentNode!
+      return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
+    }
+    let widget = pointerTarget instanceof Node && pointerTarget.getRootNode() === document
+      ? isElement(pointerTarget) ? pointerTarget : pointerTarget.parentElement : null
+    while(widget && !isContentfulWidget(widget, schema)) widget = widget.parentElement
+    if(widget && !atomicEditingContainer(pointerTarget as Node, schema)) {
+      let container = widget
+      const distance = (rect: DOMRect) => Math.hypot(
+        Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),
+      )
+      while(true) {
+        const nearest = editingLayoutChildren(container).sort((a, b) => distance(a.rect) - distance(b.rect))[0]
+        if(!nearest) break
+        const {node, rect} = nearest
+        if(y < rect.top || y > rect.bottom) {
+          if(node instanceof Text && container === widget) {
+            return point(container, Array.from(container.childNodes).indexOf(node) + (y > rect.bottom ? 1 : 0))
+          }
+          const element = node instanceof Element ? node : node.parentElement!
+          return gap(element, y < rect.top ? "before" : "after")
+        }
+        if(!(node instanceof Element) || node.matches("table") || isAtomicEditingElement(node, schema)) break
+        container = node
+      }
+    }
+  }
+
   /** Resolves text and structural gaps identically for clicks and drags,
    * without installing an intermediate selection inside atomic content.
    * A selectionRoot confines hit testing to one canvas/slide item's content. */
   static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element, selectionRoot?: Element): {node: Node, offset: number, overrideNative?: boolean} | undefined {
+    const widgetGap = this.widgetGapFromCoords(x, y, pointerTarget, schema)
+    if(widgetGap && (!selectionRoot || selectionRoot.contains(widgetGap.node))) return widgetGap
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
     const root = selectionRoot ?? getDocumentRoot()
     let overrideNative = false
@@ -491,17 +558,7 @@ export class EditingSelection {
     }
     const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
       && element !== document.documentElement && root.contains(element))
-    const layoutChildren = (element: Element) => Array.from(element.childNodes).flatMap<{node: Element | Text, rect: DOMRect}>(node => {
-      // Closed disclosures can retain measurable boxes for hidden body content.
-      if(element.matches("details:not([open])") && node !== element.querySelector(":scope > summary")) return []
-      if(node instanceof Element && (!isOutOfFlow(node) || selectionRoot?.contains(node)) && !node.matches(".◆editor-only")) return [{node, rect: node.getBoundingClientRect()}]
-      if(node instanceof Text && node.textContent?.trim() && typeof Range.prototype.getBoundingClientRect === "function") {
-        const range = document.createRange()
-        range.selectNode(node)
-        return [{node, rect: range.getBoundingClientRect()}]
-      }
-      return []
-    }).filter(({rect}) => rect.bottom > rect.top)
+    const layoutChildren = (element: Element) => editingLayoutChildren(element, selectionRoot)
     // Native hit testing often returns summary text (or hidden body content)
     // for space outside a disclosure. Resolve its outer edge before looking
     // for atomic descendants or gaps around individual text blocks.
@@ -1784,7 +1841,27 @@ export function widgetHostForShadowInteraction(event: Event, schema?: Schema) {
       && widget.contains(selection.anchorNode) && widget.contains(selection.focusNode)) return null
     return widget
   }
-  return widgetHostForEventPath(event)
+  const widget = widgetHostForEventPath(event)
+  const origin = event.composedPath()[0]
+  if(widget && origin instanceof Node && origin.getRootNode() instanceof ShadowRoot && event instanceof MouseEvent
+    && ["pointerdown", "pointermove", "pointerup", "mousedown", "mouseup", "click", "dblclick"].includes(event.type)
+    && EditingSelection.widgetGapFromCoords(event.clientX, event.clientY, origin, schema)) return null
+  // Open shadow trees expose their private origins in composedPath(). A
+  // pointer originating on the contentful host itself is authored padding,
+  // including the whitespace used to address gaps around slotted children.
+  if(widget?.shadowRoot && event.composedPath()[0] === widget && isContentfulWidget(widget, schema)
+    && ["pointerdown", "pointermove", "pointerup", "mousedown", "mouseup", "click", "dblclick"].includes(event.type)) return null
+  // Browsers target editing events at the contenteditable host, even when
+  // its caret is in slotted light DOM. Private shadow controls still own
+  // their events; a host target alone does not imply a shadow interaction.
+  if(widget && event.composedPath()[0] === widget && isContentfulWidget(widget, schema)
+    && ["keydown", "keyup", "beforeinput", "input", "compositionstart", "compositionend", "paste", "copy", "cut"].includes(event.type)
+    && !widget.shadowRoot?.activeElement) {
+    const selection = document.getSelection()
+    if(selection?.anchorNode && selection.focusNode
+      && widget.contains(selection.anchorNode) && widget.contains(selection.focusNode)) return null
+  }
+  return widget
 }
 
 /** The mounted widget whose own surface or shadow tree originated a scroll. */

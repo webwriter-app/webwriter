@@ -3,6 +3,7 @@ import {attributionAttributes} from "../src/attribution.js"
 import listMarkerStyleSource from "../src/document-list-markers.css?raw"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
+import {Schema} from "../src/schema"
 import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode} from "../src/utility"
@@ -2095,13 +2096,23 @@ await check("widget shadow interactions capture hosts while slotted children sta
   editor.schema.extendWidgets([{tagName: "native-content-capture-widget", editingConfig: {content: "flow*"}}])
   for(const mode of ["open", "closed"] as const) {
     const widget = document.createElement("native-content-capture-widget")
+    widget.tabIndex = -1
     widget.innerHTML = '<p>Authored <b>child text</b></p>'
     const root = widget.attachShadow({mode})
-    root.innerHTML = '<input value="2000"><slot></slot>'
+    root.innerHTML = '<div role="toolbar">Top bar</div><input value="2000"><slot></slot>'
     const input = root.querySelector("input")!, paragraph = widget.querySelector("p")!
     fixture.append(widget)
     try {
       await layoutFrame()
+      root.querySelector('[role="toolbar"]')!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+      widget.focus()
+      document.getSelection()!.setPosition(widget.parentNode!, Array.from(widget.parentNode!.childNodes).indexOf(widget))
+      document.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame()
+      assert(editor.features.selection.captureSelectedWidget === widget, `${mode} top-bar host focus lost capture`)
+      assert(!document.body.classList.contains("◆gap-caret-visible"), `${mode} top bar painted a gap instead of capture`)
+      assert(editor.features.selection.selectionCaret!.getAttribute("part")!.includes("selection-caret-capture"), `${mode} top bar lost the capture outline`)
+      assert(getComputedStyle(widget).outlineStyle === "none", `${mode} top bar retained the native inner focus outline`)
       input.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
       input.focus()
       input.setSelectionRange(1, 3)
@@ -2128,6 +2139,103 @@ await check("widget shadow interactions capture hosts while slotted children sta
     }
     finally { input.blur(); widget.remove() }
   }
+})
+
+await check("nested widget pages keep insertion, splitting and deletion inside their hosts", async () => {
+  const originalSchema = editor.schema
+  const placeholder = editor.features.media.placeholder
+  editor.schema = new Schema()
+  editor.schema.extendWidgets([
+    {tagName: "native-organizer", editingConfig: {content: "native-organizer-page*"}},
+    {tagName: "native-organizer-page", editingConfig: {content: "flow*"}},
+  ])
+  const organizer = document.createElement("native-organizer")
+  organizer.innerHTML = '<native-organizer-page node-id="first"></native-organizer-page><native-organizer-page node-id="second"><p>Other page</p></native-organizer-page>'
+  const page = organizer.firstElementChild as HTMLElement
+  const other = organizer.lastElementChild!
+  const root = organizer.attachShadow({mode: "open", slotAssignment: "manual"})
+  root.innerHTML = '<section style="padding:32px"><slot></slot><button>Private toolbar</button></section>'
+  root.querySelector("slot")!.assign(page, other)
+  const pageRoot = page.attachShadow({mode: "open"})
+  pageRoot.innerHTML = '<slot></slot><input value="Private UI">'
+  fixture.append(organizer)
+  editor.features.widget.refresh()
+  const key = (key: string, extra = {}) => {
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, composed: true, cancelable: true, ...extra})
+    page.dispatchEvent(event)
+    return event
+  }
+  try {
+    await layoutFrame()
+    page.focus()
+    $.move(page)
+    const input = new InputEvent("beforeinput", {inputType: "insertText", data: "abcd", bubbles: true, composed: true, cancelable: true})
+    page.dispatchEvent(input)
+    assert(input.defaultPrevented && page.querySelector("p")?.textContent === "abcd", "typing did not materialize a page paragraph")
+    $.move(page.querySelector("p")!.firstChild!, 2)
+    assert(key("Enter", {ctrlKey: true, metaKey: true}).defaultPrevented, "page host Enter was ignored")
+    assert(page.querySelectorAll("p").length === 2 && page.children[0].textContent === "ab" && page.children[1].textContent === "cd", "Enter did not split inside the page")
+    assert(organizer.children.length === 2 && organizer.lastElementChild === other, "Enter split a widget host")
+    key("Backspace")
+    assert(page.querySelectorAll("p").length === 1 && page.textContent === "abcd", "Backspace did not reverse the paragraph split")
+    $.move(page.querySelector("p")!.firstChild!, 2)
+    editor.features.manipulation.actions.insert({type: "insert", html: '<img alt="Example" src="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2280%22 height=%2240%22/%3E">'})
+    assert(page.querySelector("img") && page.querySelectorAll("p").length === 2, "image insertion escaped the page")
+    assert(!editor.features.selection.isCaptureSelection, "page text editing became widget capture")
+    const image = page.querySelector("img")!
+    image.removeAttribute("src")
+    placeholder.showFor(image.closest("picture") ?? image)
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.value = new URL("/assets/app-icon-transparent.svg", location.href).href
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    assert(image.hasAttribute("src"), "image source picker retained the schema from before package loading")
+    $.move(page.querySelector("p")!.firstChild!, 0)
+    key("Backspace")
+    assert(page.textContent === "abcd" && other.textContent === "Other page", "boundary deletion changed a sibling page")
+    page.replaceChildren()
+    $.move(page)
+    key("Backspace")
+    key("Delete")
+    assert(page.isConnected && document.getSelection()!.anchorNode === page, "empty page deletion lost the page or caret")
+    key("Enter")
+    assert(page.firstElementChild?.localName === "p", "empty page Enter did not create an editing target")
+    const graphic = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    graphic.setAttribute("viewBox", "0 0 100 100")
+    graphic.innerHTML = '<rect width="100" height="100" fill="steelblue"/>'
+    graphic.style.cssText = "display:block;width:240px;height:120px"
+    page.style.cssText = "display:block;padding:40px 16px"
+    for(const [placement, surface] of [["before", "page"], ["after", "page"], ["before", "slot padding"], ["after", "slot padding"]] as const) {
+      page.replaceChildren(graphic)
+      await layoutFrame()
+      editor.features.selection.captureElement(graphic)
+      const rect = graphic.getBoundingClientRect()
+      const boundary = surface === "page" ? rect : page.getBoundingClientRect()
+      const pointer = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0,
+        clientX: rect.left + rect.width / 2, clientY: placement === "before" ? boundary.top - 10 : boundary.bottom + 10})
+      ;(surface === "page" ? page : root.querySelector("section")!).dispatchEvent(pointer)
+      document.dispatchEvent(new PointerEvent("pointerup", {bubbles: true}))
+      assert(pointer.defaultPrevented, `${placement} page gap was left to native text selection`)
+      assert($.anchor === page && $.anchorOffset === (placement === "before" ? 0 : 1) && $.isGapSelection, `${placement} graphic gap escaped its page`)
+      assert(!editor.features.selection.isCaptureSelection && graphic.classList.contains(`◆gap-${placement}-selected`), `${placement} gap retained graphic or widget capture`)
+      assert(document.body.classList.contains("◆gap-caret-visible"), `${placement} page gap caret is hidden`)
+      page.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "Inserted", bubbles: true, composed: true, cancelable: true}))
+      assert(page.querySelector("p")?.textContent === "Inserted" && graphic.isConnected, "typing at a graphic gap did not stay in the page")
+    }
+    const paragraph = page.querySelector("p")!
+    const textRange = document.createRange()
+    textRange.selectNodeContents(paragraph)
+    const textRect = textRange.getBoundingClientRect()
+    const textPointer = new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0,
+      clientX: textRect.left + textRect.width / 2, clientY: textRect.top + textRect.height / 2})
+    paragraph.dispatchEvent(textPointer)
+    assert(!textPointer.defaultPrevented && !editor.features.selection.isInDragSelection, "slotted text clicks lost native selection")
+    const privateInput = pageRoot.querySelector("input")!
+    privateInput.focus()
+    const privateKey = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, composed: true, cancelable: true})
+    privateInput.dispatchEvent(privateKey)
+    assert(!privateKey.defaultPrevented, "page commands intercepted private shadow input")
+    assert(!editor.toHTML(true).includes("◆"), "page editing markers leaked into serialized content")
+  }
+  finally { pageRoot.querySelector("input")!.blur(); organizer.remove(); editor.schema = originalSchema }
 })
 
 await check("global directional shorthands preserve authored overrides in native CSSOM", () => {

@@ -983,6 +983,14 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     this.#releaseCaptureSelection()
+    const widgetGap = $.widgetGapFromCoords(ev.clientX, ev.clientY, origin, this.editor.schema)
+    if(widgetGap) {
+      ev.preventDefault()
+      ev.shiftKey ? $.extend(widgetGap.node, widgetGap.offset) : $.selectRange(widgetGap.node, widgetGap.offset)
+      this.#beginDrag(ev, false)
+      this.processSelection(true)
+      return
+    }
     // Let the browser resolve and extend ordinary authored text through the
     // widget's flattened slot tree. Document hit tests can instead land at a
     // host boundary; capturing the pointer and rewriting that range then pulls
@@ -2016,14 +2024,14 @@ export class SelectionFeature extends EditorFeature {
     const nativeRange = document.getSelection()
     const authoredFocus = nativeRange?.anchorNode && nativeRange.focusNode
       && shadowOwner?.contains(nativeRange.anchorNode) && shadowOwner.contains(nativeRange.focusNode)
-      && ($.isTextSelection || $.isEmptySelection)
+      && ($.isTextSelection || $.isEmptySelection || $.isGapSelection)
     const shadowFocused = shadowOwner && (shadowOwner.shadowRoot?.activeElement
-      || !shadowOwner.shadowRoot && this.#focusedContentfulShadow === shadowOwner && !authoredFocus)
+      || this.#focusedContentfulShadow === shadowOwner && !authoredFocus)
     const capturedWidget = this.#capturedElement
     if(!shadowFocused && capturedWidget && isContentfulWidget(capturedWidget, this.editor.schema)
       && nativeRange?.anchorNode && nativeRange.focusNode
       && capturedWidget.contains(nativeRange.anchorNode) && capturedWidget.contains(nativeRange.focusNode)
-      && ($.isTextSelection || $.isEmptySelection)) this.#releaseCaptureSelection()
+      && ($.isTextSelection || $.isEmptySelection || $.isGapSelection)) this.#releaseCaptureSelection()
     // Chromium can clear its native range when focusing an SVG-only document.
     // Keep capture or ordinary node selection until actual new endpoints exist.
     if(!document.getSelection()?.rangeCount) {

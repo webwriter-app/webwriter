@@ -287,7 +287,7 @@ class MediaPlaceholder {
     return this.element.isConnected && this.interactionActive
   }
 
-  constructor(private readonly schema: Schema) {
+  constructor(private readonly getSchema: () => Schema) {
     this.element.classList.add("◆", "◆editor-only", "◆media-placeholder")
     this.element.contentEditable = "false"
     this.element.setAttribute("part", "media-placeholder")
@@ -379,7 +379,7 @@ class MediaPlaceholder {
       const file = picker.files?.[0]
       if(!file || !this.target) return
       const target = this.target
-      if(document.body.contains(target) && isEmptyMedia(target) && !sourceEditingBlocked(target, this.schema)) {
+      if(document.body.contains(target) && isEmptyMedia(target) && !sourceEditingBlocked(target, this.getSchema())) {
         this.onSource?.(target, file, file.name)
       }
       picker.value = ""
@@ -399,7 +399,7 @@ class MediaPlaceholder {
 
   focusUrl() {
     if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)
-      || sourceEditingBlocked(this.target, this.schema)) return
+      || sourceEditingBlocked(this.target, this.getSchema())) return
     if(this.element.hasAttribute("data-compact") && !this.element.hasAttribute("data-popup-open")) {
       this.element.setAttribute("data-popup-open", "")
       this.root.querySelector(".expand")!.setAttribute("aria-expanded", "true")
@@ -449,7 +449,7 @@ class MediaPlaceholder {
 
   private applyUrl() {
     if(!this.target || !document.body.contains(this.target) || !isEmptyMedia(this.target)
-      || sourceEditingBlocked(this.target, this.schema)) return
+      || sourceEditingBlocked(this.target, this.getSchema())) return
     const input = this.root.querySelector<HTMLInputElement>(".url")!
     const source = input.value.trim()
     let url: URL | undefined
@@ -1247,7 +1247,7 @@ export class MediaFeature extends EditorFeature {
 
   get placeholder() {
     if(!this.mediaPlaceholder) {
-      this.mediaPlaceholder = new MediaPlaceholder(this.editor.schema)
+      this.mediaPlaceholder = new MediaPlaceholder(() => this.editor.schema)
       this.mediaPlaceholder.onSource = (target, source, fileName) => {
         const url = typeof source === "string" ? source : this.editor.createMediaURL(source)
         if(fileName) this.rememberSource(target, url, fileName, "file")

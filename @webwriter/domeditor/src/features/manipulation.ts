@@ -2646,9 +2646,15 @@ export class ManipulationFeature extends EditorFeature {
    * an element gap as a real schema-conformant text block. Returns the block
    * when one was created and null for an ordinary editing selection. */
   ensureTextBlock() {
-    return $.isGapSelection || $.isEmptyDocumentSelection
+    return $.isGapSelection || $.isEmptyDocumentSelection || $.isEmptySelection && isContentfulWidget($.anchor, this.editor.schema)
       ? this.insertTextBlockAtSelection() ?? null
       : null
+  }
+
+  private widgetEditingScope(node: Node | null) {
+    let element = isElement(node) ? node : node?.parentElement
+    while(element && !isContentfulWidget(element, this.editor.schema)) element = element.parentElement
+    return element ?? null
   }
 
   /** Runs a command and normalizes both the command's original surroundings
@@ -2753,7 +2759,7 @@ export class ManipulationFeature extends EditorFeature {
     return this.withNormalization(() => {
       $.delete()
       const block = getContainer($.range.startContainer)
-      if(isDocumentRoot(block) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)) {
+      if(isDocumentRoot(block) || isContentfulWidget(block, this.editor.schema) || isBoardCard(block) || this.editor.features.slides.active && isSlide(block)) {
         $.replace(...nodes)
         this.moveAfterInsertedNode(nodes.at(-1)!)
         return
@@ -2921,15 +2927,31 @@ export class ManipulationFeature extends EditorFeature {
   /** Applies the structural part of a split to any range, returning every
    * element whose content model may have changed. */
   private splitRange(range: Range, splitDepth: number, strict: boolean) {
-    let container = getContainer(range.startContainer)
+    let container = this.splitContainer(range)
     let offset = this.splitTextLikePoint(container, range)
     let target: Element | null = null
     const affected = new Set<Element>()
+    // Native or widget-authored text can live directly in a contentful host.
+    // Split just that inline run into paragraphs, retaining the host and its
+    // other children instead of duplicating page IDs or widget state.
+    if(isContentfulWidget(container, this.editor.schema)) {
+      const children = Array.from(container.childNodes)
+      let first = offset, last = offset
+      while(first > 0 && isParagraphContent(children[first - 1])) first--
+      while(last < children.length && isParagraphContent(children[last])) last++
+      const left = this.editor.schema.create(undefined, container.ownerDocument) as Element
+      const right = this.editor.schema.create(undefined, container.ownerDocument) as Element
+      container.insertBefore(left, children[first] ?? null)
+      left.append(...children.slice(first, offset))
+      container.insertBefore(right, children[offset] ?? null)
+      right.append(...children.slice(offset, last))
+      return {affected: new Set([container, left, right]), target: right}
+    }
     const splittingSummary = container.matches("summary")
     if(splittingSummary) splitDepth = 0
 
     for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -2954,18 +2976,26 @@ export class ManipulationFeature extends EditorFeature {
     return {affected, target}
   }
 
+  private splitContainer(range: Range) {
+    const container = getContainer(range.startContainer)
+    if(!isContentfulWidget(container, this.editor.schema)) return container
+    let element = isElement(range.startContainer) ? range.startContainer : range.startContainer.parentElement
+    while(element && isMarkElement(element)) element = element.parentElement
+    return element && isSectionElement(element) ? element : container
+  }
+
   /** Finds the smallest subtree that contains every node whose content model
    * a split can change. Transparent content models need their parent context,
    * so include that chain as well. */
   private splitValidationRoot(range: Range, splitDepth: number) {
     const documentRoot = getDocumentRoot()
-    let container = getContainer(range.startContainer)
+    let container = this.splitContainer(range)
     let root: Element | null = null
     const splittingSummary = container.matches("summary")
     if(splittingSummary) splitDepth = 0
 
     for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -3455,13 +3485,14 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       const summary = $.anchorContainer?.closest("summary")
-      if(ev.inputType.startsWith("delete") && $.anchorContainer?.closest("details")) {
+      if(ev.inputType.startsWith("delete") && ($.anchorContainer?.closest("details") || this.widgetEditingScope($.anchor))) {
         ev.preventDefault()
         const granularity = ev.inputType.includes("Word") ? "word" : ev.inputType.includes("Line") ? "line" : "character"
         this.delete(ev.inputType.toLowerCase().includes("backward") ? "backward" : "forward", granularity)
         return
       }
       if(ev.inputType === "insertParagraph" && (summary?.parentElement?.matches("details")
+        || this.widgetEditingScope($.anchor)
         || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6")
         || $.anchorContainer?.closest(Object.values(attributionAttributes).map(name => `[${name}]`).join(",")))) {
         ev.preventDefault()
@@ -3482,6 +3513,7 @@ export class ManipulationFeature extends EditorFeature {
       }
 
       const isVirtualSelection = $.isGapSelection || $.isEmptyDocumentSelection
+        || $.isEmptySelection && isContentfulWidget($.anchor, this.editor.schema)
       if(!isVirtualSelection) return
 
       if(ev.inputType === "insertParagraph") {
@@ -3658,7 +3690,7 @@ export class ManipulationFeature extends EditorFeature {
       for(let i = 0; i <= splitDepth; i++) {
         $.start instanceof Text && $.start.splitText($.startOffset)
         let container = getContainer(locus)
-        if(isDocumentRoot(container) || boardLayoutRole(container) || this.editor.features.slides.active && isSlide(container) || isOutOfFlow(container) || container.nodeName === "HTML") {continue}
+        if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) || boardLayoutRole(container) || this.editor.features.slides.active && isSlide(container) || isOutOfFlow(container) || container.nodeName === "HTML") {continue}
         const [,right] = getSidesOfPoint($.range)
         const schema = this.editor.schema.get(container)
         const next = (strict && schema.inseperable
@@ -3712,6 +3744,11 @@ export class ManipulationFeature extends EditorFeature {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     const range = $.range
+    // A widget exposes its content, not its own identity or its sibling pages,
+    // to text deletion. Resolve the nearest declared host from the live caret.
+    const scope = this.widgetEditingScope(range.startContainer)
+    if(range.collapsed && scope && (!scope.childNodes.length
+      || direction && isCaretAtBoundary(scope, direction === "backward" ? "start" : "end"))) return
     const selectedSummary = range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
       ? range.startContainer.childNodes.item(range.startOffset) : null
     if(isElement(selectedSummary) && selectedSummary.matches("details > summary")) {
@@ -3755,6 +3792,7 @@ export class ManipulationFeature extends EditorFeature {
       }
       const commonContainer = getContainer($.commonAncestor)
       if(!commonContainer.textContent && commonContainer !== document.body
+        && !isContentfulWidget(commonContainer, this.editor.schema)
         && !commonContainer.matches("details, details > summary")
         && !isDocumentRoot(commonContainer) && !boardLayoutRole(commonContainer) && !isOutOfFlow(commonContainer) && commonContainer.nodeName !== "HTML") {
         const emptyContainer = commonContainer
@@ -3772,13 +3810,16 @@ export class ManipulationFeature extends EditorFeature {
           $.move(next)
         }
         else {
-          $.move(getDocumentRoot())
+          $.move(scope ?? getDocumentRoot())
         }
         return
       }
       else if($.isEmpty && !$.isGapSelection) {
         const before = $.range.cloneRange()
         granularity === "block"? $.extend($.anchorContainer!, 0): $.extendBy(granularity, direction)
+        if(scope && $.focus && !scope.contains($.focus)) {
+          document.getSelection()?.extend(scope, direction === "backward" ? 0 : scope.childNodes.length)
+        }
         if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) {
           document.getSelection()?.setBaseAndExtent(before.startContainer, before.startOffset, before.endContainer, before.endOffset)
           return
