@@ -725,7 +725,8 @@ export class Schema {
     let nodeToCheck = typeof node === "string"? this.create(node, getInertDocument()): node
     
     if(!(nodeToCheck instanceof Element)) return true;
-    if(!this.#repairingContent && nodeToCheck.matches("p:not([is])")
+    if(!this.#repairingContent && (nodeToCheck.matches("p:not([is]), caption:not([is]), figcaption:not([is])")
+      || nodeToCheck.namespaceURI === document.documentElement.namespaceURI && nodeToCheck.closest("caption:not([is]), figcaption:not([is])"))
       && !(content ?? Array.from(nodeToCheck.childNodes)).every(isParagraphContent)) return false
     // A widget's data containers are valid under any content model.
     const contentToCheck = (content ?? Array.from(nodeToCheck.childNodes)).filter(child => child.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(child))

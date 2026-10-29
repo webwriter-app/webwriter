@@ -37,6 +37,25 @@ beforeEach(() => {
 })
 afterEach(() => editor.destroy())
 
+describe("caption formulas", () => {
+  it.each(["caption", "figcaption"])("inserts inline formulas in %s and rejects display conversion", tag => {
+    document.body.innerHTML = tag === "caption"
+      ? '<table><caption><b>Text</b></caption><tbody><tr><td>Cell</td></tr></tbody></table>'
+      : '<figure><p>Content</p><figcaption><b>Text</b></figcaption></figure>'
+    const caption = document.querySelector(tag)!
+    $.move(caption.querySelector("b")!.firstChild!, 2)
+    expect(editor.features.math.insert()).toBe(true)
+    const math = caption.querySelector("math")!
+    expect(math.namespaceURI).toBe(MATH_NAMESPACE)
+    expect(math.getAttribute("display")).not.toBe("block")
+    expect(math.parentElement?.localName).toBe("b")
+    const original = clean()
+    expect(command("display:block")).toBe(false)
+    expect(clean()).toBe(original)
+    expect(caption.isConnected).toBe(true)
+  })
+})
+
 describe("formula shortcut modifiers", () => {
   afterEach(() => vi.restoreAllMocks())
 

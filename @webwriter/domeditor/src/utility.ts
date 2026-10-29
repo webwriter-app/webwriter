@@ -16,7 +16,7 @@ export function isParagraphContent(node: Node): boolean {
   if(node.nodeType === Node.TEXT_NODE || node.nodeType === Node.COMMENT_NODE) return true
   if(!isElement(node) || node.hasAttribute("is")) return false
   if(node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
-  if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return true
+  if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return Array.from(node.childNodes).every(isParagraphContent)
   return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
 }
 

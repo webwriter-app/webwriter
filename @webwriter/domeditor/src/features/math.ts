@@ -437,6 +437,7 @@ export class MathFeature extends EditorFeature {
   }
 
   private setDisplay(math: Element, display: "inline" | "block") {
+    if(display === "block" && math.parentElement?.closest("caption, figcaption")) return false
     const block = this.textBlockAt(math.parentNode)
     const selection = document.getSelection()!
     const selected = this.selectedMath === math

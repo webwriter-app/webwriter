@@ -21,6 +21,95 @@ import {replayHostDrag, selectionChangeEvent, type RibbonDropPosition, type Sele
 
 let editor: DOMEditor
 
+describe("caption insertion content", () => {
+  function loadCaption(tag: string) {
+    document.body.innerHTML = tag === "figcaption"
+      ? '<figure><picture><img src="test.png"></picture><figcaption><!--keep--><b><i>Caption</i></b></figcaption></figure><p>Outside</p>'
+      : '<table><caption><!--keep--><b><i>Caption</i></b></caption><tbody><tr><td>Cell</td></tr></tbody></table><p>Outside</p>'
+    const caption = document.querySelector(tag)!
+    $.move(caption.querySelector("i")!.firstChild!, 3)
+    return caption
+  }
+
+  it.each(["caption", "figcaption"])("rejects commands, paste, and native transfers inside marked %s text", tag => {
+    editor.schema.extendWidgets([{tagName: "inline-widget", editingConfig: {inline: true}}])
+    for(const html of ['<p>Paragraph</p>', '<picture><img src="other.png"></picture>', '<inline-widget></inline-widget>']) {
+      const caption = loadCaption(tag), mark = caption.querySelector("i")!, original = editor.toHTML(true)
+      const {fragment} = editor.parseHTMLFragment(html)
+      editor.features.manipulation.insert(fragment)
+      expect(editor.toHTML(true)).toBe(original)
+      editor.features.manipulation.insertHTML(html)
+      expect(editor.toHTML(true)).toBe(original)
+      const data = new DataTransfer()
+      data.setData("text/html", html)
+      document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+      expect(editor.toHTML(true)).toBe(original)
+      document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertFromDrop", dataTransfer: data, bubbles: true, cancelable: true}))
+      expect(editor.toHTML(true)).toBe(original)
+      expect(caption.querySelector("i")).toBe(mark)
+    }
+  })
+
+  it.each(["caption", "figcaption"])("keeps %s intact for structural commands and Enter", tag => {
+    const caption = loadCaption(tag), original = editor.toHTML(true)
+    for(const elementTag of ["p", "h1", "ul", "details", "section"] as const) {
+      editor.features.manipulation.actions.insertElement({type: "insertElement", tag: elementTag})
+      expect(editor.toHTML(true)).toBe(original)
+    }
+    document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true}))
+    expect(editor.toHTML(true)).toBe(original)
+    editor.features.manipulation.wrap(document.createElement("section"))
+    expect(editor.toHTML(true)).toBe(original)
+    expect(caption.isConnected).toBe(true)
+  })
+
+  it.each(["caption", "figcaption"])("preserves marked inline content in %s through undo and redo", tag => {
+    const caption = loadCaption(tag), original = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.manipulation.insertHTML('<span title="authored"><u>inserted</u><br></span>')
+    expect(caption.querySelector("i > span")?.innerHTML).toBe('<u>inserted</u><br>')
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+    expect(changed).not.toContain("◆")
+  })
+
+  it.each(["caption", "figcaption"])("rejects live element moves and copies into %s without losing the source", tag => {
+    vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
+    for(const copy of [false, true]) {
+      const caption = loadCaption(tag), source = document.querySelector("p")!, original = editor.toHTML(true)
+      const data = new DataTransfer()
+      editor.features.manipulation.startNodeDrag(transferEvent("dragstart", data) as DragEvent, source)
+      vi.spyOn($, "pointFromCoords").mockReturnValue({node: caption.querySelector("i")!.firstChild!, offset: 3})
+      caption.dispatchEvent(transferEvent("dragover", data, {ctrlKey: copy}))
+      expect(data.dropEffect).toBe("none")
+      caption.dispatchEvent(transferEvent("drop", data, {ctrlKey: copy}))
+      expect(editor.toHTML(true)).toBe(original)
+      expect(source.parentElement).toBe(document.body)
+      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    }
+  })
+
+  it.each(["caption", "figcaption"])("rejects external and ribbon drops into %s", tag => {
+    const caption = loadCaption(tag), original = editor.toHTML(true)
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: caption.querySelector("i")!.firstChild!, offset: 3})
+    const data = new DataTransfer()
+    data.setData("text/html", '<p>External</p>')
+    caption.dispatchEvent(transferEvent("drop", data))
+    expect(editor.toHTML(true)).toBe(original)
+    data.setData(elementDragType, "p")
+    data.setData(`${elementDragType}-p`, "p")
+    caption.dispatchEvent(transferEvent("drop", data))
+    expect(editor.toHTML(true)).toBe(original)
+    expect(caption.isConnected).toBe(true)
+  })
+})
+
 describe("paragraph insertion content", () => {
   it("keeps an authored identity on the original paragraph when Enter creates a continuation", () => {
     document.body.innerHTML = '<p id="original" title="keep">Before</p>'

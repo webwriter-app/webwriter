@@ -1117,6 +1117,7 @@ export class ManipulationFeature extends EditorFeature {
       event.clientX, event.clientY, event.target, this.editor.schema, root, root,
     ))
     if(!point || !getDocumentRoot().contains(point.node)) return null
+    if(source && !this.allowsCaptionInsertion([source], point.node)) return null
     const range = document.createRange()
     if(source?.contains(point.node)) return null
     range.setStart(point.node, point.offset)
@@ -1269,6 +1270,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!selection?.rangeCount || this.editor.isEditingLocked) return false
     const range = selection.getRangeAt(0).cloneRange()
     const root = getDocumentRoot()
+    if(!this.allowsCaptionInsertion([document.createElement(tag)], range.startContainer)) return true
     if($.excludedFlowElements.length && !$.selectedElement && !this.editor.features.selection.captureSelectedElement) return true
     if(!root.contains(range.startContainer) || !root.contains(range.endContainer)
       || atomicEditingContainer(range.startContainer, this.editor.schema)
@@ -1500,6 +1502,7 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private createRibbonElement(tag: string) {
+    if(!this.allowsCaptionInsertion([this.ribbonElement(tag)])) return
     if(this.convertInsertion(tag)) return
     if(tag === "table") this.editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
     else if(tag === "details" && this.commandPlacement) {
@@ -2767,6 +2770,7 @@ export class ManipulationFeature extends EditorFeature {
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false) {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
+    if(!this.allowsCaptionInsertion(Array.from(fragment.childNodes))) return false
     if(commandInsertion) {
       this.hoverInsertion(false)
       if(this.replaceInsertionElement(fragment)) return
@@ -3116,6 +3120,13 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
+  /** Captions share prose's inline vocabulary, even inside nested marks. Check
+   * the live destination before a command moves or replaces any content. */
+  allowsCaptionInsertion(nodes: Node[], container: Node | null = $.anchor) {
+    const caption = (container instanceof Element ? container : container?.parentElement)?.closest("caption:not([is]), figcaption:not([is])")
+    return !caption || this.editor.schema.isContentValid(caption, nodes)
+  }
+
   /** Inserts a break only when it is valid at the current selection. */
   private insertBreak(type: "br" | "wbr", preserveContainer = false) {
     // Freeform carets between breaks stay in their existing text container.
@@ -3459,6 +3470,7 @@ export class ManipulationFeature extends EditorFeature {
         return
       }
       if(ev.inputType === "insertParagraph" && (summary?.parentElement?.matches("details")
+        || $.anchorContainer?.closest("caption, figcaption")
         || this.widgetEditingScope($.anchor)
         || $.anchorContainer?.matches("h1, h2, h3, h4, h5, h6")
         || $.anchorContainer?.closest(Object.values(attributionAttributes).map(name => `[${name}]`).join(",")))) {
@@ -3582,6 +3594,7 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
+    if(node && !this.allowsCaptionInsertion(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])) return false
     if(isElement(node) && !node.parentNode) {
       const entry = this.editor.schema.get(node)
       if(entry.wrapper || entry.replacement || entry.requiredAttributes) {
@@ -3860,8 +3873,10 @@ export class ManipulationFeature extends EditorFeature {
    * the selection and is returned. Without an argument (Tab behavior), the
    * anchor's container element is moved into the adjacent element (preferring
    * the previous one), which is returned — or undefined if there is none.
-   * No schema validation is performed. */
+   * Caption destinations accept only inline content. */
   wrap(wrapping?: DocumentFragment | Element) {
+    const candidate = wrapping instanceof DocumentFragment ? wrapping.firstElementChild : wrapping
+    if(candidate && !this.allowsCaptionInsertion([candidate])) return
     return this.withNormalization(() => {
       if(wrapping) {
         const wrapper = wrapping instanceof DocumentFragment? wrapping.firstElementChild: wrapping
@@ -3875,6 +3890,7 @@ export class ManipulationFeature extends EditorFeature {
         if(!wrapper) {
           return
         }
+        if($.anchorContainer && !this.allowsCaptionInsertion([$.anchorContainer], wrapper)) return
         if($.anchorContainer) wrapper.append($.anchorContainer)
         return wrapper
       }

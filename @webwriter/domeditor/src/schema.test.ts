@@ -49,6 +49,86 @@ describe("paragraph content", () => {
   })
 })
 
+describe("caption content", () => {
+  it.each(["caption", "figcaption"])("allows phrasing content in <%s>", tag => {
+    const schema = new Schema()
+    const caption = document.createElement(tag)
+    const ruby = document.createElement("ruby")
+    ruby.append("漢", document.createElement("rt"))
+    const math = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+    math.setAttribute("display", "inline")
+    caption.append("Text", document.createComment("keep"), document.createElement("strong"), document.createElement("br"), document.createElement("wbr"), ruby, math)
+    caption.querySelector("strong")!.textContent = "marked"
+
+    expect(schema.isContentValid(caption)).toBe(true)
+  })
+
+  it.each(["caption", "figcaption"])("rejects flow content, media, controls, and foreign graphics in <%s>", tag => {
+    const forbidden = ["p", "ul", "ol", "div", "img", "video", "audio", "svg", "input", "select", "textarea", "button"]
+    for(const childTag of forbidden) {
+      const caption = document.createElement(tag)
+      const child = childTag === "svg"
+        ? document.createElementNS("http://www.w3.org/2000/svg", childTag)
+        : document.createElement(childTag)
+      expect(editor.schema.canInsert(caption, child, 0), `<${tag}> rejects <${childTag}>`).toBe(false)
+      caption.append(child)
+      expect(editor.schema.isContentValid(caption), `<${tag}> rejects <${childTag}> as a child`).toBe(false)
+    }
+  })
+
+  it.each(["caption", "figcaption"])("rejects custom elements, customized built-ins, and widgets in <%s>", tag => {
+    const schema = new Schema()
+    schema.extendWidgets([{tagName: "inline-test-widget", editingConfig: {inline: true, content: "#text*"}}])
+    const custom = document.createElement("unknown-custom-element")
+    const customizedBuiltIn = document.createElement("button")
+    customizedBuiltIn.setAttribute("is", "custom-button")
+    const widget = document.createElement("inline-test-widget")
+    const caption = document.createElement(tag)
+
+    for(const child of [custom, customizedBuiltIn, widget]) {
+      expect(schema.canInsert(caption, child, 0)).toBe(false)
+      caption.replaceChildren(child)
+      expect(schema.isContentValid(caption)).toBe(false)
+    }
+  })
+
+  it.each(["caption", "figcaption"])("rejects forbidden descendants inside marks and noneditable content in <%s>", tag => {
+    const schema = new Schema()
+    for(const child of [document.createElement("p"), document.createElement("img"), document.createElement("input")]) {
+      const mark = document.createElement("strong")
+      mark.append(child)
+      const caption = document.createElement(tag)
+      caption.append(mark)
+      expect(schema.isContentValid(caption)).toBe(false)
+
+      const emptyMark = document.createElement("strong")
+      caption.replaceChildren(emptyMark)
+      expect(schema.canInsert(emptyMark, child.cloneNode(true), 0)).toBe(false)
+
+      const noneditable = document.createElement("span")
+      noneditable.setAttribute("contenteditable", "false")
+      noneditable.append(child.cloneNode(true))
+      caption.replaceChildren(noneditable)
+      expect(schema.isContentValid(caption)).toBe(false)
+    }
+  })
+
+  it.each(["caption", "figcaption"])("rejects block MathML formulas in <%s>", tag => {
+    const math = document.createElementNS("http://www.w3.org/1998/Math/MathML", "math")
+    math.setAttribute("display", "block")
+    const caption = document.createElement(tag)
+    expect(editor.schema.canInsert(caption, math, 0)).toBe(false)
+    caption.append(math)
+    expect(editor.schema.isContentValid(caption)).toBe(false)
+  })
+
+  it.each(["caption", "figcaption"])("rejects media hidden in ruby annotations in <%s>", tag => {
+    const caption = document.createElement(tag)
+    caption.innerHTML = '<ruby>Text<rt><img src="test.png"></rt></ruby>'
+    expect(editor.schema.isContentValid(caption)).toBe(false)
+  })
+})
+
 describe("widget marks", () => {
   it("parses explicit mark lists and treats underscore as allow-all", () => {
     expect(parseWidgetMarks(" bold  italic ")).toEqual(["bold", "italic"])
