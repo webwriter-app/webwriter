@@ -9,6 +9,7 @@ import {LOCAL_PACKAGE_ROUTE_PREFIX} from "../local-package-worker"
 import {packageImportMapScript, packageModuleEntries, runtimeDocumentBaseURL, type PackageDependencyPlan} from "../package-dependencies"
 import {relayFrameLocalPackageRequest} from "../frame-local-packages"
 import {editorHostOrigin} from "../frame-origins"
+import {documentWidgetStyleSource} from "../document-themes"
 
 
 export class DependencyFeature extends EditorFeature {
@@ -216,6 +217,13 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     document.head.append(...styles, ...scripts)
     await Promise.all(assetLoads)
     if(sequence !== this.widgetLoadSequence) return
+    document.getElementById("webwriter-widget-sizing")?.remove()
+    const sizingStyle = document.createElement("style")
+    sizingStyle.id = "webwriter-widget-sizing"
+    sizingStyle.nonce = this.editor.trustedScriptNonce
+    sizingStyle.classList.add("◆", "◆editor-only")
+    sizingStyle.textContent = documentWidgetStyleSource(widgetDefinitions)
+    if(sizingStyle.textContent) document.head.append(sizingStyle)
     this.editor.features.insertion.menu.requestUpdate()
   }
 
@@ -230,6 +238,7 @@ ${styleUrl ? `<link rel="stylesheet" nonce="${nonce}" href="${escapeHTMLAttribut
     this.pendingAssetCancellations.forEach(cancel => cancel())
     this.pendingAssetCancellations.clear()
     this.widgetAssets.forEach(element => element.remove())
+    document.getElementById("webwriter-widget-sizing")?.remove()
     this.widgetAssets = []
     this.widgetPackages = []
     this.dependencyPlan = null

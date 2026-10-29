@@ -45,6 +45,21 @@ it("keeps encoding metadata before the adapter and installs it before widget mod
   expect(root.documentElement.outerHTML.indexOf('charset="utf-8"')).toBeLessThan(1024)
 })
 
+it("serializes default sizing for installed nested widgets without affecting other layouts", () => {
+  const root = new DOMParser().parseFromString('<body><main><section><demo-widget><demo-widget></demo-widget></demo-widget></section></main></body>', "text/html")
+  const pkg = {scripts: [], styles: [], members: [{kind: "widget", tagName: "demo-widget"}]} as unknown as WebWriterPackage
+  appendSerializedAssets(root, [pkg])
+  const style = root.querySelector<HTMLStyleElement>("#webwriter-widget-sizing")!
+  expect(style.textContent).toContain("body:not([class~=\"ww-canvas\"]):not([class~=\"ww-slides\"]):not([class~=\"ww-board\"]) :is(demo-widget)")
+  expect(style.textContent).toContain("max-inline-size: min(100%, var(--ww-widget-max, var(--ww-prose-max, 45rem)));")
+  expect(style.textContent).toContain(":is(demo-widget) {\n  display: block;")
+  appendSerializedAssets(root, [pkg])
+  expect(root.querySelectorAll("#webwriter-widget-sizing")).toHaveLength(1)
+  root.body.className = "ww-canvas"
+  appendSerializedAssets(root, [pkg])
+  expect(root.querySelector("#webwriter-widget-sizing")!.textContent).toContain("body:not([class~=\"ww-canvas\"])")
+})
+
 it("includes aligned marker styling in standalone exports without changing the body", () => {
   const root = new DOMParser().parseFromString('<ul style="--ww-list-marker-image: url(data:image/png;base64,AQID); list-style-image: var(--ww-list-marker-image)"><li>Item</li></ul>', "text/html")
   const body = root.body.innerHTML

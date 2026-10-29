@@ -5,6 +5,7 @@ import {
   documentThemes,
   documentTheme,
   editingDocumentThemeSource,
+  documentWidgetStyleSource,
 } from "./document-themes"
 
 const ruleHeaders = (source: string) => Array.from(
@@ -15,6 +16,19 @@ const ruleHeaders = (source: string) => Array.from(
 const layoutExamples = import.meta.glob("../examples/layouts/**/*.html", {query: "?raw", import: "default", eager: true}) as Record<string, string>
 
 describe("document themes", () => {
+  it("bounds installed widget hosts in document layouts while retaining sizing overrides", () => {
+    const source = documentWidgetStyleSource([
+      {tagName: "demo-card"}, {tagName: "demo-card"},
+      {tagName: "demo-inline", editingConfig: {inline: true}},
+      {tagName: "demo-contents", editingConfig: {inline: true}},
+    ])
+    expect(source).toContain("body:not([class~=\"ww-canvas\"]):not([class~=\"ww-slides\"]):not([class~=\"ww-board\"]) :is(demo-card, demo-contents, demo-inline)")
+    expect(source).toContain("max-inline-size: min(100%, var(--ww-widget-max, var(--ww-prose-max, 45rem)));")
+    expect(source).toContain(":is(demo-card):not([hidden]) {\n  display: block;")
+    expect(source).toContain(":is(demo-inline, demo-contents):not([hidden]) {\n  display: inline-block;")
+    expect(documentWidgetStyleSource([{tagName: "div"}])).toBe("")
+  })
+
   it("defaults iframes to 16:9 with low-priority CSS in editing and exports", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain(":where(iframe:not([is])) {\n    aspect-ratio: 16 / 9;\n  }")

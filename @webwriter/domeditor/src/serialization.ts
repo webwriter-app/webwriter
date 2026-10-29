@@ -19,6 +19,7 @@ import {packageWidgetSchemaDefinitions, type WebWriterPackage} from "./packages"
 import type {IImportMap} from "@jspm/import-map"
 import {hasImportMapEntries, packageImportMapId, packageImportMapScript, packageModuleEntries} from "./package-dependencies"
 import {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype} from "./serialization-primitives"
+import {documentWidgetStyleSource} from "./document-themes"
 export {originalURLAttribute, originalPackageEntriesAttribute, offlinePackageStyleAttribute, escapeHTMLAttribute, serializeDoctype} from "./serialization-primitives"
 import {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
 export {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
@@ -156,6 +157,14 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const template = root.createElement("template")
     template.innerHTML = item.html
     collectTags(template.content)
+  }
+  root.querySelectorAll('style[id="webwriter-widget-sizing"]').forEach(style => style.remove())
+  const widgetSizing = documentWidgetStyleSource(packageWidgetSchemaDefinitions(packages))
+  if(widgetSizing) {
+    const style = root.createElement("style")
+    style.id = "webwriter-widget-sizing"
+    style.textContent = widgetSizing
+    head.append(style)
   }
   if(permissions.size) {
     const script = root.createElement("script")
