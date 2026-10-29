@@ -75,6 +75,7 @@ const expectedChecks = [
   "marker image uploads preview before applying",
   "character deletion preserves adjacent spaces",
   "cut paragraphs retain a visible native caret position",
+  "list markers survive native cut and paste",
   "paragraph boundary deletion reverses Enter in Document and Board",
   "triple clicks preserve native paragraph selections in Document and Board",
   "Elements pullout reserves matching padding after its opening animation",

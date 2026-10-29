@@ -3538,10 +3538,13 @@ export class ManipulationFeature extends EditorFeature {
       ev.clipboardData.setData("text/plain", text)
     },
     "cut": ev => {
+      if(ev.defaultPrevented || !ev.clipboardData || $.isEmpty) return
       const selected = $.selectedElement
-      if(!ev.clipboardData || selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length) return
+      const fragment = $.copy()
+      if(selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length
+        && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu"))) return
       ev.preventDefault()
-      const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment($.copy())
+      const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment)
       ev.clipboardData.setData("text/html", html)
       ev.clipboardData.setData("text/plain", text)
       $.delete()

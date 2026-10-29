@@ -1101,6 +1101,48 @@ describe("slice/copy()", () => {
     expect(fragment.firstElementChild?.outerHTML).toBe("<b>ell</b>")
     expect(document.body.innerHTML).toBe("<p><b>hello</b></p>")
   })
+  it.each([
+    ["ol", '<li>First</li><!--keep--><li><b>Second</b><my-widget></my-widget></li>'],
+    ["ul", '<li>First</li><!--keep--><li><b>Second</b><my-widget></my-widget></li>'],
+    ["menu", '<li>First</li><!--keep--><li><b>Second</b><my-widget></my-widget></li>'],
+    ["dl", '<dt>First</dt><!--keep--><dd><b>Second</b><my-widget></my-widget></dd>'],
+  ])("retains the authored %s shell around selected items", (tag, content) => {
+    setBody(`<${tag} class="authored" style="list-style-type: upper-alpha">${content}</${tag}><p>Elsewhere</p>`)
+    const list = document.body.firstElementChild!
+    const original = document.body.innerHTML
+    $.selectRange(list, 0, list, list.childNodes.length)
+
+    const fragment = $.copy()
+
+    expect(fragment.firstElementChild?.outerHTML).toBe(list.outerHTML)
+    expect(fragment.children).toHaveLength(1)
+    expect(fragment.ownerDocument.defaultView).toBeNull()
+    expect(document.body.innerHTML).toBe(original)
+  })
+  it("retains live numbering attributes and nested lists around partial item text", () => {
+    setBody('<ol type="A" start="5" reversed><li>First</li><li><b>Second</b><ul><li>Nested</li></ul></li><li value="9"><i>Third</i></li></ol>')
+    const list = document.querySelector("ol")!
+    $.selectRange(document.querySelector("b")!.firstChild!, 2, document.querySelector("i")!.firstChild!, 3)
+    list.setAttribute("type", "i")
+
+    expect($.copy().firstElementChild?.outerHTML).toBe('<ol type="i" start="5" reversed=""><li><b>cond</b><ul><li>Nested</li></ul></li><li value="9"><i>Thi</i></li></ol>')
+  })
+  it("wraps an explicitly selected item but keeps text within one item inline", () => {
+    setBody('<ul style="list-style-type: square"><li><b>First</b></li><li>Second</li></ul>')
+    $.selectElement(document.querySelector("li")!)
+    expect($.copy().firstElementChild?.outerHTML).toBe('<ul style="list-style-type: square"><li><b>First</b></li></ul>')
+    const text = document.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 4)
+    expect($.copy().firstElementChild?.outerHTML).toBe("<b>irs</b>")
+  })
+  it("keeps a mixed list and paragraph range without duplicating the list shell", () => {
+    setBody('<ol type="a"><li>First</li><li>Second</li></ol><p>Elsewhere</p>')
+    $.selectRange(document.querySelectorAll("li")[1].firstChild!, 2, document.querySelector("p")!.firstChild!, 4)
+    const fragment = $.copy()
+    expect(fragment.children).toHaveLength(2)
+    expect(fragment.firstElementChild?.outerHTML).toBe('<ol type="a"><li>cond</li></ol>')
+    expect(fragment.lastElementChild?.outerHTML).toBe('<p>Else</p>')
+  })
   it("omits positioned elements and their descendants from a broad range", () => {
     setBody(`<p>before</p><div style="position: absolute"><b>overlay</b></div><div style="position: fixed"><i>fixed</i></div><p>after</p>`)
     const texts = document.querySelectorAll("p")

@@ -3073,6 +3073,43 @@ describe("lift()", () => {
   })
 })
 describe("internal clipboard fidelity", () => {
+  it.each([
+    ["ol", "upper-alpha"], ["ol", "lower-roman"], ["ul", "square"],
+  ])("preserves %s %s markers when moving list items through every clipboard path", async (tag, style) => {
+    for(const method of ["native-copy", "native-cut", "async-copy", "async-cut"]) {
+      document.body.innerHTML = `<${tag} style="list-style-type: ${style}"><li>First</li><li>Second</li><li>Third</li><li>Fourth</li></${tag}><p>Elsewhere</p>`
+      const list = document.querySelector(tag)!
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      $.selectRange(list, 2, list, 4)
+      const data = new DataTransfer()
+      if(method.startsWith("native")) {
+        const event = new ClipboardEvent(method.endsWith("cut") ? "cut" : "copy", {clipboardData: data, bubbles: true, cancelable: true})
+        document.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+      }
+      else if(method.endsWith("cut")) await editor.features.manipulation.cut()
+      else await editor.features.manipulation.copy()
+      expect(list.children).toHaveLength(method.endsWith("cut") ? 2 : 4)
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      $.move(document.body, document.body.childNodes.length)
+      if(method.startsWith("native")) document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+      else await editor.features.manipulation.paste()
+      editor.doc.syncFromDOM()
+      const pasted = document.body.lastElementChild as HTMLElement
+      expect(pasted.localName).toBe(tag)
+      expect(pasted.style.listStyleType).toBe(style)
+      expect(pasted.innerHTML).toBe("<li>Third</li><li>Fourth</li>")
+      expect(editor.toHTML(true)).not.toContain("◆")
+      expect(editor.toHTML(true)).not.toContain("webwriter-clipboard")
+      editor.doc.undo()
+      expect(document.querySelectorAll(tag)).toHaveLength(1)
+      editor.doc.redo()
+      expect((document.body.lastElementChild as HTMLElement).style.listStyleType).toBe(style)
+    }
+  })
+
   it.each(["native", "async"])("preserves image crop and attached captions through %s copy/paste with undo and redo", async method => {
     document.body.innerHTML = '<figure id="image"><picture style="width:340px"><img src="https://example.test/photo.png" style="object-view-box:inset(0% 0% 0% 15%);width:340px"></picture><figcaption style="text-align:center">Caption</figcaption><!--keep--></figure><p>End</p>'
     editor.doc.syncFromDOM()

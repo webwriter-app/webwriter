@@ -1252,14 +1252,14 @@ export class EditingSelection {
   static copy() {
     if(this.isMultiElementSelection) {
       const fragment = getInertDocument(this.range.startContainer).createDocumentFragment()
-      for(const range of this.flowRanges) fragment.append(this.cloneFlowContents(range))
+      for(const range of this.flowRanges) fragment.append(this.cloneClipboardContents(range))
       return fragment
     }
     const root = getDocumentRoot()
     const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
     const range = copyingRoot ? document.createRange() : this.range
     if(copyingRoot) range.selectNodeContents(root)
-    let fragment = this.cloneFlowContents(range)
+    let fragment = this.cloneClipboardContents(range)
     const commonAncestor = this.range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
     while(sharedMark && isMarkElement(sharedMark)) {
@@ -1268,6 +1268,20 @@ export class EditingSelection {
       fragment = wrapper.ownerDocument.createDocumentFragment()
       fragment.append(wrapper)
       sharedMark = sharedMark.parentElement
+    }
+    return fragment
+  }
+
+  /** Range cloning omits its common ancestor. Retain a list's authored shell
+   * when copying its items so their marker type survives outside that list. */
+  private static cloneClipboardContents(range: Range) {
+    const fragment = this.cloneFlowContents(range)
+    const list = range.commonAncestorContainer
+    if(isElement(list) && !list.hasAttribute("is") && list.matches("ul, ol, dl, menu")
+      && Array.from(fragment.children).some(child => child.matches("li, dt, dd"))) {
+      const wrapper = cloneInert(list)
+      wrapper.append(fragment)
+      fragment.append(wrapper)
     }
     return fragment
   }

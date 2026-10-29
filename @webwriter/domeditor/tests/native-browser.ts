@@ -19,6 +19,7 @@ import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
 import {checkBoardMedia} from "./board-media"
 import {checkParagraphCut} from "./paragraph-cut"
+import {checkListClipboard} from "./list-clipboard"
 import {checkGraphicShapeFills} from "./graphic-shape-presets"
 import {checkGraphicArrowheads} from "./graphic-arrowheads"
 import {checkGraphicPaint} from "./graphic-paint"
@@ -3220,6 +3221,7 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
 })
 
 await check("cut paragraphs retain a visible native caret position", checkParagraphCut)
+await check("list markers survive native cut and paste", checkListClipboard)
 
 await check("paragraph boundary deletion reverses Enter in Document and Board", async () => {
   const frame = document.createElement("iframe")
