@@ -513,12 +513,17 @@ export class DOMEditor {
         childList: true, subtree: true, characterData: true, attributes: true,
       })
       if(!initialYDoc && !options.reader) this.#ensureDocumentContent()
+      const beforeSyncFromDOM = options.reader ? undefined : (local: boolean) => {
+        this.features.widget.flushMutations(local)
+        this.features.attribution.normalize()
+      }
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
         this.doc = new SharedDOMDoc(syncUrl.origin, sessionId, this.ignoreAttrs, this.ignoreClasses, {
           connectionParams: Object.fromEntries([...syncUrl.searchParams].filter(([key]) => key !== "session")),
           documentPermalinks: !options.reader,
-          beforeSyncFromDOM: options.reader ? undefined : () => this.features.attribution.normalize(),
+          beforeSyncFromDOM,
+          canRemoveMinimumContentRepair: (element, repairs) => this.features.widget.canRemoveMinimumContentRepair(element, repairs),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),
@@ -527,7 +532,8 @@ export class DOMEditor {
       else {
         this.doc = new SharedDOMDoc(undefined, undefined, this.ignoreAttrs, this.ignoreClasses, {
           documentPermalinks: !options.reader,
-          beforeSyncFromDOM: options.reader ? undefined : () => this.features.attribution.normalize(),
+          beforeSyncFromDOM,
+          canRemoveMinimumContentRepair: (element, repairs) => this.features.widget.canRemoveMinimumContentRepair(element, repairs),
           widgetData: {...options.widgetData, documentId: options.widgetData?.documentId ?? initialState?.widgetDataDocumentId},
           supportsWidgetData: widget => this.schema.get(widget)?.sharedData === true,
           ...(initialYDoc ? {ydoc: initialYDoc} : {}),

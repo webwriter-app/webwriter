@@ -86,7 +86,9 @@ export type DOMChangePreview = {
 
 export type SharedDOMDocOptions = {
   /** Derives owned DOM metadata before seeding/sync; must be idempotent. */
-  beforeSyncFromDOM?: () => void
+  beforeSyncFromDOM?: (local: boolean) => void
+  /** Whether a pristine generated child can be removed from a nested container. */
+  canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
   documentPermalinks?: boolean
   widgetData?: WidgetDataOptions
   supportsWidgetData?: (widget: Element) => boolean
@@ -203,7 +205,8 @@ export class SharedDOMDoc {
   readonly #historyStateObservers = new Set<() => void>()
   #historyStateQueued = false
   readonly #documentPermalinks: boolean
-  readonly #beforeSyncFromDOM?: () => void
+  readonly #beforeSyncFromDOM?: (local: boolean) => void
+  readonly #canRemoveMinimumContentRepair?: (element: Element, repairs: readonly Element[]) => boolean
   readonly #scopeBoundary?: (element: Element) => boolean
 
   constructor(
@@ -217,6 +220,7 @@ export class SharedDOMDoc {
   ) {
     this.root = options.root ?? document.body
     this.#beforeSyncFromDOM = options.beforeSyncFromDOM
+    this.#canRemoveMinimumContentRepair = options.canRemoveMinimumContentRepair
     this.#scopeBoundary = options.scopeBoundary
     this.#documentPermalinks = options.documentPermalinks ?? false
     this.#document = this.root.ownerDocument
@@ -335,7 +339,7 @@ export class SharedDOMDoc {
         this.#selectMirror(mirror)
       }
       if(!hasSharedDOM) {
-        this.#beforeSyncFromDOM?.()
+        this.#beforeSyncFromDOM?.(true)
         if(this.#documentPermalinks) updateDocumentPermalinks(this.root)
         this.#metadata.set(INITIALIZED_KEY, true)
         this.#reconcileYElement(this.root, this.#body)
@@ -717,7 +721,7 @@ export class SharedDOMDoc {
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
-    this.#beforeSyncFromDOM?.()
+    this.#beforeSyncFromDOM?.(origin !== this.#remoteReactionOrigin)
     const pending = this.#isObserving ? this.#observer.takeRecords() : undefined
     let records = mutations ? [...mutations, ...(pending ?? [])] : pending
     if(records) records = records.filter(record => !this.#insideScopeBoundary(record.target))
@@ -755,9 +759,20 @@ export class SharedDOMDoc {
   /** Transient collaboration provenance for a generated minimum flow child.
    * The authored DOM stays authoritative, and any authored edit ends it. */
   markMinimumContentRepair(element: Element) {
-    if(element.parentElement !== this.root) return
-    this.#repairBaselines.set(element, this.#repairMarkup(element))
+    const baseline = this.#repairBaseline(element)
+    if(!baseline) return
+    this.#repairBaselines.set(element, baseline)
     this.#minimumRepairs.add(element)
+  }
+
+  #repairBaseline(element: Element) {
+    if(!this.root.contains(element)) return null
+    if(element.parentElement === this.root) return this.#repairMarkup(element)
+    // Parent identity keeps provenance from following a child moved into a
+    // different widget. The metadata stays in Yjs, never in authored HTML.
+    const parentId = element.parentElement?.id
+    return parentId && this.#canRemoveMinimumContentRepair
+      ? JSON.stringify([parentId, this.#repairMarkup(element)]) : null
   }
 
   #repairMarkup(element: Element) {
@@ -777,7 +792,7 @@ export class SharedDOMDoc {
         continue
       }
       const baseline = shared.getAttribute(INTERNAL_MINIMUM_REPAIR)
-      if(!baseline || element.parentElement !== this.root || this.#repairMarkup(element) !== baseline) {
+      if(!baseline || this.#repairBaseline(element) !== baseline) {
         if(baseline) shared.removeAttribute(INTERNAL_MINIMUM_REPAIR)
         this.#repairBaselines.delete(element)
         this.#minimumRepairs.delete(element)
@@ -795,6 +810,8 @@ export class SharedDOMDoc {
       const candidates = new Set(repairs)
       const ordered = Array.from(parent.children).filter(child => candidates.has(child))
       for(const duplicate of ordered.slice(1)) {
+        if(parent !== this.root && !this.#canRemoveMinimumContentRepair?.(duplicate,
+          ordered.filter(element => element.parentElement === parent))) continue
         duplicate.remove()
         this.#minimumRepairs.delete(duplicate)
         this.#repairBaselines.delete(duplicate)

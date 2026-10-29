@@ -309,9 +309,10 @@ describe("insertion menu", () => {
     menu.shadowRoot?.querySelector<HTMLButtonElement>('.item img[src="https://example.com/demo.svg"]')
       ?.closest<HTMLButtonElement>("button")?.click()
 
-    expect(editorHTML()).toBe("<webwriter-demo></webwriter-demo>")
     const widget = document.querySelector("webwriter-demo")!
-    expect(widget.hasAttribute("contenteditable")).toBe(false)
+    expect(editorHTML()).toBe(`<webwriter-demo id="${widget.id}"></webwriter-demo>`)
+    expect(widget.id).toMatch(/^ww[0-9a-f]/)
+    expect(widget.hasAttribute("contenteditable")).toBe(true)
     expect($.selectedElement).toBe(widget)
     expect(widget.classList.contains("◆element-selected")).toBe(true)
     expect(menu.open).toBe(false)
@@ -353,8 +354,8 @@ describe("insertion menu", () => {
 
     menu.shadowRoot?.querySelector<HTMLButtonElement>(".item")?.click()
 
-    expect(editorHTML()).toBe('<p>before</p><webwriter-demo></webwriter-demo>')
     const widget = document.querySelector("webwriter-demo")!
+    expect(editorHTML()).toBe(`<p>before</p><webwriter-demo id="${widget.id}"></webwriter-demo>`)
     expect(widget.previousElementSibling).toBe(document.querySelector("p"))
     expect(editor.features.selection.captureSelectedElement).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")

@@ -1678,7 +1678,10 @@ describe("contentful widgets", () => {
     expect(editor.toHTML(true)).not.toContain("◆")
     expect(editor.toHTML(true)).toContain("<!--keep-->")
     feature.disable()
-    expect(widget.querySelector('[class*="◆"]')).toBeNull()
+    expect(widget.querySelector('[class*="selected"]')).toBeNull()
+    expect(document.body).not.toHaveClass("◆gap-caret-visible", "◆node-selection-active")
+    // Widget editing remains enabled independently of selection presentation.
+    expect(widget.querySelector("timeline-item")).toHaveClass("◆widget-editable")
   })
 })
 

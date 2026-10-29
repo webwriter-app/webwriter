@@ -5,7 +5,8 @@ import {effectiveDistribution, ensureDistributionTarget, writeDistributionConfig
 import {emptyDistributionConfig, type DistributionConfig} from "../distribution.js"
 import {EditorFeature} from "."
 import {isEditorOnlyElementAttribute, isUnsafeElementAttributeName, isUnsafeElementAttributeValue} from "../element-attributes"
-import {isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
+import {isWidgetDataContainer} from "../active-content"
+import {$, isEditorOwnedAttribute, pathFromNode, removeEditorMarker, widgetEditableMarker} from "../utility"
 import {
   widgetActionState,
   widgetOptionAttributeValue,
@@ -30,6 +31,7 @@ export class WidgetFeature extends EditorFeature {
   #observer: MutationObserver | null = null
   readonly #runningActions = new WeakSet<Element>()
   readonly #actionErrors = new WeakMap<Element, Map<string, string>>()
+  readonly #initializedContent = new WeakSet<Element>()
   #refreshQueued = false
   #observingReferences = false
   #pendingFileAction?: {widget: Element, cancel: () => void}
@@ -73,12 +75,89 @@ export class WidgetFeature extends EditorFeature {
   /** IDs are authored state and survive removal and reconnection.
    * Widgets observe `contenteditable` (or `isContentEditable`) to switch
    * into their editing presentation. An authored value is left untouched. */
-  #connectWidget(element: Element) {
+  #connectWidget(element: Element, prefill = true) {
     if(!document.body.contains(element) || !this.isWidget(element) || !this.editor.allows("edit", element)) return
     if(!element.id && !this.editor.options.reader) element.id = `ww${crypto.randomUUID()}`
+    if(!this.editor.options.reader && !this.#initializedContent.has(element)) {
+      this.#initializedContent.add(element)
+      try { if(prefill) this.#prefillContent(element) }
+      catch { /* An unfillable schema leaves the original widget untouched. */ }
+    }
     if(element.hasAttribute("contenteditable")) return
     element.classList.add("◆", widgetEditableMarker)
     element.setAttribute("contenteditable", "")
+  }
+
+  #contentNodes(element: Element) {
+    return Array.from(element.childNodes).filter(node => node.nodeType !== Node.COMMENT_NODE
+      && node.nodeType !== Node.PROCESSING_INSTRUCTION_NODE && !isWidgetDataContainer(node))
+  }
+
+  /** Add missing required children, preserving the identity and order of every
+   * existing node. This never removes, wraps or normalizes authored content. */
+  #prefillContent(element: Element, ancestors = new Set<string>(), initial = true) {
+    if(element.getAttribute("contenteditable") === "false" || !this.editor.schema.get(element)?.content) return
+    const original = this.#contentNodes(element)
+    if((initial && original.length) || this.editor.schema.isContentValid(element, original)) return
+    const key = `${element.namespaceURI}:${element.localName}`
+    if(ancestors.has(key)) throw new Error("Cannot prefill recursive widget content")
+    const nextAncestors = new Set([...ancestors, key])
+    const content = this.editor.schema.fillByRule(element, undefined, [...original])
+    if(!this.editor.schema.isContentValid(element, content)) throw new Error("Cannot prefill widget content")
+    const existing = new Set<Node>(original)
+    const added = content.filter(child => !existing.has(child))
+    const preserved = content.filter(child => existing.has(child))
+    if(preserved.length !== original.length || preserved.some((child, index) => child !== original[index])) return
+    for(const child of added) if(child instanceof Element) this.#prefillContent(child, nextAncestors)
+    // Constructors may deliberately mutate their owner document while filling.
+    const current = this.#contentNodes(element)
+    if(current.length !== original.length || current.some((child, index) => child !== original[index])) return
+    const selection = document.getSelection()
+    const moveSelection = !initial && selection?.isCollapsed && selection.anchorNode === element
+    content.forEach((child, index) => {
+      if(!existing.has(child)) element.insertBefore(child, content.slice(index + 1).find(next => existing.has(next)) ?? null)
+    })
+    if(document.body.contains(element)) for(const child of added) if(child instanceof Element) {
+      this.#connectWidget(child, false)
+      child.querySelectorAll("*").forEach(descendant => this.#connectWidget(descendant, false))
+      if(!initial) this.editor.doc.markMinimumContentRepair(child)
+    }
+    if(moveSelection && added[0]?.isConnected) $.move(added[0])
+  }
+
+  /** Concurrent pristine repairs can be removed only if the declared minimum
+   * remains satisfied; authored children and higher minimum counts survive. */
+  canRemoveMinimumContentRepair(element: Element, repairs: readonly Element[] = []) {
+    const parent = element.parentElement
+    if(!parent || !this.isWidget(parent)) return false
+    const content = this.#contentNodes(parent)
+    if(this.editor.schema.isContentValid(parent, content.filter(child => child !== element))) return true
+    // With an upper bound (e.g. p{2}), removing just one of four concurrent
+    // repairs is still invalid. Find the minimum subsequence of pristine
+    // repairs that completes the authored children without moving any node.
+    const candidates = new Set<Node>(repairs)
+    const authored = content.filter(child => !candidates.has(child))
+    try {
+      const required = this.editor.schema.fillByRule(parent, undefined, [...authored])
+      const authoredSet = new Set<Node>(authored)
+      const retained = new Set<Node>()
+      let index = 0
+      for(const child of content) {
+        const expected = required[index]
+        if(!candidates.has(child)) {
+          if(child !== expected) return false
+          index++
+        }
+        else if(expected instanceof Element && child instanceof Element && !authoredSet.has(expected)
+          && expected.namespaceURI === child.namespaceURI && expected.localName === child.localName) {
+          retained.add(child)
+          index++
+        }
+      }
+      return index === required.length && this.editor.schema.isContentValid(parent,
+        content.filter(child => !candidates.has(child) || retained.has(child))) && !retained.has(element)
+    }
+    catch { return false }
   }
 
   #unmarkEditable(element: Element) {
@@ -458,15 +537,32 @@ export class WidgetFeature extends EditorFeature {
     return true
   }
 
-  readonly #handleMutations = (records: MutationRecord[]) => {
+  /** Finish local initialization and minimum-content repairs before sharing
+   * the DOM batch. Remote deletions and undo use the same additive repair. */
+  flushMutations(prefill = true) {
+    this.#connectAddedWidgets(this.#observer?.takeRecords() ?? [], prefill)
+  }
+
+  readonly #handleMutations = (records: MutationRecord[]) => this.#connectAddedWidgets(records)
+
+  #connectAddedWidgets(records: MutationRecord[], prefill = true) {
     if(this.#pendingFileAction && !document.body.contains(this.#pendingFileAction.widget)) this.#pendingFileAction.cancel()
     if(this.#observingReferences) this.#queueOptionsRefresh()
     for(const record of records) {
       record.addedNodes.forEach(node => {
         if(!(node instanceof Element) || !document.body.contains(node)) return
-        this.#connectWidget(node)
-        node.querySelectorAll("*").forEach(element => this.#connectWidget(element))
+        this.#connectWidget(node, prefill)
+        node.querySelectorAll("*").forEach(element => this.#connectWidget(element, prefill))
       })
+    }
+    if(!this.editor.options.reader && !this.editor.isEditingLocked) {
+      const changedWidgets = new Set(records.filter(record => record.type === "childList" && record.removedNodes.length
+        && record.target instanceof Element && document.body.contains(record.target) && this.isWidget(record.target))
+        .map(record => record.target as Element))
+      for(const widget of changedWidgets) {
+        try { this.#prefillContent(widget, new Set(), false) }
+        catch { /* Unfillable or incompatible authored content remains intact. */ }
+      }
     }
   }
 

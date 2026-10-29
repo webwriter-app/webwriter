@@ -102,6 +102,43 @@ it("reconciles derived DOM metadata with its source edit in one undoable change"
 })
 
 describe("concurrent minimum-content repairs", () => {
+  it.each([1, 2])("converges nested widget repairs without dropping its minimum of %i children", minimum => {
+    const makePeer = (ydoc?: Y.Doc) => {
+      const root = document.createElement("main")
+      root.innerHTML = '<prompt-widget id="prompt"><p>Last authored paragraph</p></prompt-widget>'
+      const shared = new SharedDOMDoc(undefined, undefined, [], [], {root, ydoc,
+        canRemoveMinimumContentRepair: element => element.parentElement?.localName === "prompt-widget"
+          && element.parentElement.children.length > minimum,
+      })
+      sharedDocs.push(shared)
+      return {root, shared}
+    }
+    const first = makePeer()
+    const ydoc = new Y.Doc()
+    Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(first.shared.doc), "initial-sync")
+    const second = makePeer(ydoc)
+    for(const peer of [first, second]) {
+      const prompt = peer.root.firstElementChild!
+      prompt.replaceChildren()
+      peer.shared.syncFromDOM()
+      for(let index = 0; index < minimum; index++) {
+        const paragraph = document.createElement("p")
+        prompt.append(paragraph)
+        peer.shared.markMinimumContentRepair(paragraph)
+      }
+      peer.shared.syncFromDOM()
+    }
+    const left = Y.encodeStateAsUpdate(first.shared.doc)
+    const right = Y.encodeStateAsUpdate(second.shared.doc)
+    Y.applyUpdate(first.shared.doc, right, "remote")
+    Y.applyUpdate(second.shared.doc, left, "remote")
+    Y.applyUpdate(first.shared.doc, Y.encodeStateAsUpdate(second.shared.doc), "remote")
+    Y.applyUpdate(second.shared.doc, Y.encodeStateAsUpdate(first.shared.doc), "remote")
+    expect(first.root.querySelectorAll("prompt-widget > p")).toHaveLength(minimum)
+    expect(second.root.innerHTML).toBe(first.root.innerHTML)
+    expect(first.root.innerHTML).not.toContain("__domeditor_minimum_repair")
+  })
+
   function repair(peer: ReturnType<typeof createShared>) {
     peer.root.replaceChildren()
     peer.shared.syncFromDOM()

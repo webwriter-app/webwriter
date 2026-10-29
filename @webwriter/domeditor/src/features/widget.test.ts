@@ -58,6 +58,129 @@ beforeEach(() => {
 afterAll(() => editor.destroy())
 
 describe("WidgetFeature", () => {
+  it("prefills newly connected empty widgets recursively from their content rules", async () => {
+    editor.schema.extendWidgets([
+      {tagName: "demo-choice", editingConfig: {content: "demo-choice-item+"}},
+      {tagName: "demo-choice-item", editingConfig: {content: "p+"}},
+    ])
+    const choice = document.createElement("demo-choice")
+    document.body.append(choice)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(choice.querySelectorAll(":scope > demo-choice-item > p")).toHaveLength(1)
+    const item = choice.firstElementChild!
+    expect(item.id).toMatch(/^ww[0-9a-f]/)
+    expect(item.hasAttribute("contenteditable")).toBe(true)
+    expect(editor.schema.isContentValid(choice)).toBe(true)
+    expect(editor.schema.isContentValid(item)).toBe(true)
+    expect(sharedHTML()).toContain(`<demo-choice-item id="${item.id}"><p></p></demo-choice-item>`)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(sharedHTML()).not.toContain("contenteditable")
+    editor.features.widget.refresh()
+    expect(choice.firstElementChild).toBe(item)
+    expect(choice.children).toHaveLength(1)
+  })
+
+  it("preserves comments, data, and authored irregular content when prefilling", () => {
+    document.body.innerHTML = '<demo-note><!--keep--><script type="application/json" slot="data">{}</script></demo-note><demo-note><unknown-node title="keep"><!--inside--></unknown-node></demo-note><demo-note contenteditable="false"></demo-note>'
+    const [empty, authored, locked] = Array.from(document.querySelectorAll("demo-note"))
+    const comment = empty.firstChild!, data = empty.lastChild!, unknown = authored.firstChild!
+    editor.features.widget.refresh()
+    expect(empty.firstChild).toBe(comment)
+    expect(empty.childNodes[1]).toBe(data)
+    expect(empty.lastChild!.nodeName).toBe("P")
+    expect(authored.childNodes).toHaveLength(1)
+    expect(authored.firstChild).toBe(unknown)
+    expect(unknown).toMatchObject({outerHTML: '<unknown-node title="keep"><!--inside--></unknown-node>'})
+    expect(locked.childNodes).toHaveLength(0)
+  })
+
+  it("keeps a single required child after edits, undo/redo, refresh, and reconnection", async () => {
+    const note = document.createElement("demo-note")
+    document.body.append(note)
+    await new Promise(resolve => setTimeout(resolve))
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    note.firstChild!.remove()
+    editor.doc.syncFromDOM()
+    await new Promise(resolve => setTimeout(resolve))
+    editor.features.widget.refresh()
+    expect(note.children).toHaveLength(1)
+    editor.doc.undo()
+    expect(note.querySelector("p")).not.toBeNull()
+    editor.doc.redo()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(note.children).toHaveLength(1)
+    note.remove()
+    document.body.append(note)
+    await new Promise(resolve => setTimeout(resolve))
+    expect(note.children).toHaveLength(1)
+  })
+
+  it("shares prefilling with the insertion and restores both in one undo step", async () => {
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const snapshots: string[] = []
+    const updated = () => snapshots.push(sharedDOMBody(editor.doc.doc).toString())
+    editor.doc.doc.on("update", updated)
+    try {
+      document.body.append(document.createElement("demo-note"))
+      editor.doc.syncFromDOM()
+      expect(snapshots).toHaveLength(1)
+      expect(snapshots[0]).toMatch(/<demo-note[^>]*><p><\/p><\/demo-note>/)
+      editor.doc.undo()
+      expect(document.querySelector("demo-note")).toBeNull()
+      editor.doc.redo()
+      await new Promise(resolve => setTimeout(resolve))
+      expect(document.querySelectorAll("demo-note > p")).toHaveLength(1)
+    }
+    finally { editor.doc.doc.off("update", updated) }
+  })
+
+  it("does not prefill empty widgets arriving through collaboration", async () => {
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const note = new Y.XmlElement("demo-note")
+      note.setAttribute("id", "remote-empty-widget")
+      sharedDOMBody(remote).push([note])
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote")
+      await new Promise(resolve => setTimeout(resolve))
+      editor.features.widget.refresh()
+      expect(document.getElementById("remote-empty-widget")!.children).toHaveLength(0)
+    }
+    finally { remote.destroy() }
+  })
+
+  it("leaves recursive unfillable schemas and disconnected widgets untouched", async () => {
+    editor.schema.extendWidgets([
+      {tagName: "demo-cycle-a", editingConfig: {content: "demo-cycle-b+"}},
+      {tagName: "demo-cycle-b", editingConfig: {content: "demo-cycle-a+"}},
+    ])
+    document.body.innerHTML = '<demo-cycle-a></demo-cycle-a>'
+    editor.features.widget.refresh()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(document.querySelector("demo-cycle-a")!.childNodes).toHaveLength(0)
+    const disconnected = document.createElement("demo-note")
+    document.body.append(disconnected)
+    disconnected.remove()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(disconnected.childNodes).toHaveLength(0)
+  })
+
+  it("prunes concurrent pristine repairs while respecting a bounded widget schema", () => {
+    editor.schema.extendWidgets([{tagName: "two-paragraphs", editingConfig: {content: "p{2}"}}])
+    document.body.innerHTML = '<two-paragraphs><p></p><p></p><p></p><p></p></two-paragraphs>'
+    const widget = document.querySelector("two-paragraphs")!
+    editor.features.widget.refresh()
+    const original = Array.from(widget.children)
+    original.forEach(child => editor.doc.markMinimumContentRepair(child))
+    editor.doc.syncFromDOM()
+    expect(Array.from(widget.children)).toEqual(original.slice(0, 2))
+    expect(editor.schema.isContentValid(widget)).toBe(true)
+    expect(editor.toHTML(true)).not.toContain("__domeditor_minimum_repair")
+  })
+
   it("sets options on all currently selected widgets of one type as one undo step", () => {
     document.body.innerHTML = '<demo-options count="1"></demo-options><demo-options count="2"></demo-options><demo-options count="3"></demo-options><p>Other</p>'
     editor.features.widget.refresh()
