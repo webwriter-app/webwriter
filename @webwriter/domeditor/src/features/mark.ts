@@ -60,6 +60,7 @@ type MarkSelection = {
   end: number
   backwards: boolean
   text: TextSlice[]
+  split?: boolean
 }
 
 type MarkCaret = {
@@ -76,8 +77,6 @@ type StoredSelection = {
 }
 
 const svgStyleNames = ["font-weight", "font-style", "text-decoration-line", "font-family", "font-size", "fill", "background-color"]
-
-const markerAttribute = "data-domeditor-mark-boundary"
 
 /** Inline formatting derived from the live DOM, with transient caret marks for typing. */
 export class MarkFeature extends EditorFeature {
@@ -862,10 +861,10 @@ export class MarkFeature extends EditorFeature {
 
   /** Wraps the selected phrasing DOM as one ruby base and appends its first annotation. */
   createRuby(annotation = "", fallback = false): boolean {
-    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.createRuby(annotation, fallback))
     if(typeof annotation !== "string" || typeof fallback !== "boolean") return false
     const context = this.getSelection()
     if(!context || this.selectionContainsRuby(context)) return false
+    if(context.split) return this.acrossTextRanges(context, () => this.createRuby(annotation, fallback))
 
     const ruby = document.createElement("ruby")
     const rt = document.createElement("rt")
@@ -984,7 +983,28 @@ export class MarkFeature extends EditorFeature {
   /** Removes ruby semantics while preserving the authored base subtree exactly. */
   removeRuby() {
     const ruby = this.selectedRuby()
-    if(!ruby?.parentNode) return false
+    if(!ruby) {
+      const context = this.getSelection()
+      if(!context) return false
+      const rubies = new Set(context.text.flatMap(({node}) => this.rubyAt(node) ?? []))
+      if(!rubies.size) return false
+      const {anchorNode, anchorOffset, focusNode, focusOffset} = context.selection
+      const endUndoGroup = this.editor.doc?.beginUndoGroup()
+      try {
+        for(const element of rubies) {
+          element.replaceWith(...Array.from(element.childNodes).filter(node =>
+            !(node instanceof HTMLElement) || node.localName !== "rt" && node.localName !== "rp",
+          ))
+        }
+        if(anchorNode?.isConnected && focusNode?.isConnected)
+          context.selection.setBaseAndExtent(anchorNode, anchorOffset, focusNode, focusOffset)
+        else this.restoreSelection(context)
+      }
+      finally { endUndoGroup?.() }
+      this.editor.postMarkState()
+      return true
+    }
+    if(!ruby.parentNode) return false
     const base = Array.from(ruby.childNodes).filter(node =>
       !(node instanceof HTMLElement) || node.localName !== "rt" && node.localName !== "rp",
     )
@@ -1012,7 +1032,6 @@ export class MarkFeature extends EditorFeature {
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, mark, true)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, true)
-    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.addMark(mark))
     this.assertMark(mark)
     if(!this.isMarkAllowed(mark)) return false
     if(mark === "ruby") return this.createRuby("", false)
@@ -1021,6 +1040,7 @@ export class MarkFeature extends EditorFeature {
     if(this.getState().marks.includes(mark)) return false
     const context = this.getSelection()
     if(!context) return false
+    if(context.split) return this.acrossTextRanges(context, () => this.addMark(mark))
     const wrappers: Element[] = []
     for(const slice of [...context.text].reverse()) {
       let selected = slice.node
@@ -1044,7 +1064,6 @@ export class MarkFeature extends EditorFeature {
     const svg = this.svgContext()
     if(svg) return this.setSVGMark(svg, mark, false)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark, false)
-    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.removeMark(mark))
     this.assertMark(mark)
     if(mark === "ruby") return this.removeRuby()
     const caret = this.getCaret()
@@ -1058,7 +1077,7 @@ export class MarkFeature extends EditorFeature {
     if(svg) return this.setSVGMark(svg, mark)
     if(this.editor.features.math.activeMath) return this.editor.features.math.formatMark(mark)
     this.assertMark(mark)
-    if(mark === "ruby") return this.selectedRuby() ? this.removeRuby() : this.isMarkAllowed(mark) && this.createRuby("", false)
+    if(mark === "ruby") return this.selectedRuby() || this.getState().marks.includes("ruby") ? this.removeRuby() : this.isMarkAllowed(mark) && this.createRuby("", false)
     const caret = this.getCaret()
     if(caret) {
       const marks = this.effectiveCaretMarks(caret)
@@ -1198,7 +1217,6 @@ export class MarkFeature extends EditorFeature {
       }
       return svg.text.length > 0
     }
-    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.setMarkAttribute(mark, attribute, value))
     this.assertMark(mark)
     if(!isMarkAttributeName(mark, attribute)) {
       throw new TypeError(`Unsupported attribute '${attribute}' for mark '${mark}'`)
@@ -1238,7 +1256,6 @@ export class MarkFeature extends EditorFeature {
     if(!elements.length) return false
     if(attribute !== "data-reference" && elements.every(element => (attribute === "download" ? element.getAttribute(attribute) : element.getAttribute(attribute) ?? "") === value)) return false
     elements.forEach(element => this.applyMarkAttribute(element, attribute, value))
-    context.block.normalize()
     this.restoreSelection(context)
     this.editor.postMarkState()
     return true
@@ -1271,7 +1288,6 @@ export class MarkFeature extends EditorFeature {
   }
 
   private applyStyleMark(property: StyleMarkName, value: string): boolean {
-    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.applyStyleMark(property, value))
     this.assertStyleMark(property)
     const normalizedValue = this.normalizeStyleValue(property, value)
     if(normalizedValue && !this.isMarkAllowed("span")) return false
@@ -1293,11 +1309,11 @@ export class MarkFeature extends EditorFeature {
 
     const context = this.getSelection()
     if(!context) return false
+    if(context.split) return this.acrossTextRanges(context, () => this.applyStyleMark(property, value))
     const currentValues = context.text.map(({node}) => this.stylesAt(node, context.block)[property] ?? "")
     if(currentValues.every(current => current === normalizedValue)) return false
 
     const boundary = document.createElement("span")
-    boundary.setAttribute(markerAttribute, "")
     boundary.append(context.range.extractContents())
     context.range.insertNode(boundary)
 
@@ -1393,7 +1409,7 @@ export class MarkFeature extends EditorFeature {
       }
       return changed
     }
-    const removedRuby = this.selectedRuby() ? this.removeRuby() : false
+    const removedRuby = this.removeRuby()
     const caret = this.getCaret()
     if(caret) {
       if(!this.effectiveCaretMarks(caret).size && !Object.keys(this.effectiveCaretStyles(caret)).length) return removedRuby || removedMath
@@ -1564,9 +1580,9 @@ export class MarkFeature extends EditorFeature {
   }
 
   private removeMatching(matches: (element: Element) => boolean): boolean {
-    if(document.getSelection()?.rangeCount && $.excludedFlowElements.length) return this.acrossFlowRanges(() => this.removeMatching(matches))
     const context = this.getSelection()
     if(!context) return false
+    if(context.split) return this.acrossTextRanges(context, () => this.removeMatching(matches))
     const originalElements = new Set(context.block.querySelectorAll("*"))
     const originalContainers = new Set<Element>()
     context.text.forEach(slice => {
@@ -1575,7 +1591,6 @@ export class MarkFeature extends EditorFeature {
       }
     })
     const boundary = document.createElement("span")
-    boundary.setAttribute(markerAttribute, "")
     boundary.append(context.range.extractContents())
     context.range.insertNode(boundary)
 
@@ -1596,7 +1611,7 @@ export class MarkFeature extends EditorFeature {
     }
 
     const descendants = Array.from(boundary.querySelectorAll("*"))
-      .filter(element => !element.hasAttribute(markerAttribute) && matches(element))
+      .filter(matches)
       .reverse()
     descendants.forEach(element => element.replaceWith(...Array.from(element.childNodes)))
 
@@ -1791,10 +1806,12 @@ export class MarkFeature extends EditorFeature {
   }
 
   private isEditableHTMLContext(node: Node, block: Element) {
+    if(atomicEditingContainer(node, this.editor.schema)) return false
     let element = node instanceof Element? node: node.parentElement
     while(element) {
       if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
-        || element.getAttribute("contenteditable") === "false") return false
+        || element.getAttribute("contenteditable") === "false"
+        || this.editor.schema.get(element)?.headOnly) return false
       if(element === block) return true
       element = element.parentElement
     }
@@ -1991,27 +2008,28 @@ export class MarkFeature extends EditorFeature {
     return span.style.getPropertyValue(property).trim()
   }
 
-  /** Apply a formatting command to the native range's independent flow runs.
-   * Keep excluded nodes connected and restore the live enclosing selection. */
-  private acrossFlowRanges(command: () => boolean): boolean {
-    const selection = document.getSelection()!
-    const original = selection.getRangeAt(0).cloneRange()
-    const backwards = $.isBackwards
-    const ranges = $.flowRanges
+  /** Format independent text runs without extracting structural or atomic elements. */
+  private acrossTextRanges(context: MarkSelection, command: () => boolean): boolean {
+    // Commands may normalize adjacent text nodes. Resolve each run from its
+    // text offsets afresh instead of retaining nodes invalidated by an edit.
+    const runs = context.text.map(slice => ({
+      start: this.textOffset(context.block, slice.node, slice.start)!,
+      end: this.textOffset(context.block, slice.node, slice.end)!,
+    }))
+    const endUndoGroup = this.editor.doc?.beginUndoGroup()
     let changed = false
     try {
-      for(const range of ranges.reverse()) {
-        selection.setBaseAndExtent(range.startContainer, range.startOffset, range.endContainer, range.endOffset)
+      for(const run of runs.reverse()) {
+        if(!context.block.isConnected) break
+        const start = textPointAtOffset(context.block, run.start, undefined, "forward")
+        const end = this.textPoint(context.block, run.end)
+        context.selection.setBaseAndExtent(...start, ...end)
         changed = command() || changed
       }
     }
     finally {
-      selection.setBaseAndExtent(
-        backwards ? original.endContainer : original.startContainer,
-        backwards ? original.endOffset : original.startOffset,
-        backwards ? original.startContainer : original.endContainer,
-        backwards ? original.startOffset : original.endOffset,
-      )
+      this.restoreSelection(context)
+      endUndoGroup?.()
     }
     return changed
   }
@@ -2021,46 +2039,49 @@ export class MarkFeature extends EditorFeature {
     if(!selection?.rangeCount || !selection.anchorNode || !selection.focusNode || selection.isCollapsed) return null
 
     const range = selection.getRangeAt(0).cloneRange()
-    const selectedChildIndex = selection.anchorNode === selection.focusNode && selection.anchorNode instanceof Element
-      ? Math.min(selection.anchorOffset, selection.focusOffset)
-      : -1
-    const selectedChild = selectedChildIndex >= 0 && Math.abs(selection.anchorOffset - selection.focusOffset) === 1
-      ? selection.anchorNode.childNodes.item(selectedChildIndex)
-      : null
-    if(selectedChild instanceof Element && !isMarkElement(selectedChild)) return null
     const startBlock = this.closestBlock(range.startContainer)
     const endBlock = this.closestBlock(range.endContainer)
-    if(!startBlock || startBlock !== endBlock || !document.body.contains(startBlock)) return null
+    const common = range.commonAncestorContainer
+    if(!common) return null
+    let block = startBlock && startBlock === endBlock ? startBlock
+      : common instanceof Element ? common : common.parentElement
+    while(block && isMarkElement(block)) block = block.parentElement
+    if(!block || !document.body.contains(block)) return null
 
-    const text = this.selectedText(range, startBlock)
-    if(!text.length || !text.some(slice => slice.end > slice.start)) return null
+    const text = this.selectedText(range, block)
+    if(!text.length) return null
 
-    // Inspect the selected live elements directly. Cloning can invoke custom
-    // element constructors, while a mark command only needs to reject blocks,
-    // replaced content, SVG/MathML, and empty atomic phrasing elements.
-    const walker = document.createTreeWalker(startBlock, NodeFilter.SHOW_ELEMENT)
+    // Keep the existing inline operation for a contiguous phrasing range.
+    // Structural selections and holes around atomic content use text runs.
+    let split = startBlock !== endBlock || !startBlock && range.startContainer !== range.endContainer
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_ELEMENT)
     while(walker.nextNode()) {
       const element = walker.currentNode as Element
-      if(!$.includesNode(element) || !range.intersectsNode(element)) continue
-      if(element.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      if(!range.intersectsNode(element)) continue
+      if(!$.includesNode(element)
+        || !this.isEditableHTMLContext(element, document.body)
         || !this.editor.schema.isPhrasing(element)
         || !element.textContent
           && !isParagraphContent(element)
-          && !this.editor.schema.findValidContentTypes(element).includes("#text")) return null
+          && !this.editor.schema.findValidContentTypes(element).includes("#text")) split = true
     }
 
-    const start = this.textOffset(startBlock, range.startContainer, range.startOffset)
-    const end = this.textOffset(startBlock, range.endContainer, range.endOffset)
+    // A single text slice never extracts surrounding elements.
+    if(range.startContainer === range.endContainer && range.startContainer instanceof Text) split = false
+
+    const start = this.textOffset(block, range.startContainer, range.startOffset)
+    const end = this.textOffset(block, range.endContainer, range.endOffset)
     if(start === null || end === null || start === end) return null
 
     return {
       selection,
       range,
-      block: startBlock,
+      block,
       start: Math.min(start, end),
       end: Math.max(start, end),
       backwards: this.isBackwards(selection),
       text,
+      split,
     }
   }
 
@@ -2079,7 +2100,9 @@ export class MarkFeature extends EditorFeature {
     const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT)
     while(walker.nextNode()) {
       const node = walker.currentNode as Text
-      if(block.namespaceURI !== SVG_NAMESPACE && !$.includesNode(node) || !range.intersectsNode(node)) continue
+      if(block.namespaceURI !== SVG_NAMESPACE
+        && (!$.includesNode(node) || !this.isEditableHTMLContext(node, document.body))
+        || !range.intersectsNode(node)) continue
 
       const startRelation = range.comparePoint(node, 0)
       const endRelation = range.comparePoint(node, node.length)
