@@ -6,6 +6,7 @@ import {appendSerializedAssets, serializeDoctype} from "../serialization"
 import {editorFrameOrigin} from "../frame-origins"
 import {t, language, SiteLanguageController} from "../site-language"
 import type {DocumentLayoutMode} from "../document-layout"
+import galleryPreviewEntryURL from "virtual:app-entry/gallery-preview-entry"
 
 /** Full documents use the same isolated learner runtime and exporter as the editor. */
 export class ExampleDocumentView extends LitElement {
@@ -78,7 +79,7 @@ export class ExampleDocumentView extends LitElement {
       this.downloadURL = URL.createObjectURL(new Blob([serializeDoctype(standalone.doctype) + standalone.documentElement.outerHTML], {type: "text/html"}))
       const frameOrigin = editorFrameOrigin()
       const base = new URL(import.meta.env.BASE_URL, `${frameOrigin}/`)
-      const entry = new URL(import.meta.env.DEV ? "src/gallery-preview-entry.ts" : "assets/gallery-preview-entry.js", base)
+      const entry = new URL(galleryPreviewEntryURL, base)
       const firstWidget = packages.flatMap(pkg => pkg.members).find(member => member.kind === "widget" && member.tagName && source.getElementsByTagName(member.tagName).length)
       if(firstWidget?.tagName) entry.searchParams.set("tag", firstWidget.tagName)
       this.frameHTML = previewFrameHTML(source, {bridgeNonce: this.bridgeNonce, packages, importMap: map, hostOrigin: location.origin, frameOrigin, entryURL: entry.href, executeScripts: true})

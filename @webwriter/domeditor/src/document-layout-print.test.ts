@@ -88,6 +88,22 @@ describe("layout printing", () => {
     expect(boardStyles).toContain(":not(article.ww-board-card) { display: none; }")
   })
 
+  it("prints grouped board columns individually and hides group headings", () => {
+    document.body.className = "ww-board"
+    document.body.innerHTML = '<section class="ww-board-group"><h2>Group heading</h2><section class="ww-board-column"><h2>First</h2><article class="ww-board-card">One</article></section><section class="ww-board-column"><h2>Second</h2><article class="ww-board-card">Two</article></section></section>'
+    const group = document.body.firstElementChild!, [first, second] = Array.from(group.children).filter(child => child.matches(".ww-board-column"))
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 450, 200))
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(500, 0, 450, 300))
+    printer = createLayoutPrint(document); beforePrint()
+    const css = rules(document.adoptedStyleSheets)
+    expect(css).toContain("display: contents")
+    expect(css).toContain("section.ww-board-group:not([is]) > :not(section.ww-board-column:not([is])) { display: none;")
+    expect(css).toContain("section.ww-board-group:not([is]):nth-child(1) > section.ww-board-column:not([is]):nth-child(2)")
+    expect(css).toContain("section.ww-board-group:not([is]):nth-child(1) > section.ww-board-column:not([is]):nth-child(3)")
+    expect(css).toContain("height: calc(100vh - 1px)")
+    afterPrint()
+  })
+
   it("cleans up during printing and disposes an earlier reader when the editor takes over", () => {
     printer = createLayoutPrint(document); beforePrint()
     const shadow = document.body.shadowRoot!

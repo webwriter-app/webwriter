@@ -1,13 +1,18 @@
 /** Import-free print support, also embedded verbatim in exported HTML. */
 export const boardPrintContentStyles = `
 body.ww-board { display: block; width: auto; min-width: 0; max-width: none; min-height: 0; margin: 0; padding: 0; background: none; }
-body.ww-board > section.ww-board-column:not([is]) {
+body.ww-board > section.ww-board-group:not([is]) { display: contents; }
+body.ww-board > section.ww-board-group:not([is]) > :not(section.ww-board-column:not([is])) { display: none; }
+body.ww-board > section.ww-board-column:not([is]),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
   width: 450px; inline-size: 450px; min-width: 0; max-width: none; max-inline-size: none; min-height: 0;
   margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none;
   break-inside: avoid; break-after: page;
 }
-body.ww-board > section.ww-board-column:not([is]):last-child { break-after: auto; }
-body.ww-board > section.ww-board-column:not([is]) > :not(article.ww-board-card) { display: none; }
+body.ww-board > section.ww-board-column:not([is]):last-child,
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]):last-child { break-after: auto; }
+body.ww-board > section.ww-board-column:not([is]) > :not(article.ww-board-card),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > :not(article.ww-board-card) { display: none; }
 `
 
 /** Measure the current DOM, never a saved camera or a second document model.
@@ -60,10 +65,19 @@ export function createLayoutPrint(root) {
         // Use the same card widths and hidden headings as the final print layout.
         sheet.replaceSync(boardPrintContentStyles)
         root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet]
-        const rules = Array.from(body.children).flatMap((column, index) => {
-          if(!column.matches("section.ww-board-column:not([is])")) return []
+        const columns = Array.from(body.children).flatMap(child => {
+          if(child.matches("section.ww-board-column:not([is])")) return [child]
+          if(child.matches("section.ww-board-group:not([is])")) return Array.from(child.children)
+            .filter(column => column.matches("section.ww-board-column:not([is])"))
+          return []
+        })
+        const rules = columns.flatMap(column => {
           const rect = column.getBoundingClientRect()
-          const selector = `body.ww-board > section.ww-board-column:not([is]):nth-child(${index + 1})`
+          const parent = column.parentElement
+          const columnIndex = Array.from(parent.children).indexOf(column) + 1
+          const selector = parent === body
+            ? `body.ww-board > section.ww-board-column:not([is]):nth-child(${columnIndex})`
+            : `body.ww-board > section.ww-board-group:not([is]):nth-child(${Array.from(body.children).indexOf(parent) + 1}) > section.ww-board-column:not([is]):nth-child(${columnIndex})`
           // Scale each intact card without reflowing its text at tiny zooms.
           // A page-sized column prevents fragmentation of very long columns.
           return [`${selector} { --ww-print-scale: ${scale(rect.width, Math.max(rect.height, column.scrollHeight))};
@@ -77,7 +91,7 @@ export function createLayoutPrint(root) {
                 transform: scale(var(--ww-print-scale)); transform-origin: 0 0; }`]
             })]
         })
-        sheet.replaceSync(`@media print { ${rules.join("\n")} }`)
+        sheet.replaceSync(`${boardPrintContentStyles}\n@media print { ${rules.join("\n")} }`)
       }
     }
     catch(error) { clear(); throw error }

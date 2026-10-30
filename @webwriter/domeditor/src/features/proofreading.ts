@@ -2,8 +2,9 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {createProofreader, normalizeProofreadingDictionary, type Proofreader, type ProofreadingIssue} from "../proofreading"
 import {createAccessibilityReviewer, type AccessibilityFinding, type AccessibilityReviewer} from "../accessibility"
 import {isAuthoredMutation, isEditorOwnedAttribute} from "../editor-artifacts"
-import {$, authoredClassValue, createStylesheet, adoptStylesheet, fixedClientX, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
+import {$, authoredClassValue, createAnchorPositioner, createStylesheet, adoptStylesheet, fixedClientX, isAtomicEditingElement, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction} from "../utility"
 import {render} from "lit"
+import {popupAnchorCSS} from "../components/popup-position"
 import {proofreadingCardStyles, proofreadingKindLabels, renderProofreadingCard} from "../components/proofreading-card"
 import {getDocumentRoot} from "../document-template"
 import type {Schema} from "../schema"
@@ -161,6 +162,7 @@ export class ProofreadingFeature extends EditorFeature {
   private ignoredAccessibility: {element: Element, rule: string, context: string}[] = []
   private accessibilityOutline: HTMLElement | null = null
   private accessibilityFrame: number | null = null
+  private anchors = createAnchorPositioner()
   private operation: Promise<void> | null = null
   private hoveredIssueId: string | null = null
   private popup: HTMLElement | null = null
@@ -220,6 +222,7 @@ export class ProofreadingFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    this.anchors = createAnchorPositioner()
     window.addEventListener("blur", this.handleBlur)
     this.observer = new MutationObserver(records => this.handleMutations(records))
     // Accessibility also depends on alt, labels, roles, relationships and
@@ -247,6 +250,7 @@ export class ProofreadingFeature extends EditorFeature {
     this.observer = null
     window.removeEventListener("blur", this.handleBlur)
     this.clearDiagnostics()
+    this.anchors.destroy()
     this.checkedRuns = new WeakMap()
     this.ignored = []
     this.ignoredAccessibility = []
@@ -457,6 +461,8 @@ export class ProofreadingFeature extends EditorFeature {
 
   private closePopup(restoreFocus = false) {
     const focused = this.popup && this.popup.contains(this.editor.appendix.activeElement)
+    if(this.popup) this.anchors.release(this.popup)
+    if(this.accessibilityOutline) this.anchors.release(this.accessibilityOutline)
     if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
     this.accessibilityFrame = null
     this.accessibilityOutline?.remove()
@@ -493,19 +499,23 @@ export class ProofreadingFeature extends EditorFeature {
     this.popup = popup
     this.popupIssueId = issue.id
     this.popupSuggestions = JSON.stringify(issue.suggestions)
+    this.editor.addAppendix(popup)
     if(issue.kind === "accessibility") {
       this.accessibilityOutline = document.createElement("div")
       this.accessibilityOutline.className = "◆ ◆editor-only"
       this.accessibilityOutline.setAttribute("part", "accessibility-issue-outline")
       this.accessibilityOutline.setAttribute("aria-hidden", "true")
       this.editor.addAppendix(this.accessibilityOutline)
-      this.positionAccessibilityOutline()
+      this.anchors.bind(this.accessibilityOutline, issue.element)
+      this.anchors.bind(popup, issue.element,
+        popupAnchorCSS(6))
+      this.anchors.refresh()
     }
-    this.editor.addAppendix(popup)
     this.popupStylesheet = createStylesheet(proofreadingCardStyles.cssText)
     adoptStylesheet(this.editor.appendix, this.popupStylesheet)
     popup.showPopover?.()
-    this.positionPopup(anchor)
+    if(issue.kind === "accessibility") this.positionAccessibilityOutline()
+    else this.positionPopup(anchor)
     popup.querySelector<HTMLElement>("button, a[href]")?.focus()
   }
 
@@ -516,6 +526,36 @@ export class ProofreadingFeature extends EditorFeature {
     this.popup.style.left = `${fixedClientX(Math.max(6, Math.min(anchor.left, right - rect.width)))}px`
     const below = anchor.bottom + 6
     this.popup.style.top = `${below + rect.height <= innerHeight - 6 ? below : Math.max(6, anchor.top - rect.height - 6)}px`
+  }
+
+  private readonly positionAccessibilityOutline = () => {
+    this.accessibilityFrame = null
+    const issue = this.diagnostics.find((issue): issue is AccessibilityDiagnostic => issue.kind === "accessibility"
+      && issue.id === this.popupIssueId && this.isCurrentDiagnostic(issue))
+    if(!issue || !this.accessibilityOutline || !this.popup) { this.closePopup(); return }
+    const media = this.editor.features.media.cropTargetFor(issue.element)
+    const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
+    const cropped = Boolean(media && crop && crop !== "none")
+    const transformed = this.editor.features.transformation.boxTransformed(issue.element)
+    if(cropped || transformed) {
+      this.anchors.release(this.accessibilityOutline)
+      this.anchors.release(this.popup)
+      const rect = cropped && media ? this.editor.features.transformation.boxGeometry(media).rect : issue.element.getBoundingClientRect()
+      Object.assign(this.accessibilityOutline.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
+        width: `${rect.width}px`, height: `${rect.height}px`})
+      this.positionPopup(rect)
+      if(this.accessibilityFrame === null) this.accessibilityFrame = requestAnimationFrame(this.positionAccessibilityOutline)
+      return
+    }
+    if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
+    this.accessibilityFrame = null
+    for(const property of ["left", "top", "width", "height"]) this.accessibilityOutline.style.removeProperty(property)
+    this.popup.style.removeProperty("left")
+    this.popup.style.removeProperty("top")
+    this.anchors.bind(this.accessibilityOutline, issue.element)
+    this.anchors.bind(this.popup, issue.element,
+      popupAnchorCSS(6))
+    this.anchors.refresh()
   }
 
   async checkNow(reuseUnchanged = false) {
@@ -656,6 +696,7 @@ export class ProofreadingFeature extends EditorFeature {
     if(this.hoveredIssueId && !current.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
     if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId
       && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
+    if(this.popupIssueId && this.accessibilityOutline) this.positionAccessibilityOutline()
     if(!globalThis.CSS?.highlights || typeof globalThis.Highlight !== "function") return
     for(const kind of ["spelling", "grammar", "style"] as const) {
       const ranges = new Set(current.filter(diagnostic => diagnostic.kind === kind).map(diagnostic => diagnostic.range))
@@ -673,19 +714,6 @@ export class ProofreadingFeature extends EditorFeature {
       for(const range of highlight) if(!ranges.has(range as Range)) highlight.delete(range)
       for(const range of ranges) if(!highlight.has(range)) highlight.add(range)
     }
-  }
-
-  private readonly positionAccessibilityOutline = () => {
-    if(this.accessibilityFrame !== null) cancelAnimationFrame(this.accessibilityFrame)
-    this.accessibilityFrame = null
-    const issue = this.diagnostics.find((issue): issue is AccessibilityDiagnostic => issue.kind === "accessibility"
-      && issue.id === this.popupIssueId && this.isCurrentDiagnostic(issue))
-    if(!issue || !this.accessibilityOutline) { this.closePopup(); return }
-    const rect = issue.element.getBoundingClientRect()
-    Object.assign(this.accessibilityOutline.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`,
-      width: `${rect.width}px`, height: `${rect.height}px`})
-    this.positionPopup(rect)
-    this.accessibilityFrame = requestAnimationFrame(this.positionAccessibilityOutline)
   }
 
   private isCurrentDiagnostic(issue: Diagnostic) {

@@ -429,6 +429,7 @@ export type ElementStyleState = {
     canMoveUp?: boolean
     canMoveDown?: boolean
     placement?: {canMoveUp: boolean, canMoveDown: boolean}
+    grouping?: {grouped: boolean, canCreate: boolean, canUngroup: boolean, canJoinLeft: boolean, canJoinRight: boolean}
     localName: string
     namespaceURI: string | null
   } | null

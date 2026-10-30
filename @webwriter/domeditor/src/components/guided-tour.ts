@@ -1,7 +1,8 @@
 import {LitElement, css, html} from "lit"
 import {ribbonIcon} from "../ribbon-icons"
 import {editorInteractionStyles} from "./editing-controls.styles"
-import {fixedPopupPosition} from "./popup-position"
+import {popupAnchorCSS} from "./popup-position"
+import {createAnchorPositioner} from "../anchor-positioning.js"
 
 const steps = [
   {title: "Make it yours", text: "Click the page to write. Editing closes this tour."},
@@ -61,13 +62,16 @@ export class GuidedTour extends LitElement {
     .next:hover { background: #2e65ad; }
     .close { min-width: 1.8rem; padding: .25rem; border: 0; background: transparent; color: #687383; }
     .close svg { width: 1rem; height: 1rem; }
-    .target { position: fixed; pointer-events: none; border: 1px solid #3977c7; border-radius: .3rem; }
+    .target { position: fixed; inset: auto; pointer-events: none; box-sizing: border-box; border: 1px solid #3977c7; border-radius: .3rem; }
     .target[hidden] { display: none; }
   `
 
   anchor: (step: number) => HTMLElement | null = () => null
   private step = 0
   private resizeObserver: ResizeObserver | null = null
+  private anchorPositioner = createAnchorPositioner(document)
+  private positionedAnchor: HTMLElement | null = null
+  private positionedStep = -1
 
   connectedCallback() {
     super.connectedCallback()
@@ -78,6 +82,9 @@ export class GuidedTour extends LitElement {
   }
 
   disconnectedCallback() {
+    this.anchorPositioner.destroy()
+    this.positionedAnchor = null
+    this.positionedStep = -1
     this.resizeObserver?.disconnect()
     this.resizeObserver = null
     window.removeEventListener("resize", this.position)
@@ -95,19 +102,36 @@ export class GuidedTour extends LitElement {
 
   private position = () => {
     const anchor = this.anchor(this.step)
-    if(!anchor?.isConnected) return
+    if(!anchor?.isConnected) {
+      const target = this.renderRoot.querySelector<HTMLElement>(".target")
+      if(target) target.hidden = true
+      this.anchorPositioner.release(this)
+      if(target) this.anchorPositioner.release(target)
+      this.positionedAnchor = null
+      this.positionedStep = -1
+      this.anchorPositioner.refresh()
+      return
+    }
+    if(this.positionedAnchor !== anchor || this.positionedStep !== this.step) {
+      const target = this.renderRoot.querySelector<HTMLElement>(".target")
+      this.anchorPositioner.release(this)
+      if(target) this.anchorPositioner.release(target)
+      if(target && this.step !== 0) {
+        this.anchorPositioner.bind(target, anchor,
+          "left:calc(anchor(left) - 3px);top:calc(anchor(top) - 3px);width:calc(anchor-size(width) + 6px);height:calc(anchor-size(height) + 6px);")
+      }
+      this.anchorPositioner.bind(this, anchor, this.step === 0
+        ? "left:anchor(left);top:calc(anchor(top) + 10px);width:min(17rem,calc(100vw - 1rem));max-height:calc(100dvh - 1rem);"
+        : popupAnchorCSS(10))
+      this.positionedAnchor = anchor
+      this.positionedStep = this.step
+      this.anchorPositioner.refresh()
+    }
     const rect = anchor.getBoundingClientRect()
     const target = this.renderRoot.querySelector<HTMLElement>(".target")
     if(target) {
       target.hidden = this.step === 0 || !rect.width || !rect.height
-      Object.assign(target.style, {left: `${rect.left - 3}px`, top: `${rect.top - 3}px`,
-        width: `${rect.width + 4}px`, height: `${rect.height + 4}px`})
     }
-    // The page step sits just inside the stage; controls get a card below them.
-    const trigger = this.step === 0 ? {left: rect.left, bottom: rect.top, top: rect.top} : rect
-    const {left, top} = fixedPopupPosition(trigger, this.getBoundingClientRect(),
-      {width: window.innerWidth, height: window.innerHeight}, 8, 10)
-    Object.assign(this.style, {left: `${left}px`, top: `${top}px`})
   }
 
   private dismiss() {

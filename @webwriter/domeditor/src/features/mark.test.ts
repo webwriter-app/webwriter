@@ -3,7 +3,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest"
 import {DOMEditor} from "../domeditor"
 import type {XmlElement, XmlText} from "yjs"
 import {excludedMarkNames, markNames, normalizeEditingContent, primaryMarkOptions, standardMarkShortcutNames} from "../marks"
-import {$} from "../utility"
+import {$, cloneWithoutEditorMarkers} from "../utility"
 
 const editor = new DOMEditor()
 const feature = editor.features.mark
@@ -86,19 +86,19 @@ describe("MarkFeature DOM state", () => {
     expect(feature.getState()).toEqual({canMark: true, marks: []})
   })
 
-  it("disables marks for element, gap, atomic, cross-block, and non-editable selections", () => {
+  it("enables selections containing editable text and disables gaps and non-editable content", () => {
     let paragraph = setContent("<p>Text</p>")
 
     $.selectElement(paragraph)
-    expect(feature.getState()).toEqual({canMark: false, marks: []})
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
 
     paragraph = setContent("<p>A<img alt='x'>B</p>")
     $.selectRange(paragraph, 0, paragraph, 3)
-    expect(feature.getState()).toEqual({canMark: false, marks: []})
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
 
     document.body.innerHTML = "<p>A</p><p>B</p>"
     $.selectRange(document.querySelector("p")!.firstChild!, 0, document.querySelector("p:last-child")!.firstChild!, 1)
-    expect(feature.getState()).toEqual({canMark: false, marks: []})
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
 
     $.selectGap(document.querySelector("p")!)
     expect(feature.getState()).toEqual({canMark: false, marks: []})
@@ -122,7 +122,7 @@ describe("MarkFeature DOM state", () => {
 
     $.selectRange(paragraph.firstChild!, 0, paragraph.lastChild!, paragraph.lastChild!.textContent!.length)
 
-    expect(feature.getState()).toEqual({canMark: false, marks: []})
+    expect(feature.getState()).toEqual({canMark: true, marks: []})
     expect(constructed).not.toHaveBeenCalled()
   })
 
@@ -165,6 +165,114 @@ describe("MarkFeature DOM state", () => {
 })
 
 describe("MarkFeature toggles", () => {
+  it.each([
+    '<section><p>Before<em>middle</em></p><!--keep--><ul><li>Item</li><li>After</li></ul></section>',
+    '<table><tbody><tr><td>Before</td><td><p>middle</p></td></tr><tr><td colspan="2">After</td></tr></tbody></table>',
+    '<main><header>Before</header><article>middle<div><p>After</p></div></article></main>',
+    'Before<b>middle</b>After',
+  ])("formats all text across structural selections without replacing containers: %s", html => {
+    for(const backwards of [false, true]) {
+      setContent(html)
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      const texts: Text[] = []
+      while(walker.nextNode()) texts.push(walker.currentNode as Text)
+      const first = texts[0], last = texts.at(-1)!
+      const start: [Node, number] = [first, 2], end: [Node, number] = [last, last.length - 1]
+      $.selectRange(...(backwards ? end : start), ...(backwards ? start : end))
+      const selected = document.getSelection()!.toString()
+      const containers = Array.from(document.querySelectorAll("section, p, ul, li, table, tbody, tr, td, main, header, article, div"))
+      const comment = document.createTreeWalker(document.body, NodeFilter.SHOW_COMMENT).nextNode()
+
+      // Mixed selections retain the existing any-active toggle semantics.
+      if(feature.getState().marks.includes("b")) expect(feature.toggleMark("b")).toBe(true)
+      expect(feature.getState().canMark).toBe(true)
+      expect(feature.toggleMark("b")).toBe(true)
+      const selectedWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+      while(selectedWalker.nextNode()) {
+        const node = selectedWalker.currentNode as Text
+        if(node.textContent && document.getSelection()!.getRangeAt(0).intersectsNode(node)) expect(node.parentElement!.closest("b")).not.toBeNull()
+      }
+      expect(feature.setStyleMark("color", "red")).toBe(true)
+      expect(feature.getStyleState().color).toBe("red")
+      expect(feature.toggleMark("b")).toBe(true)
+      expect(feature.getState().marks).not.toContain("b")
+      expect(feature.removeMarks()).toBe(true)
+      expect(document.getSelection()!.toString()).toBe(selected)
+      expect($.isBackwards).toBe(backwards)
+      expect(containers.every(node => node.isConnected)).toBe(true)
+      if(comment) expect(comment.isConnected).toBe(true)
+      expect(cleanHTML()).not.toMatch(/◆|data-domeditor-mark-boundary/)
+    }
+  })
+
+  it.each(markNames)("toggles %s across all selected blocks", mark => {
+    setContent('<section><p>one</p><p>two</p></section>')
+    $.selectElement(document.querySelector("section")!)
+    expect(feature.toggleMark(mark)).toBe(true)
+    expect(Array.from(document.querySelectorAll("p"), node => node.querySelector(mark)?.firstChild?.textContent)).toEqual(["one", "two"])
+    expect(feature.toggleMark(mark)).toBe(true)
+    expect(cleanHTML()).toBe('<section><p>one</p><p>two</p></section>')
+    expect(document.getSelection()!.toString()).toBe("onetwo")
+  })
+
+  it("formats every selected run when DOM normalization merges retained text nodes", () => {
+    const section = setContent('<section><p></p><p><b>last</b></p></section>')
+    const paragraph = section.querySelector("p")!
+    paragraph.append(document.createTextNode("first"), document.createTextNode("second"), document.createTextNode("third"))
+    $.selectElement(section)
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+    expect(feature.getStyleState().color).toBe("red")
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.getState().marks).not.toContain("b")
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(Array.from(section.querySelectorAll("p"), node => node.querySelector("b")?.textContent)).toEqual(["firstsecondthird", "last"])
+    expect(document.getSelection()!.toString()).toBe("firstsecondthirdlast")
+  })
+
+  it("formats container selections and skips atomic, non-editable, and non-content text", () => {
+    const paragraph = setContent('<p>A<img alt="keep"><opaque-widget><b>widget</b></opaque-widget><span contenteditable="false"><i>locked</i></span><script type="application/json">{"keep":true}</script><em>B</em></p>')
+    const untouched = Array.from(paragraph.querySelectorAll("img, opaque-widget, [contenteditable=false], script"))
+    const html = untouched.map(node => cloneWithoutEditorMarkers(node, true).outerHTML)
+    $.selectElement(paragraph)
+
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.setStyleMark("color", "red")).toBe(true)
+    expect(feature.getStyleState().color).toBe("red")
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.removeMarks()).toBe(true)
+    expect(untouched.map(node => cloneWithoutEditorMarkers(node, true).outerHTML)).toEqual(html)
+    expect(untouched.every(node => node.parentElement === paragraph)).toBe(true)
+    expect(paragraph.firstChild!.textContent).toBe("A")
+    expect(paragraph.lastChild!.textContent).toBe("B")
+  })
+
+  it("marks the current text after selected containers are replaced externally", () => {
+    setContent('<section><p>old</p></section>')
+    $.selectElement(document.querySelector("section")!)
+    document.querySelector("section")!.innerHTML = '<h2>new</h2><p>text</p>'
+    $.selectElement(document.querySelector("section")!)
+    expect(feature.toggleMark("u")).toBe(true)
+    expect(cleanHTML()).toBe('<section><h2 id="new"><u>new</u></h2><p><u>text</u></p></section>')
+  })
+
+  it("synchronizes cross-block formatting as one undoable edit", () => {
+    setContent('<p>one</p><ul><li>two</li></ul>')
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.selectRange(document.querySelector("p")!.firstChild!, 1, document.querySelector("li")!.firstChild!, 2)
+    editor.doc.updateLocalSelection()
+    expect(feature.toggleMark("b")).toBe(true)
+    editor.doc.syncFromDOM()
+    const formatted = '<p>o<b>ne</b></p><ul><li><b>tw</b>o</li></ul>'
+    expect(cleanHTML()).toBe(formatted)
+    expect(editor.doc.body.toString()).toBe(`<body>${formatted}</body>`)
+    editor.doc.undo()
+    expect(cleanHTML()).toBe('<p>one</p><ul><li>two</li></ul>')
+    editor.doc.redo()
+    expect(cleanHTML()).toBe(formatted)
+    expect(document.getSelection()!.toString()).toBe("netw")
+  })
+
   it.each([
     "Before<br>middle<br>After",
     '<em>Before<br>middle</em><!--keep--><br><span>After</span>',
@@ -831,7 +939,7 @@ describe("MarkFeature shortcuts", () => {
   })
 
   it("does not consume shortcuts for a non-text selection", () => {
-    const paragraph = setContent("<p>Text</p>")
+    const paragraph = setContent("<p><img></p>")
     $.selectElement(paragraph)
     const event = new KeyboardEvent("keydown", {
       key: "b",

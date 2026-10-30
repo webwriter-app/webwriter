@@ -16,6 +16,7 @@ const button = () => ui().querySelector<HTMLButtonElement>(".copyright")!
 const popup = () => ui().querySelector<HTMLElement>(".popup")!
 const input = (key: string) => ui().querySelector<HTMLInputElement>(`input[name="${key}"]`)!
 const licensePicker = () => ui().querySelector<AttributionLicensePicker>("attribution-license-picker")!
+const creditType = (type: string) => ui().querySelector<HTMLButtonElement>(`.credit-types button[value="${type}"]`)!
 const notes = () => Array.from(ui().querySelectorAll<HTMLElement>(".attribution-note"))
 const submit = () => ui().querySelector("form")!.dispatchEvent(new Event("submit", {cancelable: true, bubbles: true}))
 const hover = (element: Element) => element.dispatchEvent(new PointerEvent("pointerover", {bubbles: true, composed: true}))
@@ -42,10 +43,73 @@ afterEach(() => {
 })
 
 describe("element attribution editing", () => {
+  it("defaults to attribution and saves the selected type through undo, redo and reopening", async () => {
+    const element = start()
+    const child = element.firstChild
+    bounds(element); select(element); button().click()
+    expect(creditType("attribution").getAttribute("aria-pressed")).toBe("true")
+    expect(creditType("copyright").getAttribute("aria-pressed")).toBe("false")
+    input("name").value = "Ada"
+    submit()
+    expect(notes()[0].textContent).toBe("Ada")
+    notes()[0].click()
+    creditType("copyright").click()
+    expect(creditType("copyright").getAttribute("aria-pressed")).toBe("true")
+    expect(element.hasAttribute(attributionAttributes.type)).toBe(false)
+    submit()
+    expect(element.getAttribute(attributionAttributes.type)).toBe("copyright")
+    expect(notes()[0].textContent).toBe("© Ada")
+    expect(editor!.toHTML(true)).toContain('data-ww-attribution-type="copyright"')
+    expect(editor!.doc.body.toString()).toContain('data-ww-attribution-type="copyright"')
+    notes()[0].click()
+    expect(creditType("copyright").getAttribute("aria-pressed")).toBe("true")
+    creditType("attribution").click()
+    submit()
+    expect(notes()[0].textContent).toBe("Ada")
+    expect(element.getAttribute(attributionAttributes.type)).toBe("attribution")
+    expect(element.firstChild).toBe(child)
+    editor!.doc.undo()
+    await settle()
+    expect(notes()[0].textContent).toBe("© Ada")
+    editor!.doc.redo()
+    await settle()
+    expect(notes()[0].textContent).toBe("Ada")
+  })
+
+  it("cancels type changes and rejects a concurrent change to the same field", () => {
+    const element = start()
+    element.setAttribute(attributionAttributes.name, "Ada")
+    bounds(element); select(element); notes()[0].click()
+    creditType("copyright").click()
+    ui().querySelector<HTMLButtonElement>(".close")!.click()
+    expect(element.hasAttribute(attributionAttributes.type)).toBe(false)
+    notes()[0].click()
+    expect(creditType("attribution").getAttribute("aria-pressed")).toBe("true")
+    creditType("copyright").click()
+    element.setAttribute(attributionAttributes.type, "attribution")
+    submit()
+    expect(popup().hidden).toBe(false)
+    expect(ui().querySelector<HTMLElement>(".error")!.hidden).toBe(false)
+    expect(element.getAttribute(attributionAttributes.type)).toBe("attribution")
+  })
+
+  it("applies an explicit attribution choice to selections with mixed credit types", () => {
+    start()
+    const elements = Array.from(document.querySelectorAll("p"))
+    elements.forEach(element => { bounds(element); element.setAttribute(attributionAttributes.name, "Ada") })
+    elements[0].setAttribute(attributionAttributes.type, "copyright")
+    document.getSelection()!.setBaseAndExtent(elements[0].firstChild!, 0, elements[1].firstChild!, 3)
+    editor!.features.attribution.actions.openAttribution({type: "openAttribution"})
+    creditType("attribution").click()
+    submit()
+    expect(elements.map(element => element.getAttribute(attributionAttributes.type))).toEqual(["attribution", "attribution"])
+    expect(notes().every(note => !note.textContent!.includes("©"))).toBe(true)
+  })
+
   it.each(["click", "Enter"])("deletes all metadata with %s without changing content and restores it with one undo", activation => {
     const element = start()
     const original = element.innerHTML
-    const metadata = {name: "Ada", year: "2026", license: "CC-BY-4.0", contact: "mailto:ada@example.com"}
+    const metadata = {name: "Ada", year: "2026", license: "CC-BY-4.0", contact: "mailto:ada@example.com", type: "copyright"}
     for(const [key, value] of Object.entries(metadata)) element.setAttribute(attributionAttributes[key as keyof typeof metadata], value)
     editor!.doc.syncFromDOM(); editor!.doc.stopCapturing()
     bounds(element); select(element); notes()[0].click()
@@ -129,7 +193,7 @@ describe("element attribution editing", () => {
     const picker = licensePicker()
     await picker.updateComplete
     const controls = [input("name"), input("year"), picker.shadowRoot!.querySelector<HTMLInputElement>("input")!,
-      input("contact"), ui().querySelector<HTMLButtonElement>(".delete")!, ui().querySelector<HTMLButtonElement>(".save")!, ui().querySelector<HTMLButtonElement>(".close")!]
+      input("contact"), ui().querySelector<HTMLButtonElement>(".delete")!, ui().querySelector<HTMLButtonElement>(".save")!, ...Array.from(ui().querySelectorAll<HTMLButtonElement>(".credit-types button")), ui().querySelector<HTMLButtonElement>(".close")!]
     const checkFocus = (control: HTMLElement) => expect((control.getRootNode() as ShadowRoot).activeElement).toBe(control)
     checkFocus(controls[0])
     for(const shiftKey of [false, true]) {
@@ -233,12 +297,11 @@ describe("element attribution editing", () => {
     else select(element)
     document.dispatchEvent(new Event("selectionchange"))
     expect(bridge.hidden).toBe(false)
-    expect(bridge.style.left).toBe("290px")
-    expect(bridge.style.top).toBe("90px")
-    expect(bridge.style.width).toBe("20px")
-    expect(bridge.style.height).toBe("20px")
-    expect(parseFloat(bridge.style.left) + 10).toBe(element.getBoundingClientRect().right)
-    expect(parseFloat(bridge.style.top) + 10).toBe((element.getBoundingClientRect().top + element.getBoundingClientRect().bottom) / 2)
+    expect(bridge.style.left).toBe("")
+    expect(bridge.style.top).toBe("")
+    expect(bridge.style.width).toBe("")
+    expect(bridge.style.height).toBe("")
+    expect(bridge.getAttribute("part")).toContain("anchor-control-")
     expect(button().getAttribute("part")).toBe("transform-overlay-button transform-overlay-attribution")
     expect(button().querySelector("svg")!.hasAttribute("hidden")).toBe(true)
     expect(button().classList.contains("empty-attribution")).toBe(true)
@@ -307,6 +370,71 @@ describe("element attribution editing", () => {
     })
   })
 
+  it("places the copyright affordance on the selected board column frame", async () => {
+    start()
+    expect(editor!.setDocumentLayout("board", "document")).toBe(true)
+    const column = editor!.features.board.columns()[0]
+    bounds(column)
+    editor!.features.selection.selectElement(column)
+    editor!.features.board.refresh()
+    await settle()
+    const overlay = editor!.features.board.transformOverlay(column)!
+    const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
+    expect(control.parentElement).toBe(overlay)
+    expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.hidden).toBe(false)
+    editor!.features.board.refresh()
+    expect(control.getAttribute("aria-label")).toBe("Copyright and attribution")
+    control.click()
+    expect(popup().hidden).toBe(false)
+    ui().querySelector<HTMLButtonElement>(".close")!.click()
+    expect(editor!.setDocumentLayout("document", "board")).toBe(true)
+    await settle()
+    expect(control.parentElement).toBe(ui().querySelector(".bridge"))
+    expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
+  })
+
+  it.each(["card", "grouped column"] as const)("edits attribution on a %s board frame", async role => {
+    start()
+    expect(editor!.setDocumentLayout("board", "document")).toBe(true)
+    const board = editor!.features.board, column = board.columns()[0], card = board.cards(column)[0]
+    if(role === "grouped column") board.setGrouping("new", column)
+    const target = role === "card" ? card : column
+    const other = role === "card" ? column : column.parentElement!
+    bounds(target)
+    other.setAttribute(attributionAttributes.name, "Other author")
+    editor!.features.selection.selectElement(target)
+    document.dispatchEvent(new Event("selectionchange"))
+    board.refresh()
+    await settle()
+    const overlay = board.transformOverlay(target)!
+    const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
+    expect(control.parentElement).toBe(overlay)
+    expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.hidden).toBe(false)
+    editor!.doc.syncFromDOM(); editor!.doc.stopCapturing()
+    control.click()
+    input("name").value = "Frame author"
+    submit()
+    editor!.doc.syncFromDOM()
+    expect(target.getAttribute(attributionAttributes.name)).toBe("Frame author")
+    expect(other.getAttribute(attributionAttributes.name)).toBe("Other author")
+    expect(editor!.toHTML(true)).toContain('data-ww-attribution-name="Frame author"')
+    expect(editor!.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+    editor!.doc.undo()
+    expect(document.querySelector(role === "card" ? ".ww-board-card" : ".ww-board-column")!.hasAttribute(attributionAttributes.name)).toBe(false)
+    editor!.doc.redo()
+    const restored = document.querySelector(role === "card" ? ".ww-board-card" : ".ww-board-column")!
+    expect(restored.getAttribute(attributionAttributes.name)).toBe("Frame author")
+    for(const layout of ["document", "canvas", "slides"] as const) {
+      expect(editor!.getDocumentLayoutState().conversions?.[layout]).toContain("overlapping board attributions")
+      expect(editor!.setDocumentLayout(layout, "board")).toBe(false)
+    }
+    expect(restored.getAttribute(attributionAttributes.name)).toBe("Frame author")
+    restored.removeAttribute(attributionAttributes.name)
+    expect(editor!.setDocumentLayout("document", "board")).toBe(true)
+  })
+
   it.each([false, true])("keeps native input carets visible while the element remains selected (capture: %s)", captured => {
     const element = start()
     element.setAttribute(attributionAttributes.name, "Ada")
@@ -336,7 +464,7 @@ describe("element attribution editing", () => {
     select(element)
     const bridge = ui().querySelector<HTMLElement>(".bridge")!
     expect(bridge.hidden).toBe(true)
-    expect(notes()[0].textContent).toBe("© Ada")
+    expect(notes()[0].textContent).toBe("Ada")
     expect(button().classList.contains("empty-attribution")).toBe(false)
     hover(document.querySelectorAll("p")[1])
     notes()[0].click()
@@ -344,7 +472,7 @@ describe("element attribution editing", () => {
     ui().querySelector<HTMLButtonElement>(".close")!.click()
     element.removeAttribute(attributionAttributes.name)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(bridge.style.left).toBe("290px")
+    expect(bridge.style.left).toBe("")
     expect(button().classList.contains("empty-attribution")).toBe(true)
     document.getSelection()!.removeAllRanges()
     document.dispatchEvent(new Event("selectionchange"))
@@ -359,12 +487,12 @@ describe("element attribution editing", () => {
     const bridge = ui().querySelector<HTMLElement>(".bridge")!
     vi.spyOn(bridge, "getBoundingClientRect").mockReturnValue({width: 24} as DOMRect)
     select(element)
-    expect(bridge.style.left).toBe("300px")
-    expect(bridge.style.top).toBe("92px")
+    expect(bridge.style.left).toBe("")
+    expect(bridge.style.top).toBe("")
     vi.stubGlobal("innerWidth", 320)
     try {
       document.dispatchEvent(new Event("selectionchange"))
-      expect(bridge.style.left).toBe("296px")
+      expect(bridge.style.left).toBe("")
     }
     finally { vi.unstubAllGlobals() }
   })
@@ -380,7 +508,7 @@ describe("element attribution editing", () => {
     document.getSelection()!.removeAllRanges()
     document.dispatchEvent(new Event("selectionchange"))
     expect(notes()).toHaveLength(1)
-    expect(notes()[0].textContent).toBe(`© 2026 ${name} CC-BY-4.0${contact}`)
+    expect(notes()[0].textContent).toBe(`2026 ${name} CC-BY-4.0${contact}`)
     expect(notes()[0].children).toHaveLength(2)
     expect(notes()[0].getAttribute("role")).toBe("button")
     expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(true)
@@ -394,7 +522,7 @@ describe("element attribution editing", () => {
     expect(notes()[0].textContent).toContain(contact)
   })
 
-  it("saves four separate attributes without rebuilding irregular content, with one undo item", async () => {
+  it("saves separate metadata attributes without rebuilding irregular content, with one undo item", async () => {
     const element = start()
     const child = element.firstChild
     bounds(element); select(element); button().click()
@@ -542,10 +670,17 @@ describe("element attribution editing", () => {
       peer.syncFromDOM()
       Y.applyUpdate(editor!.doc.doc, Y.encodeStateAsUpdate(ydoc), "remote-attribution")
       await vi.waitFor(() => expect(notes()).toHaveLength(1))
-      expect(notes()[0].textContent).toBe("© Remote author")
+      expect(notes()[0].textContent).toBe("Remote author")
       const element = document.querySelector("p")!
       bounds(element); notes()[0].click()
       expect(input("name").value).toBe("Remote author")
+      ui().querySelector<HTMLButtonElement>(".close")!.click()
+      owner.querySelector("p")!.setAttribute(attributionAttributes.type, "copyright")
+      peer.syncFromDOM()
+      Y.applyUpdate(editor!.doc.doc, Y.encodeStateAsUpdate(ydoc), "remote-attribution-type")
+      await vi.waitFor(() => expect(notes()[0].textContent).toBe("© Remote author"))
+      notes()[0].click()
+      expect(creditType("copyright").getAttribute("aria-pressed")).toBe("true")
     }
     finally { peer.destroy() }
   })
@@ -708,7 +843,7 @@ describe("top-level attribution", () => {
     const top = document.querySelector("section")!, nested = document.querySelector("p")!
     write(nested)
     await vi.waitFor(() => { expectMetadata(top); expectEmpty(nested) })
-    await vi.waitFor(() => expect(notes().map(note => note.textContent)).toEqual(["© 2026 Ada MITada@example.com"]))
+    await vi.waitFor(() => expect(notes().map(note => note.textContent)).toEqual(["2026 Ada MITada@example.com"]))
     nested.setAttribute(attributionAttributes.license, "CC0-1.0")
     await vi.waitFor(() => expectEmpty(nested))
     expectMetadata(top)
@@ -771,6 +906,22 @@ describe("top-level attribution", () => {
 })
 
 describe("reading attribution", () => {
+  it.each(["", "attribution", "copyright"])("uses the saved credit type in notes and reader details (%s)", type => {
+    const element = document.querySelector("p")!
+    element.setAttribute(attributionAttributes.name, "Ada")
+    element.setAttribute(attributionAttributes.year, "2026")
+    if(type) element.setAttribute(attributionAttributes.type, type)
+    bounds(element)
+    reader = mountAttributionReader()
+    const text = `${type === "copyright" ? "© " : ""}2026 Ada`
+    expect(notes()[0].textContent).toBe(text)
+    notes()[0].click()
+    expect(ui().querySelector(".details")!.textContent).toBe(text)
+    expect(creditType(type || "attribution").getAttribute("aria-pressed")).toBe("true")
+    expect(creditType("copyright").disabled).toBe(true)
+    expect(creditType("attribution").disabled).toBe(true)
+  })
+
   it.each([false, true])("uses grey underlined SPDX and contact links without a visible mailto prefix (editing: %s)", editing => {
     const element = document.querySelector("p")!
     element.setAttribute(attributionAttributes.name, "Ada")
@@ -848,6 +999,7 @@ describe("reading attribution", () => {
   it.each([false, true])("uses a compact copyright when either part cannot fit two lines, then restores it (editing: %s)", async editing => {
     const element = document.querySelector<HTMLElement>("p")!
     element.setAttribute(attributionAttributes.name, "Full author")
+    element.setAttribute(attributionAttributes.type, "copyright")
     element.setAttribute(attributionAttributes.license, "MIT")
     element.setAttribute(attributionAttributes.contact, "mailto:author@example.com")
     let available = 40
@@ -869,6 +1021,10 @@ describe("reading attribution", () => {
     expect(parseFloat(getComputedStyle(label).fontSize)).toBeCloseTo(12, 0)
     expect(getComputedStyle(label).color).toBe("#777")
     expect(label.tabIndex).toBe(0)
+    element.setAttribute(attributionAttributes.type, "attribution")
+    if(editing) editor!.doc.syncFromDOM()
+    await vi.waitFor(() => expect(label.querySelector(".attribution-symbol")!.textContent).toBe("ⓘ"))
+    expect(ui().querySelector(".attribution-footnotes")!.textContent).not.toContain("©")
     label.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
     expect(popup().hidden).toBe(false)
     if(editing) expect(input("name").value).toBe("Full author")
@@ -923,7 +1079,7 @@ describe("reading attribution", () => {
     const sheets = vi.spyOn(CSSStyleSheet.prototype, "replaceSync")
     reader = mountAttributionReader()
     expect(notes()[0].classList.contains("horizontal-attribution")).toBe(true)
-    expect(notes()[0].textContent).toBe("© Long float author")
+    expect(notes()[0].textContent).toBe("Long float author")
     expect(notes()[1].classList.contains("left-attribution")).toBe(false)
     const rules = () => sheets.mock.calls.map(([source]) => source).filter(source => source.includes("position-anchor:")).at(-1)!
     expect(rules()).toContain(below ? "top: calc(anchor(bottom) + 2px)" : "bottom: calc(anchor(top) + 2px)")
@@ -940,9 +1096,9 @@ describe("reading attribution", () => {
     try {
       if(editing) start()
       else reader = mountAttributionReader()
-      const column = notes().find(note => note.textContent === "© Column")!
-      const float = notes().find(note => note.textContent === "© Float")!
-      const nested = notes().find(note => note.textContent === "© Inside float")!
+      const column = notes().find(note => note.textContent === "Column")!
+      const float = notes().find(note => note.textContent === "Float")!
+      const nested = notes().find(note => note.textContent === "Inside float")!
       expect(column.classList.contains("left-attribution")).toBe(true)
       expect(float.classList.contains("left-attribution")).toBe(false)
       if(editing) expect(nested).toBeUndefined()
@@ -976,7 +1132,7 @@ describe("reading attribution", () => {
     const secondary = ui().querySelector<HTMLElement>(".attribution-contact-note")!
     expect(secondary.parentElement).toBe(notes()[0].parentElement)
     expect(secondary.parentElement!.classList.contains("attribution-group")).toBe(true)
-    expect(notes()[0].textContent).toBe("© Long author")
+    expect(notes()[0].textContent).toBe("Long author")
     expect(secondary.textContent).toBe("https://example.com")
     expect(secondary.classList.contains("left-attribution")).toBe(true)
     expect(getComputedStyle(secondary).color).toBe("#777")
@@ -989,14 +1145,14 @@ describe("reading attribution", () => {
       await settle()
     }
     element.setAttribute(attributionAttributes.name, "Short")
-    await vi.waitFor(() => expect(notes().map(note => note.textContent)).toEqual(["© Shorthttps://example.com"]))
+    await vi.waitFor(() => expect(notes().map(note => note.textContent)).toEqual(["Shorthttps://example.com"]))
     expect(element.isConnected).toBe(true)
     expect(element.getAttribute(attributionAttributes.name)).toBe("Short")
     element.setAttribute(attributionAttributes.name, "Long again")
     await vi.waitFor(() => expect(notes()).toHaveLength(2))
     element.removeAttribute(attributionAttributes.contact)
     await vi.waitFor(() => expect(notes()).toHaveLength(1))
-    expect(notes()[0].textContent).toBe("© Long again")
+    expect(notes()[0].textContent).toBe("Long again")
     if(editing) editor!.features.attribution.disable()
     else reader!.destroy()
     expect(ui()?.querySelector(".attribution-note")).toBeUndefined()
@@ -1023,7 +1179,7 @@ describe("reading attribution", () => {
       window.dispatchEvent(new Event("resize"))
       await vi.waitFor(() => expect(label.classList.contains("left-attribution")).toBe(side === "left"))
       expect(notes()[0]).toBe(label)
-      expect(label.textContent).toBe("© Float author")
+      expect(label.textContent).toBe("Float author")
       expect(label.classList.contains("left-attribution")).toBe(side === "left")
       expect(positioning()).toContain(side === "left" ? "left: anchor(left)" : "left: anchor(right)")
       style.remove()
@@ -1041,7 +1197,7 @@ describe("reading attribution", () => {
     const original = document.body.innerHTML
     reader = mountAttributionReader(creativeCommonsLicenses)
     expect(notes()).toHaveLength(1)
-    expect(notes()[0].textContent).toBe(`© 2026 ${name} CC-BY-4.0${contact}`)
+    expect(notes()[0].textContent).toBe(`2026 ${name} CC-BY-4.0${contact}`)
     expect(notes()[0].children).toHaveLength(2)
     expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(true)
     expect(notes()[0].querySelector(`a[href="${contact}"]`)).toBeTruthy()
@@ -1070,7 +1226,7 @@ describe("reading attribution", () => {
     element.setAttribute(attributionAttributes.name, "Updated author")
     await settle()
     expect(notes()[0]).toBe(label)
-    expect(label.textContent).toBe("© Updated author Custom license")
+    expect(label.textContent).toBe("Updated author Custom license")
     const replacement = element.cloneNode(true) as Element
     element.replaceWith(replacement)
     await settle()
@@ -1085,7 +1241,7 @@ describe("reading attribution", () => {
   it("reads authored attribution inside custom-element light DOM without entering private shadows", () => {
     document.body.innerHTML = '<attribution-template role="document"><p data-ww-attribution-name="Nested author">Text</p></attribution-template>'
     reader = mountAttributionReader()
-    expect(notes()[0].textContent).toBe("© Nested author")
+    expect(notes()[0].textContent).toBe("Nested author")
   })
 })
 
@@ -1142,7 +1298,7 @@ describe("printed attribution", () => {
     const references = () => Array.from(ui().querySelectorAll<HTMLElement>(".attribution-reference"))
     beforePrint()
     expect(references().map(note => note.textContent)).toEqual(["1", "2"])
-    expect(list().map(note => note.textContent)).toEqual(["© 2026 Long author CC-BY-4.0 author@example.com", "© Widget author"])
+    expect(list().map(note => note.textContent)).toEqual(["2026 Long author CC-BY-4.0 author@example.com", "Widget author"])
     expect(getComputedStyle(ui().querySelector(".attribution-footnotes")!).display).toBe("none")
     expect(references().every(note => getComputedStyle(note).display === "none")).toBe(true)
     expect(list()[0].textContent).not.toContain("mailto:")
@@ -1160,7 +1316,7 @@ describe("printed attribution", () => {
     document.body.prepend(widget)
     first.setAttribute(attributionAttributes.name, "Remote author")
     beforePrint()
-    expect(list().map(note => note.textContent)).toEqual(["© Widget author", "© 2026 Remote author CC-BY-4.0 author@example.com"])
+    expect(list().map(note => note.textContent)).toEqual(["Widget author", "2026 Remote author CC-BY-4.0 author@example.com"])
     expect(notes().find(note => note.textContent!.includes("Remote author"))!.querySelector(".attribution-reference")!.textContent).toBe("2")
     widget.remove()
     beforePrint()
@@ -1182,7 +1338,7 @@ describe("printed attribution", () => {
     const sheets = [...document.adoptedStyleSheets]
     beforePrint()
     expect(labels()).toHaveLength(2)
-    expect(Array.from(labels()[0].children).map(line => line.textContent)).toEqual(["© 2026 Ada <Lovelace> CC-BY-4.0", "ada@example.com"])
+    expect(Array.from(labels()[0].children).map(line => line.textContent)).toEqual(["2026 Ada <Lovelace> CC-BY-4.0", "ada@example.com"])
     expect(labels()[1].children).toHaveLength(1)
     expect(labels()[1].textContent).toBe("CC0-1.0")
     expect(document.body.querySelector(".attribution-note")).toBeNull()
@@ -1197,14 +1353,14 @@ describe("printed attribution", () => {
     const element = start()
     element.setAttribute(attributionAttributes.name, "First author")
     beforePrint()
-    expect(labels()[0].textContent).toBe("© First author")
+    expect(labels()[0].textContent).toBe("First author")
     expect(editor!.toHTML(false, false)).not.toContain("◆attribution-")
     editor!.doc.syncFromDOM()
     expect(editor!.doc.body.toString()).not.toContain("◆attribution-")
     element.setAttribute(attributionAttributes.name, "Updated author")
     beforePrint()
     expect(labels()).toHaveLength(1)
-    expect(labels()[0].textContent).toBe("© Updated author")
+    expect(labels()[0].textContent).toBe("Updated author")
     editor!.features.attribution.disable()
     expect(document.body.innerHTML).not.toContain("◆attribution-")
     expect(document.body.shadowRoot!.querySelector(".attribution-note")).toBeNull()

@@ -5,6 +5,8 @@ import type {RibbonMenu, RibbonMenuButton} from "./ribbon-menu"
 import { repeat } from "lit/directives/repeat.js"
 import { ribbonIcon } from "../ribbon-icons"
 import type { SelectionGap, SelectionPathItem, SelectionPathSection } from "../editor-bridge"
+import {createAnchorPositioner} from "../anchor-positioning.js"
+import {popupAnchorCSS} from "./popup-position"
 
 export type DocumentTreeItem = SelectionPathItem & {
   children: DocumentTreeItem[]
@@ -323,6 +325,7 @@ export class DomEditorBreadcrumb extends LitElement {
   treeOpen = false
   private treeRootPath: number[] = []
   private menuAnchor: HTMLButtonElement | null = null
+  private anchorPositioner = createAnchorPositioner(document)
   private hoveredPath: number[] | null = null
   private hoveredSectionPath: number[] | null = null
   private breadcrumbCollapseCount = 0
@@ -615,8 +618,9 @@ export class DomEditorBreadcrumb extends LitElement {
     this.clearHover()
     this.dispatchSectionHover(null)
     if(!this.treeOpen) return
-    const path = [...this.treeRootPath]
     const menu = this.renderRoot.querySelector<RibbonMenu>("#document-tree")
+    if(menu) this.anchorPositioner.release(menu)
+    const path = [...this.treeRootPath]
     menu?.closeSubmenus()
     if(menu?.matches(":popover-open")) menu.hidePopover()
     this.treeOpen = false
@@ -647,12 +651,8 @@ export class DomEditorBreadcrumb extends LitElement {
       await menu.updateComplete
       if(!this.treeOpen || this.menuAnchor !== anchor || !menu.isConnected) return
       if(typeof menu.showPopover === "function") menu.showPopover()
-      const rect = anchor.getBoundingClientRect()
-      const bounds = menu.getBoundingClientRect()
-      menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - bounds.width - 8))}px`
-      const top = rect.bottom + 4 + bounds.height <= window.innerHeight - 8
-        ? rect.bottom + 4 : rect.top - bounds.height - 4
-      menu.style.top = `${Math.max(8, Math.min(top, window.innerHeight - bounds.height - 8))}px`
+      this.anchorPositioner.bind(menu, anchor, popupAnchorCSS())
+      this.anchorPositioner.refresh()
       menu.shadowRoot?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus()
     })
   }
@@ -892,6 +892,7 @@ export class DomEditorBreadcrumb extends LitElement {
 
   disconnectedCallback() {
     this.collapseTree()
+    this.anchorPositioner.destroy()
     this.breadcrumbResizeObserver?.disconnect()
     this.breadcrumbResizeObserver = undefined
     this.responsiveLayoutQueued = false

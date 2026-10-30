@@ -2,6 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {createImageMapPopoverController, imageMapHotspotShape, mountImageMapReader} from "./media"
 import {appendSerializedAssets} from "./serialization"
+import {cloneWithoutEditorMarkers} from "./utility"
 
 let reader: ReturnType<typeof mountImageMapReader> | undefined
 afterEach(() => {
@@ -11,7 +12,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-function fixture() {
+function fixture(anchorFactory?: NonNullable<Parameters<typeof mountImageMapReader>[3]>) {
   document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><span><!--keep--><area shape="rect" coords="500,40,680,340" href="#details" popovertarget="details" alt="Details"></span><area shape="circle" coords="100,100,40" href="https://example.org" target="_blank" rel="noopener" alt="Website"></map><div id="details" popover="auto">Content</div>'
   const image = document.querySelector("img")!
   Object.defineProperties(image, {naturalWidth: {value:720}, naturalHeight: {value:420}})
@@ -19,7 +20,7 @@ function fixture() {
   vi.spyOn(image, "getBoundingClientRect").mockImplementation(() => new DOMRect(geometry.left, geometry.top, geometry.width, geometry.height))
   const controller = createImageMapPopoverController(document)
   vi.spyOn(controller, "open").mockReturnValue(true)
-  reader = mountImageMapReader(document, controller)
+  reader = mountImageMapReader(document, controller, imageMapHotspotShape, anchorFactory)
   const root = document.body.shadowRoot!.querySelector(".◆image-map-reader")!.shadowRoot!
   return {image, geometry, controller, root}
 }
@@ -50,6 +51,38 @@ describe("image-map reading mode", () => {
     reader!.dispose()
     expect(document.body.shadowRoot!.querySelector(".◆image-map-reader")).toBeNull()
     expect(document.body.shadowRoot!.querySelector("slot:not([name])")).not.toBeNull()
+  })
+
+  it("anchors ordinary SVG shells without inline geometry and releases them without changing authored map data", () => {
+    const bind = vi.fn(), release = vi.fn(), refresh = vi.fn(), destroy = vi.fn()
+    const anchorFactory = vi.fn(() => ({bind, release, refresh, destroy}))
+    const {image, root} = fixture(anchorFactory)
+    const authored = document.body.innerHTML
+    const svg = root.querySelector("svg")!
+    expect(anchorFactory).toHaveBeenCalledWith(document)
+    expect(bind).toHaveBeenCalledWith(svg, image)
+    expect([svg.style.left, svg.style.top, svg.style.width, svg.style.height]).toEqual(["", "", "", ""])
+    expect(svg.getAttribute("viewBox")).toBe("0 0 720 420")
+    expect(root.querySelectorAll("a")).toHaveLength(2)
+
+    reader!.dispose()
+    expect(release).toHaveBeenCalledWith(svg)
+    expect(destroy).toHaveBeenCalledOnce()
+    expect(document.body.innerHTML).toBe(authored)
+  })
+
+  it("keeps measured placement for images under CSS transforms", () => {
+    const bind = vi.fn(), release = vi.fn(), refresh = vi.fn(), destroy = vi.fn()
+    const anchorFactory = vi.fn(() => ({bind, release, refresh, destroy}))
+    const {image, root} = fixture(anchorFactory)
+    image.style.transform = "scale(0.5)"
+    reader!.refresh()
+    const svg = root.querySelector("svg")!
+    expect(release).toHaveBeenCalledWith(svg)
+    expect(svg.style.left).toBe("20px")
+    expect(svg.style.top).toBe("30px")
+    expect(svg.style.width).toBe("360px")
+    expect(svg.style.height).toBe("210px")
   })
 
   it("opens click and hover popovers from the corresponding current area", () => {
@@ -96,9 +129,10 @@ describe("image-map reading mode", () => {
     const code = exported.querySelector("#webwriter-image-map-popovers")!.textContent!
     new Function("document", "window", code)(document, window)
     expect(document.body.shadowRoot!.querySelector(".◆image-map-reader")!.shadowRoot!.querySelectorAll("a")).toHaveLength(2)
-    expect(document.body.innerHTML).toBe(authored)
+    expect(cloneWithoutEditorMarkers(document.body, true).innerHTML).toBe(authored)
     window.dispatchEvent(new Event("pagehide"))
     expect(document.body.shadowRoot!.querySelector(".◆image-map-reader")).toBeNull()
+    expect(document.body.innerHTML).toBe(authored)
   })
 })
 

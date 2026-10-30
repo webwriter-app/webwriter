@@ -1,4 +1,4 @@
-export const attributionAttributes: Readonly<Record<"name" | "year" | "license" | "contact", string>>
+export const attributionAttributes: Readonly<Record<"name" | "year" | "license" | "contact" | "type", string>>
 export type AttributionValues = Record<keyof typeof attributionAttributes, string>
 export interface AttributionController {
   element: HTMLElement
@@ -8,6 +8,7 @@ export interface AttributionController {
   destroy(): void
 }
 export function createAttributionController(doc: Document, options?: {
+  anchorFactory?: typeof import("./anchor-positioning.js").createAnchorPositioner
   licenses?: ReadonlyArray<{code: string, name: string, url: string, description?: string}>
   createLicensePicker?: (input: HTMLInputElement) => HTMLElement & {value: string, close(reset?: boolean): void}
   editable?: () => boolean
@@ -18,4 +19,4 @@ export function createAttributionController(doc: Document, options?: {
   append?: (element: HTMLElement) => void
   save?: (elements: Element[], values: Partial<AttributionValues>) => boolean
 }): AttributionController
-export function mountAttributionReader(licenses?: ReadonlyArray<{code: string, name: string, url: string, description?: string}>): AttributionController | null
+export function mountAttributionReader(licenses?: ReadonlyArray<{code: string, name: string, url: string, description?: string}>, anchorFactory?: typeof import("./anchor-positioning.js").createAnchorPositioner): AttributionController | null

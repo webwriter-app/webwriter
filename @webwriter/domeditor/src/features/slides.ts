@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
 
@@ -55,7 +55,8 @@ export class SlidesFeature extends EditorFeature {
   private stylesheet: CSSStyleSheet | null = null
   private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
-  private resizeObserver: ResizeObserver | null = null
+  private anchors = createAnchorPositioner()
+  private navigationVisibility: IntersectionObserver | null = null
   private markedNavigation: HTMLElement | null = null
   private activeLink: HTMLAnchorElement | null = null
   private frame: number | null = null
@@ -452,9 +453,17 @@ export class SlidesFeature extends EditorFeature {
     const nav = this.active ? this.navigation() : null
     if(nav !== this.markedNavigation) {
       if(this.markedNavigation) removeEditorMarker(this.markedNavigation, "◆slide-navigation-editing")
-      this.resizeObserver?.disconnect()
+      this.navigationVisibility?.disconnect(); this.navigationVisibility = null
       this.markedNavigation = nav
-      if(nav) { nav.classList.add("◆slide-navigation-editing"); this.resizeObserver?.observe(nav) }
+      if(nav) {
+        nav.classList.add("◆slide-navigation-editing")
+        if(typeof IntersectionObserver !== "undefined") this.navigationVisibility = new IntersectionObserver(entries => {
+          for(const entry of entries) {
+            const control = this.removalTargets.find(({link}) => link === entry.target)
+            if(control) control.button.hidden = !this.editor.allows("delete", control.slide) || entry.intersectionRatio < 1
+          }
+        }, {root: nav, threshold: 1})
+      }
     }
     this.controls.hidden = !nav
     const selected = this.current(), slides = this.slides()
@@ -474,6 +483,7 @@ export class SlidesFeature extends EditorFeature {
     if(signature !== this.signature || selected !== this.selected || targets.length !== this.removalTargets.length
       || targets.some((target, i) => target.slide !== this.removalTargets[i].slide || target.link !== this.removalTargets[i].link)) {
       this.signature = signature; this.selected = selected
+      this.navigationVisibility?.disconnect()
       this.controls.replaceChildren()
       const button = (name: string, label: string, text: string, run: () => void) => {
         const button = document.createElement("button")
@@ -491,15 +501,16 @@ export class SlidesFeature extends EditorFeature {
         })}))
     }
     if(nav) {
-      const rect = nav.getBoundingClientRect(), add = this.controls.querySelector<HTMLElement>('[name="add"]')!
-      add.style.left = `${rect.right + 8}px`; add.style.top = `${rect.top + (rect.height - add.offsetHeight) / 2}px`
+      const add = this.controls.querySelector<HTMLElement>('[name="add"]')!
+      this.anchors.bind(add, nav, "left:calc(anchor(right) + 8px);top:anchor(center);translate:0 -50%;position-visibility:anchors-visible;")
       for(const {slide, link, button} of this.removalTargets) {
-        const bubble = link.getBoundingClientRect()
         button.classList.toggle("shown", slide === selected || link.matches(":hover, :focus-visible") || button.matches(":hover, :focus-visible"))
-        button.hidden = bubble.left < rect.left || bubble.right > rect.right
-        button.style.left = `${bubble.right - button.offsetWidth / 2 - 4}px`; button.style.top = `${bubble.top - button.offsetHeight / 2 + 4}px`
+        this.anchors.bind(button, link, "left:calc(anchor(right) - 4px);top:calc(anchor(top) + 4px);translate:-50% -50%;position-visibility:anchors-visible;")
+        this.navigationVisibility?.observe(link)
       }
     }
+    this.anchors.refresh()
+
   }
 
   enable() {
@@ -552,7 +563,6 @@ export class SlidesFeature extends EditorFeature {
       @media print {[part=slide-navigation-actions] {display:none}}
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
-    this.resizeObserver = new ResizeObserver(this.schedule)
     window.addEventListener("resize", this.fit)
     this.observer = new MutationObserver(this.schedule); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
     this.refresh()
@@ -561,7 +571,8 @@ export class SlidesFeature extends EditorFeature {
     super.disable(); this.observer?.disconnect(); this.observer = null
     if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
     this.layoutStylesheet = null
-    this.resizeObserver?.disconnect(); this.resizeObserver = null
+    this.navigationVisibility?.disconnect(); this.navigationVisibility = null
+    this.anchors.destroy()
     window.removeEventListener("resize", this.fit)
     this.removeZoomStyle?.(); this.removeZoomStyle = null
     this.zoomControls?.remove(); this.zoomControls = null

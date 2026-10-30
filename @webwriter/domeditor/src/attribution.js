@@ -4,17 +4,21 @@ export const attributionAttributes = {
   year: "data-ww-attribution-year",
   license: "data-ww-license",
   contact: "data-ww-attribution-contact",
+  type: "data-ww-attribution-type",
 }
 
 /** Import-free so the same appendix UI can be embedded in saved HTML. */
 export function createAttributionController(doc, options = {}) {
   const view = doc.defaultView
+  const anchors = options.anchorFactory?.(doc)
   const body = doc.body
   const fields = Object.keys(attributionAttributes)
   const selector = Object.values(attributionAttributes).map(name => `[${name}]`).join(",")
   const licenses = options.licenses ?? []
   const editable = () => options.editable?.() === true
   const values = element => Object.fromEntries(fields.map(key => [key, element.getAttribute(attributionAttributes[key]) ?? ""]))
+  const creditText = data => [data.type === "copyright" ? "©" : "", data.year, data.name].filter(Boolean).join(" ")
+  const hasCredit = data => fields.some(key => key !== "type" && data[key].trim())
   const authored = element => element?.nodeType === 1 && element !== body && body.contains(element)
     && !element.matches("script, style, link, meta, template, slot")
   const atomicTarget = element => {
@@ -60,7 +64,11 @@ export function createAttributionController(doc, options = {}) {
     .◆attribution-ui :focus-visible { outline: 2px solid #2563eb; outline-offset: 1px; }
     .◆attribution-ui .popup { position: fixed; inset: auto; margin: 0; box-sizing: border-box; width: 280px; max-width: calc(100vw - 16px); max-height: calc(100dvh - 16px); overflow: auto; padding: 12px; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 20px rgb(0 0 0 / 16%); background: #fff; color: #334155; font: 13px/1.4 system-ui, sans-serif; z-index: 1003; pointer-events: auto; user-select: text; -webkit-user-select: text; }
     .◆attribution-ui .heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
-    .◆attribution-ui .heading strong { font-weight: 600; }
+    .◆attribution-ui .credit-types { display: flex; min-width: 0; border: 1px solid #cbd5e1; border-radius: 3px; overflow: hidden; }
+    .◆attribution-ui .credit-types button { padding: 5px 8px; border: 0; background: #f8fafc; color: inherit; cursor: pointer; }
+    .◆attribution-ui .credit-types button + button { border-left: 1px solid #cbd5e1; }
+    .◆attribution-ui .credit-types button[aria-pressed=true] { background: #e8f2fd; color: #1e4f87; }
+    .◆attribution-ui .credit-types button:focus-visible { outline-offset: -2px; }
     .◆attribution-ui .close { width: 24px; height: 24px; border: 0; border-radius: 3px; padding: 0; background: transparent; color: inherit; cursor: pointer; font-size: 18px; }
     .◆attribution-ui form { display: grid; gap: 10px; margin: 0; }
     .◆attribution-ui label { display: grid; gap: 4px; }
@@ -99,8 +107,8 @@ export function createAttributionController(doc, options = {}) {
     }
   </style><div class="bridge" hidden><button class="copyright" type="button" aria-label="Copyright and attribution" title="Copyright and attribution" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9a4 4 0 1 0 0 6"/></svg></button></div>
   <div class="popup" popover="auto" role="dialog" aria-label="Copyright and attribution" hidden>
-    <div class="heading"><strong>Copyright and attribution</strong><button class="close" type="button" aria-label="Close">×</button></div>
-    <form><div class="pair"><label>Name<input name="name" autocomplete="name"></label><label>Year<input name="year" inputmode="numeric" pattern="[0-9]{4}" placeholder="YYYY"></label></div>
+    <div class="heading"><div class="credit-types" role="group" aria-label="Copyright or attribution"><button type="button" value="copyright" aria-pressed="false">Copyright</button><button type="button" value="attribution" aria-pressed="true">Attribution</button></div><button class="close" type="button" aria-label="Close">×</button></div>
+    <form><input name="type" type="hidden"><div class="pair"><label>Name<input name="name" autocomplete="name"></label><label>Year<input name="year" inputmode="numeric" pattern="[0-9]{4}" placeholder="YYYY"></label></div>
     <label>License<input name="license" type="hidden"></label>
     <label>Contact URL or email<input name="contact" placeholder="https://… or name@example.com"></label>
     <p class="selection-summary" hidden></p><p class="error" role="alert" hidden></p><div class="actions"><button class="delete" type="button" aria-label="Delete attribution">Delete</button><button class="save" type="button">Save</button></div></form><div class="details" hidden></div>
@@ -113,6 +121,18 @@ export function createAttributionController(doc, options = {}) {
   root.append(footnotes)
   const error = root.querySelector(".error")
   const inputs = Object.fromEntries(fields.map(key => [key, form.elements.namedItem(key)]))
+  const typeButtons = Array.from(root.querySelectorAll(".credit-types button"))
+  const updateType = () => {
+    for(const control of typeButtons) {
+      control.setAttribute("aria-pressed", String(control.value === (inputs.type.value === "copyright" ? "copyright" : "attribution")))
+      control.disabled = !editable()
+    }
+  }
+  for(const control of typeButtons) control.addEventListener("click", () => {
+    if(!editable()) return
+    inputs.type.value = control.value
+    updateType()
+  })
   const licensePicker = options.createLicensePicker?.(inputs.license)
   if(licensePicker) inputs.license.after(licensePicker)
   // Constructed sheets also work under the editing frame's nonce-only CSP.
@@ -130,7 +150,7 @@ export function createAttributionController(doc, options = {}) {
   appendix.adoptedStyleSheets = [...appendix.adoptedStyleSheets, sheet]
   let target = null, opened = null, baseline = null
   let openedElements = [], baselines = new Map()
-  let frame, destroyed = false
+  let frame, queued = false, destroyed = false
   let noteSheet = null, noteRules = "", noteSequence = 0, notesDirty = true
   const notes = new Map()
   const noteResize = view.ResizeObserver ? new view.ResizeObserver(() => { notesDirty = true; schedule() }) : null
@@ -172,7 +192,7 @@ export function createAttributionController(doc, options = {}) {
     footnotes.replaceChildren()
     for(const element of body.querySelectorAll(selector)) {
       const data = values(element)
-      if(!authored(element) || options.canAttribute?.(element) === false || !Object.values(data).some(value => value.trim())) continue
+      if(!authored(element) || options.canAttribute?.(element) === false || !hasCredit(data)) continue
       if(element.hasAttribute("hidden") || (element.checkVisibility ? !element.checkVisibility({visibilityProperty: true}) : view.getComputedStyle(element).display === "none")) continue
       current.add(element)
       let record = notes.get(element)
@@ -221,7 +241,7 @@ export function createAttributionController(doc, options = {}) {
         record.contactLabel?.replaceChildren()
         const first = doc.createElement("span")
         first.className = "attribution-text"
-        first.textContent = [data.name || data.year ? "©" : "", data.year, data.name].filter(Boolean).join(" ")
+        first.textContent = creditText(data)
         const license = licenseDetails(data.license)
         const appendText = (parent, text, href = null) => {
           const node = doc.createElement(href && !editable() ? "a" : "span")
@@ -306,7 +326,7 @@ export function createAttributionController(doc, options = {}) {
         summary.className = "attribution-summary"
         const symbol = doc.createElement("span")
         symbol.className = "attribution-symbol"
-        symbol.textContent = "©"
+        symbol.textContent = data.type === "copyright" ? "©" : "ⓘ"
         summary.append(symbol)
         if(!root.classList.contains("non-document-layout")) {
           const item = doc.createElement("li")
@@ -368,16 +388,16 @@ export function createAttributionController(doc, options = {}) {
   const renderDetails = (container = details, element = opened, inline = false) => {
     container.replaceChildren()
     const data = values(element)
-    const copyright = doc.createElement(inline ? "span" : "div")
-    copyright.textContent = ["©", data.year, data.name].filter(Boolean).join(" ")
-    container.append(copyright)
+    const credit = doc.createElement(inline ? "span" : "div")
+    credit.textContent = creditText(data)
+    if(credit.textContent) container.append(credit)
     const add = (text, href) => {
       if(!text) return
       const node = doc.createElement(href && !editable() ? "a" : inline ? "span" : "div")
       node.textContent = text
       if(href) node.className = "attribution-link"
       if(node.localName === "a") { node.href = href; node.target = "_blank"; node.rel = "noopener noreferrer" }
-      if(inline) container.append(" ")
+      if(inline && container.childNodes.length) container.append(" ")
       container.append(node)
     }
     const license = licenseDetails(data.license)
@@ -399,19 +419,34 @@ export function createAttributionController(doc, options = {}) {
       target = next
       if(target) resize?.observe(target)
     }
-    const empty = Boolean(target && options.selectedElement) && !Object.values(values(target)).some(value => value.trim())
+    const empty = Boolean(target && options.selectedElement) && !hasCredit(values(target))
     bridge.hidden = !empty
     const container = empty ? options.affordanceContainer?.(target) : null
     const parent = container ?? bridge
     if(button.parentElement !== parent) parent.append(button)
     button.hidden = !target
-    if(!target) return
+    if(!target) { anchors?.release(bridge); anchors?.release(popup); return }
     button.classList.toggle("empty-attribution", empty)
-    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${container ? " transform-overlay-attribution-freeform" : ""}` : "")
+    const placement = container?.matches('[part~="transform-overlay-board"]') ? " transform-overlay-attribution-board"
+      : container ? " transform-overlay-attribution-freeform" : ""
+    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${placement}` : "")
     bridge.setAttribute("part", empty ? "transform-overlay" : "")
-    button.querySelector("svg").toggleAttribute("hidden", empty)
+    button.querySelector("svg").toggleAttribute("hidden", empty || values(target).type !== "copyright")
     // Paint with the normal controls, above the native drag hit regions.
     if(empty && !opened && appendix.lastElementChild !== root) appendix.append(root)
+    if(anchors) {
+      const size = empty ? 20 : 16
+      const width = empty ? "20px" : "max(16px,var(--ww-page-gutter,1rem))"
+      if(container) anchors.release(bridge)
+      else anchors.bind(bridge, target, `left:clamp(0px,calc(anchor(right) - ${empty ? size / 2 : 0}px),calc(100vw - ${width}));top:clamp(0px,calc(anchor(center) - ${size / 2}px),calc(100dvh - ${size}px));width:${width};height:${size}px;position-visibility:anchors-visible;`)
+      if(opened) {
+        if(!editable()) { form.hidden = true; details.hidden = false; renderDetails() }
+        anchors.bind(popup, container || empty ? button : notes.get(target)?.label ?? target, "inset:auto;position-area:bottom span-right;justify-self:start;align-self:start;margin:4px 0;position-try-fallbacks:flip-block,flip-inline,flip-block flip-inline,--ww-ui-popup-below,--ww-ui-popup-above;position-visibility:anchors-visible;")
+      }
+      else anchors.release(popup)
+      anchors.refresh()
+      return
+    }
     const rect = target.getBoundingClientRect()
     const style = view.getComputedStyle(target)
     bridge.hidden = bridge.hidden || !rect.width || !rect.height || style.visibility === "hidden" || style.display === "none"
@@ -443,6 +478,12 @@ export function createAttributionController(doc, options = {}) {
     }
   }
   const schedule = () => {
+    if(anchors) {
+      if(queued || destroyed) return
+      queued = true
+      view.queueMicrotask(() => { queued = false; if(!destroyed) refresh() })
+      return
+    }
     if(frame || destroyed) return
     frame = view.requestAnimationFrame(() => { frame = undefined; refresh() })
   }
@@ -458,6 +499,7 @@ export function createAttributionController(doc, options = {}) {
     summary.textContent = `Applies to ${elements.length} elements. Only changed fields are saved.`
     form.hidden = !editable(); details.hidden = editable(); error.hidden = true
     for(const key of fields) { inputs[key].value = baseline[key]; inputs[key].setCustomValidity("") }
+    updateType()
     if(licensePicker) licensePicker.value = baseline.license
     if(!editable()) renderDetails()
     popup.hidden = false
@@ -475,7 +517,7 @@ export function createAttributionController(doc, options = {}) {
   root.addEventListener("keydown", event => {
     if(event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(true) }
     if(event.key === "Tab" && opened && editable() && !event.defaultPrevented && event.composedPath().includes(popup)) {
-      const controls = [inputs.name, inputs.year, licensePicker, inputs.contact, root.querySelector(".delete"), root.querySelector(".save"), root.querySelector(".close")]
+      const controls = [inputs.name, inputs.year, licensePicker, inputs.contact, root.querySelector(".delete"), root.querySelector(".save"), ...typeButtons, root.querySelector(".close")]
         .filter(control => control?.isConnected && !control.disabled)
       const index = controls.findIndex(control => event.composedPath().includes(control))
       event.preventDefault()
@@ -532,7 +574,7 @@ export function createAttributionController(doc, options = {}) {
   const afterPrint = () => { notesDirty = true; schedule() }
   view.addEventListener("beforeprint", preparePrint)
   view.addEventListener("afterprint", afterPrint)
-  doc.addEventListener("scroll", schedule, true)
+  if(!anchors) doc.addEventListener("scroll", schedule, true)
   refresh()
   return {element: root, handleEvent, refresh, open, destroy() {
     destroyed = true
@@ -543,6 +585,7 @@ export function createAttributionController(doc, options = {}) {
     view.removeEventListener("afterprint", afterPrint)
     view.removeEventListener("resize", layoutChanged)
     doc.removeEventListener("scroll", schedule, true)
+    anchors?.destroy()
     popup.hidePopover?.()
     appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(current => current !== sheet)
     root.remove()
@@ -550,9 +593,9 @@ export function createAttributionController(doc, options = {}) {
   }}
 }
 
-export function mountAttributionReader(licenses = []) {
+export function mountAttributionReader(licenses = [], anchorFactory) {
   if(!document.body || document.designMode === "on") return null
-  const controller = createAttributionController(document, {licenses})
+  const controller = createAttributionController(document, {licenses, anchorFactory})
   const types = ["pointerdown"]
   types.forEach(type => document.addEventListener(type, controller.handleEvent))
   const destroy = controller.destroy

@@ -1,6 +1,6 @@
 import {CanvasViewer, canvasControlsStyles, canvasStartingView, isCanvasStartingView} from "../canvas-viewer.js"
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, clearInlinePlacement, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {canvasClass, canvasStyles, documentLayoutMode, resetEmptyLayoutContent, slideLayoutRole, type DocumentLayoutMode, type DocumentLayoutState} from "../document-layout"
 import trashIcon from "@tabler/icons/outline/trash.svg?raw"
@@ -18,6 +18,7 @@ export class CanvasFeature extends EditorFeature {
   private controls: HTMLElement | null = null
   private background: HTMLElement | null = null
   private startingViewOutline: HTMLElement | null = null
+  private anchors = createAnchorPositioner()
   private stylesheet: CSSStyleSheet | null = null
   private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
@@ -177,10 +178,18 @@ export class CanvasFeature extends EditorFeature {
     if(!outline) return
     const frame = this.active ? canvasStartingView() : null
     outline.hidden = !frame
-    if(!frame) return
-    const rect = frame.getBoundingClientRect()
-    Object.assign(outline.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
-    outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!.classList.toggle("inside", rect.top < 24)
+    if(!frame) { this.anchors.release(outline); return }
+    if(this.editor.features.transformation.boxTransformed(frame)) {
+      this.anchors.release(outline)
+      const rect = frame.getBoundingClientRect()
+      Object.assign(outline.style, {left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+    }
+    else {
+      for(const property of ["left", "top", "width", "height"]) outline.style.removeProperty(property)
+      this.anchors.bind(outline, frame)
+    }
+    this.anchors.refresh()
+    outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!.classList.toggle("inside", frame.getBoundingClientRect().top < 24)
   }
 
   convert(mode: "canvas" | "document", captureUndo = true) {
@@ -616,6 +625,8 @@ export class CanvasFeature extends EditorFeature {
     this.background?.remove(); this.background = null
     this.controls?.remove(); this.controls = null
     this.startingViewOutline?.remove(); this.startingViewOutline = null
+    this.anchors.destroy()
+    this.anchors = createAnchorPositioner()
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     this.stylesheet = null
     this.signature = ""

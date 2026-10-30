@@ -2,7 +2,8 @@ import {dropdownContentStyles, sharingLinkStyles, switchInputStyles} from "./dro
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {LitElement, css, html, nothing, type TemplateResult} from "lit"
 import { ribbonIcon } from "../ribbon-icons"
-import {fixedClientX} from "../utility"
+import {createAnchorPositioner} from "../anchor-positioning.js"
+import {popupAnchorCSS} from "./popup-position"
 import type {PackageKeywordPresentation} from "../package-keywords"
 import "./ribbon-menu"
 import "./qr-code"
@@ -54,7 +55,6 @@ export class RibbonButton extends LitElement {
     muted: {type: Boolean, reflect: true},
     details: {attribute: false},
     detailsOpen: {type: Boolean, attribute: "details-open", reflect: true},
-    detailsPosition: {attribute: false, state: true},
     selectionCount: {type: Number, attribute: "selection-count"},
     toggle: {type: Boolean, reflect: true},
     variant: {type: String, reflect: true},
@@ -1072,7 +1072,7 @@ export class RibbonButton extends LitElement {
   private detailsOpen = false
   private detailsShowTimer: ReturnType<typeof setTimeout> | undefined
   private detailsHideTimer: ReturnType<typeof setTimeout> | undefined
-  private detailsPosition = {left: 8, top: 8}
+  private anchors = createAnchorPositioner(this.ownerDocument)
   private submenuTrigger: HTMLButtonElement | null = null
   private insertionHoverPointer = false
   private insertionHoverFocus = false
@@ -1103,6 +1103,7 @@ export class RibbonButton extends LitElement {
     this.submenuTrigger = null
     const submenu = this.renderRoot.querySelector<RibbonMenu>("ribbon-menu")
     submenu?.closeSubmenus()
+    if(submenu) this.anchors.release(submenu)
     this.hidePopoverElement(submenu)
     submenu?.removeAttribute("data-connected")
     this.submenuOpen = false
@@ -1137,6 +1138,7 @@ export class RibbonButton extends LitElement {
     this.hideDetails()
     this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".button-notification"))
     if(this.notificationTimer !== undefined) clearTimeout(this.notificationTimer)
+    this.anchors.destroy()
     super.disconnectedCallback()
   }
 
@@ -1157,14 +1159,14 @@ export class RibbonButton extends LitElement {
       const row = this.renderRoot.querySelector<HTMLElement>(".button-row")
       if(!bubble || !row) return
       this.showPopoverElement(bubble)
-      const anchor = row.getBoundingClientRect()
-      const bounds = bubble.getBoundingClientRect()
-      bubble.style.left = `${Math.max(8, Math.min(anchor.right - bounds.width, window.innerWidth - bounds.width - 8))}px`
-      bubble.style.top = `${Math.min(anchor.bottom + 8, window.innerHeight - bounds.height - 8)}px`
+      this.anchors.bind(bubble, row, popupAnchorCSS(8) + "position-area:bottom span-left;justify-self:end;")
+      this.anchors.refresh()
     })
     this.notificationTimer = setTimeout(() => {
       this.notificationVisible = false
-      this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".button-notification"))
+      const bubble = this.renderRoot.querySelector<HTMLElement>(".button-notification")
+      if(bubble) this.anchors.release(bubble)
+      this.hidePopoverElement(bubble)
       this.notificationTimer = undefined
     }, duration)
   }
@@ -1255,22 +1257,12 @@ export class RibbonButton extends LitElement {
         if(!this.submenuOpen || !this.isConnected) return
         this.showPopoverElement(submenu)
         const row = this.renderRoot.querySelector<HTMLElement>(".button-row")!
-        const button = row.getBoundingClientRect()
-        const viewportWidth = this.ownerDocument.documentElement.clientWidth || window.innerWidth
-        submenu.style.minWidth = `${Math.min(button.width, viewportWidth - 16)}px`
-        const menu = submenu.getBoundingClientRect()
-        const margin = 8
-        const left = Math.min(
-          Math.max(margin, button.left),
-          Math.max(margin, viewportWidth - menu.width - margin),
-        )
-        const below = button.bottom - 1
-        const opensBelow = below + menu.height <= window.innerHeight - margin
-        const top = opensBelow
-          ? below
-          : Math.max(margin, button.top - menu.height + 1)
-        submenu.style.left = `${fixedClientX(left, this.ownerDocument)}px`
-        submenu.style.top = `${top}px`
+        this.anchors.bind(submenu, row, popupAnchorCSS(-1) + "min-width:min(anchor-size(width),calc(100vw - 16px));")
+        this.anchors.refresh()
+        // Border joins describe the native placement; they do not position it.
+        const button = row.getBoundingClientRect(), menu = submenu.getBoundingClientRect()
+        const left = menu.left, top = menu.top
+        const opensBelow = Math.abs(menu.top - button.bottom + 1) < .5
         submenu.focusEditingLabel()
         if(opensBelow || top + menu.height === button.top + 1) {
           const placement = opensBelow ? "below" : "above"
@@ -1341,36 +1333,14 @@ export class RibbonButton extends LitElement {
     this.cancelDetailsHide()
     if(this.detailsOpen) return
     if(!this.details || !this.isConnected) return
-    const rect = this.getBoundingClientRect()
-    const viewportWidth = Math.max(1, window.innerWidth)
-    const viewportHeight = Math.max(1, window.innerHeight)
-    const margin = 8
-    const gap = 6
-    const buttonRight = Number.isFinite(rect.right) ? rect.right : rect.left + rect.width
-    this.detailsPosition = {left: margin, top: margin}
     this.detailsOpen = true
     void this.updateComplete.then(() => {
       if(!this.detailsOpen || !this.isConnected) return
       const details = this.renderRoot.querySelector<HTMLElement>(".details")
       if(!details) return
       this.showPopoverElement(details)
-      const bounds = details.getBoundingClientRect()
-      const width = bounds.width > 0 ? bounds.width : Math.min(272, Math.max(1, viewportWidth - margin * 2))
-      const height = bounds.height > 0 ? bounds.height : Math.min(288, Math.max(1, viewportHeight - margin * 2))
-      const leftPosition = rect.left - width - gap
-      const rightPosition = buttonRight + gap
-      const leftSpace = rect.left - margin - gap
-      const rightSpace = viewportWidth - buttonRight - margin - gap
-      const fitsLeft = leftPosition >= margin
-      const fitsRight = rightPosition + width <= viewportWidth - margin
-      let left = leftPosition
-      if(!fitsLeft && fitsRight) left = rightPosition
-      else if(!fitsLeft && !fitsRight && leftSpace < rightSpace) {
-        left = rightPosition
-      }
-      left = Math.min(Math.max(margin, left), Math.max(margin, viewportWidth - width - margin))
-      const top = Math.min(Math.max(margin, rect.top), Math.max(margin, viewportHeight - height - margin))
-      this.detailsPosition = {left, top}
+      this.anchors.bind(details, this, popupAnchorCSS(6) + "position-area:left span-bottom;justify-self:end;align-self:start;margin:0 6px;")
+      this.anchors.refresh()
     })
   }
 
@@ -1391,7 +1361,9 @@ export class RibbonButton extends LitElement {
   private hideDetails = () => {
     this.cancelDetailsShow()
     this.cancelDetailsHide()
-    this.hidePopoverElement(this.renderRoot.querySelector<HTMLElement>(".details"))
+    const details = this.renderRoot.querySelector<HTMLElement>(".details")
+    if(details) this.anchors.release(details)
+    this.hidePopoverElement(details)
     this.detailsOpen = false
   }
 
@@ -1509,7 +1481,6 @@ export class RibbonButton extends LitElement {
           class="details"
           role="tooltip"
           popover="manual"
-          style=${`left:${this.detailsPosition.left}px;top:${this.detailsPosition.top}px`}
           @mouseenter=${this.cancelDetailsHide}
           @mouseleave=${this.leaveDetails}
         >

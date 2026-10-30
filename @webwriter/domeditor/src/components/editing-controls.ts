@@ -93,6 +93,8 @@ import "./ribbon-drawer"
 import {type RibbonDrawer} from "./ribbon-drawer"
 import {type RibbonMenuGroup} from "./ribbon-menu"
 import {graphicAlignButtons, graphicDistributeButtons, graphicOrderButtons, type RibbonMenuName} from "./ribbon-menu-config"
+import {createAnchorPositioner} from "../anchor-positioning.js"
+import {popupAnchorCSS} from "./popup-position"
 
 type RibbonInputEventDetail = {
   input: HTMLElement
@@ -182,6 +184,8 @@ export abstract class EditingControls extends LitElement {
   }
 
   static styles = editingControlStyles
+
+  private anchorPositioner: ReturnType<typeof createAnchorPositioner> | null = null
 
   activeMenu: RibbonMenuName = "Start"
 
@@ -553,7 +557,7 @@ export abstract class EditingControls extends LitElement {
         class="mark-span"
         style="grid-column: 8; grid-row: 2"
         toggle
-        label="Link"
+        label="Link…"
         icon="MarkLink"
         action="mark:a"
         .selectionCount=${selected.length}
@@ -1072,14 +1076,25 @@ export abstract class EditingControls extends LitElement {
     const popup = button.closest("li")?.querySelector<HTMLElement>(".package-source-popup")
     if(!popup || typeof popup.showPopover !== "function") return
     popup.showPopover()
-    const rect = button.getBoundingClientRect()
-    popup.style.left = `${Math.max(8, Math.min(rect.right, window.innerWidth - popup.offsetWidth - 8))}px`
-    popup.style.top = `${Math.max(8, rect.top - popup.offsetHeight - 4)}px`
+    this.anchorPositioner ??= createAnchorPositioner(this.ownerDocument)
+    this.anchorPositioner.bind(popup, button,
+      `${popupAnchorCSS(4)}position-area:top span-right;justify-self:end;`)
+    this.anchorPositioner.refresh()
   }
 
   private hidePackageSource(event: Event) {
     const button = event.currentTarget as HTMLElement
-    button.closest("li")?.querySelector<HTMLElement>(".package-source-popup")?.hidePopover?.()
+    const popup = button.closest("li")?.querySelector<HTMLElement>(".package-source-popup")
+    if(popup) {
+      popup.hidePopover?.()
+      this.anchorPositioner?.release(popup)
+    }
+  }
+
+  disconnectedCallback() {
+    this.anchorPositioner?.destroy()
+    this.anchorPositioner = null
+    super.disconnectedCallback()
   }
 
   protected renderDevelopDrawer() {

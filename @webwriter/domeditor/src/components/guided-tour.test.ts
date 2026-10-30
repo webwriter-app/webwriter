@@ -37,6 +37,8 @@ it("walks forwards and backwards, then finishes without changing the document or
   next()
   expect(dismiss).toHaveBeenCalledOnce()
   expect(document.activeElement).toBe(anchor)
+  expect(anchor.className).toContain("◆anchor-target-")
+  tour.remove()
   expect(anchor.outerHTML).toBe("<button></button>")
 })
 
@@ -49,14 +51,16 @@ it("can be dismissed immediately or with Escape", async () => {
   expect(dismiss).toHaveBeenCalledTimes(2)
 })
 
-it("positions the card beside the current control and stays inside the viewport", async () => {
+it("uses anchor positioning for the card and target outline without inline coordinates", async () => {
   const {tour, anchor, root} = await mount()
   vi.spyOn(tour, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 272, 140))
   vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(new DOMRect(window.innerWidth - 60, 40, 50, 30))
   root.querySelector<HTMLButtonElement>(".next")!.click()
   await tour.updateComplete
-  expect(tour.style.left).toBe(`${window.innerWidth - 272 - 8}px`)
-  expect(tour.style.top).toBe("80px")
+  expect(tour.style.left).toBe("")
+  expect(tour.style.top).toBe("")
+  expect(root.querySelector<HTMLElement>(".target")!.style.left).toBe("")
+  expect(root.querySelector<HTMLElement>(".target")!.style.width).toBe("")
   expect(root.querySelector<HTMLElement>(".target")!.hidden).toBe(false)
   anchor.remove()
   expect(() => window.dispatchEvent(new Event("resize"))).not.toThrow()

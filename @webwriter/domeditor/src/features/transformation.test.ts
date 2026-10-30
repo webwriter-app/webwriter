@@ -85,6 +85,30 @@ function captureNode(target: Element) {
   editor.features.selection.captureElement(target)
 }
 
+it("anchors ordinary flow frames and retains measured geometry during transformation", () => {
+  const target = targetElement()
+  mockRect(target)
+  selectNode(target)
+  feature.updateInfo()
+  expect(feature.overlay.style.left).toBe("")
+  expect(feature.overlay.style.top).toBe("")
+  expect(feature.overlay.getAttribute("part")).toContain("anchor-control-")
+  vi.mocked(target.getBoundingClientRect).mockReturnValue(new DOMRect(100, 10, 100, 50))
+  document.dispatchEvent(new Event("scroll"))
+  expect(feature.overlay.getAttribute("part")).toContain("transform-overlay-at-top")
+  expect(feature.overlay.style.top).toBe("")
+  target.style.setProperty("rotate", "12deg")
+  feature.updateInfo()
+  expect(feature.overlay.style.transform).toContain("matrix(")
+  expect(feature.overlay.style.left).not.toBe("")
+  target.style.removeProperty("rotate")
+  feature.updateInfo()
+  expect(feature.overlay.style.left).toBe("")
+  const binding = feature.overlay.getAttribute("part")!.split(/\s+/).find(value => value.startsWith("anchor-control-"))!
+  feature.clearTransform()
+  expect(feature.overlay.getAttribute("part")).not.toContain(binding)
+})
+
 it("hides transforms for a zero-area widget host and recovers when its live box returns", () => {
   const target = targetElement("self-positioned-widget")
   target.attachShadow({mode: "open"}).innerHTML = '<div style="position:absolute;width:200px;height:100px">Popup</div>'
@@ -750,8 +774,8 @@ describe("freeform group transformation", () => {
     end()
     expect(first.style.left).toBe("40px")
     expect(last.style.left).toBe("240px")
-    expect(first.style.top).toBe("30px")
-    expect(last.style.top).toBe("30px")
+    expect(first.style.top).toBe("40px")
+    expect(last.style.top).toBe("40px")
     expect($.selectedElements).toEqual([first, last])
     expect(Array.from(parent.childNodes)).toEqual(children)
     expect(first.innerHTML).toBe(content)
@@ -772,8 +796,8 @@ describe("freeform group transformation", () => {
     first.firstElementChild!.dispatchEvent(pointer("pointerdown", {pointerId: 31, clientX: 150, clientY: 125}))
     move(180, 145, {shiftKey: true})
     end()
-    expect(first.style.left).toBe("30px")
-    expect(last.style.left).toBe("230px")
+    expect(first.style.left).toBe("40px")
+    expect(last.style.left).toBe("240px")
     expect(first.style.top).toBe("0px")
     expect($.selectedElements).toEqual([first, last])
   })
@@ -1868,8 +1892,11 @@ describe("transform controls and geometry", () => {
 
       captureNode(target)
 
-      expect(feature.overlay.style.width).toBe("2000px")
-      expect(feature.overlay.style.height).toBe("96px")
+      expect(feature.boxGeometry(target).styles.width).toBe("2000px")
+      expect(feature.boxGeometry(target).styles.height).toBe("96px")
+      expect(feature.overlay.style.width).toBe("")
+      expect(feature.overlay.style.height).toBe("")
+      expect(feature.overlay.getAttribute("part")).toContain("anchor-control-")
       expect(target.getAttribute("style")).toBe("width: 100%; height: auto;")
       expect(target.textContent).toBe("authored")
       expect(target.parentElement).toBe(document.body)
@@ -2045,11 +2072,14 @@ describe("transform controls and geometry", () => {
 
   function expectAnchorAt(left: number, top: number) {
     const overlay = feature.overlay
-    const matrix = new DOMMatrix(overlay.style.transform)
-    const x = parseFloat(feature.anchor.style.left) - parseFloat(overlay.style.width) / 2
-    const y = parseFloat(feature.anchor.style.top) - parseFloat(overlay.style.height) / 2
-    expect(parseFloat(overlay.style.left) + parseFloat(overlay.style.width) / 2 + matrix.a * x + matrix.c * y).toBeCloseTo(left)
-    expect(parseFloat(overlay.style.top) + parseFloat(overlay.style.height) / 2 + matrix.b * x + matrix.d * y).toBeCloseTo(top)
+    // Happy DOM cannot resolve anchor() or anchor-size(). The live target box
+    // supplies that frame here; the native fixture checks the rendered frame.
+    const geometry = overlay.style.width ? overlay.style : feature.boxGeometry(feature.target!).styles
+    const matrix = new DOMMatrix(geometry.transform)
+    const x = parseFloat(feature.anchor.style.left) - parseFloat(geometry.width) / 2
+    const y = parseFloat(feature.anchor.style.top) - parseFloat(geometry.height) / 2
+    expect(parseFloat(geometry.left) + parseFloat(geometry.width) / 2 + matrix.a * x + matrix.c * y).toBeCloseTo(left)
+    expect(parseFloat(geometry.top) + parseFloat(geometry.height) / 2 + matrix.b * x + matrix.d * y).toBeCloseTo(top)
     const orientation = matrix.multiply(new DOMMatrix(feature.anchor.style.transform))
     expect(orientation.a).toBeCloseTo(1)
     expect(orientation.b).toBeCloseTo(0)
@@ -2163,7 +2193,7 @@ describe("transform controls and geometry", () => {
     feature.handleMoveDrag(new MouseEvent("mousemove", {button: 0, clientX: 124, clientY: 132, shiftKey: true}))
 
     expect(target.style.left).toBe("0px")
-    expect(target.style.top).toBe("30px")
+    expect(target.style.top).toBe("40px")
     feature.handleMoveEnd()
 
     feature.handleMoveStart(new MouseEvent("mousedown", {button: 0, clientX: 100, clientY: 100}))
@@ -2421,11 +2451,11 @@ describe("transform controls and geometry", () => {
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 17, clientX: 100, clientY: 100}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 17, buttons: 1, clientX: 400, clientY: 250}))
     expect(target.style.left).toBe("300px")
-    expect(target.style.top).toBe("150px")
+    expect(target.style.top).toBe("160px")
     handle.dispatchEvent(pointer("lostpointercapture", {pointerId: 17, buttons: 0, clientX: 400, clientY: 250}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 17, clientX: 400, clientY: 250}))
     expect(target.style.left).toBe("300px")
-    expect(target.style.top).toBe("150px")
+    expect(target.style.top).toBe("160px")
     expect(document.body).not.toHaveClass("◆transform-moving")
     await mutationsDelivered()
     editor.doc.syncFromDOM()
@@ -3431,5 +3461,103 @@ describe("SVG canvas cropping", () => {
     editor.doc.redo()
     await mutationsDelivered()
     expect(document.getElementById("cropped-canvas")!.getAttribute("viewBox")).toBe("10 20 160 80")
+  })
+})
+
+
+describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode => {
+  function setup(zoom = 1) {
+    document.body.className = `ww-${mode}`
+    let root = document.body
+    if(mode === "slides") {
+      const viewport = append(document.createElement("div"))
+      viewport.className = "ww-slides-viewport"
+      root = viewport.appendChild(document.createElement("section"))
+      root.className = "ww-slide"
+    }
+    root.style.setProperty("zoom", String(zoom))
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(30, 40, 640 * zoom, 360 * zoom))
+    vi.spyOn(mode === "canvas" ? editor.features.canvas : editor.features.slides, "zoom", "get").mockReturnValue(zoom)
+    if(mode === "canvas") vi.spyOn(editor.features.canvas, "clientPoint").mockImplementation((x, y) => ({x: (x - 30) / zoom, y: (y - 40) / zoom}))
+    const box = (tag: string, left: number, top: number, width: number, height: number) => {
+      const target = root.appendChild(document.createElement(tag))
+      target.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${width}px;height:${height}px`
+      vi.spyOn(target, "getBoundingClientRect").mockImplementation(() => new DOMRect(
+        30 + parseFloat(target.style.left) * zoom, 40 + parseFloat(target.style.top) * zoom, width * zoom, height * zoom))
+      return target
+    }
+    const target = box("test-widget", 13, 17, 64, 46)
+    target.innerHTML = '<span>Authored</span><!--keep--><unfamiliar-inline title="kept">content</unfamiliar-inline>'
+    target.attachShadow({mode: "open"}).innerHTML = '<button>Widget UI</button>'
+    selectNode(target)
+    const start = () => feature.handleMoveStart(pointer("pointerdown", {pointerId: 61, clientX: 100, clientY: 100}))
+    const move = (x: number, y: number, modifiers: PointerEventInit = {}) => document.dispatchEvent(pointer("pointermove", {
+      pointerId: 61, clientX: 100 + x * zoom, clientY: 100 + y * zoom, ...modifiers,
+    }))
+    const end = () => document.dispatchEvent(pointer("pointerup", {pointerId: 61}))
+    const overlay = () => editor.appendix.querySelector('[part="transform-movement-overlay"]')
+    return {target, root, box, start, move, end, overlay}
+  }
+
+  it.each([.5, 1, 1.2, 2])("snaps an off-grid visual box exactly to the dots at zoom %s", zoom => {
+    const {target, start, move, end, overlay} = setup(zoom)
+    const children = Array.from(target.childNodes)
+    start(); move(24, 31)
+    expect(parseFloat(target.style.left)).toBeCloseTo(40)
+    expect(parseFloat(target.style.top)).toBeCloseTo(40)
+    expect(Boolean(overlay()?.querySelector('[part="transform-grid"]'))).toBe(mode === "slides")
+    expect(Array.from(target.childNodes)).toEqual(children)
+    expect(document.body.querySelector('[part="transform-movement-overlay"]')).toBeNull()
+    end()
+    expect(overlay()).toBeNull()
+  })
+
+  it.each(["edges", "centers"])("aligns %s against live peer boxes and shows supporting lines", alignment => {
+    const {target, box, start, move, overlay, end} = setup()
+    const peer = box("peer-widget", 203, 147, 100, 80)
+    const left = alignment === "edges" ? 139 : 221, top = alignment === "edges" ? 147 : 164
+    const x = alignment === "edges" ? 233 : 283, y = alignment === "edges" ? 187 : 227
+    start(); move(left - 13 - 3, top - 17 + 4)
+    expect(parseFloat(target.style.left)).toBeCloseTo(left)
+    expect(parseFloat(target.style.top)).toBeCloseTo(top)
+    expect(overlay()?.querySelector('[part~="transform-guide-x"]')).toHaveAttribute("x1", String(x))
+    expect(overlay()?.querySelector('[part~="transform-guide-y"]')).toHaveAttribute("y1", String(y))
+    peer.remove()
+    move(24, 31)
+    expect(target.style.left).toBe("40px")
+    expect(target.style.top).toBe("40px")
+    expect(overlay()?.querySelector('[part~="transform-guide"]')).toBeNull()
+    end()
+  })
+
+  it("bypasses all snapping with Alt and leaves the locked Shift axis unchanged", () => {
+    const {target, box, start, move, end, overlay} = setup()
+    box("peer-widget", 203, 147, 100, 80)
+    start(); move(123, 134, {altKey: true})
+    expect(target.style.left).toBe("136px")
+    expect(target.style.top).toBe("151px")
+    expect(overlay()?.querySelector('[part~="transform-guide"]')).toBeNull()
+    move(24, 31, {shiftKey: true})
+    expect(target.style.left).toBe("13px")
+    expect(target.style.top).toBe("40px")
+    end()
+  })
+
+  it.each(["release", "Escape", "pointercancel", "removed", "disable", "blur"])("cleans up the grid and guides on %s", ending => {
+    const {target, box, start, move, end, overlay} = setup()
+    box("peer-widget", 203, 147, 100, 80)
+    start(); move(123, 134)
+    expect(overlay()).not.toBeNull()
+    expect(editor.toHTML(true)).not.toMatch(/◆|transform-grid|transform-guide/)
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toMatch(/◆|transform-grid|transform-guide/)
+    if(ending === "release") end()
+    else if(ending === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true}))
+    else if(ending === "pointercancel") document.dispatchEvent(pointer("pointercancel", {pointerId: 61}))
+    else if(ending === "removed") { target.remove(); move(24, 31) }
+    else if(ending === "disable") feature.disable()
+    else window.dispatchEvent(new Event("blur"))
+    expect(overlay()).toBeNull()
+    expect(document.body.className).not.toContain("◆transform-moving")
   })
 })

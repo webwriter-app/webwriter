@@ -8,6 +8,7 @@ import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
+import {createAnchorPositioner} from "../utility"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -73,6 +74,8 @@ export class SelectionFeature extends EditorFeature {
   #selectionMarkers = new Set<Element>()
   #atomicOverlays = new Map<Element, HTMLElement>()
   #atomicOverlayFrame: number | null = null
+  #atomicAnchors = createAnchorPositioner()
+  #transformCaretTarget: Element | null = null
   #revealSelectionFrame: number | null = null
   #lastScrollSelection: {element: Element} | {range: Range, backwards: boolean} | null = null
   #hoverFrame: number | null = null
@@ -101,6 +104,7 @@ export class SelectionFeature extends EditorFeature {
     if(records.some(isAuthoredMutation)) {
       this.#invalidateFloatCandidates()
       this.#refreshGapCaretInlinePosition()
+      if(this.#atomicOverlays.size || this.#boxDrag?.previews.size) this.#positionAtomicOverlays()
     }
   }
 
@@ -124,29 +128,46 @@ export class SelectionFeature extends EditorFeature {
   #clearAtomicOverlays() {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
     this.#atomicOverlayFrame = null
-    this.#atomicOverlays.forEach(overlay => overlay.remove())
+    this.#atomicOverlays.forEach(overlay => {
+      this.#atomicAnchors.release(overlay)
+      overlay.remove()
+    })
     this.#atomicOverlays.clear()
+    this.#atomicAnchors.refresh()
   }
 
-  /** Measure live boxes while selected, including scrolling, resizing and
-   * widget-driven layout changes that do not mutate the authored DOM. */
+  /** Ordinary element boxes follow CSS anchors. Cropping still needs the
+   * visible media geometry rather than the element's full border box. */
   readonly #positionAtomicOverlays = () => {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
     this.#atomicOverlayFrame = null
+    let measured = false
     for(const overlays of [this.#atomicOverlays, this.#boxDrag?.previews]) overlays?.forEach((overlay, element) => {
       if(!document.body.contains(element)) {
+        this.#atomicAnchors.release(overlay)
         overlay.remove()
         overlays.delete(element)
         return
       }
-      const rect = this.editor.features.media.cropTargetFor(element) && element instanceof HTMLElement
-        ? this.editor.features.transformation.boxGeometry(element).rect : element.getBoundingClientRect()
+      const media = this.editor.features.media.cropTargetFor(element)
+      const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
+      const cropped = Boolean(media && crop && crop !== "none") && element instanceof HTMLElement
+      const transformed = this.editor.features.transformation.boxTransformed(element)
+      if(!cropped && !transformed) {
+        for(const property of ["left", "top", "width", "height"]) overlay.style.removeProperty(property)
+        this.#atomicAnchors.bind(overlay, element)
+        return
+      }
+      this.#atomicAnchors.release(overlay)
+      measured = true
+      const rect = cropped ? this.editor.features.transformation.boxGeometry(element as HTMLElement).rect : element.getBoundingClientRect()
       overlay.style.left = `${fixedClientX(rect.left)}px`
       overlay.style.top = `${rect.top}px`
       overlay.style.width = `${rect.width}px`
       overlay.style.height = `${rect.height}px`
     })
-    if(this.#atomicOverlays.size || this.#boxDrag?.previews.size) {
+    this.#atomicAnchors.refresh()
+    if(measured) {
       this.#atomicOverlayFrame = requestAnimationFrame(this.#positionAtomicOverlays)
     }
   }
@@ -503,6 +524,15 @@ export class SelectionFeature extends EditorFeature {
       return true
     }
     if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
+    let widget = isElement($.anchor) ? $.anchor : $.anchor.parentElement
+    while(widget && !isContentfulWidget(widget, this.editor.schema)) widget = widget.parentElement
+    if(widget && !this.editor.schema.get(widget).inseperable
+      && isContentfulWidget(widget.parentElement, this.editor.schema)
+      && this.#atDisclosureEdge(widget, direction, vertical)) {
+      $.selectGap(widget, direction === "backward" ? "before" : "after")
+      this.processSelection()
+      return true
+    }
     const adjacent = this.#adjacentNavigationElement(direction)
     if($.listGap || $.detailsGap) {
       const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details")
@@ -739,7 +769,8 @@ export class SelectionFeature extends EditorFeature {
     const pointerId = this.#boxDrag?.pointerId ?? this.#drag?.pointerId
     const target = this.#boxDrag ? document.body : this.#drag?.target
     this.#boxDrag?.overlay.remove()
-    this.#boxDrag?.previews.forEach(overlay => overlay.remove())
+    this.#boxDrag?.previews.forEach(overlay => { this.#atomicAnchors.release(overlay); overlay.remove() })
+    this.#atomicAnchors.refresh()
     this.#boxDrag = null
     if(!this.#atomicOverlays.size && this.#atomicOverlayFrame !== null) {
       cancelAnimationFrame(this.#atomicOverlayFrame)
@@ -914,6 +945,7 @@ export class SelectionFeature extends EditorFeature {
     })
     drag.elements = elements
     for(const [element, overlay] of drag.previews) if(!elements.includes(element)) {
+      this.#atomicAnchors.release(overlay)
       overlay.remove()
       drag.previews.delete(element)
     }
@@ -1582,6 +1614,7 @@ export class SelectionFeature extends EditorFeature {
     const caret = this.selectionCaret
     if(!caret) return
     this.#clearSelectionFloatOutline()
+    this.#releaseTransformCaretAnchor(caret)
     if(caret.getAttribute("visibility") !== "hidden") caret.setAttribute("visibility", "hidden")
     setPart(caret, "selection-caret-hidden")
     caret.style.removeProperty("left")
@@ -1630,6 +1663,7 @@ export class SelectionFeature extends EditorFeature {
     const outlineOwner = captured ? figureSelectionTarget(captured) : owner
     if(owner !== element && outlineOwner !== element || !element.isConnected || !caret
       || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) return
+    this.#releaseTransformCaretAnchor(caret)
     if(outlineOwner !== element && outlineOwner instanceof HTMLElement) {
       const box = this.editor.features.transformation.boxGeometry(outlineOwner)
       geometry = {...box.styles, left: `${fixedClientX(parseFloat(box.styles.left))}px`}
@@ -1660,10 +1694,43 @@ export class SelectionFeature extends EditorFeature {
   clearTransformCaret() {
     const caret = this.selectionCaret
     this.#clearSelectionFloatOutline()
-    if(!caret?.style.transform) return
+    if(!caret) return
+    this.#releaseTransformCaretAnchor(caret)
     for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) {
       caret.style.removeProperty(property)
     }
+  }
+
+  /** Return the shared caret to live CSS anchor geometry for its current
+   * outline owner, including a figure that wraps a captured element. */
+  anchorTransformCaret(element: Element) {
+    const caret = this.selectionCaret
+    if(!caret) { this.clearTransformCaret(); return }
+    const captured = this.captureSelectedElement
+    const owner = captured ?? this.selectedSectionElement ?? $.selectedElement
+    const target = captured ? figureSelectionTarget(captured) : element
+    if(!target.isConnected || owner !== element && target !== element
+      || !caret.classList.contains("◆selection-caret-node") && !caret.classList.contains("◆selection-caret-capture")) {
+      this.clearTransformCaret()
+      return
+    }
+    if(this.#transformCaretTarget !== target) this.clearTransformCaret()
+    else {
+      this.#clearSelectionFloatOutline()
+      for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) {
+        caret.style.removeProperty(property)
+      }
+    }
+    setPart(caret, "selection-caret-anchored")
+    this.#atomicAnchors.bind(caret, target)
+    this.#atomicAnchors.refresh()
+    this.#transformCaretTarget = target
+  }
+
+  #releaseTransformCaretAnchor(caret: HTMLElement) {
+    this.#atomicAnchors.release(caret)
+    setPart(caret, "selection-caret-anchored", false)
+    this.#transformCaretTarget = null
   }
 
   /** Places a collapsed document selection, even if a widget or a table

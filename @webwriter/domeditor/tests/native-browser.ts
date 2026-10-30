@@ -7,7 +7,7 @@ import {DOMEditor} from "../src/domeditor"
 import {Schema} from "../src/schema"
 import type {DomEditor} from "../src/components/dom-editor"
 import type {RibbonButton} from "../src/components/ribbon-button"
-import {$, caretRect, pathFromNode} from "../src/utility"
+import {$, caretRect, pathFromNode, cloneWithoutEditorMarkers} from "../src/utility"
 import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {floatSideFromStyles} from "../src/element-styles"
@@ -18,6 +18,9 @@ import * as Y from "yjs"
 import localFontURL from "temml/dist/Temml.woff2?url"
 import {checkMediaAutoplay} from "./media-autoplay"
 import {checkBoardMedia} from "./board-media"
+import {checkBoardAnchors} from "./board-anchors"
+import {checkElementAnchors} from "./element-anchors"
+import {checkPopupAnchors} from "./popup-anchors"
 import {checkParagraphCut} from "./paragraph-cut"
 import {checkHistorySelection} from "./history-selection"
 import {checkListClipboard} from "./list-clipboard"
@@ -52,6 +55,7 @@ import {checkKeyboardTabs} from "./keyboard-tabs"
 import {checkGraphicBrushes} from "./graphic-brushes"
 import {checkGraphicResizeMirror} from "./graphic-resize-mirror"
 import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
+import {checkLayoutGrid} from "./layout-grid"
 import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
 import {checkSavedDocumentChecker} from "./saved-document-checker"
@@ -179,6 +183,9 @@ await check("canvas multiline text keeps partial selections after formatting", a
 await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
 await check("saved document issue checker loads without reloading the editor", checkSavedDocumentChecker)
 await check("Board media shrinks with card height in editing and standalone documents", checkBoardMedia)
+await check("Board controls and transform frames follow CSS anchors through layout changes", checkBoardAnchors)
+await check("Element controls follow native CSS anchors through scrolling and DOM changes", checkElementAnchors)
+await check("Ribbon menus and combobox popups follow anchors through viewport changes", checkPopupAnchors)
 
 await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
   const frame = document.createElement("iframe")
@@ -1593,7 +1600,7 @@ await check("insertion and saved-reader controls align inside symmetric scrollba
         assert(!feedback.hidden, "copy feedback was not shown")
         const bubble = feedback.getBoundingClientRect(), anchor = link.getBoundingClientRect()
         const arrow = parseFloat(feedback.style.getPropertyValue("--arrow-position"))
-        assert(Math.abs(bubble.left + arrow - anchor.left - anchor.width / 2) < 1, "saved feedback arrow drifted from its link")
+        assert(Math.abs(bubble.left + arrow - anchor.left - anchor.width / 2) < 1, `saved feedback arrow drifted from its link: ${JSON.stringify({bubble: bubble.toJSON(), anchor: anchor.toJSON(), arrow, gutter, scroll})}`)
       }
     }
   }
@@ -2140,7 +2147,7 @@ const dragTextInside = (editor: DOMEditor, element: HTMLElement) => {
   editor.features.selection.selectElement(element)
   element.dispatchEvent(new PointerEvent("pointerover", {bubbles: true}))
   assert(doc.defaultView!.getComputedStyle(editor.features.selection.hoverCaret!).display === "none", "selected root retains a dotted hover outline")
-  assert(!editor.appendix.querySelector('[part="node-drag-surface"]'), "item interior is covered by a node drag surface")
+  assert(!editor.appendix.querySelector('[part~="node-drag-surface"]'), "item interior is covered by a node drag surface")
   range.setStart(text, 1); range.collapse(true)
   const start = range.getBoundingClientRect()
   range.setStart(text, 7)
@@ -2637,7 +2644,7 @@ await check("media interiors capture while outline edges element-select", async 
     const edge = selection.selectionCaret!.querySelector('[part~="selection-capture-edge-top"]')!
     edge.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
     assert(!selection.isCaptureSelection && $.selectedElement === audio, "outline did not element-select")
-    const nodeOverlay = editor.appendix.querySelector('[part="atomic-selection-overlay"]')!
+    const nodeOverlay = editor.appendix.querySelector('[part~="atomic-selection-overlay"]')!
     assert(nodeOverlay && getComputedStyle(nodeOverlay).backgroundColor !== "rgba(0, 0, 0, 0)",
       "element selection did not restore its blue selection fill")
     document.dispatchEvent(new Event("selectionchange"))
@@ -2685,7 +2692,7 @@ await check("figure permalinks align with padded caption numbering", async () =>
     figure {width:360px;margin:40px} img {display:block;width:360px;height:100px}
     figcaption {font:32px/40px system-ui;padding:20px 0;border-top:2px solid}
     </style></head><body><figure id="photo"><img><figcaption>Hello world with enough caption text to wrap onto a second line.</figcaption></figure>
-    <script type="module">import {mountDocumentReader} from "/src/document-viewer.js"; window.reader = mountDocumentReader();</script></body>`
+    <script type="module">import {mountDocumentReader} from "/src/document-viewer.js"; import {createAnchorPositioner} from "/src/anchor-positioning.js"; window.reader = mountDocumentReader([], "", null, {}, createAnchorPositioner);</script></body>`
   document.body.append(frame)
   try {
     const view = frame.contentWindow as Window & {reader?: {destroy(): void}}
@@ -2815,6 +2822,16 @@ await check("text containers resize horizontally and fit their content", async (
         assert(Math.abs(resized.width - before.width + 160) < 1, `${mode}/${tag}: width did not follow the handle (${before.width} -> ${resized.width}; ${target.style.cssText})`)
         assert(target.style.height === "auto" && resized.height > before.height && target.scrollHeight <= target.clientHeight + 1, `${mode}/${tag}: text height is constrained`)
         if(mode !== "document") assert(Math.abs(resized.top - before.top) < 1, `${mode}/${tag}: wrapping moved the top edge`)
+        editor.features.manipulation.cycleCaption()
+        await layoutFrame()
+        const figure = target.parentElement!
+        assert(figure.localName === "figure", `${tag}: caption did not wrap the text`)
+        assert(Math.abs(figure.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption frame lost the resized width`)
+        assert(Math.abs(target.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption changed the text width`)
+        assert(Math.abs(figure.querySelector("figcaption")!.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption has a separate width`)
+        editor.features.manipulation.setCaption("none", undefined, {preserveSelection: true})
+        await layoutFrame()
+        assert(target.parentElement === doc.body && Math.abs(target.getBoundingClientRect().width - resized.width) < 1, `${tag}: removing the caption lost the resize`)
         target.textContent += "More text grows the container. ".repeat(20)
         await layoutFrame()
         assert(target.getBoundingClientRect().height > resized.height, `${mode}/${tag}: added text did not grow`)
@@ -3890,7 +3907,7 @@ await check("whole formulas receive one blue selection layer", async () => {
         editor.features.selection.processSelection(undefined, {scrollIntoView: false})
         editor.features.math.refresh()
         await layoutFrame()
-        const overlays = editor.appendix.querySelectorAll<HTMLElement>('[part="atomic-selection-overlay"]')
+        const overlays = editor.appendix.querySelectorAll<HTMLElement>('[part~="atomic-selection-overlay"]')
         assert(overlays.length === 1, "whole formula has more than one selection layer")
         const selected = overlays[0].getBoundingClientRect(), bounds = math.getBoundingClientRect()
         assert(["left", "top", "width", "height"].every(key => Math.abs(selected[key as keyof DOMRect] as number - (bounds[key as keyof DOMRect] as number)) < 1), "selection layer does not fit the formula")
@@ -3900,7 +3917,7 @@ await check("whole formulas receive one blue selection layer", async () => {
         const text = math.querySelector("mi")!.firstChild!
         document.getSelection()!.setBaseAndExtent(text, 0, text, 1)
         editor.features.selection.processSelection(undefined, {scrollIntoView: false})
-        assert(!editor.appendix.querySelector('[part="atomic-selection-overlay"]'), "partial selection retained a whole-formula overlay")
+        assert(!editor.appendix.querySelector('[part~="atomic-selection-overlay"]'), "partial selection retained a whole-formula overlay")
         assert(getComputedStyle(text.parentElement!, "::selection").backgroundColor !== "rgba(0, 0, 0, 0)", "partial text selection is hidden")
       }
     }
@@ -4844,7 +4861,7 @@ await check("node drag borders leave native text and table editing reachable", a
       editor.features.selection.processSelection()
       element.scrollIntoView({block: "center", behavior: "instant"})
       await layoutFrame()
-      const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+      const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
       assert(surface?.draggable, "selected flow content lost native dragging")
       const range = document.createRange()
       range.setStart(text, 3); range.setEnd(text, 4)
@@ -4860,6 +4877,44 @@ await check("node drag borders leave native text and table editing reachable", a
       assert(!editor.toHTML(true).includes("clip-path"), "drag clipping leaked into authored HTML")
     }
     finally { element.remove() }
+  }
+})
+
+await check("paragraph and heading drags join text at the native caret", async () => {
+  for(const [sourceTag, targetTag] of [["p", "p"], ["p", "h2"], ["h2", "p"], ["h2", "h3"]]) {
+    for(const offset of [0, 3, 6]) {
+      const section = document.createElement("section")
+      section.innerHTML = `<${sourceTag}><b>source</b></${sourceTag}><${targetTag}>target</${targetTag}>`
+      fixture.append(section)
+      const source = section.firstElementChild!, target = section.lastElementChild!, text = target.firstChild!
+      try {
+        $.selectElement(source)
+        editor.features.selection.processSelection()
+        target.scrollIntoView({block: "center", behavior: "instant"})
+        await layoutFrame()
+        const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
+        assert(surface?.draggable, "text block has no drag surface")
+        const dataTransfer = new DataTransfer()
+        surface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles: true, composed: true, cancelable: true}))
+        const letter = document.createRange()
+        letter.setStart(text, offset === 6 ? 5 : offset)
+        letter.setEnd(text, offset === 6 ? 6 : offset + 1)
+        const rect = letter.getBoundingClientRect()
+        const init = {dataTransfer, clientX: offset === 6 ? rect.right - .1 : rect.left + .1,
+          clientY: rect.top + rect.height / 2, bubbles: true, composed: true, cancelable: true}
+        target.dispatchEvent(new DragEvent("dragover", init))
+        assert($.anchor === text && $.anchorOffset === offset, `${sourceTag}/${targetTag}/${offset}: preview missed native caret`)
+        assert(!editor.appendix.querySelector("#◆float-drop-preview"), "text join showed a float preview")
+        target.dispatchEvent(new DragEvent("drop", init))
+        const expected = "target".slice(0, offset) + "source" + "target".slice(offset)
+        assert(target.textContent === expected && !source.isConnected, `${sourceTag}/${targetTag}/${offset}: text did not join`)
+        assert(target.querySelector("b")?.textContent === "source", "join lost inline formatting")
+        assert(document.getSelection()?.isCollapsed && target.contains($.anchor), "join lost its text caret")
+        assert(document.execCommand("insertText", false, "!") && target.textContent === "target".slice(0, offset) + "source!" + "target".slice(offset), "typing did not continue after joined text")
+        assert(!document.body.classList.contains("◆drop-selection-active"), "join retained the drop marker")
+      }
+      finally { section.remove() }
+    }
   }
 })
 
@@ -5631,7 +5686,7 @@ await check("bundled layouts render under the strict editor CSP without widgets"
           assert(view.getComputedStyle(doc.body).display === "flex", "board did not use its horizontal layout")
           assert(view.getComputedStyle(column).display === "flex" && Math.abs(column.getBoundingClientRect().width - 450) < 1, "board column size or layout is wrong")
           assert(view.getComputedStyle(card).backgroundColor === "rgb(255, 255, 255)", "board card background is missing")
-          const add = doc.body.shadowRoot!.querySelector<HTMLElement>('[part=board-add-column]')!.getBoundingClientRect()
+          const add = doc.body.shadowRoot!.querySelector<HTMLElement>('[part~=board-add-column]')!.getBoundingClientRect()
           assert(add.left >= column.getBoundingClientRect().right && Math.abs(add.width - column.getBoundingClientRect().width) < 1,
             "add-column control overlaps the column or has the wrong width")
         }
@@ -7163,7 +7218,14 @@ await check("image hotspots scale and open popovers in preview and standalone re
       await layoutFrame()
       assert(view.location.hash === "#link", "link-only hotspot did not navigate to its destination")
       image.width = 360
-      assert(doc.body.innerHTML === authored, "reading-mode hotspot UI changed the authored DOM")
+      doc.body.style.minHeight = "1200px"
+      view.scrollTo(0, 80)
+      await layoutFrame()
+      const overlay = root.querySelector("svg")!, scrolled = image.getBoundingClientRect()
+      assert(!overlay.style.left && !overlay.style.top, "ordinary hotspot shell still uses measured coordinates")
+      assert(Math.abs(overlay.getBoundingClientRect().top - scrolled.top) < 1
+        && Math.abs(overlay.getBoundingClientRect().left - scrolled.left) < 1, "hotspot shell lost its image during scrolling")
+      assert(cloneWithoutEditorMarkers(doc.body, true).innerHTML === authored, "reading-mode hotspot UI changed the authored DOM")
     }
   }
   finally { frame.remove() }
@@ -7433,18 +7495,18 @@ await check("Board columns and cards retain native editing and standalone layout
     assert(paragraph.textContent === "First new card", "native card typing changed structure")
     paragraph.dispatchEvent(new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
     assert(card.querySelectorAll("p").length === 2, "Enter did not stay inside the card")
+    board.refresh(); await layoutFrame()
     const add = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add card to column 1"]')!
-    board.refresh()
     const addBox = add.getBoundingClientRect(), lastCardBox = board.cards(first).at(-1)!.getBoundingClientRect()
     const firstStyle = view.getComputedStyle(first), addStyle = view.getComputedStyle(add)
-    assert(Math.abs(addBox.left - lastCardBox.left) < .5 && Math.abs(addBox.width - lastCardBox.width) < .5, "add-card slot did not match card edges")
+    assert(Math.abs(addBox.left - lastCardBox.left) < .5 && Math.abs(addBox.width - lastCardBox.width) < .5, `add-card slot did not match card edges: ${JSON.stringify({connected: add.isConnected, add: addBox.toJSON(), card: lastCardBox.toJSON()})}`)
     assert(Math.abs(addBox.top - lastCardBox.bottom - parseFloat(firstStyle.rowGap)) < .5, "add-card slot did not follow the last card")
     assert(addStyle.borderTopStyle === "dashed" && addStyle.backgroundColor === "rgba(0, 0, 0, 0)", "add-card slot lost transparent dashed styling")
-    const addColumn = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add column"]')!
     const lastColumn = columns.at(-1)!, lastColumnBox = lastColumn.getBoundingClientRect()
-    view.scrollTo(doc.documentElement.scrollWidth, 0); await layoutFrame(); board.refresh()
+    view.scrollTo(doc.documentElement.scrollWidth, 0); await layoutFrame(); board.refresh(); await layoutFrame()
+    const addColumn = editor.appendix.querySelector<HTMLButtonElement>('[aria-label="Add column"]')!
     const addColumnBox = addColumn.getBoundingClientRect(), scrolledLastColumnBox = lastColumn.getBoundingClientRect()
-    assert(!addColumn.hidden && Math.abs(addColumnBox.left - scrolledLastColumnBox.right - parseFloat(view.getComputedStyle(doc.body).columnGap)) < .5, "add-column slot was clipped or misplaced")
+    assert(!addColumn.hidden && Math.abs(addColumnBox.left - scrolledLastColumnBox.right - parseFloat(view.getComputedStyle(doc.body).columnGap)) < .5, `add-column slot was clipped or misplaced: ${JSON.stringify({connected: addColumn.isConnected, hidden: addColumn.hidden, add: addColumnBox.toJSON(), column: scrolledLastColumnBox.toJSON()})}`)
     assert(Math.abs(addColumnBox.width - lastColumnBox.width) < .5 && Math.abs(addColumnBox.top - scrolledLastColumnBox.top) < .5 && addColumnBox.height === 160, "add-column slot did not match a new empty column")
     view.scrollTo(0, 0); await layoutFrame(); board.refresh()
     add.click(); await layoutFrame()
@@ -7578,6 +7640,8 @@ await check("Board columns and cards retain native editing and standalone layout
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
+
+await check("canvas and slide movement follows the dot grid and alignment guides", () => checkLayoutGrid())
 
 await check("slide editing retains text and media selections after focus", checkSlideEditing)
 
@@ -8452,7 +8516,7 @@ await check("float previews match projected media bounds", async () => {
         await layoutFrame()
         editor.features.selection.selectElement(source)
         const dataTransfer = new events.DataTransfer()
-        editor.appendix.querySelector('[part="node-drag-surface"]')!.dispatchEvent(new events.DragEvent("dragstart", {dataTransfer, bubbles:true, composed:true}))
+        editor.appendix.querySelector('[part~="node-drag-surface"]')!.dispatchEvent(new events.DragEvent("dragstart", {dataTransfer, bubbles:true, composed:true}))
         editor.features.manipulation.showFloatDropPreview(target, side, "transfer", source)
         const preview = previewRect()
         const x = preview.left + preview.width / 2, y = preview.top + preview.height / 2
@@ -8741,7 +8805,7 @@ await check("empty document gutters prefer floats throughout the viewport", asyn
       await layoutFrame()
       if(widget) {
         editor.features.selection.selectElement(widget)
-        const surface = editor.appendix.querySelector('[part="node-drag-surface"]')
+        const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')
         assert(surface, `${width} ${kind} ${side} ${edge}: widget has no drag surface`)
         surface!.dispatchEvent(new events.DragEvent("dragstart", {dataTransfer:data, bubbles:true, composed:true, cancelable:true}))
       }
@@ -8948,7 +9012,7 @@ await check("ribbon elements are rejected over captured graphics with native con
       assert(childOver.defaultPrevented && data.dropEffect === "none", `${action}: child dragover offered a drop`)
       const childDrop = dispatch(rect,"drop")
       assert(childDrop.defaultPrevented, `${action}: child drop was not claimed`)
-      const overlay = editor.appendix.querySelector('[part~="transform-overlay"]') ?? editor.appendix.querySelector('[part="node-drag-surface"]') ?? editor.appendix.querySelector("slot")
+      const overlay = editor.appendix.querySelector('[part~="transform-overlay"]') ?? editor.appendix.querySelector('[part~="node-drag-surface"]') ?? editor.appendix.querySelector("slot")
       assert(overlay, `${action}: no appendix overlay to test`)
       if(!overlay) throw new Error(`${action}: no appendix overlay to test`)
       const overlayOver = dispatch(overlay,"dragover")
@@ -9010,7 +9074,7 @@ await check("shape keyboard drags retain capture through appendix surfaces", asy
     const outline = editor.appendix.querySelector(".◆selection-caret")
     for(let index = 0; index < 5; index++) {
       await layoutFrame()
-      assert(editor.features.selection.captureSelectedElement === graphic && !editor.appendix.querySelector('[part="node-drag-surface"]'), "graphic hover flickered back to element selection")
+      assert(editor.features.selection.captureSelectedElement === graphic && !editor.appendix.querySelector('[part~="node-drag-surface"]'), "graphic hover flickered back to element selection")
       assert(!editor.appendix.querySelector("#◆float-drop-preview"), "graphic hover showed a document placement preview")
       dispatch(doc.elementFromPoint(x, y) ?? graphic, "dragover", x, y)
     }
@@ -9071,7 +9135,7 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
         const init = {clientX:rect.left + rect.width * fraction, clientY:rect.top + rect.height / 2, bubbles:true, cancelable:true, composed:true};
         if(mode === "transfer") {
           const dataTransfer = new DataTransfer();
-          const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
+          const dragSurface = editor.appendix.querySelector('[part~="node-drag-surface"]');
           dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
           selfChild.dispatchEvent(new DragEvent("dragover", {...init, dataTransfer}));
           assert(!editor.appendix.querySelector("#◆float-drop-preview"), "self transfer shows a float preview");
@@ -9090,7 +9154,7 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
       for(const [fraction, side, placement] of [[0.35, "left", "before"], [0.5, "right", "before"], [0.65, "right", "before"]]) {
         source.style.cssText = originalStyle;
         editor.features.selection.selectElement(source);
-        const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
+        const dragSurface = editor.appendix.querySelector('[part~="node-drag-surface"]');
         assert(dragSurface, "source has no drag surface");
         const dataTransfer = new DataTransfer();
         dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
@@ -9115,7 +9179,7 @@ await check("native drag floats in preview areas and preserves ordinary gap drop
         editor.features.manipulation.setFloat(source, "right");
         editor.features.selection.selectElement(source);
         await new Promise(requestAnimationFrame);
-        const dragSurface = editor.appendix.querySelector('[part="node-drag-surface"]');
+        const dragSurface = editor.appendix.querySelector('[part~="node-drag-surface"]');
         const dataTransfer = new DataTransfer();
         dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
         const rect = peer.getBoundingClientRect();

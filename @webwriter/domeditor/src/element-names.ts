@@ -1,4 +1,4 @@
-import {boardLayoutRole, documentLayoutMode, isBoardCard, isBoardColumn, isSlide, slideLayoutRole} from "./document-layout"
+import {boardColumns, boardLayoutRole, documentLayoutMode, isBoardCard, isBoardColumn, isBoardGroup, isSlide, slideLayoutRole} from "./document-layout"
 import {widgetNameLabel, type PackageInsertionItem} from "./packages"
 
 export type ElementPresentation = {
@@ -116,12 +116,15 @@ const fallbackPresentation = {name: "Content", icon: "Section"}
 /** Returns a user-facing name and icon key for an HTML element. */
 export function getElementPresentation(elementOrTagName: Element | string, packageItems: readonly PackageInsertionItem[] | undefined = globalThis.DOMEDITOR_PACKAGE_ITEMS): ElementPresentation {
   if(typeof elementOrTagName !== "string") {
+    if(elementOrTagName.matches("h2:not([is])") && isBoardGroup(elementOrTagName.parentElement)) return {name: "Group Heading", icon: "Heading"}
     if(elementOrTagName.matches("h2:not([is])") && isBoardColumn(elementOrTagName.parentElement)) {
       return {name: "Column Heading", icon: "Heading"}
     }
     const boardRole = boardLayoutRole(elementOrTagName)
+    if(boardRole === "group") return {name: "Group", icon: "Group"}
     if(boardRole) {
-      const peers = Array.from(elementOrTagName.parentElement!.children).filter(boardRole === "column" ? isBoardColumn : isBoardCard)
+      const peers = boardRole === "column" ? boardColumns(elementOrTagName.ownerDocument.body)
+        : Array.from(elementOrTagName.parentElement!.children).filter(isBoardCard)
       return {name: `${boardRole === "column" ? "Column" : "Card"} ${peers.indexOf(elementOrTagName as HTMLElement) + 1}`,
         icon: boardRole === "column" ? "BoardColumn" : "BoardCard"}
     }

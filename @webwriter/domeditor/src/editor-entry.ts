@@ -176,6 +176,13 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
       saveSelection()
     }
     else if(data.command === "focus") {
+      // A queued host pointerdown can arrive after an empty image opened
+      // its source controls. Keep their native focus and graphic capture.
+      if(editor.features.media.isPlaceholderInteraction) {
+        bookmark = null
+        window.focus()
+        return
+      }
       // A queued host pointerdown can arrive after double-click opened a
       // label. Focusing BODY would replace the proxy's live text selection.
       if(editor.features.graphic.textEditingRange) {

@@ -270,6 +270,50 @@ describe("captions", () => {
   const setCaption = (position: "none" | "above" | "below") =>
     editor.features.manipulation.actions.setCaption({type: "setCaption", position})
 
+  it.each(["p", "h2"])("preserves a resized %s through caption wrapping, removal and undo", tag => {
+    document.body.innerHTML = `<${tag} title="keep" style="width: 80%; max-width: 240px !important; height: auto; color: red">Text <em>with formatting</em><!--keep--><unfamiliar-inline>content</unfamiliar-inline></${tag}><p>Other</p>`
+    const target = document.body.firstElementChild as HTMLElement
+    const children = Array.from(target.childNodes)
+    $.selectElement(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    setCaption("below")
+    const figure = document.querySelector("figure")!
+    expect(figure.style.width).toBe("80%")
+    expect(figure.style.maxWidth).toBe("240px")
+    expect(figure.style.getPropertyPriority("max-width")).toBe("important")
+    expect(target.style.width).toBe("")
+    expect(target.style.maxWidth).toBe("")
+    expect(target.style.height).toBe("auto")
+    expect(target.style.color).toBe("red")
+    expect(Array.from(target.childNodes)).toEqual(children)
+    editor.doc.syncFromDOM()
+    const captioned = editor.toHTML(true)
+    expect(captioned).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+
+    setCaption("none")
+    expect(document.querySelector("figure")).toBeNull()
+    expect(target.parentElement).toBe(document.body)
+    expect(target.style.width).toBe("80%")
+    expect(target.style.maxWidth).toBe("240px")
+    expect(target.style.getPropertyPriority("max-width")).toBe("important")
+    expect(Array.from(target.childNodes)).toEqual(children)
+    editor.doc.syncFromDOM()
+    const unwrapped = editor.toHTML(true)
+
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(captioned)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(captioned)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(unwrapped)
+  })
+
   it("uses the figure as the selected style target and transfers placement on conversion", () => {
     document.body.innerHTML = '<p class="ww-float-left authored" style="float: left; color: red">Content</p>'
     const paragraph = document.querySelector("p")!
@@ -876,9 +920,10 @@ describe("insertable element placement and previews", () => {
     else $.selectElement(target)
     hover()
     const overlay = editor.appendix.querySelector<HTMLElement>("#◆insertion-preview")!
-    expect(overlay.style.left).toBe("10px")
-    expect(overlay.style.width).toBe("90px")
-    expect(overlay.style.height).toBe("60px")
+    expect(overlay.style.left).toBe("")
+    expect(overlay.style.width).toBe("")
+    expect(overlay.style.height).toBe("")
+    expect(overlay.getAttribute("part")).toContain("anchor-control-")
     expect(editor.toHTML(true)).not.toContain("preview")
     insert('<section title="Replacement"><p>New</p></section>')
     expect(target.isConnected).toBe(false)
@@ -1682,7 +1727,7 @@ describe("widget-safe validation and transfer", () => {
     const {widget} = content()
     $.selectElement(widget)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
     const data = new DataTransfer()
     vi.spyOn(data, "setDragImage").mockImplementation(() => {})
     constructed.mockClear()
@@ -2588,8 +2633,9 @@ describe("figures", () => {
     else {
       expect(document.querySelector("figure, figcaption")).toBeNull()
       expect(document.querySelector("p")?.textContent).toBe("Keep")
-      expect(source.parentElement).toBe(document.body)
+      expect(source.isConnected).toBe(false)
     }
+    expect(target.textContent).toBe("DesMove metination")
     expect(document.body).not.toHaveClass("◆drop-selection-active")
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -5384,7 +5430,7 @@ describe("unified content transfer", () => {
     const selected = document.body.children[1]
     $.selectElement(selected)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
     expect(surface).not.toBeNull()
     vi.spyOn(selected, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
     // Like native hit testing, the point resolves to the surface's host
@@ -5764,7 +5810,7 @@ describe("unified content transfer", () => {
   function beginDrag(element: Element) {
     $.selectElement(element)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
     expect(surface).not.toBeNull()
     const data = new DataTransfer()
     surface.dispatchEvent(transferEvent("dragstart", data))
@@ -5891,8 +5937,8 @@ describe("unified content transfer", () => {
   })
 
   it.each([[125, "left"], [150, "right"], [175, "right"]] as const)("floats dragged content at x=%i with native CSS", (x, side) => {
-    document.body.innerHTML = '<p>source</p><article><p>nested</p></article>'
-    const source = document.querySelector("body > p") as HTMLParagraphElement, target = document.querySelector("article")!
+    document.body.innerHTML = '<pre>source</pre><article><p>nested</p></article>'
+    const source = document.querySelector("pre") as HTMLPreElement, target = document.querySelector("article")!
     const nested = target.querySelector("p")!
     vi.spyOn(nested, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
     const {data} = beginDrag(source)
@@ -6293,7 +6339,7 @@ describe("unified content transfer", () => {
     const widget = document.body.firstElementChild!
     $.selectElement(widget)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
 
     surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     // Browsers queue selectionchange after the native mouse default. Happy
@@ -6304,7 +6350,7 @@ describe("unified content transfer", () => {
 
     expect(editor.features.selection.captureSelectedWidget).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBeNull()
     expect(editor.features.selection.isInDragSelection).toBe(false)
   })
 
@@ -6313,7 +6359,7 @@ describe("unified content transfer", () => {
     const widget = document.body.firstElementChild!
     $.selectElement(widget)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
     surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
     widget.replaceWith(document.createElement("hr"))
 
@@ -6326,7 +6372,7 @@ describe("unified content transfer", () => {
     document.body.innerHTML = `<${tag}></${tag}><p>end</p>`
     $.selectElement(document.body.firstElementChild!)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
     surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
     const data = new DataTransfer()
     surface.dispatchEvent(transferEvent(type, data))
@@ -6766,11 +6812,11 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(transferEvent("dragend", data))
     $.move(document.body.firstElementChild!.firstChild!, 1)
     editor.features.selection.processSelection()
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBeNull()
     beginDrag(document.body.firstElementChild!)
     editor.features.manipulation.disable()
     editor.features.selection.processSelection()
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBeNull()
     editor.features.manipulation.enable()
   })
 
@@ -6795,7 +6841,7 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<p>selected</p><p>end</p>'
     $.selectElement(document.body.firstElementChild!)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
     const data = new DataTransfer()
     data.setData("text/html", '<p class="external"><em>safe</em><script>bad()</script></p>')
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 1})
@@ -6903,7 +6949,72 @@ describe("unified content transfer", () => {
     expect(document.body).not.toHaveClass("◆drop-selection-active")
   })
 
-  it("previews the right half at the center for an internal block drop", () => {
+  it.each([
+    ["p", "p"], ["p", "h1"], ["h2", "p"], ["h3", "h4"], ["h5", "h6"],
+  ].flatMap(([sourceTag, targetTag]) => [0, 3, 6].map(offset => ({sourceTag, targetTag, offset}))))(
+    "joins a dragged $sourceTag into $targetTag at offset $offset", ({sourceTag, targetTag, offset}) => {
+      document.body.innerHTML = `<${sourceTag}>source</${sourceTag}><section><!--keep--><${targetTag} id="target" title="authored">target</${targetTag}></section>`
+      const source = document.body.firstElementChild!, target = document.querySelector("#target")!
+      const section = target.parentElement!, comment = section.firstChild
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const original = editor.toHTML(true)
+      const {data} = beginDrag(source)
+      dropAt(data, target.firstChild!, offset)
+      expect(target.textContent).toBe("target".slice(0, offset) + "source" + "target".slice(offset))
+      expect(source.isConnected).toBe(false)
+      expect(document.body.children).toHaveLength(1)
+      expect(target.parentElement).toBe(section)
+      expect(section.firstChild).toBe(comment)
+      expect(target.getAttribute("title")).toBe("authored")
+      expect(target.children).toHaveLength(0)
+      expect($.range.collapsed).toBe(true)
+      expect(target.contains($.anchor)).toBe(true)
+      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      editor.doc.syncFromDOM()
+      const changed = editor.toHTML(true)
+      expect(changed).not.toContain("◆")
+      expect(editor.doc.body.toString()).not.toContain("◆")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(original)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(changed)
+    },
+  )
+
+  it.each(["move", "ctrlKey", "altKey"])("preserves live inline content when joining text with %s", operation => {
+    document.body.innerHTML = '<h2><b>source</b><!--keep--><x-note data-authored="keep"></x-note></h2><section><p><i>target</i></p></section>'
+    const source = document.querySelector("h2")!, target = document.querySelector("p")!, mark = target.firstElementChild!
+    const {data} = beginDrag(source)
+    // A widget or remote update can change the source after dragstart.
+    source.querySelector("b")!.textContent = "updated"
+    const children = Array.from(source.childNodes)
+    dropAt(data, mark.firstChild!, 3, operation === "move" ? {} : {[operation]: true})
+    expect(target.innerHTML).toBe('<i>tar<b>updated</b><!--keep--><x-note data-authored="keep"></x-note>get</i>')
+    expect(target.firstElementChild).toBe(mark)
+    const moved = Array.from(mark.childNodes).slice(1, 4)
+    if(operation === "move") {
+      moved.forEach((node, index) => expect(node).toBe(children[index]))
+      expect(source.isConnected).toBe(false)
+    }
+    else {
+      expect(source.isConnected).toBe(true)
+      expect(Array.from(source.childNodes)).toEqual(children)
+      moved.forEach((node, index) => expect(node).not.toBe(children[index]))
+    }
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["source", "target"])("joins text when the %s block is empty", empty => {
+    document.body.innerHTML = `<h2>${empty === "source" ? "" : "source"}</h2><p>${empty === "target" ? "" : "target"}</p>`
+    const source = document.querySelector("h2")!, target = document.querySelector("p")!
+    const {data} = beginDrag(source)
+    dropAt(data, target, target.childNodes.length)
+    expect(Array.from(document.body.children)).toEqual([target])
+    expect(target.textContent).toBe(empty === "source" ? "target" : "source")
+    expect(target.contains($.anchor)).toBe(true)
+  })
+
+  it("previews a text caret for a paragraph dropped into another paragraph", () => {
     document.body.innerHTML = '<p>source</p><p>target</p>'
     const source = document.body.firstElementChild!
     const target = document.body.lastElementChild!
@@ -6911,16 +7022,14 @@ describe("unified content transfer", () => {
     const {data} = beginDrag(source)
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 2})
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 45, clientY: 15}))
-    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain("float-drop-preview-right")
-    expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect($.anchor).toBe(target.firstChild)
+    expect($.anchorOffset).toBe(2)
+    expect(editor.features.selection.selectionCaret?.getAttribute("part")).toContain("selection-caret-text")
     target.dispatchEvent(transferEvent("drop", data, {clientX: 45, clientY: 15}))
-    expect(target.previousElementSibling).toBe(source)
-    expect((source as HTMLElement)).toHaveClass("ww-float-right")
-    expect((source as HTMLElement).style.maxWidth).toBe("")
-    expectFarFloat(source as HTMLElement, "right")
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
-    expect(document.body.firstElementChild?.textContent).toBe("source")
-    expect(document.body.lastElementChild?.textContent).toBe("target")
+    expect(source.isConnected).toBe(false)
+    expect(Array.from(document.body.children)).toEqual([target])
+    expect(target.textContent).toBe("tasourcerget")
     expect(document.body).not.toHaveClass("◆drop-selection-active")
   })
 
@@ -6932,16 +7041,17 @@ describe("unified content transfer", () => {
     expect(getComputedStyle(surface).pointerEvents).not.toBe("none")
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 2})
     document.body.dispatchEvent(transferEvent("dragover", data))
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBe(surface)
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBe(surface)
     expect(getComputedStyle(surface).pointerEvents).not.toBe("none")
     document.body.dispatchEvent(transferEvent("drop", data))
     expect(document.body.lastElementChild).toBe(source)
     expect(surface.isConnected).toBe(false)
   })
 
-  it("positions the idle node drag surface only after geometry invalidation and cleans up observers", () => {
+  it.each([false, true])("anchors idle drag surfaces and measures only transformed geometry (transform: %s)", transformed => {
     document.body.innerHTML = "<p>source</p>"
     const source = document.body.firstElementChild!
+    if(transformed) (source as HTMLElement).style.transform = "rotate(10deg)"
     // Other editing overlays also redraw on resize; count only the drag
     // surface's frames in this geometry and lifecycle test.
     editor.features.collaboration.disable()
@@ -6959,20 +7069,19 @@ describe("unified content transfer", () => {
     const measure = vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 30))
 
     editor.features.manipulation.refreshNodeDragTarget(source)
-    expect(requestFrame).toHaveBeenCalledOnce()
-    callbacks.get(1)!(0)
-    expect(measure).toHaveBeenCalledOnce()
-    expect(requestFrame).toHaveBeenCalledOnce()
+    expect(requestFrame).toHaveBeenCalledTimes(transformed ? 1 : 0)
+    callbacks.get(1)?.(0)
+    expect(measure).toHaveBeenCalledTimes(transformed ? 1 : 0)
 
     window.dispatchEvent(new Event("resize"))
-    expect(requestFrame).toHaveBeenCalledTimes(2)
-    callbacks.get(2)!(16)
-    expect(measure).toHaveBeenCalledTimes(2)
+    expect(requestFrame).toHaveBeenCalledTimes(transformed ? 2 : 0)
+    callbacks.get(2)?.(16)
+    expect(measure).toHaveBeenCalledTimes(transformed ? 2 : 0)
 
     editor.features.manipulation.disable()
     expect(cancelFrame).not.toHaveBeenCalled()
     window.dispatchEvent(new Event("resize"))
-    expect(requestFrame).toHaveBeenCalledTimes(2)
+    expect(requestFrame).toHaveBeenCalledTimes(transformed ? 2 : 0)
     editor.features.manipulation.enable()
     editor.features.collaboration.enable()
     editor.features.graphic.enable()

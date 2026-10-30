@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {mountDocumentReader} from "./document-viewer.js"
+import {createAnchorPositioner} from "./anchor-positioning.js"
+import {clearEditorMarkerClasses} from "./editor-artifacts"
 import {creativeCommonsLicenses} from "./document-head"
 import {formatReferences} from "./reference-format"
 
@@ -276,6 +278,44 @@ describe("document pane", () => {
 })
 
 describe("document reader controls", () => {
+  it("anchors permalinks, fullscreen buttons, and copy feedback without inline coordinates", async () => {
+    const authored = document.body.innerHTML
+    const sheets = [...document.adoptedStyleSheets]
+    const figure = document.querySelector("figure#photo")!
+    Object.assign(figure, {requestFullscreen: vi.fn(() => Promise.resolve())})
+    vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue()
+    reader = mountDocumentReader([], "", null, {}, createAnchorPositioner)!
+
+    const groups = controls()
+    const headingLink = groups[0].querySelector<HTMLAnchorElement>("a")!
+    const figureLink = groups.find(group => group.getAttribute("aria-label") === "figure controls")!.querySelector<HTMLAnchorElement>("a")!
+    const fullscreen = groups.find(group => group.getAttribute("aria-label") === "figure controls")!.querySelector<HTMLButtonElement>("button")!
+    expect(headingLink.style.left).toBe("")
+    expect(headingLink.style.top).toBe("")
+    expect(figureLink.style.left).toBe("")
+    expect(figureLink.style.top).toBe("")
+    expect(fullscreen.style.left).toBe("")
+    expect(fullscreen.style.top).toBe("")
+    expect(document.querySelector("h1")!.className).toContain("◆anchor-target-")
+    expect(figure.querySelector("img")!.className).toContain("◆anchor-target-")
+    const serialized = document.body.cloneNode(true) as HTMLElement
+    clearEditorMarkerClasses(serialized)
+    expect(serialized.innerHTML).toBe(authored)
+
+    headingLink.click()
+    await Promise.resolve()
+    const feedback = document.body.shadowRoot!.querySelector<HTMLElement>(".◆document-reader-feedback")!
+    expect(feedback.style.left).toBe("")
+    expect(feedback.style.top).toBe("")
+    expect(feedback.className).toContain("◆anchor-control-")
+
+    reader.destroy()
+    expect(document.adoptedStyleSheets).toEqual(sheets)
+    expect(document.querySelector("h1")!.className).toBe("")
+    expect(figure.querySelector("img")!.className).toBe("")
+    expect(document.body.innerHTML).toBe(authored)
+  })
+
   it("keeps authored nodes untouched and adds only permalink/fullscreen controls for eligible targets", () => {
     const authored = document.body.innerHTML
     const nodes = Array.from(document.body.childNodes)

@@ -10,6 +10,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {isParagraphContent} from "../utility"
+import {createAnchorPositioner} from "../utility"
 import {
   isBlockFormatTag,
   type BlockFormatTag,
@@ -210,6 +211,7 @@ export class ManipulationFeature extends EditorFeature {
   private dragTarget: Element | null = null
   private dragSurface: HTMLDivElement | null = null
   private dragFrame: number | null = null
+  private anchors = createAnchorPositioner()
   private dragResizeObserver: ResizeObserver | null = null
   private dragMutationObserver: MutationObserver | null = null
   private readonly dragGeometryCleanup: (() => void)[] = []
@@ -329,9 +331,24 @@ export class ManipulationFeature extends EditorFeature {
     const element = this.dragTarget
     const surface = this.dragSurface
     if(!element || !surface || this.dragFrame !== null) return
+    if(!element.isConnected || !getDocumentRoot().contains(element)) {
+      if(this.nodeDrag) surface.style.display = "none"
+      else this.endNodeDrag()
+      return
+    }
+    if(!this.editor.features.transformation.boxTransformed(element) && !this.hasActiveNodeDragAnimation(element)) {
+      for(const property of ["left", "top", "width", "height"]) surface.style.removeProperty(property)
+      this.anchors.bind(surface, element)
+      return
+    }
+    this.anchors.release(surface)
     this.dragFrame = requestAnimationFrame(() => {
       this.dragFrame = null
       if(element !== this.dragTarget || surface !== this.dragSurface) return
+      if(!this.editor.features.transformation.boxTransformed(element) && !this.hasActiveNodeDragAnimation(element)) {
+        this.scheduleNodeDragPosition()
+        return
+      }
       if(!element.isConnected || !getDocumentRoot().contains(element)) {
         if(this.nodeDrag) surface.style.display = "none"
         else this.endNodeDrag()
@@ -361,6 +378,7 @@ export class ManipulationFeature extends EditorFeature {
     this.dragMutationObserver?.disconnect()
     this.dragMutationObserver = null
     this.dragGeometryCleanup.splice(0).forEach(cleanup => cleanup())
+    if(this.dragSurface) this.anchors.release(this.dragSurface)
     this.dragSurface?.remove()
     this.dragSurface = null
     this.dragTarget = null
@@ -377,12 +395,35 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private insertionGeneration = 0
+  private readonly clipboardRoots = new WeakMap<HTMLElement, string>()
+  private readonly clipboardLayouts = new WeakMap<DocumentFragment, string>()
+  private layoutPastes = new WeakMap<HTMLElement, {key: string, elements: (HTMLElement | SVGSVGElement)[]}>()
+
+  /** Clipboard-only identity distinguishes a duplicate from a transfer to a
+   * different slide. It never becomes part of the authored document. */
+  clipboardLayoutHint() {
+    const root = this.editor.features.canvas.editingRoot
+    if(!root) return null
+    const captured = this.editor.features.selection.captureSelectedElement
+    const elements = captured ? [captured] : $.ranges.flatMap(range =>
+      range.startContainer === root && range.endContainer === root && !range.collapsed
+        ? Array.from(root.childNodes).slice(range.startOffset, range.endOffset).filter(node => node instanceof Element)
+        : [])
+    if(!elements.length || elements.some(element => element.parentElement !== root
+      || !(element instanceof HTMLElement || element instanceof SVGSVGElement) || slideLayoutRole(element)
+      || !["absolute", "fixed"].includes(getComputedStyle(element).position))) return null
+    let id = this.clipboardRoots.get(root)
+    if(!id) { id = crypto.randomUUID(); this.clipboardRoots.set(root, id) }
+    return `${id}/${crypto.randomUUID()}`
+  }
 
   disable() {
     this.snippetDrag = null
+    this.layoutPastes = new WeakMap()
     this.insertionGeneration++
     this.hoverInsertion(false)
     this.endNodeDrag(false)
+    this.anchors.destroy()
     super.disable()
   }
 
@@ -634,6 +675,10 @@ export class ManipulationFeature extends EditorFeature {
     this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
     if(event.target instanceof Node && source.contains(event.target)) return null
+    if(source === this.nodeDrag?.element && source.matches("p, h1, h2, h3, h4, h5, h6")) {
+      const point = this.dropPoint(event)
+      if(point && this.joinsTextOnDrop(source, point.node)) return null
+    }
     const root = getDocumentRoot()
     const key = source.isConnected ? source : source.outerHTML
     const contains = (rect: DOMRect) => event.clientX >= rect.left && event.clientX < rect.right
@@ -996,10 +1041,18 @@ export class ManipulationFeature extends EditorFeature {
         overlay.setAttribute("aria-hidden", "true")
         this.editor.addAppendix(overlay)
       }
-      const rect = target.getBoundingClientRect()
-      Object.assign(overlay.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      if(this.editor.features.transformation.boxTransformed(target)) {
+        this.anchors.release(overlay)
+        const rect = target.getBoundingClientRect()
+        Object.assign(overlay.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      }
+      else {
+        for(const property of ["left", "top", "width", "height"]) overlay.style.removeProperty(property)
+        this.anchors.bind(overlay, target)
+      }
     }
     else {
+      if(overlay) this.anchors.release(overlay)
       overlay?.remove()
       this.clearFloatDropPreview("insertion")
     }
@@ -1104,6 +1157,23 @@ export class ManipulationFeature extends EditorFeature {
     if(target?.parentElement && root.contains(target)) $.move(target.parentElement, Array.from(target.parentElement.childNodes).indexOf(target) + 1)
   }
 
+  private joinsTextOnDrop(source: Element, node: Node) {
+    const target = getContainer(node)
+    return source.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && source.matches("p, h1, h2, h3, h4, h5, h6") && !source.hasAttribute("is")
+      && target?.namespaceURI === source.namespaceURI
+      && target.matches("p, h1, h2, h3, h4, h5, h6") && !target.hasAttribute("is")
+      && !source.contains(node) && !target.contains(source)
+      && !atomicEditingContainer(source, this.editor.schema) && !atomicEditingContainer(node, this.editor.schema)
+  }
+
+  private dropPoint(event: MouseEvent) {
+    const root = getDocumentRoot()
+    return this.editor.hitTestBeneathAppendix(() => $.pointFromCoords(
+      event.clientX, event.clientY, event.target, this.editor.schema, root, root,
+    ))
+  }
+
   dropRange(event: MouseEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
     const float = source && this.floatDropTarget(event, source)
@@ -1119,9 +1189,7 @@ export class ManipulationFeature extends EditorFeature {
     // Bound the hit test to the editing root so its geometry fallback also
     // resolves blank space when media leaves no native text caret to hit.
     const root = getDocumentRoot()
-    const point = this.editor.hitTestBeneathAppendix(() => $.pointFromCoords(
-      event.clientX, event.clientY, event.target, this.editor.schema, root, root,
-    ))
+    const point = this.dropPoint(event)
     if(!point || !getDocumentRoot().contains(point.node)) return null
     if(source && !this.allowsCaptionInsertion([source], point.node)) return null
     const range = document.createRange()
@@ -1139,7 +1207,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     range.setStart(point.node, point.offset)
     range.collapse(true)
-    if(source && !getContainer(point.node).closest("p:not([is])")
+    if(source && !this.joinsTextOnDrop(source, point.node) && !getContainer(point.node).closest("p:not([is])")
       && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
       while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
@@ -1620,7 +1688,17 @@ export class ManipulationFeature extends EditorFeature {
           this.placeFloat(inserted, container, side)
         }
         else {
-          if(getContainer(range.startContainer).closest("p:not([is])") && !isParagraphContent(inserted)) {
+          if(this.joinsTextOnDrop(source, range.startContainer)) {
+            // Move the live children so inline formatting, comments and widgets
+            // survive without nesting or splitting either text block.
+            const fragment = document.createDocumentFragment()
+            fragment.append(...Array.from(inserted.childNodes))
+            if(fragment.childNodes.length) range.insertNode(fragment)
+            if(inserted === source) source.remove()
+            range.collapse(false)
+            $.move(range.startContainer, range.startOffset)
+          }
+          else if(getContainer(range.startContainer).closest("p:not([is])") && !isParagraphContent(inserted)) {
             $.move(range.startContainer, range.startOffset)
             this.insertBlocks([inserted])
           }
@@ -1801,7 +1879,11 @@ export class ManipulationFeature extends EditorFeature {
   private transferFigurePlacement(from: Element, to: Element) {
     const source = this.inlineStyleOf(from), destination = this.inlineStyleOf(to)
     if(source && destination) {
-      for(const property of ["float", "clear", "position", "top", "right", "bottom", "left", "inset", "z-index", "--ww-float-size"]) {
+      // A captioned text block has one width: the figure owns its resize
+      // constraints until it is unwrapped. Keep widget/media sizing on the host.
+      const text = "p:not([is]), h1:not([is]), h2:not([is]), h3:not([is]), h4:not([is]), h5:not([is]), h6:not([is])"
+      const size = from.matches(text) || to.matches(text) ? ["width", "min-width", "max-width", "inline-size", "min-inline-size", "max-inline-size"] : []
+      for(const property of ["float", "clear", "position", "top", "right", "bottom", "left", "inset", "z-index", "--ww-float-size", ...size]) {
         const value = source.getPropertyValue(property)
         if(!value) continue
         destination.setProperty(property, value, source.getPropertyPriority(property))
@@ -2233,8 +2315,8 @@ export class ManipulationFeature extends EditorFeature {
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
-  /** Edit toolbox styles use the selected table/cell or the direct container
-   * below Document. */
+  /** Edit toolbox styles use the selected table/cell, board content, or the
+   * direct container below Document. */
   get topLevelStyleTarget(): Element | null {
     const root = this.editor.features.slides.active
       ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
@@ -2244,6 +2326,14 @@ export class ManipulationFeature extends EditorFeature {
     const cell = cellForNode(target)
     if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
     if(target instanceof HTMLTableElement) return target
+    const column = this.editor.features.board.active ? this.editor.features.board.containingColumn(target) : null
+    if(column) {
+      // Keep column controls available while editing its heading, but honor
+      // explicit selections and the live editing target inside a card.
+      return this.editor.features.board.containingCard(target)
+        || this.editor.features.selection.captureSelectedElement
+        || this.editor.features.selection.selectedSectionElement || $.selectedElement ? target : column
+    }
     if(target === document.body || target === root) {
       const selection = document.getSelection()
       if(!selection?.rangeCount) return root
@@ -2497,6 +2587,7 @@ export class ManipulationFeature extends EditorFeature {
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
         placement: this.editor.features.layout.getPlacementState(target),
+        grouping: this.editor.features.board.groupingState(target),
         canMoveUp: movable && target.previousElementSibling !== null,
         canMoveDown: movable && target.nextElementSibling !== null,
         alignment: alignmentFromStyles(style),
@@ -2817,6 +2908,7 @@ export class ManipulationFeature extends EditorFeature {
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
     this.selectCapturedElementForInsertion()
+    if(this.insertLayoutPaste(fragment)) return
     const container = $.anchorContainer
     if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
       && container && container === $.focusContainer && !isDocumentRoot(container)
@@ -2828,6 +2920,57 @@ export class ManipulationFeature extends EditorFeature {
       }
     }
     return this.insertClipboardFragment(fragment)
+  }
+
+  /** Duplicate whole layout items without replacing the selected original or
+   * invoking the general insertion placement. Re-read the last live copy's
+   * geometry so moves, undo and remote replacements cannot leave stale offsets. */
+  private insertLayoutPaste(fragment: DocumentFragment) {
+    const key = this.clipboardLayouts.get(fragment)
+    if(!key) return false
+    const canvas = this.editor.features.canvas, slides = this.editor.features.slides
+    const root = canvas.active ? document.body : slides.active ? slides.insertionSlide() : null
+    if(!root || !root.isConnected || this.editor.isEditingLocked || !this.editor.allows("insert", root)) return false
+    const elements = Array.from(fragment.children)
+    if(!elements.length || elements.some(element => !(element instanceof HTMLElement || element instanceof SVGSVGElement)
+      || element.matches("style,script,link,meta,template") || slideLayoutRole(element))
+      || Array.from(fragment.childNodes).some(node => node instanceof Text && node.data.trim())) return false
+    const items = elements as (HTMLElement | SVGSVGElement)[]
+    const previous = this.layoutPastes.get(root)
+    const last = previous?.key === key && previous.elements.length === items.length
+      && previous.elements.every(element => element.parentElement === root) ? previous.elements : null
+    const step = last || canvas.active || key.split("/")[0] === this.clipboardRoots.get(root) ? 24 : 0
+    const zoom = canvas.active ? canvas.zoom : slides.zoom
+    const previousRect = last?.[0].getBoundingClientRect()
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      root.append(fragment)
+      const rect = items[0].getBoundingClientRect()
+      const dx = step + (previousRect ? (previousRect.left - rect.left) / zoom : 0)
+      const dy = step + (previousRect ? (previousRect.top - rect.top) / zoom : 0)
+      for(const item of items) {
+        const style = getComputedStyle(item)
+        for(const [start, finish, delta] of [["left", "right", dx], ["top", "bottom", dy]] as const) {
+          if(!delta) continue
+          const shift = (property: string, value: string, amount: number) => {
+            item.style.setProperty(property, /^-?[\d.]+px$/.test(value)
+              ? `${parseFloat(value) + amount}px` : `calc(${value} + ${amount}px)`, item.style.getPropertyPriority(property))
+          }
+          const from = item.style.getPropertyValue(start) || style.getPropertyValue(start)
+          const to = item.style.getPropertyValue(finish) || style.getPropertyValue(finish)
+          if(from && from !== "auto") shift(start, from, delta)
+          if(to && to !== "auto") shift(finish, to, -delta)
+          if((!from || from === "auto") && (!to || to === "auto")) item.style.setProperty(start, `${delta}px`)
+        }
+      }
+      this.editor.features.selection.withoutSelectionScroll(() => {
+        this.editor.features.selection.selectElement(items[0])
+        if(items.length > 1) { $.selectElements(items); this.editor.features.selection.processSelection() }
+      })
+      this.layoutPastes.set(root, {key, elements: items})
+    }
+    finally { end() }
+    return true
   }
 
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
@@ -2969,7 +3112,7 @@ export class ManipulationFeature extends EditorFeature {
     // Native or widget-authored text can live directly in a contentful host.
     // Split just that inline run into paragraphs, retaining the host and its
     // other children instead of duplicating page IDs or widget state.
-    if(isContentfulWidget(container, this.editor.schema)) {
+    if(isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container))) {
       const children = Array.from(container.childNodes)
       let first = offset, last = offset
       while(first > 0 && isParagraphContent(children[first - 1])) first--
@@ -2984,9 +3127,10 @@ export class ManipulationFeature extends EditorFeature {
     }
     const splittingSummary = container.matches("summary")
     if(splittingSummary) splitDepth = 0
+    const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
-    for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+    for(let depth = 0; depth <= maxDepth; depth++) {
+      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -2999,6 +3143,22 @@ export class ManipulationFeature extends EditorFeature {
       const moving = Array.from(container.childNodes).slice(offset).filter(node => !isOutOfFlow(node))
       this.editor.features.list.prepareSplitContinuation(container, next, moving)
       next.append(...moving)
+      if(depth === 0 && isContentfulWidget(container, this.editor.schema)) {
+        // Older authored options can contain bare text even when their current
+        // contract requires paragraphs. Wrap only the split inline run.
+        for(const [half, atStart] of [[container, false], [next, true]] as const) {
+          if(this.editor.schema.isContentValid(half)) continue
+          const children = Array.from(half.childNodes)
+          let boundary = atStart ? 0 : children.length
+          while(atStart ? boundary < children.length && isParagraphContent(children[boundary])
+            : boundary > 0 && isParagraphContent(children[boundary - 1])) boundary += atStart ? 1 : -1
+          const run = atStart ? children.slice(0, boundary) : children.slice(boundary)
+          if(!run.length && children.length) continue
+          const paragraph = this.editor.schema.create(undefined, half.ownerDocument) as Element
+          half.insertBefore(paragraph, atStart ? children[0] ?? null : run[0] ?? null)
+          paragraph.append(...run)
+        }
+      }
       affected.add(container)
       affected.add(next)
       affected.add(parent)
@@ -3019,6 +3179,14 @@ export class ManipulationFeature extends EditorFeature {
     return element && isSectionElement(element) ? element : container
   }
 
+  /** Only widgets that explicitly permit structural splitting may be continued
+   * within another editable widget. Schema validation checks both halves. */
+  private canSplitWidget(element: Element) {
+    return isContentfulWidget(element, this.editor.schema)
+      && !this.editor.schema.get(element).inseperable
+      && isContentfulWidget(element.parentElement, this.editor.schema)
+  }
+
   /** Finds the smallest subtree that contains every node whose content model
    * a split can change. Transparent content models need their parent context,
    * so include that chain as well. */
@@ -3028,9 +3196,10 @@ export class ManipulationFeature extends EditorFeature {
     let root: Element | null = null
     const splittingSummary = container.matches("summary")
     if(splittingSummary) splitDepth = 0
+    const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
-    for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+    for(let depth = 0; depth <= maxDepth; depth++) {
+      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -4106,7 +4275,7 @@ export class ManipulationFeature extends EditorFeature {
       catch { return true }
     })) return false
     const currentData = this.#clipboardData($.copy())
-    if(currentData.html !== copied.html || currentData.text !== copied.text) return false
+    if(currentData.content !== copied.content || currentData.text !== copied.text) return false
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     return this.withNormalization(() => {
       $.delete()
@@ -4388,8 +4557,8 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   #clipboardData(fragment: DocumentFragment) {
-    const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
-    return {html, text}
+    const {clipboardHTML: html, html: content, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
+    return {html, text, content}
   }
 
   #clipboardItem({html, text}: {html: string, text: string}) {
@@ -4413,9 +4582,9 @@ export class ManipulationFeature extends EditorFeature {
    * text node, so text containing markup characters is never interpreted as
    * HTML. */
   #clipboardContentToFragment(html: string, text: string) {
-    const fragment = html
-      ? this.editor.parseHTMLFragment(html, true).fragment
-      : this.plainTextClipboardFragment(text)
+    if(!html) return this.plainTextClipboardFragment(text)
+    const {fragment, clipboardLayout} = this.editor.parseHTMLFragment(html, true)
+    if(clipboardLayout) this.clipboardLayouts.set(fragment, clipboardLayout)
     return fragment
   }
 

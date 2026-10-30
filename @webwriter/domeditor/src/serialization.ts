@@ -2,6 +2,7 @@ import {createImageMapPopoverController, imageMapHotspotBounds, imageMapHotspotS
 import appIconSource from "../../../static/assets/app-icon-transparent.svg?raw"
 import canvasViewerSource from "./canvas-viewer.js?raw"
 import documentViewerSource from "./document-viewer.js?raw"
+import anchorPositioningSource from "./anchor-positioning.js?raw"
 import figureLayoutSource from "./figure-layout.js?raw"
 import layoutPrintSource from "./document-layout-print.js?raw"
 import attributionSource from "./attribution.js?raw"
@@ -25,6 +26,7 @@ import {scopedCustomElementRegistryScript} from "./scoped-custom-element-registr
 export {scopedCustomElementRegistryScript} from "./scoped-custom-element-registry-script"
 
 const legacyScopedRegistryPolyfillURL = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
+const anchorRuntimeSource = anchorPositioningSource.replace(/^export /gm, "")
 
 export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "xlink:href", "style", "integrity"] as const
 
@@ -90,7 +92,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const script = root.createElement("script")
     script.id = "webwriter-attribution-reader"
     script.type = "module"
-    script.textContent = `${attributionSource}\nmountAttributionReader(${JSON.stringify(creativeCommonsLicenses)})\n`
+    script.textContent = `${anchorRuntimeSource}\n${attributionSource}\nmountAttributionReader(${JSON.stringify(creativeCommonsLicenses)}, createAnchorPositioner)\n`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
@@ -106,7 +108,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const script = root.createElement("script")
     script.id = "webwriter-image-map-popovers"
     script.type = "module"
-    script.textContent = `(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const imageMapHotspotShape = ${imageMapHotspotShape.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const mountImageMapReader = ${mountImageMapReader.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const reader = mountImageMapReader(document, controller, imageMapHotspotShape); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("pagehide", () => { document.removeEventListener("click", handle); document.removeEventListener("pointerover", handle); reader.dispose(); }, {once:true}); })();`.replace(/<\/script/gi, "<\\/script")
+    script.textContent = `${anchorRuntimeSource}\n(() => { const imageMapHotspotBounds = ${imageMapHotspotBounds.toString()}; const imageMapHotspotShape = ${imageMapHotspotShape.toString()}; const createImageMapPopoverController = ${createImageMapPopoverController.toString()}; const mountImageMapReader = ${mountImageMapReader.toString()}; const controller = createImageMapPopoverController(document, imageMapHotspotBounds); const reader = mountImageMapReader(document, controller, imageMapHotspotShape, createAnchorPositioner); const handle = controller.handleEvent; document.addEventListener("click", handle); document.addEventListener("pointerover", handle); window.addEventListener("pagehide", () => { document.removeEventListener("click", handle); document.removeEventListener("pointerover", handle); reader.dispose(); }, {once:true}); })();`.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
@@ -129,7 +131,7 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     const hasReferences = collectReferences(root.body).length > 0
     const locale = (root.documentElement.lang || "").toLowerCase().split(/[-_]/)[0]
     const translations = siteTranslations[locale] ?? {}
-    script.textContent = `${hasReferences ? referenceFormatterSource : ""}\n${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)}, ${hasReferences ? "referenceFormatter.formatReferences" : "null"}, ${JSON.stringify(translations)})\n`
+    script.textContent = `${hasReferences ? referenceFormatterSource : ""}\n${anchorRuntimeSource}\n${documentViewerSource}\nmountDocumentReader(${JSON.stringify(creativeCommonsLicenses)}, ${JSON.stringify(`data:image/svg+xml,${encodeURIComponent(appIconSource)}`)}, ${hasReferences ? "referenceFormatter.formatReferences" : "null"}, ${JSON.stringify(translations)}, createAnchorPositioner)\n`
       .replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }

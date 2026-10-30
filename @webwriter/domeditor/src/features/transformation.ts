@@ -1,15 +1,17 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, atomicEditingContainer, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, closestAlignment, atomicEditingContainer, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
-import {standaloneGraphicShape} from "../graphic"
+import {SVG_NAMESPACE, standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide} from "../element-styles"
 import {mediaCropInsets} from "../media"
 import {captionIconSource} from "../caption-icon"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
-import {isCanvasStartingView} from "../canvas-viewer.js"
+import {canvasGridSize, isCanvasStartingView} from "../canvas-viewer.js"
 import type {RelativePosition} from "yjs"
+import {createAnchorPositioner} from "../utility"
+import {isAuthoredMutation} from "../editor-artifacts"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
@@ -86,8 +88,19 @@ export class TransformationFeature extends EditorFeature {
   #target: TransformElement | null = null
   #group: TransformElement[] = []
   #gesture: Gesture | null = null
+  #movementOverlay: SVGSVGElement | null = null
   #floatValues: readonly FloatSide[] = ["none", "far-left", "far-right"]
   #observer: MutationObserver | null = null
+  #anchors = createAnchorPositioner()
+  #anchored = false
+  #resizeObserver: ResizeObserver | null = null
+  #observedTarget: Element | null = null
+  readonly #refreshGeometry = () => { if(this.target) { this.updateInfo(); this.#scheduleFrame() } }
+  readonly #refreshViewportControls = () => {
+    // The anchored frame follows scrolling natively. Its upright control stems
+    // still switch sides together when their top row crosses the viewport edge.
+    if(this.#anchored && this.target) setPart(this.overlay, "transform-overlay-at-top", this.target.getBoundingClientRect().top < 42)
+  }
   #frame: number | null = null
   #panFrame: number | null = null
   #panEvent: MouseEvent | null = null
@@ -568,6 +581,18 @@ export class TransformationFeature extends EditorFeature {
     return matrix
   }
 
+  /** Whether an appendix frame needs local dimensions and a transform matrix
+   * instead of the anchor's ordinary viewport-aligned border box. */
+  boxTransformed(element: Element) {
+    for(let current: Element | null = element; current; current = renderedParentElement(current)) {
+      if(current.getAnimations?.().some(animation => (animation.playState === "running" || animation.pending)
+        && (animation.effect as KeyframeEffect | null)?.getKeyframes?.().some(frame =>
+          ["transform", "rotate", "scale", "zoom"].some(property => property in frame)))) return true
+    }
+    const matrix = this.#matrix(element)
+    return !matrix.is2D || matrix.a !== 1 || matrix.b !== 0 || matrix.c !== 0 || matrix.d !== 1
+  }
+
   #angle(value: string) {
     const angle = (value || "0").trim().split(/\s+/).at(-1) ?? "0"
     const n = parseFloat(angle) || 0
@@ -689,6 +714,7 @@ export class TransformationFeature extends EditorFeature {
     const target = this.target
     if(!target) { if(this.#target) this.clearTransform(); return }
     if(this.#group.length) {
+      this.#anchors.release(this.overlay); this.#anchored = false
       if(!this.#validGroupSelection()) { this.clearTransform(); return }
       const gesture = this.#gesture
       const rect = gesture?.group ? gesture.rect : this.#groupRect()
@@ -706,6 +732,12 @@ export class TransformationFeature extends EditorFeature {
     }
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
+    if(this.#observedTarget !== target) {
+      this.#resizeObserver?.disconnect()
+      this.#resizeObserver?.observe(target)
+      this.#resizeObserver?.observe(document.body)
+      this.#observedTarget = target
+    }
     // A custom element can paint an out-of-flow shadow child while its host
     // has no box. Its own controls own that geometry; do not draw at BODY@0.
     if(rect.width <= 0 || rect.height <= 0) {
@@ -715,11 +747,24 @@ export class TransformationFeature extends EditorFeature {
       return
     }
     overlay.removeAttribute("visibility")
-    Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
     this.#positionCropControls(target, width, height, rect, matrix)
     const floats = this.editor.features.selection.floatExclusions(target, rect, styles)
     this.#positionFlowControls(width, height, floats)
-    this.editor.features.selection.positionTransformCaret(target, overlay.style, floats)
+    const media = this.editor.features.media.cropTargetFor(target)
+    const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
+    this.#anchored = !this.#gesture && !this.#isFreeformItem(target) && !this.boxTransformed(target)
+      && !floats.length && !captionedFigureContent(target) && (!crop || crop === "none")
+    if(this.#anchored) {
+      for(const property of ["left", "top", "width", "height", "transform"]) overlay.style.removeProperty(property)
+      this.#anchors.bind(overlay, target)
+      this.#anchors.refresh()
+      this.editor.features.selection.anchorTransformCaret(target)
+    }
+    else {
+      this.#anchors.release(overlay)
+      Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
+      this.editor.features.selection.positionTransformCaret(target, overlay.style, floats)
+    }
     overlay.classList.toggle("◆transform-overlay-narrow", rect.width < 120)
     const centerY = rect.top + rect.height / 2
     const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
@@ -846,7 +891,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #scheduleFrame() {
-    if(this.#frame !== null || !this.isEnabled || !this.target) return
+    if(this.#frame !== null || !this.isEnabled || !this.target || this.#anchored && !this.#gesture) return
     this.#frame = requestAnimationFrame(() => {
       this.#frame = null
       if(this.#gesture && !this.#validGesture()) return
@@ -924,12 +969,7 @@ export class TransformationFeature extends EditorFeature {
     const cx = gesture.rect.left + gesture.width / 2, cy = gesture.rect.top + gesture.height / 2
     let transform = new DOMMatrix()
     if(gesture.mode === "move") {
-      const delta = this.#vector(gesture.parentMatrix.inverse(), dx, dy)
-      if(event.shiftKey) {
-        if(Math.abs(dx) >= Math.abs(dy)) delta.y = 0
-        else delta.x = 0
-      }
-      const offset = this.#vector(gesture.parentMatrix, round(delta.x), round(delta.y))
+      const offset = this.#snapMovement(event, dx, dy)
       transform = transform.translate(offset.x, offset.y)
       document.body.classList.add("◆transform-moving")
     }
@@ -1035,6 +1075,8 @@ export class TransformationFeature extends EditorFeature {
     if(mode === "move" && this.#isFreeformItem(target)) {
       this.moveZ(target, true, true)
     }
+    this.updateInfo()
+    this.#scheduleFrame()
     return true
   }
 
@@ -1192,6 +1234,7 @@ export class TransformationFeature extends EditorFeature {
       if(this.#panFrame !== null) cancelAnimationFrame(this.#panFrame)
       this.#panFrame = null
       this.#panEvent = null
+      this.#clearMovementOverlay()
       this.#resetWritten()
       this.#previewDrop(event)
       this.updateInfo()
@@ -1201,17 +1244,97 @@ export class TransformationFeature extends EditorFeature {
     this.#resetWritten()
     const position = getComputedStyle(gesture.target).position || "static"
     if(position === "static") this.#setPosition("absolute")
-    const round = this.getRoundingFunc(event)
-    const delta = this.#vector(gesture.parentMatrix.inverse(), dx, dy)
-    if(event.shiftKey) {
-      if(Math.abs(dx) >= Math.abs(dy)) delta.y = 0
-      else delta.x = 0
-    }
-    const viewportDelta = this.#vector(gesture.parentMatrix, round(delta.x), round(delta.y))
+    const viewportDelta = this.#snapMovement(event, dx, dy)
     const current = this.targetRect
     this.#offsetBy(gesture.rect.left + viewportDelta.x - current.left, gesture.rect.top + viewportDelta.y - current.top)
     this.updateInfo()
     this.#schedulePan(event)
+  }
+
+  /** Snap the live visual box, rather than the distance from an off-grid start.
+   * All calculations use client coordinates, including camera pan and zoom. */
+  #snapMovement(event: MouseEvent, dx: number, dy: number) {
+    const gesture = this.#gesture!, root = gesture.target.parentElement!
+    const canvas = this.editor.features.canvas
+    const slides = this.editor.features.slides
+    const zoom = canvas.active ? canvas.zoom : slides.zoom
+    const world = canvas.active ? canvas.clientPoint(0, 0) : slides.clientPoint(root, 0, 0)
+    const origin = {x: -world.x * zoom, y: -world.y * zoom}
+    const area = canvas.active ? new DOMRect(0, 0, window.innerWidth, window.innerHeight) : root.getBoundingClientRect()
+    const selected = new Set(gesture.group?.members.map(member => member.target) ?? [gesture.target])
+    // Query peers each time: widgets and collaboration can move or replace them mid-drag.
+    const boxes = canvas.items(root).map(item => ({item, rect: item.getBoundingClientRect()}))
+      .filter(({rect}) => rect.width > 0 && rect.height > 0)
+    const anchors = (start: number, size: number) => [start, start + size / 2, start + size]
+    const candidates = (axis: "x" | "y") => {
+      const start = axis === "x" ? "left" : "top", size = axis === "x" ? "width" : "height"
+      const targets = boxes.filter(({item}) => !selected.has(item) && !isCanvasStartingView(item))
+        .flatMap(({rect}) => anchors(rect[start], rect[size]).map(value => ({value, kind: "object"})))
+      if(!canvas.active) targets.push(...anchors(area[start], area[size]).map(value => ({value, kind: "canvas"})))
+      return targets
+    }
+    const locked = event.shiftKey ? Math.abs(dx) >= Math.abs(dy) ? "y" : "x" : null
+    const offset = {x: dx, y: dy}
+    const guides: Partial<Record<"x" | "y", {value: number, kind: string}>> = {}
+    for(const axis of ["x", "y"] as const) {
+      if(locked === axis) { offset[axis] = 0; continue }
+      if(event.altKey) { offset[axis] = roundByDPR(offset[axis]); continue }
+      const start = axis === "x" ? gesture.rect.left : gesture.rect.top
+      const size = axis === "x" ? gesture.rect.width : gesture.rect.height
+      const value = start + offset[axis]
+      const snap = closestAlignment(anchors(value, size), candidates(axis), 6)
+      offset[axis] += snap?.delta ?? origin[axis] + roundTo((value - origin[axis]) / zoom, canvasGridSize) * zoom - value
+      if(snap) guides[axis] = snap.target
+    }
+    const current = gesture.group ? this.#groupRect() : gesture.target.getBoundingClientRect()
+    this.#showMovementOverlay(area, origin, zoom, boxes.map(({item, rect}) => selected.has(item)
+      ? new DOMRect(rect.left + gesture.rect.left + offset.x - current.left, rect.top + gesture.rect.top + offset.y - current.top, rect.width, rect.height) : rect), guides)
+    return offset
+  }
+
+  #showMovementOverlay(area: DOMRect, origin: {x: number, y: number}, zoom: number, boxes: DOMRect[], guides: Partial<Record<"x" | "y", {value: number, kind: string}>>) {
+    if(!this.#movementOverlay) {
+      this.#movementOverlay = document.createElementNS(SVG_NAMESPACE, "svg")
+      this.#movementOverlay.setAttribute("part", "transform-movement-overlay")
+      this.#movementOverlay.setAttribute("aria-hidden", "true")
+      Object.assign(this.#movementOverlay.style, {position: "fixed", top: "0", pointerEvents: "none", zIndex: "0", overflow: "hidden"})
+      this.editor.addAppendix(this.#movementOverlay)
+    }
+    const overlay = this.#movementOverlay
+    overlay.style.left = `${fixedClientX(0)}px`
+    overlay.setAttribute("width", String(window.innerWidth))
+    overlay.setAttribute("height", String(window.innerHeight))
+    overlay.replaceChildren()
+    const svg = (name: string, attributes: Record<string, string | number>, parent: Element = overlay) => {
+      const element = document.createElementNS(SVG_NAMESPACE, name)
+      for(const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value))
+      parent.append(element)
+      return element
+    }
+    if(!this.editor.features.canvas.active) {
+      const step = canvasGridSize * zoom
+      const defs = svg("defs", {})
+      const pattern = svg("pattern", {id: "◆transform-grid-pattern", patternUnits: "userSpaceOnUse", x: origin.x - step / 2, y: origin.y - step / 2, width: step, height: step}, defs)
+      svg("circle", {cx: step / 2, cy: step / 2, r: zoom, fill: "#ccd7e3"}, pattern)
+      const mask = svg("mask", {id: "◆transform-grid-mask", maskUnits: "userSpaceOnUse", x: area.left, y: area.top, width: area.width, height: area.height}, defs)
+      svg("rect", {x: area.left, y: area.top, width: area.width, height: area.height, fill: "white"}, mask)
+      // Keep dots behind content, including unfamiliar and custom element hosts.
+      for(const rect of boxes) svg("rect", {x: rect.left, y: rect.top, width: rect.width, height: rect.height, fill: "black"}, mask)
+      svg("rect", {part: "transform-grid", x: area.left, y: area.top, width: area.width, height: area.height, fill: "url(#◆transform-grid-pattern)", mask: "url(#◆transform-grid-mask)"})
+    }
+    for(const axis of ["x", "y"] as const) {
+      const guide = guides[axis]
+      if(!guide) continue
+      svg("line", {part: `transform-guide transform-guide-${axis} transform-guide-${guide.kind}`,
+        x1: axis === "x" ? guide.value : area.left, y1: axis === "y" ? guide.value : area.top,
+        x2: axis === "x" ? guide.value : area.right, y2: axis === "y" ? guide.value : area.bottom,
+        stroke: guide.kind === "canvas" ? "#f59e0b" : "#38bdf8", "stroke-width": 1, "stroke-dasharray": "4 3"})
+    }
+  }
+
+  #clearMovementOverlay() {
+    this.#movementOverlay?.remove()
+    this.#movementOverlay = null
   }
 
   handleScaleDrag(event: MouseEvent) {
@@ -1415,6 +1538,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #finish(cancel: boolean) {
+    this.#clearMovementOverlay()
     if(this.#panFrame !== null) cancelAnimationFrame(this.#panFrame)
     this.#panFrame = null
     this.#panEvent = null
@@ -1575,6 +1699,10 @@ export class TransformationFeature extends EditorFeature {
 
   clearTransform() {
     this.#finish(true)
+    const frame = document.body.shadowRoot?.querySelector<HTMLElement>("#◆transform-overlay")
+    if(frame) this.#anchors.release(frame)
+    this.#anchored = false
+    this.#resizeObserver?.disconnect(); this.#observedTarget = null
     this.#suppressClick = null
     this.editor.features.selection.clearTransformCaret()
     const targets = new Set([...this.#group, ...(this.#target ? [this.#target] : []), ...document.querySelectorAll(".◆transform-target")])
@@ -1599,22 +1727,32 @@ export class TransformationFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     window.addEventListener("blur", this.#cancelGesture)
+    window.addEventListener("resize", this.#refreshGeometry)
+    this.#resizeObserver = new ResizeObserver(this.#refreshGeometry)
+    this.#observedTarget = null
     if(!this.#observer) {
-      this.#observer = new MutationObserver(() => { if(this.#target && !this.target) this.clearTransform() })
-      this.#observer.observe(document.body, {childList: true, subtree: true})
+      this.#observer = new MutationObserver(records => {
+        if(this.#target && !this.target) this.clearTransform()
+        else if(records.some(isAuthoredMutation)) this.#refreshGeometry()
+      })
+      this.#observer.observe(document.body, {childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true})
     }
   }
 
   disable() {
     super.disable()
     window.removeEventListener("blur", this.#cancelGesture)
+    window.removeEventListener("resize", this.#refreshGeometry)
+    this.#resizeObserver?.disconnect(); this.#resizeObserver = null
     this.#observer?.disconnect()
     this.#observer = null
     this.clearTransform()
+    this.#anchors.destroy()
     document.body.shadowRoot?.querySelector("#◆transform-overlay")?.remove()
   }
 
   captureListeners: DocumentListenerMap = {
+    scroll: this.#refreshViewportControls,
     pointerdown: event => {
       const origin = event.composedPath()[0]
       if(!this.#group.length || event.defaultPrevented || event.button !== 0 || event.detail >= 2

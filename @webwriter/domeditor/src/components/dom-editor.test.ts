@@ -952,6 +952,16 @@ describe("DomEditor document loading", () => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("anchors update notifications to the app icon outside the authored document", async () => {
+    const {editor, iframe} = await mountEditor()
+    const notice = editor.shadowRoot!.querySelector<HTMLElement & {anchor: () => HTMLElement | null}>("app-update-notice")!
+    const logo = editor.shadowRoot!.querySelector("app-ribbon")!.shadowRoot!.querySelector(".brand-logo")
+    expect(notice).not.toBeNull()
+    expect(logo).not.toBeNull()
+    expect(notice.anchor()).toBe(logo)
+    expect(iframe.contentDocument!.querySelector("app-update-notice")).toBeNull()
+  })
+
   it("delegates camera, microphone and screen capture to the editing frame", async () => {
     const {iframe} = await mountEditor()
     expect(iframe.getAttribute("allow")).toBe("camera; microphone; display-capture")
@@ -5641,6 +5651,20 @@ describe("DomEditor.execute()", () => {
     await vi.waitFor(() => expect(toolbox.elementStyle.inline.width).toBeUndefined())
     expect(toolbox.elementStyle.authoredProperties).toEqual([])
     expect(execute.mock.calls.filter(([action]) => action.type === "getStyleState").length).toBeGreaterThanOrEqual(3)
+  })
+
+  it("retains board grouping state through the bridge and routes grouping commands from the style drawer", async () => {
+    const {editor} = await mountEditor()
+    const grouping = {grouped: false, canCreate: true, canUngroup: true, canJoinLeft: true, canJoinRight: false}
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "getStyleState") return {target: {localName: "section", namespaceURI: "http://www.w3.org/1999/xhtml", grouping},
+        inline: {}, computed: {}, context: {display: "flex", parentDisplay: "flex"}}
+    })
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool(null); toolbox.selectTool("Edit")
+    await vi.waitFor(() => expect(toolbox.elementStyle.target?.grouping).toEqual(grouping))
+    toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "setBoardGrouping", mode: "left"}, bubbles: true, composed: true}))
+    expect(execute).toHaveBeenCalledWith({type: "setBoardGrouping", mode: "left"})
   })
 
   it("applies a box preset in one style command", async () => {

@@ -69,10 +69,11 @@ function targets(body) {
 }
 
 /** Mount controls in the body's shadow appendix without changing authored nodes. */
-export function mountDocumentReader(licenses = [], appIcon = "", formatReferences = null, translations = {}) {
+export function mountDocumentReader(licenses = [], appIcon = "", formatReferences = null, translations = {}, anchorFactory = null) {
   const t = (source, values = {}) => (translations[source] ?? source).replace(/\{(\w+)\}/g,
     (match, key) => Object.hasOwn(values, key) ? String(values[key]) : match)
   const body = document.body
+  const positioner = anchorFactory?.(document) ?? null
   if(blocked(body)) return null
   if(activeReaders.has(body)) return activeReaders.get(body)
   let appendix
@@ -101,7 +102,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     .◆document-reader-control a:hover { color: #334155; }
     .◆document-reader-control button:hover { background: rgb(15 23 42 / .75); }
     .◆document-reader-feedback { position: fixed; z-index: 1001; width: max-content; max-width: calc(100vw - 16px); box-sizing: border-box; padding: 5px 8px; border: 1px solid #e2e8f0; border-radius: 4px; background: white; color: #334155; font: 12px/1.4 system-ui; pointer-events: none; }
-    .◆document-reader-feedback::after { content: ""; position: absolute; left: calc(var(--arrow-position) - 3px); bottom: -4px; width: 6px; height: 6px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: white; transform: rotate(45deg); }
+    .◆document-reader-feedback::after { content: ""; position: absolute; left: calc(var(--arrow-position, 50%) - 3px); bottom: -4px; width: 6px; height: 6px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; background: white; transform: rotate(45deg); }
     .◆document-reader-feedback[data-below]::after { top: -4px; bottom: auto; transform: rotate(225deg); }
     .◆document-reader-feedback[hidden] { display: none; }
     .◆document-pane { position: fixed; right: 20px; bottom: 20px; z-index: 1000; display: flex; align-items: center; justify-content: flex-end; gap: 8px; overflow: visible; color: #94a3b8; font: 12px/1.5 system-ui; text-align: right; }
@@ -460,6 +461,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   const inside = rect => pointer && pointer.x >= rect.left && pointer.x <= rect.right && pointer.y >= rect.top && pointer.y <= rect.bottom
   const hideFeedback = () => {
     clearTimeout(feedbackTimer)
+    positioner?.release(feedback)
     feedbackAnchor = null
     feedback.hidden = true
     feedback.textContent = ""
@@ -467,6 +469,21 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   const positionFeedback = (offset = fixedGutterOffset()) => {
     if(!feedbackAnchor) return
     if(!feedbackAnchor.isConnected) { hideFeedback(); return }
+    if(positioner) {
+      positioner.bind(feedback, feedbackAnchor,
+        "position-area:top center;position-try-fallbacks:flip-block;position-visibility:anchors-visible;")
+      positioner.refresh()
+      // The native placement owns the bubble; only its speech-arrow inset
+      // needs the rendered relationship between bubble and link.
+      const anchor = feedbackAnchor
+      requestAnimationFrame(() => {
+        if(feedbackAnchor !== anchor || feedback.hidden || destroyed) return
+        const rect = anchor.getBoundingClientRect(), bubble = feedback.getBoundingClientRect()
+        feedback.toggleAttribute("data-below", bubble.top >= rect.bottom)
+        feedback.style.setProperty("--arrow-position", `${Math.max(6, Math.min(bubble.width - 6, rect.left + rect.width / 2 - bubble.left))}px`)
+      })
+      return
+    }
     const rect = feedbackAnchor.getBoundingClientRect()
     const bubble = feedback.getBoundingClientRect()
     const center = rect.left + rect.width / 2
@@ -480,6 +497,8 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
   const showFeedback = (anchor, message) => {
     hideFeedback()
     feedbackAnchor = anchor
+    // Positioned anchors precede the positioned box that references them.
+    appendix.append(feedback)
     feedback.hidden = false
     feedback.textContent = message
     positionFeedback()
@@ -552,12 +571,16 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     const gutter = gutterTarget?.element.getBoundingClientRect().left
     const wanted = new Set(current.map(item => item.element))
     for(const [element, control] of controls) if(!wanted.has(element) || !element.isConnected) {
+      if(control.permalink) positioner?.release(control.permalink)
+      if(control.fullscreen) positioner?.release(control.fullscreen)
       control.group.remove(); controls.delete(element)
     }
     for(const target of current) {
       let control = controls.get(target.element)
       if(!control) { control = makeControl(target.element); controls.set(target.element, control) }
       if(Boolean(control.permalink) !== Boolean(target.element.id)) {
+        if(control.permalink) positioner?.release(control.permalink)
+        if(control.fullscreen) positioner?.release(control.fullscreen)
         control.group.remove()
         control = makeControl(target.element)
         controls.set(target.element, control)
@@ -565,7 +588,9 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       const anchor = target.caption ?? target.element
       const targetRect = target.element.getBoundingClientRect()
       const anchorRect = anchor.getBoundingClientRect()
-      const rect = anchorRect.width > 0 && anchorRect.height > 0 ? anchorRect : targetRect
+      const hasAnchorRect = anchorRect.width > 0 && anchorRect.height > 0
+      const rect = hasAnchorRect ? anchorRect : targetRect
+      const positionAnchor = hasAnchorRect ? anchor : target.element
       const style = getComputedStyle(anchor)
       const targetStyle = getComputedStyle(target.element)
       const visible = targetStyle.display !== "none" && targetStyle.visibility !== "hidden"
@@ -585,8 +610,16 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
         const captionInset = target.caption ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0) : 0
         const captionBottomInset = target.caption ? (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) : 0
         const firstLineHeight = Math.min(Math.max(0, rect.height - captionInset - captionBottomInset), lineHeight)
-        control.permalink.style.left = `${left - offset}px`
-        control.permalink.style.top = `${target.kind === "figure" && !target.caption ? targetRect.top : rect.top + captionInset + firstLineHeight / 2 - 14}px`
+        if(positioner) {
+          control.permalink.style.setProperty("--reader-gutter-left", `${Math.max(0, (gutter ?? targetRect.left)) - offset}px`)
+          control.permalink.style.setProperty("--reader-caption-offset", `${target.kind === "figure" && !target.caption ? 0 : captionInset + firstLineHeight / 2 - 14}px`)
+          positioner.bind(control.permalink, positionAnchor,
+            "left:calc(var(--reader-gutter-left) - 30px);top:calc(anchor(top) + var(--reader-caption-offset));position-visibility:anchors-visible;")
+        }
+        else {
+          control.permalink.style.left = `${left - offset}px`
+          control.permalink.style.top = `${target.kind === "figure" && !target.caption ? targetRect.top : rect.top + captionInset + firstLineHeight / 2 - 14}px`
+        }
       }
       if(control.fullscreen) {
         const media = target.media?.find(element => inside(element.getBoundingClientRect()))
@@ -598,8 +631,14 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
         control.fullscreen.hidden = !canFullscreen(target.element) || mediaRect.width <= 0 || mediaRect.height <= 0
           || mediaStyle.display === "none" || mediaStyle.visibility === "hidden"
         control.group.toggleAttribute("data-fullscreen-visible", Boolean(inside(mediaRect)))
-        control.fullscreen.style.left = `${mediaRect.right - 40 - offset}px`
-        control.fullscreen.style.top = `${mediaRect.top + 8}px`
+        if(positioner) {
+          positioner.bind(control.fullscreen, media,
+            "left:calc(anchor(right) - 40px);top:calc(anchor(top) + 8px);position-visibility:anchors-visible;")
+        }
+        else {
+          control.fullscreen.style.left = `${mediaRect.right - 40 - offset}px`
+          control.fullscreen.style.top = `${mediaRect.top + 8}px`
+        }
       }
       if(!control.permalink && control.fullscreen?.hidden) control.group.hidden = true
     }
@@ -667,6 +706,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     if(activeReaders.get(body) === result) activeReaders.delete(body)
     if(frame) cancelAnimationFrame(frame)
     for(const control of controls.values()) control.group.remove()
+    positioner?.destroy()
     controls.clear(); style.remove()
   }
   observer.observe(document.documentElement, {childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["id", "class", "style", "role", "is", "name", "content", "rel", "href", "title", "data-reference", "data-reference-locator"]})

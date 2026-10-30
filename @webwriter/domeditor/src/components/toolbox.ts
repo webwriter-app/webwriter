@@ -204,6 +204,11 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
     .float-button-group[aria-label="Placement"] button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
+    .grouping-button-group {display: grid; grid-template-columns: 1.6rem 1.6rem minmax(0, 1fr) 1.6rem}
+    .grouping-button-group button {min-height: 1.9rem; padding: .2rem}
+    .grouping-button-group button:disabled {opacity: .4; cursor: default}
+    .grouping-button-group .grouping-new svg {width: 1.4rem; height: 1.4rem}
+    .grouping-button-group :is(.grouping-left, .grouping-right) svg {width: .875rem; height: .875rem}
     .caption-button-group {display: grid; grid-template-columns: 1.6rem repeat(3, minmax(0, 1fr))}
     .caption-button-group button {min-height: 1.55rem; padding: .1rem .25rem; margin: 0; border-radius: 0}
     .caption-button-group button + button {margin-left: -.5px}
@@ -1540,6 +1545,22 @@ export class DomEditorToolbox extends EditingControls {
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>
           ` : nothing}
+          ${this.documentLayout.mode === "board" && target?.grouping ? html`
+          <span class="float-placement-label">Grouping</span>
+          <div class="float-button-group grouping-button-group" role="group" aria-label="Grouping">
+            ${([
+              {mode: "none", label: "No group", icon: "NoGroup", enabled: target.grouping.canUngroup, pressed: !target.grouping.grouped},
+              {mode: "left", label: "Join group to the left", icon: "ArrowLeft", enabled: target.grouping.canJoinLeft},
+              {mode: "new", label: "Create new group", icon: "Group", enabled: target.grouping.canCreate, pressed: target.grouping.grouped},
+              {mode: "right", label: "Join group to the right", icon: "ArrowRight", enabled: target.grouping.canJoinRight},
+            ] as const).map(({mode, label, icon, enabled, ...state}) => html`<button type="button" class=${`grouping-${mode}`}
+              aria-label=${label} title=${label} aria-pressed=${"pressed" in state ? state.pressed : nothing}
+              ?disabled=${!enabled || this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setBoardGrouping", mode}, bubbles: true, composed: true,
+              }))}>${ribbonIcon(icon)}</button>`)}
+          </div>` : nothing}
           <span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
             () => this.dispatchEvent(new CustomEvent("layout-action", {
               detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,

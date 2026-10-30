@@ -18,6 +18,13 @@ beforeEach(() => {
     {tagName: "webwriter-hint"},
     {tagName: "webwriter-advance-organizer", editingConfig: {content: "webwriter-advance-organizer-page*"}},
     {tagName: "webwriter-advance-organizer-page", editingConfig: {content: "flow*"}},
+    {tagName: "choice-widget", editingConfig: {content: "choice-item+"}},
+    {tagName: "single-choice-widget", editingConfig: {content: "choice-item"}},
+    {tagName: "choice-item", editingConfig: {content: "(p | text)*", isolating: false}},
+    {tagName: "webwriter-choice", editingConfig: {group: "answer", content: "webwriter-choice-item+"}},
+    {tagName: "webwriter-choice-item", editingConfig: {group: "", content: "(p | flow)+", isolating: false}},
+    {tagName: "webwriter-order", editingConfig: {group: "answer", content: "webwriter-order-item+"}},
+    {tagName: "webwriter-order-item", editingConfig: {group: "", content: "(p | flow)+", isolating: false}},
   ])
   editor.features.widget.refresh()
 })
@@ -25,6 +32,86 @@ beforeEach(() => {
 afterAll(() => editor.destroy())
 
 const sync = () => editor.doc.syncFromDOM()
+
+describe("repeatable widget options", () => {
+  it.each([["choice", "<p>abcd</p>"], ["order", "<p>abcd</p>"], ["choice", "abcd"]])("splits a quiz %s item containing %s", (type, content) => {
+    document.body.innerHTML = `<webwriter-${type}><webwriter-${type}-item>${content}</webwriter-${type}-item></webwriter-${type}>`
+    editor.features.widget.refresh()
+    const item = document.querySelector(`webwriter-${type}-item`)!
+    $.move(item.querySelector("p")?.firstChild ?? item.firstChild!, 2)
+    item.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, composed: true, cancelable: true}))
+    expect(Array.from(document.querySelectorAll(`webwriter-${type}-item`), element => element.textContent)).toEqual(["ab", "cd"])
+    expect(Array.from(document.querySelectorAll(`webwriter-${type}-item`), element => editor.schema.isContentValid(element))).toEqual([true, true])
+  })
+
+  it.each([["ArrowUp", 0], ["ArrowDown", 4]] as const)("navigates to the option gap with %s", (keyName, offset) => {
+    document.body.innerHTML = '<webwriter-choice><webwriter-choice-item><p>abcd</p></webwriter-choice-item><webwriter-choice-item><p>other</p></webwriter-choice-item></webwriter-choice>'
+    editor.features.widget.refresh()
+    const parent = document.querySelector("webwriter-choice")!
+    const item = parent.firstElementChild!
+    $.move(item.querySelector("p")!.firstChild!, offset)
+    const event = new KeyboardEvent("keydown", {key: keyName, bubbles: true, composed: true, cancelable: true})
+    item.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(parent)
+    expect($.anchorOffset).toBe(offset ? 1 : 0)
+    expect($.isGapSelection).toBe(true)
+    expect(editor.features.selection.selectionCaret?.getAttribute("part")).toContain("gap-caret")
+  })
+
+  it("addresses a gap above or below a widget item from its box", () => {
+    document.body.innerHTML = '<webwriter-choice><webwriter-choice-item><p>abcd</p></webwriter-choice-item></webwriter-choice>'
+    const parent = document.querySelector("webwriter-choice")!
+    const item = parent.firstElementChild!
+    item.getBoundingClientRect = () => new DOMRect(0, 20, 100, 20)
+    expect($.widgetGapFromCoords(50, 10, item, editor.schema)).toMatchObject({node: parent, offset: 0})
+    expect($.widgetGapFromCoords(50, 50, item, editor.schema)).toMatchObject({node: parent, offset: 1})
+  })
+
+  it.each(["abcd", "<p>abcd</p>"])("splits an option with the primary modifier: %s", content => {
+    document.body.innerHTML = `<choice-widget><choice-item id="original">${content}</choice-item><choice-item>other</choice-item></choice-widget>`
+    editor.features.widget.refresh()
+    const parent = document.querySelector("choice-widget")!
+    const item = parent.firstElementChild!
+    const text = item.querySelector("p")?.firstChild ?? item.firstChild!
+    sync()
+    editor.doc.stopCapturing()
+    $.move(text, 2)
+    item.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, composed: true, cancelable: true}))
+    sync()
+    expect(Array.from(parent.children, child => child.textContent)).toEqual(["ab", "cd", "other"])
+    expect(parent.children[0].id).toBe("original")
+    expect(parent.children[1].id).not.toBe("original")
+    expect(parent.children[1].contains($.anchor)).toBe(true)
+    expect(editor.toHTML(true)).not.toContain("◆")
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("contenteditable")
+    editor.doc.undo()
+    expect(Array.from(parent.children, child => child.textContent)).toEqual(["abcd", "other"])
+    editor.doc.redo()
+    expect(Array.from(parent.children, child => child.textContent)).toEqual(["ab", "cd", "other"])
+  })
+
+  it("keeps an isolating widget intact on a parent split", () => {
+    document.body.innerHTML = '<webwriter-advance-organizer><webwriter-advance-organizer-page><p>abcd</p></webwriter-advance-organizer-page></webwriter-advance-organizer>'
+    editor.features.widget.refresh()
+    const page = document.querySelector("webwriter-advance-organizer-page")!
+    $.move(page.querySelector("p")!.firstChild!, 2)
+    page.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, composed: true, cancelable: true}))
+    expect(document.querySelectorAll("webwriter-advance-organizer-page")).toHaveLength(1)
+    expect(page.querySelectorAll("p")).toHaveLength(2)
+  })
+
+  it("falls back to splitting the paragraph when the parent cannot accept another option", () => {
+    document.body.innerHTML = '<single-choice-widget><choice-item><p>abcd</p></choice-item></single-choice-widget>'
+    editor.features.widget.refresh()
+    const item = document.querySelector("choice-item")!
+    $.move(item.querySelector("p")!.firstChild!, 2)
+    item.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, composed: true, cancelable: true}))
+    expect(document.querySelectorAll("choice-item")).toHaveLength(1)
+    expect(Array.from(item.querySelectorAll("p"), element => element.textContent)).toEqual(["ab", "cd"])
+  })
+})
 
 describe("editing nested widget pages", () => {
   const mount = (content = "<p>abcd</p>") => {

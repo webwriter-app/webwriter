@@ -1,12 +1,12 @@
 import {css, html} from "lit"
 import {colorHex, isCssColor, safeCssColor, themeColorColumns} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
-import {anchorColorSubmenu} from "./popup-position"
 
 const standardColors = ["c00000", "ff0000", "ffc000", "ffff00", "92d050", "00b050", "00b0f0", "0070c0", "002060", "7030a0"]
 
 export const colorPaletteStyles = css`
     .border-color-palette {
+      anchor-name: --color-palette;
       width: max(100%, 12rem); max-width: calc(100vw - 2rem);
       box-sizing: border-box; padding: 0.4rem; border: 1px solid #c5ccd5; border-radius: 4px;
       background: white; box-shadow: 0 0 0 2px var(--compact-focus-color, #8eb6df), 0 3px 6px #0002;
@@ -31,9 +31,10 @@ export const colorPaletteStyles = css`
     .palette-action svg { width: 1rem; height: 1rem; }
     .palette-action .border-color-chip { width: 1rem; height: 1rem; background: currentColor; }
     .palette-automatic { border-bottom: 1px solid #d8dee6; margin-bottom: 0.4rem; }
-    .palette-custom { position: relative; border-top: 1px solid #d8dee6; margin-top: 0.4rem; }
+    .palette-custom { position: relative; anchor-name: --color-option; border-top: 1px solid #d8dee6; margin-top: 0.4rem; }
     .palette-custom input[type="color"] {
-      position: fixed; box-sizing: border-box; width: 1px; height: 1px; padding: 0; border: 0;
+      position: fixed; position-anchor: --color-option; left: calc(anchor(--color-palette right) + 4px); top: calc(anchor(top) - 1px);
+      box-sizing: border-box; width: 1px; height: 1px; padding: 0; border: 0;
       opacity: 0; pointer-events: none;
     }
 `
@@ -57,7 +58,6 @@ export function renderColorPalette(label: string, value: string, choose: (event:
       <button type="button" class="palette-action" ?disabled=${disabled} aria-label="Custom" @click=${(event: Event) => {
         const control = (event.currentTarget as HTMLElement).parentElement!
         const input = control.querySelector<HTMLInputElement>('input[type="color"]')!
-        anchorColorSubmenu(input, control.closest<HTMLElement>(".border-color-palette")!, event.currentTarget as HTMLElement)
         input.dispatchEvent(new CustomEvent("ribbon-input-pointerdown", {
           detail: {input}, bubbles: true, composed: true,
         }))

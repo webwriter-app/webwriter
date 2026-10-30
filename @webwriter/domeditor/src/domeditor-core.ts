@@ -1191,10 +1191,11 @@ export class DOMEditor {
     const mode = documentLayoutMode()
     const canvas = this.features.canvas.getState()
     const rootReason = getDocumentRoot() !== document.body ? "A custom document template owns this document's layout." : null
+    const exitReason = mode === "board" ? this.features.board.exitConversionReason() : null
     const conversions = {
-      document: rootReason,
-      canvas: rootReason ?? ((mode === "slides" || mode === "board" ? this.features.canvas.canConvertContent(this.features[mode].documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
-      slides: rootReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
+      document: rootReason ?? exitReason,
+      canvas: rootReason ?? exitReason ?? ((mode === "slides" || mode === "board" ? this.features.canvas.canConvertContent(this.features[mode].documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
+      slides: rootReason ?? exitReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
       board: rootReason ?? this.features.board.conversionReason(),
     }
     return {mode, zoom: mode === "slides" ? Math.round(this.features.slides.zoom * 100) : canvas.zoom, conversions,
@@ -1631,7 +1632,8 @@ export class DOMEditor {
     // A clipboard-only format hint preserves authored structure and styling
     // when reused in WebWriter. It is removed before insertion and never
     // bypasses active-content sanitization.
-    const clipboardHTML = `<meta name="webwriter-clipboard" content="1">${html}`
+    const layout = this.features.manipulation.clipboardLayoutHint()
+    const clipboardHTML = `<meta name="webwriter-clipboard" content="1"${layout ? ` data-layout="${layout}"` : ""}>${html}`
     return {html, text, clipboardHTML}
   }
 
@@ -1737,7 +1739,7 @@ export class DOMEditor {
         repair = false
       }
     }
-    return this.prepareHTMLFragment(template.content, transfer, repair)
+    return {...this.prepareHTMLFragment(template.content, transfer, repair), clipboardLayout: clipboardHint?.getAttribute("data-layout") ?? null}
   }
 
 

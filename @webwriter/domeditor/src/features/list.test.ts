@@ -162,6 +162,21 @@ describe("semantic list editing", () => {
       .not.toContain("virtual-list-item-hidden")
   })
 
+  it("uses CSS anchors for the virtual item and releases its target marker when cleared", () => {
+    editor.features.list.toggleList("ul")
+    const list = document.querySelector("ul")!
+    const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
+    expect(marker.style.left).toBe("")
+    expect(marker.style.top).toBe("")
+    expect(list.classList.contains("◆virtual-list-selected")).toBe(true)
+
+    window.dispatchEvent(new Event("blur"))
+
+    expect(marker.style.left).toBe("")
+    expect(marker.style.top).toBe("")
+    expect(Array.from(list.classList).some(name => name.startsWith("◆anchor-target-"))).toBe(false)
+  })
+
   it("toggles an empty active list back to the required default paragraph", async () => {
     editor.features.list.toggleList("ul")
 

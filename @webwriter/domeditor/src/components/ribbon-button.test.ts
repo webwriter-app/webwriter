@@ -15,8 +15,8 @@ describe("ribbon button dropdown positioning", () => {
     const leadingGutter = 15
     const clientViewportWidth = viewportWidth - leadingGutter
     const clientWidth = vi.spyOn(root, "clientWidth", "get").mockReturnValue(clientViewportWidth)
+    const originalGetComputedStyle = window.getComputedStyle.bind(window)
     const getComputedStyle = vi.spyOn(window, "getComputedStyle")
-    const originalGetComputedStyle = getComputedStyle.getMockImplementation()!
     getComputedStyle.mockImplementation(element => element === root
       ? {scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration
       : originalGetComputedStyle(element))
@@ -36,8 +36,9 @@ describe("ribbon button dropdown positioning", () => {
     await menu.updateComplete
     await Promise.resolve()
 
-    expect(clientWidth).toHaveBeenCalled()
-    expect(menu.style.left).toBe(`${120 - leadingGutter}px`)
+    expect(menu.style.left).toBe("")
+    expect(menu.style.top).toBe("")
+    expect(row.className).toContain("◆anchor-target-")
     expect(menu.style.getPropertyValue("--ribbon-menu-join-left")).toBe("1px")
     expect(menu.style.getPropertyValue("--ribbon-menu-join-width")).toBe("88px")
     button.closeSubmenu()
@@ -49,8 +50,8 @@ describe("ribbon button dropdown positioning", () => {
     const leadingGutter = 15
     const clientViewportWidth = viewportWidth - leadingGutter
     const clientWidth = vi.spyOn(root, "clientWidth", "get").mockReturnValue(clientViewportWidth)
+    const originalGetComputedStyle = window.getComputedStyle.bind(window)
     const getComputedStyle = vi.spyOn(window, "getComputedStyle")
-    const originalGetComputedStyle = getComputedStyle.getMockImplementation()!
     getComputedStyle.mockImplementation(element => element === root
       ? {scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration
       : originalGetComputedStyle(element))
@@ -66,17 +67,17 @@ describe("ribbon button dropdown positioning", () => {
     const trigger = button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!
     const menu = button.shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     const menuWidth = 200
-    menu.getBoundingClientRect = () => new DOMRect(0, 127, menuWidth, 80)
+    const clientLeft = Math.max(8, clientViewportWidth - menuWidth - 8)
+    menu.getBoundingClientRect = () => new DOMRect(clientLeft, 127, menuWidth, 80)
 
     trigger.click()
     await button.updateComplete
     await menu.updateComplete
     await Promise.resolve()
 
-    const clientLeft = Math.max(8, clientViewportWidth - menuWidth - 8)
-    expect(clientWidth).toHaveBeenCalled()
-    expect(menu.style.minWidth).toBe(`${triggerWidth}px`)
-    expect(menu.style.left).toBe(`${clientLeft - leadingGutter}px`)
+    expect(menu.style.minWidth).toBe("")
+    expect(menu.style.left).toBe("")
+    expect(menu.style.top).toBe("")
     expect(menu.style.getPropertyValue("--ribbon-menu-join-left")).toBe(`${triggerLeft - clientLeft + 1}px`)
     expect(clientLeft + parseFloat(menu.style.getPropertyValue("--ribbon-menu-join-left"))).toBe(triggerLeft + 1)
     button.closeSubmenu()

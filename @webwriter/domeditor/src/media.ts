@@ -477,7 +477,8 @@ export function createImageMapPopoverController(doc: Document, boundsFor = image
 }
 
 /** Render intrinsic image-map coordinates without changing authored AREA nodes. */
-export function mountImageMapReader(doc: Document, controller: ReturnType<typeof createImageMapPopoverController>, shapeFor = imageMapHotspotShape) {
+export function mountImageMapReader(doc: Document, controller: ReturnType<typeof createImageMapPopoverController>, shapeFor = imageMapHotspotShape,
+  anchorFactory?: typeof import("./anchor-positioning.js").createAnchorPositioner) {
   const view = doc.defaultView!
   const appendix = doc.body.shadowRoot ?? doc.body.attachShadow({mode: "open"})
   let slot = Array.from(appendix.children).find(element => element.matches("slot:not([name])"))
@@ -499,16 +500,47 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
   `
   root.append(style)
   appendix.append(host)
+  const anchors = anchorFactory?.(doc)
   const overlays = new Map<HTMLImageElement, {svg: SVGSVGElement, areas: HTMLAreaElement[], signature: string}>()
   let pending = 0
+  let measuredFallback = false
   const schedule = () => { if(!pending) pending = view.requestAnimationFrame(refresh) }
+  const scroll = () => {
+    if(measuredFallback || Array.from(overlays.keys()).some(image => controller.hasOpenFor(image))) schedule()
+  }
+  const isTransformed = (image: Element) => {
+    const identity = (value: string) => {
+      if(!value || value === "none") return true
+      try {
+        const matrix = new view.DOMMatrix(value)
+        return matrix.is2D && matrix.a === 1 && matrix.b === 0 && matrix.c === 0 && matrix.d === 1
+          && matrix.e === 0 && matrix.f === 0
+      }
+      catch { return false }
+    }
+    const transformedStyle = (element: Element) => {
+      const style = view.getComputedStyle(element)
+      const rotate = style.rotate || "none", scale = style.scale || "none", zoom = style.zoom || "1"
+      return !identity(style.transform) || rotate !== "none" && rotate !== "0deg"
+        || scale !== "none" && scale !== "1" || (parseFloat(zoom) || 1) !== 1
+    }
+    for(let element: Element | null = image; element; element = element.parentElement) {
+      if(transformedStyle(element)) return true
+      if(element === doc.body) {
+        const slot = element.shadowRoot?.querySelector("slot:not([name])")
+        if(slot && transformedStyle(slot)) return true
+      }
+    }
+    return false
+  }
   const resize = view.ResizeObserver ? new view.ResizeObserver(schedule) : null
   const refresh = () => {
     view.cancelAnimationFrame(pending)
     pending = 0
     const images = new Set(doc.querySelectorAll<HTMLImageElement>("img[usemap]"))
+    measuredFallback = false
     for(const [image, overlay] of overlays) {
-      if(!images.has(image)) { overlay.svg.remove(); resize?.unobserve(image); overlays.delete(image) }
+      if(!images.has(image)) { anchors?.release(overlay.svg); overlay.svg.remove(); resize?.unobserve(image); overlays.delete(image) }
     }
     for(const image of images) {
       const name = image.getAttribute("usemap")?.trim().slice(1)
@@ -516,11 +548,12 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
         ? Array.from(doc.querySelectorAll("map[name]")).find(map => map.getAttribute("name") === name) : null
       const areas = Array.from(map?.querySelectorAll("area") ?? [])
       const rect = image.getBoundingClientRect()
+      const fallback = !anchors || isTransformed(image)
       const width = image.naturalWidth || Number(image.getAttribute("width")) || rect.width
       const height = image.naturalHeight || Number(image.getAttribute("height")) || rect.height
       let overlay = overlays.get(image)
       if(!areas.length || !width || !height || !rect.width || !rect.height || view.getComputedStyle(image).visibility === "hidden") {
-        if(overlay) { overlay.svg.remove(); resize?.unobserve(image); overlays.delete(image) }
+        if(overlay) { anchors?.release(overlay.svg); overlay.svg.remove(); resize?.unobserve(image); overlays.delete(image) }
         continue
       }
       if(!overlay) {
@@ -532,7 +565,15 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
         resize?.observe(image)
       }
       const {svg} = overlay
-      svg.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+      if(fallback) {
+        anchors?.release(svg)
+        svg.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`
+        measuredFallback = true
+      }
+      else {
+        for(const property of ["left", "top", "width", "height"]) svg.style.removeProperty(property)
+        anchors!.bind(svg, image)
+      }
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`)
       const signature = areas.map(area => area.outerHTML).join("") + `/${width}/${height}`
       if(signature === overlay.signature && areas.every((area, index) => area === overlay!.areas[index])) continue
@@ -567,13 +608,14 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
         svg.append(link)
       }
     }
+    anchors?.refresh()
     controller.refresh()
   }
   const observer = new view.MutationObserver(schedule)
   observer.observe(doc.body, {subtree:true, childList:true, attributes:true})
   observer.observe(slot, {attributes:true})
   doc.addEventListener("load", schedule, true)
-  doc.addEventListener("scroll", schedule, true)
+  doc.addEventListener("scroll", scroll, true)
   view.addEventListener("resize", schedule)
   refresh()
   return {
@@ -583,8 +625,10 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
       observer.disconnect()
       resize?.disconnect()
       doc.removeEventListener("load", schedule, true)
-      doc.removeEventListener("scroll", schedule, true)
+      doc.removeEventListener("scroll", scroll, true)
       view.removeEventListener("resize", schedule)
+      for(const overlay of overlays.values()) anchors?.release(overlay.svg)
+      anchors?.destroy()
       host.remove()
       controller.dispose()
     },

@@ -3,7 +3,7 @@ import {copyGraphicTextLayoutCache, wrapGraphicShapeLabel} from "../graphic-text
 import {graphicShapePresets, type GraphicShapePreset} from "../graphic-shape-presets"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {shapeKeyboardInputEvent, type ShapeKeyboardInput} from "../editor-bridge"
-import {$, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
+import {$, closestAlignment, fixedClientX, atomicEditingContainer, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, clearEditorMarkerClasses, modifierKeyDown, removeEditorMarker, textOffsetIn, textPointAtOffset} from "../utility"
 import {isEmptyMedia} from "../media"
 import {stripActiveContent} from "../active-content"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -3780,9 +3780,9 @@ export class GraphicFeature extends EditorFeature {
   #snapMove(bounds: Bounds, interaction: Interaction) {
     if(!this.#options.snap || interaction.latest.altKey) return {bounds, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
-    const x = this.#bestSnap([bounds.x, bounds.x + bounds.width / 2, bounds.x + bounds.width], interaction.candidates.x, threshold.x)
+    const x = closestAlignment([bounds.x, bounds.x + bounds.width / 2, bounds.x + bounds.width], interaction.candidates.x, threshold.x)
       ?? this.#gridSnap(bounds.x, threshold.x, "x")
-    const y = this.#bestSnap([bounds.y, bounds.y + bounds.height / 2, bounds.y + bounds.height], interaction.candidates.y, threshold.y)
+    const y = closestAlignment([bounds.y, bounds.y + bounds.height / 2, bounds.y + bounds.height], interaction.candidates.y, threshold.y)
       ?? this.#gridSnap(bounds.y, threshold.y, "y")
     return {
       bounds: {...bounds, x: bounds.x + (x?.delta ?? 0), y: bounds.y + (y?.delta ?? 0)},
@@ -3802,11 +3802,11 @@ export class GraphicFeature extends EditorFeature {
     let x: {delta: number, target: SnapTarget} | null = null
     let y: {delta: number, target: SnapTarget} | null = null
     if(direction.includes("w") || direction.includes("e")) {
-      x = this.#bestSnap([moving.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(moving.x, threshold.x, "x")
+      x = closestAlignment([moving.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(moving.x, threshold.x, "x")
       moving.x += x?.delta ?? 0
     }
     if(direction.includes("n") || direction.includes("s")) {
-      y = this.#bestSnap([moving.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(moving.y, threshold.y, "y")
+      y = closestAlignment([moving.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(moving.y, threshold.y, "y")
       moving.y += y?.delta ?? 0
     }
     const resized = this.#resizeBounds(moving, originalDirection, interaction)
@@ -3817,9 +3817,9 @@ export class GraphicFeature extends EditorFeature {
     if(this.#standaloneShape() || !this.#options.snap || interaction.latest.altKey) return {point, guides: {}}
     const threshold = this.#snapThreshold(interaction.matrix)
     const x = forceGrid ? this.#gridSnap(point.x, Infinity, "x")
-      : this.#bestSnap([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x, "x")
+      : closestAlignment([point.x], interaction.candidates.x, threshold.x) ?? this.#gridSnap(point.x, threshold.x, "x")
     const y = forceGrid ? this.#gridSnap(point.y, Infinity, "y")
-      : this.#bestSnap([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y, "y")
+      : closestAlignment([point.y], interaction.candidates.y, threshold.y) ?? this.#gridSnap(point.y, threshold.y, "y")
     return {
       point: {x: point.x + (x?.delta ?? 0), y: point.y + (y?.delta ?? 0)},
       guides: {x: x?.target, y: y?.target},
@@ -3829,19 +3829,6 @@ export class GraphicFeature extends EditorFeature {
   #snapRotation(angle: number, pointer: PointerSnapshot) {
     const step = pointer.shiftKey ? 15 : this.#options.snap && !pointer.altKey ? 5 : 0
     return step ? Math.round(angle / step) * step : angle
-  }
-
-  #bestSnap(anchors: number[], targets: SnapTarget[], threshold: number) {
-    let best: {delta: number, target: SnapTarget} | null = null
-    anchors.forEach(anchor => targets.forEach(target => {
-      const delta = target.value - anchor
-      if(Math.abs(delta) > threshold) return
-      const sameDistance = best && Math.abs(Math.abs(delta) - Math.abs(best.delta)) < 0.001
-      const targetPriority = target.kind === "object" ? 0 : 1
-      const bestPriority = best?.target.kind === "object" ? 0 : 1
-      if(!best || Math.abs(delta) < Math.abs(best.delta) || sameDistance && targetPriority < bestPriority) best = {delta, target}
-    }))
-    return best
   }
 
   #gridSnap(value: number, threshold: number, axis: "x" | "y") {

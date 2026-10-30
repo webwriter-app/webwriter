@@ -389,24 +389,21 @@ describe("CommentFeature highlights and threads", () => {
     expect(bubbles()).toHaveLength(0)
   })
 
-  it("centers bubbles in the minimum document gutter and follows actual float placement", () => {
+  it("leaves bubble placement to CSS anchors while retaining float-side handling", () => {
     const target = setContent('<aside style="float:left"><custom-note>note</custom-note></aside>')
     const widget = target.firstElementChild!
     bounds(widget)
     $.selectElement(widget)
     feature.addComment("Widget note")
-    const container = editor.appendix.querySelector<HTMLElement>('[part="comment-bubbles"]')!
-    bounds(container, 0, 0, 32)
-    document.dispatchEvent(new Event("selectionchange"))
-    expect(bubbles()[0].style.left).toBe("76px")
-    expect(bubbles()[0].style.top).toBe("50px")
+    expect(bubbles()[0].style.left).toBe("")
+    expect(bubbles()[0].style.top).toBe("")
+    expect(bubbles()[0].hidden).toBe(false)
     ;(target as HTMLElement).style.float = "right"
     document.dispatchEvent(new Event("selectionchange"))
-    expect(bubbles()[0].style.left).toBe("308px")
+    expect(bubbles()[0].style.left).toBe("")
     ;(target as HTMLElement).style.float = "none"
-    bounds(container, 0, 0, 16)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(bubbles()[0].style.left).toBe("300px")
+    expect(bubbles()[0].style.top).toBe("")
   })
 
   it.each(["canvas", "slides", "board"])("places %s bubbles just outside the top right even for left floats", mode => {
@@ -416,26 +413,23 @@ describe("CommentFeature highlights and threads", () => {
     try {
       $.selectElement(target)
       feature.addComment("Element note")
-      expect(bubbles()[0].style.left).toBe("304px")
-      expect(bubbles()[0].style.top).toBe("50px")
+      expect(bubbles()[0].style.left).toBe("")
+      expect(bubbles()[0].style.top).toBe("")
+      expect(bubbles()[0].hidden).toBe(false)
     }
     finally { document.body.classList.remove(`ww-${mode}`) }
   })
 
-  it("follows scrolling and hides bubbles for missing boxes without opening stale comments", async () => {
+  it("keeps placement in CSS and does not open stale comments after targets disappear", async () => {
     const target = setContent("<aside>note</aside>")
-    const box = bounds(target)
+    bounds(target)
     $.selectElement(target)
     feature.addComment("Element note")
     const button = bubbles()[0]
-    box.mockReturnValue(new DOMRect(120, 30, 200, 80))
     document.dispatchEvent(new Event("scroll"))
     await new Promise(resolve => setTimeout(resolve, 40))
-    expect(button.style.top).toBe("30px")
-    box.mockReturnValue(new DOMRect())
-    window.dispatchEvent(new Event("resize"))
-    await new Promise(resolve => setTimeout(resolve, 40))
-    expect(button.hidden).toBe(true)
+    expect(button.style.left).toBe("")
+    expect(button.style.top).toBe("")
     target.remove()
     const post = vi.spyOn(editor, "postHostMessage")
     button.click()

@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "canvas and slide movement follows the dot grid and alignment guides",
   "converted list items support repeated Backspace without clicking",
   "list editing splits and indents selected items",
   "soft breaks render a new line on the first press and accept native typing",
@@ -90,6 +91,9 @@ const expectedChecks = [
   "Elements pullout reserves matching padding after its opening animation",
   "Board columns and cards retain native editing and standalone layout",
   "Board media shrinks with card height in editing and standalone documents",
+  "Board controls and transform frames follow CSS anchors through layout changes",
+  "Element controls follow native CSS anchors through scrolling and DOM changes",
+  "Ribbon menus and combobox popups follow anchors through viewport changes",
   "tiny images open media inputs in a speech bubble",
   "document resizing and graphic fitting preserve normal flow",
   "text containers resize horizontally and fit their content",
@@ -162,6 +166,7 @@ const expectedChecks = [
   "link keyboard preserves iframe selections and applies document, web, and reference links",
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",
+  "paragraph and heading drags join text at the native caret",
   "selection feature treats custom element as atomic",
   "modifier clicks select table cells and outer borders",
   "table insertion controls follow rotated edges and preview lines",

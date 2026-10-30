@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Element CSS anchors</title>
+<style>body { font: 16px system-ui; margin: 1rem; } iframe { margin-block: 1rem; }</style>
+<h1>Element CSS anchors</h1>
+<p id="status">Checking element anchors…</p>
+<script type="module">
+  import {checkElementAnchors} from "./element-anchors.ts"
+  try {
+    await checkElementAnchors(true)
+    document.querySelector("#status").textContent = "Passed. Inspect the anchored controls above."
+  }
+  catch(error) { document.querySelector("#status").textContent = String(error) }
+</script>
+</html>

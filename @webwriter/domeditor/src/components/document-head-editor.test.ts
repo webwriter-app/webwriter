@@ -75,6 +75,22 @@ afterEach(() => {
 })
 
 describe("document head form", () => {
+  it("anchors the theme listbox to its control without inline coordinates", async () => {
+    const picker = document.createElement("document-theme-picker") as HTMLElement & {updateComplete: Promise<unknown>}
+    document.body.append(picker)
+    await picker.updateComplete
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".control")!.click()
+    await picker.updateComplete
+
+    const listbox = picker.shadowRoot!.querySelector<HTMLElement>(".listbox")!
+    expect(listbox.style.left).toBe("")
+    expect(listbox.style.top).toBe("")
+
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".control")!.click()
+    await picker.updateComplete
+    expect(picker.shadowRoot!.querySelector(".listbox")).toBeNull()
+  })
+
   it("suggests only nationally official languages and promotes browser languages", () => {
     const official = officialLanguageOptions()
     const ordered = orderedLanguageOptions(["de-DE", "fr", "eo", "en-US"])

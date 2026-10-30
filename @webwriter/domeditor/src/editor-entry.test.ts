@@ -6,6 +6,7 @@ import {observeFrameDocument, shouldCaptureFrameShortcut} from "./editor-entry"
 const {providerDisconnect} = vi.hoisted(() => ({providerDisconnect: vi.fn()}))
 const {graphicInputState} = vi.hoisted(() => ({graphicInputState: {
   graphic: {textEditingRange: null as Range | null, focusTextInput: vi.fn()},
+  media: {isPlaceholderInteraction: false},
   mark: {isSVGTextSelection: false}, selection: {captureSelectedElement: null as Element | null},
 }}))
 vi.mock("./domeditor", () => ({
@@ -13,6 +14,7 @@ vi.mock("./domeditor", () => ({
     doc = {disconnectCollaboration: providerDisconnect}
     features = {
       graphic: graphicInputState.graphic,
+      media: graphicInputState.media,
       mark: graphicInputState.mark,
       selection: graphicInputState.selection,
       proofreading: {setChecking: vi.fn(), setDocumentChecking: vi.fn(), setDictionary: vi.fn()},
@@ -213,6 +215,12 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
   expect(graphicInputState.graphic.focusTextInput).toHaveBeenCalledOnce()
   expect(focusBody).not.toHaveBeenCalled()
   graphicInputState.graphic.textEditingRange = null
+  graphicInputState.media.isPlaceholderInteraction = true
+  window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
+    type: editorFrameControlMessage, bridgeNonce: nonce, command: "focus",
+  }}))
+  expect(focusBody).not.toHaveBeenCalled()
+  graphicInputState.media.isPlaceholderInteraction = false
   window.dispatchEvent(new MessageEvent("message", {source: window, origin, data: {
     type: editorFrameControlMessage, bridgeNonce: nonce, command: "focus",
   }}))

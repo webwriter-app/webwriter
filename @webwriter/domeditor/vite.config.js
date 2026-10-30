@@ -7,6 +7,8 @@ import {referenceFormatterPlugin} from './scripts/reference-formatter-plugin.mjs
 import {distributionReaderPlugin} from './scripts/distribution-reader-plugin.mjs'
 import {documentationPlugin} from './scripts/documentation-plugin.mjs'
 import {siteHeaderPlugin} from './scripts/site-header.mjs'
+import {appEntryUrlsPlugin} from './scripts/app-entry-urls.mjs'
+import {appVersionPlugin} from './scripts/app-version.mjs'
 
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
 
@@ -47,7 +49,7 @@ export default defineConfig(({mode}) => {
   for(const directory of [...privateDirectories]) if(existsSync(directory)) privateDirectories.push(realpathSync(directory))
   const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
   return {
-    plugins: [siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
+    plugins: [appVersionPlugin(), appEntryUrlsPlugin(), siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
       referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))), distributionReaderPlugin()],
     appType: "mpa",
     server: {
@@ -115,6 +117,7 @@ export default defineConfig(({mode}) => {
             examples: fileURLToPath(new URL("./examples/index.html", import.meta.url)),
             "legal-notice": fileURLToPath(new URL("./legal_notice/index.html", import.meta.url)),
             "site-entry": fileURLToPath(new URL("./src/site-entry.ts", import.meta.url)),
+            documentation: fileURLToPath(new URL("./dev-server/documentation.js", import.meta.url)),
             "gallery-preview-entry": fileURLToPath(new URL("./src/gallery-preview-entry.ts", import.meta.url)),
             editor: fileURLToPath(new URL("./editor/index.html", import.meta.url)),
             live: fileURLToPath(new URL("./live/index.html", import.meta.url)),
@@ -129,7 +132,7 @@ export default defineConfig(({mode}) => {
           output: {
             entryFileNames: chunk => chunk.name === "local-package-service-worker"
               ? "local-package-service-worker.js"
-              : "assets/[name].js",
+              : "assets/[name]-[hash].js",
           },
         },
     }

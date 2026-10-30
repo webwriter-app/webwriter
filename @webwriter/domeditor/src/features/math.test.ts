@@ -146,7 +146,7 @@ describe("DOM MathML editing", () => {
     const math = load("<mrow><mi>abc</mi><mfrac><mi>x</mi><mi>y</mi></mfrac></mrow>")
     math.setAttribute("display", display)
     const authored = clean()
-    const overlays = () => editor.appendix.querySelectorAll('[part="atomic-selection-overlay"]')
+    const overlays = () => editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')
     for(const contents of [false, true]) {
       if(contents) document.getSelection()!.setBaseAndExtent(math, 0, math, math.childNodes.length)
       else $.selectElement(math)
@@ -836,7 +836,7 @@ describe("DOM MathML editing", () => {
     const original = clean()
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-empty")).toBe(true)
-    expect(editor.appendix.querySelector('[part="math-placeholder"] svg')).not.toBeNull()
+    expect(editor.appendix.querySelector('[part~="math-placeholder"] svg')).not.toBeNull()
     expect(clean()).toBe(original)
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toContain("◆math-empty")
@@ -844,13 +844,13 @@ describe("DOM MathML editing", () => {
     math.firstElementChild!.textContent = "x"
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-empty")).toBe(false)
-    expect(editor.appendix.querySelector('[part="math-placeholder"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="math-placeholder"]')).toBeNull()
     math.replaceChildren()
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-empty")).toBe(true)
     editor.features.math.disable()
     expect(math.classList.contains("◆math-empty")).toBe(false)
-    expect(editor.appendix.querySelector('[part="math-placeholder"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="math-placeholder"]')).toBeNull()
   })
 
   it("cleans up placeholders after remote removal and excludes widget-owned formulas", () => {
@@ -863,7 +863,19 @@ describe("DOM MathML editing", () => {
     document.body.append(widget)
     editor.features.math.refresh()
     expect(math.classList.contains("◆math-empty")).toBe(false)
-    expect(editor.appendix.querySelector('[part="math-placeholder"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="math-placeholder"]')).toBeNull()
+  })
+
+  it("uses measured placeholder geometry for transformed formulas", () => {
+    const math = load()
+    math.setAttribute("display", "block")
+    vi.spyOn(editor.features.transformation, "boxTransformed").mockReturnValue(true)
+    vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 200, 24))
+    editor.features.math.refresh()
+    const placeholder = editor.appendix.querySelector<HTMLElement>('[part~="math-placeholder"]')!
+    expect([placeholder.style.left, placeholder.style.top, placeholder.style.width, placeholder.style.height])
+      .toEqual(["20px", "30px", "200px", "24px"])
+    expect(math.className).not.toContain("◆anchor-target-")
   })
 
   it("shows the empty block symbol outside editing and hides it during capture", () => {
@@ -872,17 +884,19 @@ describe("DOM MathML editing", () => {
     vi.spyOn(math, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 200, 24))
     editor.features.selection.selectElement(math)
     editor.features.math.refresh()
-    const placeholder = editor.appendix.querySelector<HTMLDivElement>('[part="math-placeholder"]')!
+    const placeholder = editor.appendix.querySelector<HTMLDivElement>('[part~="math-placeholder"]')!
     expect(placeholder.hidden).toBe(false)
     expect(placeholder.style.display).toBe("")
-    expect(placeholder.style.height).toBe("24px")
+    expect(placeholder.style.left).toBe("")
+    expect(placeholder.style.top).toBe("")
+    expect(math.className).toContain("◆anchor-target-")
     $.move(math.firstChild!, 0)
     editor.features.selection.processSelection()
     editor.features.math.refresh()
     expect(placeholder.hidden).toBe(true)
     expect(placeholder.style.display).toBe("none")
     expect(placeholder.style.getPropertyPriority("display")).toBe("important")
-    expect(placeholder.style.height).toBe("24px")
+    expect(placeholder.style.height).toBe("")
     editor.features.selection.selectElement(math)
     editor.features.math.refresh()
     expect(placeholder.hidden).toBe(false)

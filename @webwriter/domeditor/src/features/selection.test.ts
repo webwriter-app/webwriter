@@ -445,7 +445,7 @@ describe("selection preservation across authored DOM shapes", () => {
     for(const marker of ["◆element-selected", "◆atomic-range-selected", "◆element-capture-selected", "◆"]) {
       expect(target).not.toHaveClass(marker)
     }
-    expect(editor.appendix.querySelector('[part="atomic-selection-overlay"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
     feature.enable()
     document.getSelection()!.setPosition(paragraph.firstChild!, 2)
     feature.processSelection(false, {scrollIntoView: false})
@@ -1129,7 +1129,7 @@ it.each([
   expect(event.defaultPrevented).toBe(true)
   expect($.selectedElement).toBe(details)
   expect(details).toHaveClass("◆element-selected", "◆atomic-range-selected")
-  expect(editor.appendix.querySelectorAll('[part="atomic-selection-overlay"]')).toHaveLength(1)
+  expect(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')).toHaveLength(1)
   target.dispatchEvent(new MouseEvent("click", {bubbles: true, cancelable: true, button: 0, metaKey: true, ctrlKey: true}))
   expect($.selectedElement).toBe(details)
   expect((details as HTMLDetailsElement).open).toBe(false)
@@ -1335,24 +1335,27 @@ describe("capture outline selection", () => {
       expect(feature.captureSelectedElement).toBe(content)
       expect(content).toHaveClass("◆element-capture-selected")
       expect(caret).toHaveClass("◆selection-caret-capture")
-      expect(caret.style.left).toBe("40px")
-      expect(caret.style.top).toBe("60px")
-      expect(caret.style.width).toBe("320px")
-      expect(caret.style.height).toBe("240px")
+      expect(caret.style.left).toBe("")
+      expect(caret.style.top).toBe("")
+      expect(caret.style.width).toBe("")
+      expect(caret.style.height).toBe("")
+      expect(figure.className).toContain("◆anchor-target-")
       expect(editor.features.transformation.target).toBe(content)
-      expect(editor.features.transformation.overlay.style.height).toBe("200px")
+      expect(editor.features.transformation.overlay.style.height).toBe("")
 
       figure.prepend(caption)
       figureRect.mockReturnValue(new DOMRect(40, 20, 320, 280))
       editor.features.transformation.updateInfo()
-      expect(caret.style.top).toBe("20px")
-      expect(caret.style.height).toBe("280px")
+      expect(caret.style.top).toBe("")
+      expect(caret.style.height).toBe("")
+      expect(figure.className).toContain("◆anchor-target-")
       expect(feature.captureSelectedElement).toBe(content)
 
       document.body.append(content)
       editor.features.transformation.updateInfo()
-      expect(caret.style.top).toBe("60px")
-      expect(caret.style.height).toBe("200px")
+      expect(caret.style.top).toBe("")
+      expect(caret.style.height).toBe("")
+      expect(content.className).toContain("◆anchor-target-")
       figure.prepend(content)
       figure.append(caption)
       expect(editor.toHTML(true)).toBe(authored)
@@ -2032,7 +2035,7 @@ describe("contentful widgets", () => {
 })
 
 describe("processSelection()", () => {
-  const atomicOverlays = () => editor.appendix.querySelectorAll<HTMLElement>('[part="atomic-selection-overlay"]')
+  const atomicOverlays = () => editor.appendix.querySelectorAll<HTMLElement>('[part~="atomic-selection-overlay"]')
 
   it.each(["canvas", "slides"])("keeps element selection frames without atomic blue overlays in %s", mode => {
     document.body.classList.add(`ww-${mode}`)
@@ -2225,7 +2228,7 @@ describe("processSelection()", () => {
     expect(atomicOverlays()).toHaveLength(0)
   })
 
-  it("updates overlay geometry and cleans up removed nodes and disabled selections", () => {
+  it("updates transformed overlay geometry and cleans up removed nodes and disabled selections", () => {
     const frames: FrameRequestCallback[] = []
     const request = vi.spyOn(window, "requestAnimationFrame").mockImplementation(callback => {
       frames.push(callback)
@@ -2234,6 +2237,7 @@ describe("processSelection()", () => {
     const cancel = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {})
     try {
       const element = el("img")
+      element.style.transform = "rotate(10deg)"
       const rect = vi.spyOn(element, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 30, 40))
       $.selectElement(element)
       feature.processSelection()
@@ -4707,7 +4711,7 @@ describe("document listeners", () => {
       expect($.isBackwards).toBe(backward)
       expect($.selectedElement).toBe(element)
       expect(element).toHaveClass("◆atomic-range-selected")
-      const overlays = editor.appendix.querySelectorAll('[part="atomic-selection-overlay"]')
+      const overlays = editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')
       expect(overlays).toHaveLength(1)
       expect(overlays[0].getRootNode()).toBe(editor.appendix)
       expect(editor.toHTML(true)).not.toContain("◆")
@@ -4716,7 +4720,7 @@ describe("document listeners", () => {
       expect($.isEmpty).toBe(true)
       expect($.anchorOffset).toBe(anchor)
       expect(element).not.toHaveClass("◆atomic-range-selected", "◆element-selected")
-      expect(editor.appendix.querySelector('[part="atomic-selection-overlay"]')).toBeNull()
+      expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
     }
   })
   it.each([false, true])("grows and shrinks an existing text range across consecutive leaves (backward: %s)", backward => {
@@ -4813,7 +4817,7 @@ describe("document listeners", () => {
     expect($.isBackwards).toBe(true)
     feature.disable()
     expect(replacement.className).not.toContain("◆")
-    expect(editor.appendix.querySelector('[part="atomic-selection-overlay"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
   })
   it.each([
     ["<p>before</p><interactive-widget></interactive-widget>", {shiftKey: true}],

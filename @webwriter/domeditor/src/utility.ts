@@ -1,4 +1,5 @@
 import {clearEditorMarkerClasses} from "./editor-artifacts"
+export {createAnchorPositioner, type AnchorPositioner} from "./anchor-positioning.js"
 export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker, widgetEditableMarker} from "./editor-artifacts"
 import type { Schema } from "./schema"
 import {isMarkElement} from "./marks"
@@ -18,6 +19,18 @@ export function isParagraphContent(node: Node): boolean {
   if(node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
   if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return Array.from(node.childNodes).every(isParagraphContent)
   return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
+}
+
+/** Closest edge/center alignment, preferring objects over the container on ties. */
+export function closestAlignment<T extends {value: number, kind: string}>(anchors: number[], targets: T[], threshold: number): {delta: number, target: T} | null {
+  let best: {delta: number, target: T} | null = null
+  anchors.forEach(anchor => targets.forEach(target => {
+    const delta = target.value - anchor
+    if(Math.abs(delta) > threshold) return
+    const sameDistance = best && Math.abs(Math.abs(delta) - Math.abs(best.delta)) < 0.001
+    if(!best || Math.abs(delta) < Math.abs(best.delta) || sameDistance && target.kind === "object" && best.target.kind !== "object") best = {delta, target}
+  }))
+  return best
 }
 
 export function createStylesheet(content: string) {
@@ -516,6 +529,11 @@ export class EditingSelection {
       ? isElement(pointerTarget) ? pointerTarget : pointerTarget.parentElement : null
     while(widget && !isContentfulWidget(widget, schema)) widget = widget.parentElement
     if(widget && !atomicEditingContainer(pointerTarget as Node, schema)) {
+      const widgetRect = widget.getBoundingClientRect()
+      if(isContentfulWidget(widget.parentElement, schema) && widgetRect.height > 0
+        && (y < widgetRect.top || y > widgetRect.bottom)) {
+        return gap(widget, y < widgetRect.top ? "before" : "after")
+      }
       let container = widget
       const distance = (rect: DOMRect) => Math.hypot(
         Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),
