@@ -6,8 +6,27 @@ import {mkdtemp, mkdir, writeFile, readFile, rm} from 'node:fs/promises'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {fileURLToPath, pathToFileURL} from 'node:url'
+import {JSDOM} from 'jsdom'
+import xliff2js from 'xliff/xliff2js'
+import {xliffFromUnits} from './localize.js'
 
 const run = promisify(execFile)
+
+test('snippet XLIFF preserves multiline IDs, XML text, and existing translations', async () => {
+  const fileId = './snippets/example.html'
+  const source = 'This text contains\n    a line break & <tag> "quoted"'
+  const id = `${source}#1`
+  const target = 'Übersetzung & <Zitat>'
+  const legacyId = id.replace(/\n/g, ' ')
+  const xml = xliffFromUnits({[fileId]: {[id]: source}}, 'de', {[fileId]: {[legacyId]: target}})
+  const parsed = new JSDOM(xml, {contentType: 'text/xml'}).window.document
+  assert.equal(parsed.querySelector('file').getAttribute('id'), fileId)
+  assert.equal(parsed.querySelector('unit').getAttribute('id'), id)
+  assert.equal(parsed.querySelector('source').textContent, source)
+  assert.equal(parsed.querySelector('target').textContent, target)
+  const exchange = await xliff2js(xml)
+  assert.equal(exchange.resources[fileId][id].target, target)
+})
 
 test('shared dependency rewriting preserves import-shaped strings and parses real TypeScript declarations', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'webwriter-build-test-'))
