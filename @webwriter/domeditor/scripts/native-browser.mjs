@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "canvas and slide movement follows the dot grid and alignment guides",
   "converted list items support repeated Backspace without clicking",
   "list editing splits and indents selected items",
   "soft breaks render a new line on the first press and accept native typing",

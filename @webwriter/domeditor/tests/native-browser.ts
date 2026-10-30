@@ -52,6 +52,7 @@ import {checkKeyboardTabs} from "./keyboard-tabs"
 import {checkGraphicBrushes} from "./graphic-brushes"
 import {checkGraphicResizeMirror} from "./graphic-resize-mirror"
 import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
+import {checkLayoutGrid} from "./layout-grid"
 import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
 import {checkSavedDocumentChecker} from "./saved-document-checker"
@@ -7588,6 +7589,8 @@ await check("Board columns and cards retain native editing and standalone layout
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
+
+await check("canvas and slide movement follows the dot grid and alignment guides", () => checkLayoutGrid())
 
 await check("slide editing retains text and media selections after focus", checkSlideEditing)
 

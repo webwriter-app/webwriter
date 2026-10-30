@@ -20,6 +20,18 @@ export function isParagraphContent(node: Node): boolean {
   return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
 }
 
+/** Closest edge/center alignment, preferring objects over the container on ties. */
+export function closestAlignment<T extends {value: number, kind: string}>(anchors: number[], targets: T[], threshold: number): {delta: number, target: T} | null {
+  let best: {delta: number, target: T} | null = null
+  anchors.forEach(anchor => targets.forEach(target => {
+    const delta = target.value - anchor
+    if(Math.abs(delta) > threshold) return
+    const sameDistance = best && Math.abs(Math.abs(delta) - Math.abs(best.delta)) < 0.001
+    if(!best || Math.abs(delta) < Math.abs(best.delta) || sameDistance && target.kind === "object" && best.target.kind !== "object") best = {delta, target}
+  }))
+  return best
+}
+
 export function createStylesheet(content: string) {
   const stylesheet = new CSSStyleSheet()
   stylesheet.replaceSync(content)

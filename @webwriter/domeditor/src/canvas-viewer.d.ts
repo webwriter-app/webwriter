@@ -1,5 +1,6 @@
 type Point = {x: number, y: number}
 type Rect = {left: number, top: number, right: number, bottom: number}
+export const canvasGridSize: number
 export type CanvasNavigation = "zoom-in" | "zoom-out" | "actual-size" | "fit-content"
 export function canvasStartingView(body?: HTMLElement): HTMLDivElement | null
 export function isCanvasStartingView(element: Element): element is HTMLDivElement

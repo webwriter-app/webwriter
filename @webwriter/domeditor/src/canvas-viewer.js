@@ -1,5 +1,7 @@
 /** Shared DOM canvas camera. This module has no imports so exports can embed
  * its exact source without an editor dependency or a network request. */
+export const canvasGridSize = 20
+
 export function canvasStartingView(body = document.body) {
   return Array.from(body.children).find(isCanvasStartingView) ?? null
 }
@@ -166,8 +168,8 @@ export class CanvasViewer {
     if(!this.slot || !this.active) return
     this.slot.style.transform = `translate(${this.camera.x}px, ${this.camera.y}px) scale(${this.camera.zoom})`
     if(this.background) {
-      this.background.style.backgroundPosition = `${this.camera.x}px ${this.camera.y}px`
-      this.background.style.backgroundSize = `${20 * this.zoom}px ${20 * this.zoom}px`
+      this.background.style.backgroundPosition = `${this.camera.x - canvasGridSize * this.zoom / 2}px ${this.camera.y - canvasGridSize * this.zoom / 2}px`
+      this.background.style.backgroundSize = `${canvasGridSize * this.zoom}px ${canvasGridSize * this.zoom}px`
       this.background.style.backgroundImage = `radial-gradient(#ccd7e3 ${this.zoom}px, transparent ${this.zoom}px)`
     }
     const output = this.controls?.querySelector("output")

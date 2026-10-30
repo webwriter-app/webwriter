@@ -1275,6 +1275,8 @@ body.◆transform-rotating, body.◆transform-rotating * {
 }
 
 @media print {
+  body::part(transform-movement-overlay) { display: none !important; }
+
   html {
     overflow: visible;
     background: none;
