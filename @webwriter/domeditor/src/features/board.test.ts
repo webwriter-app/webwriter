@@ -47,6 +47,33 @@ afterEach(() => {
 })
 
 describe("Board layout", () => {
+  it("applies column width edits from Element options after default and dragged sizes", () => {
+    convert("board")
+    const column = columns()[0], heading = column.querySelector("h2")!
+    editor.features.selection.selectElement(column)
+    const manipulation = editor.features.manipulation
+    const setWidth = (width: string) => manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {width}})
+
+    setWidth("300px")
+    expect(column.style.width).toBe("300px")
+    expect(column.style.flexBasis).toBe("300px")
+    expect(column.style.maxWidth).toBe("")
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["width"]}).inline.width?.value).toBe("300px")
+
+    // A drag writes all three declarations; a later toolbox edit must also
+    // move its cap so the column can grow beyond the dragged size.
+    column.style.maxWidth = "300px"
+    setWidth("520px")
+    expect(column.style.width).toBe("520px")
+    expect(column.style.flexBasis).toBe("520px")
+    expect(column.style.maxWidth).toBe("520px")
+    setWidth("")
+    expect(column.style.width).toBe("")
+    expect(column.style.flexBasis).toBe("")
+    expect(column.style.maxWidth).toBe("")
+    expect(column.querySelector("h2")).toBe(heading)
+  })
+
   it("styles the selected card or embedded element without changing its column", () => {
     convert("board")
     const column = columns()[0], card = cards()[0]
