@@ -4,6 +4,7 @@ import {creativeCommonsLicenses} from "../document-head"
 import {$, atomicEditingContainer, createAnchorPositioner, figureSelectionTarget} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {AttributionLicensePicker} from "../components/attribution-license-picker"
+import {isBoardCard, isBoardColumn} from "../document-layout"
 
 /** Per-element licensing edits the current DOM; all controls stay in the appendix. */
 export class AttributionFeature extends EditorFeature {
@@ -13,6 +14,10 @@ export class AttributionFeature extends EditorFeature {
 
   private root(element: Element) {
     return this.editor.features.slides.active && this.editor.features.slides.containingSlide(element.parentElement) || getDocumentRoot()
+  }
+
+  private canAttribute(element: Element) {
+    return isBoardCard(element) || isBoardColumn(element) || element.parentElement === this.root(element)
   }
 
   activeListeners: DocumentListenerMap = {
@@ -33,8 +38,9 @@ export class AttributionFeature extends EditorFeature {
         })
         return picker
       },
-      canAttribute: element => element.parentElement === this.root(element),
-      affordanceContainer: element => this.editor.features.transformation.freeformControlContainer(element),
+      canAttribute: element => this.canAttribute(element),
+      affordanceContainer: element => this.editor.features.board.transformOverlay(element as HTMLElement)
+        ?? this.editor.features.transformation.freeformControlContainer(element),
       editable: () => !this.editor.isEditingLocked,
       resolveElement: element => figureSelectionTarget(atomicEditingContainer(element, this.editor.schema) ?? element),
       selectedElement: () => {
@@ -54,6 +60,8 @@ export class AttributionFeature extends EditorFeature {
     super.disable()
   }
 
+  refresh() { this.controller?.refresh() }
+
   /** Nested attributions belong to their top-level document or slide item as a unit. */
   normalize() {
     const documentRoot = getDocumentRoot()
@@ -63,8 +71,8 @@ export class AttributionFeature extends EditorFeature {
       const root = this.root(element)
       if(!root.contains(element)) continue
       let top = element
-      while(top.parentElement && top.parentElement !== root) top = top.parentElement
-      if(top === element || top.parentElement !== root) continue
+      while(top.parentElement && top.parentElement !== root && !isBoardCard(top) && !isBoardColumn(top)) top = top.parentElement
+      if(top === element || !this.canAttribute(top)) continue
       if(!hasAttribution(top) && hasAttribution(element)) {
         for(const name of names) {
           const value = element.getAttribute(name)
@@ -80,13 +88,13 @@ export class AttributionFeature extends EditorFeature {
     openAttribution: (_action: {type: "openAttribution"}) => {
       if(this.editor.isEditingLocked) return false
       const elements = this.editor.features.manipulation.selectedEditingElements()
-        .filter(element => element.parentElement === this.root(element))
+        .filter(element => this.canAttribute(element))
       return this.controller?.open(elements) ?? false
     },
   }
 
   private save(elements: Element[], values: Partial<AttributionValues>) {
-    if(this.editor.isEditingLocked || elements.some(element => !element.isConnected || element.parentElement !== this.root(element))) return false
+    if(this.editor.isEditingLocked || elements.some(element => !element.isConnected || !this.canAttribute(element))) return false
     const end = this.editor.doc.beginUndoGroup()
     try {
       for(const element of elements) for(const [key, value] of Object.entries(values)) {

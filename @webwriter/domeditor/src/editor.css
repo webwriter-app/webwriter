@@ -2330,6 +2330,12 @@ body::part(transform-overlay-attribution) {
   left: 0;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M16 8a6 6 0 1 0 0 8"/></svg>');
 }
+body::part(transform-overlay-attribution-board) {
+  top: auto;
+  left: auto;
+  right: -10px;
+  bottom: -10px;
+}
 body::part(transform-overlay-mover)::before {
   width: 16px;
   height: 16px;

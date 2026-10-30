@@ -2,6 +2,7 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {$, atomicEditingContainer, clearEditorMarkerClasses, createAnchorPositioner, createStylesheet, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, setPart} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {boardClass, boardColumns, boardColumnSelector, boardStyles, documentLayoutMode, isBoardCard, isBoardColumn, isBoardGroup} from "../document-layout"
+import {attributionAttributes} from "../attribution.js"
 
 type DragSelection = {anchor: Node | null, focus: Node | null, anchorOffset: number, focusOffset: number}
 
@@ -131,10 +132,16 @@ export class BoardFeature extends EditorFeature {
       ? Array.from(node.childNodes).flatMap(content) : [node]
     return Array.from(document.body.childNodes).flatMap(content)
   }
+  exitConversionReason() {
+    const selector = Object.values(attributionAttributes).map(name => `[${name}]`).join(",")
+    return this.documentContent().some(node => node instanceof Element
+      && Number(node.matches(selector)) + node.querySelectorAll(selector).length > 1)
+      ? "Remove overlapping board attributions before changing layouts." : null
+  }
   convert(mode: "board" | "document", captureUndo = true) {
     if(this.editor.isEditingLocked || !this.editor.allows("edit", document.body)
       || mode === "board" && (documentLayoutMode() !== "document" || this.conversionReason())
-      || mode === "document" && !this.active) return false
+      || mode === "document" && (!this.active || this.exitConversionReason())) return false
     const end = captureUndo ? this.editor.doc.beginUndoGroup() : () => {}
     try {
       if(mode === "board") {
@@ -520,6 +527,7 @@ export class BoardFeature extends EditorFeature {
 
   private refreshTransforms() {
     this.measuredTransforms = false
+    let changed = false
     const selection = document.getSelection()
     const explicit = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
     const owner = explicit ?? selection?.anchorNode ?? null
@@ -532,7 +540,7 @@ export class BoardFeature extends EditorFeature {
       : [hoverTarget ?? card ?? column].filter((target): target is HTMLElement => Boolean(target)))
       .filter(target => this.editor.allows("select", target))
     for(const [target, overlay] of this.transformOverlays) {
-      if(!targets.includes(target)) { overlay.remove(); this.transformOverlays.delete(target) }
+      if(!targets.includes(target)) { overlay.remove(); this.transformOverlays.delete(target); changed = true }
     }
     for(const target of targets) {
       let overlay = this.transformOverlays.get(target)
@@ -540,6 +548,7 @@ export class BoardFeature extends EditorFeature {
       const label = isBoardColumn(target) ? `column ${columns.indexOf(column) + 1}`
         : `card ${this.cards(column).indexOf(target) + 1} in column ${columns.indexOf(column) + 1}`
       if(!overlay) {
+        changed = true
         const role = isBoardColumn(target) ? "column" : "card"
         overlay = this.editor.features.transformation.createFlowOverlay(`◆board-transform-${role}`, role)
         this.transformOverlays.set(target, overlay)
@@ -588,6 +597,7 @@ export class BoardFeature extends EditorFeature {
       setPart(overlay, "transform-overlay-board-selected", explicit === target)
       setPart(overlay, "transform-overlay-board-hovered", target === hoverTarget)
       overlay.querySelectorAll<HTMLButtonElement>("button").forEach(button => {
+        if(button.classList.contains("copyright")) return
         const grouping = button.getAttribute("part")?.split(" ").includes("transform-overlay-group")
         const action = grouping ? "Create group for" : button.dataset.transformMode === "move" ? "Move" : button.dataset.transformMode === "scale" ? "Resize" : "Delete"
         const permission = button.dataset.transformMode === "move" ? "move" : button.dataset.transformMode === "scale" ? "style" : "delete"
@@ -603,6 +613,7 @@ export class BoardFeature extends EditorFeature {
       const resizeHandle = overlay.querySelector<HTMLElement>('[data-transform-mode="scale"]')
       if(resizeHandle) resizeHandle.hidden = !this.editor.allows("style", target)
     }
+    if(changed) this.editor.features.attribution.refresh()
   }
 
   refresh() {
@@ -690,5 +701,6 @@ export class BoardFeature extends EditorFeature {
     this.anchors.destroy(); this.measuredTransforms = false
     for(const overlay of this.transformOverlays.values()) overlay.remove()
     this.transformOverlays.clear()
+    this.editor.features.attribution.refresh()
   }
 }

@@ -427,7 +427,9 @@ export function createAttributionController(doc, options = {}) {
     button.hidden = !target
     if(!target) { anchors?.release(bridge); anchors?.release(popup); return }
     button.classList.toggle("empty-attribution", empty)
-    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${container ? " transform-overlay-attribution-freeform" : ""}` : "")
+    const placement = container?.matches('[part~="transform-overlay-board"]') ? " transform-overlay-attribution-board"
+      : container ? " transform-overlay-attribution-freeform" : ""
+    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${placement}` : "")
     bridge.setAttribute("part", empty ? "transform-overlay" : "")
     button.querySelector("svg").toggleAttribute("hidden", empty || values(target).type !== "copyright")
     // Paint with the normal controls, above the native drag hit regions.

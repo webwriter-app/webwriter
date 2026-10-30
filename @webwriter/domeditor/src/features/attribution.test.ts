@@ -370,6 +370,71 @@ describe("element attribution editing", () => {
     })
   })
 
+  it("places the copyright affordance on the selected board column frame", async () => {
+    start()
+    expect(editor!.setDocumentLayout("board", "document")).toBe(true)
+    const column = editor!.features.board.columns()[0]
+    bounds(column)
+    editor!.features.selection.selectElement(column)
+    editor!.features.board.refresh()
+    await settle()
+    const overlay = editor!.features.board.transformOverlay(column)!
+    const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
+    expect(control.parentElement).toBe(overlay)
+    expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.hidden).toBe(false)
+    editor!.features.board.refresh()
+    expect(control.getAttribute("aria-label")).toBe("Copyright and attribution")
+    control.click()
+    expect(popup().hidden).toBe(false)
+    ui().querySelector<HTMLButtonElement>(".close")!.click()
+    expect(editor!.setDocumentLayout("document", "board")).toBe(true)
+    await settle()
+    expect(control.parentElement).toBe(ui().querySelector(".bridge"))
+    expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
+  })
+
+  it.each(["card", "grouped column"] as const)("edits attribution on a %s board frame", async role => {
+    start()
+    expect(editor!.setDocumentLayout("board", "document")).toBe(true)
+    const board = editor!.features.board, column = board.columns()[0], card = board.cards(column)[0]
+    if(role === "grouped column") board.setGrouping("new", column)
+    const target = role === "card" ? card : column
+    const other = role === "card" ? column : column.parentElement!
+    bounds(target)
+    other.setAttribute(attributionAttributes.name, "Other author")
+    editor!.features.selection.selectElement(target)
+    document.dispatchEvent(new Event("selectionchange"))
+    board.refresh()
+    await settle()
+    const overlay = board.transformOverlay(target)!
+    const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
+    expect(control.parentElement).toBe(overlay)
+    expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.hidden).toBe(false)
+    editor!.doc.syncFromDOM(); editor!.doc.stopCapturing()
+    control.click()
+    input("name").value = "Frame author"
+    submit()
+    editor!.doc.syncFromDOM()
+    expect(target.getAttribute(attributionAttributes.name)).toBe("Frame author")
+    expect(other.getAttribute(attributionAttributes.name)).toBe("Other author")
+    expect(editor!.toHTML(true)).toContain('data-ww-attribution-name="Frame author"')
+    expect(editor!.doc.body.toString()).not.toMatch(/◆|transform-overlay/)
+    editor!.doc.undo()
+    expect(document.querySelector(role === "card" ? ".ww-board-card" : ".ww-board-column")!.hasAttribute(attributionAttributes.name)).toBe(false)
+    editor!.doc.redo()
+    const restored = document.querySelector(role === "card" ? ".ww-board-card" : ".ww-board-column")!
+    expect(restored.getAttribute(attributionAttributes.name)).toBe("Frame author")
+    for(const layout of ["document", "canvas", "slides"] as const) {
+      expect(editor!.getDocumentLayoutState().conversions?.[layout]).toContain("overlapping board attributions")
+      expect(editor!.setDocumentLayout(layout, "board")).toBe(false)
+    }
+    expect(restored.getAttribute(attributionAttributes.name)).toBe("Frame author")
+    restored.removeAttribute(attributionAttributes.name)
+    expect(editor!.setDocumentLayout("document", "board")).toBe(true)
+  })
+
   it.each([false, true])("keeps native input carets visible while the element remains selected (capture: %s)", captured => {
     const element = start()
     element.setAttribute(attributionAttributes.name, "Ada")

@@ -1191,10 +1191,11 @@ export class DOMEditor {
     const mode = documentLayoutMode()
     const canvas = this.features.canvas.getState()
     const rootReason = getDocumentRoot() !== document.body ? "A custom document template owns this document's layout." : null
+    const exitReason = mode === "board" ? this.features.board.exitConversionReason() : null
     const conversions = {
-      document: rootReason,
-      canvas: rootReason ?? ((mode === "slides" || mode === "board" ? this.features.canvas.canConvertContent(this.features[mode].documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
-      slides: rootReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
+      document: rootReason ?? exitReason,
+      canvas: rootReason ?? exitReason ?? ((mode === "slides" || mode === "board" ? this.features.canvas.canConvertContent(this.features[mode].documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
+      slides: rootReason ?? exitReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
       board: rootReason ?? this.features.board.conversionReason(),
     }
     return {mode, zoom: mode === "slides" ? Math.round(this.features.slides.zoom * 100) : canvas.zoom, conversions,

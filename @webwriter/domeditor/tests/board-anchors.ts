@@ -72,6 +72,11 @@ export async function checkBoardAnchors(inspect = false) {
     const overlayRect = activeOverlay.getBoundingClientRect(), targetRect = frameTarget.getBoundingClientRect()
     near(overlayRect.left, targetRect.left, "selected frame left"); near(overlayRect.top, targetRect.top, "selected frame top")
     near(overlayRect.width, targetRect.width, "selected frame width"); near(overlayRect.height, targetRect.height, "selected frame height")
+    const copyright = activeOverlay.querySelector<HTMLButtonElement>('[part~="transform-overlay-attribution-board"]')
+    assert(copyright && !copyright.hidden, "selected column frame has no copyright control")
+    const copyrightRect = copyright!.getBoundingClientRect()
+    near(copyrightRect.left + copyrightRect.width / 2, overlayRect.right, "copyright corner x")
+    near(copyrightRect.top + copyrightRect.height / 2, overlayRect.bottom, "copyright corner y")
 
     const root = doc.documentElement
     assert(root.scrollWidth > root.clientWidth && root.scrollHeight > root.clientHeight, "fixture did not overflow both axes")
@@ -105,6 +110,14 @@ export async function checkBoardAnchors(inspect = false) {
     // Grouping changes the add-column anchor's last flow owner and keeps card slots local.
     board.refresh = refresh
     view.scrollTo(0, 0); await layout(view)
+    editor.features.selection.selectElement(card)
+    board.refresh(); await layout(view)
+    const cardFrame = board.transformOverlay(card)!
+    const cardCopyright = cardFrame?.querySelector<HTMLButtonElement>('[part~="transform-overlay-attribution-board"]')
+    assert(cardCopyright && !cardCopyright.hidden, "selected card frame has no copyright control")
+    const cardFrameRect = cardFrame.getBoundingClientRect(), cardCopyrightRect = cardCopyright!.getBoundingClientRect()
+    near(cardCopyrightRect.left + cardCopyrightRect.width / 2, cardFrameRect.right, "card copyright corner x")
+    near(cardCopyrightRect.top + cardCopyrightRect.height / 2, cardFrameRect.bottom, "card copyright corner y")
     board.setGrouping("new", board.columns()[0]); await layout(view); board.refresh()
     ;({card: cardButton, column: columnButton} = getControls())
     const groupedColumn = board.columns()[0]
@@ -122,6 +135,13 @@ export async function checkBoardAnchors(inspect = false) {
     // Transformed frames still use their local box and matrix, then return to
     // native anchors when the authored transform is removed.
     groupedColumn.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    board.refresh(); await layout(view)
+    const groupedFrame = board.transformOverlay(groupedColumn)!
+    const groupedCopyright = groupedFrame?.querySelector<HTMLButtonElement>('[part~="transform-overlay-attribution-board"]')
+    assert(groupedCopyright && !groupedCopyright.hidden, "selected grouped column frame has no copyright control")
+    const groupedFrameRect = groupedFrame.getBoundingClientRect(), groupedCopyrightRect = groupedCopyright!.getBoundingClientRect()
+    near(groupedCopyrightRect.left + groupedCopyrightRect.width / 2, groupedFrameRect.right, "grouped column copyright corner x")
+    near(groupedCopyrightRect.top + groupedCopyrightRect.height / 2, groupedFrameRect.bottom, "grouped column copyright corner y")
     groupedColumn.style.rotate = "12deg"
     board.refresh(); await layout(view)
     const rotated = board.transformOverlay(groupedColumn)!
