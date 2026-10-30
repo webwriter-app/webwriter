@@ -528,6 +528,11 @@ export class EditingSelection {
       ? isElement(pointerTarget) ? pointerTarget : pointerTarget.parentElement : null
     while(widget && !isContentfulWidget(widget, schema)) widget = widget.parentElement
     if(widget && !atomicEditingContainer(pointerTarget as Node, schema)) {
+      const widgetRect = widget.getBoundingClientRect()
+      if(isContentfulWidget(widget.parentElement, schema) && widgetRect.height > 0
+        && (y < widgetRect.top || y > widgetRect.bottom)) {
+        return gap(widget, y < widgetRect.top ? "before" : "after")
+      }
       let container = widget
       const distance = (rect: DOMRect) => Math.hypot(
         Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),

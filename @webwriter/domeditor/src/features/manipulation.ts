@@ -3084,7 +3084,7 @@ export class ManipulationFeature extends EditorFeature {
     // Native or widget-authored text can live directly in a contentful host.
     // Split just that inline run into paragraphs, retaining the host and its
     // other children instead of duplicating page IDs or widget state.
-    if(isContentfulWidget(container, this.editor.schema)) {
+    if(isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container))) {
       const children = Array.from(container.childNodes)
       let first = offset, last = offset
       while(first > 0 && isParagraphContent(children[first - 1])) first--
@@ -3099,9 +3099,10 @@ export class ManipulationFeature extends EditorFeature {
     }
     const splittingSummary = container.matches("summary")
     if(splittingSummary) splitDepth = 0
+    const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
-    for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+    for(let depth = 0; depth <= maxDepth; depth++) {
+      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement
@@ -3114,6 +3115,22 @@ export class ManipulationFeature extends EditorFeature {
       const moving = Array.from(container.childNodes).slice(offset).filter(node => !isOutOfFlow(node))
       this.editor.features.list.prepareSplitContinuation(container, next, moving)
       next.append(...moving)
+      if(depth === 0 && isContentfulWidget(container, this.editor.schema)) {
+        // Older authored options can contain bare text even when their current
+        // contract requires paragraphs. Wrap only the split inline run.
+        for(const [half, atStart] of [[container, false], [next, true]] as const) {
+          if(this.editor.schema.isContentValid(half)) continue
+          const children = Array.from(half.childNodes)
+          let boundary = atStart ? 0 : children.length
+          while(atStart ? boundary < children.length && isParagraphContent(children[boundary])
+            : boundary > 0 && isParagraphContent(children[boundary - 1])) boundary += atStart ? 1 : -1
+          const run = atStart ? children.slice(0, boundary) : children.slice(boundary)
+          if(!run.length && children.length) continue
+          const paragraph = this.editor.schema.create(undefined, half.ownerDocument) as Element
+          half.insertBefore(paragraph, atStart ? children[0] ?? null : run[0] ?? null)
+          paragraph.append(...run)
+        }
+      }
       affected.add(container)
       affected.add(next)
       affected.add(parent)
@@ -3134,6 +3151,14 @@ export class ManipulationFeature extends EditorFeature {
     return element && isSectionElement(element) ? element : container
   }
 
+  /** Only widgets that explicitly permit structural splitting may be continued
+   * within another editable widget. Schema validation checks both halves. */
+  private canSplitWidget(element: Element) {
+    return isContentfulWidget(element, this.editor.schema)
+      && !this.editor.schema.get(element).inseperable
+      && isContentfulWidget(element.parentElement, this.editor.schema)
+  }
+
   /** Finds the smallest subtree that contains every node whose content model
    * a split can change. Transparent content models need their parent context,
    * so include that chain as well. */
@@ -3143,9 +3168,10 @@ export class ManipulationFeature extends EditorFeature {
     let root: Element | null = null
     const splittingSummary = container.matches("summary")
     if(splittingSummary) splitDepth = 0
+    const maxDepth = isContentfulWidget(container, this.editor.schema) ? 0 : splitDepth
 
-    for(let depth = 0; depth <= splitDepth; depth++) {
-      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
+    for(let depth = 0; depth <= maxDepth; depth++) {
+      if(isDocumentRoot(container) || isContentfulWidget(container, this.editor.schema) && !(splitDepth > 0 && this.canSplitWidget(container)) || boardLayoutRole(container) || this.editor.features.slides.active && container.matches("section.ww-slide") && container.parentElement?.matches(".ww-slides-viewport")
         || isOutOfFlow(container) && !(this.editor.features.canvas.active && container.parentElement?.matches("body.ww-canvas")
           || this.editor.features.slides.active && container.parentElement?.matches("section.ww-slide")) || container.nodeName === "HTML") break
       const parent = container.parentElement

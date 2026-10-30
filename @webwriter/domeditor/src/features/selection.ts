@@ -503,6 +503,15 @@ export class SelectionFeature extends EditorFeature {
       return true
     }
     if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
+    let widget = isElement($.anchor) ? $.anchor : $.anchor.parentElement
+    while(widget && !isContentfulWidget(widget, this.editor.schema)) widget = widget.parentElement
+    if(widget && !this.editor.schema.get(widget).inseperable
+      && isContentfulWidget(widget.parentElement, this.editor.schema)
+      && this.#atDisclosureEdge(widget, direction, vertical)) {
+      $.selectGap(widget, direction === "backward" ? "before" : "after")
+      this.processSelection()
+      return true
+    }
     const adjacent = this.#adjacentNavigationElement(direction)
     if($.listGap || $.detailsGap) {
       const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details")
