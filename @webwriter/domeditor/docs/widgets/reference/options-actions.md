@@ -51,7 +51,7 @@ refreshOptions() {
 | Field | Type | Default / meaning |
 |---|---|---|
 | `type` | Constructor or type string | `String` / `"string"`. See supported types below. |
-| `attribute` | `string` or `false` | Lowercased option name. `false` writes a property only. |
+| `attribute` | `string` or `false` | Uses the matching Lit property's attribute mapping when available, otherwise the lowercased option name. `false` writes a property only. An explicit option value takes precedence. |
 | `label` | `LocalizedText` | Title-cased option name. |
 | `description`, `placeholder` | `LocalizedText` | No description or placeholder. |
 | `group` | `string` | No group. Matches an ID in `optionGroups`; options and actions can share groups. |
@@ -132,7 +132,7 @@ True booleans become empty attributes; false removes them. Objects, arrays, and 
 
 The editor reads the current property value to display an option. Make the property reflect the attribute, or supply a getter. Option attributes cannot be `style`, `class`, `is`, editor-only attributes, event handlers, or unsafe URLs.
 
-Declare Lit reactivity separately in `static properties`, including metadata such as `reflect`, `state`, and `converter`. WebWriter reads `static options`, `static actions`, and `static optionGroups`; `@webwriter/lit` no longer exports option or action decorators. The declared input hints `autocapitalize`, `spellcheck`, `autocomplete`, and `inputmode` are currently not forwarded to drawer controls.
+Declare Lit reactivity separately in `static properties`, including metadata such as `reflect`, `state`, and `converter`. When an option omits `attribute`, the editor uses the matching Lit property declaration's custom attribute name or `attribute: false`; a Lit `state: true` property is also treated as property-only. WebWriter reads `static options`, `static actions`, and `static optionGroups`; `@webwriter/lit` no longer exports option or action decorators. The declared input hints `autocapitalize`, `spellcheck`, `autocomplete`, and `inputmode` are currently not forwarded to drawer controls.
 
 ## Option groups
 

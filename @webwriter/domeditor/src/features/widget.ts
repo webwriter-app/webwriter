@@ -301,6 +301,22 @@ export class WidgetFeature extends EditorFeature {
     return kind === "options" ? {...read("dynamicOptions"), ...read(kind)} : read(kind)
   }
 
+  /** Use Lit's property mapping when the editor option leaves its attribute unspecified. */
+  #optionDeclaration(widget: Element, name: string, declaration: unknown) {
+    if(!declaration || typeof declaration !== "object" || Array.isArray(declaration)) return declaration
+    const option = declaration as Declarations
+    if(typeof option.attribute === "string" || option.attribute === false) return declaration
+    let properties: unknown
+    try { properties = (widget.constructor as unknown as {elementProperties?: unknown}).elementProperties }
+    catch { return declaration }
+    const property = properties instanceof Map ? properties.get(name) : undefined
+    if(!property || typeof property !== "object") return declaration
+    const {attribute, state} = property as {attribute?: unknown, state?: unknown}
+    if(typeof attribute === "string" || attribute === false) return {...option, attribute}
+    if(state === true) return {...option, attribute: false}
+    return declaration
+  }
+
   #widgetAt(path: number[], localName: string) {
     let node: Node = document.body
     for(const index of path) {
@@ -319,7 +335,8 @@ export class WidgetFeature extends EditorFeature {
     const widget = [...path].reverse().find(element => document.body.contains(element) && this.isWidget(element))
     if(!widget) return null
     const locale = this.#locale()
-    const options = Object.entries(this.#declarations(widget, "options")).map(([name, declaration]) => {
+    const options = Object.entries(this.#declarations(widget, "options")).map(([name, rawDeclaration]) => {
+      const declaration = this.#optionDeclaration(widget, name, rawDeclaration)
       let value: unknown = null
       try { value = (widget as unknown as Record<string, unknown>)[name] }
       catch { /* A failing widget getter leaves the field empty. */ }
@@ -449,7 +466,7 @@ export class WidgetFeature extends EditorFeature {
   setOption(widget: Element, name: string, value: WidgetOptionValue, notify = true) {
     if(this.editor.isEditingLocked || !document.body.contains(widget) || !this.isWidget(widget)) return false
     const declarations = this.#declarations(widget, "options")
-    const declaration = declarations[name]
+    const declaration = this.#optionDeclaration(widget, name, declarations[name])
     if(!Object.hasOwn(declarations, name)) throw new TypeError(`The widget has no option '${name}'`)
     const option = this.#referenceOption(widget, widgetOptionState(name, declaration, value, this.#locale()))
     if(option.hidden || option.disabled || option.readOnly || !this.#validOptionValue(option, value, widget)) return false

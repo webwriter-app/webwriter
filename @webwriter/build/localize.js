@@ -356,13 +356,33 @@ async function getXliffDir() {
   return litLocalize?.interchange?.xliffDir
 }
 
-function xliffFromUnits(units, trgLang, values={}) {
-  const fileStatements = Object.keys(units).map(fk => `<file id="${fk}" original="${fk}">\n${Object.keys(units[fk])
-    .map(k => `<unit id="${k}"><segment><source>${units[fk][k]}</source><target>${values[fk]?.[k] ?? ""}</target></segment></unit>`).join("\n")}\n</file>`)
-    .join("\n")
-  const preamble = `<?xml version="1.0" encoding="utf-8" ?>\n`
+export function xliffFromUnits(units, trgLang, values={}) {
   const ns = "urn:oasis:names:tc:xliff:document:2.0"
-  return `${preamble}<xliff xmlns="${ns}" version="2.1" srcLang="en" trgLang="${trgLang}">\n${fileStatements}\n</xliff>`
+  const {window} = new JSDOM()
+  const doc = window.document.implementation.createDocument(ns, "xliff")
+  const root = doc.documentElement
+  root.setAttribute("version", "2.1")
+  root.setAttribute("srcLang", "en")
+  root.setAttribute("trgLang", trgLang)
+  for(const [fileId, unitsForFile] of Object.entries(units)) {
+    const file = doc.createElementNS(ns, "file")
+    file.setAttribute("id", fileId)
+    file.setAttribute("original", fileId)
+    root.append(file)
+    for(const [id, sourceText] of Object.entries(unitsForFile)) {
+      const unit = doc.createElementNS(ns, "unit")
+      unit.setAttribute("id", id)
+      const segment = doc.createElementNS(ns, "segment")
+      const source = doc.createElementNS(ns, "source")
+      source.textContent = sourceText
+      const target = doc.createElementNS(ns, "target")
+      target.textContent = values[fileId]?.[id] ?? values[fileId]?.[id.replace(/\r\n?|\n|\t/g, " ")] ?? ""
+      segment.append(source, target)
+      unit.append(segment)
+      file.append(unit)
+    }
+  }
+  return `<?xml version="1.0" encoding="utf-8" ?>\n${new window.XMLSerializer().serializeToString(doc)}`
 }
 
 async function translateXLIFFDocument(path, isXliff1=true) {

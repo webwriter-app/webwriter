@@ -383,6 +383,12 @@ describe("WebWriterPackageRegistry", () => {
     expect(localizeSnippet(priced, "de")).toBe("<p>Preis: $&amp; netto $$</p>")
   })
 
+  it("matches multiline snippet text against its unchanged XLIFF ID", () => {
+    const source = "This text contains\n    a line break"
+    const html = `<p>\n  ${source}\n</p><script type="application/json" class="snippet-localization">${JSON.stringify({[`${source}#1`]: {de: "Dieser Text enthält einen Zeilenumbruch"}})}</script>`
+    expect(localizeSnippet(html, "de")).toBe("<p>\n  Dieser Text enthält einen Zeilenumbruch\n</p>")
+  })
+
   it("fetches snippets translated to the requested language", async () => {
     const html = `<p>Hello</p><script type="application/json" class="snippet-localization">{"Hello#1": {"de": "Hallo"}}</script>`
     const fetcher = vi.fn(async () => new Response(html))

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterAll, afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
+import {LitElement} from "lit"
 import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {Schema} from "../schema"
@@ -32,6 +33,27 @@ class OptionsWidget extends HTMLElement {
 }
 customElements.define("demo-options", OptionsWidget)
 
+class LitOptionsWidget extends LitElement {
+  static properties = {
+    fooBar: {type: String, attribute: "foo-bar", reflect: true},
+    explicit: {type: String, attribute: "lit-name", reflect: true},
+    localOnly: {type: String, attribute: false},
+    stateOnly: {state: true},
+  }
+  static options = {
+    fooBar: {type: String},
+    explicit: {type: String, attribute: "option-name"},
+    localOnly: {type: String},
+    stateOnly: {type: String},
+  }
+  declare fooBar: string
+  declare explicit: string
+  localOnly = "local"
+  stateOnly = "state"
+  protected createRenderRoot() { return this }
+}
+customElements.define("demo-lit-options", LitOptionsWidget)
+
 class NumericIdWidget extends HTMLElement {}
 Object.defineProperty(NumericIdWidget.prototype, "id", {
   get(this: Element) { return Number(this.getAttribute("id") ?? 0) },
@@ -48,6 +70,7 @@ const installWidgets = () => {
     {tagName: "demo-note", editingConfig: {content: "p+", marks: "b i", propagateEvents: ["keydown"]}},
     {tagName: "demo-plain", editingConfig: {content: "p+", marks: ""}},
     {tagName: "demo-options"},
+    {tagName: "demo-lit-options"},
   ])
   editor.features.widget.refresh()
 }
@@ -483,6 +506,32 @@ describe("widget options", () => {
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "handler", value: "evil()"})).toThrow("cannot be set")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "demo-options", name: "unknown", value: 1})).toThrow("no option")
     expect(() => set({type: "setWidgetOption", path: [0], localName: "other-widget", name: "count", value: 1})).toThrow("changed")
+  })
+
+  it("uses Lit attribute metadata unless the option overrides it", async () => {
+    document.body.innerHTML = '<demo-lit-options foo-bar="before"></demo-lit-options>'
+    const widget = document.querySelector("demo-lit-options") as LitOptionsWidget
+    await widget.updateComplete
+    const options = editor.features.widget.getOptionsState([widget])!.options
+    expect(options.map(option => [option.name, option.attribute])).toEqual([
+      ["fooBar", "foo-bar"], ["explicit", "option-name"],
+      ["localOnly", null], ["stateOnly", null],
+    ])
+    expect(options.find(option => option.name === "fooBar")!.value).toBe("before")
+    editor.features.widget.setOption(widget, "fooBar", "after")
+    editor.features.widget.setOption(widget, "explicit", "override")
+    editor.features.widget.setOption(widget, "localOnly", "changed")
+    editor.features.widget.setOption(widget, "stateOnly", "changed")
+    expect(widget.getAttribute("foo-bar")).toBe("after")
+    expect(widget.hasAttribute("foobar")).toBe(false)
+    expect(widget.getAttribute("option-name")).toBe("override")
+    expect(widget.hasAttribute("lit-name")).toBe(false)
+    expect(widget.localOnly).toBe("changed")
+    expect(widget.stateOnly).toBe("changed")
+    expect(editor.toHTML(true)).toContain('foo-bar="after"')
+    expect(editor.toHTML(true)).not.toContain("local-only")
+    expect(sharedHTML()).toContain('foo-bar="after"')
+    expect(sharedHTML()).not.toContain("foobar=")
   })
 
   it("accepts legacy dynamicOptions and reads their current reflected values", () => {
