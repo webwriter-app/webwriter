@@ -553,7 +553,7 @@ export abstract class EditingControls extends LitElement {
         class="mark-span"
         style="grid-column: 8; grid-row: 2"
         toggle
-        label="Link"
+        label="Link…"
         icon="MarkLink"
         action="mark:a"
         .selectionCount=${selected.length}
