@@ -1,20 +1,35 @@
 import type {DOMEditor} from "../src/domeditor"
+import {editorFrameControlMessage, initializeEditorMessage} from "../src/editor-bridge"
 
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
 
 export async function checkGraphicImage() {
-  for(const layout of ["document", "slides"] as const) {
+  for(const layout of ["document", "slides", "board"] as const) {
     const frame = document.createElement("iframe")
+    const nonce = "graphic-image-focus-regression"
     frame.style.cssText = "width:900px;height:650px;border:0;max-width:none"
-    frame.srcdoc = '<!doctype html><body><p>Before</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = '<!doctype html><body><p>Before</p><script class="◆editor-only" type="module" src="/src/editor-entry.ts"></script></body>'
     document.body.append(frame)
+    await loaded
     const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor, editorError?: string}
+    view.postMessage({type: initializeEditorMessage, bridgeNonce: nonce, syncUrl: "ws://127.0.0.1:65534",
+      proofreadingAllowed: false}, location.origin)
+    // The isolated host replies asynchronously to authored pointerdown. Its
+    // focus request can arrive after the image has opened its source input.
+    const focusFromHost = (event: MessageEvent) => {
+      if(event.source === view && event.data?.type === "editor-frame-pointerdown" && !event.data.appendix) {
+        view.postMessage({type: editorFrameControlMessage, bridgeNonce: nonce, command: "focus"}, location.origin)
+      }
+    }
+    window.addEventListener("message", focusFromHost)
     try {
       for(let attempt = 0; !view.editor && !view.editorError && attempt < 250; attempt++) await new Promise(resolve => setTimeout(resolve, 20))
       assert(view.editor, view.editorError ?? "Image fixture did not initialize")
       const editor = view.editor!, doc = frame.contentDocument!
       const settle = () => new Promise(resolve => setTimeout(resolve, 100))
-      if(layout === "slides") assert(editor.setDocumentLayout("slides", "document"), "Slide conversion failed")
+      if(layout !== "document") assert(editor.setDocumentLayout(layout, "document"), `${layout} conversion failed`)
+      if(layout === "board") doc.getSelection()!.collapse(doc.querySelector(".ww-board-card > p")!, 0)
       editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
       editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "image"})
       const graphic = doc.querySelector("svg")!, image = graphic.querySelector("image")!
@@ -50,6 +65,6 @@ export async function checkGraphicImage() {
       assert(editor.features.selection.captureSelectedElement === graphic, `${layout}: applying the source lost capture`)
       assert(!editor.toHTML(true).includes("◆"), `${layout}: image controls serialized editing artifacts`)
     }
-    finally { view.editor?.destroy(); frame.remove() }
+    finally { window.removeEventListener("message", focusFromHost); view.editor?.destroy(); frame.remove() }
   }
 }
