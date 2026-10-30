@@ -54,6 +54,7 @@ import {checkGraphicResizeMirror} from "./graphic-resize-mirror"
 import {checkGraphicPOIRotation} from "./graphic-poi-rotation"
 import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
+import {checkSavedDocumentChecker} from "./saved-document-checker"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -176,6 +177,7 @@ await check("canvas multiline text keeps partial selections after formatting", a
 })
 
 await check("editing suppresses native autoplay while preserving attributes and explicit playback", checkMediaAutoplay)
+await check("saved document issue checker loads without reloading the editor", checkSavedDocumentChecker)
 await check("Board media shrinks with card height in editing and standalone documents", checkBoardMedia)
 
 await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
