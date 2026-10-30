@@ -270,6 +270,50 @@ describe("captions", () => {
   const setCaption = (position: "none" | "above" | "below") =>
     editor.features.manipulation.actions.setCaption({type: "setCaption", position})
 
+  it.each(["p", "h2"])("preserves a resized %s through caption wrapping, removal and undo", tag => {
+    document.body.innerHTML = `<${tag} title="keep" style="width: 80%; max-width: 240px !important; height: auto; color: red">Text <em>with formatting</em><!--keep--><unfamiliar-inline>content</unfamiliar-inline></${tag}><p>Other</p>`
+    const target = document.body.firstElementChild as HTMLElement
+    const children = Array.from(target.childNodes)
+    $.selectElement(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+
+    setCaption("below")
+    const figure = document.querySelector("figure")!
+    expect(figure.style.width).toBe("80%")
+    expect(figure.style.maxWidth).toBe("240px")
+    expect(figure.style.getPropertyPriority("max-width")).toBe("important")
+    expect(target.style.width).toBe("")
+    expect(target.style.maxWidth).toBe("")
+    expect(target.style.height).toBe("auto")
+    expect(target.style.color).toBe("red")
+    expect(Array.from(target.childNodes)).toEqual(children)
+    editor.doc.syncFromDOM()
+    const captioned = editor.toHTML(true)
+    expect(captioned).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+
+    setCaption("none")
+    expect(document.querySelector("figure")).toBeNull()
+    expect(target.parentElement).toBe(document.body)
+    expect(target.style.width).toBe("80%")
+    expect(target.style.maxWidth).toBe("240px")
+    expect(target.style.getPropertyPriority("max-width")).toBe("important")
+    expect(Array.from(target.childNodes)).toEqual(children)
+    editor.doc.syncFromDOM()
+    const unwrapped = editor.toHTML(true)
+
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(captioned)
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(captioned)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(unwrapped)
+  })
+
   it("uses the figure as the selected style target and transfers placement on conversion", () => {
     document.body.innerHTML = '<p class="ww-float-left authored" style="float: left; color: red">Content</p>'
     const paragraph = document.querySelector("p")!

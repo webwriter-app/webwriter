@@ -1801,7 +1801,11 @@ export class ManipulationFeature extends EditorFeature {
   private transferFigurePlacement(from: Element, to: Element) {
     const source = this.inlineStyleOf(from), destination = this.inlineStyleOf(to)
     if(source && destination) {
-      for(const property of ["float", "clear", "position", "top", "right", "bottom", "left", "inset", "z-index", "--ww-float-size"]) {
+      // A captioned text block has one width: the figure owns its resize
+      // constraints until it is unwrapped. Keep widget/media sizing on the host.
+      const text = "p:not([is]), h1:not([is]), h2:not([is]), h3:not([is]), h4:not([is]), h5:not([is]), h6:not([is])"
+      const size = from.matches(text) || to.matches(text) ? ["width", "min-width", "max-width", "inline-size", "min-inline-size", "max-inline-size"] : []
+      for(const property of ["float", "clear", "position", "top", "right", "bottom", "left", "inset", "z-index", "--ww-float-size", ...size]) {
         const value = source.getPropertyValue(property)
         if(!value) continue
         destination.setProperty(property, value, source.getPropertyPriority(property))
