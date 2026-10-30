@@ -63,6 +63,7 @@ type Gesture = {
  * Document elements expose the bottom corner opposite their alignment; centered
  * elements resize symmetrically along the horizontal axis. Freeform
  * corners set max-inline/block-size; midpoints constrain one logical axis.
+ * Quizzes inside board cards keep the card's width and resize vertically.
  * Existing dimensions and intrinsic content can keep the element smaller.
  * Images use an explicit aspect ratio to stretch within their maximum dimensions.
  * Iframes also set height so their viewport can grow vertically.
@@ -475,6 +476,12 @@ export class TransformationFeature extends EditorFeature {
       || mathRoot(target) === target && target.getAttribute("display") === "block"
   }
 
+  #isBoardCardQuiz(target: Element) {
+    // The quiz uses inline-size containment; a width cap can squeeze its
+    // question to single-character lines inside a fixed-width board card.
+    return target.localName === "webwriter-quiz" && Boolean(this.editor.features.board.containingCard(target))
+  }
+
   #resizeAlignment(target: TransformElement) {
     if(this.#isFreeformItem(target)) return "left"
     const style = getComputedStyle(target)
@@ -499,17 +506,18 @@ export class TransformationFeature extends EditorFeature {
     const position = this.target ? getComputedStyle(this.target).position || "static" : "static"
     const freeform = Boolean(this.target && this.#isFreeformItem(this.target))
     const text = Boolean(this.target && !freeform && this.#isTextContainer(this.target))
+    const boardQuiz = Boolean(this.target && this.#isBoardCardQuiz(this.target))
     const corner = this.target && this.#resizeAlignment(this.target) === "right" ? "down-left" : "down-right"
     setPart(overlay, "transform-overlay-freeform", freeform)
     setPart(overlay, "transform-overlay-starting-view", !this.#group.length && Boolean(this.target && isCanvasStartingView(this.target)))
     setPart(overlay, "transform-overlay-capture-selected", freeform && this.editor.features.selection.captureSelectedElement === this.target)
     for(const midpoint of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-midpoint")) {
-      const hide = !allows("style") || !freeform || this.#group.length > 0
+      const hide = !allows("style") || this.#group.length > 0 || !freeform && !(boardQuiz && midpoint.dataset.resizeDirection === "down-down")
       midpoint.hidden = hide
       setPart(midpoint, "transform-overlay-scale-hidden", hide)
     }
     for(const scaler of overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not(.◆transform-overlay-midpoint)")) {
-      const hide = !allows("style") || this.#group.length > 0 || !freeform && scaler.dataset.resizeDirection !== corner
+      const hide = !allows("style") || this.#group.length > 0 || !freeform && (boardQuiz || scaler.dataset.resizeDirection !== corner)
       scaler.hidden = hide
       setPart(scaler, "transform-overlay-scale-hidden", hide)
       setPart(scaler, "transform-overlay-scale-text", text)
@@ -1009,7 +1017,7 @@ export class TransformationFeature extends EditorFeature {
   #begin(event: MouseEvent, mode: Mode, handle: HTMLElement) {
     const target = this.target
     if(!(this.#group.length ? this.#group : target ? [target] : []).every(element => this.editor.allows(mode === "move" ? "move" : "style", element))) return false
-    if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0) return false
+    if(!target || this.#gesture || this.editor.isEditingLocked || event.button !== 0 || mode === "scale" && handle.hidden) return false
     if(this.#group.length) return this.#beginGroup(event, mode, handle)
     if(mode === "crop" && !cropDirections.some(direction => direction === handle.dataset.cropDirection)) return false
     if(mode === "rotate" && (!this.#isFreeformItem(target) || getComputedStyle(target).position !== "absolute" || isCanvasStartingView(target))) return false
