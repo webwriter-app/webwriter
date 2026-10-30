@@ -5,7 +5,7 @@ import * as offlineBundler from "./offline-module-bundler"
 import {defaultDocumentTheme, documentTheme} from "./document-themes"
 import {LOCAL_PACKAGE_ROUTE_PREFIX} from "./local-package-worker"
 import {packageImportMapId} from "./package-dependencies"
-import {originalURLAttribute} from "./serialization"
+import {appendSerializedAssets, originalURLAttribute} from "./serialization"
 import type {WebWriterPackage} from "./packages"
 
 const hostOrigin = "https://app.example"
@@ -188,6 +188,24 @@ describe("isolated frame documents", () => {
     expect(adapters[0].getAttribute("nonce")).toBe("host-bridge-nonce")
     expect(root.head.querySelector('script[type="module"]')?.getAttribute("src")).toBe(editorOptions().entryURL)
     expect(adapters[0].compareDocumentPosition(root.head.querySelector('script[type="module"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+  })
+
+  it.each(["board", "canvas", "document"])("removes generated %s readers from a saved document before editing", mode => {
+    const bodyClass = mode === "document" ? "" : `ww-${mode}`
+    const source = parse(`<html><head><meta charset="utf-8"></head><body class="${bodyClass}"><x-lesson><!--keep--><script type="application/json" id="authored-data">{"answer":42}</script></x-lesson></body></html>`)
+    appendSerializedAssets(source, [])
+    const readerId = mode === "board" ? "webwriter-layout-print" : mode === "canvas" ? "webwriter-canvas-viewer" : "webwriter-document-viewer"
+    expect(source.getElementById(readerId)).not.toBeNull()
+    const installedPackages: WebWriterPackage[] = mode === "board" ? [{
+      name: "@example/quiz", version: "1", label: "Quiz", authors: [], keywords: [], links: {},
+      scripts: ["https://cdn.example/quiz.js"], styles: [], members: [],
+    }] : []
+    const editing = parse(editorFrameHTML(source.documentElement.outerHTML, editorOptions({packages: installedPackages})))
+    expect(editing.getElementById(readerId)).toBeNull()
+    expect(editing.querySelector("#authored-data")?.textContent).toBe('{"answer":42}')
+    expect(editing.querySelector("x-lesson")?.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+    expect(editing.head.querySelector('script[src*="editor-entry"]')?.getAttribute("nonce")).toBe("host-bridge-nonce")
+    if(mode === "board") expect(editing.querySelector('meta[http-equiv="Content-Security-Policy"]')?.getAttribute("content")).toContain("'unsafe-eval'")
   })
 
   it("preserves authored content, refresh metadata and themes while restoring offline URLs", () => {

@@ -28,6 +28,18 @@ export {scopedCustomElementRegistryScript} from "./scoped-custom-element-registr
 const legacyScopedRegistryPolyfillURL = "https://cdn.jsdelivr.net/npm/@webcomponents/scoped-custom-element-registry@0.0.10/scoped-custom-element-registry.min.js"
 const anchorRuntimeSource = anchorPositioningSource.replace(/^export /gm, "")
 
+const serializedReaderScriptIds = [
+  "webwriter-figure-layout", "webwriter-attribution-reader", "webwriter-image-map-popovers",
+  "webwriter-canvas-viewer", "webwriter-document-viewer", "webwriter-layout-print",
+  "webwriter-distribution-reader",
+]
+
+/** Retire generated export runtimes before rebuilding them or editing a saved document. */
+export function removeSerializedReaderScripts(root: ParentNode) {
+  root.querySelectorAll(serializedReaderScriptIds.map(id => `script[id="${id}"]`).join(", "))
+    .forEach(script => script.remove())
+}
+
 export const restorableResourceAttributes = ["src", "srcset", "poster", "data", "href", "xlink:href", "style", "integrity"] as const
 
 /** Restores authored resource URLs from a document produced by an offline save. */
@@ -72,14 +84,13 @@ export function restoreOriginalResourceURLs(root: ParentNode) {
 /** Adds the widget and template resources required by a detached document. */
 export function appendSerializedAssets(root: Document, packages: WebWriterPackage[], importMap?: IImportMap | null) {
   const distribution = readDistributionConfigs(root)
-  root.querySelectorAll('script[id="webwriter-distribution-reader"]').forEach(script => script.remove())
+  removeSerializedReaderScripts(root)
   const permissions = new Set(distribution.flatMap(config => config.permissions))
   const resourceKey = (url: string) => {
     try { return new URL(url, root.baseURI).href }
     catch { return url }
   }
   const head = root.head ?? root.documentElement.insertBefore(root.createElement("head"), root.body)
-  root.querySelectorAll('script[id="webwriter-figure-layout"]').forEach(script => script.remove())
   if(root.body.querySelector("figure > figcaption")) {
     const script = root.createElement("script")
     script.id = "webwriter-figure-layout"
@@ -87,7 +98,6 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     script.textContent = `${figureLayoutSource}\ncreateFigureLayout(document)\n`.replace(/<\/script/gi, "<\\/script")
     head.append(script)
   }
-  root.querySelectorAll('script[id="webwriter-attribution-reader"]').forEach(script => script.remove())
   if(root.body.querySelector(Object.values(attributionAttributes).map(name => `[${name}]`).join(","))) {
     const script = root.createElement("script")
     script.id = "webwriter-attribution-reader"
@@ -103,7 +113,6 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
     style.textContent = listMarkerStyleSource
     head.append(style)
   }
-  root.querySelectorAll('script[id="webwriter-image-map-popovers"]').forEach(script => script.remove())
   if(root.querySelector("img[usemap]") && root.querySelector("map area")) {
     const script = root.createElement("script")
     script.id = "webwriter-image-map-popovers"
@@ -114,9 +123,6 @@ export function appendSerializedAssets(root: Document, packages: WebWriterPackag
   root.querySelectorAll(`script#${packageImportMapId}`).forEach(script => script.remove())
   root.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
   // Replace an earlier export's runtime, including after a template change.
-  root.querySelectorAll('script[id="webwriter-canvas-viewer"]').forEach(script => script.remove())
-  root.querySelectorAll('script[id="webwriter-document-viewer"]').forEach(script => script.remove())
-  root.querySelectorAll('script[id="webwriter-layout-print"]').forEach(script => script.remove())
   if(documentLayoutMode(root.body) === "board") {
     const script = root.createElement("script")
     script.id = "webwriter-layout-print"

@@ -5,7 +5,7 @@ import {ensureDefaultDocumentTheme} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
 import {packageImportMapId} from "./package-dependencies"
 import type {WebWriterPackage} from "./packages"
-import {appendSerializedAssets, escapeHTMLAttribute, restoreOriginalResourceURLs, scopedCustomElementRegistryScript, serializeDoctype} from "./serialization"
+import {appendSerializedAssets, escapeHTMLAttribute, removeSerializedReaderScripts, restoreOriginalResourceURLs, scopedCustomElementRegistryScript, serializeDoctype} from "./serialization"
 import {clearEditorArtifacts} from "./editor-artifacts"
 import proofreadingWorkerURL from "./proofreading-worker.ts?worker&url"
 import {editorFrameOrigin} from "./frame-origins"
@@ -136,6 +136,9 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
   // Saved exports carry the standalone adapter. Replace it with the nonce-bearing
   // editor bootstrap copy below so the frame has exactly one runtime instance.
   parsed.querySelectorAll('script[id="webwriter-scoped-registry"]').forEach(script => script.remove())
+  // Export readers run only in published documents. Editing features provide
+  // their behavior here; saved inline copies have no nonce under this CSP.
+  removeSerializedReaderScripts(parsed)
   // A CSP-blocked external module poisons the realm's module map for that URL,
   // including a later nonce-bearing load of the same installed widget. Parse
   // authored modules without src so the parser marks them already started,
