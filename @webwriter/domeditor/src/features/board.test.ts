@@ -47,6 +47,72 @@ afterEach(() => {
 })
 
 describe("Board layout", () => {
+  it("styles the selected card or embedded element without changing its column", () => {
+    convert("board")
+    const column = columns()[0], card = cards()[0]
+    card.innerHTML = '<!--keep--><div title="authored"><p>Text</p><img src="test.png"><custom-content><p>Private</p></custom-content></div>'
+    const elements = [column, column.querySelector("h2")!, card, card.querySelector("p")!, card.querySelector("img")!, card.querySelector("custom-content")!]
+    const nodes = Array.from(column.querySelectorAll("*"))
+    const manipulation = editor.features.manipulation
+    for(const target of elements) {
+      editor.features.selection.selectElement(target)
+      expect(manipulation.topLevelStyleTarget).toBe(target)
+      manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {
+        "background-color": "gold", "border-width": "2px", "border-style": "solid", "border-color": "red", padding: "8px",
+      }})
+      expect(target.getAttribute("style")).toContain("background-color: gold")
+      expect(target.getAttribute("style")).toContain("border-color: red")
+      const state = manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["background-color", "border-color"]})
+      expect(state.inline["background-color"]?.value).toBe("gold")
+      expect(state.inline["border-color"]?.value).toBe("red")
+      for(const other of column.querySelectorAll("*")) if(other !== target) expect(other.hasAttribute("style")).toBe(false)
+      if(target !== column) expect(column.hasAttribute("style")).toBe(false)
+      target.removeAttribute("style")
+    }
+    expect(Array.from(column.querySelectorAll("*"))).toEqual(nodes)
+    expect(card.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+  })
+
+  it.each(["img", "custom-content"])("styles a capture-selected %s inside a card", tag => {
+    convert("board")
+    const column = columns()[0], card = cards()[0], target = document.createElement(tag)
+    card.append(target)
+    editor.features.selection.captureElement(target)
+    const manipulation = editor.features.manipulation
+    expect(manipulation.topLevelStyleTarget).toBe(target)
+    manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"border-color": "red"}})
+    expect(target.getAttribute("style")).toContain("border-color: red")
+    expect(card.hasAttribute("style")).toBe(false)
+    expect(column.hasAttribute("style")).toBe(false)
+  })
+
+  it("resolves current card content at the caret and preserves styles through undo and redo", () => {
+    convert("board")
+    const column = columns()[0], card = cards()[0], previous = card.querySelector("p")!
+    $.move(previous)
+    const manipulation = editor.features.manipulation
+    expect(manipulation.topLevelStyleTarget).toBe(previous)
+    const replacement = document.createElement("p")
+    replacement.textContent = "Replacement"
+    previous.replaceWith(replacement)
+    $.move(replacement.firstChild!, 2)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold"}})
+    expect(replacement.style.backgroundColor).toBe("gold")
+    expect(previous.hasAttribute("style")).toBe(false)
+    expect(card.hasAttribute("style")).toBe(false)
+    expect(column.hasAttribute("style")).toBe(false)
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
   it.each(["breadcrumb", "modifier-click"])("selects and formats each column heading independently through %s", async source => {
     convert("board"); board().addColumn(); board().addColumn()
     const headings = columns().map((column, i) => {

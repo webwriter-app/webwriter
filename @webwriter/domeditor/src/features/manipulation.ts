@@ -2237,8 +2237,8 @@ export class ManipulationFeature extends EditorFeature {
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
-  /** Edit toolbox styles use the selected table/cell or the direct container
-   * below Document. */
+  /** Edit toolbox styles use the selected table/cell, board content, or the
+   * direct container below Document. */
   get topLevelStyleTarget(): Element | null {
     const root = this.editor.features.slides.active
       ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
@@ -2248,6 +2248,14 @@ export class ManipulationFeature extends EditorFeature {
     const cell = cellForNode(target)
     if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
     if(target instanceof HTMLTableElement) return target
+    const column = this.editor.features.board.active ? this.editor.features.board.containingColumn(target) : null
+    if(column) {
+      // Keep column controls available while editing its heading, but honor
+      // explicit selections and the live editing target inside a card.
+      return this.editor.features.board.containingCard(target)
+        || this.editor.features.selection.captureSelectedElement
+        || this.editor.features.selection.selectedSectionElement || $.selectedElement ? target : column
+    }
     if(target === document.body || target === root) {
       const selection = document.getSelection()
       if(!selection?.rangeCount) return root
