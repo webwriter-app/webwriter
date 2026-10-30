@@ -60,9 +60,9 @@ export default defineConfig(({mode}) => {
       dedupe: ["yjs"],
     },
     optimizeDeps: {
-      // The lazy worker is outside the initial dependency crawl. Discovering
-      // these on first use would re-optimize dependencies and reload the page.
-      include: ["onnxruntime-web/wasm"],
+      // Lazy review modules and workers can be outside the initial dependency crawl.
+      // Discovering these on first use would re-optimize dependencies and reload the page.
+      include: ["onnxruntime-web/wasm", "axe-core"],
     },
     test: {
       coverage: {

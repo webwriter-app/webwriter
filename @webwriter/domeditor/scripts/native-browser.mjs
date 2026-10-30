@@ -113,6 +113,7 @@ const expectedChecks = [
   "far floats adapt to column margins and survive standalone export",
   "wrapped attribution keeps two text columns and moves contact to the opposite side",
   "Harper checks English in a worker without authored DOM artifacts",
+  "saved document issue checker loads without reloading the editor",
   "Accessibility review shares Issues controls without loading while disabled",
   "Review shares bounded scroll areas and lays out versions beside responsive changes",
   "version previews preserve editing mode and reject native and direct mutations",
