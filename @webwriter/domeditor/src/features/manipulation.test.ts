@@ -2632,8 +2632,9 @@ describe("figures", () => {
     else {
       expect(document.querySelector("figure, figcaption")).toBeNull()
       expect(document.querySelector("p")?.textContent).toBe("Keep")
-      expect(source.parentElement).toBe(document.body)
+      expect(source.isConnected).toBe(false)
     }
+    expect(target.textContent).toBe("DesMove metination")
     expect(document.body).not.toHaveClass("◆drop-selection-active")
     expect(editor.toHTML(true)).not.toContain("◆")
   })
@@ -5935,8 +5936,8 @@ describe("unified content transfer", () => {
   })
 
   it.each([[125, "left"], [150, "right"], [175, "right"]] as const)("floats dragged content at x=%i with native CSS", (x, side) => {
-    document.body.innerHTML = '<p>source</p><article><p>nested</p></article>'
-    const source = document.querySelector("body > p") as HTMLParagraphElement, target = document.querySelector("article")!
+    document.body.innerHTML = '<pre>source</pre><article><p>nested</p></article>'
+    const source = document.querySelector("pre") as HTMLPreElement, target = document.querySelector("article")!
     const nested = target.querySelector("p")!
     vi.spyOn(nested, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 0, 100, 100))
     const {data} = beginDrag(source)
@@ -6947,7 +6948,72 @@ describe("unified content transfer", () => {
     expect(document.body).not.toHaveClass("◆drop-selection-active")
   })
 
-  it("previews the right half at the center for an internal block drop", () => {
+  it.each([
+    ["p", "p"], ["p", "h1"], ["h2", "p"], ["h3", "h4"], ["h5", "h6"],
+  ].flatMap(([sourceTag, targetTag]) => [0, 3, 6].map(offset => ({sourceTag, targetTag, offset}))))(
+    "joins a dragged $sourceTag into $targetTag at offset $offset", ({sourceTag, targetTag, offset}) => {
+      document.body.innerHTML = `<${sourceTag}>source</${sourceTag}><section><!--keep--><${targetTag} id="target" title="authored">target</${targetTag}></section>`
+      const source = document.body.firstElementChild!, target = document.querySelector("#target")!
+      const section = target.parentElement!, comment = section.firstChild
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const original = editor.toHTML(true)
+      const {data} = beginDrag(source)
+      dropAt(data, target.firstChild!, offset)
+      expect(target.textContent).toBe("target".slice(0, offset) + "source" + "target".slice(offset))
+      expect(source.isConnected).toBe(false)
+      expect(document.body.children).toHaveLength(1)
+      expect(target.parentElement).toBe(section)
+      expect(section.firstChild).toBe(comment)
+      expect(target.getAttribute("title")).toBe("authored")
+      expect(target.children).toHaveLength(0)
+      expect($.range.collapsed).toBe(true)
+      expect(target.contains($.anchor)).toBe(true)
+      expect(document.body).not.toHaveClass("◆drop-selection-active")
+      editor.doc.syncFromDOM()
+      const changed = editor.toHTML(true)
+      expect(changed).not.toContain("◆")
+      expect(editor.doc.body.toString()).not.toContain("◆")
+      editor.doc.undo()
+      expect(editor.toHTML(true)).toBe(original)
+      editor.doc.redo()
+      expect(editor.toHTML(true)).toBe(changed)
+    },
+  )
+
+  it.each(["move", "ctrlKey", "altKey"])("preserves live inline content when joining text with %s", operation => {
+    document.body.innerHTML = '<h2><b>source</b><!--keep--><x-note data-authored="keep"></x-note></h2><section><p><i>target</i></p></section>'
+    const source = document.querySelector("h2")!, target = document.querySelector("p")!, mark = target.firstElementChild!
+    const {data} = beginDrag(source)
+    // A widget or remote update can change the source after dragstart.
+    source.querySelector("b")!.textContent = "updated"
+    const children = Array.from(source.childNodes)
+    dropAt(data, mark.firstChild!, 3, operation === "move" ? {} : {[operation]: true})
+    expect(target.innerHTML).toBe('<i>tar<b>updated</b><!--keep--><x-note data-authored="keep"></x-note>get</i>')
+    expect(target.firstElementChild).toBe(mark)
+    const moved = Array.from(mark.childNodes).slice(1, 4)
+    if(operation === "move") {
+      moved.forEach((node, index) => expect(node).toBe(children[index]))
+      expect(source.isConnected).toBe(false)
+    }
+    else {
+      expect(source.isConnected).toBe(true)
+      expect(Array.from(source.childNodes)).toEqual(children)
+      moved.forEach((node, index) => expect(node).not.toBe(children[index]))
+    }
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["source", "target"])("joins text when the %s block is empty", empty => {
+    document.body.innerHTML = `<h2>${empty === "source" ? "" : "source"}</h2><p>${empty === "target" ? "" : "target"}</p>`
+    const source = document.querySelector("h2")!, target = document.querySelector("p")!
+    const {data} = beginDrag(source)
+    dropAt(data, target, target.childNodes.length)
+    expect(Array.from(document.body.children)).toEqual([target])
+    expect(target.textContent).toBe(empty === "source" ? "target" : "source")
+    expect(target.contains($.anchor)).toBe(true)
+  })
+
+  it("previews a text caret for a paragraph dropped into another paragraph", () => {
     document.body.innerHTML = '<p>source</p><p>target</p>'
     const source = document.body.firstElementChild!
     const target = document.body.lastElementChild!
@@ -6955,16 +7021,14 @@ describe("unified content transfer", () => {
     const {data} = beginDrag(source)
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: target.firstChild!, offset: 2})
     target.dispatchEvent(transferEvent("dragover", data, {clientX: 45, clientY: 15}))
-    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain("float-drop-preview-right")
-    expect(editor.features.selection.selectionCaret?.getAttribute("part") ?? "selection-caret-hidden").toContain("selection-caret-hidden")
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect($.anchor).toBe(target.firstChild)
+    expect($.anchorOffset).toBe(2)
+    expect(editor.features.selection.selectionCaret?.getAttribute("part")).toContain("selection-caret-text")
     target.dispatchEvent(transferEvent("drop", data, {clientX: 45, clientY: 15}))
-    expect(target.previousElementSibling).toBe(source)
-    expect((source as HTMLElement)).toHaveClass("ww-float-right")
-    expect((source as HTMLElement).style.maxWidth).toBe("")
-    expectFarFloat(source as HTMLElement, "right")
-    expect(Array.from(document.body.children, element => element.localName)).toEqual(["p", "p"])
-    expect(document.body.firstElementChild?.textContent).toBe("source")
-    expect(document.body.lastElementChild?.textContent).toBe("target")
+    expect(source.isConnected).toBe(false)
+    expect(Array.from(document.body.children)).toEqual([target])
+    expect(target.textContent).toBe("tasourcerget")
     expect(document.body).not.toHaveClass("◆drop-selection-active")
   })
 

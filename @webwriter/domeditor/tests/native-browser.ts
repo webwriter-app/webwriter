@@ -4874,6 +4874,44 @@ await check("node drag borders leave native text and table editing reachable", a
   }
 })
 
+await check("paragraph and heading drags join text at the native caret", async () => {
+  for(const [sourceTag, targetTag] of [["p", "p"], ["p", "h2"], ["h2", "p"], ["h2", "h3"]]) {
+    for(const offset of [0, 3, 6]) {
+      const section = document.createElement("section")
+      section.innerHTML = `<${sourceTag}><b>source</b></${sourceTag}><${targetTag}>target</${targetTag}>`
+      fixture.append(section)
+      const source = section.firstElementChild!, target = section.lastElementChild!, text = target.firstChild!
+      try {
+        $.selectElement(source)
+        editor.features.selection.processSelection()
+        target.scrollIntoView({block: "center", behavior: "instant"})
+        await layoutFrame()
+        const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+        assert(surface?.draggable, "text block has no drag surface")
+        const dataTransfer = new DataTransfer()
+        surface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles: true, composed: true, cancelable: true}))
+        const letter = document.createRange()
+        letter.setStart(text, offset === 6 ? 5 : offset)
+        letter.setEnd(text, offset === 6 ? 6 : offset + 1)
+        const rect = letter.getBoundingClientRect()
+        const init = {dataTransfer, clientX: offset === 6 ? rect.right - .1 : rect.left + .1,
+          clientY: rect.top + rect.height / 2, bubbles: true, composed: true, cancelable: true}
+        target.dispatchEvent(new DragEvent("dragover", init))
+        assert($.anchor === text && $.anchorOffset === offset, `${sourceTag}/${targetTag}/${offset}: preview missed native caret`)
+        assert(!editor.appendix.querySelector("#◆float-drop-preview"), "text join showed a float preview")
+        target.dispatchEvent(new DragEvent("drop", init))
+        const expected = "target".slice(0, offset) + "source" + "target".slice(offset)
+        assert(target.textContent === expected && !source.isConnected, `${sourceTag}/${targetTag}/${offset}: text did not join`)
+        assert(target.querySelector("b")?.textContent === "source", "join lost inline formatting")
+        assert(document.getSelection()?.isCollapsed && target.contains($.anchor), "join lost its text caret")
+        assert(document.execCommand("insertText", false, "!") && target.textContent === "target".slice(0, offset) + "source!" + "target".slice(offset), "typing did not continue after joined text")
+        assert(!document.body.classList.contains("◆drop-selection-active"), "join retained the drop marker")
+      }
+      finally { section.remove() }
+    }
+  }
+})
+
 await check("layout based hit testing returns the rendered target", async () => {
   await nextFrame()
   const target = document.querySelector<HTMLElement>("#hit-target")!

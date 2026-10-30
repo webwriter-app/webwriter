@@ -163,6 +163,7 @@ const expectedChecks = [
   "link keyboard preserves iframe selections and applies document, web, and reference links",
   "editor command preserves a live selection",
   "node drag borders leave native text and table editing reachable",
+  "paragraph and heading drags join text at the native caret",
   "selection feature treats custom element as atomic",
   "modifier clicks select table cells and outer borders",
   "table insertion controls follow rotated edges and preview lines",

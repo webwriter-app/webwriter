@@ -656,6 +656,10 @@ export class ManipulationFeature extends EditorFeature {
     this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
     if(event.target instanceof Node && source.contains(event.target)) return null
+    if(source === this.nodeDrag?.element && source.matches("p, h1, h2, h3, h4, h5, h6")) {
+      const point = this.dropPoint(event)
+      if(point && this.joinsTextOnDrop(source, point.node)) return null
+    }
     const root = getDocumentRoot()
     const key = source.isConnected ? source : source.outerHTML
     const contains = (rect: DOMRect) => event.clientX >= rect.left && event.clientX < rect.right
@@ -1126,6 +1130,23 @@ export class ManipulationFeature extends EditorFeature {
     if(target?.parentElement && root.contains(target)) $.move(target.parentElement, Array.from(target.parentElement.childNodes).indexOf(target) + 1)
   }
 
+  private joinsTextOnDrop(source: Element, node: Node) {
+    const target = getContainer(node)
+    return source.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && source.matches("p, h1, h2, h3, h4, h5, h6") && !source.hasAttribute("is")
+      && target?.namespaceURI === source.namespaceURI
+      && target.matches("p, h1, h2, h3, h4, h5, h6") && !target.hasAttribute("is")
+      && !source.contains(node) && !target.contains(source)
+      && !atomicEditingContainer(source, this.editor.schema) && !atomicEditingContainer(node, this.editor.schema)
+  }
+
+  private dropPoint(event: MouseEvent) {
+    const root = getDocumentRoot()
+    return this.editor.hitTestBeneathAppendix(() => $.pointFromCoords(
+      event.clientX, event.clientY, event.target, this.editor.schema, root, root,
+    ))
+  }
+
   dropRange(event: MouseEvent, source: Element | null) {
     if(source && !getDocumentRoot().contains(source)) return null
     const float = source && this.floatDropTarget(event, source)
@@ -1141,9 +1162,7 @@ export class ManipulationFeature extends EditorFeature {
     // Bound the hit test to the editing root so its geometry fallback also
     // resolves blank space when media leaves no native text caret to hit.
     const root = getDocumentRoot()
-    const point = this.editor.hitTestBeneathAppendix(() => $.pointFromCoords(
-      event.clientX, event.clientY, event.target, this.editor.schema, root, root,
-    ))
+    const point = this.dropPoint(event)
     if(!point || !getDocumentRoot().contains(point.node)) return null
     if(source && !this.allowsCaptionInsertion([source], point.node)) return null
     const range = document.createRange()
@@ -1161,7 +1180,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     range.setStart(point.node, point.offset)
     range.collapse(true)
-    if(source && !getContainer(point.node).closest("p:not([is])")
+    if(source && !this.joinsTextOnDrop(source, point.node) && !getContainer(point.node).closest("p:not([is])")
       && source.namespaceURI !== MATH_NAMESPACE && !this.editor.schema.isPhrasing(source)) {
       let block = getContainer(point.node)
       while(block !== getDocumentRoot() && this.editor.schema.isPhrasing(block) && block.parentElement) block = block.parentElement
@@ -1642,7 +1661,17 @@ export class ManipulationFeature extends EditorFeature {
           this.placeFloat(inserted, container, side)
         }
         else {
-          if(getContainer(range.startContainer).closest("p:not([is])") && !isParagraphContent(inserted)) {
+          if(this.joinsTextOnDrop(source, range.startContainer)) {
+            // Move the live children so inline formatting, comments and widgets
+            // survive without nesting or splitting either text block.
+            const fragment = document.createDocumentFragment()
+            fragment.append(...Array.from(inserted.childNodes))
+            if(fragment.childNodes.length) range.insertNode(fragment)
+            if(inserted === source) source.remove()
+            range.collapse(false)
+            $.move(range.startContainer, range.startOffset)
+          }
+          else if(getContainer(range.startContainer).closest("p:not([is])") && !isParagraphContent(inserted)) {
             $.move(range.startContainer, range.startOffset)
             this.insertBlocks([inserted])
           }
