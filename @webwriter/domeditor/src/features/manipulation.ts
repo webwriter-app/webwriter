@@ -377,9 +377,31 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private insertionGeneration = 0
+  private readonly clipboardRoots = new WeakMap<HTMLElement, string>()
+  private readonly clipboardLayouts = new WeakMap<DocumentFragment, string>()
+  private layoutPastes = new WeakMap<HTMLElement, {key: string, elements: (HTMLElement | SVGSVGElement)[]}>()
+
+  /** Clipboard-only identity distinguishes a duplicate from a transfer to a
+   * different slide. It never becomes part of the authored document. */
+  clipboardLayoutHint() {
+    const root = this.editor.features.canvas.editingRoot
+    if(!root) return null
+    const captured = this.editor.features.selection.captureSelectedElement
+    const elements = captured ? [captured] : $.ranges.flatMap(range =>
+      range.startContainer === root && range.endContainer === root && !range.collapsed
+        ? Array.from(root.childNodes).slice(range.startOffset, range.endOffset).filter(node => node instanceof Element)
+        : [])
+    if(!elements.length || elements.some(element => element.parentElement !== root
+      || !(element instanceof HTMLElement || element instanceof SVGSVGElement) || slideLayoutRole(element)
+      || !["absolute", "fixed"].includes(getComputedStyle(element).position))) return null
+    let id = this.clipboardRoots.get(root)
+    if(!id) { id = crypto.randomUUID(); this.clipboardRoots.set(root, id) }
+    return `${id}/${crypto.randomUUID()}`
+  }
 
   disable() {
     this.snippetDrag = null
+    this.layoutPastes = new WeakMap()
     this.insertionGeneration++
     this.hoverInsertion(false)
     this.endNodeDrag(false)
@@ -2829,6 +2851,7 @@ export class ManipulationFeature extends EditorFeature {
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
     this.selectCapturedElementForInsertion()
+    if(this.insertLayoutPaste(fragment)) return
     const container = $.anchorContainer
     if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
       && container && container === $.focusContainer && !isDocumentRoot(container)
@@ -2840,6 +2863,57 @@ export class ManipulationFeature extends EditorFeature {
       }
     }
     return this.insertClipboardFragment(fragment)
+  }
+
+  /** Duplicate whole layout items without replacing the selected original or
+   * invoking the general insertion placement. Re-read the last live copy's
+   * geometry so moves, undo and remote replacements cannot leave stale offsets. */
+  private insertLayoutPaste(fragment: DocumentFragment) {
+    const key = this.clipboardLayouts.get(fragment)
+    if(!key) return false
+    const canvas = this.editor.features.canvas, slides = this.editor.features.slides
+    const root = canvas.active ? document.body : slides.active ? slides.insertionSlide() : null
+    if(!root || !root.isConnected || this.editor.isEditingLocked || !this.editor.allows("insert", root)) return false
+    const elements = Array.from(fragment.children)
+    if(!elements.length || elements.some(element => !(element instanceof HTMLElement || element instanceof SVGSVGElement)
+      || element.matches("style,script,link,meta,template") || slideLayoutRole(element))
+      || Array.from(fragment.childNodes).some(node => node instanceof Text && node.data.trim())) return false
+    const items = elements as (HTMLElement | SVGSVGElement)[]
+    const previous = this.layoutPastes.get(root)
+    const last = previous?.key === key && previous.elements.length === items.length
+      && previous.elements.every(element => element.parentElement === root) ? previous.elements : null
+    const step = last || canvas.active || key.split("/")[0] === this.clipboardRoots.get(root) ? 24 : 0
+    const zoom = canvas.active ? canvas.zoom : slides.zoom
+    const previousRect = last?.[0].getBoundingClientRect()
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      root.append(fragment)
+      const rect = items[0].getBoundingClientRect()
+      const dx = step + (previousRect ? (previousRect.left - rect.left) / zoom : 0)
+      const dy = step + (previousRect ? (previousRect.top - rect.top) / zoom : 0)
+      for(const item of items) {
+        const style = getComputedStyle(item)
+        for(const [start, finish, delta] of [["left", "right", dx], ["top", "bottom", dy]] as const) {
+          if(!delta) continue
+          const shift = (property: string, value: string, amount: number) => {
+            item.style.setProperty(property, /^-?[\d.]+px$/.test(value)
+              ? `${parseFloat(value) + amount}px` : `calc(${value} + ${amount}px)`, item.style.getPropertyPriority(property))
+          }
+          const from = item.style.getPropertyValue(start) || style.getPropertyValue(start)
+          const to = item.style.getPropertyValue(finish) || style.getPropertyValue(finish)
+          if(from && from !== "auto") shift(start, from, delta)
+          if(to && to !== "auto") shift(finish, to, -delta)
+          if((!from || from === "auto") && (!to || to === "auto")) item.style.setProperty(start, `${delta}px`)
+        }
+      }
+      this.editor.features.selection.withoutSelectionScroll(() => {
+        this.editor.features.selection.selectElement(items[0])
+        if(items.length > 1) { $.selectElements(items); this.editor.features.selection.processSelection() }
+      })
+      this.layoutPastes.set(root, {key, elements: items})
+    }
+    finally { end() }
+    return true
   }
 
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
@@ -4118,7 +4192,7 @@ export class ManipulationFeature extends EditorFeature {
       catch { return true }
     })) return false
     const currentData = this.#clipboardData($.copy())
-    if(currentData.html !== copied.html || currentData.text !== copied.text) return false
+    if(currentData.content !== copied.content || currentData.text !== copied.text) return false
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     return this.withNormalization(() => {
       $.delete()
@@ -4400,8 +4474,8 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   #clipboardData(fragment: DocumentFragment) {
-    const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
-    return {html, text}
+    const {clipboardHTML: html, html: content, text} = this.editor.serializeClipboardFragment(fragment, $.selectedElement instanceof HTMLElement ? $.selectedElement.innerText : undefined)
+    return {html, text, content}
   }
 
   #clipboardItem({html, text}: {html: string, text: string}) {
@@ -4425,9 +4499,9 @@ export class ManipulationFeature extends EditorFeature {
    * text node, so text containing markup characters is never interpreted as
    * HTML. */
   #clipboardContentToFragment(html: string, text: string) {
-    const fragment = html
-      ? this.editor.parseHTMLFragment(html, true).fragment
-      : this.plainTextClipboardFragment(text)
+    if(!html) return this.plainTextClipboardFragment(text)
+    const {fragment, clipboardLayout} = this.editor.parseHTMLFragment(html, true)
+    if(clipboardLayout) this.clipboardLayouts.set(fragment, clipboardLayout)
     return fragment
   }
 

@@ -1631,7 +1631,8 @@ export class DOMEditor {
     // A clipboard-only format hint preserves authored structure and styling
     // when reused in WebWriter. It is removed before insertion and never
     // bypasses active-content sanitization.
-    const clipboardHTML = `<meta name="webwriter-clipboard" content="1">${html}`
+    const layout = this.features.manipulation.clipboardLayoutHint()
+    const clipboardHTML = `<meta name="webwriter-clipboard" content="1"${layout ? ` data-layout="${layout}"` : ""}>${html}`
     return {html, text, clipboardHTML}
   }
 
@@ -1737,7 +1738,7 @@ export class DOMEditor {
         repair = false
       }
     }
-    return this.prepareHTMLFragment(template.content, transfer, repair)
+    return {...this.prepareHTMLFragment(template.content, transfer, repair), clipboardLayout: clipboardHint?.getAttribute("data-layout") ?? null}
   }
 
 
