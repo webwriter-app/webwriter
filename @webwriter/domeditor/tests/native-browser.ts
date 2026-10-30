@@ -5712,6 +5712,8 @@ await check("bundled layouts render under the strict editor CSP without widgets"
       assert(saved.includes({board: boardStyles, canvas: canvasStyles, slides: slidesStyles}[mode]), `${mode}: portable layout styles were lost`)
       current.editor.destroy()
       current = await load(saved)
+      const readerId = mode === "board" ? "webwriter-layout-print" : mode === "canvas" ? "webwriter-canvas-viewer" : null
+      if(readerId) assert(!current.doc.getElementById(readerId), `${mode}: saved reader script entered the editing frame`)
       verify()
       assert(current.editor.setDocumentLayout("document", mode), `${mode}: return to document failed`)
     }
