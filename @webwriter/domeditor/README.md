@@ -39,6 +39,20 @@ npm run preview
 
 The build produces `dist/` with independent landing (`/`), Widgets (`/gallery/`), documentation (`/docs/`), and editor (`/editor/`) pages. Serve directory indexes normally and return 404 for missing pages; no SPA fallback or documentation server is required. The preview server binds only to `127.0.0.1`.
 
+Application and frame scripts use content-hashed filenames. For nginx deployments,
+send `Cache-Control: no-cache` for HTML (including directory indexes), the service
+worker, and other unversioned files on both origins. Only successfully served
+content-hashed JS and CSS under `/assets/` should receive
+`Cache-Control: public, max-age=31536000, immutable`; the private-testing nginx
+example applies this policy.
+
+Production builds also emit `version.json`. Open editors check it every minute
+while visible and when returning to the tab or coming online. A new build shows
+a closable speech bubble at the app icon with a Reload button. Reload remains
+the user's choice and uses the existing unsaved-work warning. Serve the marker
+with `Cache-Control: no-cache`, as in the nginx example, and deploy it alongside
+the matching HTML and assets. Development builds do not check for updates.
+
 Documentation uses the same Markdown renderer as development. The build emits highlighted HTML, navigation, styles, icons, original example downloads, and bundled live previews. Lit uses the default `.html` pages; the other library choices have `.vanilla.html`, `.react.html`, `.vue.html`, `.angular.html`, and `.svelte.html` variants. The library selector preserves the current page and fragment. Existing `?library=` links to generated pages select the corresponding variant.
 
 Keep the build base at `/`: moving the application entry to `/editor/` does not move `frame-shell.html`, frame entry assets, the service worker, or `/api/` endpoints. Deploy the frame files on the separate origin described above and configure the existing backend separately. The local development backend is not a production server.

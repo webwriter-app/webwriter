@@ -129,7 +129,8 @@ async function navigation(root) {
   })))
 }
 
-function renderPage({source, path, sections, library, highlighter, missing = false, staticBuild = false}) {
+function renderPage({source, path, sections, library, highlighter, missing = false, staticBuild = false,
+  siteEntryURL = "/src/site-entry.ts", documentationURL = "/dev-server/documentation.js"}) {
   const title = new Marked().lexer(source).find(token => token.type === "heading" && token.depth === 1)?.text ?? "Documentation"
   const pages = [{path: home, title: "Widgets"}, ...sections.flatMap(section => [section, ...section.pages])]
   const index = pages.findIndex(page => page.path === path)
@@ -153,8 +154,8 @@ function renderPage({source, path, sections, library, highlighter, missing = fal
     <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="${staticBuild ? "/assets/docs" : "/dev-server"}/documentation.css">
     <link rel="stylesheet" href="${staticBuild ? "/assets/site-header.css" : "/src/site-header.css"}">
-    <script type="module" src="${staticBuild ? "/assets/docs" : "/dev-server"}/documentation.js"></script>
-    <script type="module" src="${staticBuild ? "/assets/site-entry.js" : "/src/site-entry.ts"}"></script>
+    <script type="module" src="${escapeHTML(documentationURL)}"></script>
+    <script type="module" src="${escapeHTML(siteEntryURL)}"></script>
   </head>
   <body class="site-layout">
     <a class="skip-link" href="#content">Skip to content</a>
@@ -298,8 +299,15 @@ export function documentationPlugin() {
         catch(error) { next(error) }
       })
     },
-    async generateBundle() {
+    async generateBundle(_options, bundle) {
       const root = config.root
+      const entryURL = name => {
+        const entry = Object.values(bundle).find(item => item.type === "chunk" && item.isEntry && item.name === name)
+        if(!entry) return this.error(`Missing documentation script entry: ${name}`)
+        return `${config.base}${entry.fileName}`
+      }
+      const siteEntryURL = entryURL("site-entry")
+      const documentationURL = entryURL("documentation")
       const files = await filesIn(resolve(root, "docs"))
       const sections = await navigation(root)
       const codeHighlighter = await highlighter()
@@ -309,7 +317,8 @@ export function documentationPlugin() {
         const content = await readFile(file, "utf8")
         for(const {value: library} of libraries) {
           const source = await embedExamples(markdown(content, library), {root, path, library, highlighter: codeHighlighter})
-          const html = renderPage({source, path, sections, library, highlighter: codeHighlighter, staticBuild: true})
+          const html = renderPage({source, path, sections, library, highlighter: codeHighlighter, staticBuild: true,
+            siteEntryURL, documentationURL})
           const output = new URL(libraryURL(path, path, library, true), "http://docs.local").pathname.slice(1)
           emit(output, html)
           if(path === home) emit(`docs/index${library === "lit" ? "" : `.${library}`}.html`, html)
@@ -320,7 +329,7 @@ export function documentationPlugin() {
         && !["docs/widgets/examples/preview.html", "docs/widgets/examples/hello.html"].includes(relative(root, file)))) {
         emit(relative(root, file), await readFile(file))
       }
-      for(const name of ["documentation.css", "documentation.js", ...libraries.map(({icon}) => `icons/${icon}.svg`)]) {
+      for(const name of ["documentation.css", ...libraries.map(({icon}) => `icons/${icon}.svg`)]) {
         emit(`assets/docs/${name}`, await readFile(resolve(root, "dev-server", name)))
       }
     },

@@ -1,3 +1,13 @@
+declare module 'virtual:app-entry/*' {
+  const url: string
+  export default url
+}
+
+declare module 'virtual:app-version' {
+  const version: string
+  export default version
+}
+
 declare module 'virtual:component-licenses' {
   const content: string;
   export default content;

@@ -18,6 +18,7 @@ import "./shape-keyboard"
 import type {ShapeKeyboard} from "./shape-keyboard"
 import "./link-keyboard"
 import "./guided-tour"
+import "./app-update-notice"
 import type {LinkKeyboard} from "./link-keyboard"
 import {isLinkEdit, type LinkEdit, type LinkSelectionState} from "../links"
 import {documentLayoutPreviewStyles, renderDocumentLayoutCard, documentLayoutModes} from "./layout-preview"
@@ -215,6 +216,9 @@ import {
   type LiveSessionStep,
 } from "../live-session"
 import {liveLearnerURL} from "../page-routing"
+import editorEntryUrl from "virtual:app-entry/editor-entry"
+import previewEntryUrl from "virtual:app-entry/preview-entry"
+import liveLearnerEntryUrl from "virtual:app-entry/live-learner-entry"
 import type {
   LiveSessionLearner as OverlayLearner,
   LiveSessionWidget as OverlayWidget,
@@ -247,9 +251,6 @@ type FilePickerWindow = Window & typeof globalThis & {
 type FileFormat = "html" | "offline"
 type StorageLocation = "local" | "development-server"
 
-const editorEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/editor-entry.ts" : "assets/editor-entry.js"}`
-const previewEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/preview-entry.ts" : "assets/preview-entry.js"}`
-const liveLearnerEntryUrl = `${import.meta.env.BASE_URL}${import.meta.env.DEV ? "src/live-learner-entry.ts" : "assets/live-learner-entry.js"}`
 const localPackageResourcePath = LOCAL_PACKAGE_ROUTE_PREFIX
 const packageLoadTimeoutMs = 10_000
 const executeTimeoutMs = 15_000
@@ -7968,6 +7969,7 @@ export class DomEditor extends LitElement {
     const recentDocumentsDependencies = [this.recentDocuments, this.accessibleRecentDocumentIds,
       this.savedDocuments, this.backendClient, this.backendClient?.session]
     return html`
+      <app-update-notice .anchor=${() => this.renderRoot.querySelector("app-ribbon")?.shadowRoot?.querySelector<HTMLElement>(".brand-logo") ?? null}></app-update-notice>
       <header class="app-bar">
         <div class="ribbon-header">
           ${this.sizeWarningDismissed ? "" : html`<div class="size-warning" role="alert">

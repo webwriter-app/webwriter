@@ -81,6 +81,15 @@ namespace is shared:
 docker compose --env-file .env.private-testing -f compose.private-testing.yaml up -d --build --force-recreate --wait
 ```
 
+The nginx example makes static HTML (including directory indexes), the service
+worker, and other unversioned files revalidate on both origins. It gives a
+one-year immutable cache lifetime only to successful responses for content-
+hashed JS and CSS under `/assets/`; 404s remain revalidatable. After the first
+rollout of these headers, purge any CDN cache of HTML and fixed-name scripts;
+testers may need a forced reload to replace previously cached HTML. During
+updates, retain prior content-hashed asset files when practical so tabs already
+open on the previous HTML can still load their assets.
+
 To reload renewed certificates without rebuilding:
 
 ```sh

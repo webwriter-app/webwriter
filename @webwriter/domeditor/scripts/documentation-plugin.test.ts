@@ -469,9 +469,12 @@ it("emits static documentation variants, navigation, assets, and original exampl
   }
   mkdirSync(join(directory, "docs/images"))
   writeFileSync(join(directory, "docs/images/diagram.svg"), '<svg id="diagram"></svg>')
-  plugin.configResolved({root: directory})
+  plugin.configResolved({root: directory, base: "/"})
   const emitted = new Map()
-  await plugin.generateBundle.call({emitFile: asset => emitted.set(asset.fileName, asset.source)})
+  await plugin.generateBundle.call({emitFile: asset => emitted.set(asset.fileName, asset.source)}, {}, {
+    site: {type: "chunk", isEntry: true, name: "site-entry", fileName: "assets/site-entry-a1b2c3d4.js"},
+    documentation: {type: "chunk", isEntry: true, name: "documentation", fileName: "assets/documentation-e5f6g7h8.js"},
+  })
 
   for(const library of ["lit", "vanilla", "react", "vue", "angular", "svelte"]) {
     const suffix = library === "lit" ? "" : `.${library}`
@@ -485,7 +488,10 @@ it("emits static documentation variants, navigation, assets, and original exampl
     expect(page).toContain('href="/editor/">Open WebWriter')
     expect(page).toContain('href="/assets/docs/documentation.css"')
     expect(page).toContain('href="/assets/site-header.css"')
-    expect(page).toContain('src="/assets/docs/documentation.js"')
+    expect(page).toContain('src="/assets/documentation-e5f6g7h8.js"')
+    expect(page).toContain('src="/assets/site-entry-a1b2c3d4.js"')
+    expect(page).not.toContain('src="/assets/site-entry.js"')
+    expect(page).not.toContain('src="/assets/docs/documentation.js"')
     expect(page).toContain(renderSiteFooter())
     expect(page).not.toContain('/dev-server/')
     expect(page).not.toContain('<!-- script:')

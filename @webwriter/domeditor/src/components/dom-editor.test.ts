@@ -952,6 +952,16 @@ describe("DomEditor document loading", () => {
 })
 
 describe("DomEditor iframe setup", () => {
+  it("anchors update notifications to the app icon outside the authored document", async () => {
+    const {editor, iframe} = await mountEditor()
+    const notice = editor.shadowRoot!.querySelector<HTMLElement & {anchor: () => HTMLElement | null}>("app-update-notice")!
+    const logo = editor.shadowRoot!.querySelector("app-ribbon")!.shadowRoot!.querySelector(".brand-logo")
+    expect(notice).not.toBeNull()
+    expect(logo).not.toBeNull()
+    expect(notice.anchor()).toBe(logo)
+    expect(iframe.contentDocument!.querySelector("app-update-notice")).toBeNull()
+  })
+
   it("delegates camera, microphone and screen capture to the editing frame", async () => {
     const {iframe} = await mountEditor()
     expect(iframe.getAttribute("allow")).toBe("camera; microphone; display-capture")

@@ -5,6 +5,13 @@ map $http_upgrade $webwriter_connection_upgrade {
     '' close;
 }
 
+# Cache Vite's eight-character hashes (with optional numeric collision suffixes).
+# Everything else served by the static locations must revalidate before reuse.
+map "$uri:$status" $webwriter_static_cache_control {
+    "~^/assets/.+-[A-Za-z0-9_-]{8}[0-9]*\.(js|css):(200|206|304)$" "public, max-age=31536000, immutable";
+    default "no-cache";
+}
+
 server {
     listen 100.100.100.10:443 ssl;
     server_name authors.vpn.example;
@@ -34,6 +41,7 @@ server {
         # that happen to match a static file. Ordinary pages remain static.
         error_page 418 = @collaboration;
         if ($http_upgrade ~* "^websocket$") { return 418; }
+        add_header Cache-Control $webwriter_static_cache_control always;
         try_files $uri $uri/ =404;
     }
     location @collaboration { proxy_pass http://127.0.0.1:1234; }
@@ -56,5 +64,8 @@ server {
     location /api/ { return 403; }
     location = /admin { return 403; }
     location = /admin/ { return 403; }
-    location / { try_files $uri $uri/ =404; }
+    location / {
+        add_header Cache-Control $webwriter_static_cache_control always;
+        try_files $uri $uri/ =404;
+    }
 }

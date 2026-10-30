@@ -8,6 +8,7 @@ import {previewFrameHTML} from "../frame-document"
 import {resolvePackageDependencies} from "../package-dependencies"
 import {cardOverlayStyles} from "./card-overlay"
 import {t, SiteLanguageController} from "../site-language"
+import galleryPreviewEntryURL from "virtual:app-entry/gallery-preview-entry"
 
 export class WidgetGallery extends LitElement {
   private languageController = new SiteLanguageController(this)
@@ -210,7 +211,7 @@ export class WidgetGallery extends LitElement {
       if(!current()) return
       const frameOrigin = editorFrameOrigin()
       const base = new URL(import.meta.env.BASE_URL, `${frameOrigin}/`)
-      const entry = new URL(import.meta.env.DEV ? "src/gallery-preview-entry.ts" : "assets/gallery-preview-entry.js", base)
+      const entry = new URL(galleryPreviewEntryURL, base)
       if(widget.member.tagName) entry.searchParams.set("tag", widget.member.tagName)
       const network = packages.find(pkg => pkg.name === "@webwriter/network")
       if(network) entry.searchParams.set("network-version", network.version)
