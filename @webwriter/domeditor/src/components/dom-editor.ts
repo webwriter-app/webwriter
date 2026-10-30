@@ -1413,6 +1413,15 @@ export class DomEditor extends LitElement {
     this.liveStreamPlaying = false
   }
 
+  private returnToLiveSession = () => {
+    this.advanceLiveClock()
+    this.liveStreamTime = this.liveStreamDuration
+    this.liveStreamPlaying = true
+    this.updateLiveStep()
+    this.updateLiveVisualization()
+    this.scheduleLivePlayback()
+  }
+
   private seekLiveSession = (event: Event) => {
     const time = (event as CustomEvent<{time?: unknown}>).detail?.time
     if(typeof time !== "number" || !Number.isFinite(time)) return
@@ -8050,6 +8059,7 @@ export class DomEditor extends LitElement {
             @live-session-play=${this.playLiveSession}
             @live-session-pause=${this.pauseLiveSession}
             @live-session-seek=${this.seekLiveSession}
+            @live-session-return-to-live=${this.returnToLiveSession}
           ></live-session-controls>
         ` : html`
           <dom-editor-breadcrumb

@@ -7765,6 +7765,44 @@ describe("DomEditor.execute()", () => {
     finally { vi.useRealTimers() }
   })
 
+  it("returns rewound playback to the newest learner state and follows the growing edge", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
+    const host = editor as any
+    vi.useFakeTimers()
+    try {
+      ;(editor as unknown as {resetLivePlayback(): void}).resetLivePlayback()
+      const startedAt = host.liveStreamStartedAt
+      host.liveSteps = [
+        {id: "first", time: startedAt + 1000, learner: "learner-ada", cursor: {x: 0.1, y: 0.2}},
+        {id: "latest", time: startedAt + 4000, learner: "learner-ada", cursor: {x: 0.8, y: 0.9}},
+      ]
+      await vi.advanceTimersByTimeAsync(4000)
+      await editor.updateComplete
+      controls.dispatchEvent(new Event("live-session-pause"))
+      controls.dispatchEvent(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      expect(host.liveStreamStep).toBe(1)
+
+      controls.dispatchEvent(new Event("live-session-return-to-live"))
+      await editor.updateComplete
+      expect(controls.playing).toBe(true)
+      expect(controls.currentTime).toBe(4)
+      expect(host.liveStreamStep).toBe(2)
+      expect(host.liveStatesAtStep.get("learner-ada")?.cursor).toEqual({x: 0.8, y: 0.9})
+
+      host.liveSteps.push({id: "newest", time: startedAt + 5000, learner: "learner-ada", cursor: {x: 0.4, y: 0.6}})
+      await vi.advanceTimersByTimeAsync(1000)
+      await editor.updateComplete
+      expect(controls.currentTime).toBe(5)
+      expect(host.liveStreamStep).toBe(3)
+      expect(host.liveStatesAtStep.get("learner-ada")?.cursor).toEqual({x: 0.4, y: 0.6})
+    }
+    finally { editor.remove(); vi.useRealTimers() }
+  })
+
   it("keeps every learner in the live drawer and filters their combined visualization", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
