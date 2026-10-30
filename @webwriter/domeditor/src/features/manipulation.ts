@@ -10,6 +10,7 @@ import { DocumentListenerMap, EditorFeature } from "."
 import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
 import {isParagraphContent} from "../utility"
+import {createAnchorPositioner} from "../utility"
 import {
   isBlockFormatTag,
   type BlockFormatTag,
@@ -210,6 +211,7 @@ export class ManipulationFeature extends EditorFeature {
   private dragTarget: Element | null = null
   private dragSurface: HTMLDivElement | null = null
   private dragFrame: number | null = null
+  private anchors = createAnchorPositioner()
   private dragResizeObserver: ResizeObserver | null = null
   private dragMutationObserver: MutationObserver | null = null
   private readonly dragGeometryCleanup: (() => void)[] = []
@@ -329,9 +331,24 @@ export class ManipulationFeature extends EditorFeature {
     const element = this.dragTarget
     const surface = this.dragSurface
     if(!element || !surface || this.dragFrame !== null) return
+    if(!element.isConnected || !getDocumentRoot().contains(element)) {
+      if(this.nodeDrag) surface.style.display = "none"
+      else this.endNodeDrag()
+      return
+    }
+    if(!this.editor.features.transformation.boxTransformed(element) && !this.hasActiveNodeDragAnimation(element)) {
+      for(const property of ["left", "top", "width", "height"]) surface.style.removeProperty(property)
+      this.anchors.bind(surface, element)
+      return
+    }
+    this.anchors.release(surface)
     this.dragFrame = requestAnimationFrame(() => {
       this.dragFrame = null
       if(element !== this.dragTarget || surface !== this.dragSurface) return
+      if(!this.editor.features.transformation.boxTransformed(element) && !this.hasActiveNodeDragAnimation(element)) {
+        this.scheduleNodeDragPosition()
+        return
+      }
       if(!element.isConnected || !getDocumentRoot().contains(element)) {
         if(this.nodeDrag) surface.style.display = "none"
         else this.endNodeDrag()
@@ -361,6 +378,7 @@ export class ManipulationFeature extends EditorFeature {
     this.dragMutationObserver?.disconnect()
     this.dragMutationObserver = null
     this.dragGeometryCleanup.splice(0).forEach(cleanup => cleanup())
+    if(this.dragSurface) this.anchors.release(this.dragSurface)
     this.dragSurface?.remove()
     this.dragSurface = null
     this.dragTarget = null
@@ -405,6 +423,7 @@ export class ManipulationFeature extends EditorFeature {
     this.insertionGeneration++
     this.hoverInsertion(false)
     this.endNodeDrag(false)
+    this.anchors.destroy()
     super.disable()
   }
 
@@ -1022,10 +1041,18 @@ export class ManipulationFeature extends EditorFeature {
         overlay.setAttribute("aria-hidden", "true")
         this.editor.addAppendix(overlay)
       }
-      const rect = target.getBoundingClientRect()
-      Object.assign(overlay.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      if(this.editor.features.transformation.boxTransformed(target)) {
+        this.anchors.release(overlay)
+        const rect = target.getBoundingClientRect()
+        Object.assign(overlay.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      }
+      else {
+        for(const property of ["left", "top", "width", "height"]) overlay.style.removeProperty(property)
+        this.anchors.bind(overlay, target)
+      }
     }
     else {
+      if(overlay) this.anchors.release(overlay)
       overlay?.remove()
       this.clearFloatDropPreview("insertion")
     }

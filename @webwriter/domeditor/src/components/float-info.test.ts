@@ -41,45 +41,31 @@ it("keeps the clicked explanation for five seconds and dismisses on other intera
   expect(vi.getTimerCount()).toBe(0)
 })
 
-it("opens breadcrumb explanations to the right, vertically centered on the icon", async () => {
+it("opens breadcrumb explanations with CSS anchors and releases anchor markers on hide", async () => {
   const info = new FloatInfo()
   info.placement = "right"
   document.body.append(info)
   await info.updateComplete
   const popup = info.shadowRoot!.querySelector<HTMLElement>(".popup")!
-  vi.spyOn(info, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 30, 12, 12))
-  vi.spyOn(popup, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 280, 34))
   info.shadowRoot!.querySelector(".info")!.dispatchEvent(new MouseEvent("mouseenter"))
   await info.updateComplete
-  expect(popup.style.left).toBe("120px")
-  expect(popup.style.top).toBe("19px")
-  expect(popup.classList.contains("above")).toBe(false)
+  expect(popup.style.left).toBe("")
+  expect(popup.style.top).toBe("")
   expect(getComputedStyle(popup).width).toBe("max-content")
-  expect(popup.classList.contains("right-side")).toBe(true)
+  info.hide()
+  expect(popup.className).not.toMatch(/◆anchor-/)
 })
 
 
-it.each([
-  {viewport: 800, iconLeft: 770, width: 280, expectedLeft: 482, leftSide: true},
-  {viewport: 400, iconLeft: 190, width: 280, expectedLeft: 112, leftSide: false},
-  {viewport: 240, iconLeft: 210, width: 224, expectedLeft: 8, leftSide: false},
-])("keeps the breadcrumb bubble inside a $viewport px viewport", async ({viewport, iconLeft, width, expectedLeft, leftSide}) => {
-  const viewportSpy = vi.spyOn(window, "innerWidth", "get").mockReturnValue(viewport)
-  try {
-    const info = new FloatInfo()
-    info.placement = "right"
-    document.body.append(info)
-    await info.updateComplete
-    const popup = info.shadowRoot!.querySelector<HTMLElement>(".popup")!
-    vi.spyOn(info, "getBoundingClientRect").mockReturnValue(new DOMRect(iconLeft, 30, 12, 12))
-    vi.spyOn(popup, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, width, 34))
-    info.shadowRoot!.querySelector(".info")!.dispatchEvent(new MouseEvent("mouseenter"))
-    await info.updateComplete
-    expect(Number.parseFloat(popup.style.left)).toBe(expectedLeft)
-    expect(expectedLeft).toBeGreaterThanOrEqual(8)
-    expect(expectedLeft + width).toBeLessThanOrEqual(viewport - 8)
-    expect(popup.classList.contains("left-side")).toBe(leftSide)
-    expect(popup.classList.contains("right-side")).toBe(false)
-  }
-  finally {viewportSpy.mockRestore()}
+it("does not assign pixel coordinates when a side placement is requested", async () => {
+  const info = new FloatInfo()
+  info.placement = "right"
+  document.body.append(info)
+  await info.updateComplete
+  const popup = info.shadowRoot!.querySelector<HTMLElement>(".popup")!
+  info.shadowRoot!.querySelector(".info")!.dispatchEvent(new MouseEvent("mouseenter"))
+  await info.updateComplete
+  expect(popup.style.left).toBe("")
+  expect(popup.style.top).toBe("")
+  expect(getComputedStyle(popup).width).toBe("max-content")
 })

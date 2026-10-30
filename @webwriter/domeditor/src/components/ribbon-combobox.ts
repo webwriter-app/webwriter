@@ -1,6 +1,7 @@
 import {LitElement, css, html, nothing} from "lit"
 import type {StyleMarkOption} from "../marks"
-import {fixedPopupPosition} from "./popup-position"
+import {popupAnchorCSS} from "./popup-position"
+import {createAnchorPositioner} from "../anchor-positioning.js"
 import {colorPaletteStyles, renderColorPalette} from "./color-palette"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
@@ -238,7 +239,7 @@ export class RibbonCombobox extends LitElement {
   value = ""
   variant: "text" | "color" = "text"
   private open = false
-  private listboxPosition = {left: 0, top: 0, width: 0}
+  private anchorPositioner = createAnchorPositioner(document)
 
   private readonly handleDocumentPointerDown = (event: PointerEvent) => {
     if(this.open && !event.composedPath().includes(this)) this.close()
@@ -259,6 +260,7 @@ export class RibbonCombobox extends LitElement {
   }
 
   disconnectedCallback() {
+    this.anchorPositioner.destroy()
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
     document.removeEventListener("keydown", this.handleDocumentKeydown)
     super.disconnectedCallback()
@@ -266,6 +268,8 @@ export class RibbonCombobox extends LitElement {
 
   close() {
     this.open = false
+    const listbox = this.renderRoot?.querySelector<HTMLElement>(".listbox")
+    if(listbox) this.anchorPositioner.release(listbox)
     this.renderRoot?.querySelector(".combobox")?.removeAttribute("data-connected")
     this.renderRoot?.querySelector("font-combobox")?.close()
     this.renderRoot?.querySelector("font-size-combobox")?.close()
@@ -281,19 +285,13 @@ export class RibbonCombobox extends LitElement {
   private async positionListbox() {
     await this.updateComplete
     if(!this.open) return
-    const trigger = this.getBoundingClientRect()
+    const trigger = this.renderRoot.querySelector<HTMLElement>(".combobox")
     const listbox = this.renderRoot.querySelector<HTMLElement>(".listbox")
-    const listboxHeight = listbox?.getBoundingClientRect().height ?? 0
-    const width = this.variant === "color"? 0: Math.max(trigger.width, 144)
-    const effectiveWidth = width || listbox?.getBoundingClientRect().width || 154
-    this.listboxPosition = {
-      ...fixedPopupPosition(trigger, {width: effectiveWidth, height: listboxHeight}, {
-        width: window.innerWidth,
-        height: window.innerHeight,
-      }),
-      width,
+    if(trigger && listbox) {
+      this.anchorPositioner.bind(listbox, trigger,
+        `${popupAnchorCSS()} min-width:min(max(anchor-size(width), 144px), calc(100vw - 16px));`)
+      this.anchorPositioner.refresh()
     }
-    this.requestUpdate()
   }
 
   private selectedValues() {
@@ -414,11 +412,6 @@ export class RibbonCombobox extends LitElement {
       : firstSelected.label
     const selectionCount = selected.length > 1? selected.length - 1: 0
     const listboxId = `${this.name || "ribbon"}-options`
-    const style = [
-      `left: ${this.listboxPosition.left}px`,
-      `top: ${this.listboxPosition.top}px`,
-      this.listboxPosition.width? `min-width: ${this.listboxPosition.width}px`: "",
-    ].filter(Boolean).join("; ")
     const options = this.open && this.variant !== "color" ? this.options.map(option => html`
       <button
         class="option"
@@ -465,7 +458,6 @@ export class RibbonCombobox extends LitElement {
           role=${this.variant === "color" ? "dialog" : "listbox"}
           aria-label=${this.label}
           aria-multiselectable=${this.multiple ? "true" : nothing}
-          style=${style}
           @keydown=${this.handleOptionKeydown}
         >
           ${this.variant === "color" ? renderColorPalette(this.label, this.value, (event, value) => {

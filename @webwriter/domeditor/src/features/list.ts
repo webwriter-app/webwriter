@@ -1,6 +1,6 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ElementSelectionType, ListSelectionState, ListType} from "../editor-bridge"
-import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isCaretAtBoundary, isElement, isText, modifierKeyDown, removeEditorMarker, setPart} from "../utility"
+import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isCaretAtBoundary, isElement, isText, modifierKeyDown, removeEditorMarker, setPart, createAnchorPositioner} from "../utility"
 import {isDocumentRoot} from "../document-template"
 import {listMarkerImageProperty} from "../element-styles"
 
@@ -21,22 +21,24 @@ type VirtualListPoint = {
 export class ListFeature extends EditorFeature {
   private readonly markerClass = "◆virtual-list-anchor"
   private readonly selectedListClass = "◆virtual-list-selected"
+  private anchorPositioner: ReturnType<typeof createAnchorPositioner> | null = null
+  private virtualUsesCoordinates = false
 
   enable() {
     if(this.isEnabled) return
     super.enable()
-    window.addEventListener("resize", this.syncVirtualMarker)
-    window.addEventListener("scroll", this.syncVirtualMarker, true)
+    this.anchorPositioner = createAnchorPositioner(document)
     window.addEventListener("blur", this.handleWindowBlur)
     this.syncVirtualMarker()
   }
 
   disable() {
     if(!this.isEnabled) return
-    window.removeEventListener("resize", this.syncVirtualMarker)
-    window.removeEventListener("scroll", this.syncVirtualMarker, true)
     window.removeEventListener("blur", this.handleWindowBlur)
     this.clearVirtualMarker()
+    this.updateCoordinateListeners(false)
+    this.anchorPositioner?.destroy()
+    this.anchorPositioner = null
     super.disable()
   }
 
@@ -166,6 +168,23 @@ export class ListFeature extends EditorFeature {
     this.clearVirtualMarker()
   }
 
+  private readonly handleCoordinateViewportChange = () => {
+    if(this.virtualUsesCoordinates) this.syncVirtualMarker()
+  }
+
+  private updateCoordinateListeners(enabled: boolean) {
+    if(this.virtualUsesCoordinates === enabled) return
+    this.virtualUsesCoordinates = enabled
+    if(enabled) {
+      window.addEventListener("resize", this.handleCoordinateViewportChange)
+      window.addEventListener("scroll", this.handleCoordinateViewportChange, true)
+    }
+    else {
+      window.removeEventListener("resize", this.handleCoordinateViewportChange)
+      window.removeEventListener("scroll", this.handleCoordinateViewportChange, true)
+    }
+  }
+
   private get marker() {
     let marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
     if(marker && marker.localName !== "li") {
@@ -194,10 +213,11 @@ export class ListFeature extends EditorFeature {
   }
 
   private clearVirtualMarker() {
+    const marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
+    if(marker) this.anchorPositioner?.release(marker)
     document.querySelectorAll(`.${this.markerClass}, .${this.selectedListClass}`).forEach(element => {
       removeEditorMarker(element, this.markerClass, this.selectedListClass)
     })
-    const marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
     if(marker) {
       setPart(marker, "virtual-list-item-hidden")
       ;(["ul", "ol", "dl", "menu"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, false))
@@ -222,7 +242,10 @@ export class ListFeature extends EditorFeature {
         listMarkerImageProperty,
       ].forEach(property => marker.style.removeProperty(property))
       marker.removeAttribute("value")
+      marker.style.removeProperty("left")
+      marker.style.removeProperty("top")
     }
+    this.updateCoordinateListeners(false)
   }
 
   /** Makes the shadow-DOM preview use the same computed marker as the real
@@ -352,19 +375,47 @@ export class ListFeature extends EditorFeature {
     marker.style.listStyleImage = "none"
     this.syncVirtualMarkerAppearance(marker, point, previous)
 
-    const anchorRect = anchor.getBoundingClientRect()
-    const listRect = list.getBoundingClientRect()
-    const lineHeight = Number.parseFloat(getComputedStyle(anchor).lineHeight) || 20
     const listStyle = getComputedStyle(list)
-    const listPadding = Number.parseFloat(listStyle.paddingInlineStart || listStyle.paddingLeft) || 40
-    const laidOutPrevious = previous && (anchorRect.width || anchorRect.height)
-    const contentLeft = list.matches("dl")
-      ? listRect.left + (nextType === "dd" ? 40 : 0)
-      : laidOutPrevious ? anchorRect.left : listRect.left + listPadding
-    marker.style.left = `${fixedClientX(Math.max(0, contentLeft))}px`
-    marker.style.top = `${Math.max(0, previous ? anchorRect.bottom : listRect.top)}px`
+    const anchorStyle = getComputedStyle(anchor)
+    const hasAnchorBox = anchorStyle.display !== "none" && anchorStyle.display !== "contents"
+      && Boolean(previous?.getClientRects().length)
+      && !this.ancestors(anchor.parentElement ?? list).some(parent => getComputedStyle(parent).display === "none")
+    const useListAnchor = !previous || !hasAnchorBox
+    const anchorHasBox = useListAnchor ? list : anchor
+    const lineHeight = Number.parseFloat(getComputedStyle(anchorHasBox).lineHeight) || 20
+    const transformed = this.editor.features.transformation.boxTransformed(list)
+      || this.editor.features.transformation.boxTransformed(anchorHasBox)
+    this.updateCoordinateListeners(transformed)
+    if(transformed) {
+      const anchorRect = anchorHasBox.getBoundingClientRect()
+      const listRect = list.getBoundingClientRect()
+      const listPadding = Number.parseFloat(listStyle.paddingInlineStart || listStyle.paddingLeft) || 40
+      const contentLeft = list.matches("dl")
+        ? listRect.left + (nextType === "dd" ? 40 : 0)
+        : useListAnchor ? listRect.left + listPadding : anchorRect.left
+      marker.style.left = `${fixedClientX(Math.max(0, contentLeft))}px`
+      marker.style.top = `${Math.max(0, useListAnchor ? listRect.top : anchorRect.bottom)}px`
+      this.anchorPositioner?.release(marker)
+    }
+    else {
+      marker.style.removeProperty("left")
+      marker.style.removeProperty("top")
+      const previousAnchor = Boolean(previous && !useListAnchor)
+      const leftOffset = list.matches("dl")
+        ? nextType === "dd" ? "40px" : "0px"
+        : previousAnchor ? "0px" : listStyle.paddingInlineStart || listStyle.paddingLeft || "40px"
+      const css = `position:fixed;left:calc(anchor(left) + ${leftOffset});top:anchor(${previousAnchor ? "bottom" : "top"});position-visibility:anchors-visible;`
+      this.anchorPositioner?.bind(marker, anchorHasBox, css)
+      this.anchorPositioner?.refresh()
+    }
     marker.style.minHeight = `${lineHeight}px`
     marker.style.setProperty("--virtual-list-line-height", `${lineHeight}px`)
+  }
+
+  private ancestors(element: Element): Element[] {
+    const result: Element[] = []
+    for(let current: Element | null = element; current; current = current.parentElement) result.push(current)
+    return result
   }
 
   private directItems(list: Element) {

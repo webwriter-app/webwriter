@@ -151,12 +151,16 @@ describe("breadcrumb outline popup", () => {
     breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>(".separator-trigger")!.click()
     await breadcrumb.updateComplete
     const menu = breadcrumb.shadowRoot!.querySelector<RibbonMenu>("#document-tree")!
+    await Promise.resolve()
+    expect(menu.style.left).toBe("")
+    expect(menu.style.top).toBe("")
     const target = menu.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="outline:1"]')!
     target.click()
     await breadcrumb.updateComplete
     expect(selected).toHaveBeenCalledWith(expect.objectContaining({detail: expect.objectContaining({path: [1], name: "Other"})}))
     expect(breadcrumb.treeOpen).toBe(false)
     expect(breadcrumb.shadowRoot!.querySelector("#document-tree")).toBeNull()
+    expect(menu.className).not.toMatch(/◆anchor-/)
   })
 
   it("closes when the native popover reports a closed toggle", async () => {

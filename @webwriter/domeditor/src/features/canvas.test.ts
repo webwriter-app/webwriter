@@ -85,9 +85,10 @@ describe("canvas document layout", () => {
     const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
     mockGeometry(frame, makeRect(30, 40, 500, 300))
     editor.features.canvas.refresh()
-    const outline = editor.appendix.querySelector<HTMLElement>("[part=canvas-starting-view]")!
-    expect(outline.style.left).toBe("30px")
-    expect(outline.style.width).toBe("500px")
+    const outline = editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!
+    expect(outline.style.left).toBe("")
+    expect(outline.style.width).toBe("")
+    expect(frame.className).toContain("◆anchor-target-")
     const label = outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!
     expect(label.textContent).toBe("STARTING VIEW")
     expect(label.classList.contains("inside")).toBe(false)
@@ -121,12 +122,26 @@ describe("canvas document layout", () => {
     const replacement = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
     mockGeometry(replacement, makeRect(-120, 80, 400, 220))
     await settle()
-    const outline = editor.appendix.querySelector<HTMLElement>("[part=canvas-starting-view]")!
-    expect(outline.style.left).toBe("-120px")
-    const html = replacement.outerHTML
+    const outline = editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!
+    expect(outline.style.left).toBe("")
+    expect(replacement.className).toContain("◆anchor-target-")
+    const html = replacement.outerHTML.replace(/ ◆anchor-target-\d+/g, "")
     editor.features.canvas.disable()
     expect(outline.isConnected).toBe(false)
     expect(replacement.outerHTML).toBe(html)
+  })
+
+  it("uses measured starting-view geometry while the canvas camera transforms the frame", () => {
+    editor.features.canvas.convert("canvas")
+    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
+    const frame = document.querySelector<HTMLElement>(".ww-canvas-starting-view")!
+    mockGeometry(frame, makeRect(-120, 80, 400, 220))
+    vi.spyOn(editor.features.transformation, "boxTransformed").mockReturnValue(true)
+    editor.features.canvas.refresh()
+    const outline = editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!
+    expect([outline.style.left, outline.style.top, outline.style.width, outline.style.height])
+      .toEqual(["-120px", "80px", "400px", "220px"])
+    expect(frame.className).not.toContain("◆anchor-target-")
   })
 
   it("rejects saving the starting view outside Canvas or while editing is locked", () => {
@@ -204,7 +219,7 @@ describe("canvas document layout", () => {
       Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client")
       await settle()
       expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
-      expect(editor.appendix.querySelector<HTMLElement>("[part=canvas-starting-view]")!.hidden).toBe(true)
+      expect(editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!.hidden).toBe(true)
       expect(slot.style.transform).toBe(camera)
     }
     finally { remote.destroy() }

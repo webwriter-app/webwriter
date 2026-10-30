@@ -85,6 +85,30 @@ function captureNode(target: Element) {
   editor.features.selection.captureElement(target)
 }
 
+it("anchors ordinary flow frames and retains measured geometry during transformation", () => {
+  const target = targetElement()
+  mockRect(target)
+  selectNode(target)
+  feature.updateInfo()
+  expect(feature.overlay.style.left).toBe("")
+  expect(feature.overlay.style.top).toBe("")
+  expect(feature.overlay.getAttribute("part")).toContain("anchor-control-")
+  vi.mocked(target.getBoundingClientRect).mockReturnValue(new DOMRect(100, 10, 100, 50))
+  document.dispatchEvent(new Event("scroll"))
+  expect(feature.overlay.getAttribute("part")).toContain("transform-overlay-at-top")
+  expect(feature.overlay.style.top).toBe("")
+  target.style.setProperty("rotate", "12deg")
+  feature.updateInfo()
+  expect(feature.overlay.style.transform).toContain("matrix(")
+  expect(feature.overlay.style.left).not.toBe("")
+  target.style.removeProperty("rotate")
+  feature.updateInfo()
+  expect(feature.overlay.style.left).toBe("")
+  const binding = feature.overlay.getAttribute("part")!.split(/\s+/).find(value => value.startsWith("anchor-control-"))!
+  feature.clearTransform()
+  expect(feature.overlay.getAttribute("part")).not.toContain(binding)
+})
+
 it("hides transforms for a zero-area widget host and recovers when its live box returns", () => {
   const target = targetElement("self-positioned-widget")
   target.attachShadow({mode: "open"}).innerHTML = '<div style="position:absolute;width:200px;height:100px">Popup</div>'
@@ -1868,8 +1892,11 @@ describe("transform controls and geometry", () => {
 
       captureNode(target)
 
-      expect(feature.overlay.style.width).toBe("2000px")
-      expect(feature.overlay.style.height).toBe("96px")
+      expect(feature.boxGeometry(target).styles.width).toBe("2000px")
+      expect(feature.boxGeometry(target).styles.height).toBe("96px")
+      expect(feature.overlay.style.width).toBe("")
+      expect(feature.overlay.style.height).toBe("")
+      expect(feature.overlay.getAttribute("part")).toContain("anchor-control-")
       expect(target.getAttribute("style")).toBe("width: 100%; height: auto;")
       expect(target.textContent).toBe("authored")
       expect(target.parentElement).toBe(document.body)
@@ -2045,11 +2072,14 @@ describe("transform controls and geometry", () => {
 
   function expectAnchorAt(left: number, top: number) {
     const overlay = feature.overlay
-    const matrix = new DOMMatrix(overlay.style.transform)
-    const x = parseFloat(feature.anchor.style.left) - parseFloat(overlay.style.width) / 2
-    const y = parseFloat(feature.anchor.style.top) - parseFloat(overlay.style.height) / 2
-    expect(parseFloat(overlay.style.left) + parseFloat(overlay.style.width) / 2 + matrix.a * x + matrix.c * y).toBeCloseTo(left)
-    expect(parseFloat(overlay.style.top) + parseFloat(overlay.style.height) / 2 + matrix.b * x + matrix.d * y).toBeCloseTo(top)
+    // Happy DOM cannot resolve anchor() or anchor-size(). The live target box
+    // supplies that frame here; the native fixture checks the rendered frame.
+    const geometry = overlay.style.width ? overlay.style : feature.boxGeometry(feature.target!).styles
+    const matrix = new DOMMatrix(geometry.transform)
+    const x = parseFloat(feature.anchor.style.left) - parseFloat(geometry.width) / 2
+    const y = parseFloat(feature.anchor.style.top) - parseFloat(geometry.height) / 2
+    expect(parseFloat(geometry.left) + parseFloat(geometry.width) / 2 + matrix.a * x + matrix.c * y).toBeCloseTo(left)
+    expect(parseFloat(geometry.top) + parseFloat(geometry.height) / 2 + matrix.b * x + matrix.d * y).toBeCloseTo(top)
     const orientation = matrix.multiply(new DOMMatrix(feature.anchor.style.transform))
     expect(orientation.a).toBeCloseTo(1)
     expect(orientation.b).toBeCloseTo(0)

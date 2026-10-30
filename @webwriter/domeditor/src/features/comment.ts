@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import {fixedClientX, isAppendixInteraction, isAtomicEditingElement, isWidgetShadowInteraction, setPart} from "../utility"
+import {createAnchorPositioner, isAtomicEditingElement, setPart} from "../utility"
 import {commentReviewRequestEvent, type CommentState} from "../editor-bridge"
 import {documentLayoutMode} from "../document-layout"
 import {isAuthoredMutation} from "../editor-artifacts"
@@ -158,18 +158,11 @@ export class CommentFeature extends EditorFeature {
   private highlighting = true
   private bubbleContainer: HTMLElement | null = null
   private bubbles = new Map<Element, {button: HTMLButtonElement, id: string}>()
-  private resizeObserver: ResizeObserver | null = null
-  private bubbleFrame: number | null = null
+  private anchorPositioner: ReturnType<typeof createAnchorPositioner> | null = null
   private activeThreadId: string | null = null
   activeListeners = {
     selectionchange: () => this.renderCommentUI(),
   }
-  captureListeners = {
-    scroll: (event: Event) => {
-      if(!isAppendixInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)) this.scheduleBubblePosition()
-    },
-  }
-
   actions = {
     selectComment: ({id}: {type: "selectComment", id: string}) => this.selectComment(id),
     addCommentReply: ({id, text}: {type: "addCommentReply", id: string, text: string}) => this.addReply(id, text),
@@ -207,12 +200,7 @@ export class CommentFeature extends EditorFeature {
         this.observer = null
       }
     }
-    const FrameResizeObserver = document.defaultView?.ResizeObserver
-    if(FrameResizeObserver) {
-      this.resizeObserver = new FrameResizeObserver(() => this.scheduleBubblePosition())
-      this.resizeObserver.observe(document.body)
-    }
-    window.addEventListener("resize", this.scheduleBubblePosition)
+    this.anchorPositioner = createAnchorPositioner(document)
     this.renderCommentUI()
   }
 
@@ -221,11 +209,8 @@ export class CommentFeature extends EditorFeature {
     this.observer?.disconnect()
     this.observer = null
     this.cachedMarkers = null
-    window.removeEventListener("resize", this.scheduleBubblePosition)
-    this.resizeObserver?.disconnect()
-    this.resizeObserver = null
-    if(this.bubbleFrame !== null) cancelAnimationFrame(this.bubbleFrame)
-    this.bubbleFrame = null
+    this.anchorPositioner?.destroy()
+    this.anchorPositioner = null
     this.bubbles.clear()
     this.bubbleContainer?.remove()
     this.bubbleContainer = null
@@ -532,8 +517,8 @@ export class CommentFeature extends EditorFeature {
     }
     for(const [element, {button}] of this.bubbles) {
       if(elements.has(element)) continue
+      this.anchorPositioner?.release(button)
       button.remove()
-      this.resizeObserver?.unobserve(element)
       this.bubbles.delete(element)
     }
     if(elements.size && !this.bubbleContainer) {
@@ -558,48 +543,32 @@ export class CommentFeature extends EditorFeature {
         })
         this.bubbleContainer!.append(button)
         this.bubbles.set(element, bubble)
-        this.resizeObserver?.observe(element)
       }
       bubble.id = group[0].id
       bubble.button.title = group.map(comment => comment.text).join("\n")
       bubble.button.setAttribute("aria-label", `Show ${group.length === 1 ? "comment" : `${group.length} comments`}`)
       bubble.button.setAttribute("aria-pressed", String(group.some(comment => comment.id === this.activeThreadId)))
       setPart(bubble.button, "comment-bubble-active", group.some(comment => comment.id === this.activeThreadId))
+      this.anchorPositioner?.bind(bubble.button, element, this.bubbleAnchorCSS(element))
     }
-    this.positionBubbles()
+    this.anchorPositioner?.refresh()
   }
 
-  private scheduleBubblePosition = () => {
-    if(!this.isEnabled || !this.bubbles.size || this.bubbleFrame !== null) return
-    this.bubbleFrame = requestAnimationFrame(() => {
-      this.bubbleFrame = null
-      this.positionBubbles()
-    })
-  }
-
-  private positionBubbles() {
+  private bubbleAnchorCSS(element: Element) {
     const documentLayout = documentLayoutMode() === "document"
-    // The page gutter is the smallest margin, even when a float lane or a
-    // narrower element leaves more room. Resolve its CSS length in the appendix.
-    const gutter = this.bubbleContainer?.getBoundingClientRect().width || 16
-    for(const [element, {button}] of this.bubbles) {
-      const rect = element.getBoundingClientRect()
-      button.hidden = !element.isConnected || !rect.width || !rect.height
-        || rect.bottom <= 0 || rect.top >= window.innerHeight
-        || element.checkVisibility?.({visibilityProperty: true}) === false
-      setPart(button, "comment-bubble-hidden", button.hidden)
-      if(button.hidden) continue
-      let left = false
-      if(documentLayout) {
-        for(let ancestor: Element | null = element; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
-          const side = getComputedStyle(ancestor).float
-          if(side && side !== "none") { left = side === "left"; break }
-        }
+    let left = false
+    if(documentLayout) {
+      for(let ancestor: Element | null = element; ancestor && ancestor !== document.body; ancestor = ancestor.parentElement) {
+        const side = getComputedStyle(ancestor).float
+        if(side && side !== "none") { left = side === "left"; break }
       }
-      const gap = documentLayout ? Math.max(0, (gutter - 16) / 2) : 4
-      button.style.left = `${fixedClientX(left ? rect.left - gap - 16 : rect.right + gap)}px`
-      button.style.top = `${rect.top}px`
     }
+    const gap = documentLayout
+      ? "max(0px, calc((var(--ww-page-gutter, 1rem) - 16px) / 2))"
+      : "4px"
+    return left
+      ? `position-visibility:anchors-visible;right:calc(anchor(left) + ${gap});top:anchor(top);`
+      : `position-visibility:anchors-visible;left:anchor(right);top:anchor(top);translate:${gap} 0;`
   }
 
   private renderCommentUI() {

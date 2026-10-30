@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach, expect, it, vi} from "vitest"
 import {RibbonCombobox} from "./ribbon-combobox"
+import {colorPaletteStyles} from "./color-palette"
 
 afterEach(() => document.body.replaceChildren())
 
@@ -35,6 +36,24 @@ it.each(["color", "background-color"])("does not select black for default or tra
   await combo.updateComplete
   expect(combo.value).toBe("")
   expect(combo.shadowRoot!.querySelector('.color-swatch[aria-pressed="true"]')).toBeNull()
+})
+
+it("uses native anchor positioning for text options and releases it on close", async () => {
+  const combo = new RibbonCombobox()
+  combo.options = [{label: "One", value: "one"}]
+  document.body.append(combo)
+  await combo.updateComplete
+  combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+  await combo.updateComplete
+
+  const listbox = combo.shadowRoot!.querySelector<HTMLElement>(".listbox")!
+  expect(listbox.style.left).toBe("")
+  expect(listbox.style.top).toBe("")
+  expect(listbox.style.minWidth).toBe("")
+
+  combo.close()
+  await combo.updateComplete
+  expect(combo.shadowRoot!.querySelector(".listbox")).toBeNull()
 })
 
 it("can close before its first render and reopen without changing its value", async () => {
@@ -75,15 +94,14 @@ it.each(["color", "background-color"])("picks a custom %s without committing whe
   const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
   const showPicker = vi.fn()
   Object.defineProperty(input, "showPicker", {value: showPicker})
-  vi.spyOn(combo.shadowRoot!.querySelector<HTMLElement>(".listbox")!, "getBoundingClientRect")
-    .mockReturnValue(new DOMRect(20, 30, 160, 100))
-  vi.spyOn(custom, "getBoundingClientRect").mockReturnValue(new DOMRect(24, 100, 152, 26))
   expect(input.value).toBe("#123456")
   expect(custom.querySelector("svg")).not.toBeNull()
   custom.click()
   expect(showPicker).toHaveBeenCalledOnce()
-  expect(input.style.left).toBe("184px")
-  expect(input.style.top).toBe("99px")
+  expect(input.style.left).toBe("")
+  expect(input.style.top).toBe("")
+  expect(colorPaletteStyles.toString()).toContain("anchor(--color-palette right)")
+  expect(colorPaletteStyles.toString()).toContain("position-anchor: --color-option")
   expect(selection.mock.calls[0][0].detail.input).toBe(input)
   expect(changes).not.toHaveBeenCalled()
   expect(combo.value).toBe("rgb(18, 52, 86)")

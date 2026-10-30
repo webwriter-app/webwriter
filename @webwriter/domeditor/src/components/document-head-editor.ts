@@ -1,6 +1,7 @@
 import {captionNumberStyles, defaultCaptionEnumeration, isCaptionEnumeration, type CaptionSeries} from "../caption-enumeration"
 import {LitElement, css, html, nothing} from "lit"
-import {fixedPopupPosition} from "./popup-position"
+import {popupAnchorCSS} from "./popup-position"
+import {createAnchorPositioner} from "../anchor-positioning.js"
 import {
   WEBWRITER_GENERATOR,
   creativeCommonsLicenses,
@@ -244,7 +245,7 @@ class DocumentThemePicker extends LitElement {
 
   value = ""
   private open = false
-  private position = {left: 8, top: 8}
+  private anchorPositioner = createAnchorPositioner(document)
   private readonly listboxId = `document-theme-options-${++themePickerInstanceCount}`
   private readonly placeholderPalette = ["#334155", "#3977c7", "#dcecff", "#f8fafc"]
 
@@ -265,6 +266,7 @@ class DocumentThemePicker extends LitElement {
   }
 
   disconnectedCallback() {
+    this.anchorPositioner.destroy()
     document.removeEventListener("pointerdown", this.documentPointerDown)
     document.removeEventListener("keydown", this.documentKeydown)
     super.disconnectedCallback()
@@ -272,23 +274,20 @@ class DocumentThemePicker extends LitElement {
 
   close() {
     this.open = false
+    const listbox = this.renderRoot?.querySelector<HTMLElement>(".listbox")
+    if(listbox) this.anchorPositioner.release(listbox)
   }
 
   private async setOpen(open: boolean) {
     this.open = open
-    if(!open) return
+    if(!open) { this.close(); return }
     await this.updateComplete
-    const trigger = this.renderRoot.querySelector<HTMLElement>(".control")?.getBoundingClientRect()
-      ?? this.getBoundingClientRect()
+    const trigger = this.renderRoot.querySelector<HTMLElement>(".control")
     const listbox = this.renderRoot.querySelector<HTMLElement>(".listbox")
-    const bounds = listbox?.getBoundingClientRect()
-    const width = bounds?.width ?? 272
-    const height = bounds?.height ?? 360
-    this.position = fixedPopupPosition(trigger, {width, height}, {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    })
-    this.requestUpdate()
+    if(trigger && listbox) {
+      this.anchorPositioner.bind(listbox, trigger, popupAnchorCSS())
+      this.anchorPositioner.refresh()
+    }
   }
 
   private select(value: string) {
@@ -337,7 +336,6 @@ class DocumentThemePicker extends LitElement {
           class="listbox"
           role="listbox"
           aria-label="Theme options"
-          style=${`left:${this.position.left}px;top:${this.position.top}px`}
         >
           ${options.map(option => html`
             <button

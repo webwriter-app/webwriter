@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, atomicEditingContainer, clearEditorMarkerClasses, createStylesheet, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, setPart} from "../utility"
+import {$, atomicEditingContainer, clearEditorMarkerClasses, createAnchorPositioner, createStylesheet, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, setPart} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {boardClass, boardStyles, documentLayoutMode, isBoardCard, isBoardColumn} from "../document-layout"
 
@@ -12,7 +12,8 @@ export class BoardFeature extends EditorFeature {
   private stylesheet: CSSStyleSheet | null = null
   private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
-  private resizeObserver: ResizeObserver | null = null
+  private anchors = createAnchorPositioner()
+  private measuredTransforms = false
   private frame: number | null = null
   private columnsCache: HTMLElement[] = []
   private cardsCache: HTMLElement[] = []
@@ -383,7 +384,7 @@ export class BoardFeature extends EditorFeature {
       event.preventDefault(); event.stopImmediatePropagation()
       this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(column))
     },
-    scroll: () => { if(this.dropIndicator) this.dropIndicator.hidden = true; this.schedule() },
+    scroll: () => { if(this.dropIndicator) this.dropIndicator.hidden = true; if(this.measuredTransforms) this.schedule() },
     dragover: event => this.dragOver(event),
     drop: event => this.drop(event),
     dragend: event => { if(event.dataTransfer?.types.includes(this.dragType)) this.endDrag() },
@@ -422,7 +423,20 @@ export class BoardFeature extends EditorFeature {
   }
   transformOverlay(target: HTMLElement) { return this.transformOverlays.get(target) ?? null }
 
+  private refreshAnchors() {
+    for(const {button, target} of this.placements) {
+      this.anchors.bind(button, target, undefined, "::after")
+      button.hidden = !this.active || !target.isConnected || !this.editor.allows("insert", target)
+    }
+    for(const [target, overlay] of this.transformOverlays) {
+      if(overlay.matches('[part~="transform-overlay-board-anchored"]')) this.anchors.bind(overlay, target)
+      else this.anchors.release(overlay)
+    }
+    this.anchors.refresh()
+  }
+
   private refreshTransforms() {
+    this.measuredTransforms = false
     const selection = document.getSelection()
     const explicit = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
     const owner = explicit ?? selection?.anchorNode ?? null
@@ -473,9 +487,14 @@ export class BoardFeature extends EditorFeature {
           else this.removeCard(target)
           event.stopPropagation()
         })
-        this.resizeObserver?.observe(target)
       }
-      Object.assign(overlay.style, this.editor.features.transformation.boxGeometry(target).styles)
+      const measured = this.editor.features.transformation.boxTransformed(target)
+      setPart(overlay, "transform-overlay-board-anchored", !measured)
+      if(measured) {
+        this.measuredTransforms = true
+        Object.assign(overlay.style, this.editor.features.transformation.boxGeometry(target).styles)
+      }
+      else for(const property of ["left", "top", "width", "height", "transform"]) overlay.style.removeProperty(property)
       setPart(overlay, "transform-overlay-board-selected", explicit === target)
       setPart(overlay, "transform-overlay-board-hovered", target === hoverTarget)
       overlay.querySelectorAll<HTMLButtonElement>("button").forEach(button => {
@@ -504,10 +523,10 @@ export class BoardFeature extends EditorFeature {
     const locked = this.editor.isEditingLocked
     const permissions = [this.editor.allows("insert", document.body), ...columns.map(column => this.editor.allows("insert", column))]
     const permissionSignature = JSON.stringify(permissions)
-    if(!this.drag && !this.pressedHandle && (this.active && !this.placements.length || allCards.length !== this.cardsCache.length || allCards.some((item, i) => item !== this.cardsCache[i]) || locked !== this.locked || columns.length !== this.columnsCache.length || columns.some((column, i) => column !== this.columnsCache[i]) || permissionSignature !== this.permissionSignature)) {
+    if(!this.drag && !this.pressedHandle && (this.active && !this.placements.length || !this.active && this.placements.length || allCards.length !== this.cardsCache.length || allCards.some((item, i) => item !== this.cardsCache[i]) || locked !== this.locked || columns.length !== this.columnsCache.length || columns.some((column, i) => column !== this.columnsCache[i]) || permissionSignature !== this.permissionSignature)) {
       this.columnsCache = columns; this.cardsCache = allCards; this.locked = locked
       this.permissionSignature = permissionSignature
-      this.controls.replaceChildren(); this.placements = []; this.resizeObserver?.disconnect()
+      this.controls.replaceChildren(); this.placements = []
       const button = (label: string, text: string, target: HTMLElement, position: typeof this.placements[number]["position"], run: () => unknown) => {
         const button = document.createElement("button")
         button.type = "button"; button.title = label; button.setAttribute("aria-label", label); button.textContent = text; button.disabled = locked
@@ -518,40 +537,15 @@ export class BoardFeature extends EditorFeature {
         this.controls!.append(button); this.placements.push({button, target, position})
       }
       columns.forEach((column, i) => {
-        this.resizeObserver?.observe(column)
         button(`Add card to column ${i + 1}`, "+ Add card", column, "add-card", () => this.addCard(column))
       })
-      if(this.active) button("Add column", "+ Add column", columns.at(-1) ?? document.body, "add-column", () => this.addColumn())
+      if(this.active) button("Add column", "+ Add column", document.body, "add-column", () => this.addColumn())
     }
     this.refreshTransforms()
-    for(const {button, target, position} of this.placements) {
-      const rect = target.getBoundingClientRect()
-      const owner = position === "add-column" ? document.body : target
-      const box = owner.getBoundingClientRect(), style = getComputedStyle(owner), placeholder = getComputedStyle(owner, "::after")
-      const height = parseFloat(placeholder.height), width = position === "add-column" ? parseFloat(placeholder.width)
-        : box.width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth) - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-      const left = position === "add-column" ? target === document.body ? box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft) : rect.right + parseFloat(style.columnGap)
-        : rect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft)
-      // A column's minimum height can leave unused space below its flex items.
-      // Follow the last in-flow item rather than anchoring to the column bottom.
-      let cardTop = rect.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop)
-      if(position === "add-card") for(const node of target.childNodes) {
-        if(node instanceof Element) {
-          const childStyle = getComputedStyle(node)
-          if(childStyle.display === "none" || ["absolute", "fixed"].includes(childStyle.position) || !node.getClientRects().length) continue
-          cardTop = node.getBoundingClientRect().bottom + parseFloat(childStyle.marginBottom) + parseFloat(style.rowGap)
-        }
-        else if(node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-          const range = document.createRange(); range.selectNode(node)
-          cardTop = range.getBoundingClientRect().bottom + parseFloat(style.rowGap)
-        }
-      }
-      const top = position === "add-column" ? box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop)
-        : cardTop
-      button.hidden = !this.editor.allows("insert", owner) || !target.isConnected || left + width < 0 || left > window.innerWidth || top + height < 0 || top > window.innerHeight
-      Object.assign(button.style, {left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px`, borderRadius: placeholder.borderRadius})
-    }
+    this.refreshAnchors()
+    if(this.measuredTransforms) this.schedule()
   }
+
   enable() {
     if(this.isEnabled) return
     super.enable()
@@ -567,6 +561,8 @@ export class BoardFeature extends EditorFeature {
       [part=board-actions] {position:fixed;inset:0;z-index:2;pointer-events:none}
       [part=board-actions][hidden], [part=board-actions] button[hidden] {display:none}
       [part=board-actions] button {position:fixed;pointer-events:auto;padding:1rem;border:1px dashed #9299a2;background:transparent;color:#707780;font:13px/1.2 system-ui;cursor:pointer;box-sizing:border-box;user-select:none;-webkit-user-select:none;transition:background-color .12s,border-color .12s,color .12s}
+      [part~=board-add-card] {border-radius:.5rem}
+      [part~=board-add-column] {border-radius:.75rem}
       [part=board-actions] button:hover:enabled {background:#7077800c;border-color:#626972;color:#4e555e}
       [part=board-actions] button:active:enabled {background:#70778020;border-color:#4e555e;color:#343b44}
       [part=board-actions] button:focus-visible {outline:2px solid #3977c7;outline-offset:2px}
@@ -584,23 +580,21 @@ export class BoardFeature extends EditorFeature {
       @media print {body.ww-board::after, body.ww-board > section.ww-board-column:not([is])::after {display:none}}
     `)
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.layoutStylesheet]
-    this.resizeObserver = new ResizeObserver(this.schedule)
     this.observer = new MutationObserver(this.schedule); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
-    window.addEventListener("resize", this.schedule)
     this.refresh()
   }
   disable() {
     const target = this.editor.features.transformation.target
     if(target && (isBoardColumn(target) || isBoardCard(target))) this.editor.features.transformation.clearTransform()
     this.endDrag(); this.dropIndicator?.remove(); this.dropIndicator = null
-    super.disable(); this.observer?.disconnect(); this.observer = null; this.resizeObserver?.disconnect(); this.resizeObserver = null
-    window.removeEventListener("resize", this.schedule)
+    super.disable(); this.observer?.disconnect(); this.observer = null
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null; this.controls?.remove(); this.controls = null
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     this.stylesheet = null; this.columnsCache = []; this.cardsCache = []; this.placements = []
     if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
     this.layoutStylesheet = null
+    this.anchors.destroy(); this.measuredTransforms = false
     for(const overlay of this.transformOverlays.values()) overlay.remove()
     this.transformOverlays.clear()
   }

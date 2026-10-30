@@ -1,7 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {attributionAttributes, createAttributionController, type AttributionController, type AttributionValues} from "../attribution.js"
 import {creativeCommonsLicenses} from "../document-head"
-import {$, atomicEditingContainer, figureSelectionTarget} from "../utility"
+import {$, atomicEditingContainer, createAnchorPositioner, figureSelectionTarget} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {AttributionLicensePicker} from "../components/attribution-license-picker"
 
@@ -25,6 +25,7 @@ export class AttributionFeature extends EditorFeature {
     super.enable()
     this.controller = createAttributionController(document, {
       licenses: creativeCommonsLicenses,
+      anchorFactory: createAnchorPositioner,
       createLicensePicker: input => {
         const picker = new AttributionLicensePicker()
         picker.addEventListener("combobox-change", event => {

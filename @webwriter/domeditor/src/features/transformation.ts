@@ -10,6 +10,8 @@ import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
 import {canvasGridSize, isCanvasStartingView} from "../canvas-viewer.js"
 import type {RelativePosition} from "yjs"
+import {createAnchorPositioner} from "../utility"
+import {isAuthoredMutation} from "../editor-artifacts"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
@@ -89,6 +91,16 @@ export class TransformationFeature extends EditorFeature {
   #movementOverlay: SVGSVGElement | null = null
   #floatValues: readonly FloatSide[] = ["none", "far-left", "far-right"]
   #observer: MutationObserver | null = null
+  #anchors = createAnchorPositioner()
+  #anchored = false
+  #resizeObserver: ResizeObserver | null = null
+  #observedTarget: Element | null = null
+  readonly #refreshGeometry = () => { if(this.target) { this.updateInfo(); this.#scheduleFrame() } }
+  readonly #refreshViewportControls = () => {
+    // The anchored frame follows scrolling natively. Its upright control stems
+    // still switch sides together when their top row crosses the viewport edge.
+    if(this.#anchored && this.target) setPart(this.overlay, "transform-overlay-at-top", this.target.getBoundingClientRect().top < 42)
+  }
   #frame: number | null = null
   #panFrame: number | null = null
   #panEvent: MouseEvent | null = null
@@ -569,6 +581,18 @@ export class TransformationFeature extends EditorFeature {
     return matrix
   }
 
+  /** Whether an appendix frame needs local dimensions and a transform matrix
+   * instead of the anchor's ordinary viewport-aligned border box. */
+  boxTransformed(element: Element) {
+    for(let current: Element | null = element; current; current = renderedParentElement(current)) {
+      if(current.getAnimations?.().some(animation => (animation.playState === "running" || animation.pending)
+        && (animation.effect as KeyframeEffect | null)?.getKeyframes?.().some(frame =>
+          ["transform", "rotate", "scale", "zoom"].some(property => property in frame)))) return true
+    }
+    const matrix = this.#matrix(element)
+    return !matrix.is2D || matrix.a !== 1 || matrix.b !== 0 || matrix.c !== 0 || matrix.d !== 1
+  }
+
   #angle(value: string) {
     const angle = (value || "0").trim().split(/\s+/).at(-1) ?? "0"
     const n = parseFloat(angle) || 0
@@ -690,6 +714,7 @@ export class TransformationFeature extends EditorFeature {
     const target = this.target
     if(!target) { if(this.#target) this.clearTransform(); return }
     if(this.#group.length) {
+      this.#anchors.release(this.overlay); this.#anchored = false
       if(!this.#validGroupSelection()) { this.clearTransform(); return }
       const gesture = this.#gesture
       const rect = gesture?.group ? gesture.rect : this.#groupRect()
@@ -707,6 +732,12 @@ export class TransformationFeature extends EditorFeature {
     }
     const {rect, width, height, matrix, styles} = this.boxGeometry(target)
     const overlay = this.overlay
+    if(this.#observedTarget !== target) {
+      this.#resizeObserver?.disconnect()
+      this.#resizeObserver?.observe(target)
+      this.#resizeObserver?.observe(document.body)
+      this.#observedTarget = target
+    }
     // A custom element can paint an out-of-flow shadow child while its host
     // has no box. Its own controls own that geometry; do not draw at BODY@0.
     if(rect.width <= 0 || rect.height <= 0) {
@@ -716,11 +747,24 @@ export class TransformationFeature extends EditorFeature {
       return
     }
     overlay.removeAttribute("visibility")
-    Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
     this.#positionCropControls(target, width, height, rect, matrix)
     const floats = this.editor.features.selection.floatExclusions(target, rect, styles)
     this.#positionFlowControls(width, height, floats)
-    this.editor.features.selection.positionTransformCaret(target, overlay.style, floats)
+    const media = this.editor.features.media.cropTargetFor(target)
+    const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
+    this.#anchored = !this.#gesture && !this.#isFreeformItem(target) && !this.boxTransformed(target)
+      && !floats.length && !captionedFigureContent(target) && (!crop || crop === "none")
+    if(this.#anchored) {
+      for(const property of ["left", "top", "width", "height", "transform"]) overlay.style.removeProperty(property)
+      this.#anchors.bind(overlay, target)
+      this.#anchors.refresh()
+      this.editor.features.selection.anchorTransformCaret(target)
+    }
+    else {
+      this.#anchors.release(overlay)
+      Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
+      this.editor.features.selection.positionTransformCaret(target, overlay.style, floats)
+    }
     overlay.classList.toggle("◆transform-overlay-narrow", rect.width < 120)
     const centerY = rect.top + rect.height / 2
     const controlRadius = 8 * (Math.abs(matrix.b) + Math.abs(matrix.d))
@@ -847,7 +891,7 @@ export class TransformationFeature extends EditorFeature {
   }
 
   #scheduleFrame() {
-    if(this.#frame !== null || !this.isEnabled || !this.target) return
+    if(this.#frame !== null || !this.isEnabled || !this.target || this.#anchored && !this.#gesture) return
     this.#frame = requestAnimationFrame(() => {
       this.#frame = null
       if(this.#gesture && !this.#validGesture()) return
@@ -1031,6 +1075,8 @@ export class TransformationFeature extends EditorFeature {
     if(mode === "move" && this.#isFreeformItem(target)) {
       this.moveZ(target, true, true)
     }
+    this.updateInfo()
+    this.#scheduleFrame()
     return true
   }
 
@@ -1653,6 +1699,10 @@ export class TransformationFeature extends EditorFeature {
 
   clearTransform() {
     this.#finish(true)
+    const frame = document.body.shadowRoot?.querySelector<HTMLElement>("#◆transform-overlay")
+    if(frame) this.#anchors.release(frame)
+    this.#anchored = false
+    this.#resizeObserver?.disconnect(); this.#observedTarget = null
     this.#suppressClick = null
     this.editor.features.selection.clearTransformCaret()
     const targets = new Set([...this.#group, ...(this.#target ? [this.#target] : []), ...document.querySelectorAll(".◆transform-target")])
@@ -1677,22 +1727,32 @@ export class TransformationFeature extends EditorFeature {
     if(this.isEnabled) return
     super.enable()
     window.addEventListener("blur", this.#cancelGesture)
+    window.addEventListener("resize", this.#refreshGeometry)
+    this.#resizeObserver = new ResizeObserver(this.#refreshGeometry)
+    this.#observedTarget = null
     if(!this.#observer) {
-      this.#observer = new MutationObserver(() => { if(this.#target && !this.target) this.clearTransform() })
-      this.#observer.observe(document.body, {childList: true, subtree: true})
+      this.#observer = new MutationObserver(records => {
+        if(this.#target && !this.target) this.clearTransform()
+        else if(records.some(isAuthoredMutation)) this.#refreshGeometry()
+      })
+      this.#observer.observe(document.body, {childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true, characterDataOldValue: true})
     }
   }
 
   disable() {
     super.disable()
     window.removeEventListener("blur", this.#cancelGesture)
+    window.removeEventListener("resize", this.#refreshGeometry)
+    this.#resizeObserver?.disconnect(); this.#resizeObserver = null
     this.#observer?.disconnect()
     this.#observer = null
     this.clearTransform()
+    this.#anchors.destroy()
     document.body.shadowRoot?.querySelector("#◆transform-overlay")?.remove()
   }
 
   captureListeners: DocumentListenerMap = {
+    scroll: this.#refreshViewportControls,
     pointerdown: event => {
       const origin = event.composedPath()[0]
       if(!this.#group.length || event.defaultPrevented || event.button !== 0 || event.detail >= 2

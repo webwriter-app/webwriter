@@ -1,6 +1,7 @@
 import {aggregateContext, aggregateDeclarations, distanceEmbedding, resolveAggregate, structuralDistance} from "./widget-aggregate"
 import type {LiveWidgetAggregateInput, WidgetAggregateContext, WidgetAggregateConfig, WidgetAggregateOption} from "./widget-aggregate"
 import {stripActiveContent} from "./active-content"
+import {createAnchorPositioner} from "./anchor-positioning.js"
 
 export type LiveWidgetAggregateOptions = {path: number[]; options: WidgetAggregateOption[]; selectedId?: string}
 
@@ -12,8 +13,7 @@ const gridSize = (value: number | undefined, fallback: number) => finite(value) 
 export class WidgetAggregateViews {
   private layer?: HTMLElement
   private panels = new Map<string, {element: HTMLElement; widget: Element; input: LiveWidgetAggregateInput; constructor: Function; signature?: string}>()
-  private observer?: ResizeObserver
-  private cleanup: (() => void)[] = []
+  private positioner?: ReturnType<typeof createAnchorPositioner>
 
   constructor(readonly root: Document) {}
 
@@ -63,16 +63,7 @@ export class WidgetAggregateViews {
     shadow.append(style)
     appendix.append(layer)
     this.layer = layer
-    const view = this.root.defaultView
-    const resize = (view as unknown as {ResizeObserver?: typeof ResizeObserver} | null)?.ResizeObserver
-    if(resize) {
-      this.observer = new resize(() => this.position())
-      this.observer.observe(body)
-    }
-    for(const type of ["scroll", "resize"]) {
-      view?.addEventListener(type, this.position, {capture: true, passive: true})
-      this.cleanup.push(() => view?.removeEventListener(type, this.position, true))
-    }
+    this.positioner ??= createAnchorPositioner(this.root)
     return layer
   }
 
@@ -95,9 +86,9 @@ export class WidgetAggregateViews {
       if(input.view === "individual") continue
       keys.add(key)
       let panel = this.panels.get(key)
-      if(panel?.widget !== widget) {
+      if(panel && panel.widget !== widget) {
+        this.positioner?.release(panel.element)
         panel?.element.remove()
-        if(panel) this.observer?.unobserve(panel.widget)
         panel = undefined
       }
       if(!panel) {
@@ -106,7 +97,8 @@ export class WidgetAggregateViews {
         this.mount().shadowRoot!.append(element)
         panel = {element, widget, input, constructor: widget.constructor}
         this.panels.set(key, panel)
-        this.observer?.observe(widget)
+        this.positioner?.bind(element, widget,
+          "left:max(8px,min(anchor(left),calc(100vw - min(max(anchor-size(width),220px),calc(100vw - 16px)) - 8px)));top:anchor(top);width:min(max(anchor-size(width),220px),calc(100vw - 16px));height:max(anchor-size(height),180px);position-visibility:anchors-visible;")
       }
       // Pointer/cursor steps do not reconstruct widget previews or custom renderers.
       const signature = JSON.stringify([input, widget.outerHTML])
@@ -117,28 +109,13 @@ export class WidgetAggregateViews {
       this.render(panel.element, widget, input, context, declarations)
     }
     for(const [key, panel] of this.panels) if(!keys.has(key)) {
+      this.positioner?.release(panel.element)
       panel.element.remove()
-      this.observer?.unobserve(panel.widget)
       this.panels.delete(key)
     }
     if(!this.panels.size) this.destroy()
-    else this.position()
+    else this.positioner?.refresh()
     return choices
-  }
-
-  private position = () => {
-    const view = this.root.defaultView
-    if(!view) return
-    for(const {element, widget} of this.panels.values()) {
-      const rect = widget.getBoundingClientRect()
-      element.hidden = !widget.isConnected || rect.bottom < 0 || rect.top > view.innerHeight
-      const width = Math.min(Math.max(rect.width, 220), Math.max(0, view.innerWidth - 16))
-      const height = Math.max(rect.height, 180)
-      element.style.width = `${width}px`
-      element.style.height = `${height}px`
-      element.style.left = `${Math.max(8, Math.min(rect.left, view.innerWidth - width - 8))}px`
-      element.style.top = `${rect.top}px`
-    }
   }
 
   private render(panel: HTMLElement, widget: Element, input: LiveWidgetAggregateInput, context: WidgetAggregateContext | undefined, declarations: ReturnType<typeof aggregateDeclarations>) {
@@ -361,9 +338,8 @@ export class WidgetAggregateViews {
   }
 
   destroy() {
-    this.observer?.disconnect()
-    this.observer = undefined
-    this.cleanup.splice(0).forEach(cleanup => cleanup())
+    this.positioner?.destroy()
+    this.positioner = undefined
     this.panels.clear()
     this.layer?.remove()
     this.layer = undefined

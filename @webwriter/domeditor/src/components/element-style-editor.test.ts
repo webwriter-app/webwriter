@@ -4,6 +4,7 @@ import {filterPresetsStorageKey, loadFilterPresets, saveFilterPreset, newFilterP
 import type {ElementStyleState} from "../editor-bridge"
 import {elementStyleCategories, specializedStyleDefinitions} from "../element-styles"
 import {ElementStyleEditor, type ElementStyleChangeDetail} from "./element-style-editor"
+import {colorPaletteStyles} from "./color-palette"
 
 const state = (inline: ElementStyleState["inline"] = {}): ElementStyleState => ({
   target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml"},
@@ -680,11 +681,11 @@ it("offers fixed border colors, Automatic, and the custom picker", async () => {
   expect(custom.hidden).toBe(false)
   expect(custom.parentElement!.classList.contains("palette-custom")).toBe(true)
   const customButton = picker.querySelector<HTMLButtonElement>(".palette-custom button")!
-  Object.defineProperty(picker.querySelector(".border-color-palette"), "getBoundingClientRect", {value: () => new DOMRect(20, 30, 160, 100)})
-  Object.defineProperty(customButton, "getBoundingClientRect", {value: () => new DOMRect(24, 100, 152, 26)})
   customButton.click()
-  expect(custom.style.left).toBe("184px")
-  expect(custom.style.top).toBe("99px")
+  expect(custom.style.left).toBe("")
+  expect(custom.style.top).toBe("")
+  expect(colorPaletteStyles.toString()).toContain("anchor(--color-palette right)")
+  expect(colorPaletteStyles.toString()).toContain("position-anchor: --color-option")
   expect(picker.open).toBe(true)
   expect(opened).toBe(1)
   custom.value = "#123456"

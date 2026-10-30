@@ -299,7 +299,7 @@ describe("proofreading feature", () => {
     expect(issues[1]).toMatchObject({kind: "accessibility", text: "<img>", helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt", suggestions: []})
     expect(editor.appendix.querySelectorAll('[part~="accessibility-issue-pill"]')).toHaveLength(0)
     expect(document.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(document.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
     expect(editor.toHTML(true)).toContain('<img alt="">')
   })
@@ -309,16 +309,21 @@ describe("proofreading feature", () => {
     const image = document.querySelector("img")!
     vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
     vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    vi.spyOn(editor.features.transformation, "boxTransformed").mockReturnValue(false)
+    vi.spyOn(editor.features.media, "cropViewport").mockReturnValue(null)
     review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>",
       helpUrl: "https://dequeuniversity.com/rules/axe/4.10/image-alt"}])
     const [issue] = await start()
 
     hover(image)
     expect(editor.features.proofreading.state().hoveredIssueId).toBe(issue.id)
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(contextMenu(image).defaultPrevented).toBe(true)
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).not.toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).not.toBeNull()
     const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    expect(popup.style.left).toBe("")
+    expect(popup.style.top).toBe("")
+    expect(image.className).toContain("◆anchor-target-")
     const learnMore = popup.querySelector<HTMLAnchorElement>('a[href="https://dequeuniversity.com/rules/axe/4.10/image-alt"]')!
     expect(learnMore).not.toBeNull()
     expect(learnMore.getAttribute("role")).toBe("menuitem")
@@ -331,8 +336,29 @@ describe("proofreading feature", () => {
     expect(editor.features.proofreading.selectIssue(issue.id)).toBe(true)
     expect(document.getSelection()?.getRangeAt(0).intersectsNode(image)).toBe(true)
     popup.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
+  })
+
+  it("uses measured geometry for transformed accessibility targets and closes after target removal", async () => {
+    content('<img alt="">')
+    const image = document.querySelector("img")!
+    vi.spyOn(image, "getClientRects").mockReturnValue([new DOMRect(20, 30, 40, 20)] as unknown as DOMRectList)
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 30, 40, 20))
+    vi.spyOn(editor.features.transformation, "boxTransformed").mockReturnValue(true)
+    review.mockResolvedValue([{element: image, rule: "image-alt", message: "Image needs alternative text", text: "<img>", helpUrl: "https://example.com/rule"}])
+    await start()
+    contextMenu(image)
+    const outline = editor.appendix.querySelector<HTMLElement>('[part~="accessibility-issue-outline"]')!
+    const popup = editor.appendix.querySelector<HTMLElement>(".◆proofreading-popup")!
+    expect([outline.style.left, outline.style.top, outline.style.width, outline.style.height])
+      .toEqual(["20px", "30px", "40px", "20px"])
+    expect(popup.style.left).toBe("20px")
+    expect(popup.style.top).toBe("56px")
+
+    image.remove()
+    await vi.waitFor(() => expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull())
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
   })
 
   it("reviews form controls and prefers their finding over a containing page finding", async () => {
@@ -361,7 +387,7 @@ describe("proofreading feature", () => {
     let [issue] = await start()
     const ignoredId = issue.id
     expect(editor.features.proofreading.ignore(issue.id)).toBe(true)
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state().issues).toEqual([])
 
@@ -398,11 +424,11 @@ describe("proofreading feature", () => {
     review.mockResolvedValue([finding])
     const [issue] = await start()
     contextMenu(image)
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).not.toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).not.toBeNull()
 
     image.setAttribute("aria-label", "Chart of results")
     expect(editor.features.proofreading.selectIssue(issue.id)).toBe(false)
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
     await editor.features.proofreading.checkNow()
     expect(editor.features.proofreading.state().issues).toHaveLength(1)
@@ -415,7 +441,7 @@ describe("proofreading feature", () => {
     finish([finding])
     await pending
     expect(editor.features.proofreading.state()).toMatchObject({documentEnabled: false, issues: [], checking: false})
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(disposeReview).toHaveBeenCalled()
     expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
   })
@@ -432,10 +458,11 @@ describe("proofreading feature", () => {
     expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
     contextMenu(image)
     expect(editor.appendix.querySelector(".proofreading-message")?.textContent).toBe("first")
-    expect(editor.appendix.querySelectorAll('[part="accessibility-issue-outline"]')).toHaveLength(1)
+    expect(editor.appendix.querySelectorAll('[part~="accessibility-issue-outline"]')).toHaveLength(1)
     image.remove()
+    await vi.waitFor(() => expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull())
     expect(editor.features.proofreading.selectIssue(issues[1].id)).toBe(false)
-    expect(editor.appendix.querySelector('[part="accessibility-issue-outline"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="accessibility-issue-outline"]')).toBeNull()
     expect(editor.appendix.querySelector('[part~="accessibility-issue-pill"]')).toBeNull()
     expect(editor.appendix.querySelector(".◆proofreading-popup")).toBeNull()
   })

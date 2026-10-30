@@ -647,6 +647,11 @@ body::part(selection-caret-hidden) {
   display: none;
 }
 
+body::part(selection-caret-anchored) {
+  /* The shared binding can outline a figure around the captured content. */
+  position-anchor: auto;
+}
+
 body::part(selection-caret-node),
 body::part(selection-caret-capture) {
   left: anchor(left);

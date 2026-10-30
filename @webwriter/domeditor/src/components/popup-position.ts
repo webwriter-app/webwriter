@@ -1,3 +1,12 @@
+/** Native popup attachment with flipping and a full-width positioning area
+ * when neither inline alignment fits. The anchor utility installs the tries. */
+export function popupAnchorCSS(gap = 4) {
+  return `inset:auto;position-area:bottom span-right;justify-self:start;align-self:start;margin:${gap}px 0;
+    max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);
+    position-try-fallbacks:flip-block,flip-inline,flip-block flip-inline,--ww-ui-popup-below,--ww-ui-popup-above;
+    position-visibility:anchors-visible;`
+}
+
 export type FixedPopupPosition = {left: number, top: number}
 
 /** Match the ribbon buttons' shared border after a popup has been positioned. */
@@ -20,12 +29,6 @@ export function connectPopup(trigger: HTMLElement, popup: HTMLElement) {
   popup.style.setProperty("--popup-border-radius", below
     ? `${left ? "0" : ".35rem"} ${right ? "0" : ".35rem"} .35rem .35rem`
     : `.35rem .35rem ${right ? "0" : ".35rem"} ${left ? "0" : ".35rem"}`)
-}
-
-/** Native color popups open below a one-pixel anchor beside their palette. */
-export function anchorColorSubmenu(input: HTMLInputElement, popup: HTMLElement, option: HTMLElement) {
-  input.style.left = `${popup.getBoundingClientRect().right + 4}px`
-  input.style.top = `${option.getBoundingClientRect().top - 1}px`
 }
 
 /** Place a fixed popup beside its trigger, keeping its origin inside the viewport. */

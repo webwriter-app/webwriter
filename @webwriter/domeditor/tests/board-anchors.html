@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Board CSS anchors</title>
+<style>body { font: 16px system-ui; margin: 1rem; } iframe { margin-block: 1rem; }</style>
+<h1>Board CSS anchors</h1>
+<p id="status">Checking anchored controls and frames…</p>
+<script type="module">
+  import {checkBoardAnchors} from "./board-anchors.ts"
+  try {
+    await checkBoardAnchors(true)
+    document.querySelector("#status").textContent = "Passed. Inspect the editing board above."
+  }
+  catch(error) { document.querySelector("#status").textContent = String(error) }
+</script>
+</html>

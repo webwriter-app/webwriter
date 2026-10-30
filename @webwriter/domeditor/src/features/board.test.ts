@@ -182,13 +182,13 @@ describe("Board layout", () => {
     expect(columns()).toHaveLength(0)
     expect(document.body.children).toHaveLength(0)
     expect(editor.getDocumentLayoutState().mode).toBe("board")
-    expect(editor.appendix.querySelector('[part=board-add-card]')).toBeNull()
-    expect(editor.appendix.querySelector('[part=board-add-column]')).not.toBeNull()
+    expect(editor.appendix.querySelector('[part~=board-add-card]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~=board-add-column]')).not.toBeNull()
     editor.doc.undo(); await settle(); expect(columns()).toHaveLength(1)
     editor.doc.redo(); await settle(); expect(columns()).toHaveLength(0)
     editor.features.board.disable(); editor.features.board.enable(); await settle()
     expect(columns()).toHaveLength(0)
-    editor.appendix.querySelector<HTMLButtonElement>('[part=board-add-column]')!.click(); await settle()
+    editor.appendix.querySelector<HTMLButtonElement>('[part~=board-add-column]')!.click(); await settle()
     expect(columns()).toHaveLength(1)
   })
 
@@ -627,7 +627,7 @@ describe("Board layout", () => {
 
   it("reserves card and column insertion slots without adding authored nodes", async () => {
     convert("board"); await settle()
-    const content = document.body.innerHTML
+    const content = editor.toHTML(true)
     const sheets = document.adoptedStyleSheets
     const layout = sheets.find(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes("body.ww-board::after")))!
     expect(layout).toBeDefined()
@@ -635,12 +635,84 @@ describe("Board layout", () => {
     expect(Array.from(layout.cssRules).some(rule => (rule as CSSStyleRule).selectorText === "body.ww-board"
       && (rule as CSSStyleRule).style.display === "flex")).toBe(true)
     const controls = editor.appendix.querySelector<HTMLElement>("[part=board-actions]")!
-    expect(controls.querySelector('[part=board-add-card]')?.textContent).toBe("+ Add card")
-    expect(controls.querySelector('[part=board-add-column]')?.textContent).toBe("+ Add column")
-    expect(document.body.innerHTML).toBe(content)
+    expect(controls.querySelector('[part~=board-add-card]')?.textContent).toBe("+ Add card")
+    expect(controls.querySelector('[part~=board-add-column]')?.textContent).toBe("+ Add column")
+    expect(editor.toHTML(true)).toBe(content)
     editor.features.board.disable()
     expect(document.adoptedStyleSheets).not.toContain(layout)
-    expect(document.body.innerHTML).toBe(content)
+    expect(editor.toHTML(true)).toBe(content)
+  })
+
+  it("anchors ordinary board controls without measuring or refreshing on scroll", async () => {
+    convert("board"); await settle()
+    const geometry = vi.spyOn(editor.features.transformation, "boxGeometry")
+    board().refresh()
+    expect(geometry).not.toHaveBeenCalled()
+    const buttons = editor.appendix.querySelectorAll<HTMLElement>("[part=board-actions] button")
+    for(const button of buttons) {
+      expect(button.style.left).toBe(""); expect(button.style.top).toBe("")
+      expect(button.style.width).toBe(""); expect(button.style.height).toBe("")
+      expect(button.getAttribute("part")).toMatch(/anchor-control-\d+/)
+    }
+    const overlay = board().transformOverlay(cards()[0])!
+    expect(overlay.matches('[part~="transform-overlay-board-anchored"]')).toBe(true)
+    const refresh = vi.spyOn(board(), "refresh")
+    document.dispatchEvent(new Event("scroll"))
+    window.dispatchEvent(new Event("resize"))
+    await settle()
+    expect(refresh).not.toHaveBeenCalled()
+  })
+
+  it("keeps measured geometry only for transformed frames and returns to CSS anchors", async () => {
+    convert("board"); await settle()
+    const card = cards()[0], column = columns()[0]
+    column.style.setProperty("rotate", "12deg")
+    const geometry = vi.spyOn(editor.features.transformation, "boxGeometry")
+    board().refresh()
+    const overlay = board().transformOverlay(card)!
+    expect(geometry).toHaveBeenCalledWith(card)
+    expect(overlay.matches('[part~="transform-overlay-board-anchored"]')).toBe(false)
+    expect(overlay.style.transform).toContain("matrix(")
+    column.style.removeProperty("rotate"); geometry.mockClear()
+    board().refresh()
+    expect(geometry).not.toHaveBeenCalled()
+    expect(overlay.matches('[part~="transform-overlay-board-anchored"]')).toBe(true)
+    expect(overlay.style.transform).toBe("")
+    expect(overlay.style.left).toBe("")
+    column.style.transform = "translate(15px, 20px)"
+    board().refresh()
+    expect(geometry).not.toHaveBeenCalled()
+    expect(overlay.matches('[part~="transform-overlay-board-anchored"]')).toBe(true)
+  })
+
+  it("preserves authored anchor names and removes replaced and cloned anchor markers", async () => {
+    convert("board"); await settle()
+    const column = columns()[0], card = cards()[0]
+    card.style.setProperty("anchor-name", "--authored-card")
+    board().refresh()
+    const rules = () => document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules, rule => rule.cssText)).join("\n")
+    expect(rules()).toMatch(/anchor-name: --authored-card,\s*--ww-ui-anchor-/)
+    const clone = column.cloneNode(true) as HTMLElement
+    column.replaceWith(clone)
+    board().refresh()
+    const marker = (element: Element) => Array.from(element.classList).filter(name => name.startsWith("◆anchor-target-"))
+    expect(marker(column)).toEqual([]); expect(marker(card)).toEqual([])
+    expect(marker(clone)).toHaveLength(1)
+    expect(marker(clone.querySelector("article")!)).toEqual([])
+    expect(editor.toHTML(true)).not.toContain("◆anchor-target-")
+    editor.doc.syncFromDOM()
+    expect(editor.doc.body.toString()).not.toContain("◆anchor-target-")
+    convert("document"); board().refresh()
+    expect(document.body.querySelector('[class*="◆anchor-target-"]')).toBeNull()
+  })
+
+  it("cleans cloned anchor markers even when disabled before the next refresh", async () => {
+    convert("board"); await settle()
+    const column = columns()[0], clone = column.cloneNode(true)
+    document.body.append(clone)
+    board().disable()
+    expect(document.body.querySelector('[class*="◆anchor-target-"]')).toBeNull()
+    expect(column.className).toBe("ww-board-column")
   })
 
   it("makes only add-button labels unselectable when a column is selected", async () => {

@@ -2,6 +2,7 @@
 import {afterEach, describe, expect, it} from "vitest"
 import {WidgetAggregateViews} from "./widget-aggregate-view"
 import type {LiveWidgetAggregateInput, WidgetAggregateContext, WidgetDataSnapshot} from "./widget-aggregate"
+import {clearEditorMarkerClasses} from "./editor-artifacts"
 
 const items = [{id: "a", label: "Alpha"}, {id: "b", label: "Beta"}]
 class SelectionWidget extends HTMLElement {
@@ -208,7 +209,9 @@ describe("live widget aggregate views", () => {
     views.update([input("aggregate", [participant("a", "answer")])], () => widget)
     expect(appendix.querySelector("slot:not([name])")).not.toBeNull()
     expect(existing.isConnected).toBe(true)
-    expect(document.body.innerHTML).toBe(authoredHTML)
+    const serialized = document.body.cloneNode(true) as HTMLElement
+    clearEditorMarkerClasses(serialized)
+    expect(serialized.innerHTML).toBe(authoredHTML)
     expect(appendix.querySelector(".◆live-aggregates")).not.toBeNull()
 
     views.destroy()
@@ -216,5 +219,50 @@ describe("live widget aggregate views", () => {
     expect(appendix.querySelector("slot:not([name])")).not.toBeNull()
     expect(existing.isConnected).toBe(true)
     expect(document.body.innerHTML).toBe(authoredHTML)
+  })
+
+  it("anchors panels with CSS without writing geometry to authored widgets", () => {
+    const {widget, views, panel} = show("demo-aggregate-text", ["answer"])
+    const serialized = widget.cloneNode(true) as Element
+    clearEditorMarkerClasses(serialized)
+    const authored = serialized.outerHTML
+    expect(panel.style.cssText).toBe("")
+    const current = widget.cloneNode(true) as Element
+    clearEditorMarkerClasses(current)
+    expect(current.outerHTML).toBe(authored)
+    expect(widget.className).toContain("◆anchor-target-")
+    expect(panel.getAttribute("part")).toContain("anchor-control-")
+
+    const serializedAgain = widget.cloneNode(true) as Element
+    clearEditorMarkerClasses(serializedAgain)
+    expect(serializedAgain.outerHTML).toBe(authored)
+
+    views.destroy()
+    expect(widget.className).toBe("")
+    expect(widget.outerHTML).toBe(authored)
+  })
+
+  it("rebinds a panel when the live target is replaced and clears both targets on teardown", () => {
+    document.body.innerHTML = '<demo-aggregate-text id="first"><b>first</b></demo-aggregate-text><demo-aggregate-text id="second"><b>second</b></demo-aggregate-text>'
+    const [first, second] = [...document.querySelectorAll("demo-aggregate-text")]
+    const views = new WidgetAggregateViews(document)
+    activeViews.push(views)
+    const people = [participant("p1", "answer")]
+    const inputs = [input("aggregate", people)]
+    views.update(inputs, () => first)
+    const oldPanel = document.body.shadowRoot!.querySelector(".◆live-aggregates")!.shadowRoot!.querySelector("section")
+    expect(first.className).toContain("◆anchor-target-")
+
+    views.update(inputs, () => second)
+    const newPanel = document.body.shadowRoot!.querySelector(".◆live-aggregates")!.shadowRoot!.querySelector("section")
+    expect(newPanel).not.toBe(oldPanel)
+    expect(first.className).toBe("")
+    expect(second.className).toContain("◆anchor-target-")
+
+    views.destroy()
+    expect(first.className).toBe("")
+    expect(second.className).toBe("")
+    expect(first.outerHTML).toBe('<demo-aggregate-text id="first"><b>first</b></demo-aggregate-text>')
+    expect(second.outerHTML).toBe('<demo-aggregate-text id="second"><b>second</b></demo-aggregate-text>')
   })
 })

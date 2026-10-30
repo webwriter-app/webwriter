@@ -1,4 +1,5 @@
 import {clearEditorMarkerClasses} from "./editor-artifacts"
+export {createAnchorPositioner, type AnchorPositioner} from "./anchor-positioning.js"
 export {authoredClassValue, clearEditorArtifacts, clearEditorMarkerClasses, clearEditorOwnedAttributes, isEditorOwnedAttribute, removeEditorMarker, widgetEditableMarker} from "./editor-artifacts"
 import type { Schema } from "./schema"
 import {isMarkElement} from "./marks"

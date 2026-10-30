@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {$, fixedClientX, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
+import {$, fixedClientX, createAnchorPositioner, cloneWithoutEditorMarkers, clearEditorMarkerClasses, isAppendixInteraction, isFormControlInteraction, isOnApple, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {MATH_NAMESPACE, mathArity, mathBoundaryPoint, mathCommandAliases, mathElement, mathOutsidePoint, mathRoot, mathRowNames, mathStructureOptions, mathTokenNames, mathTokenType, parseMathFragment, type MathSelectionState} from "../math"
 
 import {styleMarkNames, type MarkName} from "../marks"
@@ -28,6 +28,8 @@ export class MathFeature extends EditorFeature {
   private overlay: HTMLDivElement | null = null
   private caret: HTMLSpanElement | null = null
   private placeholders = new Map<Element, HTMLDivElement>()
+  private anchors = createAnchorPositioner()
+  private placeholderFrame: number | null = null
   private placeholderResizeObserver: ResizeObserver | null = null
   private observer: MutationObserver | null = null
   private resizeObserver: ResizeObserver | null = null
@@ -263,9 +265,14 @@ export class MathFeature extends EditorFeature {
     this.placeholderResizeObserver = null
     this.placeholders.forEach((placeholder, root) => {
       placeholder.remove()
+      this.anchors.release(placeholder)
       removeEditorMarker(root, "◆math-empty")
     })
     this.placeholders.clear()
+    if(this.placeholderFrame !== null) cancelAnimationFrame(this.placeholderFrame)
+    this.placeholderFrame = null
+    this.anchors.destroy()
+    this.anchors = createAnchorPositioner()
     this.resizeObserver = null
     this.observedRoot = null
     window.removeEventListener("resize", this.handleResize)
@@ -1545,10 +1552,12 @@ export class MathFeature extends EditorFeature {
     this.placeholders.forEach((placeholder, root) => {
       if(roots.has(root)) return
       placeholder.remove()
+      this.anchors.release(placeholder)
       removeEditorMarker(root, "◆math-empty")
       this.placeholderResizeObserver?.unobserve(root)
       this.placeholders.delete(root)
     })
+    let transformed = false
     roots.forEach(root => {
       let placeholder = this.placeholders.get(root)
       if(!placeholder) {
@@ -1562,15 +1571,32 @@ export class MathFeature extends EditorFeature {
         this.placeholders.set(root, placeholder)
         this.placeholderResizeObserver?.observe(root)
       }
-      const rect = root.getBoundingClientRect()
       const selection = document.getSelection()
       const focused = this.editor.features.selection.captureSelectedElement === root
         || root.contains(selection?.anchorNode ?? null) && root.contains(selection?.focusNode ?? null)
-      placeholder.hidden = focused || rect.width <= 0 || rect.height <= 0
+      placeholder.hidden = focused || !root.isConnected
       if(placeholder.hidden) placeholder.style.setProperty("display", "none", "important")
       else placeholder.style.removeProperty("display")
-      Object.assign(placeholder.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      if(this.editor.features.transformation.boxTransformed(root)) {
+        transformed = true
+        this.anchors.release(placeholder)
+        const rect = root.getBoundingClientRect()
+        Object.assign(placeholder.style, {left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`})
+      }
+      else {
+        for(const property of ["left", "top", "width", "height"]) placeholder.style.removeProperty(property)
+        this.anchors.bind(placeholder, root)
+      }
     })
+    this.anchors.refresh()
+    if(transformed && this.placeholderFrame === null) this.placeholderFrame = requestAnimationFrame(() => {
+      this.placeholderFrame = null
+      this.refreshPlaceholders()
+    })
+    else if(!transformed && this.placeholderFrame !== null) {
+      cancelAnimationFrame(this.placeholderFrame)
+      this.placeholderFrame = null
+    }
   }
 
   refresh() {

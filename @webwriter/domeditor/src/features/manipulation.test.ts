@@ -920,9 +920,10 @@ describe("insertable element placement and previews", () => {
     else $.selectElement(target)
     hover()
     const overlay = editor.appendix.querySelector<HTMLElement>("#◆insertion-preview")!
-    expect(overlay.style.left).toBe("10px")
-    expect(overlay.style.width).toBe("90px")
-    expect(overlay.style.height).toBe("60px")
+    expect(overlay.style.left).toBe("")
+    expect(overlay.style.width).toBe("")
+    expect(overlay.style.height).toBe("")
+    expect(overlay.getAttribute("part")).toContain("anchor-control-")
     expect(editor.toHTML(true)).not.toContain("preview")
     insert('<section title="Replacement"><p>New</p></section>')
     expect(target.isConnected).toBe(false)
@@ -1726,7 +1727,7 @@ describe("widget-safe validation and transfer", () => {
     const {widget} = content()
     $.selectElement(widget)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
     const data = new DataTransfer()
     vi.spyOn(data, "setDragImage").mockImplementation(() => {})
     constructed.mockClear()
@@ -5429,7 +5430,7 @@ describe("unified content transfer", () => {
     const selected = document.body.children[1]
     $.selectElement(selected)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
     expect(surface).not.toBeNull()
     vi.spyOn(selected, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
     // Like native hit testing, the point resolves to the surface's host
@@ -5809,7 +5810,7 @@ describe("unified content transfer", () => {
   function beginDrag(element: Element) {
     $.selectElement(element)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector<HTMLElement>('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector<HTMLElement>('[part~="node-drag-surface"]')!
     expect(surface).not.toBeNull()
     const data = new DataTransfer()
     surface.dispatchEvent(transferEvent("dragstart", data))
@@ -6338,7 +6339,7 @@ describe("unified content transfer", () => {
     const widget = document.body.firstElementChild!
     $.selectElement(widget)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
 
     surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true, cancelable: true}))
     // Browsers queue selectionchange after the native mouse default. Happy
@@ -6349,7 +6350,7 @@ describe("unified content transfer", () => {
 
     expect(editor.features.selection.captureSelectedWidget).toBe(widget)
     expect(widget).toHaveClass("◆element-selected", "◆element-capture-selected")
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBeNull()
     expect(editor.features.selection.isInDragSelection).toBe(false)
   })
 
@@ -6358,7 +6359,7 @@ describe("unified content transfer", () => {
     const widget = document.body.firstElementChild!
     $.selectElement(widget)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
     surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
     widget.replaceWith(document.createElement("hr"))
 
@@ -6371,7 +6372,7 @@ describe("unified content transfer", () => {
     document.body.innerHTML = `<${tag}></${tag}><p>end</p>`
     $.selectElement(document.body.firstElementChild!)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
     surface.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, composed: true}))
     const data = new DataTransfer()
     surface.dispatchEvent(transferEvent(type, data))
@@ -6811,11 +6812,11 @@ describe("unified content transfer", () => {
     surface.dispatchEvent(transferEvent("dragend", data))
     $.move(document.body.firstElementChild!.firstChild!, 1)
     editor.features.selection.processSelection()
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBeNull()
     beginDrag(document.body.firstElementChild!)
     editor.features.manipulation.disable()
     editor.features.selection.processSelection()
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBeNull()
     editor.features.manipulation.enable()
   })
 
@@ -6840,7 +6841,7 @@ describe("unified content transfer", () => {
     document.body.innerHTML = '<p>selected</p><p>end</p>'
     $.selectElement(document.body.firstElementChild!)
     editor.features.selection.processSelection()
-    const surface = editor.appendix.querySelector('[part="node-drag-surface"]')!
+    const surface = editor.appendix.querySelector('[part~="node-drag-surface"]')!
     const data = new DataTransfer()
     data.setData("text/html", '<p class="external"><em>safe</em><script>bad()</script></p>')
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 1})
@@ -7040,16 +7041,17 @@ describe("unified content transfer", () => {
     expect(getComputedStyle(surface).pointerEvents).not.toBe("none")
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: document.body, offset: 2})
     document.body.dispatchEvent(transferEvent("dragover", data))
-    expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBe(surface)
+    expect(editor.appendix.querySelector('[part~="node-drag-surface"]')).toBe(surface)
     expect(getComputedStyle(surface).pointerEvents).not.toBe("none")
     document.body.dispatchEvent(transferEvent("drop", data))
     expect(document.body.lastElementChild).toBe(source)
     expect(surface.isConnected).toBe(false)
   })
 
-  it("positions the idle node drag surface only after geometry invalidation and cleans up observers", () => {
+  it.each([false, true])("anchors idle drag surfaces and measures only transformed geometry (transform: %s)", transformed => {
     document.body.innerHTML = "<p>source</p>"
     const source = document.body.firstElementChild!
+    if(transformed) (source as HTMLElement).style.transform = "rotate(10deg)"
     // Other editing overlays also redraw on resize; count only the drag
     // surface's frames in this geometry and lifecycle test.
     editor.features.collaboration.disable()
@@ -7067,20 +7069,19 @@ describe("unified content transfer", () => {
     const measure = vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 100, 30))
 
     editor.features.manipulation.refreshNodeDragTarget(source)
-    expect(requestFrame).toHaveBeenCalledOnce()
-    callbacks.get(1)!(0)
-    expect(measure).toHaveBeenCalledOnce()
-    expect(requestFrame).toHaveBeenCalledOnce()
+    expect(requestFrame).toHaveBeenCalledTimes(transformed ? 1 : 0)
+    callbacks.get(1)?.(0)
+    expect(measure).toHaveBeenCalledTimes(transformed ? 1 : 0)
 
     window.dispatchEvent(new Event("resize"))
-    expect(requestFrame).toHaveBeenCalledTimes(2)
-    callbacks.get(2)!(16)
-    expect(measure).toHaveBeenCalledTimes(2)
+    expect(requestFrame).toHaveBeenCalledTimes(transformed ? 2 : 0)
+    callbacks.get(2)?.(16)
+    expect(measure).toHaveBeenCalledTimes(transformed ? 2 : 0)
 
     editor.features.manipulation.disable()
     expect(cancelFrame).not.toHaveBeenCalled()
     window.dispatchEvent(new Event("resize"))
-    expect(requestFrame).toHaveBeenCalledTimes(2)
+    expect(requestFrame).toHaveBeenCalledTimes(transformed ? 2 : 0)
     editor.features.manipulation.enable()
     editor.features.collaboration.enable()
     editor.features.graphic.enable()

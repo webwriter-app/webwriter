@@ -10,6 +10,7 @@ export const attributionAttributes = {
 /** Import-free so the same appendix UI can be embedded in saved HTML. */
 export function createAttributionController(doc, options = {}) {
   const view = doc.defaultView
+  const anchors = options.anchorFactory?.(doc)
   const body = doc.body
   const fields = Object.keys(attributionAttributes)
   const selector = Object.values(attributionAttributes).map(name => `[${name}]`).join(",")
@@ -149,7 +150,7 @@ export function createAttributionController(doc, options = {}) {
   appendix.adoptedStyleSheets = [...appendix.adoptedStyleSheets, sheet]
   let target = null, opened = null, baseline = null
   let openedElements = [], baselines = new Map()
-  let frame, destroyed = false
+  let frame, queued = false, destroyed = false
   let noteSheet = null, noteRules = "", noteSequence = 0, notesDirty = true
   const notes = new Map()
   const noteResize = view.ResizeObserver ? new view.ResizeObserver(() => { notesDirty = true; schedule() }) : null
@@ -424,13 +425,26 @@ export function createAttributionController(doc, options = {}) {
     const parent = container ?? bridge
     if(button.parentElement !== parent) parent.append(button)
     button.hidden = !target
-    if(!target) return
+    if(!target) { anchors?.release(bridge); anchors?.release(popup); return }
     button.classList.toggle("empty-attribution", empty)
     button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${container ? " transform-overlay-attribution-freeform" : ""}` : "")
     bridge.setAttribute("part", empty ? "transform-overlay" : "")
     button.querySelector("svg").toggleAttribute("hidden", empty || values(target).type !== "copyright")
     // Paint with the normal controls, above the native drag hit regions.
     if(empty && !opened && appendix.lastElementChild !== root) appendix.append(root)
+    if(anchors) {
+      const size = empty ? 20 : 16
+      const width = empty ? "20px" : "max(16px,var(--ww-page-gutter,1rem))"
+      if(container) anchors.release(bridge)
+      else anchors.bind(bridge, target, `left:clamp(0px,calc(anchor(right) - ${empty ? size / 2 : 0}px),calc(100vw - ${width}));top:clamp(0px,calc(anchor(center) - ${size / 2}px),calc(100dvh - ${size}px));width:${width};height:${size}px;position-visibility:anchors-visible;`)
+      if(opened) {
+        if(!editable()) { form.hidden = true; details.hidden = false; renderDetails() }
+        anchors.bind(popup, container || empty ? button : notes.get(target)?.label ?? target, "inset:auto;position-area:bottom span-right;justify-self:start;align-self:start;margin:4px 0;position-try-fallbacks:flip-block,flip-inline,flip-block flip-inline,--ww-ui-popup-below,--ww-ui-popup-above;position-visibility:anchors-visible;")
+      }
+      else anchors.release(popup)
+      anchors.refresh()
+      return
+    }
     const rect = target.getBoundingClientRect()
     const style = view.getComputedStyle(target)
     bridge.hidden = bridge.hidden || !rect.width || !rect.height || style.visibility === "hidden" || style.display === "none"
@@ -462,6 +476,12 @@ export function createAttributionController(doc, options = {}) {
     }
   }
   const schedule = () => {
+    if(anchors) {
+      if(queued || destroyed) return
+      queued = true
+      view.queueMicrotask(() => { queued = false; if(!destroyed) refresh() })
+      return
+    }
     if(frame || destroyed) return
     frame = view.requestAnimationFrame(() => { frame = undefined; refresh() })
   }
@@ -552,7 +572,7 @@ export function createAttributionController(doc, options = {}) {
   const afterPrint = () => { notesDirty = true; schedule() }
   view.addEventListener("beforeprint", preparePrint)
   view.addEventListener("afterprint", afterPrint)
-  doc.addEventListener("scroll", schedule, true)
+  if(!anchors) doc.addEventListener("scroll", schedule, true)
   refresh()
   return {element: root, handleEvent, refresh, open, destroy() {
     destroyed = true
@@ -563,6 +583,7 @@ export function createAttributionController(doc, options = {}) {
     view.removeEventListener("afterprint", afterPrint)
     view.removeEventListener("resize", layoutChanged)
     doc.removeEventListener("scroll", schedule, true)
+    anchors?.destroy()
     popup.hidePopover?.()
     appendix.adoptedStyleSheets = appendix.adoptedStyleSheets.filter(current => current !== sheet)
     root.remove()
@@ -570,9 +591,9 @@ export function createAttributionController(doc, options = {}) {
   }}
 }
 
-export function mountAttributionReader(licenses = []) {
+export function mountAttributionReader(licenses = [], anchorFactory) {
   if(!document.body || document.designMode === "on") return null
-  const controller = createAttributionController(document, {licenses})
+  const controller = createAttributionController(document, {licenses, anchorFactory})
   const types = ["pointerdown"]
   types.forEach(type => document.addEventListener(type, controller.handleEvent))
   const destroy = controller.destroy

@@ -126,7 +126,7 @@ it("includes one hotspot popover runtime in standalone exports", () => {
   root.querySelector("area")!.removeAttribute("popovertarget")
   appendSerializedAssets(root, [])
   // Link-only maps also need scaled reading-mode hit areas.
-  expect(root.querySelector("#webwriter-image-map-popovers")!.textContent).toContain("mountImageMapReader(document, controller, imageMapHotspotShape)")
+  expect(root.querySelector("#webwriter-image-map-popovers")!.textContent).toContain("mountImageMapReader(document, controller, imageMapHotspotShape, createAnchorPositioner)")
   root.querySelector("map")!.remove()
   appendSerializedAssets(root, [])
   expect(root.querySelector("#webwriter-image-map-popovers")).toBeNull()
