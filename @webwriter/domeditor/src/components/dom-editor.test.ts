@@ -5476,98 +5476,28 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "insertElement", tag: "p"})
   })
 
-  it("opens Edit after inserting an element with contextual edit options", async () => {
+  it("does not open or switch the toolbox for inserted elements or video warnings", async () => {
     const {editor, editorWindow} = await mountEditor()
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
-    const selectInserted = (detail: object) => window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {inserted: true, ...detail}},
-      source: editorWindow,
-    }))
-
-    selectInserted({
-      path: [{path: [], name: "Document"}, {path: [0], name: "Table"}],
-      table: {
-        active: true,
-        cellSelection: true,
-        rows: 2,
-        columns: 2,
-        selectedCells: 1,
-        canMerge: false,
-        canSplit: false,
-        hasCaption: false,
-        hasHeader: false,
-        hasFooter: false,
-      },
-    })
-    expect(toolbox.activeTool).toBe("Edit")
-
-    toolbox.selectTool(null)
-    selectInserted({
-      path: [{path: [], name: "Document"}, {path: [0], name: "Graphic"}],
-      graphic: {active: true, capture: false},
-    })
-    expect(toolbox.activeTool).toBe("Edit")
-
-    toolbox.selectTool(null)
-    selectInserted({
-      path: [{path: [], name: "Document"}, {path: [0], name: "Image"}],
-      nodeSelected: true,
-      media: {type: "picture", attributes: {alt: "Diagram"}},
-    })
-    expect(toolbox.activeTool).toBe("Edit")
-    await editor.updateComplete
-    await toolbox.updateComplete
-    expect(toolbox.media).toEqual({type: "picture", attributes: {alt: "Diagram"}})
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Image"]')).not.toBeNull()
-
-    toolbox.selectTool(null)
-    selectInserted({
-      path: [{path: [], name: "Document"}, {path: [0], name: "Widget", icon: "Packages"}],
-      nodeSelected: true,
-    })
-    expect(toolbox.activeTool).toBe("Edit")
-
-    toolbox.selectTool(null)
-    selectInserted({path: [{path: [], name: "Document"}, {path: [0], name: "Form"}]})
-    expect(toolbox.activeTool).toBeNull()
-
+    const details = [
+      {path: [{path: [], name: "Document"}, {path: [0], name: "Image"}], nodeSelected: true,
+        inserted: true, media: {type: "picture", attributes: {alt: "Diagram"}}},
+      {path: [{path: [], name: "Document"}, {path: [1], name: "Widget", icon: "Packages"}], nodeSelected: true, inserted: true},
+      {path: [{path: [], name: "Document"}, {path: [2], name: "Video"}], nodeSelected: true,
+        media: {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"}},
+    ]
+    for(const activeTool of [null, "AI"] as const) {
+      toolbox.selectTool(activeTool)
+      for(const detail of details) {
+        window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: selectionChangeEvent, detail}}))
+        await editor.updateComplete
+        await toolbox.updateComplete
+        expect(toolbox.activeTool).toBe(activeTool)
+      }
+    }
   })
 
-  it("opens Edit when a video playback warning appears and avoids reopening unchanged warnings", async () => {
-    const {editor, editorWindow} = await mountEditor()
-    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
-    toolbox.selectTool("AI")
-    const selectVideo = (path: number[], media: object) => window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {
-        path: [{path: [], name: "Document"}, {path, name: "Video"}],
-        nodeSelected: true,
-        media,
-      }},
-      source: editorWindow,
-    }))
-    const warnedVideo = {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"}
-
-    selectVideo([0], warnedVideo)
-    expect(toolbox.activeTool).toBe("Edit")
-
-    toolbox.selectTool(null)
-    selectVideo([0], warnedVideo)
-    expect(toolbox.activeTool).toBeNull()
-
-    selectVideo([0], {type: "video", attributes: {src: "movie.mp4"}})
-    selectVideo([0], {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "no-video"})
-    expect(toolbox.activeTool).toBe("Edit")
-
-    toolbox.selectTool(null)
-    selectVideo([0], {type: "video", attributes: {src: "new-movie.mp4"}, videoPlaybackWarning: "no-video"})
-    expect(toolbox.activeTool).toBe("Edit")
-
-    toolbox.selectTool(null)
-    selectVideo([1], {type: "video", attributes: {src: "new-movie.mp4"}, videoPlaybackWarning: "no-video"})
-    expect(toolbox.activeTool).toBe("Edit")
-  })
-
-  it("expands an already active Edit toolbox when a video warning appears", async () => {
+  it("does not expand a collapsed toolbox for a video warning", async () => {
     const {editor, editorWindow} = await mountEditor()
     const host = editor as any
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
@@ -5577,21 +5507,16 @@ describe("DomEditor.execute()", () => {
     await editor.updateComplete
     await toolbox.updateComplete
     expect(toolbox.collapsed).toBe(true)
-
-    window.dispatchEvent(new MessageEvent("message", {
-      data: {type: selectionChangeEvent, detail: {
-        path: [{path: [], name: "Document"}, {path: [0], name: "Video"}],
-        nodeSelected: true,
-        media: {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"},
-      }},
-      source: editorWindow,
-    }))
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: selectionChangeEvent, detail: {
+      path: [{path: [], name: "Document"}, {path: [0], name: "Video"}], nodeSelected: true,
+      media: {type: "video", attributes: {src: "movie.mp4"}, videoPlaybackWarning: "unsupported"},
+      math: {active: true, display: "inline"},
+    }}}))
     await editor.updateComplete
     await toolbox.updateComplete
-
     expect(toolbox.activeTool).toBe("Edit")
-    expect(toolbox.collapsed).toBe(false)
-    expect(host.mathKeyboardHidden).toBe(true)
+    expect(toolbox.collapsed).toBe(true)
+    expect(host.mathKeyboardHidden).toBe(false)
   })
 
   it("does not auto-open contextual tools while collapsed, even with the breadcrumb shown", async () => {
@@ -6693,6 +6618,22 @@ describe("DomEditor.execute()", () => {
     expect(edit.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(false)
   })
 
+  it.each(["nodeSelected", "capture"] as const)("shows a selected widget's pretty name for %s bridge selections", async kind => {
+    const {editor, editorWindow} = await mountEditor()
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: selectionChangeEvent, detail: {
+      path: [{path: [], name: "Document"}, {path: [0], name: "Interactive Video", icon: "Packages"}],
+      element: {path: [0], localName: "webwriter-interactive-video", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Interactive Video", attributes: {}},
+      [kind]: true,
+    }}}))
+    await editor.updateComplete
+    await toolbox.updateComplete
+    const edit = toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Edit"]')!
+    expect(edit.getAttribute("aria-label")).toBe("Edit Interactive Video")
+    expect(edit.closest(".toolbox-tab")!.hasAttribute("data-available")).toBe(true)
+    expect(toolbox.activeTool).toBeNull()
+  })
+
   it("binds multi-selection drawers and routes their changes by type through the bridge", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
@@ -7765,6 +7706,44 @@ describe("DomEditor.execute()", () => {
     finally { vi.useRealTimers() }
   })
 
+  it("returns rewound playback to the newest learner state and follows the growing edge", async () => {
+    const {editor} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".preview-button")!.click()
+    await editor.updateComplete
+    const controls = editor.shadowRoot!.querySelector<LiveSessionControls>("live-session-controls")!
+    const host = editor as any
+    vi.useFakeTimers()
+    try {
+      ;(editor as unknown as {resetLivePlayback(): void}).resetLivePlayback()
+      const startedAt = host.liveStreamStartedAt
+      host.liveSteps = [
+        {id: "first", time: startedAt + 1000, learner: "learner-ada", cursor: {x: 0.1, y: 0.2}},
+        {id: "latest", time: startedAt + 4000, learner: "learner-ada", cursor: {x: 0.8, y: 0.9}},
+      ]
+      await vi.advanceTimersByTimeAsync(4000)
+      await editor.updateComplete
+      controls.dispatchEvent(new Event("live-session-pause"))
+      controls.dispatchEvent(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      expect(host.liveStreamStep).toBe(1)
+
+      controls.dispatchEvent(new Event("live-session-return-to-live"))
+      await editor.updateComplete
+      expect(controls.playing).toBe(true)
+      expect(controls.currentTime).toBe(4)
+      expect(host.liveStreamStep).toBe(2)
+      expect(host.liveStatesAtStep.get("learner-ada")?.cursor).toEqual({x: 0.8, y: 0.9})
+
+      host.liveSteps.push({id: "newest", time: startedAt + 5000, learner: "learner-ada", cursor: {x: 0.4, y: 0.6}})
+      await vi.advanceTimersByTimeAsync(1000)
+      await editor.updateComplete
+      expect(controls.currentTime).toBe(5)
+      expect(host.liveStreamStep).toBe(3)
+      expect(host.liveStatesAtStep.get("learner-ada")?.cursor).toEqual({x: 0.4, y: 0.6})
+    }
+    finally { editor.remove(); vi.useRealTimers() }
+  })
+
   it("keeps every learner in the live drawer and filters their combined visualization", async () => {
     const {editor} = await mountEditor()
     const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
@@ -8090,7 +8069,7 @@ describe("DomEditor.execute()", () => {
   it.each([
     {html: "<p>Hello</p>", rootPath: [], name: "Document"},
     {html: '<!--template-->\n<demo-widget role="document"><p>Hello</p></demo-widget>', rootPath: [2], name: "Content"},
-  ])("opens the document toolbox when clicking the $name breadcrumb", async ({html, rootPath, name}) => {
+  ])("selects the document without opening the toolbox when clicking the $name breadcrumb", async ({html, rootPath, name}) => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = html
     const root = {path: rootPath, name, icon: "Document"}
@@ -8106,20 +8085,20 @@ describe("DomEditor.execute()", () => {
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
 
-    for(const activeTool of [null, "Style"] as const) {
+    for(const activeTool of [null, "Review"] as const) {
       select([root, {path: [...rootPath, 0], name: "Paragraph"}])
       toolbox.selectTool(activeTool)
       await editor.updateComplete
       await breadcrumb.updateComplete
 
       breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>("button.item")!.click()
-      await vi.waitFor(() => expect(toolbox.activeTool).toBe("Edit"))
+      await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "selectNode", path: rootPath}))
       await editor.updateComplete
       await toolbox.updateComplete
 
-      expect(execute).toHaveBeenCalledWith({type: "selectNode", path: rootPath})
+      expect(toolbox.activeTool).toBe(activeTool)
       expect(toolbox.documentSelected).toBe(true)
-      expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="document"]')).not.toBeNull()
+      expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Edit"]')!.getAttribute("aria-label")).toBe("Edit Document")
     }
   })
 
@@ -8589,7 +8568,7 @@ describe("DomEditor.execute()", () => {
       .getAttribute("aria-label")).toBe("Edit Document")
   })
 
-  it("selects a breadcrumb section explicitly and opens its section toolbox", async () => {
+  it("selects a breadcrumb section without opening its toolbox", async () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     iframe.contentDocument!.body.innerHTML = "<section><p>hello</p></section>"
     const path = [
@@ -8627,8 +8606,8 @@ describe("DomEditor.execute()", () => {
     await toolbox.updateComplete
 
     expect(breadcrumb.shadowRoot!.querySelector('.section-item[aria-pressed="true"]')).not.toBeNull()
-    expect(toolbox.activeTool).toBe("Edit")
-    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"]')).not.toBeNull()
+    expect(toolbox.activeTool).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Edit"]')!.getAttribute("aria-label")).toBe("Edit Section")
   })
 
   it("renders package widget names and icons in breadcrumbs and the document tree", async () => {

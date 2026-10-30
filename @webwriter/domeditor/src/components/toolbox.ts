@@ -31,6 +31,7 @@ import "./style-combobox"
 import {defaultGraphicShapePaint, graphicShapeOptions, SVG_NAMESPACE, type GraphicShapePaint} from "../graphic"
 import type {WidgetOptionState, WidgetOptionValue} from "../widget-options"
 import {getElementPresentation} from "../element-names"
+import {getSectionOption} from "../sections"
 
 export type ToolboxTool = "Edit" | "Distribute" | "Style" | "AI" | "Review" | "Feedback"
 
@@ -425,7 +426,8 @@ export class DomEditorToolbox extends EditingControls {
 
     .toolbox-tab[data-available],
     .toolbox-tab[data-available] .toolbox-tab-button {
-      width: 100px;
+      width: max-content;
+      max-width: 180px;
     }
 
     .toolbox-tab[data-available] .toolbox-tab-button {
@@ -581,10 +583,11 @@ export class DomEditorToolbox extends EditingControls {
 
     .toolbox-tab[data-active] .toolbox-tab-label,
     .toolbox-tab[data-available] .toolbox-tab-label {
-      max-width: 4.5rem;
+      max-width: 9rem;
       margin-left: 0.3rem;
       opacity: 1;
       transform: translateX(0);
+      text-overflow: ellipsis;
       transition-delay: 0ms, 0ms, 90ms, 0ms;
     }
 
@@ -855,28 +858,11 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private get editTypeLabel() {
-    const visibleElements = this.selectedElementTypes.filter(group => this.isElementDrawerVisible(group.element.localName, group.element.namespaceURI))
-    if(visibleElements.length > 1 || visibleElements.some(group => group.count > 1)) return "Selection"
     if(this.documentSelected) return "Document"
-    if(this.sectionSelected && this.sectionType !== "figure") return "Section"
-    if(this.headingGroup) return "Heading group"
-    if(this.listType === "ol") return "List"
-    if(this.graphic?.active) return "Graphic"
-    if(this.table?.active) return "Table"
-    if(this.media) return this.media.type === "picture" || this.media.type === "img"
-      ? "Image"
-      : this.media.type === "audio"
-        ? "Audio"
-        : this.media.type === "video"
-          ? "Video"
-          : "Website"
-    if(this.dialog) return "Dialog"
-    if(this.selectionPath.at(-1)?.icon === "Packages") return this.selectionPath.at(-1)!.name
-    if(this.elementSelected) return this.elementAttributes?.name
-      ?? this.selectionPath.at(-1)?.name ?? this.selectedElementTypes.at(-1)?.element.name ?? "Selection"
-    if(this.paragraphSelected) return null
-    if(this.elementAttributes && this.isElementDrawerVisible(this.elementAttributes.localName, this.elementAttributes.namespaceURI)) return this.elementAttributes.name
-    return null
+    if(this.sectionSelected) return getSectionOption(this.sectionType).label
+    if(!this.elementSelected) return null
+    if(this.selectedElementTypes.length) return this.selectedElementTypes.map(group => group.element.name).join(", ")
+    return this.elementAttributes?.name ?? this.selectionPath.at(-1)?.name ?? null
   }
 
   protected get currentMenuGroups(): RibbonMenuGroup[] {
@@ -1816,7 +1802,7 @@ export class DomEditorToolbox extends EditingControls {
                   ?data-accessibility=${accessibilityCount > 0}
                   ?data-active=${active}
                   ?data-contextual=${contextualLabel !== null}
-                  ?data-available=${(contextualLabel !== null || tool.label === "Feedback") && (this.activeTool === null || this.collapsed)}
+                  ?data-available=${!active && (contextualLabel !== null || tool.label === "Feedback" && (this.activeTool === null || this.collapsed))}
                   data-hover-kind=${tool.label === "Review" && this.activeTool !== "Review" ? this.proofreadingState.issues.find(issue => issue.id === this.proofreadingState.hoveredIssueId)?.kind ?? nothing : nothing}
                 >
                   <button

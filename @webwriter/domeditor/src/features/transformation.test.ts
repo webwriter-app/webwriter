@@ -269,6 +269,34 @@ describe("text container resizing", () => {
   })
 })
 
+it("resizes a quiz inside a board card vertically without squeezing its question", async () => {
+  expect(editor.setDocumentLayout("board", "document")).toBe(true)
+  const card = document.querySelector<HTMLElement>(".ww-board-card")!
+  const quiz = document.createElement("webwriter-quiz")
+  quiz.innerHTML = "<webwriter-task><webwriter-task-prompt>Question</webwriter-task-prompt><!--keep--></webwriter-task>"
+  card.append(quiz)
+  mockRect(quiz, {width: 200, height: 100})
+  captureNode(quiz)
+  const visible = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"), handle => handle.dataset.resizeDirection)
+  expect(visible).toEqual(["down-down"])
+  const corner = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+  expect(corner.hidden).toBe(true)
+  corner.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
+  document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 100, clientY: 240}))
+  expect(quiz.hasAttribute("style")).toBe(false)
+
+  const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-down")!
+  handle.dispatchEvent(pointer("pointerdown", {pointerId: 4, clientX: 200, clientY: 200}))
+  document.dispatchEvent(pointer("pointermove", {pointerId: 4, clientX: 100, clientY: 240}))
+  document.dispatchEvent(pointer("pointerup", {pointerId: 4}))
+  expect(quiz.style.maxWidth).toBe("")
+  expect(quiz.style.maxHeight).toBe("140px")
+  expect(quiz.innerHTML).toContain("<!--keep-->")
+  await mutationsDelivered()
+  editor.doc.syncFromDOM()
+  expect(editor.toHTML(true)).not.toContain("◆")
+})
+
 describe("block formula affordances", () => {
   function formula(display = "block") {
     document.body.innerHTML = "<p>After</p>"

@@ -7443,6 +7443,15 @@ await check("Board columns and cards retain native editing and standalone layout
     await layoutFrame()
     const rects = columns.map(column => column.getBoundingClientRect())
     assert(rects.every(rect => Math.abs(rect.width - 450) < .5), "default board columns were not 450px wide")
+    editor.features.selection.selectElement(columns[0])
+    const setColumnWidth = (width: string) => editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {width}})
+    setColumnWidth("300px"); await layoutFrame()
+    assert(Math.abs(columns[0].getBoundingClientRect().width - 300) < .5, "Element width did not resize the board column")
+    columns[0].style.maxWidth = "300px" // The resize handle also writes a matching cap.
+    setColumnWidth("520px"); await layoutFrame()
+    assert(Math.abs(columns[0].getBoundingClientRect().width - 520) < .5, "Element width did not resize a previously dragged column")
+    setColumnWidth(""); await layoutFrame()
+    assert(Math.abs(columns[0].getBoundingClientRect().width - 450) < .5, "clearing Element width did not restore the board default")
     assert(rects.every((rect, i) => !i || rect.left > rects[i - 1].right), "columns did not grow horizontally")
     assert(doc.documentElement.scrollWidth > frame.clientWidth, "board did not overflow horizontally")
     await checkOverflow(doc)
@@ -7602,6 +7611,10 @@ await check("Board columns and cards retain native editing and standalone layout
     }
     await resizeTarget(card, 40, 30)
     await resizeTarget(board.columns()[0], 30, 40)
+    card.style.height = "230px"
+    card.innerHTML = '<p></p><p></p><p><br></p><custom-widget style="display:block;height:48px">Embedded content</custom-widget>'
+    await layoutFrame()
+    const editorWidgetTop = card.querySelector("custom-widget")!.getBoundingClientRect().top - card.getBoundingClientRect().top
     const saved = await editor.serializeHTML(true)
     const preview = doc.createElement("iframe")
     preview.setAttribute("sandbox", "allow-same-origin")
@@ -7610,6 +7623,11 @@ await check("Board columns and cards retain native editing and standalone layout
     preview.srcdoc = saved; doc.body.append(preview); await loaded
     const exported = preview.contentDocument!, exportedColumns = Array.from(exported.querySelectorAll(".ww-board-column"))
     assert(exportedColumns.length === 4 && exported.querySelector("[part=board-actions]") === null, "export lost structure or included controls")
+    const exportedCard = exported.querySelector<HTMLElement>(".ww-board-card:has(> custom-widget)")!
+    assert(exportedCard.querySelectorAll("p").length === 3, "standalone Board lost blank paragraphs")
+    const previewWidgetTop = exportedCard.querySelector("custom-widget")!.getBoundingClientRect().top - exportedCard.getBoundingClientRect().top
+    assert(Math.abs(editorWidgetTop - previewWidgetTop) < 1, `blank Board lines shifted embedded content in preview: editor=${editorWidgetTop}, preview=${previewWidgetTop}`)
+    exportedCard.style.height = ""
     const exportedRects = exportedColumns.map(column => column.getBoundingClientRect())
     assert(exportedRects.every((rect, i) => Math.abs(rect.width - exportedRects[0].width) < 1 && (!i || rect.left > exportedRects[i - 1].right)), "standalone Board layout needs editor code")
     await checkOverflow(exported)

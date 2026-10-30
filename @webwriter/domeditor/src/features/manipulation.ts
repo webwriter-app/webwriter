@@ -4408,6 +4408,8 @@ export class ManipulationFeature extends EditorFeature {
     const isDirectionalFamily = (name: string) => directionalFamilyProperties.has(name.toLowerCase())
     const supported = entries.filter(({name, value}) => value === null
       || typeof CSS?.supports !== "function" || CSS.supports(name, value))
+    const boardWidth = boardLayoutRole(target) === "column" ? supported.find(({name}) => name === "width") : undefined
+    const draggedWidth = boardWidth && style.width && style.width === style.flexBasis && style.width === style.maxWidth
     const rawEntries = supported.filter(({name}) => isDirectionalFamily(name))
     const clearedBorderParts = new Set(supported.filter(entry => entry.value === null
       && ["border-width", "border-style", "border-color"].includes(entry.name)).map(entry => entry.name.slice("border-".length)))
@@ -4439,6 +4441,14 @@ export class ManipulationFeature extends EditorFeature {
     }
     if(cssomEntries.length) preserveDirectionalFamilyDeclarations(target, declarationsToPreserve)
     const additional: ValidatedStyleEntry[] = []
+    if(boardWidth && !entries.some(({name}) => name === "flex-basis")) {
+      // Board columns have a stylesheet flex-basis. A width declaration alone
+      // cannot resize them; keep the basis in step with the toolbox control.
+      additional.push({name: "flex-basis", value: boardWidth.value, priority: boardWidth.priority})
+      if(draggedWidth && !entries.some(({name}) => name === "max-width")) {
+        additional.push({name: "max-width", value: boardWidth.value, priority: boardWidth.priority})
+      }
+    }
     // Keep the authored float size in sync with width edits through the CSS controls.
     if(floatSideFromStyles(getComputedStyle(target).float, style, target.classList) !== "none"
       && entries.some(({name}) => name === "width" || name === "inline-size")

@@ -47,6 +47,33 @@ afterEach(() => {
 })
 
 describe("Board layout", () => {
+  it("applies column width edits from Element options after default and dragged sizes", () => {
+    convert("board")
+    const column = columns()[0], heading = column.querySelector("h2")!
+    editor.features.selection.selectElement(column)
+    const manipulation = editor.features.manipulation
+    const setWidth = (width: string) => manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {width}})
+
+    setWidth("300px")
+    expect(column.style.width).toBe("300px")
+    expect(column.style.flexBasis).toBe("300px")
+    expect(column.style.maxWidth).toBe("")
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["width"]}).inline.width?.value).toBe("300px")
+
+    // A drag writes all three declarations; a later toolbox edit must also
+    // move its cap so the column can grow beyond the dragged size.
+    column.style.maxWidth = "300px"
+    setWidth("520px")
+    expect(column.style.width).toBe("520px")
+    expect(column.style.flexBasis).toBe("520px")
+    expect(column.style.maxWidth).toBe("520px")
+    setWidth("")
+    expect(column.style.width).toBe("")
+    expect(column.style.flexBasis).toBe("")
+    expect(column.style.maxWidth).toBe("")
+    expect(column.querySelector("h2")).toBe(heading)
+  })
+
   it("styles the selected card or embedded element without changing its column", () => {
     convert("board")
     const column = columns()[0], card = cards()[0]
@@ -1158,6 +1185,20 @@ describe("Board layout", () => {
     const column = columns()[1]
     column.append(document.createComment("external")); column.querySelector("article")!.replaceWith(document.createElement("custom-card"))
     const authored = editor.toHTML(true); await settle(); expect(editor.toHTML(true)).toBe(authored)
+    remote.destroy()
+  })
+
+  it("keeps blank card paragraphs in shared and serialized HTML", async () => {
+    convert("board")
+    const card = cards()[0]
+    card.innerHTML = '<p></p><p></p><custom-widget>Content</custom-widget>'
+    await settle()
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc(); Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+    expect(sharedDOMBody(remote).toString()).toContain(card.innerHTML)
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(saved.querySelector(".ww-board-card")?.innerHTML).toBe(card.innerHTML)
+    expect(saved.head.textContent).toContain(boardStyles)
     remote.destroy()
   })
 })
