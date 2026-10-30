@@ -1160,4 +1160,18 @@ describe("Board layout", () => {
     const authored = editor.toHTML(true); await settle(); expect(editor.toHTML(true)).toBe(authored)
     remote.destroy()
   })
+
+  it("keeps blank card paragraphs in shared and serialized HTML", async () => {
+    convert("board")
+    const card = cards()[0]
+    card.innerHTML = '<p></p><p></p><custom-widget>Content</custom-widget>'
+    await settle()
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc(); Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+    expect(sharedDOMBody(remote).toString()).toContain(card.innerHTML)
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(saved.querySelector(".ww-board-card")?.innerHTML).toBe(card.innerHTML)
+    expect(saved.head.textContent).toContain(boardStyles)
+    remote.destroy()
+  })
 })

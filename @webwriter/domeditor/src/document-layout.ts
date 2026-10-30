@@ -93,6 +93,8 @@ ${boardColumnSelector(" > article.ww-board-card:not([is])")} {
 }
 ${boardColumnSelector(" > article.ww-board-card:not([is]) > :first-child")} { margin-top: 0; }
 ${boardColumnSelector(" > article.ww-board-card:not([is]) > :last-child")} { margin-bottom: 0; }
+/* Match the editor's empty paragraph line box in previews and saved boards. */
+:where(${boardColumnSelector(" > article.ww-board-card:not([is]) p:empty")})::before { content: "\\200B"; }
 @media print {
   @page ww-board { size: portrait; margin: 10mm; }
   html:has(> body.ww-board) { height: auto; overflow: visible; background: none; }
