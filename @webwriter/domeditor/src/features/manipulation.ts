@@ -2587,6 +2587,7 @@ export class ManipulationFeature extends EditorFeature {
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
         placement: this.editor.features.layout.getPlacementState(target),
+        grouping: this.editor.features.board.groupingState(target),
         canMoveUp: movable && target.previousElementSibling !== null,
         canMoveDown: movable && target.nextElementSibling !== null,
         alignment: alignmentFromStyles(style),

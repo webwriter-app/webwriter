@@ -5653,6 +5653,20 @@ describe("DomEditor.execute()", () => {
     expect(execute.mock.calls.filter(([action]) => action.type === "getStyleState").length).toBeGreaterThanOrEqual(3)
   })
 
+  it("retains board grouping state through the bridge and routes grouping commands from the style drawer", async () => {
+    const {editor} = await mountEditor()
+    const grouping = {grouped: false, canCreate: true, canUngroup: true, canJoinLeft: true, canJoinRight: false}
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "getStyleState") return {target: {localName: "section", namespaceURI: "http://www.w3.org/1999/xhtml", grouping},
+        inline: {}, computed: {}, context: {display: "flex", parentDisplay: "flex"}}
+    })
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool(null); toolbox.selectTool("Edit")
+    await vi.waitFor(() => expect(toolbox.elementStyle.target?.grouping).toEqual(grouping))
+    toolbox.dispatchEvent(new CustomEvent("layout-action", {detail: {type: "setBoardGrouping", mode: "left"}, bubbles: true, composed: true}))
+    expect(execute).toHaveBeenCalledWith({type: "setBoardGrouping", mode: "left"})
+  })
+
   it("applies a box preset in one style command", async () => {
     const {editor} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)

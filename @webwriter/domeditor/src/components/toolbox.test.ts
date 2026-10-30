@@ -1737,3 +1737,26 @@ it("keeps every style option visible and disables the whole drawer at a top-leve
   expect(drawer.hasAttribute("inert")).toBe(false)
   expect(drawer.style.opacity).toBe("")
 })
+
+it("shows four board Grouping icons above Caption, with live neighbor availability", async () => {
+  const toolbox = new DomEditorToolbox()
+  document.body.append(toolbox)
+  toolbox.activeTool = "Edit"
+  toolbox.documentLayout = {mode: "board", canConvert: true, zoom: 100}
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {localName: "section", namespaceURI: "http://www.w3.org/1999/xhtml",
+    grouping: {grouped: false, canCreate: true, canUngroup: true, canJoinLeft: false, canJoinRight: true}}}
+  const actions = vi.fn(); toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const grouping = toolbox.shadowRoot!.querySelector('[aria-label="Grouping"]')!
+  const buttons = [...grouping.querySelectorAll<HTMLButtonElement>("button")]
+  expect(buttons).toHaveLength(4)
+  expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["No group", "Join group to the left", "Create new group", "Join group to the right"])
+  expect(buttons.every(button => button.querySelector("svg"))).toBe(true)
+  expect(buttons[0].getAttribute("aria-pressed")).toBe("true")
+  expect(buttons[1].disabled).toBe(true); expect(buttons[3].disabled).toBe(false)
+  expect(grouping.compareDocumentPosition(toolbox.shadowRoot!.querySelector('[aria-label="Caption"]')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  buttons[2].click(); expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setBoardGrouping", mode: "new"})
+  buttons[3].click(); expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setBoardGrouping", mode: "right"})
+  toolbox.htmlPending = true; await toolbox.updateComplete
+  expect([...grouping.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true)
+})

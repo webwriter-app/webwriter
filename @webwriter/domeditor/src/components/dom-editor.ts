@@ -2213,7 +2213,7 @@ export class DomEditor extends LitElement {
       viewport.replaceWith(...viewport.childNodes)
     }
     body.querySelectorAll(":scope > nav.ww-slides-navigation").forEach(nav => nav.remove())
-    for(const column of body.querySelectorAll(":scope > section.ww-board-column")) {
+    for(const column of body.querySelectorAll(":scope > section.ww-board-column, :scope > section.ww-board-group:not([is]) > section.ww-board-column")) {
       if(column.attributes.length !== 1 || column.className !== "ww-board-column") return null
       for(const card of column.querySelectorAll(":scope > article.ww-board-card")) {
         if(card.attributes.length !== 1 || card.className !== "ww-board-card") return null
@@ -2223,6 +2223,13 @@ export class DomEditor extends LitElement {
         if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
       }
       column.replaceWith(...column.childNodes)
+    }
+    for(const group of body.querySelectorAll(":scope > section.ww-board-group:not([is])")) {
+      if(group.attributes.length !== 1 || group.className !== "ww-board-group") return null
+      for(const heading of group.querySelectorAll(":scope > h2")) {
+        if(!heading.childNodes.length && !heading.attributes.length) heading.remove()
+      }
+      group.replaceWith(...group.childNodes)
     }
     const placement: Record<string, string[]> = {
       position: ["absolute", "static"], left: ["0px", "var(--ww-page-gutter, 1.25rem)"],
@@ -5976,11 +5983,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"}>).detail
-    if(!action || !["setFloat", "moveFloat", "movePlacement", "setCaption", "openAttribution"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}>).detail
+    if(!action || !["setFloat", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution"
+    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping"
     void this.execute(topLevel ? {...action, topLevel: true} : action).then(changed => {
       if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
@@ -6873,6 +6880,7 @@ export class DomEditor extends LitElement {
     if(!isRecord(value) || !isRecord(value.inline) || !isRecord(value.computed) || !isRecord(value.context)) {
       return null
     }
+    const grouping = isRecord(value.target) && isRecord(value.target.grouping) ? value.target.grouping : null
     const target: ElementStyleState["target"] | undefined = value.target === null
       ? null
       : isRecord(value.target)
@@ -6887,6 +6895,10 @@ export class DomEditor extends LitElement {
           ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
           ...(isRecord(value.target.placement) && typeof value.target.placement.canMoveUp === "boolean" && typeof value.target.placement.canMoveDown === "boolean"
             ? {placement: {canMoveUp: value.target.placement.canMoveUp, canMoveDown: value.target.placement.canMoveDown}} : {}),
+          ...(grouping && typeof grouping.grouped === "boolean" && typeof grouping.canCreate === "boolean"
+            && typeof grouping.canUngroup === "boolean" && typeof grouping.canJoinLeft === "boolean" && typeof grouping.canJoinRight === "boolean"
+            ? {grouping: {grouped: grouping.grouped, canCreate: grouping.canCreate, canUngroup: grouping.canUngroup,
+              canJoinLeft: grouping.canJoinLeft, canJoinRight: grouping.canJoinRight}} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined

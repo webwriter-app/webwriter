@@ -113,6 +113,175 @@ describe("Board layout", () => {
     expect(editor.toHTML(true)).toBe(changed)
   })
 
+  it("creates a group with an editable heading from the column frame and retains authored content", async () => {
+    convert("board"); const column = columns()[0], card = cards()[0]
+    column.append(document.createComment("keep"), document.createElement("custom-column-content"))
+    const children = Array.from(column.childNodes)
+    $.move(column.querySelector("h2")!); editor.features.selection.processSelection(); board().refresh()
+    const control = board().transformOverlay(column)!.querySelector<HTMLButtonElement>('[part~="transform-overlay-group"]')!
+    expect(control.title).toBe("Create group for column 1")
+    control.click()
+    const group = board().groups()[0], heading = group.firstElementChild!
+    expect(group.parentElement).toBe(document.body)
+    expect(getComputedStyle(group).inlineSize).toBe("max-content")
+    expect(group.children[1]).toBe(column)
+    expect(heading.localName).toBe("h2")
+    expect(heading.textContent).toBe("")
+    expect(getComputedStyle(heading).getPropertyValue("--ww-placeholder")).toContain("Group heading")
+    expect(board().editingScope($.anchor)).toBe(heading)
+    expect(board().allowsSelection()).toBe(true)
+    expect(columns()).toEqual([column]); expect(board().cards(column)).toEqual([card])
+    expect(Array.from(column.childNodes)).toEqual(children)
+    vi.spyOn(group, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 20, 484, 300))
+    board().refresh()
+    const addColumn = editor.appendix.querySelector<HTMLElement>('[part~="board-add-column"]')!
+    expect(addColumn.style.left).toBe("")
+    expect(addColumn.getAttribute("part")).toMatch(/anchor-control-\d+/)
+    expect(getElementPresentation(heading)).toEqual({name: "Group Heading", icon: "Heading"})
+    await settle()
+    const html = await editor.serializeHTML()
+    expect(html).toContain("ww-board-group"); expect(html).not.toContain("Group heading")
+    expect(html).not.toContain("transform-overlay-group"); expect(html).not.toContain("◆")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+  })
+
+  it("numbers columns globally across groups and ungrouped columns in current board order", () => {
+    convert("board"); board().addColumn(); board().addColumn(); board().addColumn()
+    const [one, two, three, four] = columns()
+    board().setGrouping("new", one); board().setGrouping("left", two)
+    board().setGrouping("new", four)
+    const names = () => columns().map(column => getElementPresentation(column).name)
+    expect(columns()).toEqual([one, two, three, four])
+    expect(names()).toEqual(["Column 1", "Column 2", "Column 3", "Column 4"])
+    board().setGrouping("right", three)
+    expect(names()).toEqual(["Column 1", "Column 2", "Column 3", "Column 4"])
+    document.body.prepend(board().groups()[1])
+    expect(columns()).toEqual([three, four, one, two])
+    expect(names()).toEqual(["Column 1", "Column 2", "Column 3", "Column 4"])
+  })
+
+  it("joins adjacent groups in either direction and ungroups without discarding authored headings or metadata", () => {
+    convert("board"); board().addColumn(); board().addColumn()
+    const [left, middle, right] = columns()
+    board().setGrouping("new", left); const first = board().groups()[0]
+    first.querySelector("h2")!.textContent = "Keep this heading"
+    board().setGrouping("new", right); const last = board().groups()[1]
+    expect(board().groupingState(middle)).toMatchObject({grouped: false, canJoinLeft: true, canJoinRight: true})
+    expect(board().setGrouping("left", middle)).toBe(true)
+    expect(Array.from(first.children).filter(element => element.matches(".ww-board-column"))).toEqual([left, middle])
+    expect(board().setGrouping("right", middle)).toBe(true)
+    expect(last.children[1]).toBe(middle)
+    last.setAttribute("title", "authored")
+    expect(board().setGrouping("none", middle)).toBe(true)
+    expect(middle.parentElement).toBe(document.body)
+    expect(board().setGrouping("none", right)).toBe(true)
+    expect(last.isConnected).toBe(true); expect(last.title).toBe("authored")
+    expect(first.querySelector("h2")!.textContent).toBe("Keep this heading")
+  })
+
+  it("keeps grouped column style controls and grouping state scoped to the current column", () => {
+    convert("board"); const column = columns()[0]
+    board().setGrouping("new", column); const group = board().groups()[0]
+    $.move(column.querySelector("h2")!); editor.features.selection.processSelection()
+    const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true})
+    expect(state.target?.grouping).toMatchObject({grouped: true})
+    expect(editor.features.manipulation.topLevelStyleTarget).toBe(column)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "pink"}})
+    expect(column.style.backgroundColor).toBe("pink")
+    expect(group.style.backgroundColor).toBe("")
+  })
+
+  it("rechecks grouping permissions and current neighboring DOM when commands execute", () => {
+    convert("board"); board().addColumn()
+    const [one, two] = columns()
+    board().setGrouping("new", one)
+    expect(board().groupingState(two)?.canJoinLeft).toBe(true)
+    const group = board().groups()[0]
+    group.replaceWith(group.cloneNode(true))
+    expect(board().setGrouping("left", two)).toBe(true)
+    expect(two.parentElement).not.toBe(group)
+    const replacement = two.parentElement!
+    const allows = editor.allows.bind(editor)
+    vi.spyOn(editor, "allows").mockImplementation((permission, node) => node === replacement && permission === "insert" ? false : allows(permission, node))
+    board().addColumn(); const ungrouped = columns().at(-1)!
+    expect(board().groupingState(ungrouped)?.canJoinLeft).toBe(false)
+    expect(board().setGrouping("left", ungrouped)).toBe(false)
+    const owner = {}; editor.lockEditing(owner)
+    expect(board().setGrouping("none", two)).toBe(false)
+    editor.unlockEditing(owner)
+    two.remove()
+    expect(board().setGrouping("new", two)).toBe(false)
+  })
+
+  it("drags columns into groups and back out while preserving nested widgets and cleaning empty groups", async () => {
+    convert("board"); board().addColumn()
+    const [one, two] = columns(), card = cards()[0]
+    card.append(document.createComment("keep"), document.createElement("custom-card"))
+    board().setGrouping("new", two); const group = board().groups()[0]
+    await settle(); geometry()
+    vi.spyOn(group, "getBoundingClientRect").mockReturnValue(new DOMRect(330, 0, 660, 540))
+    const data = new DataTransfer(), children = Array.from(card.childNodes)
+    grip("Drag column 1").dispatchEvent(dragEvent("dragstart", data))
+    group.dispatchEvent(dragEvent("dragover", data, 350, 10))
+    expect(data.dropEffect).toBe("move")
+    group.dispatchEvent(dragEvent("drop", data, 350, 10))
+    expect(one.parentElement).toBe(group); expect(columns()).toEqual([one, two])
+    expect(Array.from(card.childNodes)).toEqual(children)
+    expect(document.querySelector(".◆board-dragging")).toBeNull()
+    expect(board().setGrouping("none", two)).toBe(true)
+    const next = new DataTransfer()
+    grip("Drag column 1").dispatchEvent(dragEvent("dragstart", next))
+    document.body.dispatchEvent(dragEvent("drop", next, 1100, 10))
+    expect(one.parentElement).toBe(document.body); expect(group.isConnected).toBe(false)
+    expect(document.querySelector(".◆board-dragging")).toBeNull()
+  })
+
+  it("recognizes remotely replaced groups and rejects stale columns and drag sources", async () => {
+    convert("board"); await settle()
+    const original = columns()[0], data = new DataTransfer()
+    geometry()
+    $.move(original.querySelector("h2")!); editor.features.selection.processSelection(); board().refresh()
+    grip("Drag column 1").dispatchEvent(dragEvent("dragstart", data))
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const body = sharedDOMBody(remote)
+      const index = body.toArray().findIndex(node => node instanceof Y.XmlElement && node.nodeName === "section")
+      const column = (body.get(index) as Y.XmlElement).clone()
+      const group = new Y.XmlElement("section"), heading = new Y.XmlElement("h2"), text = new Y.XmlText()
+      group.setAttribute("class", "ww-board-group"); text.insert(0, "Remote group")
+      heading.insert(0, [text]); group.insert(0, [heading, column])
+      body.delete(index, 1); body.insert(index, [group])
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client"); await settle()
+      expect(board().groups()).toHaveLength(1); expect(columns()).toHaveLength(1)
+      expect(board().groups()[0].querySelector("h2")!.textContent).toBe("Remote group")
+      expect(board().setGrouping("new", original)).toBe(false)
+      document.body.dispatchEvent(dragEvent("drop", data, 100, 100))
+      expect(document.querySelector(".◆board-dragging")).toBeNull()
+      expect(board().groupingState(columns()[0])?.grouped).toBe(true)
+      $.move(columns()[0].querySelector("h2")!); editor.features.selection.processSelection()
+      expect(board().addCard()).toBe(true)
+      expect(cards()).toHaveLength(2)
+    }
+    finally { remote.destroy() }
+  })
+
+  it("undoes and redoes grouping and converts without losing authored group content", async () => {
+    convert("board"); await settle(); editor.doc.stopCapturing()
+    expect(board().setGrouping("new", columns()[0])).toBe(true); await settle()
+    expect(board().groups()).toHaveLength(1)
+    editor.doc.undo(); await settle(); expect(board().groups()).toHaveLength(0); expect(columns()).toHaveLength(1)
+    editor.doc.redo(); await settle(); expect(board().groups()).toHaveLength(1); expect(columns()).toHaveLength(1)
+    const group = board().groups()[0]
+    group.querySelector("h2")!.textContent = "Group title"
+    const comment = document.createComment("preserve"), widget = document.createElement("custom-group-content")
+    group.append(comment, widget)
+    expect(convert("document")).toBe(true)
+    expect(document.body.textContent).toContain("Group title")
+    expect(document.body.contains(comment)).toBe(true); expect(document.body.contains(widget)).toBe(true)
+    expect(document.querySelector(".ww-board-group, .ww-board-column, .ww-board-card")).toBeNull()
+  })
+
   it.each(["breadcrumb", "modifier-click"])("selects and formats each column heading independently through %s", async source => {
     convert("board"); board().addColumn(); board().addColumn()
     const headings = columns().map((column, i) => {

@@ -1,7 +1,7 @@
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, atomicEditingContainer, clearEditorMarkerClasses, createAnchorPositioner, createStylesheet, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker, setPart} from "../utility"
 import {getDocumentRoot} from "../document-template"
-import {boardClass, boardStyles, documentLayoutMode, isBoardCard, isBoardColumn} from "../document-layout"
+import {boardClass, boardColumns, boardColumnSelector, boardStyles, documentLayoutMode, isBoardCard, isBoardColumn, isBoardGroup} from "../document-layout"
 
 type DragSelection = {anchor: Node | null, focus: Node | null, anchorOffset: number, focusOffset: number}
 
@@ -16,6 +16,7 @@ export class BoardFeature extends EditorFeature {
   private measuredTransforms = false
   private frame: number | null = null
   private columnsCache: HTMLElement[] = []
+  private groupsCache: HTMLElement[] = []
   private cardsCache: HTMLElement[] = []
   private pressedHandle = false
   private pressedSelection: DragSelection | null = null
@@ -27,7 +28,8 @@ export class BoardFeature extends EditorFeature {
   private permissionSignature = ""
   private placements: Array<{button: HTMLButtonElement, target: HTMLElement, position: "add-card" | "add-column"}> = []
   get active() { return documentLayoutMode() === "board" }
-  columns() { return Array.from(document.body.children).filter(isBoardColumn) }
+  groups() { return Array.from(document.body.children).filter(isBoardGroup) }
+  columns() { return boardColumns() }
   cards(column: HTMLElement) { return Array.from(column.children).filter(isBoardCard) }
 
   containingCard(node: Node | null): HTMLElement | null {
@@ -44,15 +46,18 @@ export class BoardFeature extends EditorFeature {
     const column = this.containingColumn(node)
     let element = node instanceof Element ? node : node?.parentElement
     while(element && element.parentElement !== column) element = element.parentElement
-    return column && element instanceof HTMLElement && element.matches("h2:not([is])") ? element : null
+    if(column && element instanceof HTMLElement && element.matches("h2:not([is])")) return element
+    element = node instanceof Element ? node : node?.parentElement
+    while(element && !isBoardGroup(element.parentElement)) element = element.parentElement
+    return element instanceof HTMLElement && element.matches("h2:not([is])") ? element : null
   }
   allowsSelection(range = document.getSelection()?.rangeCount ? $.range : null) {
     if(!this.active) return true
     if(!range || !document.body.contains(range.startContainer) || !document.body.contains(range.endContainer)) return false
-    if(!this.columns().length) return range.collapsed && range.startContainer === document.body
+    if(!this.columns().length && !this.groups().length) return range.collapsed && range.startContainer === document.body
     const selected = range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
       ? range.startContainer.childNodes[range.startOffset] : null
-    if(isBoardColumn(selected) || isBoardCard(selected) || selected && this.editingScope(selected) === selected) return true
+    if(isBoardGroup(selected) || isBoardColumn(selected) || isBoardCard(selected) || selected && this.editingScope(selected) === selected) return true
     const start = this.editingScope(range.startContainer)
     return Boolean(start && start === this.editingScope(range.endContainer))
   }
@@ -121,8 +126,10 @@ export class BoardFeature extends EditorFeature {
   }
   /** Flatten only recognized board wrappers; preserve all authored nodes and attributes within them. */
   documentContent() {
-    return Array.from(document.body.childNodes).flatMap(node => isBoardColumn(node) && this.plainWrapper(node, "ww-board-column")
-      ? Array.from(node.childNodes).flatMap(child => isBoardCard(child) && this.plainWrapper(child, "ww-board-card") ? Array.from(child.childNodes) : [child]) : [node])
+    const content = (node: Node): Node[] => (isBoardGroup(node) && this.plainWrapper(node, "ww-board-group")
+      || isBoardColumn(node) && this.plainWrapper(node, "ww-board-column") || isBoardCard(node) && this.plainWrapper(node, "ww-board-card"))
+      ? Array.from(node.childNodes).flatMap(content) : [node]
+    return Array.from(document.body.childNodes).flatMap(content)
   }
   convert(mode: "board" | "document", captureUndo = true) {
     if(this.editor.isEditingLocked || !this.editor.allows("edit", document.body)
@@ -140,14 +147,20 @@ export class BoardFeature extends EditorFeature {
         $.move(column.firstElementChild!)
       }
       else {
+        const groups = this.groups()
         for(const column of this.columns()) {
           // Empty headings added by the layout have no authored attributes/content.
           for(const heading of column.querySelectorAll(":scope > h2")) {
-            if(this.plainWrapper(heading as HTMLElement, "") && Array.from(heading.childNodes).every(node => node instanceof Text && !node.data.trim()
-              || node instanceof HTMLBRElement && this.plainWrapper(node, ""))) heading.remove()
+            if(this.emptyHeading(heading)) heading.remove()
           }
           for(const card of this.cards(column)) this.unwrap(card, "ww-board-card")
           this.unwrap(column, "ww-board-column")
+        }
+        for(const group of groups) {
+          for(const heading of group.querySelectorAll(":scope > h2")) {
+            if(this.emptyHeading(heading)) heading.remove()
+          }
+          this.unwrap(group, "ww-board-group")
         }
         document.body.classList.remove(boardClass)
         if(!document.body.classList.length) document.body.removeAttribute("class")
@@ -177,8 +190,60 @@ export class BoardFeature extends EditorFeature {
       return column.firstElementChild as HTMLElement
     })
   }
+  private selectedColumn() {
+    return this.containingColumn(this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? document.getSelection()?.anchorNode ?? null)
+  }
+  private neighboringGroup(column: HTMLElement, direction: "left" | "right") {
+    if(!isBoardColumn(column)) return null
+    const owner = isBoardGroup(column.parentElement) ? column.parentElement : column
+    const neighbor = direction === "left" ? owner.previousElementSibling : owner.nextElementSibling
+    return isBoardGroup(neighbor) ? neighbor : null
+  }
+  groupingState(node: Node | null) {
+    const column = this.active ? this.containingColumn(node) : null
+    if(!column) return undefined
+    const allowed = !this.editor.isEditingLocked && this.editor.allows("move", column)
+    const left = this.neighboringGroup(column, "left"), right = this.neighboringGroup(column, "right")
+    return {grouped: isBoardGroup(column.parentElement),
+      canCreate: allowed && this.editor.allows("insert", document.body),
+      canUngroup: allowed && this.editor.allows("insert", document.body),
+      canJoinLeft: Boolean(allowed && left && this.editor.allows("insert", left)),
+      canJoinRight: Boolean(allowed && right && this.editor.allows("insert", right))}
+  }
+  private emptyHeading(heading: Element) {
+    return heading.matches("h2:not([is])") && this.plainWrapper(heading as HTMLElement, "")
+      && Array.from(heading.childNodes).every(node => node instanceof Text && !node.data.trim()
+        || node instanceof HTMLBRElement && this.plainWrapper(node, ""))
+  }
+  private removeEmptyGroup(group: HTMLElement | null) {
+    if(!isBoardGroup(group) || !this.plainWrapper(group, "ww-board-group") || !this.editor.allows("delete", group)) return
+    if(Array.from(group.childNodes).every(node => node instanceof Text && !node.data.trim() || node instanceof Element && this.emptyHeading(node))) group.remove()
+  }
+  setGrouping(mode: "none" | "new" | "left" | "right", column = this.selectedColumn()) {
+    if(!column || !isBoardColumn(column) || !["none", "new", "left", "right"].includes(mode)) return false
+    const state = this.groupingState(column)!
+    if(mode === "new" && !state.canCreate || mode === "none" && (!state.grouped || !state.canUngroup)
+      || mode === "left" && !state.canJoinLeft || mode === "right" && !state.canJoinRight) return false
+    return this.edit(() => {
+      const parent = column.parentElement!, owner = isBoardGroup(parent) ? parent : column
+      if(mode === "new") {
+        const group = document.createElement("section"), heading = document.createElement("h2")
+        group.className = "ww-board-group"; group.append(heading)
+        owner.after(group); group.append(column); this.removeEmptyGroup(parent)
+        return heading
+      }
+      if(mode === "none") parent.after(column)
+      else {
+        const group = this.neighboringGroup(column, mode)!
+        if(mode === "right") group.insertBefore(column, Array.from(group.children).find(isBoardColumn) ?? null)
+        else group.append(column)
+      }
+      this.removeEmptyGroup(parent)
+      return column.firstElementChild as HTMLElement ?? column
+    })
+  }
   addCard(column = this.containingColumn(document.getSelection()?.anchorNode ?? null) ?? this.columns()[0]) {
-    if(!isBoardColumn(column) || column.parentElement !== document.body || !this.editor.allows("insert", column)) return false
+    if(!isBoardColumn(column) || !this.editor.allows("insert", column)) return false
     return this.edit(() => { const card = this.createCard(); column.append(card); return card.firstElementChild as HTMLElement })
   }
   splitAtSelection(intoColumn = false) {
@@ -187,7 +252,7 @@ export class BoardFeature extends EditorFeature {
       || !this.editor.allowsSelection("edit")) return false
     const range = selection.getRangeAt(0).cloneRange(), scope = this.editingScope(range.startContainer)
     const column = this.containingColumn(scope)
-    if(!scope || !column || !scope.contains(range.endContainer) || !this.editor.allows("insert", intoColumn ? document.body : column)
+    if(!scope || !column || !scope.contains(range.endContainer) || !this.editor.allows("insert", intoColumn ? column.parentElement : column)
       || atomicEditingContainer(range.startContainer, this.editor.schema) || atomicEditingContainer(range.endContainer, this.editor.schema)) return false
     return this.edit(() => {
       range.deleteContents()
@@ -231,8 +296,10 @@ export class BoardFeature extends EditorFeature {
     if(!previous) return false
     const scope = this.editingScope(selection.anchorNode)!, offset = previous.childNodes.length, end = this.editor.doc.beginUndoGroup()
     try {
+      const parent = source.parentElement
       previous.append(...Array.from(source.childNodes))
       source.remove()
+      if(acrossColumns) this.removeEmptyGroup(parent)
       if(acrossColumns) $.move(scope)
       else $.move(previous, offset)
       this.editor.features.selection.processSelection()
@@ -243,8 +310,8 @@ export class BoardFeature extends EditorFeature {
     return true
   }
   removeColumn(column: HTMLElement) {
-    if(!isBoardColumn(column) || column.parentElement !== document.body || !this.editor.allows("delete", column)) return false
-    return this.edit(() => { column.remove(); return this.columns()[0]?.firstElementChild as HTMLElement ?? this.columns()[0] ?? document.body })
+    if(!isBoardColumn(column) || !this.editor.allows("delete", column)) return false
+    return this.edit(() => { const parent = column.parentElement; column.remove(); this.removeEmptyGroup(parent); return this.columns()[0]?.firstElementChild as HTMLElement ?? this.columns()[0] ?? document.body })
   }
   removeCard(card: HTMLElement) {
     if(!isBoardCard(card) || !document.body.contains(card) || !this.editor.allows("delete", card)) return false
@@ -306,17 +373,22 @@ export class BoardFeature extends EditorFeature {
     if(!this.validDrag()) return null
     const source = this.drag!.source
     if(isBoardColumn(source)) {
-      const columns = this.columns().filter(column => column !== source)
-      if(!columns.length) return null
-      const before = columns.find(column => event.clientX < column.getBoundingClientRect().left + column.getBoundingClientRect().width / 2) ?? null
-      const edge = before?.getBoundingClientRect() ?? columns.at(-1)!.getBoundingClientRect()
-      return {parent: document.body, before, left: before ? edge.left - 8 : edge.right + 8, top: edge.top, width: 3, height: Math.max(edge.height, 80)}
+      const group = this.groups().find(group => {
+        const rect = group.getBoundingClientRect()
+        return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
+      })
+      const parent = group ?? document.body
+      if(!this.editor.allows("insert", parent)) return null
+      const peers = Array.from(parent.children).filter((node): node is HTMLElement => node !== source && (isBoardColumn(node) || isBoardGroup(node)))
+      const before = peers.find(column => event.clientX < column.getBoundingClientRect().left + column.getBoundingClientRect().width / 2) ?? null
+      const edge = before?.getBoundingClientRect() ?? peers.at(-1)?.getBoundingClientRect() ?? parent.getBoundingClientRect()
+      return {parent, before, left: before ? edge.left - 8 : peers.length ? edge.right + 8 : edge.left + 16, top: edge.top, width: 3, height: Math.max(edge.height, 80)}
     }
     const column = this.columns().find(column => {
       const rect = column.getBoundingClientRect()
       return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= Math.max(rect.bottom, window.innerHeight)
     })
-    if(!column) return null
+    if(!column || !this.editor.allows("insert", column)) return null
     const cards = this.cards(column).filter(card => card !== source)
     const before = cards.find(card => event.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2) ?? null
     const rect = column.getBoundingClientRect()
@@ -346,9 +418,11 @@ export class BoardFeature extends EditorFeature {
       const selection = document.getSelection(), {anchor, focus, anchorOffset, focusOffset} = this.drag!.selection
       const end = this.editor.doc.beginUndoGroup()
       try {
+        const previousParent = source.parentElement
         const parent = destination.parent as HTMLElement & {moveBefore?: (node: Node, child: Node | null) => void}
         if(parent.moveBefore) parent.moveBefore(source, destination.before)
         else parent.insertBefore(source, destination.before)
+        if(isBoardColumn(source)) this.removeEmptyGroup(previousParent)
         if(anchor?.isConnected && focus?.isConnected && document.body.contains(anchor) && document.body.contains(focus)) {
           const length = (node: Node) => node instanceof CharacterData ? node.length : node.childNodes.length
           selection?.setBaseAndExtent(anchor, Math.min(anchorOffset, length(anchor)), focus, Math.min(focusOffset, length(focus)))
@@ -360,7 +434,16 @@ export class BoardFeature extends EditorFeature {
     }
     finally { this.endDrag() }
   }
+  private enterHeading() {
+    const scope = this.editingScope(document.getSelection()?.anchorNode ?? null)
+    if(scope && isBoardGroup(scope.parentElement)) {
+      const column = Array.from(scope.parentElement.children).find(isBoardColumn)
+      if(column) $.move(column.firstElementChild ?? column)
+    }
+    else this.addCard()
+  }
   actions = {
+    setBoardGrouping: ({mode}: {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}) => this.setGrouping(mode),
     addBoardColumn: ({}: {type: "addBoardColumn"}) => this.addColumn(),
     addBoardCard: ({}: {type: "addBoardCard"}) => this.addCard(),
     removeBoardColumn: ({}: {type: "removeBoardColumn"}) => {
@@ -400,16 +483,16 @@ export class BoardFeature extends EditorFeature {
         event.preventDefault(); event.stopImmediatePropagation(); this.joinBackward(event.shiftKey)
       }
       else if(event.key === "Enter" && this.editingScope(document.getSelection()?.anchorNode ?? null)?.matches("h2")) {
-        event.preventDefault(); event.stopImmediatePropagation(); this.addCard()
+        event.preventDefault(); event.stopImmediatePropagation(); this.enterHeading()
       }
     },
     beforeinput: event => {
       if(!this.active || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)) return
-      if(!this.columns().length || !this.allowsSelection() || event.inputType.startsWith("delete") && this.atBoundary(event.inputType.toLowerCase().includes("backward") ? "backward" : "forward")) {
+      if(!this.columns().length && !this.groups().length || !this.allowsSelection() || event.inputType.startsWith("delete") && this.atBoundary(event.inputType.toLowerCase().includes("backward") ? "backward" : "forward")) {
         event.preventDefault(); event.stopImmediatePropagation()
       }
       else if(event.inputType === "insertParagraph" && this.editingScope($.anchor)?.matches("h2")) {
-        event.preventDefault(); event.stopImmediatePropagation(); this.addCard()
+        event.preventDefault(); event.stopImmediatePropagation(); this.enterHeading()
       }
       else if(event.inputType.startsWith("delete")) {
         event.preventDefault(); event.stopImmediatePropagation()
@@ -461,6 +544,13 @@ export class BoardFeature extends EditorFeature {
         overlay = this.editor.features.transformation.createFlowOverlay(`◆board-transform-${role}`, role)
         this.transformOverlays.set(target, overlay)
         this.editor.addAppendix(overlay)
+        if(isBoardColumn(target)) {
+          const grouper = document.createElement("button")
+          grouper.type = "button"; grouper.setAttribute("part", "transform-overlay-button transform-overlay-board-control transform-overlay-group")
+          grouper.addEventListener("pointerdown", event => event.preventDefault())
+          grouper.addEventListener("click", event => { this.setGrouping("new", target); event.stopPropagation() })
+          overlay.append(grouper)
+        }
         for(const handle of overlay.querySelectorAll<HTMLElement>('[data-transform-mode="move"]')) {
           handle.draggable = true
           handle.addEventListener("pointerdown", event => {
@@ -498,11 +588,12 @@ export class BoardFeature extends EditorFeature {
       setPart(overlay, "transform-overlay-board-selected", explicit === target)
       setPart(overlay, "transform-overlay-board-hovered", target === hoverTarget)
       overlay.querySelectorAll<HTMLButtonElement>("button").forEach(button => {
-        const action = button.dataset.transformMode === "move" ? "Move" : button.dataset.transformMode === "scale" ? "Resize" : "Delete"
+        const grouping = button.getAttribute("part")?.split(" ").includes("transform-overlay-group")
+        const action = grouping ? "Create group for" : button.dataset.transformMode === "move" ? "Move" : button.dataset.transformMode === "scale" ? "Resize" : "Delete"
         const permission = button.dataset.transformMode === "move" ? "move" : button.dataset.transformMode === "scale" ? "style" : "delete"
         button.title = `${action} ${label}`; button.setAttribute("aria-label", button.title)
         button.disabled = this.editor.isEditingLocked
-        button.hidden = !this.editor.allows(permission, target)
+        button.hidden = grouping ? !this.groupingState(target)?.canCreate : !this.editor.allows(permission, target)
         setPart(button, "transform-overlay-board-control-selected", explicit === target)
       })
       for(const handle of overlay.querySelectorAll<HTMLElement>('[data-transform-mode="move"]')) {
@@ -519,12 +610,13 @@ export class BoardFeature extends EditorFeature {
     this.ensureContent()
     this.controls.hidden = !this.active
     if(this.drag && !this.validDrag()) this.endDrag()
-    const columns = this.active ? this.columns() : [], allCards = columns.flatMap(column => this.cards(column))
+    const columns = this.active ? this.columns() : [], groups = this.active ? this.groups() : [], allCards = columns.flatMap(column => this.cards(column))
     const locked = this.editor.isEditingLocked
     const permissions = [this.editor.allows("insert", document.body), ...columns.map(column => this.editor.allows("insert", column))]
     const permissionSignature = JSON.stringify(permissions)
-    if(!this.drag && !this.pressedHandle && (this.active && !this.placements.length || !this.active && this.placements.length || allCards.length !== this.cardsCache.length || allCards.some((item, i) => item !== this.cardsCache[i]) || locked !== this.locked || columns.length !== this.columnsCache.length || columns.some((column, i) => column !== this.columnsCache[i]) || permissionSignature !== this.permissionSignature)) {
-      this.columnsCache = columns; this.cardsCache = allCards; this.locked = locked
+    if(!this.drag && !this.pressedHandle && (this.active && !this.placements.length || !this.active && this.placements.length
+      || groups.length !== this.groupsCache.length || groups.some((group, i) => group !== this.groupsCache[i]) || allCards.length !== this.cardsCache.length || allCards.some((item, i) => item !== this.cardsCache[i]) || locked !== this.locked || columns.length !== this.columnsCache.length || columns.some((column, i) => column !== this.columnsCache[i]) || permissionSignature !== this.permissionSignature)) {
+      this.columnsCache = columns; this.groupsCache = groups; this.cardsCache = allCards; this.locked = locked
       this.permissionSignature = permissionSignature
       this.controls.replaceChildren(); this.placements = []
       const button = (label: string, text: string, target: HTMLElement, position: typeof this.placements[number]["position"], run: () => unknown) => {
@@ -573,11 +665,12 @@ export class BoardFeature extends EditorFeature {
     // Authored layout styles remain portable, but the strict editing CSP
     // blocks their <style> element. Use the bundled CSS for editing too.
     this.layoutStylesheet = createStylesheet(boardStyles + `
+      body.ww-board > section.ww-board-group:not([is]) > h2:not([is]) {--ww-placeholder:"Group heading"}
       body.ww-board {padding-right:1.25rem}
       body.ww-board::after {content:"";box-sizing:border-box;flex:0 0 min(450px, calc(100vw - 2.5rem));width:min(450px, calc(100vw - 2.5rem));height:10rem;align-self:flex-start;border-radius:.75rem;pointer-events:none}
-      body.ww-board > section.ww-board-column:not([is]) {padding-bottom:1rem}
-      body.ww-board > section.ww-board-column:not([is])::after {content:"";box-sizing:border-box;flex:0 0 auto;width:100%;height:calc(1.5rem + 1lh + 6px);border-radius:.5rem;pointer-events:none}
-      @media print {body.ww-board::after, body.ww-board > section.ww-board-column:not([is])::after {display:none}}
+      ${boardColumnSelector()} {padding-bottom:1rem}
+      ${boardColumnSelector("::after")} {content:"";box-sizing:border-box;flex:0 0 auto;width:100%;height:calc(1.5rem + 1lh + 6px);border-radius:.5rem;pointer-events:none}
+      @media print {body.ww-board::after, ${boardColumnSelector("::after")} {display:none}}
     `)
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.layoutStylesheet]
     this.observer = new MutationObserver(this.schedule); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
@@ -591,7 +684,7 @@ export class BoardFeature extends EditorFeature {
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null; this.controls?.remove(); this.controls = null
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
-    this.stylesheet = null; this.columnsCache = []; this.cardsCache = []; this.placements = []
+    this.stylesheet = null; this.columnsCache = []; this.groupsCache = []; this.cardsCache = []; this.placements = []
     if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
     this.layoutStylesheet = null
     this.anchors.destroy(); this.measuredTransforms = false

@@ -72,6 +72,7 @@ export async function checkBoardAnchors(inspect = false) {
     const overlayRect = activeOverlay.getBoundingClientRect(), targetRect = frameTarget.getBoundingClientRect()
     near(overlayRect.left, targetRect.left, "selected frame left"); near(overlayRect.top, targetRect.top, "selected frame top")
     near(overlayRect.width, targetRect.width, "selected frame width"); near(overlayRect.height, targetRect.height, "selected frame height")
+
     const root = doc.documentElement
     assert(root.scrollWidth > root.clientWidth && root.scrollHeight > root.clientHeight, "fixture did not overflow both axes")
     const beforeX = cardButton.getBoundingClientRect(), frameBeforeX = activeOverlay.getBoundingClientRect()
@@ -101,10 +102,14 @@ export async function checkBoardAnchors(inspect = false) {
     checkRect(activeOverlay, frameTarget.getBoundingClientRect(), "resized column frame")
     assert(cardButton.getBoundingClientRect().width < previousWidth - 40, "column resizing did not resize its anchored controls")
 
+    // Grouping changes the add-column anchor's last flow owner and keeps card slots local.
     board.refresh = refresh
     view.scrollTo(0, 0); await layout(view)
-    const currentColumn = board.columns()[0]
-    const lastOwner = board.columns().at(-1)!
+    board.setGrouping("new", board.columns()[0]); await layout(view); board.refresh()
+    ;({card: cardButton, column: columnButton} = getControls())
+    const groupedColumn = board.columns()[0]
+    checkRect(cardButton, expectedCardSlot(groupedColumn), "grouped column card slot")
+    const lastOwner = Array.from(doc.body.children).filter(node => node.matches(".ww-board-column,.ww-board-group")).at(-1) as HTMLElement
     const bodyStyle = view.getComputedStyle(doc.body), ownerRect = lastOwner.getBoundingClientRect()
     const columnExpected = {
       left: ownerRect.right + parseFloat(bodyStyle.columnGap),
@@ -112,22 +117,21 @@ export async function checkBoardAnchors(inspect = false) {
       width: parseFloat(view.getComputedStyle(doc.body, "::after").width),
       height: parseFloat(view.getComputedStyle(doc.body, "::after").height)
     }
-    checkRect(columnButton, columnExpected, "add-column body slot")
+    checkRect(columnButton, columnExpected, "add-column body slot after grouped columns")
 
     // Transformed frames still use their local box and matrix, then return to
     // native anchors when the authored transform is removed.
-    currentColumn.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    groupedColumn.dispatchEvent(new (view as Window & typeof globalThis).PointerEvent("pointerdown", {bubbles: true, cancelable: true, button: 0}))
+    groupedColumn.style.rotate = "12deg"
     board.refresh(); await layout(view)
-    currentColumn.style.rotate = "12deg"
-    board.refresh(); await layout(view)
-    const rotated = board.transformOverlay(currentColumn)!
+    const rotated = board.transformOverlay(groupedColumn)!
     assert(rotated && !rotated.matches('[part~="transform-overlay-board-anchored"]'), "rotated column did not retain measured geometry")
-    const rotatedTarget = currentColumn.getBoundingClientRect()
+    const rotatedTarget = groupedColumn.getBoundingClientRect()
     checkRect(rotated, rotatedTarget, "rotated column frame")
-    currentColumn.style.removeProperty("rotate")
+    groupedColumn.style.removeProperty("rotate")
     board.refresh(); await layout(view)
     assert(rotated.matches('[part~="transform-overlay-board-anchored"]'), "unrotated column did not return to CSS anchors")
-    checkRect(rotated, currentColumn.getBoundingClientRect(), "unrotated column frame")
+    checkRect(rotated, groupedColumn.getBoundingClientRect(), "unrotated column frame")
 
     const serialized = await editor.serializeHTML()
     assert(!serialized.includes("board-add-card") && !serialized.includes("◆board-transform") && !serialized.includes("◆board-anchor"), "serialization included board editing controls or markers")

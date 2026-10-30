@@ -106,6 +106,7 @@ import italic from "@tabler/icons/outline/italic.svg?raw"
 import infoCircle from "@tabler/icons/outline/info-circle.svg?raw"
 import keyboard from "@tabler/icons/outline/keyboard.svg?raw"
 import language from "@tabler/icons/outline/language.svg?raw"
+import layersOff from "@tabler/icons/outline/layers-off.svg?raw"
 import layersUnion from "@tabler/icons/outline/layers-union.svg?raw"
 import eye from "@tabler/icons/outline/eye.svg?raw"
 import eyeOff from "@tabler/icons/outline/eye-off.svg?raw"
@@ -495,6 +496,7 @@ const icons: Record<string, string> = {
   Position: arrowsMove,
   Order: stack,
   Group: layersUnion,
+  NoGroup: layersOff,
   Layers: layersUnion,
   Visible: eye,
   Hidden: eyeOff,

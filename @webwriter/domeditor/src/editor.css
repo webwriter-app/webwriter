@@ -2292,7 +2292,8 @@ body::part(transform-overlay-z-front)::before {
 body::part(transform-overlay-mover),
 body::part(transform-overlay-caption),
 body::part(transform-overlay-delete),
-body::part(transform-overlay-attribution) {
+body::part(transform-overlay-attribution),
+body::part(transform-overlay-group) {
   position: absolute;
   z-index: 2;
   top: -13px;
@@ -2304,6 +2305,11 @@ body::part(transform-overlay-attribution) {
   background: rgb(255 255 255 / 90%);
   border: 2px solid var(--ww-transform-color);
   border-radius: 50%;
+}
+body::part(transform-overlay-group) {
+  left: -10px;
+  cursor: pointer;
+  --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M8 12h8M12 8v8"/></svg>');
 }
 body::part(transform-overlay-mover) {
   left: calc((var(--selection-flow-top-left, 0px) + var(--selection-flow-top-right, 100%)) / 2 - 10px);
@@ -2623,10 +2629,12 @@ svg image.◆media-empty {
 }
 
 /* Board drags retain their authored position until the drop is committed. */
-body.ww-board > section.ww-board-column:not([is]) {
+body.ww-board > section.ww-board-column:not([is]),
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) {
   cursor: pointer;
 }
-body.ww-board > section.ww-board-column:not([is]) > * {
+body.ww-board > section.ww-board-column:not([is]) > *,
+body.ww-board > section.ww-board-group:not([is]) > section.ww-board-column:not([is]) > * {
   cursor: auto;
 }
 body.ww-board .◆board-dragging {
