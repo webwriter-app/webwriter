@@ -1,4 +1,4 @@
-export const attributionAttributes: Readonly<Record<"name" | "year" | "license" | "contact", string>>
+export const attributionAttributes: Readonly<Record<"name" | "year" | "license" | "contact" | "type", string>>
 export type AttributionValues = Record<keyof typeof attributionAttributes, string>
 export interface AttributionController {
   element: HTMLElement
