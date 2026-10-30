@@ -1009,61 +1009,55 @@ describe("toolbox", () => {
     expect(toolbox.activeTool).toBe("Edit")
   })
 
-  it("names element-specific Edit tools in the active blue", async () => {
+  it("shows the selected element name in blue without opening Edit", async () => {
     const toolbox = await mountToolbox()
     const edit = toolButton(toolbox, "Edit")
-    const editTab = edit.closest<HTMLElement>(".toolbox-tab")!
+    const tab = edit.closest<HTMLElement>(".toolbox-tab")!
     const label = edit.querySelector<HTMLElement>(".toolbox-tab-label")!
-    toolbox.table = {
-      active: true,
-      cellSelection: false,
-      rows: 2,
-      columns: 2,
-      selectedCells: 1,
-      canMerge: false,
-      canSplit: false,
-      hasCaption: false,
-      hasHeader: false,
-      hasFooter: false,
-    }
+    toolbox.selectionPath = [{path: [], name: "Document"}, {path: [0], name: "Demo widget", icon: "Packages"}]
+    toolbox.elementAttributes = {path: [0], localName: "demo-widget", namespaceURI: "http://www.w3.org/1999/xhtml", name: "Demo widget", attributes: {}}
     await toolbox.updateComplete
-    expect(label.textContent).toBe("Table")
-    expect(edit.getAttribute("aria-label")).toBe("Edit Table")
-    expect(label.hasAttribute("data-contextual")).toBe(true)
-    expect(getComputedStyle(label).color).toBe("#0ea5e9")
-    expect(getComputedStyle(label).opacity).toBe("1")
-    expect(getComputedStyle(edit).color).toBe("#0ea5e9")
-    expect(getComputedStyle(editTab).width).toBe("100px")
+    expect(edit.getAttribute("aria-label")).toBe("Edit")
+    expect(tab.hasAttribute("data-contextual")).toBe(false)
 
-    edit.click()
+    toolbox.elementSelected = true
     await toolbox.updateComplete
-    expect(getComputedStyle(editTab).width).toBe("128px")
+    expect(toolbox.activeTool).toBeNull()
+    expect(label.textContent).toBe("Demo widget")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Demo widget")
+    expect(tab.hasAttribute("data-available")).toBe(true)
+    expect(getComputedStyle(label).color).toBe("#0ea5e9")
+    expect(getComputedStyle(edit).color).toBe("#0ea5e9")
+    expect(getComputedStyle(label).opacity).toBe("1")
 
     toolButton(toolbox, "Style").click()
     await toolbox.updateComplete
-    expect(label.textContent).toBe("Table")
-    expect(getComputedStyle(label).opacity).toBe("0")
-    expect(getComputedStyle(edit).color).toBe("#0ea5e9")
-    expect(getComputedStyle(editTab).width).toBe("28px")
-
-    toolbox.table = null
-    toolbox.graphic = {active: true, capture: false}
-    await toolbox.updateComplete
-    expect(label.textContent).toBe("Graphic")
-    toolbox.graphic = null
-    toolbox.selectionPath = [
-      {path: [], name: "Document"},
-      {path: [0], name: "Demo widget", icon: "Packages"},
-    ]
-    await toolbox.updateComplete
+    expect(toolbox.activeTool).toBe("Style")
     expect(label.textContent).toBe("Demo widget")
-    expect(edit.getAttribute("aria-label")).toBe("Edit Demo widget")
+    expect(getComputedStyle(label).opacity).toBe("1")
+    expect(tab.hasAttribute("data-available")).toBe(true)
+  })
 
-    toolbox.selectionPath = [{path: [], name: "Document"}, {path: [0], name: "Paragraph"}]
+  it("names selected element types without a generic Selection label", async () => {
+    const toolbox = await mountToolbox()
+    const group = (localName: string, name: string, count: number) => ({
+      element: {localName, namespaceURI: "http://www.w3.org/1999/xhtml", path: null, name, attributes: {}},
+      count, style: toolbox.elementStyle, styleProperties: [], configuredWidgetOptions: [],
+    })
+    toolbox.elementSelected = true
+    toolbox.selectedElementTypes = [group("p", "Paragraph", 2)]
     await toolbox.updateComplete
-    expect(label.textContent).toBe("Edit")
-    expect(label.hasAttribute("data-contextual")).toBe(false)
+    const edit = toolButton(toolbox, "Edit")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph")
+    toolbox.selectedElementTypes = [group("p", "Paragraph", 1), group("demo-widget", "Demo widget", 1)]
+    await toolbox.updateComplete
+    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph, Demo widget")
+    expect(edit.closest(".toolbox-tab")!.hasAttribute("data-contextual")).toBe(true)
+    toolbox.selectedElementTypes = []
+    toolbox.selectionPath = []
+    await toolbox.updateComplete
     expect(edit.getAttribute("aria-label")).toBe("Edit")
+    expect(edit.closest(".toolbox-tab")!.hasAttribute("data-contextual")).toBe(false)
   })
 
   it("offers layout switching in the Document toolbox for a selected document root", async () => {
@@ -1155,7 +1149,7 @@ describe("toolbox", () => {
       attributes: {cite: "source.html"},
     }
     await toolbox.updateComplete
-    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Quote")
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit")
     expect(toolbox.shadowRoot!.querySelectorAll("ribbon-drawer")).toHaveLength(2)
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Quote"] element-attribute-editor')).not.toBeNull()
   })
@@ -1222,7 +1216,7 @@ describe("toolbox", () => {
     toolbox.elementAttributes = null
     toolbox.headingGroup = {heading: "h2", beforeCount: 1, afterCount: 1}
     await toolbox.updateComplete
-    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Heading group")
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit")
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Heading group"]')).not.toBeNull()
   })
 
@@ -1255,7 +1249,7 @@ describe("toolbox", () => {
     }))
   })
 
-  it("omits a Figure drawer and contextual label for an active or explicitly selected figure", async () => {
+  it("names a selected figure while omitting its separate drawer", async () => {
     const toolbox = await mountToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -1269,7 +1263,7 @@ describe("toolbox", () => {
     toolbox.sectionSelected = true
     toolbox.figure = {hasCaption: true}
     await toolbox.updateComplete
-    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit")
+    expect(toolButton(toolbox, "Edit").getAttribute("aria-label")).toBe("Edit Figure")
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Section"], ribbon-drawer[label="Figure"]')).toBeNull()
   })
 

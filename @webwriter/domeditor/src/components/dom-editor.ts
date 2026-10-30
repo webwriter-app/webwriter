@@ -6753,10 +6753,6 @@ export class DomEditor extends LitElement {
     void this.execute({
       type: "selectNode",
       path,
-    }).then(() => {
-      const body = this.editorDocument?.body
-      const node = path.reduce<Node | undefined>((node, index) => node?.childNodes[index], body)
-      if(body && node === getDocumentRoot(body)) this.openEditToolbox()
     }).finally(() => this.focusEditor())
   }
 
@@ -6764,9 +6760,7 @@ export class DomEditor extends LitElement {
     const section = (event as CustomEvent<SelectionPathSection>).detail
     if(!section || !Array.isArray(section.path)) return
 
-    void this.execute({type: "selectSection", path: [...section.path]}).then(() => {
-      this.openEditToolbox()
-    }).finally(() => this.focusEditor())
+    void this.execute({type: "selectSection", path: [...section.path]}).finally(() => this.focusEditor())
   }
 
   private handleBreadcrumbItemHover = (event: Event) => {
@@ -7358,7 +7352,6 @@ export class DomEditor extends LitElement {
     }
     if(isSelectionChangeMessage(event.data)) {
       if(!this.isEditorMessage(event)) return
-      const previousSelectionPath = this.selectionPath.at(-1)?.path
       const path = event.data.detail.path.map(item => ({
         ...item,
         path: [...item.path],
@@ -7407,22 +7400,9 @@ export class DomEditor extends LitElement {
       this.figure = event.data.detail.figure ? {...event.data.detail.figure} : null
       this.captionPosition = event.data.detail.captionPosition ?? null
       this.captionAlignment = event.data.detail.captionAlignment ?? null
-      const previousMedia = this.mediaSelection
       this.mediaSelection = event.data.detail.media
         ? {...event.data.detail.media, attributes: {...event.data.detail.media.attributes}}
         : null
-      const playbackWarning = this.mediaSelection?.type === "video" ? this.mediaSelection.videoPlaybackWarning : undefined
-      if(playbackWarning) {
-        const mediaKey = (media: MediaSelectionState | null, selectionPath?: number[]) => JSON.stringify({
-          selectionPath,
-          type: media?.type,
-          source: media?.attributes.src,
-          sources: media?.sources?.map(source => source.attributes.src),
-        })
-        const previousWarning = previousMedia?.type === "video" ? previousMedia.videoPlaybackWarning : undefined
-        const selectionChanged = mediaKey(previousMedia, previousSelectionPath) !== mediaKey(this.mediaSelection, path.at(-1)?.path)
-        if(!previousWarning || selectionChanged) this.openEditToolbox(true)
-      }
       this.dialogSelection = event.data.detail.dialog ? {
         ...event.data.detail.dialog,
         attributes: {...event.data.detail.dialog.attributes},
@@ -7448,16 +7428,6 @@ export class DomEditor extends LitElement {
       this.widgetOptions = event.data.detail.widget ? structuredClone(event.data.detail.widget) : null
       if(previousWidget?.localName !== this.widgetOptions?.localName
         || JSON.stringify(previousWidget?.path) !== JSON.stringify(this.widgetOptions?.path)) this.selectWidgetElementPackage()
-      const hasContextualEditOptions = this.tableSelection?.active === true
-        || this.layoutSelection !== null
-        || this.graphicSelection?.active === true
-        || this.mediaSelection !== null
-        || this.dialogSelection !== null
-        || this.sectionSelected
-        || this.headingGroup !== null
-        || this.figure !== null
-        || path.at(-1)?.icon === "Packages"
-      if(event.data.detail.inserted === true && hasContextualEditOptions) this.openEditToolbox()
       if(this.stylesVisible()) this.queueElementStyleRefresh()
       this.dispatchEvent(new CustomEvent(selectionChangeEvent, {
         detail: {
