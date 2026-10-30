@@ -69,7 +69,6 @@ import {
   isMarkElement,
   isStyleMarkName,
   mergedMarkGroupFor,
-  stripExcludedMarks,
   type MarkAttributeValues,
   type MarkName,
   type RubyState,
@@ -3232,7 +3231,6 @@ export class DomEditor extends LitElement {
     this.editorFrameStartupError = null
     await this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.cancelAIWork()
     const parsed = new DOMParser().parseFromString(htmlSource, "text/html")
-    stripExcludedMarks(parsed.body)
     const revision = this.documentChangeSequence
     const frameRevision = this.frameRevision
     const packages = await loadDocumentPackages(parsed, this.packageRegistry, this.installedPackages)
@@ -3806,17 +3804,23 @@ export class DomEditor extends LitElement {
     const revision = this.documentChangeSequence
     const client = this.backendClient
     const session = this.backendSession
+    let sharingError: unknown
     this.documentLoading = true
     try {
       this.documentsError = ""
-      const document = await client.getDocument(id)
+      const [document, sharing] = await Promise.all([
+        client.getDocument(id),
+        typeof client.getDocumentSharing === "function" ? client.getDocumentSharing(id).catch(error => {
+          sharingError = error
+          return {enabled: false}
+        }) : Promise.resolve({enabled: false}),
+      ])
       if(beforeLoad && !await beforeLoad()) return
       if(this.backendClient !== client) throw new Error("The document storage connection changed while opening the file.")
       if(revision !== this.documentChangeSequence) throw new Error("The document changed while opening a file. Open it again to discard those changes.")
-      this.collaborationLink = ""
-      this.linkSharingEnabled = false
-      this.collaborationRoom = `document-${document.id}`
-      this.sharedDocumentToken = null
+      this.clearDocumentCollaboration()
+      // Private documents reopen from their saved HTML, not a stale live room.
+      if(sharing.enabled) this.collaborationRoom = `document-${document.id}`
       await this.reloadDocument(document.content, false, this.backendDocumentReference(document.id, client), true)
       this.backendDocumentId = document.id
       this.fileHandle = null
@@ -3828,7 +3832,8 @@ export class DomEditor extends LitElement {
       if(session) await this.rememberOpenedDocument({id: crypto.randomUUID(), title: document.title, openedAt: Date.now(),
         kind: "backend", documentId: document.id, apiBaseUrl: session.apiBaseUrl, userId: session.user.id})
       this.updateBackendDocumentURL(document.id, client)
-      void this.refreshDocumentSharing()
+      this.applyDocumentSharing(sharing, client)
+      if(sharingError) this.collaborationError = sharingError instanceof Error ? sharingError.message : String(sharingError)
       this.renderRoot.querySelector<OpenDocumentMenu>("open-document-menu")?.close()
       this.focusEditor()
     }

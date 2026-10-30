@@ -4192,10 +4192,14 @@ describe("DomEditor file actions", () => {
     expect((editor as any).fileDirty).toBe(false)
   })
 
-  it("strips excluded marks when opening HTML files and keeps rich base content", async () => {
+  it("preserves authored formatting and image filters when reopening HTML files", async () => {
     const {editor} = await mountEditor()
     const marks = excludedMarkNames.map(name => `<${name}><b>${name}</b><!--keep--></${name}>`).join("")
-    const body = `<p>${marks}<ruby><rb>漢</rb><rp>(</rp><rt>かん</rt><rp>)</rp><rtc><rt>character</rt></rtc></ruby></p><test-widget><span>widget</span></test-widget>`
+    const body = '<p style="font-size: 24px; color: navy">Whole paragraph <span style="font-family: Georgia, serif; font-size: 32px; color: red; background-color: yellow">styled <b>text</b></span> plain</p>'
+      + '<figure style="filter: grayscale(1)"><picture><img src="data:image/png;base64,AQID" style="filter: sepia(1) contrast(2)"></picture><figcaption>Caption</figcaption></figure>'
+      + `<p>${marks}<ruby><rb>漢</rb><rp>(</rp><rt>かん</rt><rp>)</rp><rtc><rt>character</rt></rtc></ruby></p>`
+      + '<test-widget custom="keep"><span style="color: green">widget</span></test-widget><template><span style="color: blue">template</span></template>'
+      + '<svg xmlns="http://www.w3.org/2000/svg"><text><tspan fill="purple">SVG</tspan></text></svg>'
     const file = new File([`<!DOCTYPE html><html lang="de"><head><title>Imported</title></head><body>${body}</body></html>`], "imported.html", {type: "text/html"})
     const handle = {name: "imported.html", getFile: vi.fn().mockResolvedValue(file)}
     vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([handle]))
@@ -4208,9 +4212,14 @@ describe("DomEditor file actions", () => {
     expect(source).toContain("<!DOCTYPE html>")
     expect(parsed.documentElement.lang).toBe("de")
     expect(parsed.title).toBe("Imported")
-    expect(parsed.querySelector("p")?.innerHTML).toBe(excludedMarkNames.map(name => `<b>${name}</b><!--keep-->`).join("") + "漢")
-    expect(parsed.querySelector("test-widget")?.innerHTML).toBe("<span>widget</span>")
+    const expected = new DOMParser().parseFromString(body, "text/html")
+    expect(parsed.body.innerHTML).toBe(expected.body.innerHTML)
     expect((editor as any).fileHandle).toBe(handle)
+
+    // Repeated opens must not progressively discard markup or its attributes.
+    await (editor as any).reloadDocument(source)
+    const reopened = new DOMParser().parseFromString((editor as any).frameDocumentHTML, "text/html")
+    expect(reopened.body.innerHTML).toBe(expected.body.innerHTML)
   })
 
   it("opens documents from the development backend when logged in", async () => {
@@ -10415,6 +10424,38 @@ describe("heading toolbox level changes", () => {
 })
 
 describe("document collaboration menu", () => {
+  it.each([false, true, "unavailable"] as const)("joins the cloud collaboration room only when editing links are enabled (%s)", async enabled => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const sharingEnabled = enabled === true
+    const content = '<picture style="filter: blur(2px)"><img src="data:image/png;base64,AQID"></picture><p></p>'
+    const client = {
+      apiBaseUrl: "http://localhost:1234/api",
+      getDocument: vi.fn().mockResolvedValue({id: "saved", title: "Saved", format: "html", content}),
+      getDocumentSharing: enabled === "unavailable" ? vi.fn().mockRejectedValue(new Error("Sharing unavailable"))
+        : vi.fn().mockResolvedValue(sharingEnabled ? {enabled: true, token: "editing-token"} : {enabled: false}),
+    }
+    host.backendClient = client
+    host.collaborationRoom = "document-previous"
+    host.sharedDocumentToken = "previous-token"
+    const disconnect = vi.spyOn(host, "clearDocumentCollaboration")
+    const rooms: Array<string | null> = []
+    const reload = vi.spyOn(host, "reloadDocument").mockImplementation(async () => {rooms.push(host.collaborationRoom)})
+
+    await host.openBackendDocument("saved")
+
+    expect(client.getDocumentSharing).toHaveBeenCalledWith("saved")
+    expect(disconnect).toHaveBeenCalledOnce()
+    expect(rooms).toEqual([sharingEnabled ? "document-saved" : null])
+    expect(reload).toHaveBeenCalledWith(content, false, "http://localhost:1234/api/documents/saved", true)
+    expect(new URL(host.syncUrl).searchParams.get("session")).toBe(sharingEnabled ? "document-saved" : null)
+    expect(host.sharedDocumentToken).toBeNull()
+    expect(host.linkSharingEnabled).toBe(sharingEnabled)
+    expect(host.collaborationLink ? new URL(host.collaborationLink).searchParams.get("open") : "")
+      .toBe(sharingEnabled ? "http://localhost:1234/api/shared-documents/editing-token" : "")
+    expect(host.collaborationError).toBe(enabled === "unavailable" ? "Sharing unavailable" : "")
+  })
+
   it("keeps the editor path and unrelated URL state when generating an open link", async () => {
     const {editor} = await mountEditor()
     history.replaceState({previous: true}, "", "/editor/?other=a+b&open=old#part%20one")
