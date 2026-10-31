@@ -1749,6 +1749,7 @@ export abstract class EditingControls extends LitElement {
     if(!this.media || this.media.type !== "picture" && this.media.type !== "img") return nothing
     const map = this.media.imageMap
     const areas = map?.areas ?? []
+    const hasSource = this.media.hasSource ?? Boolean(this.media.attributes.src?.trim() || this.media.attributes.srcset?.trim())
     return html`
       <section class="media-resource-editor" aria-label="Interactive hotspots">
         <div class="media-resource-heading"><span>Interactive hotspots</span></div>
@@ -1761,6 +1762,7 @@ export abstract class EditingControls extends LitElement {
             <button
               class="image-map-draw"
               type="button"
+              ?disabled=${!hasSource}
               @click=${() => this.dispatchImageMapAction({action: "draw", shape})}
             >${label}</button>
           `)}
@@ -2261,6 +2263,7 @@ export abstract class EditingControls extends LitElement {
         ${this.renderGraphicGeometryControls(toolbox, !labelableShapeSelected)}
         ${connectorSelected ? this.renderGraphicConnectorControls(false) : nothing}
         ${toolbox ? fileControls : nothing}
+        ${this.renderGraphicAlternativeTextField()}
       </ribbon-drawer>
       ${toolbox ? nothing : fileControls}
       <ribbon-drawer label="Insert shapes" icon="Graphic" layout="graphic">
@@ -2308,6 +2311,19 @@ export abstract class EditingControls extends LitElement {
         ></ribbon-button>
       </ribbon-drawer>
     `
+  }
+
+  protected renderGraphicAlternativeTextField() {
+    if(!this.graphic?.active) return nothing
+    return html`<div class="media-toolbox-controls media-primary-options">
+      ${this.renderMediaAttributeField({name: "aria-label", label: "Alternative text", placeholder: "Describe the graphic"}, {
+        attributes: {"aria-label": this.graphic.alternativeText ?? ""},
+        label: "Graphic: Alternative text",
+        onChange: event => this.dispatchEvent(new CustomEvent("graphic-alternative-text-change", {
+          detail: {value: (event.currentTarget as HTMLInputElement).value || null}, bubbles: true, composed: true,
+        })),
+      })}
+    </div>`
   }
 
   protected renderTableStructureControls(showCaption = true, toolboxGrid = false) {

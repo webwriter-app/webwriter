@@ -84,6 +84,7 @@ import {
   isTimedMediaResourceType,
   isWebsiteType,
   mediaAttributeOptions,
+  mediaCaptureModes,
   timedMediaResourceAttributeOptions,
   type MediaSelectionState,
 } from "../media"
@@ -3721,12 +3722,12 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private async pickMediaFile(attribute?: "poster") {
+  private async pickMediaFile(attribute?: "poster", resource?: {index: number, expected: Record<string, string>}) {
     const media = this.mediaSelection
     if(!media || attribute && media.type !== "video") return
     const accept = attribute === "poster" || media.type === "picture" || media.type === "img" ? "image/*"
       : media.type === "audio" ? "audio/*" : media.type === "video" ? "video/*" : ".html,.htm,text/html"
-    return this.pickEditorFile({type: "selectMediaFile", attribute}, accept)
+    return this.pickEditorFile({type: "selectMediaFile", attribute, resource}, accept)
   }
 
   private async pickEditorFile(action: Extract<EditingAction, {type: "selectMediaFile" | "importGraphic"}>, accept: string) {
@@ -5717,6 +5718,8 @@ export class DomEditor extends LitElement {
       direction?: unknown
       html?: unknown
       expectedHTML?: unknown
+      file?: unknown
+      mode?: unknown
     }>).detail
     if((detail?.type !== "audio" && detail?.type !== "video") || typeof detail.action !== "string") {
       this.focusEditor()
@@ -5748,6 +5751,19 @@ export class DomEditor extends LitElement {
     }
     const index = detail.index as number
     const expected = detail.expected as Record<string, string>
+    if(detail.resource === "source" && detail.action === "pick-file") {
+      void this.pickMediaFile(undefined, {index, expected})
+      return
+    }
+    if(detail.resource === "source" && detail.action === "set-file" && detail.file instanceof Blob) {
+      void this.execute({type: "setMediaFile", file: detail.file, resource: {index, expected}})
+      return
+    }
+    if(detail.resource === "source" && detail.action === "capture" && isMediaCaptureMode(detail.mode)
+      && mediaCaptureModes[detail.mode].media === detail.type) {
+      void this.execute({type: "captureTimedMediaResource", index, expected, mode: detail.mode})
+      return
+    }
     if(detail.action === "remove") {
       void this.execute({type: "removeTimedMediaResource", resource: detail.resource, index, expected})
       return
@@ -6690,6 +6706,12 @@ export class DomEditor extends LitElement {
       name: detail.name,
       value: detail.value,
     }).finally(() => this.focusEditor())
+  }
+
+  private handleGraphicAlternativeTextChange = (event: Event) => {
+    const value = (event as CustomEvent<{value?: unknown}>).detail?.value
+    if(value !== null && typeof value !== "string") return
+    void this.execute({type: "setGraphicAlternativeText", value})
   }
 
   private handleGraphicLayerAction = (event: Event) => {
@@ -7946,6 +7968,7 @@ export class DomEditor extends LitElement {
       "layout-action": this.handleLayoutAction.bind(this),
       "table-style-change": this.handleTableStyleChange.bind(this),
       "graphic-parameter-change": this.handleGraphicParameterChange.bind(this),
+      "graphic-alternative-text-change": this.handleGraphicAlternativeTextChange.bind(this),
       "graphic-layer-action": this.handleGraphicLayerAction.bind(this),
       "graphic-viewport-action": this.handleGraphicViewportAction.bind(this),
       "element-style-change": this.handleElementStyleChange.bind(this),

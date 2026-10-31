@@ -1312,9 +1312,14 @@ export const editingControlStyles = css`
       cursor: pointer;
     }
 
-    .image-map-draw:hover {
+    .image-map-draw:hover:not(:disabled) {
       color: #243447;
       background: #e8eef5;
+    }
+
+    .image-map-draw:disabled {
+      opacity: 0.45;
+      cursor: default;
     }
 
     .image-map-draw:focus-visible {

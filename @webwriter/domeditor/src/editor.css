@@ -2065,6 +2065,11 @@ body::part(transform-overlay-attribution-freeform)::after {
     height: var(--transform-rotate-stem-height, 15px);
     pointer-events: none;
 }
+body::part(transform-overlay-rotator):hover::after,
+body::part(transform-overlay-delete-freeform):hover::after,
+body::part(transform-overlay-attribution-freeform):hover::after {
+    background: var(--ww-transform-hover-color);
+}
 body::part(transform-overlay-button) {
   pointer-events: auto;
   touch-action: none;
@@ -2089,6 +2094,16 @@ body::part(transform-overlay-button)::before {
     transition: background-color 150ms ease;
     mask: var(--icon);
 }
+body::part(transform-overlay-rotator):hover::before,
+body::part(transform-overlay-anchor):hover::before,
+body::part(transform-overlay-anchor-sticky):hover::before,
+body::part(transform-overlay-mover):hover::before,
+body::part(transform-overlay-caption):hover::before,
+body::part(transform-overlay-delete):hover::before,
+body::part(transform-overlay-attribution):hover::before,
+body::part(transform-overlay-group):hover::before {
+    background-color: var(--ww-transform-hover-color);
+}
 body::part(transform-overlay-arranger) {
   anchor-name: --transform-overlay-arranger;
   position: absolute;
@@ -2111,6 +2126,12 @@ body::part(transform-overlay-arranger)::after {
     bottom: -14px;
     height: 16px;
     pointer-events: none;
+}
+body::part(transform-overlay-arranger):hover,
+body::part(transform-overlay-orderer):hover,
+body::part(transform-overlay-arranger):hover::after,
+body::part(transform-overlay-orderer):hover::after {
+    background: var(--ww-transform-hover-color);
 }
 body::part(transform-overlay-arranger-float-none) {
     --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-float-none"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /><path d="M4 15l16 0" /><path d="M4 19l16 0" /></svg>');
@@ -2309,6 +2330,14 @@ body::part(transform-overlay-group) {
   background: rgb(255 255 255 / 90%);
   border: 2px solid var(--ww-transform-color);
   border-radius: 50%;
+  transition: border-color 150ms ease;
+}
+body::part(transform-overlay-mover):hover,
+body::part(transform-overlay-caption):hover,
+body::part(transform-overlay-delete):hover,
+body::part(transform-overlay-attribution):hover,
+body::part(transform-overlay-group):hover {
+  border-color: var(--ww-transform-hover-color);
 }
 body::part(transform-overlay-group) {
   top: calc(50% - 10px);

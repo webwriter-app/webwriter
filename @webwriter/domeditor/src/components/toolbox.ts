@@ -126,6 +126,9 @@ export class DomEditorToolbox extends EditingControls {
     ${proofreadingCardStyles}
     ${EditingControls.styles}
     .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
+    .media-resource-card .media-source {margin-bottom: 0;}
+    .media-resource-card .media-source-buttons button {gap: .1rem; padding: 0 .05rem; font-size: .55rem;}
+    .media-resource-card .media-source-buttons svg {width: .9rem; height: .9rem;}
     .specialized-options > .media-source {margin-bottom: 0;}
     .media-source .media-source-buttons {border-radius: 4px 4px 0 0; background: transparent;}
     .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
@@ -965,6 +968,7 @@ export class DomEditorToolbox extends EditingControls {
 
   protected renderMediaResourceAttribute(resource: import("../media").TimedMediaResourceType,
     row: import("../media").TimedMediaResourceState, option: MediaAttributeOption) {
+    if(resource === "source" && option.name === "src") return this.renderMediaSource(false, row)
     if(option.kind !== "select") return super.renderMediaResourceAttribute(resource, row, option)
     const value = row.attributes[option.name] ?? option.options?.[0]?.value ?? ""
     const options = option.options ?? []
@@ -1118,7 +1122,7 @@ export class DomEditorToolbox extends EditingControls {
     const widget = Boolean(widgetOptions || localName.includes("-"))
     if(!profile && !widget && !group && !attributes) return nothing
     const mediaStyles = this.media && ["picture", "img", "video"].includes(localName)
-      ? ["object-view-box", "object-fit", "object-position"] : []
+      ? ["object-view-box", "object-fit"] : []
     const primary = (profile?.primary ?? []).filter(name => !mediaStyles.includes(name))
     const advanced = this.media && ["picture", "img"].includes(this.media.type) ? [] : profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
@@ -1211,6 +1215,7 @@ export class DomEditorToolbox extends EditingControls {
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
           : [[namespaceURI, localName, attributes?.path, 1]])}
         .state=${list ? {...style, target: {...style.target, localName, namespaceURI}} : style}></element-style-editor>
+      ${this.graphic?.active && localName === "svg" && (!group || singleTarget) ? this.renderGraphicAlternativeTextField() : nothing}
       ${hasOptions ? html`<div slot="more" class="specialized-options">
         ${advanced.length ? html`<element-style-editor mode="compact" dense-choices .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
@@ -1220,34 +1225,37 @@ export class DomEditorToolbox extends EditingControls {
     </ribbon-drawer>`
   }
 
-  private renderMediaSource(cover = false) {
+  private renderMediaSource(cover = false, resource?: import("../media").TimedMediaResourceState) {
     const media = this.media!
     const type = media.type
     const attribute = cover ? "poster" : mediaSourceAttribute(type)
-    const source = cover ? media.attributes.poster || "" : media.attributes[attribute] || media.sources?.find(row => row.attributes.src)?.attributes.src || media.attributes.srcset || media.attributes.srcdoc || ""
-    const current = (cover ? media.cover?.label : media.sourceLabel) ?? (source.startsWith("data:") || source.startsWith("blob:") ? `${cover ? "Image" : this.mediaLabel(type)} file` : media.attributes.srcdoc ? "HTML document" : source)
-    const sourceKind = cover ? media.cover?.kind : media.sourceKind
+    const source = resource ? resource.attributes.src || "" : cover ? media.attributes.poster || "" : media.attributes[attribute] || media.sources?.find(row => row.attributes.src)?.attributes.src || media.attributes.srcset || media.attributes.srcdoc || ""
+    const current = (resource ? resource.sourceLabel : cover ? media.cover?.label : media.sourceLabel) ?? (source.startsWith("data:") || source.startsWith("blob:") ? `${cover ? "Image" : this.mediaLabel(type)} file` : media.attributes.srcdoc && !resource ? "HTML document" : source)
+    const sourceKind = resource ? resource.sourceKind : cover ? media.cover?.kind : media.sourceKind
     const inputType = cover ? "picture" : type
-    const label = cover ? "Cover image" : "Source"
-    const id = cover ? "media-cover-url" : "media-source-url"
+    const label = resource ? "Source URL" : cover ? "Cover image" : "Source"
+    const id = resource ? `media-source-${resource.index}-url` : cover ? "media-cover-url" : "media-source-url"
     const sourceIcon = sourceKind === "capture" ? "Capture screen" : sourceKind === "recording" ? "Record"
       : sourceKind === "file" || source.startsWith("data:") || source.startsWith("blob:") ? "Select file" : "Link"
     const action = (label: string) => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
       detail: {label}, bubbles: true, composed: true,
     }))
+    const resourceAction = (action: string, extra: Record<string, unknown> = {}) => this.dispatchMediaResourceAction({
+      action, resource: "source", index: resource!.index, expected: resource!.attributes, ...extra,
+    })
     return html`<div class="media-source" data-cover=${cover}>
       <div class="media-source-label"><label for=${id}>${label}</label>
-        ${!cover && media.sourceSize !== undefined && media.sourceSize > 50 * 1024 * 1024 ? html`<button type="button" class="large-source-warning" aria-label="Large source file warning" aria-describedby="large-source-warning-message">!
+        ${!cover && !resource && media.sourceSize !== undefined && media.sourceSize > 50 * 1024 * 1024 ? html`<button type="button" class="large-source-warning" aria-label="Large source file warning" aria-describedby="large-source-warning-message">!
           <span id="large-source-warning-message" class="large-source-warning-bubble" role="tooltip">Large source files can lead to performance issues for readers</span>
         </button>` : nothing}
       </div>
       <div class="media-source-controls">
         <div class="specialized-choice-group media-source-buttons" style=${`--choice-columns: ${1 + mediaCaptureOptions(inputType).length}`} role="group" aria-label=${`${label} input`}>
-          <button type="button" aria-label="Select file" title="Open file" @click=${() => action(cover ? "selected-media-cover-file" : "selected-media-file")}>
+          <button type="button" aria-label="Select file" title="Open file" @click=${() => resource ? resourceAction("pick-file") : action(cover ? "selected-media-cover-file" : "selected-media-file")}>
             <span class="icon">${ribbonIcon("Select file")}</span><span class="label">File</span>
           </button>
           ${mediaCaptureOptions(inputType).map(option => html`<button type="button" aria-label=${option.label} title=${option.label}
-            @click=${() => action(`${cover ? "selected-media-cover-capture" : "selected-media-capture"}:${option.mode}`)}>
+            @click=${() => resource ? resourceAction("capture", {mode: option.mode}) : action(`${cover ? "selected-media-cover-capture" : "selected-media-capture"}:${option.mode}`)}>
             <span class="icon">${ribbonIcon(option.label)}</span><span class="label">${option.label === "Record" ? "Record" : "Capture"}</span>
           </button>`)}
         </div>
@@ -1264,20 +1272,24 @@ export class DomEditorToolbox extends EditingControls {
             if(!file) return
             event.preventDefault()
             event.stopPropagation()
-            this.dispatchEvent(new CustomEvent("media-file-drop", {
+            if(resource) resourceAction("set-file", {file})
+            else this.dispatchEvent(new CustomEvent("media-file-drop", {
               detail: {type, file, attribute: cover ? "poster" : undefined}, bubbles: true, composed: true,
             }))
           }}>
           ${source ? ribbonIcon(sourceIcon) : nothing}
           <input id=${id} type=${sourceKind || source.startsWith("data:") || source.startsWith("blob:") || media.attributes.srcdoc ? "text" : "url"}
-            inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${this.mediaLabel(type)}: ${label}`}
+            inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${resource ? "Source" : this.mediaLabel(type)}: ${label}`}
             placeholder="https://…" .value=${current} title=${current}
             @input=${this.clearMediaSourceError}
             @change=${(event: Event) => {
-              if((event.currentTarget as HTMLInputElement).value !== current) this.dispatchMediaAttribute(type, {name: attribute, label}, event)
+              if((event.currentTarget as HTMLInputElement).value === current) return
+              if(resource) resourceAction("set-attribute", {attribute: "src", value: (event.currentTarget as HTMLInputElement).value || null})
+              else this.dispatchMediaAttribute(type, {name: attribute, label}, event)
             }}>
-          ${source ? html`<button type="button" aria-label=${cover ? "Remove cover image" : "Remove source"} title=${cover ? "Remove cover image" : "Remove source"} @click=${() => cover
-            ? this.dispatchEvent(new CustomEvent("media-attribute-change", {detail: {type, attribute: "poster", value: null}, bubbles: true, composed: true}))
+          ${source ? html`<button type="button" aria-label=${resource ? "Remove source URL" : cover ? "Remove cover image" : "Remove source"} title=${resource ? "Remove source URL" : cover ? "Remove cover image" : "Remove source"} @click=${() => resource
+            ? resourceAction("set-attribute", {attribute: "src", value: null})
+            : cover ? this.dispatchEvent(new CustomEvent("media-attribute-change", {detail: {type, attribute: "poster", value: null}, bubbles: true, composed: true}))
             : action("remove-media-source")}>×</button>` : nothing}
         </div>
       </div>

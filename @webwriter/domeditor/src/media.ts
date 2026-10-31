@@ -59,6 +59,8 @@ export type TimedMediaResourceState = {
   /** Current direct child-node offset. Commands fail safely if it is stale. */
   index: number
   attributes: Record<string, string>
+  sourceLabel?: string
+  sourceKind?: "file" | "capture" | "recording"
 }
 
 export const imageMapHotspotShapes = ["rect", "circle", "poly"] as const
@@ -81,6 +83,8 @@ export type ImageMapSelectionState = {
 export type MediaSelectionState = {
   type: MediaType
   attributes: Record<string, string>
+  /** Whether the selected image has a source, including picture source candidates. */
+  hasSource?: boolean
   sourceSize?: number
   sourceLabel?: string
   sourceKind?: "file" | "capture" | "recording"
@@ -183,17 +187,17 @@ const timedMediaAttributes: MediaAttributeOption[] = [
 export const mediaAttributeOptions: Record<MediaType, MediaAttributeOption[]> = {
   picture: imageAttributes,
   img: imageAttributes,
-  audio: [...timedMediaAttributes, {name: "aria-label", label: "Alternative text"}],
+  audio: [...timedMediaAttributes, {name: "aria-label", label: "Alternative text", placeholder: "Describe the audio"}],
   video: [
     ...timedMediaAttributes,
-    {name: "aria-label", label: "Alternative text"},
+    {name: "aria-label", label: "Alternative text", placeholder: "Describe the video"},
     {name: "poster", label: "Cover image", kind: "url", placeholder: "https://…"},
     {name: "width", label: "Width", kind: "number", placeholder: "Auto"},
     {name: "height", label: "Height", kind: "number", placeholder: "Auto"},
     {name: "playsinline", label: "Play inline", kind: "boolean"},
   ],
   iframe: [
-    {name: "aria-label", label: "Alternative text"},
+    {name: "aria-label", label: "Alternative text", placeholder: "Describe the website"},
     {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
     {name: "name", label: "Name", placeholder: "Embedded website"},
     {name: "width", label: "Width", kind: "number", placeholder: "Auto"},
@@ -209,7 +213,7 @@ export const mediaAttributeOptions: Record<MediaType, MediaAttributeOption[]> = 
     {name: "allowfullscreen", label: "Allow fullscreen", kind: "boolean"},
   ],
   embed: [
-    {name: "aria-label", label: "Alternative text"},
+    {name: "aria-label", label: "Alternative text", placeholder: "Describe the website"},
     {name: "allowfullscreen", label: "Allow fullscreen", kind: "boolean"},
     {name: "src", label: "Source URL", kind: "url", placeholder: "https://…"},
     {name: "type", label: "MIME type", placeholder: "text/html"},
@@ -217,7 +221,7 @@ export const mediaAttributeOptions: Record<MediaType, MediaAttributeOption[]> = 
     {name: "height", label: "Height", kind: "number", placeholder: "Auto"},
   ],
   object: [
-    {name: "aria-label", label: "Alternative text"},
+    {name: "aria-label", label: "Alternative text", placeholder: "Describe the website"},
     {name: "allowfullscreen", label: "Allow fullscreen", kind: "boolean"},
     {name: "data", label: "Data URL", kind: "url", placeholder: "https://…"},
     {name: "type", label: "MIME type", placeholder: "text/html"},
@@ -288,7 +292,9 @@ export function isEmptyMedia(element: Element) {
     return !element.getAttribute("href")?.trim() && !element.getAttributeNS("http://www.w3.org/1999/xlink", "href")?.trim()
   }
   if(element.matches("picture")) {
-    return !element.querySelector("img[src]:not([src='']), img[srcset]:not([srcset='']), source[srcset]:not([srcset=''])")
+    return !Array.from(element.querySelectorAll("img, source")).some(child => child.localName === "img"
+      ? Boolean(child.getAttribute("src")?.trim() || child.getAttribute("srcset")?.trim())
+      : Boolean(child.getAttribute("srcset")?.trim()))
   }
   if(element.matches("audio, video")) {
     return !element.getAttribute("src")?.trim()

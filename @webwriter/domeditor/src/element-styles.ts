@@ -407,7 +407,7 @@ const listStyles: SpecializedElementStyle = {
   advanced: ["list-style-position", "break-inside"],
 }
 const imageStyles: SpecializedElementStyle = {
-  primary: ["object-fit", "object-position", "object-view-box"],
+  primary: ["object-fit", "object-view-box"],
   advanced: ["image-rendering"],
 }
 export function specializedElementStyle(localName: string): SpecializedElementStyle | undefined {

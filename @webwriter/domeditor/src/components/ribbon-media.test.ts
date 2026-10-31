@@ -396,6 +396,47 @@ describe("media ribbon drawer", () => {
     }}))
   })
 
+  it.each(["audio", "video"] as const)("offers file, capture, record, and URL inputs for a %s fallback source", async type => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type, attributes: {src: `primary.${type === "audio" ? "mp3" : "mp4"}`},
+      sources: [{index: 0, attributes: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}}]}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const listener = vi.fn()
+    toolbox.addEventListener("media-resource-action", listener)
+    const row = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-resource="source"]')!
+    const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>(".media-source-buttons button"))
+    expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Select file", "Capture screen", "Record"])
+    buttons.forEach(button => button.click())
+    expect(listener.mock.calls.map(([event]) => event.detail)).toEqual([
+      {type, action: "pick-file", resource: "source", index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}},
+      {type, action: "capture", resource: "source", index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, mode: `screen-${type}`},
+      {type, action: "capture", resource: "source", index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, mode: type === "audio" ? "microphone-audio" : "camera-video"},
+    ])
+
+    const input = row.querySelector<HTMLInputElement>('input[aria-label="Source: Source URL"]')!
+    expect(input.value).toBe("fallback.bin")
+    input.value = "replacement.bin"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({type, action: "set-attribute", resource: "source",
+      index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, attribute: "src", value: "replacement.bin"})
+    row.querySelector<HTMLButtonElement>('button[aria-label="Remove source URL"]')!.click()
+    expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({type, action: "set-attribute", resource: "source",
+      index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, attribute: "src", value: null})
+
+    const file = new File(["media"], "dropped.bin")
+    const data = new DataTransfer()
+    data.items.add(file)
+    const drop = new Event("drop", {bubbles: true, cancelable: true})
+    Object.defineProperty(drop, "dataTransfer", {value: data})
+    input.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(listener.mock.calls.at(-1)?.[0].detail).toEqual({type, action: "set-file", resource: "source",
+      index: 0, expected: {src: "fallback.bin", type: type === "audio" ? "audio/ogg" : "video/webm"}, file})
+  })
+
   it("draws hotspots without map lifecycle controls and edits popover behavior", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
@@ -467,6 +508,33 @@ describe("media ribbon drawer", () => {
       type: "img", action: "remove-area", path: [0],
     })}))
     expect(toolbox.shadowRoot!.querySelector("button[aria-label='Remove map']")).toBeNull()
+  })
+
+  it("disables hotspot drawing until the image has a source", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.activeMenu = "Edit"
+    toolbox.media = {type: "picture", attributes: {}, hasSource: false, imageMap: null}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const listener = vi.fn()
+    toolbox.addEventListener("image-map-action", listener)
+    const buttons = () => Array.from(toolbox.shadowRoot!.querySelectorAll<HTMLButtonElement>(".image-map-draw"))
+
+    expect(buttons().map(button => button.textContent)).toEqual(["Rectangle", "Circle", "Polygon"])
+    expect(buttons().every(button => button.disabled)).toBe(true)
+    buttons()[0].click()
+    expect(listener).not.toHaveBeenCalled()
+
+    toolbox.media = {type: "picture", attributes: {}, hasSource: true, imageMap: null}
+    await toolbox.updateComplete
+    expect(buttons().every(button => !button.disabled)).toBe(true)
+    buttons()[0].click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {type: "picture", action: "draw", shape: "rect"}}))
+
+    toolbox.media = {type: "picture", attributes: {}, hasSource: false, imageMap: null}
+    await toolbox.updateComplete
+    expect(buttons().every(button => button.disabled)).toBe(true)
   })
 
   it("keeps link URLs for link-only hotspots and hides them for hover popovers", async () => {
@@ -713,6 +781,8 @@ describe("primary media alternative text", () => {
     await toolbox.updateComplete
     const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label$=": Alternative text"]')!
     expect(input.value).toBe("Description")
+    expect(input.placeholder).toBe(type === "picture" || type === "img" ? "Describe the image"
+      : type === "audio" ? "Describe the audio" : type === "video" ? "Describe the video" : "Describe the website")
     expect(input.closest('[slot="more"]')).toBeNull()
     expect(input.closest(".media-toolbox-controls")).not.toBeNull()
     const listener = vi.fn()
@@ -740,7 +810,7 @@ describe("primary media alternative text", () => {
     expect(primary.propertyNames).not.toContain("object-view-box")
     expect(primary.propertyNames).not.toContain("object-fit")
     expect(primary.propertyNames).not.toContain("object-position")
-    expect(advanced.propertyNames).toEqual(["object-view-box", "object-fit", "object-position"])
+    expect(advanced.propertyNames).toEqual(["object-view-box", "object-fit"])
     if(type === "img" || type === "picture") {
       expect(toolbox.shadowRoot!.querySelector(".image-map-area")!.compareDocumentPosition(advanced)
         & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()

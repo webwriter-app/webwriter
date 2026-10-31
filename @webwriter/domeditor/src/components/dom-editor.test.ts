@@ -6352,6 +6352,23 @@ describe("DomEditor.execute()", () => {
       value: "English",
     })
 
+    const file = new File(["sound"], "fallback.ogg", {type: "audio/ogg"})
+    toolbox.dispatchEvent(new CustomEvent("media-resource-action", {
+      detail: {type: "audio", action: "set-file", resource: "source", index: 1,
+        expected: {src: "old.ogg"}, file},
+      bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setMediaFile", file,
+      resource: {index: 1, expected: {src: "old.ogg"}}})
+
+    toolbox.dispatchEvent(new CustomEvent("media-resource-action", {
+      detail: {type: "video", action: "capture", resource: "source", index: 1,
+        expected: {src: "old.webm"}, mode: "screen-video"},
+      bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "captureTimedMediaResource", index: 1,
+      expected: {src: "old.webm"}, mode: "screen-video"})
+
     toolbox.dispatchEvent(new CustomEvent("media-resource-action", {
       detail: {
         type: "audio",
@@ -6894,6 +6911,20 @@ describe("DomEditor.execute()", () => {
       }],
       viewport: {zoom: 175},
     })
+  })
+
+  it("routes graphic alternative text through the iframe bridge", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
+    const toolbox = editor.shadowRoot!.querySelector("dom-editor-toolbox")!
+    toolbox.dispatchEvent(new CustomEvent("graphic-alternative-text-change", {
+      detail: {value: "A map"}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setGraphicAlternativeText", value: "A map"})
+    toolbox.dispatchEvent(new CustomEvent("graphic-alternative-text-change", {
+      detail: {value: null}, bubbles: true, composed: true,
+    }))
+    expect(execute).toHaveBeenCalledWith({type: "setGraphicAlternativeText", value: null})
   })
 
   it("replaces the collaboration icon with up to two initials avatars", async () => {

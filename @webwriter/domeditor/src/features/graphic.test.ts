@@ -981,6 +981,24 @@ describe("graphic editing", () => {
     expect(editor.toHTML(true)).toBe('<svg viewBox="0 0 1600 900" width="100%"></svg>')
   })
 
+  it("edits alternative text on the selected SVG without changing its content", () => {
+    document.body.innerHTML = '<svg viewBox="0 0 100 50"><!--keep--><custom-shape></custom-shape></svg><p>After</p>'
+    const graphic = document.querySelector("svg")!
+    const content = graphic.innerHTML
+    $.selectElement(graphic)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.graphic.actions.setGraphicAlternativeText({type: "setGraphicAlternativeText", value: "A diagram"})).toBe(true)
+    expect(graphic).toHaveAttribute("aria-label", "A diagram")
+    expect(graphic.innerHTML).toBe(content)
+    expect(editor.features.graphic.getState()?.alternativeText).toBe("A diagram")
+    expect(editor.toHTML(true)).toContain('aria-label="A diagram"')
+
+    expect(editor.features.graphic.actions.setGraphicAlternativeText({type: "setGraphicAlternativeText", value: null})).toBe(true)
+    expect(graphic).not.toHaveAttribute("aria-label")
+    expect(editor.features.graphic.getState()?.alternativeText).toBeUndefined()
+  })
+
   it("floats a freshly inserted empty graphic from its Move handle", () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
