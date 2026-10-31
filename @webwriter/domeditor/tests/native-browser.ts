@@ -10464,11 +10464,21 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     const issueRect = (Array.from(highlight)[0] as Range).getClientRects()[0]
     const hit = {clientX: issueRect.left + issueRect.width / 2, clientY: issueRect.top + issueRect.height / 2}
     const paragraph = doc.querySelector("p")!
+    const selection = doc.getSelection()!
+    const errorText = doc.querySelector("em.meaning")!.firstChild!
+    selection.setBaseAndExtent(errorText, 0, errorText, 0)
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
+    assert(feature.state().hoveredIssueId === issue!.id, "caret inside the issue did not identify it")
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    const reviewIcon = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-tool="Review"] .toolbox-tab-icon')!
+    assert(getComputedStyle(reviewIcon).color === "rgb(198, 40, 40)", "selected issue did not color the closed Review icon")
+    selection.removeAllRanges()
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
     paragraph.dispatchEvent(new childWindow.PointerEvent("pointermove", {...hit, bubbles: true, composed: true}))
     assert(feature.state().hoveredIssueId === issue!.id, "hovering the underline did not identify its issue")
     toolbox.proofreadingState = feature.state()
     await toolbox.updateComplete
-    const reviewIcon = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-tool="Review"] .toolbox-tab-icon')!
     assert(getComputedStyle(reviewIcon).color === "rgb(198, 40, 40)", "closed Review icon did not match the spelling underline")
     toolbox.selectTool("Review")
     await toolbox.updateComplete
@@ -10492,6 +10502,15 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(card, "Review did not render Harper's issue card")
     assert(getComputedStyle(card).borderTopColor === "rgb(198, 40, 40)", "open Review did not highlight the hovered issue card")
     assert(getComputedStyle(reviewIcon).color !== "rgb(198, 40, 40)", "open Review still highlighted its icon")
+    paragraph.dispatchEvent(new childWindow.PointerEvent("pointermove", {clientX: 0, clientY: 0, bubbles: true, composed: true}))
+    selection.setBaseAndExtent(errorText, 0, errorText, 0)
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    assert(getComputedStyle(card).borderTopColor === "rgb(198, 40, 40)", "selected issue did not color its open Review card")
+    selection.removeAllRanges()
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
+    paragraph.dispatchEvent(new childWindow.PointerEvent("pointermove", {...hit, bubbles: true, composed: true}))
     const rightClick = () => {
       const event = new childWindow.MouseEvent("contextmenu", {...hit, button: 2, bubbles: true, composed: true, cancelable: true})
       doc.elementFromPoint(hit.clientX, hit.clientY)!.dispatchEvent(event)

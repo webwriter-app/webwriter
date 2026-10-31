@@ -129,6 +129,32 @@ it("relays cards and their invalidation over the authenticated bridge", async ()
   expect(toolbox.shadowRoot!.querySelector(".proofreading-card")).toBeNull()
 })
 
+it("uses the reported issue highlight on the Review icon and its open card", async () => {
+  const editor = new DomEditor()
+  Object.assign(editor, {frameStarted: true})
+  document.body.append(editor)
+  await editor.updateComplete
+  const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+  const issue: ProofreadingState["issues"][number] = {id: "selected", start: 0, end: 3, text: "teh", kind: "spelling",
+    message: "Check this spelling", suggestions: []}
+  const relay = (hoveredIssueId: string | null) => window.dispatchEvent(new MessageEvent("message", {
+    source: editor.shadowRoot!.querySelector<HTMLIFrameElement>("iframe")!.contentWindow, origin: window.location.origin,
+    data: {type: proofreadingStateChangeEvent, bridgeNonce: (editor as unknown as {bridgeNonce: string}).bridgeNonce,
+      detail: {...emptyProofreadingState(), ready: true, issues: [issue], hoveredIssueId}},
+  }))
+  relay(issue.id)
+  await editor.updateComplete
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector('button[data-tool="Review"]')?.parentElement?.getAttribute("data-hover-kind")).toBe("spelling")
+  toolbox.selectTool("Review")
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-card")?.getAttribute("data-hover-kind")).toBe("spelling")
+  relay(null)
+  await editor.updateComplete
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector(".proofreading-card")?.getAttribute("data-hover-kind")).toBeNull()
+})
+
 it("keeps cards through a package reload, loading and checking, then replaces them together", async () => {
   const editor = new DomEditor()
   const execute = vi.spyOn(editor, "execute").mockResolvedValue({update: []})

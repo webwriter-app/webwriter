@@ -165,6 +165,7 @@ export class ProofreadingFeature extends EditorFeature {
   private anchors = createAnchorPositioner()
   private operation: Promise<void> | null = null
   private hoveredIssueId: string | null = null
+  private selectedIssueId: string | null = null
   private popup: HTMLElement | null = null
   private popupStylesheet: CSSStyleSheet | null = null
   private popupIssueId: string | null = null
@@ -188,6 +189,12 @@ export class ProofreadingFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     compositionstart: () => { this.composing = true; this.closePopup(); this.setHoveredIssue(null); this.invalidate() },
     compositionend: () => { this.composing = false; this.invalidate() },
+    selectionchange: () => {
+      const previous = this.hoveredIssueId ?? this.selectedIssueId
+      this.flushMutations()
+      this.updateSelectedIssue()
+      if(previous !== (this.hoveredIssueId ?? this.selectedIssueId)) this.postStatus()
+    },
   }
 
   captureListeners: DocumentListenerMap = {
@@ -273,7 +280,7 @@ export class ProofreadingFeature extends EditorFeature {
     return {
       allowed: this.checkingAllowed, enabled: this.enabled, documentEnabled: this.documentCheckingEnabled,
       loading: this.loading, ready: this.ready, checking: this.checking, error: this.error,
-      hoveredIssueId: this.hoveredIssueId,
+      hoveredIssueId: this.hoveredIssueId ?? this.selectedIssueId,
       issues: this.diagnostics.map(issue => ({
         id: issue.id, start: issue.start, end: issue.end, kind: issue.kind, message: issue.message,
         text: diagnosticText(issue), suggestions: issue.suggestions.map(suggestion => ({...suggestion})),
@@ -404,6 +411,7 @@ export class ProofreadingFeature extends EditorFeature {
   private clearDiagnostics() {
     this.diagnostics = []
     this.hoveredIssueId = null
+    this.selectedIssueId = null
     this.closePopup()
     for(const name of Object.values(highlightNames)) globalThis.CSS?.highlights?.delete(name)
   }
@@ -418,6 +426,29 @@ export class ProofreadingFeature extends EditorFeature {
     if(this.hoveredIssueId === id) return
     this.hoveredIssueId = id
     this.postStatus()
+  }
+
+  private updateSelectedIssue(diagnostics?: Diagnostic[]) {
+    this.selectedIssueId = null
+    if(!this.enabled || !this.isEnabled || this.composing) return
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !this.diagnostics.length) return
+    if(!diagnostics) {
+      const currentRuns = indexRuns(proofreadingRuns(getDocumentRoot(), this.editor.schema))
+      diagnostics = this.diagnostics.filter(issue => issue.kind === "accessibility"
+        ? this.isCurrentDiagnostic(issue) : Boolean(findSameRun(currentRuns, issue.run)))
+    }
+    for(let index = 0; index < selection.rangeCount; index++) {
+      const range = selection.getRangeAt(index)
+      if(!document.body.contains(range.startContainer) || !document.body.contains(range.endContainer)) continue
+      // START_TO_END compares the selection's end to the issue's start;
+      // END_TO_START compares the selection's start to the issue's end.
+      const issue = diagnostics.find(issue => range.collapsed
+        ? issue.range.comparePoint(range.startContainer, range.startOffset) === 0
+        : range.compareBoundaryPoints(Range.START_TO_END, issue.range) > 0
+          && range.compareBoundaryPoints(Range.END_TO_START, issue.range) < 0)
+      if(issue) { this.selectedIssueId = issue.id; return }
+    }
   }
 
   private isPopupEvent(event: Event) {
@@ -694,6 +725,7 @@ export class ProofreadingFeature extends EditorFeature {
     const current = this.diagnostics.filter(issue => issue.kind === "accessibility"
       ? this.isCurrentDiagnostic(issue) : findSameRun(currentRuns, issue.run))
     if(this.hoveredIssueId && !current.some(issue => issue.id === this.hoveredIssueId)) this.hoveredIssueId = null
+    this.updateSelectedIssue(current)
     if(this.popupIssueId && !current.some(issue => issue.id === this.popupIssueId
       && JSON.stringify(issue.suggestions) === this.popupSuggestions)) this.closePopup()
     if(this.popupIssueId && this.accessibilityOutline) this.positionAccessibilityOutline()
@@ -865,6 +897,8 @@ export class ProofreadingFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection) return false
     $.selectRanges([range])
+    this.updateSelectedIssue()
+    this.postStatus()
     this.editor.doc.updateLocalSelection()
     const target = current?.kind === "accessibility" ? current.element : range.startContainer.parentElement
     target?.scrollIntoView({block: "nearest"})

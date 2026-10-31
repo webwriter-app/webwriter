@@ -104,6 +104,64 @@ describe("proofreading prose extraction", () => {
 })
 
 describe("proofreading feature", () => {
+  it("reports text selections that touch an issue, including a caret and selections across inline elements", async () => {
+    content('<p>te<em>h</em> example.</p>')
+    const [issue] = await start()
+    const first = document.querySelector("p")!.firstChild as Text
+    const last = document.querySelector("em")!.firstChild as Text
+    const selection = document.getSelection()!
+    const select = (start: Node, startOffset: number, end: Node, endOffset: number) => {
+      selection.setBaseAndExtent(start, startOffset, end, endOffset)
+      document.dispatchEvent(new Event("selectionchange"))
+      return editor.features.proofreading.state().hoveredIssueId
+    }
+    try {
+      expect(select(first, 1, first, 1)).toBe(issue.id)
+      expect(select(first, 0, first, 0)).toBe(issue.id)
+      expect(select(first, 1, last, 1)).toBe(issue.id)
+      expect(select(first, 0, first, 1)).toBe(issue.id)
+      const after = document.querySelector("em")!.nextSibling as Text
+      expect(select(last, 0, after, 2)).toBe(issue.id)
+      expect(select(after, 0, after, 2)).toBeNull()
+      expect(select(after, 2, after, 2)).toBeNull()
+      expect(select(first, 1, first, 1)).toBe(issue.id)
+      document.querySelector("p")!.textContent = "Changed remotely."
+      expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+      selection.removeAllRanges()
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(editor.features.proofreading.state().hoveredIssueId).toBeNull()
+    } finally {
+      selection.removeAllRanges()
+    }
+  })
+
+  it("requires actual range overlap and retains the selection highlight when the pointer leaves", async () => {
+    content("<p>a teh example.</p>")
+    check.mockResolvedValue([spelling(2, 5)])
+    const [issue] = await start()
+    const text = document.querySelector("p")!.firstChild as Text
+    const selection = document.getSelection()!
+    const select = (start: number, end: number) => {
+      selection.setBaseAndExtent(text, start, text, end)
+      document.dispatchEvent(new Event("selectionchange"))
+      return editor.features.proofreading.state().hoveredIssueId
+    }
+    try {
+      expect(select(0, 2)).toBeNull()
+      expect(select(5, 8)).toBeNull()
+      expect(select(0, 3)).toBe(issue.id)
+      expect(select(4, 8)).toBe(issue.id)
+      expect(select(0, 8)).toBe(issue.id)
+      expect(select(3, 3)).toBe(issue.id)
+      issueRects()
+      hover()
+      document.querySelector("p")!.dispatchEvent(new PointerEvent("pointerout", {bubbles: true, relatedTarget: null}))
+      expect(editor.features.proofreading.state().hoveredIssueId).toBe(issue.id)
+    } finally {
+      selection.removeAllRanges()
+    }
+  })
+
   it("batches current prose and reuses only unchanged runs for automatic checks", async () => {
     const batch = vi.fn(async (runs: {text: string, language: string}[]) => runs.map(() => [] as ProofreadingIssue[]))
     vi.mocked(createProofreader).mockResolvedValue({check, checkBatch: batch, dispose})
