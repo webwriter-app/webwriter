@@ -3120,6 +3120,11 @@ await check("resize handles follow alignment and centered edges track the cursor
         const right = effective === "right"
         const handles = Array.from(transform.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
         assert(handles.length === 1 && handles[0].dataset.resizeDirection === (right ? "down-left" : "down-right"), `${placement}: wrong resize corner`)
+        const handleBox = handles[0].getBoundingClientRect()
+        const hit = doc.body.shadowRoot!.elementFromPoint(handleBox.left + handleBox.width / 2, handleBox.top + handleBox.height / 2)
+        assert(hit === handles[0], `${placement}: resize handle is covered by ${hit?.getAttribute("part") ?? hit?.localName}`)
+        const borderHit = doc.body.shadowRoot!.elementFromPoint(handleBox.left + .5, handleBox.top + .5)
+        assert(borderHit === handles[0], `${placement}: resize corner covered by ${borderHit?.getAttribute("part") ?? borderHit?.localName}`)
         for(const distance of [30, -20]) {
           const before = target.getBoundingClientRect(), handle = handles[0]
           const startX = right ? before.left : before.right, dx = right ? -distance : distance
@@ -3139,6 +3144,20 @@ await check("resize handles follow alignment and centered edges track the cursor
         target.remove()
       }
     }
+    const graphic = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+    graphic.setAttribute("width", "359")
+    graphic.setAttribute("height", "202")
+    doc.body.append(graphic)
+    editor.features.selection.captureElement(graphic)
+    await layoutFrame()
+    const handle = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    const box = handle.getBoundingClientRect()
+    assert(doc.body.shadowRoot!.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === handle,
+      "graphic resize affordance is covered at its center")
+    assert(doc.body.shadowRoot!.elementFromPoint(box.left + .5, box.top + .5) === handle,
+      "graphic resize affordance is covered at its inner corner")
+    assert(!editor.features.transformation.overlay.querySelector(".◆transform-overlay-edge[title]"),
+      "graphic move border exposes a lingering native tooltip")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })

@@ -118,7 +118,7 @@ export class TransformationFeature extends EditorFeature {
     point.setAttribute("part", `${part} ${part}-${direction}`)
     point.dataset.transformMode = "scale"
     point.dataset.resizeDirection = direction
-    point.title = `Resize ${direction}`
+    if(!edge) point.title = `Resize ${direction}`
     if(edge) point.setAttribute("aria-hidden", "true")
     return point
   }
@@ -526,7 +526,6 @@ export class TransformationFeature extends EditorFeature {
       edge.dataset.transformMode = "move"
       edge.style.pointerEvents = allows("move") ? "" : "none"
       edge.draggable = allows("move") && !this.editor.features.canvas.active && !this.editor.features.slides.active
-      edge.title = "Move"
       setPart(edge, "transform-overlay-edge-move", true)
     }
     setPart(overlay, "transform-overlay-hidden", overlay.hasAttribute("visibility"))

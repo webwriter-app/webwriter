@@ -1968,6 +1968,7 @@ body::part(transform-overlay-scale-right-right) { right: var(--ww-transform-hand
 body::part(transform-overlay-scale-text) { cursor: ew-resize; }
 body::part(transform-overlay-scale) {
   position: absolute;
+  z-index: 2;
   pointer-events: auto;
   touch-action: none;
   border: 0;

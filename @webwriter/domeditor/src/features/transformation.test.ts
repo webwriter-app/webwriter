@@ -1633,7 +1633,7 @@ describe("selection-owned transformation", () => {
       expect(editor.appendix.querySelector('[part="node-drag-surface"]')).toBeNull()
       for(const edge of feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-edge")) {
         expect(edge.dataset.transformMode).toBe("move")
-        expect(edge.title).toBe("Move")
+        expect(edge.hasAttribute("title")).toBe(false)
       }
       for(const corner of feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale")) expect(corner.dataset.transformMode).toBe("scale")
       expect(feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-mover")!.hidden).toBe(true)
