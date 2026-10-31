@@ -54,9 +54,17 @@ describe("document themes", () => {
     }
   })
 
-  it("reserves symmetric screen scrollbar gutters for the document layout", () => {
+  it("reserves the scrollbar at the trailing edge of document layouts", () => {
     for(const theme of documentThemes) {
-      expect(theme.source).toContain('html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {\n      scrollbar-gutter: stable both-edges;')
+      expect(theme.source).toContain('html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {\n      scrollbar-gutter: stable;')
+      expect(theme.source).toContain('--ww-leading-gutter-balance: 16px;')
+    }
+  })
+  it("paints document backgrounds on html and leaves body transparent", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain('html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {\n    background-color:')
+      expect(theme.source).toContain('body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"]) {\n    background: transparent;')
+      expect(theme.source).toContain('padding-inline-start: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane) + var(--ww-leading-gutter-balance, 0px));')
     }
   })
   it("reserves a bottom gutter for document actions in editing and saved themes", () => {

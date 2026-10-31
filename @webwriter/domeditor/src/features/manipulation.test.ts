@@ -4567,16 +4567,18 @@ describe("setStyle()", () => {
     expect(paragraph.textContent).toBe("Text")
   })
 
-  it("allows only background changes on a document-template root", () => {
+  it("applies document-template background changes to html", () => {
     document.body.innerHTML = '<my-document role="document" style="width: 500px"><p>Text</p></my-document>'
     const root = document.body.firstElementChild as HTMLElement
     $.selectElement(root)
     editor.features.manipulation.setStyle({width: "20px", "background-color": "red"})
     expect(root.style.width).toBe("500px")
-    expect(root.style.backgroundColor).toBe("red")
-    expect(editor.features.manipulation.getStyleState().target?.documentRoot).toBe(true)
+    expect(root.style.backgroundColor).toBe("")
+    expect(document.documentElement.style.backgroundColor).toBe("red")
+    expect(editor.features.manipulation.getStyleState().target).toMatchObject({localName: "html", documentRoot: true})
     expect(editor.features.manipulation.setElementStyles(root, {padding: "5px"})).toBe(false)
-    editor.features.manipulation.setElementStyles(root, {"background-color": null})
+    editor.features.manipulation.setStyle({"background-color": null})
+    expect(document.documentElement.style.backgroundColor).toBe("")
     expect(root.style.backgroundColor).toBe("")
     expect(root.style.width).toBe("500px")
     $.selectElement(root.firstElementChild!)
@@ -4648,7 +4650,11 @@ describe("setStyle()", () => {
 
     $.selectElement(document.body)
     editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "red"}})
-    expect(document.body).toHaveStyle({backgroundColor: "red"})
+    const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true, properties: ["background-color"]})
+    expect(state.target).toMatchObject({localName: "html", documentRoot: true})
+    expect(state.inline["background-color"]).toEqual({value: "red", priority: ""})
+    expect(document.documentElement).toHaveStyle({backgroundColor: "red"})
+    expect(document.body).not.toHaveAttribute("style")
   })
 
   it("resolves a replaced top-level container from the current selection", () => {
@@ -4831,7 +4837,8 @@ describe("setStyle()", () => {
 
     editor.features.manipulation.setStyle({"background-color": "gold"})
 
-    expect(document.body).toHaveStyle({backgroundColor: "gold"})
+    expect(document.documentElement).toHaveStyle({backgroundColor: "gold"})
+    expect(document.body).not.toHaveAttribute("style")
     expect(section).not.toHaveAttribute("style")
     expect(section.firstElementChild).not.toHaveAttribute("style")
   })
@@ -4875,7 +4882,7 @@ describe("setStyle()", () => {
 
     const state = editor.features.manipulation.getStyleState(["text-align"])
 
-    expect(state.target?.localName).toBe("body")
+    expect(state.target?.localName).toBe("html")
     expect(state.inline["text-align"]).toEqual({value: "center", priority: ""})
   })
   it("styles a section after it is explicitly selected from the breadcrumb", () => {
@@ -5033,7 +5040,7 @@ describe("setStyle()", () => {
     expect(replacement.style.color).toBe("blue")
     expect(last.style.color).toBe("")
   })
-  it("styles the body without a live selection", () => {
+  it("styles html without a live selection in document layout", () => {
     document.body.innerHTML = "<p>hello</p>"
     const paragraph = document.body.firstElementChild!
     $.selectElement(paragraph)
@@ -5046,10 +5053,11 @@ describe("setStyle()", () => {
     editor.features.selection.enable()
 
     expect(target).toBe(document.body)
-    expect(state.target).toMatchObject({localName: "body"})
+    expect(state.target).toMatchObject({localName: "html", documentRoot: true})
     expect(state.inline["background-color"]).toEqual({value: "red", priority: ""})
     expect(paragraph).not.toHaveAttribute("style")
-    expect(document.body).toHaveStyle({backgroundColor: "red"})
+    expect(document.documentElement).toHaveStyle({backgroundColor: "red"})
+    expect(document.body).not.toHaveAttribute("style")
     expect(document.body.style.color).not.toBe("blue")
   })
   it("supports custom properties and important priority", () => {

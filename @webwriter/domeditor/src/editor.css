@@ -24,7 +24,6 @@ body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
 
 html {
   color-scheme: only light;
-  background: transparent;
   overflow-y: scroll;
   overflow-x: auto;
   height: 100%;
@@ -34,6 +33,10 @@ html {
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
+}
+
+html:has(> body:is(.ww-canvas, .ww-slides, .ww-board)) {
+  background: transparent;
 }
 
 html.◆ai-review-active {

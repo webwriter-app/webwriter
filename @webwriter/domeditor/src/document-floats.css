@@ -7,9 +7,25 @@
     --ww-float-gap: var(--ww-page-gutter, 1rem);
   }
 
+  /* Keep each bundled theme's page color on the root. */
+  html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {
+    background-color: var(--pico-background-color, var(--background-color, var(--bg, var(--background-body, #f9f9f9))));
+  }
+
+  body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"]) {
+    background: transparent;
+  }
+
   @media screen {
     html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {
-      scrollbar-gutter: stable both-edges;
+      scrollbar-gutter: stable;
+      scrollbar-width: auto;
+    }
+
+    /* Keep the reading column centered in the viewport without reserving a
+     * leading root gutter, which the browser leaves outside HTML's paint. */
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"]) {
+      --ww-leading-gutter-balance: 16px;
     }
   }
 
@@ -25,6 +41,7 @@
     max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem));
     margin-inline: auto;
     padding-inline: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane));
+    padding-inline-start: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane) + var(--ww-leading-gutter-balance, 0px));
     /* Leave room below authored content for the reader's 28px action row,
      * its 20px bottom inset, and a 20px gap above it. */
     padding-block-end: max(68px, var(--ww-page-gutter, 1rem));
@@ -108,6 +125,7 @@
       --ww-float-width: min(16rem, max(0px, calc(var(--ww-page-width) - 300px - var(--ww-float-gap))));
       --ww-responsive-float: right;
       padding-left: var(--ww-page-gutter, 1rem);
+      padding-inline-start: calc(var(--ww-page-gutter, 1rem) + var(--ww-leading-gutter-balance, 0px));
 
       &:has(:is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
         --ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));

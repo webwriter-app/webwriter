@@ -230,12 +230,12 @@ describe("DOMEditor stylesheets", () => {
     expect(rule.style.border).toBe("")
   })
 
-  it("allows the document background to paint the whole canvas", () => {
-    const htmlRule = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules)))
-      .find(rule => (rule as CSSStyleRule).selectorText === "html") as CSSStyleRule
-    // A transparent HTML background lets the browser propagate BODY's
-    // authored background across its margins and the remaining viewport.
-    expect(htmlRule.style.background).toBe("transparent")
+  it("allows html to paint the document background", () => {
+    const rules = Array.from(document.adoptedStyleSheets.flatMap(sheet => Array.from(sheet.cssRules))) as CSSStyleRule[]
+    const htmlRule = rules.find(rule => rule.selectorText === "html")!
+    const otherLayouts = rules.find(rule => rule.selectorText === "html:has(> body:is(.ww-canvas, .ww-slides, .ww-board))")!
+    expect(htmlRule.style.background).toBe("")
+    expect(otherLayouts.style.background).toBe("transparent")
   })
 
   it("starts with an editable default paragraph", () => {

@@ -5,7 +5,7 @@ import {MATH_NAMESPACE} from "../math"
 import {attributionAttributes} from "../attribution.js"
 import {captionedFigureContent} from "../figure-layout.js"
 import {SVG_NAMESPACE, graphicShapeDragType, readGraphicShapeDrag, isGraphicShapeType, graphicContainerForNode} from "../graphic"
-import {boardLayoutRole, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
+import {boardLayoutRole, documentLayoutMode, isBoardCard, isSlide, slideLayoutRole} from "../document-layout"
 import { DocumentListenerMap, EditorFeature } from "."
 import { $, fixedClientX, authoredClassValue, figureSelectionTarget, isCaretAtBoundary, isAppendixInteraction, isWidgetShadowInteraction, isFormControlInteraction, isAtomicEditingElement, atomicEditingContainer, isOutOfFlow, flowSibling, clearEditorMarkerClasses, pathFromNode, nodeAtPath, cloneRangeContents, cloneRangeIn, cloneWithoutEditorMarkers, captureRangeIdentity, getInertDocument, focusedWidgetHost, modifierKeyDown, getContainer, getIndexBefore, getSelectionAnchorBlock, getSelectionFocusBlock, getSidesOfPoint, isContentfulWidget, isElement, isOnApple, textOffsetIn, textPointAtOffset } from "../utility"
 import {isMarkElement} from "../marks"
@@ -2277,7 +2277,8 @@ export class ManipulationFeature extends EditorFeature {
   /** The single connected authored element targeted by element-style commands.
    * Resolve this immediately before every read or mutation: retained selection
    * endpoints may have been replaced by native, widget, or remote DOM edits.
-   * With no authored selection, BODY is the document-wide styling target. */
+   * With no authored selection, BODY is the editing target; document styles
+   * are redirected to HTML when they are read or written. */
   get styleTarget(): Element {
     const body = document.body
     const root = getDocumentRoot(body)
@@ -2365,6 +2366,11 @@ export class ManipulationFeature extends EditorFeature {
   private inlineStyleOf(element: Element | null): CSSStyleDeclaration | null {
     const style = (element as (Element & {style?: CSSStyleDeclaration}) | null)?.style
     return style && typeof style.setProperty === "function"? style: null
+  }
+
+  private documentStyleTarget(target: Element): Element {
+    return documentLayoutMode() === "document" && (target === document.body || isDocumentRoot(target))
+      ? document.documentElement : target
   }
 
   /** Whether an element is an authored, text-bearing editing block. Contentful
@@ -2510,6 +2516,7 @@ export class ManipulationFeature extends EditorFeature {
     if(includeSelection && (cells.length || $.isMultiElementSelection)) {
       return this.getElementsStyleState(properties, cells.length ? cells : $.selectedElements)
     }
+    if(target) target = this.documentStyleTarget(target)
     const style = this.inlineStyleOf(target)
     if(!target || !style) {
       return {
@@ -2593,7 +2600,8 @@ export class ManipulationFeature extends EditorFeature {
         alignment: alignmentFromStyles(style),
         ...(target.matches(".ww-float-left, .ww-float-right, .ww-float-none")
           ? {float: floatSideFromStyles(computedStyle.float, style, target.classList)} : {}),
-        ...(isDocumentRoot(target) || target === document.body ? {documentRoot: true as const} : {})},
+        ...(isDocumentRoot(target) || target === document.body || target === document.documentElement && documentLayoutMode() === "document"
+          ? {documentRoot: true as const} : {})},
       inline,
       authoredProperties,
       computed,
@@ -3573,7 +3581,7 @@ export class ManipulationFeature extends EditorFeature {
         const entries = this.validateElementStyles(styles)
         const end = this.editor.doc.beginUndoGroup()
         try {
-          for(const target of targets) this.applyElementStyleEntries(target, entries)
+          for(const target of targets) this.applyElementStyleEntries(this.documentStyleTarget(target), entries)
         }
         finally { end() }
       }
@@ -4471,7 +4479,7 @@ export class ManipulationFeature extends EditorFeature {
   setStyle(styles: Record<string, ElementStyleMutation>) {
     const entries = this.validatedStyleEntries(styles)
     const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
-    const target = this.styleTarget
+    const target = this.documentStyleTarget(this.styleTarget)
     if(cells.length || $.isMultiElementSelection || target.matches("table, td, th")) {
       const elements = cells.length ? cells : $.isMultiElementSelection ? $.selectedElements : [target]
       const end = this.editor.doc.beginUndoGroup()
@@ -4487,7 +4495,8 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[]) {
-    if(!element.isConnected || !getDocumentRoot().contains(element) || this.editor.isEditingLocked) return false
+    if(!element.isConnected || !(getDocumentRoot().contains(element)
+      || element === document.documentElement && documentLayoutMode() === "document") || this.editor.isEditingLocked) return false
     const targets = new Map<Element, ValidatedStyleEntry[]>()
     const add = (target: Element, entry: ValidatedStyleEntry) => targets.set(target, [...(targets.get(target) ?? []), entry])
     for(const entry of this.allowedElementStyles(element, entries)) {
@@ -4538,7 +4547,7 @@ export class ManipulationFeature extends EditorFeature {
       entries = entries.filter(({name, value}) => name !== "position" || !value
         || !["relative", "absolute", "sticky"].includes(value.trim().toLowerCase()))
     }
-    return isDocumentRoot(target) || target === document.body
+    return isDocumentRoot(target) || target === document.body || target === document.documentElement && documentLayoutMode() === "document"
       ? entries.filter(({name}) => name === "background" || name.startsWith("background-"))
       : entries
   }

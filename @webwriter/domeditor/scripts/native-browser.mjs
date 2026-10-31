@@ -61,7 +61,7 @@ const expectedChecks = [
   "SVG overflow fades while retaining native shape selection",
   "standalone SVG arrowheads remain visible in canvas previews and exports",
   "editing affordances align with media inside symmetric scrollbar gutters",
-  "document scrollbar gutters stay symmetric as content grows",
+  "document background reaches the left edge without shifting the reading column",
   "empty Details retains summary height and padding in standalone documents",
   "media stays centered in editing and standalone documents",
   "unfloated placements align within the content column",

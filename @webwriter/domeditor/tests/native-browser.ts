@@ -1895,7 +1895,7 @@ await check("editing affordances align with media inside symmetric scrollbar gut
   }
 })
 
-await check("document scrollbar gutters stay symmetric as content grows", async () => {
+await check("document background reaches the left edge without shifting the reading column", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:400px;border:0;max-width:none"
   const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
@@ -1904,15 +1904,32 @@ await check("document scrollbar gutters stay symmetric as content grows", async 
   try {
     await loaded
     const doc = frame.contentDocument!, view = frame.contentWindow!, paragraph = doc.querySelector("p")!
-    assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "stable both-edges", "document did not reserve both scrollbar gutters")
+    assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "stable", "document did not reserve the trailing scrollbar gutter")
+    for(const theme of documentThemes) {
+      doc.querySelector("head style")!.textContent = theme.source
+      assert(view.getComputedStyle(doc.body).backgroundColor === "rgba(0, 0, 0, 0)", `${theme.value} document body did not stay transparent`)
+      const color = theme.value === "sakura" ? "rgb(249, 249, 249)" : "rgb(255, 255, 255)"
+      assert(view.getComputedStyle(doc.documentElement).backgroundColor === color, `${theme.value} did not paint its document background on html`)
+      assert(Math.abs(doc.documentElement.getBoundingClientRect().left) < 1, `${theme.value} left a leading scrollbar gutter`)
+    }
+    doc.documentElement.style.backgroundColor = "rgb(213, 230, 247)"
+    assert(view.getComputedStyle(doc.documentElement).backgroundColor === "rgb(213, 230, 247)", "document root did not paint the page background")
     const before = paragraph.getBoundingClientRect()
     const content = doc.createElement("div")
     content.style.height = "2000px"
     doc.body.append(content)
     await layoutFrame()
     const after = paragraph.getBoundingClientRect()
-    assert(Math.abs((after.left + after.right) / 2 - view.innerWidth / 2) < 1, "scrolling document column is not centered in its viewport")
+    assert(Math.abs((after.left + after.right) / 2 - view.innerWidth / 2) < 1,
+      `scrolling document column is not centered in its viewport (${(after.left + after.right) / 2} vs ${view.innerWidth / 2}; balance ${view.getComputedStyle(doc.body).getPropertyValue("--ww-leading-gutter-balance")}; padding ${view.getComputedStyle(doc.body).paddingInlineStart})`)
     assert(Math.abs(before.left - after.left) < 1 && Math.abs(before.width - after.width) < 1, "scrollbar appearance shifted the reading column")
+    for(const width of [480, 1400]) {
+      frame.style.width = `${width}px`
+      await layoutFrame()
+      const rect = paragraph.getBoundingClientRect()
+      assert(Math.abs((rect.left + rect.right) / 2 - view.innerWidth / 2) < 1,
+        `document column is not centered at ${width}px`)
+    }
     for(const mode of ["ww-canvas", "ww-slides", "ww-board"]) {
       doc.body.className = mode
       assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "auto", `${mode} inherited document scrollbar gutters`)
