@@ -42,6 +42,23 @@ it("supports captions before content, negative rotation, and refreshed live geom
   expect(figure.className).toBe("authored")
 })
 
+it("measures all figures before adding layout markers", () => {
+  const first = document.querySelector<HTMLElement>("figure")!
+  const second = first.cloneNode(true) as HTMLElement
+  first.after(second)
+  Object.defineProperty(second, "clientWidth", {configurable: true, value: 420})
+  const markerCounts: number[] = []
+  for(const content of document.querySelectorAll("custom-diagram")) {
+    Object.defineProperty(content, "offsetWidth", {configurable: true, get() {
+      markerCounts.push(document.querySelectorAll('[class*="◆figure-flow-"]').length)
+      return 360
+    }})
+  }
+  layout = createFigureLayout(document)
+  expect(markerCounts).toEqual([0, 0])
+  expect(document.querySelectorAll('[class*="◆figure-flow-"]')).toHaveLength(2)
+})
+
 it("cleans disconnected figures and does not impose a shape on multi-content figures or widget internals", () => {
   const figure = document.querySelector<HTMLElement>("figure")!
   layout = createFigureLayout(document)

@@ -551,16 +551,15 @@ export class DomEditorBreadcrumb extends LitElement {
 
     let requiredWidth = this.measuredBreadcrumbWidth(list)
     let collapseCount = 0
-    for(const item of items) {
-      if(requiredWidth <= availableWidth + 0.5) break
-
-      const button = item.querySelector<HTMLElement>(".item")
-      if(!button) continue
-      const expandedWidth = item.getBoundingClientRect().width
-      button.classList.add(collapsedClass)
-      const collapsedWidth = item.getBoundingClientRect().width
-      requiredWidth -= expandedWidth - collapsedWidth
-      collapseCount++
+    if(requiredWidth > availableWidth + 0.5) {
+      const expandedWidths = items.map(item => item.getBoundingClientRect().width)
+      items.forEach(item => item.querySelector(".item")?.classList.add(collapsedClass))
+      const collapsedWidths = items.map(item => item.getBoundingClientRect().width)
+      for(let index = 0; index < items.length && requiredWidth > availableWidth + 0.5; index++) {
+        if(!items[index].querySelector(".item")) continue
+        requiredWidth -= expandedWidths[index] - collapsedWidths[index]
+        collapseCount++
+      }
     }
 
     items.forEach((item, index) => {

@@ -6,6 +6,25 @@ import {RibbonDrawer} from "./ribbon-drawer"
 
 afterEach(() => {
   document.body.replaceChildren()
+  vi.unstubAllGlobals()
+})
+
+it("enables height transitions after the initial paint without reading layout", async () => {
+  const frames: FrameRequestCallback[] = []
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.push(callback)
+    return frames.length
+  })
+  vi.stubGlobal("cancelAnimationFrame", vi.fn())
+  const ribbon = new AppRibbon()
+  Object.defineProperty(ribbon, "offsetHeight", {get() { throw new Error("layout read") }})
+  document.body.append(ribbon)
+  await ribbon.updateComplete
+  expect(ribbon.hasAttribute("transitions-ready")).toBe(false)
+  frames.splice(0).forEach(callback => callback(0))
+  expect(ribbon.hasAttribute("transitions-ready")).toBe(false)
+  frames.splice(0).forEach(callback => callback(16))
+  expect(ribbon.hasAttribute("transitions-ready")).toBe(true)
 })
 
 it("superimposes a checkbox badge while preserving the layout icon and cutout background", async () => {

@@ -1179,6 +1179,7 @@ export class AppRibbon extends EditingControls {
   private previewMenuBefore: RibbonMenuName = "Start"
 
   private previewTransitionTimer: ReturnType<typeof setTimeout> | undefined
+  private transitionReadyFrame = 0
 
   private heightConstrained = false
   private expandedBeforeHeightConstraint = true
@@ -1276,6 +1277,8 @@ export class AppRibbon extends EditingControls {
     void this.cancelAIWork()
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
     this.previewTransitionTimer = undefined
+    cancelAnimationFrame(this.transitionReadyFrame)
+    this.transitionReadyFrame = 0
     if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
     if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
     this.ribbonContentObserver?.disconnect()
@@ -1287,9 +1290,13 @@ export class AppRibbon extends EditingControls {
   }
 
   protected firstUpdated() {
-    // Commit the initial expanded layout before enabling height transitions.
-    void this.offsetHeight
-    this.setAttribute("transitions-ready", "")
+    // Let the initial expanded layout paint before enabling height transitions.
+    this.transitionReadyFrame = requestAnimationFrame(() => {
+      this.transitionReadyFrame = requestAnimationFrame(() => {
+        this.transitionReadyFrame = 0
+        if(this.isConnected) this.setAttribute("transitions-ready", "")
+      })
+    })
     const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
     if(content && typeof ResizeObserver !== "undefined") {
       this.ribbonContentObserver = new ResizeObserver(() => this.scheduleResponsiveLayout())

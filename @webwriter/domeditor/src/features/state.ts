@@ -39,6 +39,7 @@ export class StateFeature extends EditorFeature {
   private activeAIEditId: string | null = null
   private aiEditSequence = 0
   private readonly aiEditMarkers = new Map<string, string>()
+  private readonly aiPulseTimers = new Map<Element, {editId: string, timer: ReturnType<typeof setTimeout>}>()
   private readonly aiEditResults = new Map<string, {scope: "document" | "selection" | "operations", removedUnsafeItems: number}>()
   private reviewToolbar: HTMLElement | null = null
   private aiPreview: DOMChangePreview | null = null
@@ -556,6 +557,12 @@ export class StateFeature extends EditorFeature {
 
   private clearAIEditMarkers(editId: string, keepTarget = false) {
     const marker = this.aiEditMarkers.get(editId)
+    for(const [target, pulse] of this.aiPulseTimers) {
+      if(pulse.editId !== editId) continue
+      clearTimeout(pulse.timer)
+      target.classList.remove("◆ai-preview-pulse")
+      this.aiPulseTimers.delete(target)
+    }
     this.targetsForAIEdit(editId).forEach(target => {
       target.classList.remove("◆ai-preview-change", "◆ai-preview-pulse")
       if(!keepTarget && marker) target.classList.remove(marker)
@@ -650,11 +657,19 @@ export class StateFeature extends EditorFeature {
     const target = this.targetsForAIEdit(editId)[0]
     if(!target) return {status: "unavailable", message: "The changed content is no longer in the document"}
     target.scrollIntoView?.({block: "center", behavior: uiMotionDisabled(target) ? "instant" : "smooth"})
-    target.classList.remove("◆ai-preview-pulse")
-    // Restart the animation when Go to is used repeatedly.
-    void target.offsetWidth
     target.classList.add("◆ai-preview-pulse")
-    setTimeout(() => target.classList.remove("◆ai-preview-pulse"), 1200)
+    // Restart the existing CSS animation without forcing layout.
+    for(const animation of target.getAnimations?.() ?? []) {
+      if((animation as CSSAnimation).animationName !== "◆ai-preview-pulse") continue
+      animation.currentTime = 0
+      animation.play()
+    }
+    clearTimeout(this.aiPulseTimers.get(target)?.timer)
+    const timer = setTimeout(() => {
+      target.classList.remove("◆ai-preview-pulse")
+      this.aiPulseTimers.delete(target)
+    }, 1200)
+    this.aiPulseTimers.set(target, {editId, timer})
     return {status: "located"}
   }
   actions = {
