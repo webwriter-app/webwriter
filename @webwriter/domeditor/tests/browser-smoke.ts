@@ -271,6 +271,24 @@ await check("document frames align with text", async () => {
   }
   finally { fresh.destroy(); theme.remove(); document.documentElement.style.removeProperty("scrollbar-gutter") }
 })
+await check("copyright affordance meets the selected element edge", () => {
+  document.body.innerHTML = "<p>Copyright target</p>"
+  const theme = document.createElement("style")
+  theme.textContent = defaultDocumentTheme.source
+  document.head.append(theme)
+  const fresh = new DOMEditor()
+  try {
+    const paragraph = document.body.firstElementChild!
+    fresh.features.selection.selectElement(paragraph)
+    fresh.features.attribution.refresh()
+    const bridge = fresh.appendix.querySelector<HTMLElement>(".◆attribution-ui .bridge")!
+    assert(bridge && !bridge.hidden, "copyright bridge is hidden")
+    const target = paragraph.getBoundingClientRect(), actual = bridge.getBoundingClientRect()
+    assert(Math.abs(actual.left + actual.width / 2 - target.right) < 2,
+      `copyright offset: ${JSON.stringify({target: target.toJSON(), actual: actual.toJSON()})}`)
+  }
+  finally { fresh.destroy(); theme.remove() }
+})
 const failed = checks.filter(item => item.error)
 document.documentElement.dataset.nativeSmokeStatus = failed.length ? "failed" : "passed"
 if(new URLSearchParams(location.search).has("run")) {

@@ -316,6 +316,20 @@ describe("element attribution editing", () => {
     expect(input("name").value).toBe("")
   })
 
+  it("compensates the Firefox document gutter when anchoring the copyright affordance", () => {
+    const element = start()
+    bounds(element)
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Firefox")
+    vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 30)
+    document.documentElement.style.scrollbarGutter = "stable both-edges"
+    try {
+      select(element)
+      const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
+      expect(state.sheets.get(document).source).toContain("anchor(right) - 25px")
+    }
+    finally { document.documentElement.style.removeProperty("scrollbar-gutter") }
+  })
+
   describe.each(["canvas", "slides"] as const)("%s copyright affordance", mode => {
     it.each([false, true])("uses the live transform overlay and returns to document positioning (capture: %s)", async captured => {
       const element = start()

@@ -437,8 +437,11 @@ export function createAttributionController(doc, options = {}) {
     if(anchors) {
       const size = empty ? 20 : 16
       const width = empty ? "20px" : "max(16px,var(--ww-page-gutter,1rem))"
+      const html = doc.documentElement
+      const gutter = view.navigator.userAgent.includes("Firefox") && view.getComputedStyle(html).scrollbarGutter?.includes("both-edges")
+        ? Math.max(0, view.innerWidth - html.clientWidth) / 2 : 0
       if(container) anchors.release(bridge)
-      else anchors.bind(bridge, target, `left:clamp(0px,calc(anchor(right) - ${empty ? size / 2 : 0}px),calc(100vw - ${width}));top:clamp(0px,calc(anchor(center) - ${size / 2}px),calc(100dvh - ${size}px));width:${width};height:${size}px;position-visibility:anchors-visible;`)
+      else anchors.bind(bridge, target, `left:clamp(0px,calc(anchor(right) - ${(empty ? size / 2 : 0) + gutter}px),calc(100vw - ${width}));top:clamp(0px,calc(anchor(center) - ${size / 2}px),calc(100dvh - ${size}px));width:${width};height:${size}px;position-visibility:anchors-visible;`)
       if(opened) {
         if(!editable()) { form.hidden = true; details.hidden = false; renderDetails() }
         anchors.bind(popup, container || empty ? button : notes.get(target)?.label ?? target, "inset:auto;position-area:bottom span-right;justify-self:start;align-self:start;margin:4px 0;position-try-fallbacks:flip-block,flip-inline,flip-block flip-inline,--ww-ui-popup-below,--ww-ui-popup-above;position-visibility:anchors-visible;")
