@@ -23,6 +23,8 @@ export class AttributionFeature extends EditorFeature {
   activeListeners: DocumentListenerMap = {
     selectionchange: event => this.controller?.handleEvent(event),
     pointerdown: event => this.controller?.handleEvent(event),
+    pointerup: () => this.controller?.refresh(),
+    pointercancel: () => this.controller?.refresh(),
   }
 
   enable() {
@@ -44,6 +46,7 @@ export class AttributionFeature extends EditorFeature {
       editable: () => !this.editor.isEditingLocked,
       resolveElement: element => figureSelectionTarget(atomicEditingContainer(element, this.editor.schema) ?? element),
       selectedElement: () => {
+        if(this.editor.features.selection.isInDragSelection) return null
         const target = this.editor.features.selection.captureSelectedElement
           ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
         return target ? atomicEditingContainer(target, this.editor.schema) ?? target : null

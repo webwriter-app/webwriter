@@ -319,6 +319,26 @@ describe("element attribution editing", () => {
     expect(input("name").value).toBe("")
   })
 
+  it.each(["pointerup", "pointercancel"] as const)("hides the copyright affordance while a drag range includes one whole element until %s", eventType => {
+    const element = start()
+    bounds(element)
+    const original = element.innerHTML
+    select(element)
+    expect(button().hidden).toBe(false)
+
+    editor!.features.selection.isInDragSelection = true
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(button().hidden).toBe(true)
+    editor!.features.attribution.refresh()
+    expect(button().hidden).toBe(true)
+
+    document.dispatchEvent(new PointerEvent(eventType, {bubbles: true}))
+    expect(editor!.features.selection.isInDragSelection).toBe(false)
+    expect(button().hidden).toBe(false)
+    expect(element.innerHTML).toBe(original)
+    expect(editor!.toHTML(true)).not.toContain("◆attribution-ui")
+  })
+
   it("compensates the Firefox document gutter when anchoring the copyright affordance", () => {
     const element = start()
     bounds(element)
