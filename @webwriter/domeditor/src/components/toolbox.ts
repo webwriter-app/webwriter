@@ -889,7 +889,6 @@ export class DomEditorToolbox extends EditingControls {
       disclosure: this.elementAttributes?.localName === "details",
       figure: false,
       widget: Boolean(this.widgetOptions),
-      attributes: Boolean(this.elementAttributes && this.elementAttributes.localName !== "figure"),
     })
   }
 
@@ -1066,11 +1065,6 @@ export class DomEditorToolbox extends EditingControls {
       || namespaceURI === SVG_NAMESPACE && localName !== "svg")
   }
 
-  protected renderElementAttributesDrawer() {
-    if(this.elementAttributes && !this.isElementDrawerVisible(this.elementAttributes.localName, this.elementAttributes.namespaceURI)) return nothing
-    return super.renderElementAttributesDrawer()
-  }
-
   private renderSpecializedDrawer(group?: SelectedElementTypeState, listGroups?: SelectedElementTypeState[]) {
     const attributes = group?.element ?? this.elementAttributes
     let style = this.elementStyle
@@ -1122,7 +1116,7 @@ export class DomEditorToolbox extends EditingControls {
       ?? [selectionType ?? {localName, namespaceURI}]
     const profile = specializedElementStyle(localName)
     const widget = Boolean(widgetOptions || localName.includes("-"))
-    if(!profile && !widget && !group) return nothing
+    if(!profile && !widget && !group && !attributes) return nothing
     const mediaStyles = this.media && ["picture", "img", "video"].includes(localName)
       ? ["object-view-box", "object-fit", "object-position"] : []
     const primary = (profile?.primary ?? []).filter(name => !mediaStyles.includes(name))
@@ -1135,7 +1129,6 @@ export class DomEditorToolbox extends EditingControls {
     const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
-      + (attributes?.attributes.lang ? 1 : 0)
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? attributes?.name ?? getElementPresentation(localName).name : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
@@ -1144,10 +1137,12 @@ export class DomEditorToolbox extends EditingControls {
     const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
-    const hasOptions = Boolean(attributes) || advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
+    const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
+      ${attributes ? html`<element-attribute-editor slot="heading-action" language-button .state=${attributes}
+        .documentLanguage=${this.documentHead.language}></element-attribute-editor>` : nothing}
       <button type="button" class="style-reset" slot="heading-action" title="Reset element styles" aria-label="Reset element styles"
         ?disabled=${!Object.keys(resetStyles).length && !configuredWidgetOptions.length}
         @click=${(event: Event) => {
@@ -1221,7 +1216,6 @@ export class DomEditorToolbox extends EditingControls {
         ${commands}
         ${mediaStyles.length ? html`<element-style-editor mode="compact" dense-choices .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
         ${this.media?.type === "video" && (!group || singleTarget) ? this.renderMediaSource(true) : nothing}
-        ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
@@ -1451,15 +1445,6 @@ export class DomEditorToolbox extends EditingControls {
         }, lists)
       })
         .filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
-    }
-    if(this.activeTool === "Edit" && !this.elementAttributes && !this.math?.active
-      && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
-      const drawers = [html`
-        <ribbon-drawer label="Attributes" icon="Develop" layout="attributes" expandable>
-          <element-attribute-editor slot="more" disabled></element-attribute-editor>
-        </ribbon-drawer>
-      `]
-      return drawers
     }
     const specialized = this.activeTool === "Edit" && !this.documentSelected ? this.renderSpecializedDrawer() : nothing
     const drawers: TemplateResult<1>[] = specialized !== nothing

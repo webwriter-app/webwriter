@@ -904,10 +904,6 @@ export const editingControlStyles = css`
       height: auto;
     }
 
-    ribbon-drawer[pane] element-attribute-editor {
-      grid-column: 1 / -1;
-    }
-
     .graphic-file-controls {
       display: flex;
       grid-column: 1 / -1;

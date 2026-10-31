@@ -22,6 +22,38 @@ async function mount(localName = "details", attributes: Record<string, string> =
 }
 
 describe("element attribute editor", () => {
+  it("opens the heading language list and highlights an override of the document language", async () => {
+    const editor = await mount("p", {lang: "de"})
+    editor.languageButton = true
+    editor.documentLanguage = "en"
+    await editor.updateComplete
+    const trigger = editor.shadowRoot!.querySelector<HTMLButtonElement>(".language-trigger")!
+    expect(trigger.hasAttribute("data-different")).toBe(true)
+    expect(trigger.getAttribute("title")).toContain("German (de)")
+    trigger.click()
+    await editor.updateComplete
+    const popup = editor.shadowRoot!.querySelector<HTMLElement>(".language-popup")!
+    expect(popup.hidden).toBe(false)
+    expect(popup.getAttribute("popover")).toBe("auto")
+    expect(popup.querySelector(".language-current")).toBeNull()
+    expect(popup.querySelectorAll("style-combobox")).toHaveLength(1)
+    const picker = popup.querySelector("style-combobox")!
+    await vi.waitFor(() => expect(Array.from(picker.shadowRoot!.querySelectorAll('[role="group"]')).map(group => group.getAttribute("aria-label")))
+      .toEqual(["World languages", "European languages", "Other languages"]))
+    expect(picker.shadowRoot!.activeElement).toBe(picker.shadowRoot!.querySelector("input"))
+    expect(getComputedStyle(picker.shadowRoot!.querySelector(".toggle")!).display).toBe("none")
+    const change = vi.fn()
+    editor.addEventListener("element-attribute-change", change)
+    picker.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "fr"}}))
+    expect(change.mock.calls[0][0].detail).toMatchObject({path: [0], name: "lang", value: "fr"})
+    await editor.updateComplete
+    expect(popup.hidden).toBe(true)
+    expect(trigger.getAttribute("aria-expanded")).toBe("false")
+    editor.documentLanguage = "de"
+    await editor.updateComplete
+    expect(trigger.hasAttribute("data-different")).toBe(false)
+  })
+
   it("carries the captured element identity through attribute changes", async () => {
     const editor = await mount()
     const target = document.createElement("details")

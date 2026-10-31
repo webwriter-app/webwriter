@@ -3073,7 +3073,6 @@ export class AppRibbon extends EditingControls {
         disclosure: this.elementAttributes?.localName === "details",
         figure: Boolean(this.figure),
         widget: Boolean(this.widgetOptions),
-        attributes: Boolean(this.elementAttributes),
       })
     }
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
@@ -3090,7 +3089,6 @@ export class AppRibbon extends EditingControls {
     return contextDrawerPolicy({
       menu: this.activeMenu,
       surface: "ribbon",
-      attributes: Boolean(this.elementAttributes),
       startPackages: {label: "Packages", buttons: packageButtons},
     })
   }

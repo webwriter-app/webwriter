@@ -2431,16 +2431,6 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderElementAttributesDrawer() {
-    if(!this.elementAttributes) return nothing
-    return html`
-      <ribbon-drawer label="Attributes" icon=${this.elementAttributes.icon ?? "Develop"} layout="attributes" expandable
-        .advancedCount=${this.elementAttributes.attributes.lang ? 1 : 0}>
-        <element-attribute-editor slot="more" .state=${this.elementAttributes}></element-attribute-editor>
-      </ribbon-drawer>
-    `
-  }
-
   protected dispatchWidgetOption(name: string, value: WidgetOptionValue) {
     this.dispatchEvent(new CustomEvent("widget-option-change", {detail: {name, value}, bubbles: true, composed: true}))
   }
@@ -2944,7 +2934,6 @@ export abstract class EditingControls extends LitElement {
     if(drawer.label === "Section") return this.renderSectionDrawer()
     if(drawer.label === "Heading group") return this.renderHeadingGroupDrawer()
     if(drawer.label === "List") return this.renderListDrawer()
-    if(drawer.label === "Attributes") return this.renderElementAttributesDrawer()
     if(drawer.label === "Widget") return this.renderWidgetOptionsDrawer()
     if(drawer.label === "Media") return this.renderMediaDrawer()
     if(drawer.label === "Dialog") return this.renderDialogDrawer()
