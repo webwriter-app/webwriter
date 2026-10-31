@@ -1042,7 +1042,7 @@ export class DomEditor extends LitElement {
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
     .document-layouts-documents {position: relative; align-self: stretch; margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
-    .document-layouts-documents ul {position: absolute; inset: 0; overflow-y: auto; display: grid; grid-auto-rows: 1.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
+    .document-layouts-documents ul {position: absolute; inset: 0; overflow-y: auto; scrollbar-width: thin; display: grid; grid-auto-rows: 1.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
     .document-layouts-documents li {min-width: 0}
     .document-layouts-documents li:last-child:nth-child(odd) {grid-column: 1 / -1}
     .document-layout-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
