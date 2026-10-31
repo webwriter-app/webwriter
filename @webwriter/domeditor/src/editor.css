@@ -2311,7 +2311,8 @@ body::part(transform-overlay-group) {
   border-radius: 50%;
 }
 body::part(transform-overlay-group) {
-  left: 14px;
+  top: calc(50% - 10px);
+  left: -10px;
   cursor: pointer;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M8 12h8M12 8v8"/></svg>');
 }

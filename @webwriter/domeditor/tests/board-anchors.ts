@@ -79,8 +79,9 @@ export async function checkBoardAnchors(inspect = false) {
     near(copyrightRect.top + copyrightRect.height / 2, overlayRect.top - 3, "copyright top row y")
     const grouper = activeOverlay.querySelector<HTMLButtonElement>('[part~="transform-overlay-group"]')!
     const groupRect = grouper.getBoundingClientRect()
-    assert(groupRect.left >= copyrightRect.right, "group control overlaps the copyright corner")
-    near(groupRect.top + groupRect.height / 2, copyrightRect.top + copyrightRect.height / 2, "group and copyright top row")
+    near(groupRect.left + groupRect.width / 2, overlayRect.left, "group control left edge")
+    near(groupRect.top + groupRect.height / 2, overlayRect.top + overlayRect.height / 2, "group control vertical midpoint")
+    assert(groupRect.top >= copyrightRect.bottom, "group control overlaps the copyright corner")
 
     const root = doc.documentElement
     assert(root.scrollWidth > root.clientWidth && root.scrollHeight > root.clientHeight, "fixture did not overflow both axes")
@@ -104,6 +105,8 @@ export async function checkBoardAnchors(inspect = false) {
     const grownSlot = expectedCardSlot(board.columns()[0])
     checkRect(cardButton, grownSlot, "grown card slot")
     assert(grownSlot.top > previousSlotTop + 100, "content growth did not affect the card slot")
+    const grownFrame = activeOverlay.getBoundingClientRect(), grownGroup = grouper.getBoundingClientRect()
+    near(grownGroup.top + grownGroup.height / 2, grownFrame.top + grownFrame.height / 2, "grown column group midpoint")
     const previousWidth = cardButton.getBoundingClientRect().width
     frameTarget.style.width = frameTarget.style.flexBasis = "380px"
     await layout(view)
