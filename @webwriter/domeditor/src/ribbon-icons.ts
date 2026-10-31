@@ -12,7 +12,10 @@ import joinRound from "@tabler/icons/outline/join-round.svg?raw"
 import joinBevel from "@tabler/icons/outline/join-bevel.svg?raw"
 import textWrap from "@tabler/icons/outline/text-wrap.svg?raw"
 import textWrapDisabled from "@tabler/icons/outline/text-wrap-disabled.svg?raw"
-import textWrapColumn from "@tabler/icons/outline/text-wrap-column.svg?raw"
+import textWrapBalance from "./assets/text-wrap-balance.svg?raw"
+import hyphensNone from "./assets/hyphens-none.svg?raw"
+import hyphensManual from "./assets/hyphens-manual.svg?raw"
+import hyphensAuto from "./assets/hyphens-auto.svg?raw"
 import letterCaseUpper from "@tabler/icons/outline/letter-case-upper.svg?raw"
 import letterCaseLower from "@tabler/icons/outline/letter-case-lower.svg?raw"
 import letterCase from "@tabler/icons/outline/letter-case.svg?raw"
@@ -25,7 +28,6 @@ import blur from "@tabler/icons/outline/blur.svg?raw"
 import scan from "@tabler/icons/outline/scan.svg?raw"
 import clock from "@tabler/icons/outline/clock.svg?raw"
 import checkbox from "@tabler/icons/outline/checkbox.svg?raw"
-import hyphen from "@tabler/icons/outline/minus.svg?raw"
 import signRight from "@tabler/icons/outline/sign-right.svg?raw"
 import gitBranch from "@tabler/icons/outline/git-branch.svg?raw"
 import pin from "@tabler/icons/outline/pin.svg?raw"
@@ -542,14 +544,13 @@ export const appIconUrl = `${import.meta.env.BASE_URL}assets/app-icon-transparen
 
 export const ribbonIcon = (label: string) => unsafeSVG(icons[label] ?? fallbackIcon)
 
-/** Tabler glyphs for compact option groups; labels remain on each button. */
+/** Inline glyphs for compact option groups; labels remain on each button. */
 const optionIcons: Record<string, Record<string, string>> = {
   "text-align": {left: alignLeft, center: alignCenter, right: alignRight, justify: alignJustified},
   "text-align-last": {auto: alignLeft, left: alignLeft, center: alignCenter, right: alignRight, justify: alignJustified},
   "stroke-linecap": {butt: capStraight, round: capRounded, square: capProjecting},
   "stroke-linejoin": {miter: joinStraight, round: joinRound, bevel: joinBevel},
-  "text-wrap": {wrap: textWrap, nowrap: textWrapDisabled, balance: alignCenter, pretty: textWrapColumn, stable: alignLeft},
-  "white-space": {normal: textWrap, nowrap: textWrapDisabled, pre: code, "pre-wrap": textWrapColumn, "pre-line": alignLeft, "break-spaces": spacingHorizontal},
+  "text-wrap": {wrap: textWrap, nowrap: textWrapDisabled, balance: textWrapBalance},
   "text-transform": {none: letterCase, uppercase: letterCaseUpper, lowercase: letterCaseLower, capitalize: letterCase, "full-width": arrowsMaximize, "full-size-kana": textSize},
   "vertical-align": {baseline, middle: alignBoxCenterMiddle, top: alignBoxTopCenter, bottom: alignBoxBottomCenter,
     sub: subscript, super: superscript, "text-top": alignBoxTopCenter, "text-bottom": alignBoxBottomCenter},
@@ -558,9 +559,7 @@ const optionIcons: Record<string, Record<string, string>> = {
   "caption-side": {top: alignBoxTopCenter, bottom: alignBoxBottomCenter},
   "empty-cells": {show: eye, hide: eyeOff},
   "list-style-position": {inside: alignBoxCenterMiddle, outside: alignBoxLeftMiddle},
-  "hyphens": {none: textWrapDisabled, manual: hyphen, auto: textWrap},
-  "overflow-wrap": {normal: textWrap, "break-word": textWrapColumn, anywhere: textWrapColumn},
-  "word-break": {normal: textWrap, "break-all": textWrapColumn, "keep-all": textWrapDisabled, "auto-phrase": letterCase, "break-word": textWrapColumn},
+  "hyphens": {manual: hyphensManual, auto: hyphensAuto, none: hyphensNone},
   "object-fit": {fill: arrowsMaximize, contain: rectangle, cover: crop, none: photo, "scale-down": arrowsMinimize},
   "image-rendering": {auto: check, smooth: blur, "high-quality": photo, "crisp-edges": scan, pixelated: layoutGrid},
   "math-style": {normal: math, compact: arrowsMinimize},

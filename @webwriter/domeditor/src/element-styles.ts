@@ -197,7 +197,6 @@ const textBasic = [
   number("line-height", "Line height", "Paragraph", 0, undefined, 0.1),
   select("font-weight", "Font weight", "Font", values("normal", "bold", "lighter", "bolder", "100", "200", "300", "400", "500", "600", "700", "800", "900")),
   select("text-align", "Alignment", "Paragraph", values("left", "center", "right", "justify")),
-  select("white-space", "White space", "Wrapping & breaking", values("normal", "pre", "nowrap", "pre-wrap", "pre-line", "break-spaces")),
 ] as const
 
 const textAdvanced = [
@@ -212,10 +211,8 @@ const textAdvanced = [
   length("text-indent", "Text indent", "Paragraph"),
   select("text-align-last", "Last-line alignment", "Paragraph", values("auto", "left", "center", "right", "justify")),
   select("text-justify", "Justification", "Paragraph", values("auto", "inter-word", "inter-character", "none")),
-  select("text-wrap", "Text wrap", "Wrapping & breaking", values("wrap", "nowrap", "balance", "pretty", "stable")),
-  select("overflow-wrap", "Overflow wrap", "Wrapping & breaking", values("normal", "anywhere", "break-word")),
-  select("word-break", "Word break", "Wrapping & breaking", values("normal", "break-all", "keep-all", "auto-phrase", "break-word")),
-  select("hyphens", "Hyphenation", "Wrapping & breaking", values("none", "manual", "auto")),
+  select("text-wrap", "Text wrap", "Wrapping & breaking", values("wrap", "nowrap", "balance")),
+  select("hyphens", "Hyphenation", "Wrapping & breaking", values("manual", "auto", "none")),
   select("text-transform", "Text transform", "Decoration", values("none", "capitalize", "uppercase", "lowercase", "full-width", "full-size-kana")),
   select("text-decoration-line", "Decoration line", "Decoration", values("none", "underline", "overline", "line-through", "underline overline")),
   select("text-decoration-style", "Decoration style", "Decoration", values("solid", "double", "dotted", "dashed", "wavy")),
@@ -399,7 +396,7 @@ specializedStyleDefinitions.forEach(definition => {
 
 const paragraphs: SpecializedElementStyle = {
   primary: ["text-align", "line-height"],
-  advanced: ["text-indent", "text-align-last", "text-wrap", "hyphens", "overflow-wrap", "word-break", "white-space", "letter-spacing", "word-spacing"],
+  advanced: ["text-indent", "text-align-last", "text-wrap", "hyphens", "letter-spacing", "word-spacing"],
 }
 const headings: SpecializedElementStyle = {
   primary: ["text-align", "text-wrap", "text-transform"],
@@ -423,7 +420,7 @@ export function specializedElementStyle(localName: string): SpecializedElementSt
   if(localName === "details") return {primary: [], advanced: ["break-inside"]}
   if(localName === "summary") return {primary: ["list-style-type", "list-style-position"], advanced: []}
   if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells", "break-inside"]}
-  if(["td", "th"].includes(localName)) return {primary: ["text-align", "vertical-align", "white-space"], advanced: ["overflow-wrap", "word-break"]}
+  if(["td", "th"].includes(localName)) return {primary: ["text-align", "vertical-align"], advanced: []}
   if(["svg", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "g"].includes(localName)) return {
     primary: ["stroke-linecap", "stroke-linejoin"], advanced: ["stroke-dasharray", "fill-rule", "paint-order", "vector-effect"],
   }

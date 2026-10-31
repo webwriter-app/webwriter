@@ -1217,9 +1217,9 @@ export class DomEditorToolbox extends EditingControls {
           : [[namespaceURI, localName, attributes?.path, 1]])}
         .state=${list ? {...style, target: {...style.target, localName, namespaceURI}} : style}></element-style-editor>
       ${hasOptions ? html`<div slot="more" class="specialized-options">
-        ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
+        ${advanced.length ? html`<element-style-editor mode="compact" dense-choices .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
-        ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
+        ${mediaStyles.length ? html`<element-style-editor mode="compact" dense-choices .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
         ${this.media?.type === "video" && (!group || singleTarget) ? this.renderMediaSource(true) : nothing}
         ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       </div>` : nothing}
