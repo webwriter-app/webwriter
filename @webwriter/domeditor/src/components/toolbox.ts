@@ -205,6 +205,9 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
     .float-button-group[aria-label="Placement"] button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
+    .placement-action-group button:disabled {opacity: .4; cursor: default}
+    .float-button-group.placement-action-group button:hover:not(:disabled) {background: #edf3f9}
+    .float-button-group.placement-action-group button:active:not(:disabled) {background: #e2edf8; color: #375d84}
     .grouping-button-group {display: grid; grid-template-columns: 1.6rem 1.6rem minmax(0, 1fr) 1.6rem}
     .grouping-button-group button {min-height: 1.9rem; padding: .2rem}
     .grouping-button-group button:disabled {opacity: .4; cursor: default}
@@ -1515,7 +1518,7 @@ export class DomEditorToolbox extends EditingControls {
           ` : nothing}
           ${["canvas", "slides"].includes(this.documentLayout.mode) ? html`
           <span class="float-placement-label">Placement</span>
-          <div class="float-button-group" role="group" aria-label="Placement">
+          <div class="float-button-group placement-action-group" role="group" aria-label="Placement">
             ${([
               {direction: "front", label: "Move to front", icon: "Bring to front", enabled: target?.placement?.canMoveUp},
               {direction: "up", label: "Move up", icon: "Bring forward", enabled: target?.placement?.canMoveUp},
