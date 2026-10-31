@@ -2,6 +2,7 @@ import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
+import {isAuthoredMutation} from "../editor-artifacts"
 
 /** A CSS carousel with authored fragment links. Authoring and caret placement
  * belong to the editor; navigating and reading the saved deck need no script. */
@@ -13,6 +14,8 @@ export class SlidesFeature extends EditorFeature {
   private viewZoom = 1
   private fitting = true
   private viewing = false
+  private currentCache: {viewport: HTMLElement, left: number, width: number, slide: HTMLElement} | null = null
+  private anchorsDirty = true
   get zoom() { return this.active ? this.viewZoom : 1 }
 
   insertionSlide() {
@@ -35,6 +38,7 @@ export class SlidesFeature extends EditorFeature {
         zoom: ${this.viewZoom}; margin-inline: max(0px, calc((100vw / ${this.viewZoom} - ${slideWidth}px) / 2));
       }
     }`)
+    this.currentCache = null
     slide?.scrollIntoView?.({block: "nearest", inline: "center", behavior: "instant"})
     const output = this.zoomControls?.querySelector("output")
     if(output) output.textContent = `${Math.round(this.zoom * 100)}%`
@@ -47,6 +51,7 @@ export class SlidesFeature extends EditorFeature {
   }
 
   private fit = () => {
+    this.currentCache = null
     if(this.active && this.fitting) this.applyZoom(Math.min(1, window.innerWidth / slideWidth, window.innerHeight / slideHeight))
     this.schedule()
   }
@@ -63,6 +68,7 @@ export class SlidesFeature extends EditorFeature {
   private navigationFrame: number | null = null
   private signature = ""
   private selected: HTMLElement | null = null
+  private hoverDirty = true
   private removalTargets: Array<{slide: HTMLElement, link: HTMLAnchorElement, button: HTMLButtonElement}> = []
   get active() { return documentLayoutMode() === "slides" }
   private viewport() { return document.body.querySelector<HTMLElement>(":scope > div.ww-slides-viewport:not([is])") }
@@ -149,11 +155,23 @@ export class SlidesFeature extends EditorFeature {
     })
   }
   current() {
-    const viewport = this.viewport(), slides = this.slides()
+    const pending = this.observer?.takeRecords() ?? []
+    if(pending.some(isAuthoredMutation)) { this.currentCache = null; this.anchorsDirty = true; this.schedule() }
+    const viewport = this.viewport()
     if(viewport?.clientWidth) {
+      const cached = this.currentCache
+      if(cached?.viewport === viewport && cached.left === viewport.scrollLeft && cached.width === viewport.clientWidth
+        && cached.slide.parentElement === viewport) return cached.slide
       const left = viewport.getBoundingClientRect().left
-      return slides.reduce<HTMLElement | null>((nearest, slide) => !nearest || Math.abs(slide.getBoundingClientRect().left - left) < Math.abs(nearest.getBoundingClientRect().left - left) ? slide : nearest, null)
+      let nearest: HTMLElement | null = null, distance = Infinity
+      for(const slide of this.slides()) {
+        const next = Math.abs(slide.getBoundingClientRect().left - left)
+        if(next < distance) { nearest = slide; distance = next }
+      }
+      this.currentCache = nearest ? {viewport, left: viewport.scrollLeft, width: viewport.clientWidth, slide: nearest} : null
+      return nearest
     }
+    const slides = this.slides()
     return this.containingSlide(document.getSelection()?.anchorNode ?? null) ?? this.containingSlide(document.activeElement) ?? slides.at(-1) ?? null
   }
 
@@ -387,8 +405,8 @@ export class SlidesFeature extends EditorFeature {
       this.applyZoom(this.zoom * Math.exp(-event.deltaY * unit * .002))
     },
     scroll: () => this.schedule(),
-    pointerover: event => { if(this.controlEvent(event)) this.schedule() },
-    pointerout: event => { if(this.controlEvent(event)) this.schedule() },
+    pointerover: event => { if(this.controlEvent(event)) { this.hoverDirty = true; this.schedule() } },
+    pointerout: event => { if(this.controlEvent(event)) { this.hoverDirty = true; this.schedule() } },
     dragstart: event => this.preventControlDrag(event),
     dragover: event => this.preventControlDrag(event),
     drop: event => this.preventControlDrag(event),
@@ -435,7 +453,8 @@ export class SlidesFeature extends EditorFeature {
     selectionchange: () => this.schedule(),
     // Native text selection also focuses the slide. Only navigation may reset
     // its caret; doing so on focus collapses every subsequent text selection.
-    focusin: () => this.schedule(),
+    focusin: event => { if(this.controlEvent(event)) this.hoverDirty = true; this.schedule() },
+    focusout: event => { if(this.controlEvent(event)) this.hoverDirty = true; this.schedule() },
   }
   private schedule = () => {
     if(this.isEnabled && this.frame === null) this.frame = requestAnimationFrame(() => { this.frame = null; this.refresh() })
@@ -467,8 +486,9 @@ export class SlidesFeature extends EditorFeature {
     }
     this.controls.hidden = !nav
     const selected = this.current(), slides = this.slides()
+    const links = new Map(Array.from(nav?.querySelectorAll<HTMLAnchorElement>(":scope > a") ?? [], link => [link.getAttribute("href"), link]))
     const targets = nav ? slides.flatMap(slide => {
-      const link = Array.from(nav.querySelectorAll<HTMLAnchorElement>(":scope > a")).find(link => link.getAttribute("href") === `#${encodeURIComponent(slide.id)}`)
+      const link = links.get(`#${encodeURIComponent(slide.id)}`)
       return link ? [{slide, link}] : []
     }) : []
     const activeLink = targets.find(target => target.slide === selected)?.link ?? null
@@ -480,9 +500,12 @@ export class SlidesFeature extends EditorFeature {
     const canInsert = this.editor.allows("insert", this.viewport() ?? document.body)
     const signature = JSON.stringify([this.active, this.editor.isEditingLocked, slides.length, canInsert,
       ...slides.map(slide => this.editor.allows("delete", slide))])
-    if(signature !== this.signature || selected !== this.selected || targets.length !== this.removalTargets.length
-      || targets.some((target, i) => target.slide !== this.removalTargets[i].slide || target.link !== this.removalTargets[i].link)) {
-      this.signature = signature; this.selected = selected
+    const previousSelected = this.selected
+    this.selected = selected
+    const rebuildControls = signature !== this.signature || targets.length !== this.removalTargets.length
+      || targets.some((target, i) => target.slide !== this.removalTargets[i].slide || target.link !== this.removalTargets[i].link)
+    if(rebuildControls) {
+      this.signature = signature
       this.navigationVisibility?.disconnect()
       this.controls.replaceChildren()
       const button = (name: string, label: string, text: string, run: () => void) => {
@@ -500,16 +523,20 @@ export class SlidesFeature extends EditorFeature {
           hidden: !this.editor.allows("delete", slide),
         })}))
     }
-    if(nav) {
+    if(nav && (rebuildControls || this.anchorsDirty)) {
       const add = this.controls.querySelector<HTMLElement>('[name="add"]')!
       this.anchors.bind(add, nav, "left:calc(anchor(right) + 8px);top:anchor(center);translate:0 -50%;position-visibility:anchors-visible;")
       for(const {slide, link, button} of this.removalTargets) {
-        button.classList.toggle("shown", slide === selected || link.matches(":hover, :focus-visible") || button.matches(":hover, :focus-visible"))
         this.anchors.bind(button, link, "left:calc(anchor(right) - 4px);top:calc(anchor(top) + 4px);translate:-50% -50%;position-visibility:anchors-visible;")
         this.navigationVisibility?.observe(link)
       }
     }
-    this.anchors.refresh()
+    if(rebuildControls || this.hoverDirty || previousSelected !== selected) for(const {slide, link, button} of this.removalTargets) {
+      if(rebuildControls || this.hoverDirty || slide === selected || slide === previousSelected)
+        button.classList.toggle("shown", slide === selected || link.matches(":hover, :focus-visible") || button.matches(":hover, :focus-visible"))
+    }
+    this.hoverDirty = false
+    if(this.anchorsDirty) { this.anchors.refresh(); this.anchorsDirty = false }
 
   }
 
@@ -564,10 +591,13 @@ export class SlidesFeature extends EditorFeature {
     `)
     this.editor.appendix.adoptedStyleSheets = [...this.editor.appendix.adoptedStyleSheets, this.stylesheet]
     window.addEventListener("resize", this.fit)
-    this.observer = new MutationObserver(this.schedule); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
+    this.observer = new MutationObserver(records => { if(records.some(isAuthoredMutation)) { this.currentCache = null; this.anchorsDirty = true }; this.schedule() }); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true, attributeOldValue: true})
     this.refresh()
   }
   disable() {
+    this.currentCache = null
+    this.anchorsDirty = true
+    this.hoverDirty = true
     super.disable(); this.observer?.disconnect(); this.observer = null
     if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
     this.layoutStylesheet = null

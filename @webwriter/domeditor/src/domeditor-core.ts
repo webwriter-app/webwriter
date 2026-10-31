@@ -1197,7 +1197,9 @@ export class DOMEditor {
     const exitReason = mode === "board" ? this.features.board.exitConversionReason() : null
     const conversions = {
       document: rootReason ?? exitReason,
-      canvas: rootReason ?? exitReason ?? ((mode === "slides" || mode === "board" ? this.features.canvas.canConvertContent(this.features[mode].documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
+      canvas: rootReason ?? exitReason ?? ((mode === "board" ? this.features.board.canConvertToCanvas()
+        : mode === "slides" ? this.features.canvas.canConvertContent(this.features.slides.documentContent()) : canvas.canConvert)
+        ? null : "This document's structure cannot be converted to Canvas automatically."),
       slides: rootReason ?? exitReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
       board: rootReason ?? this.features.board.conversionReason(),
     }

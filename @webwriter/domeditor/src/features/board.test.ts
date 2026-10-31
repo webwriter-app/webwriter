@@ -1182,6 +1182,22 @@ describe("Board layout", () => {
     expect(documentLayoutMode(Object.assign(document.createElement("body"), {className: "ww-board ww-canvas"}))).toBe("document")
   })
 
+  it("reuses conversion checks until an authored board mutation occurs", () => {
+    convert("board")
+    const content = vi.spyOn(board(), "documentContent")
+    editor.getDocumentLayoutState()
+    const scans = content.mock.calls.length
+    editor.getDocumentLayoutState()
+    expect(content.mock.calls.length).toBe(scans)
+    cards()[0].classList.add("◆test-marker")
+    editor.getDocumentLayoutState()
+    expect(content.mock.calls.length).toBe(scans)
+    cards()[0].classList.remove("◆test-marker")
+    cards()[0].setAttribute("title", "changed outside the editor")
+    editor.getDocumentLayoutState()
+    expect(content.mock.calls.length).toBe(scans + 1)
+  })
+
   it("groups layout conversions and card mutations for undo and redo", async () => {
     document.body.innerHTML = "<p>Original</p>"; await settle()
     const before = editor.toHTML(true)

@@ -11,7 +11,7 @@ import WebSocket from 'ws'
 const production = process.argv.includes('--production')
 const profiling = process.argv.includes('--profile')
 const only = process.argv.find(arg => arg.startsWith('--only='))?.slice(7)
-if(only && !['live', 'reconciliation', 'tables'].includes(only)) throw new Error('--only must be live, reconciliation or tables')
+if(only && !['live', 'reconciliation', 'tables', 'layouts'].includes(only)) throw new Error('--only must be live, reconciliation, tables or layouts')
 const output = resolve(process.argv.find(arg => arg.startsWith('--output='))?.slice(9) ?? '.cache/performance/profile')
 await mkdir(output, {recursive: true})
 const temporary = await mkdtemp(join(tmpdir(), 'domeditor-profiler-'))
@@ -117,7 +117,8 @@ try {
   })
   if(production) {
     await build({logLevel: 'warn', publicDir: false, plugins: [{name: 'profiling-entrypoints', configResolved(config) {
-      config.build.rollupOptions.input = {profile: resolve('tests/performance-profile.html'), frame: resolve('tests/performance-profile-frame.html')}
+      config.build.rollupOptions.input = {...config.build.rollupOptions.input,
+        profile: resolve('tests/performance-profile.html'), frame: resolve('tests/performance-profile-frame.html')}
     }}], build: {outDir: join(output, 'build'), sourcemap: true}})
     server = await preview({plugins: [plugin], build: {outDir: join(output, 'build')}, preview: {host: '127.0.0.1', port, strictPort: true}})
   }
@@ -180,6 +181,7 @@ try {
   if(result.error || exceptions.length) throw new Error(result.error ?? `${exceptions.length} unhandled browser exceptions`)
   const expected = (!only || only === 'reconciliation' ? profiling ? 16 : 62 : 0)
     + (!only || only === 'live' ? profiling ? 7 : 21 : 0) + (!only || only === 'tables' ? profiling ? 7 : 14 : 0)
+    + (only === 'layouts' ? profiling ? 18 : 36 : 0)
   if(result.checks?.length !== expected) throw new Error(`Expected ${expected} measurements, received ${result.checks?.length}`)
   process.stdout.write(`Saved ${result.checks.length} measurements and ${profiles.length} CPU/timeline profiles to ${output}\n`)
 }

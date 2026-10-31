@@ -27,6 +27,8 @@ export function createFigureLayout(doc) {
   }
   const refresh = () => {
     if(destroyed) return
+    // Documents without figures need no generated rules or stylesheet reset.
+    if(!markers.size && !body.querySelector("figure:not([is])")) return
     // Measure the live authored layout, including stylesheet and remote edits.
     sheet.replaceSync("")
     const rules = [], active = new Set(), pendingMarkers = []

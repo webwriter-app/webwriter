@@ -12,6 +12,19 @@ afterEach(() => { layout?.destroy(); layout = undefined; vi.restoreAllMocks() })
 
 const css = () => Array.from(document.adoptedStyleSheets.at(-1)!.cssRules, rule => rule.cssText).join("\n")
 
+it("leaves the empty stylesheet untouched until a live figure appears", () => {
+  const figure = document.querySelector<HTMLElement>("figure")!
+  figure.remove()
+  layout = createFigureLayout(document)
+  const sheet = document.adoptedStyleSheets.at(-1)!
+  const replace = vi.spyOn(sheet, "replaceSync")
+  layout.refresh()
+  expect(replace).not.toHaveBeenCalled()
+  document.body.append(figure)
+  layout.refresh()
+  expect(css()).toContain("shape-outside: polygon(")
+})
+
 it.each(["left", "center", "right"])("uses a polygon float for an upright %s caption without changing authored content", alignment => {
   const figure = document.querySelector<HTMLElement>("figure")!, caption = figure.querySelector<HTMLElement>("figcaption")!
   caption.style.textAlign = alignment

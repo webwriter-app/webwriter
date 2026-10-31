@@ -109,6 +109,23 @@ it("anchors ordinary flow frames and retains measured geometry during transforma
   expect(feature.overlay.getAttribute("part")).not.toContain(binding)
 })
 
+it("finishes a stable text resize without reprocessing the unchanged node selection", () => {
+  const target = targetElement()
+  mockRect(target)
+  selectNode(target)
+  const selection = vi.spyOn(editor.features.selection, "processSelection")
+  const handle = feature.overlay.querySelector<HTMLElement>('[data-transform-mode="scale"][data-resize-direction*="right"]')!
+  const start = new MouseEvent("mousedown", {button: 0, clientX: 200, clientY: 125})
+  Object.defineProperty(start, "composedPath", {value: () => [handle]})
+  feature.handleScaleStart(start)
+  feature.handleScaleDrag(new MouseEvent("mousemove", {button: 0, clientX: 220, clientY: 125}))
+  feature.handleScaleEnd()
+  expect(selection).not.toHaveBeenCalled()
+  expect($.selectedElement).toBe(target)
+  expect(feature.target).toBe(target)
+  expect(target).toHaveClass("◆element-selected")
+})
+
 it("hides transforms for a zero-area widget host and recovers when its live box returns", () => {
   const target = targetElement("self-positioned-widget")
   target.attachShadow({mode: "open"}).innerHTML = '<div style="position:absolute;width:200px;height:100px">Popup</div>'
@@ -3498,7 +3515,7 @@ describe("SVG canvas cropping", () => {
 
 
 describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode => {
-  function setup(zoom = 1) {
+  function setup(zoom = 1, tag = "test-widget") {
     document.body.className = `ww-${mode}`
     let root = document.body
     if(mode === "slides") {
@@ -3518,9 +3535,9 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
         30 + parseFloat(target.style.left) * zoom, 40 + parseFloat(target.style.top) * zoom, width * zoom, height * zoom))
       return target
     }
-    const target = box("test-widget", 13, 17, 64, 46)
+    const target = box(tag, 13, 17, 64, 46)
     target.innerHTML = '<span>Authored</span><!--keep--><unfamiliar-inline title="kept">content</unfamiliar-inline>'
-    target.attachShadow({mode: "open"}).innerHTML = '<button>Widget UI</button>'
+    if(tag.includes("-")) target.attachShadow({mode: "open"}).innerHTML = '<button>Widget UI</button>'
     selectNode(target)
     const start = () => feature.handleMoveStart(pointer("pointerdown", {pointerId: 61, clientX: 100, clientY: 100}))
     const move = (x: number, y: number, modifiers: PointerEventInit = {}) => document.dispatchEvent(pointer("pointermove", {
@@ -3560,6 +3577,31 @@ describe.each(["canvas", "slides"] as const)("%s movement grid and guides", mode
     expect(target.style.top).toBe("40px")
     expect(overlay()?.querySelector('[part~="transform-guide"]')).toBeNull()
     end()
+  })
+
+  it("reuses peer boxes during a drag and remeasures an externally changed peer", () => {
+    const {box, start, move, end} = setup()
+    const peer = box("peer-widget", 203, 147, 100, 80)
+    const rect = vi.mocked(peer.getBoundingClientRect)
+    start(); move(24, 31)
+    const first = rect.mock.calls.length
+    move(32, 39)
+    expect(rect.mock.calls.length).toBe(first)
+    peer.style.left = "240px"
+    move(40, 47)
+    expect(rect.mock.calls.length).toBeGreaterThan(first)
+    end()
+  })
+
+  it("keeps a moved text item selected without reprocessing its unchanged selection", () => {
+    const {target, start, move, end} = setup(1, "p")
+    start(); move(24, 31)
+    const selection = vi.spyOn(editor.features.selection, "processSelection")
+    end()
+    expect(selection).not.toHaveBeenCalled()
+    expect($.selectedElement).toBe(target)
+    expect(feature.target).toBe(target)
+    expect(target).toHaveClass("◆element-selected")
   })
 
   it("bypasses all snapping with Alt and leaves the locked Shift axis unchanged", () => {
