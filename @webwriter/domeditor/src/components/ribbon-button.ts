@@ -925,7 +925,8 @@ export class RibbonButton extends LitElement {
     }
 
     :host([variant="package"]) .submenu-trigger,
-    :host([variant="package"]) .corner-trigger {
+    :host([variant="package"]) .corner-trigger,
+    :host([variant="package"]) .submenu-placeholder {
       position: static;
       flex: 0 0 auto;
       align-self: stretch;
@@ -934,6 +935,12 @@ export class RibbonButton extends LitElement {
       min-height: 100%;
       aspect-ratio: 1 / 1;
       transform: none;
+    }
+
+    :host([variant="package"]) .submenu-placeholder {
+      box-sizing: border-box;
+      visibility: hidden;
+      pointer-events: none;
     }
 
     :host([variant="package"]) .has-icon-action .icon-action-trigger,
@@ -1373,6 +1380,7 @@ export class RibbonButton extends LitElement {
 
   render() {
     const hasDropdown = this.hasDropdown
+    const showSubmenuTrigger = (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction))
     const dragAction = this.action || this.label
     const dragTag = this.variant === "insertion" || dragAction === "Formula" ? ribbonElementTag(this.label, dragAction) : null
     const dragPackageInsertion = this.variant === "package" && ribbonInsertionAction(dragAction)
@@ -1435,7 +1443,8 @@ export class RibbonButton extends LitElement {
           >
             <span class="button-icon corner-icon" aria-hidden="true">${ribbonIcon("Reject")}</span>
           </button>
-        ` : (hasDropdown || this.openDrawer) && (!this.dropdownOnClick || Boolean(this.iconAction)) ? html`
+        ` : ""}
+        ${showSubmenuTrigger ? html`
           <button
             class="submenu-toggle submenu-trigger"
             type="button"
@@ -1448,7 +1457,7 @@ export class RibbonButton extends LitElement {
           >
             <span class="submenu-chevron" aria-hidden="true"></span>
           </button>
-        ` : ""}
+        ` : this.variant === "package" && this.corner === "close" ? html`<span class="submenu-toggle submenu-placeholder" aria-hidden="true"><span class="submenu-chevron"></span></span>` : ""}
         ${this.notification ? html`
           <span
             class=${`button-notification${this.notificationVisible ? " visible" : ""}`}
@@ -1459,7 +1468,7 @@ export class RibbonButton extends LitElement {
           >${this.notification}</span>
         ` : nothing}
       </div>
-      ${this.corner !== "close" && hasDropdown ? html`
+      ${hasDropdown ? html`
         <ribbon-menu
           variant="button"
           popover="manual"

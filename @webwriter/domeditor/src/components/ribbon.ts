@@ -2193,7 +2193,7 @@ export class AppRibbon extends EditingControls {
         icon-url=${pkg.iconUrl ?? ""}
         .action=${packageAction(pkg)}
         .dragHTML=${this.packageDragHTML(pkg, members[0])}
-        .submenu=${management || !installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
+        .submenu=${!installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
           dragHTML: this.packageDragHTML(pkg, member),
