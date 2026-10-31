@@ -13,6 +13,32 @@ import type {RibbonButton} from "./ribbon-button"
 beforeEach(() => document.body.replaceChildren())
 
 describe("graphic ribbon", () => {
+  it("keeps graphic alternative text as the last primary option", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {active: true, capture: true, alternativeText: "A flowchart"}
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="svg"]')!
+    const input = drawer.querySelector<HTMLInputElement>('input[aria-label="Graphic: Alternative text"]')!
+    expect(input.value).toBe("A flowchart")
+    expect(input.placeholder).toBe("Describe the graphic")
+    expect(input.closest('[slot="more"]')).toBeNull()
+    expect(Array.from(drawer.children).filter(child => child.getAttribute("slot") !== "more").at(-1)).toBe(input.closest(".media-primary-options"))
+    const listener = vi.fn()
+    toolbox.addEventListener("graphic-alternative-text-change", listener)
+    input.value = "A revised flowchart"
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {value: "A revised flowchart"}}))
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Edit"
+    ribbon.graphic = toolbox.graphic
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+    const ribbonDrawer = ribbon.shadowRoot!.querySelector('ribbon-drawer[layout="graphic-geometry"]')!
+    expect(ribbonDrawer.lastElementChild).toBe(ribbonDrawer.querySelector('input[aria-label="Graphic: Alternative text"]')?.closest(".media-primary-options"))
+  })
+
   it("leaves drawing controls to the keyboard and keeps selected stroke styling available", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

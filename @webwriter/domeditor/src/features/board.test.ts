@@ -655,14 +655,14 @@ describe("Board layout", () => {
     expect(columns()).toEqual([one, two, three])
   })
 
-  it("keeps a card drag in one undo step and restores its text selection", async () => {
+  it("keeps a card drag in one undo step and selects the card", async () => {
     convert("board"); const card = cards()[0], text = document.createTextNode("Selected")
     card.querySelector("p")!.append(text)
     board().addColumn(); await settle(); geometry(); $.move(text, 3)
     const data = new DataTransfer()
     grip("Drag card 1 in column 1").dispatchEvent(dragEvent("dragstart", data))
     columns()[1].dispatchEvent(dragEvent("drop", data, 400, 100)); await settle()
-    expect($.anchor).toBe(text); expect($.anchorOffset).toBe(3)
+    expect($.selectedElement).toBe(card)
     expect(board().cards(columns()[1])).toEqual([card])
     editor.doc.undo(); await settle(); expect(board().cards(columns()[0])).toHaveLength(1); expect(board().cards(columns()[1])).toHaveLength(0)
     editor.doc.redo(); await settle(); expect(board().cards(columns()[0])).toHaveLength(0); expect(board().cards(columns()[1])).toHaveLength(1)
@@ -994,6 +994,32 @@ describe("Board layout", () => {
     expect(editor.appendix.querySelectorAll('[aria-label^="Drag "], [aria-label^="Remove "], [aria-label="Move card up"], [aria-label="Move card down"], [aria-label="Move card left"], [aria-label="Move card right"]')).toHaveLength(0)
   })
 
+  it.each([
+    ["card", "[part~='transform-overlay-edge']"],
+    ["card", "[part~='transform-overlay-mover']"],
+    ["card", "[part~='transform-overlay-board-resize-card']"],
+    ["card", "[part~='transform-overlay-delete']"],
+    ["column", "[part~='transform-overlay-edge']"],
+    ["column", "[part~='transform-overlay-mover']"],
+    ["column", "[part~='transform-overlay-board-resize-column']"],
+    ["column", "[part~='transform-overlay-delete']"],
+    ["column", "[part~='transform-overlay-group']"],
+  ])("element-selects the %s from its grey frame affordance %s", async (kind, selector) => {
+    convert("board"); await settle(); geometry()
+    const target = kind === "card" ? cards()[0] : columns()[0]
+    const content = target.querySelector(kind === "card" ? "p" : "h2")!
+    $.move(content); editor.features.selection.processSelection(); board().refresh()
+    expect($.selectedElement).not.toBe(target)
+    const overlay = board().transformOverlay(target)!
+    const handle = overlay.querySelector<HTMLElement>(selector)!
+    handle.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0, pointerId: 35}))
+    expect($.selectedElement).toBe(target)
+    expect(target.classList.contains("◆element-selected")).toBe(true)
+    document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, composed: true, pointerId: 35}))
+    expect($.selectedElement).toBe(target)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("exposes mover, delete, and resize controls and preserves explicit selection when moving", async () => {
     convert("board"); board().addColumn(); await settle(); geometry()
     const [first, second] = columns(), card = board().cards(first)[0]
@@ -1154,6 +1180,22 @@ describe("Board layout", () => {
     const html = document.body.innerHTML
     expect(convert("board")).toBe(false); expect(document.body.innerHTML).toBe(html)
     expect(documentLayoutMode(Object.assign(document.createElement("body"), {className: "ww-board ww-canvas"}))).toBe("document")
+  })
+
+  it("reuses conversion checks until an authored board mutation occurs", () => {
+    convert("board")
+    const content = vi.spyOn(board(), "documentContent")
+    editor.getDocumentLayoutState()
+    const scans = content.mock.calls.length
+    editor.getDocumentLayoutState()
+    expect(content.mock.calls.length).toBe(scans)
+    cards()[0].classList.add("◆test-marker")
+    editor.getDocumentLayoutState()
+    expect(content.mock.calls.length).toBe(scans)
+    cards()[0].classList.remove("◆test-marker")
+    cards()[0].setAttribute("title", "changed outside the editor")
+    editor.getDocumentLayoutState()
+    expect(content.mock.calls.length).toBe(scans + 1)
   })
 
   it("groups layout conversions and card mutations for undo and redo", async () => {

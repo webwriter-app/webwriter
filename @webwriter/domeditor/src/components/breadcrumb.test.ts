@@ -61,6 +61,30 @@ describe("image hotspot breadcrumb indicator", () => {
 })
 
 describe("breadcrumb resize lifecycle", () => {
+  it("measures expanded and collapsed items in batches", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = ["One", "Two", "Three"].map((name, index) => ({path: [index], name}))
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    const list = breadcrumb.shadowRoot!.querySelector<HTMLElement>(".breadcrumb-list")!
+    const items = Array.from(list.querySelectorAll<HTMLElement>(".breadcrumb-entry:not(.separator)"))
+    const separators = list.children.length - items.length
+    Object.defineProperty(list, "clientWidth", {configurable: true, value: items.length * 80 + separators * 15 - 75})
+    const counts: number[] = []
+    for(const entry of Array.from(list.children) as HTMLElement[]) {
+      vi.spyOn(entry, "getBoundingClientRect").mockImplementation(() => {
+        counts.push(items.filter(item => item.querySelector(".item")?.classList.contains("icon-only")).length)
+        return {width: entry.classList.contains("separator") ? 15
+          : entry.querySelector(".item")?.classList.contains("icon-only") ? 30 : 80} as DOMRect
+      })
+    }
+    window.dispatchEvent(new Event("resize"))
+    await Promise.resolve()
+    expect(counts.length).toBeGreaterThan(0)
+    expect(counts.every(count => count === 0 || count === items.length)).toBe(true)
+    expect(items.filter(item => item.querySelector(".item")?.classList.contains("icon-only"))).toHaveLength(2)
+  })
+
   it("observes the navigation again when the same element reconnects", async () => {
     const observers: Array<{
       observe: ReturnType<typeof vi.fn>

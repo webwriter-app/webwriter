@@ -1042,6 +1042,18 @@ export class GraphicFeature extends EditorFeature {
       this.#refresh()
       this.editor.postSelectionPath()
     },
+    setGraphicAlternativeText: ({value}: {type: "setGraphicAlternativeText", value: string | null}) => {
+      if(value !== null && typeof value !== "string") return false
+      const selected = $.selectedElement
+      const graphic = this.#activeGraphic() ?? (selected?.localName === "svg" && selected.namespaceURI === SVG_NAMESPACE
+        ? selected as SVGSVGElement : null)
+      if(!graphic?.isConnected || !document.body.contains(graphic)) return false
+      if(value) graphic.setAttribute("aria-label", value)
+      else graphic.removeAttribute("aria-label")
+      this.#refresh()
+      this.editor.postSelectionPath()
+      return true
+    },
     toggleGraphicOption: ({name}: {type: "toggleGraphicOption", name: GraphicOption}) => {
       if(name !== "grid" && name !== "snap" && name !== "guides") return
       this.#options[name] = !this.#options[name]
@@ -1119,6 +1131,7 @@ export class GraphicFeature extends EditorFeature {
     return {
       active: true,
       capture: Boolean(capture),
+      ...(graphic.hasAttribute("aria-label") ? {alternativeText: graphic.getAttribute("aria-label") ?? ""} : {}),
       mode: this.#drawGraphic === graphic ? this.#drawMode : "select",
       selectionCount: shapes.length,
       options: {...this.#options},

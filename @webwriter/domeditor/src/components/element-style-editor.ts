@@ -258,6 +258,8 @@ export class ElementStyleEditor extends LitElement {
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: inherit; font-size: .6rem;}
     .specialized-choice-group button span {display: flex; justify-content: center;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    :host([dense-choices]) .specialized-choice-group button {padding-inline: 0;}
+    :host([dense-choices]) .specialized-choice-group svg {width: .75rem; height: .75rem;}
     .marker-control {width: 100%;}
     .marker-control [hidden] {display: none !important;}
     .marker-control .marker-popup {padding: .35rem; border-top: 1px solid #c5ccd5; border-radius: 4px;}
@@ -1556,11 +1558,15 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private renderCompactChoices(definition: ElementStylePropertyDefinition) {
-    const value = this.editableValue(definition.name) || this.state.computed[definition.name]?.trim()
+    const computed = this.state.computed[definition.name]?.trim()
+    const value = this.editableValue(definition.name) || (definition.name === "hyphens" ? computed || "manual"
+      : !this.declaration(definition.name) && this.hasAttribute("dense-choices") ? definition.values![0] : computed)
     const rtl = this.state.computed.direction === "rtl"
     const current = ["text-align", "text-align-last"].includes(definition.name)
       ? value === "start" ? rtl ? "right" : "left" : value === "end" ? rtl ? "left" : "right" : value : value
-    const columns = Math.min(4, Math.ceil(definition.values!.length / (definition.values!.length > 4 ? 2 : 1)))
+    const columns = this.hasAttribute("dense-choices")
+      ? Math.min(6, definition.values!.length)
+      : Math.min(4, Math.ceil(definition.values!.length / (definition.values!.length > 4 ? 2 : 1)))
     return html`<div class="specialized-choice-group" ?data-default=${!this.declaration(definition.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${definition.name}`}>
       ${definition.values!.map((value, index) => html`<button type="button"
         ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((definition.values!.length - 1) / columns) * columns}

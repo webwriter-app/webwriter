@@ -338,8 +338,6 @@ export class DeveloperConsole extends EditingControls {
             @click=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {detail: {label: packageMemberAction(member)}, bubbles: true, composed: true}))}
           >Insert ${member.label}</button>`)}
       </div>`
-    const attributesMatch = this.elementAttributes?.localName === state.localName
-      && JSON.stringify(this.elementAttributes.path) === JSON.stringify(state.path)
     return html`
       <div class="element-content">
         <section class="develop-section">
@@ -363,7 +361,6 @@ export class DeveloperConsole extends EditingControls {
             ${state.data ? html`<code>${state.data.type}</code><pre class="widget-data">${state.data.value}</pre>` : html`<p>No data block</p>`}
           ` : html`<p>Not enabled for this widget</p>`}
         </section>
-        ${attributesMatch ? this.renderElementAttributesDrawer() : ""}
       </div>`
   }
 

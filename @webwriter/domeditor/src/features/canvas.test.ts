@@ -803,6 +803,21 @@ describe("canvas document layout", () => {
     expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
   })
 
+  it("updates camera overlays once per pan frame without reposting the selection path", async () => {
+    editor.features.canvas.actions.startCanvas({type: "startCanvas"})
+    await settle()
+    const geometry = vi.spyOn(editor.features.transformation, "updateInfo")
+    const selectionPath = vi.spyOn(editor, "postSelectionPath")
+    document.body.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerId: 18, button: 1, clientX: 100, clientY: 100}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 18, clientX: 140, clientY: 120}))
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 18, clientX: 170, clientY: 135}))
+    expect(geometry).not.toHaveBeenCalled()
+    expect(selectionPath).not.toHaveBeenCalled()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    expect(geometry).toHaveBeenCalledTimes(1)
+    document.dispatchEvent(new PointerEvent("pointercancel", {bubbles: true, pointerId: 18}))
+  })
+
   it.each([
     ["BODY", () => document.body],
     ["HTML", () => document.documentElement],

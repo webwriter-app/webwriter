@@ -12,6 +12,19 @@ afterEach(() => { layout?.destroy(); layout = undefined; vi.restoreAllMocks() })
 
 const css = () => Array.from(document.adoptedStyleSheets.at(-1)!.cssRules, rule => rule.cssText).join("\n")
 
+it("leaves the empty stylesheet untouched until a live figure appears", () => {
+  const figure = document.querySelector<HTMLElement>("figure")!
+  figure.remove()
+  layout = createFigureLayout(document)
+  const sheet = document.adoptedStyleSheets.at(-1)!
+  const replace = vi.spyOn(sheet, "replaceSync")
+  layout.refresh()
+  expect(replace).not.toHaveBeenCalled()
+  document.body.append(figure)
+  layout.refresh()
+  expect(css()).toContain("shape-outside: polygon(")
+})
+
 it.each(["left", "center", "right"])("uses a polygon float for an upright %s caption without changing authored content", alignment => {
   const figure = document.querySelector<HTMLElement>("figure")!, caption = figure.querySelector<HTMLElement>("figcaption")!
   caption.style.textAlign = alignment
@@ -40,6 +53,23 @@ it("supports captions before content, negative rotation, and refreshed live geom
   layout.refresh()
   expect(css()).toBe("")
   expect(figure.className).toBe("authored")
+})
+
+it("measures all figures before adding layout markers", () => {
+  const first = document.querySelector<HTMLElement>("figure")!
+  const second = first.cloneNode(true) as HTMLElement
+  first.after(second)
+  Object.defineProperty(second, "clientWidth", {configurable: true, value: 420})
+  const markerCounts: number[] = []
+  for(const content of document.querySelectorAll("custom-diagram")) {
+    Object.defineProperty(content, "offsetWidth", {configurable: true, get() {
+      markerCounts.push(document.querySelectorAll('[class*="◆figure-flow-"]').length)
+      return 360
+    }})
+  }
+  layout = createFigureLayout(document)
+  expect(markerCounts).toEqual([0, 0])
+  expect(document.querySelectorAll('[class*="◆figure-flow-"]')).toHaveLength(2)
 })
 
 it("cleans disconnected figures and does not impose a shape on multi-content figures or widget internals", () => {

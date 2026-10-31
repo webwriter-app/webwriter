@@ -3,6 +3,7 @@ import {css} from "lit"
 /** Font controls share the white, connected surface used by ribbon buttons. */
 export const connectedComboboxStyles = css`
   .option-group {scrollbar-width: thin;}
+  .control {border-width: 1px;}
   input::placeholder {font-size: inherit; color: #6b7787; opacity: 1;}
   .control:focus-within {outline-offset: -2px;}
   :host([disabled]) .control {

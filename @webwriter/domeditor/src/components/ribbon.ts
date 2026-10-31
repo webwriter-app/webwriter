@@ -1179,6 +1179,7 @@ export class AppRibbon extends EditingControls {
   private previewMenuBefore: RibbonMenuName = "Start"
 
   private previewTransitionTimer: ReturnType<typeof setTimeout> | undefined
+  private transitionReadyFrame = 0
 
   private heightConstrained = false
   private expandedBeforeHeightConstraint = true
@@ -1276,6 +1277,8 @@ export class AppRibbon extends EditingControls {
     void this.cancelAIWork()
     if(this.previewTransitionTimer !== undefined) clearTimeout(this.previewTransitionTimer)
     this.previewTransitionTimer = undefined
+    cancelAnimationFrame(this.transitionReadyFrame)
+    this.transitionReadyFrame = 0
     if(this.sharingCopyLinkActiveTimer !== undefined) clearTimeout(this.sharingCopyLinkActiveTimer)
     if(this.sharingCopyLinkSuccessTimer !== undefined) clearTimeout(this.sharingCopyLinkSuccessTimer)
     this.ribbonContentObserver?.disconnect()
@@ -1287,9 +1290,13 @@ export class AppRibbon extends EditingControls {
   }
 
   protected firstUpdated() {
-    // Commit the initial expanded layout before enabling height transitions.
-    void this.offsetHeight
-    this.setAttribute("transitions-ready", "")
+    // Let the initial expanded layout paint before enabling height transitions.
+    this.transitionReadyFrame = requestAnimationFrame(() => {
+      this.transitionReadyFrame = requestAnimationFrame(() => {
+        this.transitionReadyFrame = 0
+        if(this.isConnected) this.setAttribute("transitions-ready", "")
+      })
+    })
     const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
     if(content && typeof ResizeObserver !== "undefined") {
       this.ribbonContentObserver = new ResizeObserver(() => this.scheduleResponsiveLayout())
@@ -2186,7 +2193,7 @@ export class AppRibbon extends EditingControls {
         icon-url=${pkg.iconUrl ?? ""}
         .action=${packageAction(pkg)}
         .dragHTML=${this.packageDragHTML(pkg, members[0])}
-        .submenu=${management || !installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
+        .submenu=${!installed || busy ? this.emptyPackageSubmenu : members.slice(1).map(member => ({
           label: member.label,
           action: packageMemberAction(member),
           dragHTML: this.packageDragHTML(pkg, member),
@@ -3066,7 +3073,6 @@ export class AppRibbon extends EditingControls {
         disclosure: this.elementAttributes?.localName === "details",
         figure: Boolean(this.figure),
         widget: Boolean(this.widgetOptions),
-        attributes: Boolean(this.elementAttributes),
       })
     }
     const packageButtons: RibbonMenuButton[] = this.availablePackages.map(pkg => {
@@ -3083,7 +3089,6 @@ export class AppRibbon extends EditingControls {
     return contextDrawerPolicy({
       menu: this.activeMenu,
       surface: "ribbon",
-      attributes: Boolean(this.elementAttributes),
       startPackages: {label: "Packages", buttons: packageButtons},
     })
   }

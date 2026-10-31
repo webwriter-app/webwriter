@@ -3,8 +3,7 @@ import {$, atomicEditingContainer, clearEditorMarkerClasses, createAnchorPositio
 import {getDocumentRoot} from "../document-template"
 import {boardClass, boardColumns, boardColumnSelector, boardStyles, documentLayoutMode, isBoardCard, isBoardColumn, isBoardGroup} from "../document-layout"
 import {attributionAttributes} from "../attribution.js"
-
-type DragSelection = {anchor: Node | null, focus: Node | null, anchorOffset: number, focusOffset: number}
+import {isAuthoredMutation} from "../editor-artifacts"
 
 /** Authored sections and articles own the board; editing controls stay in the appendix. */
 export class BoardFeature extends EditorFeature {
@@ -19,9 +18,12 @@ export class BoardFeature extends EditorFeature {
   private columnsCache: HTMLElement[] = []
   private groupsCache: HTMLElement[] = []
   private cardsCache: HTMLElement[] = []
+  private structureDirty = true
+  private contentDirty = true
+  private anchorsDirty = true
+  private conversionStateCache: {exitReason: string | null, canvasCanConvert: boolean} | null = null
   private pressedHandle = false
-  private pressedSelection: DragSelection | null = null
-  private drag: {source: HTMLElement, parent: HTMLElement, token: string, selection: DragSelection} | null = null
+  private drag: {source: HTMLElement, parent: HTMLElement, token: string} | null = null
   private dropIndicator: HTMLElement | null = null
   private readonly dragType = "application/x-webwriter-board"
   private transformOverlays = new Map<HTMLElement, HTMLElement>()
@@ -133,10 +135,18 @@ export class BoardFeature extends EditorFeature {
     return Array.from(document.body.childNodes).flatMap(content)
   }
   exitConversionReason() {
+    return this.conversionState().exitReason
+  }
+  canConvertToCanvas() { return this.conversionState().canvasCanConvert }
+  private conversionState() {
+    this.noteMutations(this.observer?.takeRecords() ?? [])
+    if(this.observer && this.conversionStateCache) return this.conversionStateCache
+    const content = this.documentContent()
     const selector = Object.values(attributionAttributes).map(name => `[${name}]`).join(",")
-    return this.documentContent().some(node => node instanceof Element
+    const exitReason = content.some(node => node instanceof Element
       && Number(node.matches(selector)) + node.querySelectorAll(selector).length > 1)
       ? "Remove overlapping board attributions before changing layouts." : null
+    return this.conversionStateCache = {exitReason, canvasCanConvert: this.editor.features.canvas.canConvertContent(content)}
   }
   convert(mode: "board" | "document", captureUndo = true) {
     if(this.editor.isEditingLocked || !this.editor.allows("edit", document.body)
@@ -351,9 +361,9 @@ export class BoardFeature extends EditorFeature {
       || !document.body.contains(source) || !this.editor.allows("move", source) || !isBoardColumn(source) && !isBoardCard(source)) {
       this.endDrag(); event.preventDefault(); return
     }
-    const selection = this.pressedSelection ?? this.selectionBookmark()
+    this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(source))
     this.endDrag()
-    this.drag = {source, parent: source.parentElement!, token: crypto.randomUUID(), selection}
+    this.drag = {source, parent: source.parentElement!, token: crypto.randomUUID()}
     try {
       event.dataTransfer.setData(this.dragType, this.drag.token)
       event.dataTransfer.effectAllowed = "move"
@@ -362,14 +372,9 @@ export class BoardFeature extends EditorFeature {
     }
     catch { this.endDrag(); event.preventDefault() }
   }
-  private selectionBookmark(): DragSelection {
-    const selection = document.getSelection()
-    return {anchor: selection?.anchorNode ?? null, focus: selection?.focusNode ?? null, anchorOffset: selection?.anchorOffset ?? 0, focusOffset: selection?.focusOffset ?? 0}
-  }
   private endDrag() {
     if(this.drag) removeEditorMarker(this.drag.source, "◆board-dragging")
     for(const source of document.body.querySelectorAll(".◆board-dragging")) removeEditorMarker(source, "◆board-dragging")
-    this.pressedSelection = null
     this.drag = null
     this.pressedHandle = false
     if(this.dropIndicator) this.dropIndicator.hidden = true
@@ -422,7 +427,6 @@ export class BoardFeature extends EditorFeature {
       const destination = this.dragDestination(event), source = this.drag?.source
       if(!destination || !source || this.drag!.token !== event.dataTransfer.getData(this.dragType)) return
       if(source.parentElement === destination.parent && (source.nextElementSibling === destination.before || !destination.before && source === destination.parent.lastElementChild)) return
-      const selection = document.getSelection(), {anchor, focus, anchorOffset, focusOffset} = this.drag!.selection
       const end = this.editor.doc.beginUndoGroup()
       try {
         const previousParent = source.parentElement
@@ -430,11 +434,7 @@ export class BoardFeature extends EditorFeature {
         if(parent.moveBefore) parent.moveBefore(source, destination.before)
         else parent.insertBefore(source, destination.before)
         if(isBoardColumn(source)) this.removeEmptyGroup(previousParent)
-        if(anchor?.isConnected && focus?.isConnected && document.body.contains(anchor) && document.body.contains(focus)) {
-          const length = (node: Node) => node instanceof CharacterData ? node.length : node.childNodes.length
-          selection?.setBaseAndExtent(anchor, Math.min(anchorOffset, length(anchor)), focus, Math.min(focusOffset, length(focus)))
-        }
-        this.editor.features.selection.processSelection(false, {scrollIntoView: false})
+        this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(source))
         this.editor.postSelectionPath()
       }
       finally { end() }
@@ -478,8 +478,8 @@ export class BoardFeature extends EditorFeature {
     dragover: event => this.dragOver(event),
     drop: event => this.drop(event),
     dragend: event => { if(event.dataTransfer?.types.includes(this.dragType)) this.endDrag() },
-    pointerup: () => { this.pressedHandle = false; if(!this.drag) this.pressedSelection = null; this.schedule() },
-    pointercancel: () => { this.pressedHandle = false; if(!this.drag) this.pressedSelection = null; this.schedule() },
+    pointerup: () => { this.pressedHandle = false; this.schedule() },
+    pointercancel: () => { this.pressedHandle = false; this.schedule() },
     dragleave: event => { if(!event.relatedTarget && this.dropIndicator) this.dropIndicator.hidden = true },
     keydown: event => {
       if(!this.active || event.isComposing || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)) return
@@ -508,6 +508,13 @@ export class BoardFeature extends EditorFeature {
     },
   }
   passiveListeners: DocumentListenerMap = {selectionchange: () => this.schedule()}
+  private noteMutations(records: MutationRecord[]) {
+    if(!records.some(isAuthoredMutation)) return
+    this.conversionStateCache = null
+    this.anchorsDirty = true
+    if(records.some(record => record.type === "childList")) this.contentDirty = this.structureDirty = true
+    if(records.some(record => record.type === "attributes" && ["class", "is"].includes(record.attributeName ?? ""))) this.structureDirty = true
+  }
   private schedule = () => {
     if(this.isEnabled && this.frame === null) this.frame = requestAnimationFrame(() => { this.frame = null; this.refresh() })
   }
@@ -522,7 +529,7 @@ export class BoardFeature extends EditorFeature {
       if(overlay.matches('[part~="transform-overlay-board-anchored"]')) this.anchors.bind(overlay, target)
       else this.anchors.release(overlay)
     }
-    this.anchors.refresh()
+    if(this.anchorsDirty) { this.anchors.refresh(); this.anchorsDirty = false }
   }
 
   private refreshTransforms() {
@@ -553,6 +560,14 @@ export class BoardFeature extends EditorFeature {
         overlay = this.editor.features.transformation.createFlowOverlay(`◆board-transform-${role}`, role)
         this.transformOverlays.set(target, overlay)
         this.editor.addAppendix(overlay)
+        const selectTarget = () => {
+          if(this.active && !this.editor.isEditingLocked && target.isConnected && (isBoardColumn(target) || isBoardCard(target))
+            && $.selectedElement !== target && this.editor.allows("select", target)) {
+            this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(target))
+          }
+        }
+        overlay.addEventListener("pointerdown", event => { if(event.button === 0) selectTarget() }, {capture: true})
+        overlay.addEventListener("click", selectTarget, {capture: true})
         if(isBoardColumn(target)) {
           const grouper = document.createElement("button")
           grouper.type = "button"; grouper.setAttribute("part", "transform-overlay-button transform-overlay-board-control transform-overlay-group")
@@ -564,7 +579,7 @@ export class BoardFeature extends EditorFeature {
           handle.draggable = true
           handle.addEventListener("pointerdown", event => {
             if(event.button !== 0 || this.editor.isEditingLocked || !this.editor.allows("move", target)) return
-            this.pressedHandle = true; this.pressedSelection = this.selectionBookmark()
+            this.pressedHandle = true
             event.stopPropagation()
           })
           handle.addEventListener("dragstart", event => this.startDrag(event, target))
@@ -618,10 +633,14 @@ export class BoardFeature extends EditorFeature {
 
   refresh() {
     if(!this.controls) return
-    this.ensureContent()
+    this.noteMutations(this.observer?.takeRecords() ?? [])
+    if(this.contentDirty) { this.ensureContent(); this.contentDirty = false }
     this.controls.hidden = !this.active
     if(this.drag && !this.validDrag()) this.endDrag()
-    const columns = this.active ? this.columns() : [], groups = this.active ? this.groups() : [], allCards = columns.flatMap(column => this.cards(column))
+    const columns = this.active ? this.structureDirty ? this.columns() : this.columnsCache : []
+    const groups = this.active ? this.structureDirty ? this.groups() : this.groupsCache : []
+    const allCards = this.active ? this.structureDirty ? columns.flatMap(column => this.cards(column)) : this.cardsCache : []
+    this.structureDirty = false
     const locked = this.editor.isEditingLocked
     const permissions = [this.editor.allows("insert", document.body), ...columns.map(column => this.editor.allows("insert", column))]
     const permissionSignature = JSON.stringify(permissions)
@@ -684,7 +703,7 @@ export class BoardFeature extends EditorFeature {
       @media print {body.ww-board::after, ${boardColumnSelector("::after")} {display:none}}
     `)
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, this.layoutStylesheet]
-    this.observer = new MutationObserver(this.schedule); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true})
+    this.observer = new MutationObserver(records => { this.noteMutations(records); this.schedule() }); this.observer.observe(document.body, {subtree: true, childList: true, attributes: true, attributeOldValue: true})
     this.refresh()
   }
   disable() {
@@ -696,11 +715,17 @@ export class BoardFeature extends EditorFeature {
     this.frame = null; this.controls?.remove(); this.controls = null
     if(this.stylesheet && document.body.shadowRoot) document.body.shadowRoot.adoptedStyleSheets = document.body.shadowRoot.adoptedStyleSheets.filter(sheet => sheet !== this.stylesheet)
     this.stylesheet = null; this.columnsCache = []; this.groupsCache = []; this.cardsCache = []; this.placements = []
+    this.structureDirty = this.contentDirty = this.anchorsDirty = true; this.conversionStateCache = null
     if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
     this.layoutStylesheet = null
     this.anchors.destroy(); this.measuredTransforms = false
     for(const overlay of this.transformOverlays.values()) overlay.remove()
     this.transformOverlays.clear()
     this.editor.features.attribution.refresh()
+    // Cloned board nodes can retain a marker after their anchor binding ends.
+    for(const element of document.body.querySelectorAll<HTMLElement>(".ww-board-column, .ww-board-card")) {
+      for(const name of Array.from(element.classList)) if(name.startsWith("◆anchor-target-")) element.classList.remove(name)
+      if(!Array.from(element.classList).some(name => name.startsWith("◆"))) element.classList.remove("◆")
+    }
   }
 }

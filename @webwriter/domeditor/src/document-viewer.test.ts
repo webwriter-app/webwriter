@@ -278,6 +278,57 @@ describe("document pane", () => {
 })
 
 describe("document reader controls", () => {
+  it("measures controls for transformed media ancestors and restores native anchors afterward", async () => {
+    const figure = document.querySelector<HTMLElement>("figure#photo")!
+    const image = figure.querySelector("img")!
+    Object.assign(figure, {requestFullscreen: vi.fn(() => Promise.resolve())})
+    figure.style.transform = "translateX(20px)"
+    const authored = document.body.innerHTML
+    reader = mountDocumentReader([], "", null, {}, createAnchorPositioner)!
+
+    const group = controls().find(group => group.getAttribute("aria-label") === "figure controls")!
+    const permalink = group.querySelector<HTMLAnchorElement>("a")!
+    const fullscreen = group.querySelector<HTMLButtonElement>("button")!
+    expect(permalink.style.left).toBe("70px")
+    expect(permalink.style.top).toMatch(/px$/)
+    expect(fullscreen.style.left).toBe("460px")
+    expect(fullscreen.style.top).toBe("108px")
+    expect(figure.className).not.toContain("◆anchor-target-")
+    expect(image.className).not.toContain("◆anchor-target-")
+    const serialized = document.body.cloneNode(true) as HTMLElement
+    clearEditorMarkerClasses(serialized)
+    expect(serialized.innerHTML).toBe(authored)
+
+    figure.style.removeProperty("transform")
+    await settle()
+    expect(permalink.style.left).toBe("")
+    expect(permalink.style.top).toBe("")
+    expect(fullscreen.style.left).toBe("")
+    expect(fullscreen.style.top).toBe("")
+    expect(figure.querySelector("figcaption")!.className).toContain("◆anchor-target-")
+    expect(image.className).toContain("◆anchor-target-")
+  })
+
+  it("refreshes measured controls while a transformed ancestor animates", async () => {
+    const figure = document.querySelector<HTMLElement>("figure#photo")!
+    const image = figure.querySelector("img")!
+    Object.assign(figure, {
+      requestFullscreen: vi.fn(() => Promise.resolve()),
+      getAnimations: () => [{playState: "running"}],
+    })
+    figure.style.transform = "translateX(20px)"
+    reader = mountDocumentReader([], "", null, {}, createAnchorPositioner)!
+    const fullscreen = controls().find(group => group.getAttribute("aria-label") === "figure controls")!
+      .querySelector<HTMLButtonElement>("button")!
+    expect(fullscreen.style.left).toBe("460px")
+
+    document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerType: "mouse", clientX: 460, clientY: 120}))
+    await new Promise(resolve => setTimeout(resolve, 25))
+    vi.mocked(image.getBoundingClientRect).mockReturnValue({left: 120, top: 100, right: 520, bottom: 300, width: 400, height: 200} as DOMRect)
+    await new Promise(resolve => setTimeout(resolve, 40))
+    expect(fullscreen.style.left).toBe("480px")
+  })
+
   it("anchors permalinks, fullscreen buttons, and copy feedback without inline coordinates", async () => {
     const authored = document.body.innerHTML
     const sheets = [...document.adoptedStyleSheets]

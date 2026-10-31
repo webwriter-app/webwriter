@@ -365,15 +365,20 @@ export class DocumentHeadEditor extends LitElement {
     expanded: {type: Boolean, reflect: true},
     compact: {type: Boolean, reflect: true},
     attributeEditorId: {type: String, attribute: false},
+    captionKind: {state: true},
   }
 
   static styles = css`
     ${editorInteractionStyles}
-    .caption-enumeration { margin-top: 1rem; }
-    .caption-enumeration summary { cursor: pointer; }
-    .caption-enumeration fieldset { border: 0; padding: .75rem 0; margin: 0; display: grid; gap: .5rem; }
-    .caption-enumeration legend { font-weight: 600; }
-    .caption-enumeration small { color: var(--sl-color-neutral-600); }
+    .caption-enumeration { margin-top: 0.35rem; }
+    .caption-enumeration h3 { margin: 0 0 0.35rem; font-size: 0.68rem; }
+    .caption-tabs { display: flex; border-bottom: 1px solid #c8d2df; }
+    .caption-tab { padding: 0.35rem 0.7rem; border: 0; border-bottom: 2px solid transparent; color: #526b86; background: transparent; cursor: pointer; }
+    .caption-tab[aria-selected="true"] { border-bottom-color: #3977c7; color: #174f87; font-weight: 650; }
+    .caption-tab:focus-visible { outline: 2px solid #3977c7; outline-offset: -2px; }
+    .caption-panel { display: grid; gap: 0.4rem; padding: 0.5rem 0; }
+    .caption-panel > label:first-child { display: flex; align-items: center; gap: 0.3rem; }
+    .caption-panel .common-control { height: 1.7rem; }
 
     :host {
       box-sizing: border-box;
@@ -614,10 +619,8 @@ export class DocumentHeadEditor extends LitElement {
 
     .entry {
       flex: 0 0 auto;
-      padding: 0.4rem;
-      border: 1px solid #d8dee6;
-      border-radius: 0.35rem;
-      background: #fff;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid #d8dee6;
     }
 
     .entry-header {
@@ -726,8 +729,7 @@ export class DocumentHeadEditor extends LitElement {
     }
 
     .entry.common-attributes {
-      border-color: #9fbbd8;
-      background: #eef4fb;
+      border-bottom-color: #9fbbd8;
     }
 
     .content-field {
@@ -756,6 +758,8 @@ export class DocumentHeadEditor extends LitElement {
     .description-field {grid-column: 1 / -1;}
     :host([compact]) .description-field {display: flex; align-items: stretch; gap: .2rem;}
     .description-label {display: flex; align-items: center; justify-content: space-between;}
+    .language-label {display: flex; align-items: center; justify-content: space-between;}
+    .language-label .field-actions {margin-left: auto;}
     .description-field .common-control,
     :host([compact]) .description-field .common-control {height: auto; min-height: calc(3lh + .4rem + 2px); padding: .2rem; line-height: 1.2; resize: vertical;}
   `
@@ -765,6 +769,7 @@ export class DocumentHeadEditor extends LitElement {
   state: DocumentHeadState = emptyDocumentHeadState()
   expanded = false
   attributeEditorId = ""
+  private captionKind: "figure" | "table" = "figure"
 
   private dispatchAction(action: DocumentHeadAction) {
     this.dispatchEvent(new CustomEvent<DocumentHeadAction>("document-head-action", {
@@ -872,7 +877,8 @@ export class DocumentHeadEditor extends LitElement {
           </span>
         </label>
         <label class="common-field">
-          <span class="field-label">Language</span>
+          <span class="language-label"><span class="field-label">Language</span>
+            ${this.fieldActions("Language", this.state.language, undefined, "language")}</span>
           <span class="field-control">
             <document-head-combobox
               label="Language"
@@ -881,7 +887,6 @@ export class DocumentHeadEditor extends LitElement {
               .options=${languageOptions}
               @combobox-change=${(event: Event) => this.handleComboboxChange("language", event)}
             ></document-head-combobox>
-            ${this.fieldActions("Language", this.state.language, undefined, "language")}
           </span>
         </label>
       </div>
@@ -908,62 +913,65 @@ export class DocumentHeadEditor extends LitElement {
     const config = this.captionConfig()
     const value = {...config, [kind]: {...config[kind], ...setting}}
     const valid = isCaptionEnumeration(value)
-    input?.setCustomValidity(valid ? "" : "Use a positive starting number and valid language tags (for example en or de-DE).")
+    input?.setCustomValidity(valid ? "" : "Use a positive starting number and a label of at most 200 characters.")
     if(!valid) { input?.reportValidity(); return }
     this.dispatchAction({type: "setCaptionEnumeration", value})
   }
 
+  private handleCaptionTabKeydown(event: KeyboardEvent) {
+    const kind = event.key === "ArrowRight" || event.key === "End" ? "table"
+      : event.key === "ArrowLeft" || event.key === "Home" ? "figure" : undefined
+    if(!kind) return
+    event.preventDefault()
+    this.captionKind = kind
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLButtonElement>(`#caption-tab-${kind}`)?.focus())
+  }
+
   private renderCaptionEnumeration() {
     const config = this.captionConfig()
-    return html`<details class="caption-enumeration">
-      <summary>Caption numbering</summary>
-      ${(["figure", "table"] as const).map(kind => {
-        const series = config[kind]
-        const label = kind === "figure" ? "Figures" : "Tables"
-        return html`<fieldset>
-          <legend>${label}</legend>
-          <label><input type="checkbox" aria-label=${`Number ${label.toLowerCase()}`}
+    const kind = this.captionKind
+    const series = config[kind]
+    const label = kind === "figure" ? "Figures" : "Tables"
+    return html`<section class="caption-enumeration" aria-label="Caption numbering">
+      <h3>Caption numbering</h3>
+      <div class="caption-tabs" role="tablist" aria-label="Caption type" @keydown=${this.handleCaptionTabKeydown}>
+        ${(["figure", "table"] as const).map(tabKind => html`<button class="caption-tab" type="button"
+          id=${`caption-tab-${tabKind}`} role="tab" aria-selected=${String(kind === tabKind)}
+          aria-controls="caption-panel" tabindex=${kind === tabKind ? "0" : "-1"}
+          @click=${() => this.captionKind = tabKind}>${tabKind === "figure" ? "Figures" : "Tables"}</button>`)}
+      </div>
+      <div class="caption-panel" id="caption-panel" role="tabpanel" aria-labelledby=${`caption-tab-${kind}`}>
+        <label><input type="checkbox" aria-label=${`Number ${label.toLowerCase()}`}
             .checked=${series.enabled}
             @change=${(event: Event) => this.setCaptionSetting(kind, {enabled: (event.target as HTMLInputElement).checked})}
-          /> Automatic numbering</label>
-          <label class="common-field"><span class="field-label">Number format</span>
+        /> Automatic numbering</label>
+        <label class="common-field"><span class="field-label">Number format</span>
             <select class="common-control" data-ribbon-input-persistent data-caption-kind=${kind} aria-label=${`${label} number format`}
               @change=${(event: Event) => this.setCaptionSetting(kind, {style: (event.target as HTMLSelectElement).value as CaptionSeries["style"]})}>
               ${captionNumberStyles.map(style => html`<option value=${style}>${({decimal: "1, 2, 3", "lower-alpha": "a, b, c", "upper-alpha": "A, B, C", "lower-roman": "i, ii, iii", "upper-roman": "I, II, III"})[style]}</option>`)}
             </select>
-          </label>
-          <label class="common-field"><span class="field-label">Start at</span>
+        </label>
+        <label class="common-field"><span class="field-label">Start at</span>
             <input class="common-control" data-ribbon-input-persistent type="number" min="1" max="1000000" step="1" aria-label=${`${label} start at`}
               .value=${String(series.start)} @change=${(event: Event) => {
                 const input = event.target as HTMLInputElement
                 this.setCaptionSetting(kind, {start: input.valueAsNumber}, input)
               }} />
-          </label>
-          <label class="common-field"><span class="field-label">Separator</span>
+        </label>
+        <label class="common-field"><span class="field-label">Separator</span>
             <input class="common-control" data-ribbon-input-persistent aria-label=${`${label} separator`} .value=${series.separator}
               @change=${(event: Event) => this.setCaptionSetting(kind, {separator: (event.target as HTMLInputElement).value}, event.target as HTMLInputElement)} />
-          </label>
-          <label class="common-field"><span class="field-label">Labels by language</span>
-            <textarea class="common-control" data-ribbon-input-persistent rows="6" aria-label=${`${label} labels by language`}
-              .value=${Object.entries(series.labels).map(([language, text]) => `${language}=${text}`).join("\n")}
+        </label>
+        <label class="common-field"><span class="field-label">Label</span>
+            <input class="common-control" data-ribbon-input-persistent maxlength="200" aria-label=${`${label} label`}
+              .value=${series.labels.default}
               @change=${(event: Event) => {
-                const input = event.target as HTMLTextAreaElement
-                const lines = input.value.split("\n").filter(line => line.trim())
-                if(lines.some(line => !line.includes("="))) {
-                  input.setCustomValidity("Enter one language=label per line, including default=label.")
-                  input.reportValidity()
-                  return
-                }
-                this.setCaptionSetting(kind, {labels: Object.fromEntries(lines.map(line => {
-                  const index = line.indexOf("=")
-                  return [line.slice(0, index).trim(), line.slice(index + 1)]
-                }))}, input)
-              }}></textarea>
-          </label>
-          <small>One language=label per line. The default label is used for other languages.</small>
-        </fieldset>`
-      })}
-    </details>`
+                const input = event.target as HTMLInputElement
+                this.setCaptionSetting(kind, {labels: {default: input.value}}, input)
+              }} />
+        </label>
+      </div>
+    </section>`
   }
 
   private commonTextField(label: string, field: DocumentHeadField, value: string, preset: string) {

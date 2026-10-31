@@ -66,6 +66,16 @@ The second command selects representative large cases and saves one Chrome CPU
 profile (`.cpuprofile`), Performance timeline (`.trace.json`) and metric summary
 per operation. Load these in Chrome DevTools Performance. Profiling runs for at
 least 350 ms per stage; use the separate unprofiled results for latency claims.
+
+For Document, Canvas, Slides and Board editing profiles, run `--only=layouts`
+with the same production measurement and profile commands. The unprofiled run
+uses 240 and 600 text blocks per layout; the profiled run uses 600. Each mode
+measures native text insertion, a resize gesture, caret changes and its own
+scrolling mechanism in a 1200×800 iframe. Canvas and Slides also measure
+freeform movement. Gestures use the feature's mouse methods because synthetic
+pointer events cannot capture a real pointer in headless Chrome. The next-frame
+checkpoint is rAF followed by a timer; it is
+not a physical input latency measurement.
 Both commands use disposable Chrome profiles and loopback-only HTTP/debugging
 servers. Output includes environment information and browser exceptions. These
 synthetic fixtures exclude external widget startup, real network latency and

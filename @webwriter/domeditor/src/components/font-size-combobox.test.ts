@@ -25,6 +25,20 @@ function type(input: HTMLInputElement, value: string) {
 }
 
 describe("font size combobox", () => {
+  it("keeps the trigger border width when the preset list opens", async () => {
+    const combo = new FontSizeCombobox()
+    document.body.append(combo)
+    await combo.updateComplete
+    const borderWidth = () => getComputedStyle(combo.shadowRoot!.querySelector(".control")!).borderLeftWidth
+    const closedWidth = borderWidth()
+    expect(closedWidth).toBe("1px")
+
+    combo.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+    await combo.updateComplete
+
+    expect(borderWidth()).toBe(closedWidth)
+  })
+
   it("can close before its first render and reopen without changing its value", async () => {
     const combo = new FontSizeCombobox()
     combo.value = "18px"

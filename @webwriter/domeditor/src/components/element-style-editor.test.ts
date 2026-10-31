@@ -2,7 +2,7 @@
 import {afterEach, describe, expect, it, vi} from "vitest"
 import {filterPresetsStorageKey, loadFilterPresets, saveFilterPreset, newFilterPreset} from "../filter-presets"
 import type {ElementStyleState} from "../editor-bridge"
-import {elementStyleCategories, specializedStyleDefinitions} from "../element-styles"
+import {elementStyleCategories, specializedElementStyle, specializedStyleDefinitions} from "../element-styles"
 import {ElementStyleEditor, type ElementStyleChangeDetail} from "./element-style-editor"
 import {colorPaletteStyles} from "./color-palette"
 
@@ -106,6 +106,84 @@ it("distinguishes computed defaults from explicit choices of the same value", as
   editor.state = initial
   await editor.updateComplete
   expect(group().hasAttribute("data-default")).toBe(true)
+})
+
+it("fits six advanced choices across the available control width", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const editor = await mount(definitions, state(), "compact")
+  editor.propertyNames = ["text-transform"]
+  editor.setAttribute("dense-choices", "")
+  await editor.updateComplete
+
+  const group = editor.shadowRoot!.querySelector<HTMLElement>(".specialized-choice-group")!
+  expect(group.querySelectorAll("button")).toHaveLength(6)
+  expect(group.style.getPropertyValue("--choice-columns")).toBe("6")
+})
+
+it("uses each advanced default and honors computed hyphenation and authored values", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const initial = state()
+  Object.assign(initial.computed, {
+    "text-align-last": "right", "text-wrap": "balance", hyphens: "manual",
+  })
+  const editor = await mount(definitions, initial, "compact")
+  const names = ["text-align-last", "text-wrap", "hyphens"]
+  editor.propertyNames = names
+  editor.setAttribute("dense-choices", "")
+  await editor.updateComplete
+
+  const buttons = (name: string) => Array.from(editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(`[data-property="${name}"] .specialized-choice-group button`))
+  for(const name of names) {
+    expect(buttons(name).map(button => button.getAttribute("aria-pressed")))
+      .toEqual(buttons(name).map((_, index) => String(index === 0)))
+  }
+  expect(editor.state.inline).toEqual({})
+
+  editor.state = {...initial, computed: {...initial.computed, hyphens: "none"}}
+  await editor.updateComplete
+  expect(buttons("hyphens").map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "false", "true"])
+
+  editor.state = {...initial, inline: {hyphens: {value: "auto", priority: ""}}}
+  await editor.updateComplete
+  expect(buttons("hyphens").map(button => button.getAttribute("aria-pressed"))).toEqual(["false", "true", "false"])
+})
+
+it("offers wrap, nowrap, and balance with a distinct balance icon", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const editor = await mount(definitions, state(), "compact")
+  editor.propertyNames = ["text-wrap"]
+  await editor.updateComplete
+
+  const buttons = Array.from(editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".specialized-choice-group button"))
+  expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Wrap", "Nowrap", "Balance"])
+  expect(buttons[2].querySelector("svg.icon-text-wrap-balance")).not.toBeNull()
+  let change: ElementStyleChangeDetail | undefined
+  editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
+  buttons[2].click()
+  expect(change).toEqual({property: "text-wrap", mutation: {value: "balance", priority: ""}})
+})
+
+it("renders the original hyphenation icons", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const editor = await mount(definitions, state(), "compact")
+  editor.propertyNames = ["hyphens"]
+  await editor.updateComplete
+
+  const buttons = Array.from(editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".specialized-choice-group button"))
+  expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(["Manual", "Auto", "None"])
+  expect(buttons.map(button => button.querySelector("svg")?.getAttribute("class")))
+    .toEqual(["icon icon-hyphens-manual", "icon icon-hyphens-auto", "icon icon-hyphens-none"])
+  expect(buttons[1].querySelectorAll("svg path")).toHaveLength(1)
+})
+
+it("omits overflow wrap, word break, and white space controls", () => {
+  const hidden = ["overflow-wrap", "word-break", "white-space"]
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  expect(definitions.map(definition => definition.name).filter(name => hidden.includes(name))).toEqual([])
+  for(const localName of ["p", "td", "th"]) {
+    const specialized = specializedElementStyle(localName)!
+    expect([...specialized.primary, ...specialized.advanced].filter(name => hidden.includes(name))).toEqual([])
+  }
 })
 
 async function mount(
@@ -372,11 +450,11 @@ describe("element style controls", () => {
     expect(getComputedStyle(controls).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
   })
 
-  it("exposes six distinct primary controls per Style category", () => {
+  it("exposes the expected distinct primary controls per Style category", () => {
     const expected = {
       position: ["display", "position", "overflow", "width", "height", "box-sizing"],
       layout: ["gap", "flex-direction", "flex-wrap", "justify-content", "align-items", "align-content"],
-      text: ["font-family", "font-size", "line-height", "font-weight", "text-align", "white-space"],
+      text: ["font-family", "font-size", "line-height", "font-weight", "text-align"],
       color: ["color", "background-color", "background-image", "opacity", "mix-blend-mode", "box-shadow"],
       interaction: ["cursor", "user-select", "touch-action", "pointer-events", "resize", "appearance"],
       other: ["object-fit", "object-position", "image-rendering", "content", "will-change", "field-sizing"],

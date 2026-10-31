@@ -3,7 +3,7 @@
 export const canvasGridSize = 20
 
 export function canvasStartingView(body = document.body) {
-  return Array.from(body.children).find(isCanvasStartingView) ?? null
+  return body.querySelector(":scope > div.ww-canvas-starting-view:not([is])")
 }
 
 export function isCanvasStartingView(element) {
@@ -169,11 +169,14 @@ export class CanvasViewer {
     this.slot.style.transform = `translate(${this.camera.x}px, ${this.camera.y}px) scale(${this.camera.zoom})`
     if(this.background) {
       this.background.style.backgroundPosition = `${this.camera.x - canvasGridSize * this.zoom / 2}px ${this.camera.y - canvasGridSize * this.zoom / 2}px`
-      this.background.style.backgroundSize = `${canvasGridSize * this.zoom}px ${canvasGridSize * this.zoom}px`
-      this.background.style.backgroundImage = `radial-gradient(#ccd7e3 ${this.zoom}px, transparent ${this.zoom}px)`
+      const size = `${canvasGridSize * this.zoom}px ${canvasGridSize * this.zoom}px`
+      const image = `radial-gradient(#ccd7e3 ${this.zoom}px, transparent ${this.zoom}px)`
+      if(this.background.style.backgroundSize !== size) this.background.style.backgroundSize = size
+      if(this.background.style.backgroundImage !== image) this.background.style.backgroundImage = image
     }
     const output = this.controls?.querySelector("output")
-    if(output) output.textContent = `${Math.round(this.zoom * 100)}%`
+    const label = `${Math.round(this.zoom * 100)}%`
+    if(output && output.textContent !== label) output.textContent = label
     this.onChange()
   }
 

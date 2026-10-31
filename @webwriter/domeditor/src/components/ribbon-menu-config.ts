@@ -228,7 +228,6 @@ export const menuGroups: Record<RibbonMenuName, RibbonMenuGroup[]> = {
       ],
     },
     {label: "View", buttons: ["Zoom", "Guides", "Fullscreen"]},
-    {label: "Attributes", buttons: []},
   ],
   Style: elementStyleCategories.map(category => ({label: category.label, buttons: []})),
   Develop: [
@@ -260,7 +259,6 @@ export type ContextDrawerPolicy = {
   figure?: boolean
   math?: boolean
   widget?: boolean
-  attributes?: boolean
   startPackages?: RibbonMenuGroup
 }
 
@@ -301,14 +299,12 @@ export function contextDrawerPolicy(context: ContextDrawerPolicy): RibbonMenuGro
     return context.menu === "Start" && context.startPackages ? [...groups, context.startPackages] : groups
   }
   const priority = context.surface === "ribbon" ? ribbonContextPriority : toolboxContextPriority
-  const selected = priority.find(key => context[key])
+  const selected = priority.find(key => context[key] && menuGroups.Edit.some(group => group.label === contextDrawerLabels[key]))
   if(selected) {
     const label = contextDrawerLabels[selected]
-    const includeAttributes = context.attributes || selected === "paragraphSelected" || selected === "disclosure"
-    return menuGroups.Edit.filter(group => group.label === label || includeAttributes && group.label === "Attributes")
+    return menuGroups.Edit.filter(group => group.label === label)
   }
-  if(context.attributes) return menuGroups.Edit.filter(group => group.label === "Attributes")
   return context.surface === "toolbox"
-    ? menuGroups.Edit.filter(group => group.label === "Attributes")
+    ? []
     : menuGroups.Edit
 }

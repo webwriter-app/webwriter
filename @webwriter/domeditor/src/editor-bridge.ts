@@ -434,6 +434,8 @@ export type ElementStyleState = {
     namespaceURI: string | null
   } | null
   inline: Record<string, ElementStyleDeclaration>
+  /** At least one targeted element has a style attribute, including differing group styles. */
+  hasInlineStyles?: boolean
   /** CSS declarations explicitly present in the authored style attribute. */
   authoredProperties?: string[]
   computed: Record<string, string>
@@ -887,6 +889,8 @@ const isElementSelection = (value: UnknownRecord) => (value.path === null || isP
 const isMediaResource = (value: unknown) => isRecord(value)
   && isNonnegativeInteger(value.index)
   && isStringRecord(value.attributes)
+  && isOptional(value.sourceLabel, isString)
+  && isOptional(value.sourceKind, value => value === "file" || value === "capture" || value === "recording")
 
 const isMediaSelection = (media: UnknownRecord) => {
   const isImageMap = (value: unknown) => value === null || isRecord(value)
@@ -897,6 +901,7 @@ const isMediaSelection = (media: UnknownRecord) => {
     && value.areas.every(area => isRecord(area) && isPath(area.path) && isStringRecord(area.attributes))
   return isMediaType(media.type)
     && isStringRecord(media.attributes)
+    && isOptional(media.hasSource, value => (media.type === "picture" || media.type === "img") && isBoolean(value))
     && isOptional(media.sources, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.tracks, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.fallbackHTML, isString)
@@ -926,6 +931,7 @@ const isTableSelection = (table: UnknownRecord) => isBoolean(table.active)
 
 const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
   && isBoolean(graphic.capture)
+  && isOptional(graphic.alternativeText, isString)
   && isOptional(graphic.mode, value => value === "select" || value === "draw" || value === "lines" || value === "curves")
   && isOptional(graphic.selectionCount, isNonnegativeInteger)
   && isOptional(graphic.shape, isGraphicShapeType)

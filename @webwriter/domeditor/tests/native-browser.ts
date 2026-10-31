@@ -1603,6 +1603,31 @@ await check("insertion and saved-reader controls align inside symmetric scrollba
         assert(Math.abs(bubble.left + arrow - anchor.left - anchor.width / 2) < 1, `saved feedback arrow drifted from its link: ${JSON.stringify({bubble: bubble.toJSON(), anchor: anchor.toJSON(), arrow, gutter, scroll})}`)
       }
     }
+    const figure = savedDoc.querySelector<HTMLElement>("figure#photo")!
+    const image = figure.querySelector("img")!
+    const permalink = appendix.querySelector<HTMLAnchorElement>('.◆document-reader-control[aria-label="figure controls"] a')!
+    const fullscreenButton = appendix.querySelector<HTMLButtonElement>('.◆document-reader-control[aria-label="figure controls"] button')!
+    figure.style.transform = "translateX(26px)"
+    await layoutFrame()
+    const transformedMedia = image.getBoundingClientRect()
+    assert(Math.abs(fullscreenButton.getBoundingClientRect().left - (transformedMedia.right - 40)) < 1
+      && Math.abs(fullscreenButton.getBoundingClientRect().top - (transformedMedia.top + 8)) < 1,
+    "saved fullscreen button did not follow transformed media")
+    assert(Math.abs(permalink.getBoundingClientRect().top - figure.getBoundingClientRect().top) < 1
+      && permalink.style.top !== "" && fullscreenButton.style.left !== "",
+    "saved reader controls did not use measured positions for transformed anchors")
+    figure.style.removeProperty("transform")
+    await layoutFrame()
+    assert(permalink.style.top === "" && fullscreenButton.style.left === ""
+      && figure.classList.toString().includes("◆anchor-target-"),
+    "saved reader controls did not restore native anchors after the transform")
+    figure.style.translate = "26px 0px"
+    await layoutFrame()
+    const translatedMedia = image.getBoundingClientRect()
+    assert(Math.abs(fullscreenButton.getBoundingClientRect().left - (translatedMedia.right - 40)) < 1
+      && fullscreenButton.style.left !== "",
+    "saved fullscreen button did not follow an individual translate")
+    figure.style.removeProperty("translate")
   }
   finally {
     (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
@@ -1870,7 +1895,7 @@ await check("editing affordances align with media inside symmetric scrollbar gut
   }
 })
 
-await check("document scrollbar gutters stay symmetric as content grows", async () => {
+await check("document background reaches the left edge without shifting the reading column", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:400px;border:0;max-width:none"
   const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
@@ -1879,15 +1904,32 @@ await check("document scrollbar gutters stay symmetric as content grows", async 
   try {
     await loaded
     const doc = frame.contentDocument!, view = frame.contentWindow!, paragraph = doc.querySelector("p")!
-    assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "stable both-edges", "document did not reserve both scrollbar gutters")
+    assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "stable", "document did not reserve the trailing scrollbar gutter")
+    for(const theme of documentThemes) {
+      doc.querySelector("head style")!.textContent = theme.source
+      assert(view.getComputedStyle(doc.body).backgroundColor === "rgba(0, 0, 0, 0)", `${theme.value} document body did not stay transparent`)
+      const color = theme.value === "sakura" ? "rgb(249, 249, 249)" : "rgb(255, 255, 255)"
+      assert(view.getComputedStyle(doc.documentElement).backgroundColor === color, `${theme.value} did not paint its document background on html`)
+      assert(Math.abs(doc.documentElement.getBoundingClientRect().left) < 1, `${theme.value} left a leading scrollbar gutter`)
+    }
+    doc.documentElement.style.backgroundColor = "rgb(213, 230, 247)"
+    assert(view.getComputedStyle(doc.documentElement).backgroundColor === "rgb(213, 230, 247)", "document root did not paint the page background")
     const before = paragraph.getBoundingClientRect()
     const content = doc.createElement("div")
     content.style.height = "2000px"
     doc.body.append(content)
     await layoutFrame()
     const after = paragraph.getBoundingClientRect()
-    assert(Math.abs((after.left + after.right) / 2 - view.innerWidth / 2) < 1, "scrolling document column is not centered in its viewport")
+    assert(Math.abs((after.left + after.right) / 2 - view.innerWidth / 2) < 1,
+      `scrolling document column is not centered in its viewport (${(after.left + after.right) / 2} vs ${view.innerWidth / 2}; balance ${view.getComputedStyle(doc.body).getPropertyValue("--ww-leading-gutter-balance")}; padding ${view.getComputedStyle(doc.body).paddingInlineStart})`)
     assert(Math.abs(before.left - after.left) < 1 && Math.abs(before.width - after.width) < 1, "scrollbar appearance shifted the reading column")
+    for(const width of [480, 1400]) {
+      frame.style.width = `${width}px`
+      await layoutFrame()
+      const rect = paragraph.getBoundingClientRect()
+      assert(Math.abs((rect.left + rect.right) / 2 - view.innerWidth / 2) < 1,
+        `document column is not centered at ${width}px`)
+    }
     for(const mode of ["ww-canvas", "ww-slides", "ww-board"]) {
       doc.body.className = mode
       assert(view.getComputedStyle(doc.documentElement).scrollbarGutter === "auto", `${mode} inherited document scrollbar gutters`)
@@ -3078,6 +3120,11 @@ await check("resize handles follow alignment and centered edges track the cursor
         const right = effective === "right"
         const handles = Array.from(transform.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
         assert(handles.length === 1 && handles[0].dataset.resizeDirection === (right ? "down-left" : "down-right"), `${placement}: wrong resize corner`)
+        const handleBox = handles[0].getBoundingClientRect()
+        const hit = doc.body.shadowRoot!.elementFromPoint(handleBox.left + handleBox.width / 2, handleBox.top + handleBox.height / 2)
+        assert(hit === handles[0], `${placement}: resize handle is covered by ${hit?.getAttribute("part") ?? hit?.localName}`)
+        const borderHit = doc.body.shadowRoot!.elementFromPoint(handleBox.left + .5, handleBox.top + .5)
+        assert(borderHit === handles[0], `${placement}: resize corner covered by ${borderHit?.getAttribute("part") ?? borderHit?.localName}`)
         for(const distance of [30, -20]) {
           const before = target.getBoundingClientRect(), handle = handles[0]
           const startX = right ? before.left : before.right, dx = right ? -distance : distance
@@ -3097,6 +3144,20 @@ await check("resize handles follow alignment and centered edges track the cursor
         target.remove()
       }
     }
+    const graphic = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
+    graphic.setAttribute("width", "359")
+    graphic.setAttribute("height", "202")
+    doc.body.append(graphic)
+    editor.features.selection.captureElement(graphic)
+    await layoutFrame()
+    const handle = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+    const box = handle.getBoundingClientRect()
+    assert(doc.body.shadowRoot!.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === handle,
+      "graphic resize affordance is covered at its center")
+    assert(doc.body.shadowRoot!.elementFromPoint(box.left + .5, box.top + .5) === handle,
+      "graphic resize affordance is covered at its inner corner")
+    assert(!editor.features.transformation.overlay.querySelector(".◆transform-overlay-edge[title]"),
+      "graphic move border exposes a lingering native tooltip")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
@@ -10403,11 +10464,21 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     const issueRect = (Array.from(highlight)[0] as Range).getClientRects()[0]
     const hit = {clientX: issueRect.left + issueRect.width / 2, clientY: issueRect.top + issueRect.height / 2}
     const paragraph = doc.querySelector("p")!
+    const selection = doc.getSelection()!
+    const errorText = doc.querySelector("em.meaning")!.firstChild!
+    selection.setBaseAndExtent(errorText, 0, errorText, 0)
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
+    assert(feature.state().hoveredIssueId === issue!.id, "caret inside the issue did not identify it")
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    const reviewIcon = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-tool="Review"] .toolbox-tab-icon')!
+    assert(getComputedStyle(reviewIcon).color === "rgb(198, 40, 40)", "selected issue did not color the closed Review icon")
+    selection.removeAllRanges()
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
     paragraph.dispatchEvent(new childWindow.PointerEvent("pointermove", {...hit, bubbles: true, composed: true}))
     assert(feature.state().hoveredIssueId === issue!.id, "hovering the underline did not identify its issue")
     toolbox.proofreadingState = feature.state()
     await toolbox.updateComplete
-    const reviewIcon = toolbox.shadowRoot!.querySelector<HTMLElement>('[data-tool="Review"] .toolbox-tab-icon')!
     assert(getComputedStyle(reviewIcon).color === "rgb(198, 40, 40)", "closed Review icon did not match the spelling underline")
     toolbox.selectTool("Review")
     await toolbox.updateComplete
@@ -10431,6 +10502,15 @@ await check("Harper checks English in a worker without authored DOM artifacts", 
     assert(card, "Review did not render Harper's issue card")
     assert(getComputedStyle(card).borderTopColor === "rgb(198, 40, 40)", "open Review did not highlight the hovered issue card")
     assert(getComputedStyle(reviewIcon).color !== "rgb(198, 40, 40)", "open Review still highlighted its icon")
+    paragraph.dispatchEvent(new childWindow.PointerEvent("pointermove", {clientX: 0, clientY: 0, bubbles: true, composed: true}))
+    selection.setBaseAndExtent(errorText, 0, errorText, 0)
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
+    toolbox.proofreadingState = feature.state()
+    await toolbox.updateComplete
+    assert(getComputedStyle(card).borderTopColor === "rgb(198, 40, 40)", "selected issue did not color its open Review card")
+    selection.removeAllRanges()
+    doc.dispatchEvent(new childWindow.Event("selectionchange"))
+    paragraph.dispatchEvent(new childWindow.PointerEvent("pointermove", {...hit, bubbles: true, composed: true}))
     const rightClick = () => {
       const event = new childWindow.MouseEvent("contextmenu", {...hit, button: 2, bubbles: true, composed: true, cancelable: true})
       doc.elementFromPoint(hit.clientX, hit.clientY)!.dispatchEvent(event)

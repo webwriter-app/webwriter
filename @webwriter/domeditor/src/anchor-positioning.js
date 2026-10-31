@@ -1,8 +1,11 @@
 /** Bind editor UI to live elements without putting UI or positioning styles in
  * authored content. Names and ::part rules share the nearest common tree. */
+const defaultAnchorCSS = "left:anchor(left) !important;top:anchor(top);width:anchor-size(width);height:anchor-size(height);position-visibility:anchors-visible;"
+
 export function createAnchorPositioner(doc = document) {
   const key = Symbol.for("webwriter.anchor-positioning")
-  const state = doc[key] ??= {sequence: 0, bindings: new Set(), sheets: new Map(), queued: false}
+  const state = doc[key] ??= {sequence: 0, bindings: new Set(), sheets: new Map(), offsets: new Map(), queued: false}
+  state.offsets ??= new Map()
   const owned = new Map()
   const view = doc.defaultView
   const escape = value => value // Only generated identifiers, including the valid ◆ prefix.
@@ -62,7 +65,15 @@ export function createAnchorPositioner(doc = document) {
         const sheet = state.sheets.get(scope)?.sheet
         if(sheet) scope.adoptedStyleSheets = scope.adoptedStyleSheets.filter(value => value !== sheet)
       }
-      const sources = new Map()
+      const sources = new Map(), templates = new Map()
+      // Gecko's fixed anchor origin can differ from the target's client rect
+      // in document layout. The gutter is an initial estimate; the rendered
+      // frame below supplies the exact correction for this scope.
+      const root = doc.documentElement
+      const gecko = view?.navigator.userAgent.includes("Firefox")
+      const gutter = gecko
+        && view.getComputedStyle(root).scrollbarGutter?.includes("both-edges")
+        ? Math.max(0, view.innerWidth - root.clientWidth) / 2 : 0
       try {
         for(const scope of scopes) {
           const bindings = [...state.bindings].filter(binding => binding.scope === scope)
@@ -77,14 +88,19 @@ export function createAnchorPositioner(doc = document) {
             if(!target) { target = new Map(); targets.set(binding.target, target) }
             const names = target.get(binding.pseudo) ?? []
             names.push(binding); target.set(binding.pseudo, names)
-            rules.push(`${binding.controlSelector} {position:fixed;position-anchor:${binding.name} !important;${binding.css}}`)
+            const css = binding.defaultCSS && gecko
+              ? "left:calc(anchor(left) - __ww_offset__px) !important;top:anchor(top);width:anchor-size(width);height:anchor-size(height);position-visibility:anchors-visible;"
+              : binding.css
+            rules.push(`${binding.controlSelector} {position:fixed;position-anchor:${binding.name} !important;${css}}`)
           }
           for(const [element, pseudos] of targets) for(const [pseudo, bindings] of pseudos) {
             const existing = view.getComputedStyle(element, pseudo || null).getPropertyValue("anchor-name")
             const names = [existing && existing !== "none" ? existing : "", ...bindings.map(binding => binding.name)].filter(Boolean)
             rules.push(`${bindings[0].targetSelector}${pseudo} {anchor-name:${names.join(",")} !important}`)
           }
-          sources.set(scope, rules.join("\n"))
+          const template = rules.join("\n")
+          templates.set(scope, template)
+          sources.set(scope, template.replaceAll("__ww_offset__", String(state.offsets.get(scope) ?? gutter)))
         }
       }
       finally { for(const [scope, sheets] of previous) scope.adoptedStyleSheets = sheets }
@@ -93,6 +109,7 @@ export function createAnchorPositioner(doc = document) {
         if(!source) {
           if(record) scope.adoptedStyleSheets = scope.adoptedStyleSheets.filter(sheet => sheet !== record.sheet)
           state.sheets.delete(scope)
+          state.offsets.delete(scope)
           continue
         }
         if(!record) {
@@ -102,6 +119,24 @@ export function createAnchorPositioner(doc = document) {
         }
         if(source !== record.source) { record.sheet.replaceSync(source); record.source = source }
       }
+      if(gecko) for(const [scope, template] of templates) {
+        for(const binding of state.bindings) {
+          if(binding.scope !== scope || !binding.defaultCSS || !binding.control.isConnected || !binding.target.isConnected) continue
+          const target = binding.target.getBoundingClientRect()
+          const control = binding.control.getBoundingClientRect()
+          if(!target.width || !control.width || Math.abs(target.width - control.width) > 2
+            || Math.abs(target.height - control.height) > 2) continue
+          const difference = control.left - target.left
+          if(Math.abs(difference) >= .5) {
+            const offset = (state.offsets.get(scope) ?? gutter) + difference
+            state.offsets.set(scope, offset)
+            const source = template.replaceAll("__ww_offset__", String(offset))
+            const record = state.sheets.get(scope)
+            if(record && source !== record.source) { record.sheet.replaceSync(source); record.source = source }
+          }
+          break
+        }
+      }
     }
     state.schedule = () => {
       if(state.queued) return
@@ -110,7 +145,7 @@ export function createAnchorPositioner(doc = document) {
     }
   }
   return {
-    bind(control, target, css = "left:anchor(left);top:anchor(top);width:anchor-size(width);height:anchor-size(height);position-visibility:anchors-visible;", pseudo = "") {
+    bind(control, target, css = defaultAnchorCSS, pseudo = "") {
       const current = owned.get(control)
       if(current?.target === target && current.css === css && current.pseudo === pseudo
         && current.targetRoot === rootOf(target) && current.controlRoot === rootOf(control)) return
@@ -119,7 +154,7 @@ export function createAnchorPositioner(doc = document) {
       const controlRoots = roots(control), scope = roots(target).find(root => controlRoots.includes(root))
       if(!scope || !("adoptedStyleSheets" in scope)) return
       const index = state.sequence++, cleanup = [], ensure = []
-      const binding = {control, target, css, pseudo, scope, ensure, targetRoot: rootOf(target), controlRoot: rootOf(control), name: `--ww-ui-anchor-${index}`,
+      const binding = {control, target, css, defaultCSS: css === defaultAnchorCSS, pseudo, scope, ensure, targetRoot: rootOf(target), controlRoot: rootOf(control), name: `--ww-ui-anchor-${index}`,
         targetSelector: expose(target, scope, `◆anchor-target-${index}`, cleanup, ensure),
         controlSelector: expose(control, scope, `◆anchor-control-${index}`, cleanup, ensure),
         release() {

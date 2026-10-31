@@ -1408,7 +1408,7 @@ describe("package ribbon controls", () => {
     expect(RibbonDrawer.styles.toString()).toMatch(/::slotted\(ribbon-button\)\s*\{\s*grid-column: auto;/)
   })
 
-  it("opens management mode on search focus and only shows remove icons for installed packages", async () => {
+  it("opens management mode on search focus with remove and member controls for installed packages", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     const alphaPackage = packageFixture("alpha")
@@ -1437,7 +1437,7 @@ describe("package ribbon controls", () => {
     expect(alpha.cornerAction).toBe("package-toggle:@webwriter/alpha")
     expect(alpha.keepDrawerOpen).toBe(true)
     expect(alpha.shadowRoot!.querySelector(".corner-icon .icon-tabler-x")).not.toBeNull()
-    expect(alpha.shadowRoot!.querySelector(".submenu-chevron")).toBeNull()
+    expect(alpha.shadowRoot!.querySelector(".submenu-chevron")).not.toBeNull()
     expect(beta.shadowRoot!.querySelector(".corner-icon")).toBeNull()
     expect(beta.muted).toBe(true)
 
@@ -1510,11 +1510,37 @@ describe("package ribbon controls", () => {
     expect(action.mock.calls[0][0].detail).toEqual({label: "package:@webwriter/alpha", keepDrawerOpen: true})
     expect(drawer.hasAttribute("drawer-open")).toBe(true)
 
-    currentButton.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Alpha"]')!.click()
+    const remove = currentButton.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Alpha"]')!
+    const chevron = currentButton.shadowRoot!.querySelector<HTMLButtonElement>('.submenu-trigger')!
+    expect(remove.nextElementSibling).toBe(chevron)
+    expect(currentButton.submenu.map(member => typeof member === "string" ? member : member.label)).toEqual(["alpha Snippet"])
+    chevron.click()
+    await currentButton.updateComplete
+    expect(chevron.getAttribute("aria-expanded")).toBe("true")
+
+    remove.click()
     expect(action.mock.calls.at(-1)?.[0].detail).toEqual({label: "package-toggle:@webwriter/alpha", keepDrawerOpen: true})
-    expect(RibbonButton.styles.toString()).toMatch(
-      /:host\(\[variant="package"\]\) \.corner-trigger\s*\{[\s\S]*?aspect-ratio:\s*1\s*\/\s*1;/,
-    )
+  })
+
+  it("keeps the remove control in the same position without a member chevron", async () => {
+    const ribbon = new AppRibbon()
+    ribbon.activeMenu = "Start"
+    const pkg = packageFixture("single")
+    pkg.members = pkg.members.slice(0, 1)
+    ribbon.packages = [pkg]
+    ribbon.installedPackages = [pkg]
+    document.body.append(ribbon)
+    await ribbon.updateComplete
+
+    const drawer = ribbon.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Packages"]')!
+    drawer.openDrawer(true)
+    await ribbon.updateComplete
+    const button = drawer.querySelector<RibbonButton>('ribbon-button[label="Single"]')!
+    await button.updateComplete
+
+    const remove = button.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Single"]')!
+    expect(remove.nextElementSibling?.classList.contains("submenu-placeholder")).toBe(true)
+    expect(button.shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
   })
 })
 

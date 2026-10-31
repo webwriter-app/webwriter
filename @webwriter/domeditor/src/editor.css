@@ -24,7 +24,6 @@ body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
 
 html {
   color-scheme: only light;
-  background: transparent;
   overflow-y: scroll;
   overflow-x: auto;
   height: 100%;
@@ -34,6 +33,10 @@ html {
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
+}
+
+html:has(> body:is(.ww-canvas, .ww-slides, .ww-board)) {
+  background: transparent;
 }
 
 html.◆ai-review-active {
@@ -1965,6 +1968,7 @@ body::part(transform-overlay-scale-right-right) { right: var(--ww-transform-hand
 body::part(transform-overlay-scale-text) { cursor: ew-resize; }
 body::part(transform-overlay-scale) {
   position: absolute;
+  z-index: 2;
   pointer-events: auto;
   touch-action: none;
   border: 0;
@@ -2061,6 +2065,11 @@ body::part(transform-overlay-attribution-freeform)::after {
     height: var(--transform-rotate-stem-height, 15px);
     pointer-events: none;
 }
+body::part(transform-overlay-rotator):hover::after,
+body::part(transform-overlay-delete-freeform):hover::after,
+body::part(transform-overlay-attribution-freeform):hover::after {
+    background: var(--ww-transform-hover-color);
+}
 body::part(transform-overlay-button) {
   pointer-events: auto;
   touch-action: none;
@@ -2085,6 +2094,16 @@ body::part(transform-overlay-button)::before {
     transition: background-color 150ms ease;
     mask: var(--icon);
 }
+body::part(transform-overlay-rotator):hover::before,
+body::part(transform-overlay-anchor):hover::before,
+body::part(transform-overlay-anchor-sticky):hover::before,
+body::part(transform-overlay-mover):hover::before,
+body::part(transform-overlay-caption):hover::before,
+body::part(transform-overlay-delete):hover::before,
+body::part(transform-overlay-attribution):hover::before,
+body::part(transform-overlay-group):hover::before {
+    background-color: var(--ww-transform-hover-color);
+}
 body::part(transform-overlay-arranger) {
   anchor-name: --transform-overlay-arranger;
   position: absolute;
@@ -2107,6 +2126,12 @@ body::part(transform-overlay-arranger)::after {
     bottom: -14px;
     height: 16px;
     pointer-events: none;
+}
+body::part(transform-overlay-arranger):hover,
+body::part(transform-overlay-orderer):hover,
+body::part(transform-overlay-arranger):hover::after,
+body::part(transform-overlay-orderer):hover::after {
+    background: var(--ww-transform-hover-color);
 }
 body::part(transform-overlay-arranger-float-none) {
     --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-float-none"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 6a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1l0 -4" /><path d="M4 15l16 0" /><path d="M4 19l16 0" /></svg>');
@@ -2305,8 +2330,17 @@ body::part(transform-overlay-group) {
   background: rgb(255 255 255 / 90%);
   border: 2px solid var(--ww-transform-color);
   border-radius: 50%;
+  transition: border-color 150ms ease;
+}
+body::part(transform-overlay-mover):hover,
+body::part(transform-overlay-caption):hover,
+body::part(transform-overlay-delete):hover,
+body::part(transform-overlay-attribution):hover,
+body::part(transform-overlay-group):hover {
+  border-color: var(--ww-transform-hover-color);
 }
 body::part(transform-overlay-group) {
+  top: calc(50% - 10px);
   left: -10px;
   cursor: pointer;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M8 12h8M12 8v8"/></svg>');
@@ -2331,10 +2365,10 @@ body::part(transform-overlay-attribution) {
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M16 8a6 6 0 1 0 0 8"/></svg>');
 }
 body::part(transform-overlay-attribution-board) {
-  top: auto;
-  left: auto;
-  right: -10px;
-  bottom: -10px;
+  top: -13px;
+  left: -10px;
+  right: auto;
+  bottom: auto;
 }
 body::part(transform-overlay-mover)::before {
   width: 16px;

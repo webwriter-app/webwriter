@@ -58,6 +58,9 @@ export class ElementAttributeEditor extends LitElement {
     expanded: {type: Boolean, reflect: true},
     mediaOwned: {type: Boolean, attribute: false},
     showOtherAttributes: {type: Boolean, attribute: false},
+    languageButton: {type: Boolean, attribute: "language-button", reflect: true},
+    documentLanguage: {type: String, attribute: false},
+    languageOpen: {state: true},
   }
 
   static styles = css`
@@ -158,6 +161,17 @@ export class ElementAttributeEditor extends LitElement {
     .more-attributes:hover:not(:disabled) {background: #edf3f9;}
     .more-attributes:active:not(:disabled) {background: #e2edf8; color: #375d84;}
     .more-attributes svg {display: block; width: 100%; height: 1rem; margin: auto;}
+    :host([language-button]) {display: inline-flex; flex: none; font: inherit;}
+    .language-control {position: relative;}
+    .language-trigger {display: grid; place-items: center; box-sizing: border-box; width: 1.45rem; height: 1.45rem; padding: .2rem; border: 1px solid transparent; border-radius: 3px; background: transparent; color: #526b86; cursor: pointer;}
+    .language-trigger svg {display: block; width: 1rem; height: 1rem;}
+    .language-trigger:hover {background: #e8eef5;}
+    .language-trigger[data-different] {background: #fff0bd; color: #765600;}
+    .language-trigger[data-different]:hover {background: #ffe59a;}
+    .language-trigger[aria-expanded="true"] {position: relative; border-color: #c5ccd5; border-bottom-color: #fff; border-radius: 4px 4px 0 0; background: #fff; color: #375d84;}
+    .language-popup {position: fixed; inset: auto; box-sizing: border-box; margin: 0; padding: 0; border: 0; background: transparent; overflow: visible;}
+    .language-popup[hidden] {display: none;}
+    .language-popup style-combobox {display: block; width: 100%;}
     button:focus-visible {outline: 2px solid #8eb6df; outline-offset: 2px;}
 
     dialog {
@@ -238,14 +252,69 @@ export class ElementAttributeEditor extends LitElement {
   expanded = false
   mediaOwned = true
   showOtherAttributes = false
+  languageButton = false
+  documentLanguage = ""
+  private languageOpen = false
+  private languageListOpened = false
 
-  protected updated() {
+  private readonly dismissLanguage = (event: PointerEvent | KeyboardEvent) => {
+    if(!this.languageOpen) return
+    if(event instanceof KeyboardEvent) {
+      if(event.key !== "Escape") return
+    }
+    else if(event.composedPath().includes(this)) return
+    this.closeLanguage()
+  }
+
+  private closeLanguage() {
+    this.languageOpen = false
+    this.languageListOpened = false
+    this.shadowRoot?.querySelector("style-combobox")?.close(true)
+    const popup = this.shadowRoot?.querySelector<HTMLElement>(".language-popup")
+    if(popup?.matches(":popover-open")) popup.hidePopover()
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    this.ownerDocument.addEventListener("pointerdown", this.dismissLanguage)
+    this.ownerDocument.addEventListener("keydown", this.dismissLanguage)
+  }
+
+  protected updated(changed: Map<string, unknown>) {
+    if((changed.has("state") && changed.get("state") !== null || this.disabled) && this.languageOpen) this.closeLanguage()
     if(this.disabled || !this.state || !this.showOtherAttributes) this.closeDialog()
   }
 
   disconnectedCallback() {
+    this.ownerDocument.removeEventListener("pointerdown", this.dismissLanguage)
+    this.ownerDocument.removeEventListener("keydown", this.dismissLanguage)
+    this.closeLanguage()
     this.closeDialog()
     super.disconnectedCallback()
+  }
+
+  private async openLanguage() {
+    if(this.languageOpen) { this.closeLanguage(); return }
+    this.languageOpen = true
+    await this.updateComplete
+    const button = this.shadowRoot?.querySelector<HTMLElement>(".language-trigger")
+    const popup = this.shadowRoot?.querySelector<HTMLElement>(".language-popup")
+    if(button && popup) {
+      const bounds = button.getBoundingClientRect()
+      const content = this.closest("ribbon-drawer")?.shadowRoot?.querySelector<HTMLElement>(".controls")?.getBoundingClientRect()
+      const pane = (this.getRootNode() as ShadowRoot).querySelector<HTMLElement>(".toolbox-pane-content")?.getBoundingClientRect()
+      const left = content?.left ?? bounds.left
+      const width = content?.width ?? bounds.width
+      popup.style.left = `${Math.max(8, left)}px`
+      popup.style.width = `${Math.min(width, window.innerWidth - Math.max(8, left) - 8)}px`
+      popup.style.top = `${bounds.bottom - 1}px`
+      const picker = popup.querySelector<HTMLElement>("style-combobox")
+      if(pane && picker) picker.style.setProperty("--language-list-max-height", `${Math.max(120, pane.bottom - bounds.bottom - 28)}px`)
+      popup.showPopover?.()
+    }
+    const picker = this.shadowRoot?.querySelector("style-combobox")
+    await picker?.updateComplete
+    picker?.shadowRoot?.querySelector<HTMLInputElement>("input")?.focus()
   }
 
   private closeDialog() {
@@ -414,6 +483,33 @@ export class ElementAttributeEditor extends LitElement {
   render() {
     const state = this.state ?? (this.disabled ? emptyAttributeState : null)
     if(!state) return nothing
+    if(this.languageButton) {
+      const value = state.attributes.lang ?? ""
+      const documentLanguage = this.documentLanguage
+      const different = Boolean(value && documentLanguage && value.toLowerCase() !== documentLanguage.toLowerCase())
+      const name = languageOptions.find(option => option.value.toLowerCase() === value.toLowerCase())?.label ?? value
+      const documentName = languageOptions.find(option => option.value.toLowerCase() === documentLanguage.toLowerCase())?.label ?? documentLanguage
+      const current = value ? `${name} (${value})` : `Inherit document language${documentLanguage ? `: ${documentName} (${documentLanguage})` : ""}`
+      return html`<div class="language-control">
+        <button type="button" class="language-trigger" aria-label=${`Set ${state.name} language`} title=${`Language: ${current}`}
+          aria-haspopup="listbox" aria-expanded=${this.languageOpen} ?data-different=${different} ?disabled=${this.disabled}
+          @click=${this.openLanguage}>${ribbonIcon("Language")}</button>
+        <div class="language-popup" popover="auto" ?hidden=${!this.languageOpen}
+          @toggle=${(event: ToggleEvent) => { if(event.newState === "closed") this.closeLanguage() }}>
+          <style-combobox language-picker aria-label=${`${state.name}: Language`} .label=${`${state.name}: Language`}
+            .value=${value} .placeholder=${documentName || "Language"} .options=${languageOptions}
+            .disabled=${this.disabled || !elementAttributeEditability("lang", state.localName, state.namespaceURI).editable}
+            @combobox-toggle=${(event: CustomEvent<{open: boolean}>) => {
+              if(event.detail.open) this.languageListOpened = true
+              else if(this.languageOpen && this.languageListOpened) this.closeLanguage()
+            }}
+            @combobox-change=${(event: CustomEvent<{value: string}>) => {
+              this.dispatchAttribute("lang", event.detail.value || null)
+              this.closeLanguage()
+            }}></style-combobox>
+        </div>
+      </div>`
+    }
     const mediaNames = new Set(this.mediaOwned && isMediaType(state.localName)
       ? [...mediaAttributeOptions[state.localName].map(option => option.name), "controls", "usemap"]
       : [])

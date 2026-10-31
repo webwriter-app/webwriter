@@ -296,9 +296,8 @@ describe("specialized element toolbox", () => {
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
     expect(drawers[0].shadowRoot!.querySelector(".pane-label .element-count")?.textContent).toBe("2")
     expect(drawers[1].shadowRoot!.querySelector(".element-count")).toBeNull()
-    expect(drawers[2].expandable).toBe(true)
-    expect(drawers[2].querySelector('[slot="more"]')).not.toBeNull()
-    expect(drawers[2].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden).toBe(false)
+    expect(drawers[2].expandable).toBe(false)
+    expect(drawers[2].querySelector('element-attribute-editor[language-button]')).not.toBeNull()
     const styleChanges = vi.fn(), attributeChanges = vi.fn()
     toolbox.addEventListener("element-style-change", styleChanges)
     toolbox.addEventListener("element-attribute-change", attributeChanges)
@@ -316,8 +315,8 @@ describe("specialized element toolbox", () => {
     })
     const imageAttributes = drawers[1].querySelector("element-attribute-editor")!
     await imageAttributes.updateComplete
-    expect(imageAttributes.mediaOwned).toBe(false)
-    expect(imageAttributes.closest('[slot="more"]')).not.toBeNull()
+    expect(imageAttributes.languageButton).toBe(true)
+    expect(imageAttributes.slot).toBe("heading-action")
     const languages = imageAttributes.shadowRoot!.querySelector("style-combobox")!
     languages.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "de"}}))
     expect(attributeChanges.mock.calls[0][0].detail).toMatchObject({
@@ -417,7 +416,7 @@ describe("specialized element toolbox", () => {
     }
   })
 
-  it("offers collapsible Options for Language even without other advanced controls", async () => {
+  it("offers Language beside Reset without opening Options", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
@@ -429,9 +428,9 @@ describe("specialized element toolbox", () => {
     await toolbox.updateComplete
     const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("[data-specialized]"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
-    expect(drawers.every(drawer => drawer.expandable)).toBe(true)
-    expect(drawers.every(drawer => drawer.querySelector('[slot="more"] element-attribute-editor'))).toBe(true)
-    expect(drawers.every(drawer => !drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!.hidden)).toBe(true)
+    expect(drawers.every(drawer => drawer.querySelector('[slot="heading-action"] element-attribute-editor') === null)).toBe(true)
+    expect(drawers.every(drawer => drawer.querySelector('element-attribute-editor[slot="heading-action"]'))).toBe(true)
+    expect(drawers.every(drawer => !drawer.querySelector('[slot="more"] element-attribute-editor'))).toBe(true)
   })
 
   it("scopes widget option changes and resets to the selected widget type", async () => {
@@ -502,11 +501,11 @@ describe("specialized element toolbox", () => {
     const paragraphOptions = paragraph.shadowRoot!.querySelector('.specialized-options')!
       .querySelector<ElementStyleEditor>('element-style-editor')!
     const lastLine = paragraphOptions.shadowRoot!.querySelector<HTMLElement>('[data-property="text-align-last"] .specialized-choice-group')!
-    expect(lastLine.style.getPropertyValue("--choice-columns")).toBe("3")
+    expect(lastLine.style.getPropertyValue("--choice-columns")).toBe("5")
     const lastLineButtons = lastLine.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')
     expect(lastLineButtons).toHaveLength(5)
-    expect(lastLineButtons[2].hasAttribute("data-top-right")).toBe(true)
-    expect(lastLineButtons[3].hasAttribute("data-bottom-left")).toBe(true)
+    expect(lastLineButtons[4].hasAttribute("data-top-right")).toBe(true)
+    expect(lastLineButtons[0].hasAttribute("data-bottom-left")).toBe(true)
     expect(lastLine.children).toHaveLength(5)
     expect(getComputedStyle(lastLine).backgroundColor).toBe(getComputedStyle(lastLineButtons[1]).backgroundColor)
     expect(getComputedStyle(lastLineButtons[1]).boxShadow).toBe("0 0 0 1px #c5ccd5")
@@ -545,10 +544,10 @@ describe("specialized element toolbox", () => {
     expect(advancedEditor.shadowRoot!.querySelector('[data-property="text-indent"]')).not.toBeNull()
     const attributeEditor = drawer.querySelector<ElementAttributeEditor>("element-attribute-editor")!
     expect(attributeEditor).not.toBeNull()
-    expect(attributeEditor.hasAttribute("expanded")).toBe(true)
-    expect(attributeEditor.closest("[slot=more]")).toBe(options)
+    expect(attributeEditor.hasAttribute("language-button")).toBe(true)
+    expect(attributeEditor.slot).toBe("heading-action")
     expect(attributeEditor.shadowRoot!.querySelector("dialog")).toBeNull()
-    expect(attributeEditor.shadowRoot!.querySelector(".language-row style-combobox")).not.toBeNull()
+    expect(attributeEditor.shadowRoot!.querySelector(".language-trigger")).not.toBeNull()
     expect(attributeEditor.shadowRoot!.querySelector('[aria-label="Other attributes"]')).toBeNull()
     expect(drawer.advancedCount).toBe(1)
     expect(drawer.shadowRoot!.querySelector(".advanced-count")?.textContent).toBe("1")
@@ -556,20 +555,17 @@ describe("specialized element toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Attributes"]')).toBeNull()
   })
 
-  it.each(["p", "h2", "img", "table", "course-quiz", "unfamiliar-element"])("keeps Language behind advanced options for %s", async localName => {
+  it.each(["p", "h2", "img", "table", "course-quiz", "unfamiliar-element"])("opens Language from the heading for %s", async localName => {
     const toolbox = await mountElement(localName, {lang: "de"})
-    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`ribbon-drawer[data-specialized="${localName}"]`)
-      ?? toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Attributes"]')!
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`ribbon-drawer[data-specialized="${localName}"]`)!
     const attributes = drawer.querySelector<ElementAttributeEditor>("element-attribute-editor")!
-    expect(attributes.closest('[slot="more"]')).not.toBeNull()
-    expect(drawer.expandable).toBe(true)
-    expect(drawer.advancedCount).toBeGreaterThanOrEqual(1)
-    await drawer.updateComplete
-    const toggle = drawer.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
-    expect(toggle.getAttribute("aria-expanded")).toBe("false")
-    toggle.click()
-    await drawer.updateComplete
-    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(attributes.slot).toBe("heading-action")
+    const trigger = attributes.shadowRoot!.querySelector<HTMLButtonElement>(".language-trigger")!
+    trigger.click()
+    await attributes.updateComplete
+    expect(trigger.getAttribute("aria-expanded")).toBe("true")
+    expect(attributes.shadowRoot!.querySelector(".language-current")).toBeNull()
+    expect(attributes.shadowRoot!.querySelector("style-combobox")!.value).toBe("de")
     const change = vi.fn()
     toolbox.addEventListener("element-attribute-change", change)
     attributes.shadowRoot!.querySelector("style-combobox")!.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "fr"}}))

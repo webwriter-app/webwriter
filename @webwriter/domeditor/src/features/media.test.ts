@@ -1606,6 +1606,69 @@ describe("media editing", () => {
     expect(video.querySelector("source")).toHaveAttribute("src", "remote.webm")
   })
 
+  it("sets a fallback source file in place and rejects a stale source row", () => {
+    document.body.innerHTML = '<audio controls src="primary.mp3"><source src="fallback.ogg" type="audio/ogg"><p>Keep</p></audio>'
+    const audio = document.querySelector("audio")!
+    const source = audio.querySelector("source")!
+    const fallback = audio.querySelector("p")!
+    $.selectElement(audio)
+    editor.features.selection.processSelection()
+    const initial = editor.features.media.getState()!.sources![0]
+    const file = new File(["sound"], "new.ogg", {type: "audio/ogg"})
+
+    expect(editor.features.media.actions.setMediaFile({type: "setMediaFile",
+      resource: {index: initial.index, expected: initial.attributes}, file})).toBe(true)
+    expect(source.getAttribute("src")).toMatch(/^blob:/)
+    expect(source.getAttribute("type")).toBe("audio/ogg")
+    expect(audio.querySelector("p")).toBe(fallback)
+    expect(editor.features.media.getState()!.sources![0]).toMatchObject({sourceLabel: "new.ogg", sourceKind: "file"})
+    expect(editor.toHTML(true)).not.toContain("new.ogg")
+
+    expect(editor.features.media.actions.setMediaFile({type: "setMediaFile",
+      resource: {index: initial.index, expected: initial.attributes}, file})).toBe(false)
+    expect(source.getAttribute("src")).toMatch(/^blob:/)
+  })
+
+  it("keeps a fallback file picker tied to its original source row", () => {
+    document.body.innerHTML = '<audio><source src="first.ogg"></audio><audio><source src="first.ogg"></audio>'
+    const [first, second] = Array.from(document.querySelectorAll("audio"))
+    $.selectElement(first)
+    editor.features.selection.processSelection()
+    const row = editor.features.media.getState()!.sources![0]
+    expect(editor.features.media.actions.selectMediaFile({type: "selectMediaFile", resource: {
+      index: row.index, expected: row.attributes,
+    }})).toBe(true)
+    const picker = editor.appendix.querySelector<HTMLInputElement>('input[type="file"]')!
+    Object.defineProperty(picker, "files", {value: [new File(["sound"], "new.ogg", {type: "audio/ogg"})]})
+    $.selectElement(second)
+    editor.features.selection.processSelection()
+    picker.dispatchEvent(new Event("change"))
+
+    expect(first.querySelector("source")?.getAttribute("src")).toMatch(/^blob:/)
+    expect(second.querySelector("source")).toHaveAttribute("src", "first.ogg")
+    expect(picker.isConnected).toBe(false)
+  })
+
+  it("opens capture for the current fallback source and cancels cleanly", () => {
+    document.body.innerHTML = '<video controls src="primary.mp4"><source src="fallback.webm"></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    editor.features.selection.processSelection()
+    const row = editor.features.media.getState()!.sources![0]
+
+    expect(editor.features.media.actions.captureTimedMediaResource({type: "captureTimedMediaResource",
+      index: row.index, expected: row.attributes, mode: "screen-video"})).toBe(true)
+    const capture = editor.appendix.querySelector<HTMLElement>(".◆media-capture")!
+    expect(capture.getRootNode()).toBe(editor.appendix)
+    editor.features.media.actions.cancelMediaCapture({type: "cancelMediaCapture"})
+    expect(capture.isConnected).toBe(false)
+    expect(video.querySelector("source")).toHaveAttribute("src", "fallback.webm")
+
+    video.querySelector("source")!.setAttribute("src", "remote.webm")
+    expect(editor.features.media.actions.captureTimedMediaResource({type: "captureTimedMediaResource",
+      index: row.index, expected: row.attributes, mode: "screen-video"})).toBe(false)
+  })
+
   it("adds and removes an image map beside a picture without disturbing its figure", () => {
     document.body.innerHTML = '<figure><picture><img src="diagram.png" alt="Diagram"></picture><figcaption>Overview</figcaption></figure>'
     const picture = document.querySelector("picture")!
@@ -1728,6 +1791,27 @@ describe("media editing", () => {
       {shape: "poly", coords: "20,20,100,20,60,80", alt: ""},
     ])
     expect(editor.toHTML(true)).not.toContain("image-map-overlay")
+  })
+
+  it("reports image sources and refuses to draw on an empty image", () => {
+    document.body.innerHTML = '<picture><source srcset="small.png"><img></picture>'
+    const picture = document.querySelector("picture")!
+    const source = picture.querySelector("source")!
+    $.selectElement(picture)
+    editor.features.selection.processSelection()
+
+    expect(editor.features.media.getState()?.hasSource).toBe(true)
+
+    source.removeAttribute("srcset")
+    expect(editor.features.media.getState()?.hasSource).toBe(false)
+    expect(editor.features.media.actions.startImageMapDrawing({type: "startImageMapDrawing", shape: "rect"})).toBe(false)
+    expect(document.querySelector("map")).toBeNull()
+
+    source.setAttribute("srcset", "  ")
+    expect(editor.features.media.getState()?.hasSource).toBe(false)
+    source.removeAttribute("srcset")
+    picture.querySelector("img")!.setAttribute("srcset", "large.png")
+    expect(editor.features.media.getState()?.hasSource).toBe(true)
   })
 
   it("moves captured hotspots, resizes their vertices, and ignores concurrent replacements", () => {

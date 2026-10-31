@@ -27,9 +27,11 @@ export function createFigureLayout(doc) {
   }
   const refresh = () => {
     if(destroyed) return
+    // Documents without figures need no generated rules or stylesheet reset.
+    if(!markers.size && !body.querySelector("figure:not([is])")) return
     // Measure the live authored layout, including stylesheet and remote edits.
     sheet.replaceSync("")
-    const rules = [], active = new Set()
+    const rules = [], active = new Set(), pendingMarkers = []
     const watch = new Set([body])
     for(const figure of body.querySelectorAll("figure:not([is])")) {
       let atomic = false
@@ -74,7 +76,7 @@ export function createFigureLayout(doc) {
         || alignment === "start" && captionStyle.direction === "rtl"
       const side = rightAligned ? "left" : "right"
       let marker = markers.get(figure)
-      if(!marker) { marker = `◆figure-flow-${++sequence}`; markers.set(figure, marker); figure.classList.add(marker) }
+      if(!marker) { marker = `◆figure-flow-${++sequence}`; markers.set(figure, marker); pendingMarkers.push([figure, marker]) }
       active.add(figure)
       const selector = `.${marker}`
       const contour = points.map(point => ({x: point.x - left + inset, y: point.y - top}))
@@ -100,6 +102,7 @@ ${selector} > :not(figcaption) { position: absolute !important; float: none !imp
 ${selector} > figcaption { display: block; margin: 0; min-height: ${boxHeight}px; box-sizing: border-box; padding-top: ${below ? boxHeight / 2 : 0}px; }`)
     }
     for(const [figure, marker] of markers) if(!active.has(figure)) { unmark(figure, marker); markers.delete(figure) }
+    for(const [figure, marker] of pendingMarkers) figure.classList.add(marker)
     sheet.replaceSync(rules.join("\n"))
     for(const element of observed) if(!watch.has(element)) { resize?.unobserve(element); observed.delete(element) }
     for(const element of watch) if(!observed.has(element)) { resize?.observe(element); observed.add(element) }

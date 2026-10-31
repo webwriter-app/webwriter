@@ -517,7 +517,7 @@ export class DOMEditor {
     try {
       if(!options.reader) this.features.proofreading.setAccessibilityReviewEnabled(options.accessibilityReviewEnabled === true)
       adoptStylesheet(document, editorStylesheet)
-      document.designMode = options.reader ? "off" : "on"
+      if(options.reader) document.designMode = "off"
       const DocumentMutationObserver = document.defaultView?.MutationObserver ?? MutationObserver
       this.#bodySchemaObserver = new DocumentMutationObserver(this.#handleBodySchemaChanges)
       this.#bodySchemaObserver.observe(document.body, {
@@ -554,6 +554,9 @@ export class DOMEditor {
         })
       }
       if(!options.reader) this.#ensureDocumentContent()
+      // Gecko inserts a bare <br> when designMode starts on an empty body.
+      // Establish the default paragraph before enabling native editing.
+      if(!options.reader) document.designMode = "on"
       Object.entries(this.features)
         .filter(([name]) => !options.reader || !["dependency", "state", "head", "template", "distribution", "history", "placeholder", "comment", "attribution", "proofreading", "collaboration", "migration"].includes(name))
         .forEach(([, feat]) => feat.enable())
@@ -1194,7 +1197,9 @@ export class DOMEditor {
     const exitReason = mode === "board" ? this.features.board.exitConversionReason() : null
     const conversions = {
       document: rootReason ?? exitReason,
-      canvas: rootReason ?? exitReason ?? ((mode === "slides" || mode === "board" ? this.features.canvas.canConvertContent(this.features[mode].documentContent()) : canvas.canConvert) ? null : "This document's structure cannot be converted to Canvas automatically."),
+      canvas: rootReason ?? exitReason ?? ((mode === "board" ? this.features.board.canConvertToCanvas()
+        : mode === "slides" ? this.features.canvas.canConvertContent(this.features.slides.documentContent()) : canvas.canConvert)
+        ? null : "This document's structure cannot be converted to Canvas automatically."),
       slides: rootReason ?? exitReason ?? (mode === "slides" ? null : this.features.slides.conversionReason()),
       board: rootReason ?? this.features.board.conversionReason(),
     }

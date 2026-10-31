@@ -456,6 +456,12 @@ describe("editor bridge message guards", () => {
         areas: [{path: [0, 1], attributes: {shape: "rect", coords: "1,2,30,40"}}],
       },
     }}})).toBe(true)
+    expect(isSelectionChangeMessage({...message, detail: {...message.detail,
+      graphic: {active: true, capture: false, alternativeText: "A diagram"},
+    }})).toBe(true)
+    expect(isSelectionChangeMessage({...message, detail: {...message.detail, media: {
+      type: "audio", attributes: {}, sources: [{index: 0, attributes: {src: "blob:local"}, sourceLabel: "sound.ogg", sourceKind: "file"}],
+    }}})).toBe(true)
 
     expectAllRejected(isSelectionChangeMessage, [
       {...message, detail: {...message.detail, path: [{path: [0, -1], name: "Paragraph"}]}},
@@ -481,8 +487,11 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, media: {type: "audio", attributes: {}, videoPlaybackWarning: "unsupported"}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: []}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {width: 640}}}},
+      {...message, detail: {...message.detail, media: {type: "img", attributes: {}, hasSource: "yes"}}},
+      {...message, detail: {...message.detail, media: {type: "video", attributes: {}, hasSource: true}}},
       {...message, detail: {...message.detail, media: {type: "img", attributes: {}, sources: []}}},
       {...message, detail: {...message.detail, media: {type: "video", attributes: {}, sources: [{index: -1, attributes: {}}]}}},
+      {...message, detail: {...message.detail, media: {type: "audio", attributes: {}, sources: [{index: 0, attributes: {}, sourceKind: "other"}]}}},
       {...message, detail: {...message.detail, media: {type: "video", attributes: {}, tracks: [{index: 0, attributes: {src: 4}}]}}},
       {...message, detail: {...message.detail, media: {type: "audio", attributes: {}, fallbackHTML: 4}}},
       {...message, detail: {...message.detail, media: {type: "video", attributes: {}, imageMap: null}}},
@@ -500,6 +509,7 @@ describe("editor bridge message guards", () => {
       {...message, detail: {...message.detail, graphic: {active: true, capture: "true"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, mode: "erase"}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, parameters: {width: 800}}}},
+      {...message, detail: {...message.detail, graphic: {active: true, capture: true, alternativeText: 10}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: -1}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, selectionCount: 1.5}}},
       {...message, detail: {...message.detail, graphic: {active: true, capture: true, options: {grid: true, snap: "true", guides: true}}}},

@@ -126,6 +126,9 @@ export class DomEditorToolbox extends EditingControls {
     ${proofreadingCardStyles}
     ${EditingControls.styles}
     .media-source {display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; width: 100%; min-width: 0; margin-bottom: .4rem; font: .68rem/1.2 system-ui, sans-serif;}
+    .media-resource-card .media-source {margin-bottom: 0;}
+    .media-resource-card .media-source-buttons button {gap: .1rem; padding: 0 .05rem; font-size: .55rem;}
+    .media-resource-card .media-source-buttons svg {width: .9rem; height: .9rem;}
     .specialized-options > .media-source {margin-bottom: 0;}
     .media-source .media-source-buttons {border-radius: 4px 4px 0 0; background: transparent;}
     .media-source-field {display: flex; align-items: center; box-sizing: border-box; width: 100%; min-width: 0; height: 1.7rem; border: 1px solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: transparent;}
@@ -205,6 +208,9 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
     .float-button-group[aria-label="Placement"] button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
+    .placement-action-group button:disabled {opacity: .4; cursor: default}
+    .float-button-group.placement-action-group button:hover:not(:disabled) {background: #edf3f9}
+    .float-button-group.placement-action-group button:active:not(:disabled) {background: #e2edf8; color: #375d84}
     .grouping-button-group {display: grid; grid-template-columns: 1.6rem 1.6rem minmax(0, 1fr) 1.6rem}
     .grouping-button-group button {min-height: 1.9rem; padding: .2rem}
     .grouping-button-group button:disabled {opacity: .4; cursor: default}
@@ -861,7 +867,8 @@ export class DomEditorToolbox extends EditingControls {
     if(this.documentSelected) return "Document"
     if(this.sectionSelected) return getSectionOption(this.sectionType).label
     if(!this.elementSelected) return null
-    if(this.selectedElementTypes.length) return this.selectedElementTypes.map(group => group.element.name).join(", ")
+    if(this.selectedElementTypes.length) return this.selectedElementTypes.reduce((inner, group) =>
+      (group.element.path?.length ?? -1) > (inner.element.path?.length ?? -1) ? group : inner).element.name
     return this.elementAttributes?.name ?? this.selectionPath.at(-1)?.name ?? null
   }
 
@@ -885,7 +892,6 @@ export class DomEditorToolbox extends EditingControls {
       disclosure: this.elementAttributes?.localName === "details",
       figure: false,
       widget: Boolean(this.widgetOptions),
-      attributes: Boolean(this.elementAttributes && this.elementAttributes.localName !== "figure"),
     })
   }
 
@@ -938,12 +944,9 @@ export class DomEditorToolbox extends EditingControls {
         ?inert=${disabled} aria-disabled=${disabled ? "true" : "false"}
         style=${disabled ? "opacity: 0.5" : ""}>
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
-          ?disabled=${disabled || !Object.keys(this.resettableStyles).length}
+          ?disabled=${disabled || !(this.elementStyle.hasInlineStyles ?? Object.keys(this.elementStyle.inline).length > 0)}
           @click=${() => {
-            const styles = this.resettableStyles
-            if(Object.keys(styles).length) this.dispatchEvent(new CustomEvent("element-style-change", {
-              detail: {styles}, bubbles: true, composed: true,
-            }))
+            this.dispatchEvent(new CustomEvent("element-style-reset", {bubbles: true, composed: true}))
           }}>${ribbonIcon("Restore")}Reset</button>
         <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
         ${this.renderElementLayoutControls()}
@@ -965,6 +968,7 @@ export class DomEditorToolbox extends EditingControls {
 
   protected renderMediaResourceAttribute(resource: import("../media").TimedMediaResourceType,
     row: import("../media").TimedMediaResourceState, option: MediaAttributeOption) {
+    if(resource === "source" && option.name === "src") return this.renderMediaSource(false, row)
     if(option.kind !== "select") return super.renderMediaResourceAttribute(resource, row, option)
     const value = row.attributes[option.name] ?? option.options?.[0]?.value ?? ""
     const options = option.options ?? []
@@ -1065,11 +1069,6 @@ export class DomEditorToolbox extends EditingControls {
       || namespaceURI === SVG_NAMESPACE && localName !== "svg")
   }
 
-  protected renderElementAttributesDrawer() {
-    if(this.elementAttributes && !this.isElementDrawerVisible(this.elementAttributes.localName, this.elementAttributes.namespaceURI)) return nothing
-    return super.renderElementAttributesDrawer()
-  }
-
   private renderSpecializedDrawer(group?: SelectedElementTypeState, listGroups?: SelectedElementTypeState[]) {
     const attributes = group?.element ?? this.elementAttributes
     let style = this.elementStyle
@@ -1121,9 +1120,9 @@ export class DomEditorToolbox extends EditingControls {
       ?? [selectionType ?? {localName, namespaceURI}]
     const profile = specializedElementStyle(localName)
     const widget = Boolean(widgetOptions || localName.includes("-"))
-    if(!profile && !widget && !group) return nothing
+    if(!profile && !widget && !group && !attributes) return nothing
     const mediaStyles = this.media && ["picture", "img", "video"].includes(localName)
-      ? ["object-view-box", "object-fit", "object-position"] : []
+      ? ["object-view-box", "object-fit"] : []
     const primary = (profile?.primary ?? []).filter(name => !mediaStyles.includes(name))
     const advanced = this.media && ["picture", "img"].includes(this.media.type) ? [] : profile?.advanced ?? []
     const definitions = [...specializedStyleDefinitions, ...elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])]
@@ -1134,7 +1133,6 @@ export class DomEditorToolbox extends EditingControls {
     const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
-      + (attributes?.attributes.lang ? 1 : 0)
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? attributes?.name ?? getElementPresentation(localName).name : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
@@ -1143,10 +1141,12 @@ export class DomEditorToolbox extends EditingControls {
     const commands = tableControls || groupedWidgetOptions ? nothing : group && widgetOptions ? this.renderWidgetOptionsControls(widgetOptions.options.slice(3), dispatchOption, widgetOptions, selectionType)
       : !group || singleTarget ? this.renderSpecializedCommands(group ? dispatchOption : undefined)
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
-    const hasOptions = Boolean(attributes) || advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
+    const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
       .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
+      ${attributes ? html`<element-attribute-editor slot="heading-action" language-button .state=${attributes}
+        .documentLanguage=${this.documentHead.language}></element-attribute-editor>` : nothing}
       <button type="button" class="style-reset" slot="heading-action" title="Reset element styles" aria-label="Reset element styles"
         ?disabled=${!Object.keys(resetStyles).length && !configuredWidgetOptions.length}
         @click=${(event: Event) => {
@@ -1215,44 +1215,47 @@ export class DomEditorToolbox extends EditingControls {
         .selectionKey=${JSON.stringify(group ? (listGroups ?? [group]).map(item => [item.element.namespaceURI, item.element.localName, item.element.path, item.count])
           : [[namespaceURI, localName, attributes?.path, 1]])}
         .state=${list ? {...style, target: {...style.target, localName, namespaceURI}} : style}></element-style-editor>
+      ${this.graphic?.active && localName === "svg" && (!group || singleTarget) ? this.renderGraphicAlternativeTextField() : nothing}
       ${hasOptions ? html`<div slot="more" class="specialized-options">
-        ${advanced.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
+        ${advanced.length ? html`<element-style-editor mode="compact" dense-choices .definitions=${definitions} .propertyNames=${advanced} .state=${style}></element-style-editor>` : nothing}
         ${commands}
-        ${mediaStyles.length ? html`<element-style-editor mode="compact" .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
+        ${mediaStyles.length ? html`<element-style-editor mode="compact" dense-choices .definitions=${definitions} .propertyNames=${mediaStyles} .state=${style}></element-style-editor>` : nothing}
         ${this.media?.type === "video" && (!group || singleTarget) ? this.renderMediaSource(true) : nothing}
-        ${attributes ? html`<element-attribute-editor expanded .mediaOwned=${(!group || singleTarget) && Boolean(this.media)} .state=${attributes}></element-attribute-editor>` : nothing}
       </div>` : nothing}
     </ribbon-drawer>`
   }
 
-  private renderMediaSource(cover = false) {
+  private renderMediaSource(cover = false, resource?: import("../media").TimedMediaResourceState) {
     const media = this.media!
     const type = media.type
     const attribute = cover ? "poster" : mediaSourceAttribute(type)
-    const source = cover ? media.attributes.poster || "" : media.attributes[attribute] || media.sources?.find(row => row.attributes.src)?.attributes.src || media.attributes.srcset || media.attributes.srcdoc || ""
-    const current = (cover ? media.cover?.label : media.sourceLabel) ?? (source.startsWith("data:") || source.startsWith("blob:") ? `${cover ? "Image" : this.mediaLabel(type)} file` : media.attributes.srcdoc ? "HTML document" : source)
-    const sourceKind = cover ? media.cover?.kind : media.sourceKind
+    const source = resource ? resource.attributes.src || "" : cover ? media.attributes.poster || "" : media.attributes[attribute] || media.sources?.find(row => row.attributes.src)?.attributes.src || media.attributes.srcset || media.attributes.srcdoc || ""
+    const current = (resource ? resource.sourceLabel : cover ? media.cover?.label : media.sourceLabel) ?? (source.startsWith("data:") || source.startsWith("blob:") ? `${cover ? "Image" : this.mediaLabel(type)} file` : media.attributes.srcdoc && !resource ? "HTML document" : source)
+    const sourceKind = resource ? resource.sourceKind : cover ? media.cover?.kind : media.sourceKind
     const inputType = cover ? "picture" : type
-    const label = cover ? "Cover image" : "Source"
-    const id = cover ? "media-cover-url" : "media-source-url"
+    const label = resource ? "Source URL" : cover ? "Cover image" : "Source"
+    const id = resource ? `media-source-${resource.index}-url` : cover ? "media-cover-url" : "media-source-url"
     const sourceIcon = sourceKind === "capture" ? "Capture screen" : sourceKind === "recording" ? "Record"
       : sourceKind === "file" || source.startsWith("data:") || source.startsWith("blob:") ? "Select file" : "Link"
     const action = (label: string) => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
       detail: {label}, bubbles: true, composed: true,
     }))
+    const resourceAction = (action: string, extra: Record<string, unknown> = {}) => this.dispatchMediaResourceAction({
+      action, resource: "source", index: resource!.index, expected: resource!.attributes, ...extra,
+    })
     return html`<div class="media-source" data-cover=${cover}>
       <div class="media-source-label"><label for=${id}>${label}</label>
-        ${!cover && media.sourceSize !== undefined && media.sourceSize > 50 * 1024 * 1024 ? html`<button type="button" class="large-source-warning" aria-label="Large source file warning" aria-describedby="large-source-warning-message">!
+        ${!cover && !resource && media.sourceSize !== undefined && media.sourceSize > 50 * 1024 * 1024 ? html`<button type="button" class="large-source-warning" aria-label="Large source file warning" aria-describedby="large-source-warning-message">!
           <span id="large-source-warning-message" class="large-source-warning-bubble" role="tooltip">Large source files can lead to performance issues for readers</span>
         </button>` : nothing}
       </div>
       <div class="media-source-controls">
         <div class="specialized-choice-group media-source-buttons" style=${`--choice-columns: ${1 + mediaCaptureOptions(inputType).length}`} role="group" aria-label=${`${label} input`}>
-          <button type="button" aria-label="Select file" title="Open file" @click=${() => action(cover ? "selected-media-cover-file" : "selected-media-file")}>
+          <button type="button" aria-label="Select file" title="Open file" @click=${() => resource ? resourceAction("pick-file") : action(cover ? "selected-media-cover-file" : "selected-media-file")}>
             <span class="icon">${ribbonIcon("Select file")}</span><span class="label">File</span>
           </button>
           ${mediaCaptureOptions(inputType).map(option => html`<button type="button" aria-label=${option.label} title=${option.label}
-            @click=${() => action(`${cover ? "selected-media-cover-capture" : "selected-media-capture"}:${option.mode}`)}>
+            @click=${() => resource ? resourceAction("capture", {mode: option.mode}) : action(`${cover ? "selected-media-cover-capture" : "selected-media-capture"}:${option.mode}`)}>
             <span class="icon">${ribbonIcon(option.label)}</span><span class="label">${option.label === "Record" ? "Record" : "Capture"}</span>
           </button>`)}
         </div>
@@ -1269,20 +1272,24 @@ export class DomEditorToolbox extends EditingControls {
             if(!file) return
             event.preventDefault()
             event.stopPropagation()
-            this.dispatchEvent(new CustomEvent("media-file-drop", {
+            if(resource) resourceAction("set-file", {file})
+            else this.dispatchEvent(new CustomEvent("media-file-drop", {
               detail: {type, file, attribute: cover ? "poster" : undefined}, bubbles: true, composed: true,
             }))
           }}>
           ${source ? ribbonIcon(sourceIcon) : nothing}
           <input id=${id} type=${sourceKind || source.startsWith("data:") || source.startsWith("blob:") || media.attributes.srcdoc ? "text" : "url"}
-            inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${this.mediaLabel(type)}: ${label}`}
+            inputmode="url" spellcheck="false" autocapitalize="off" data-ribbon-input-persistent aria-label=${`${resource ? "Source" : this.mediaLabel(type)}: ${label}`}
             placeholder="https://…" .value=${current} title=${current}
             @input=${this.clearMediaSourceError}
             @change=${(event: Event) => {
-              if((event.currentTarget as HTMLInputElement).value !== current) this.dispatchMediaAttribute(type, {name: attribute, label}, event)
+              if((event.currentTarget as HTMLInputElement).value === current) return
+              if(resource) resourceAction("set-attribute", {attribute: "src", value: (event.currentTarget as HTMLInputElement).value || null})
+              else this.dispatchMediaAttribute(type, {name: attribute, label}, event)
             }}>
-          ${source ? html`<button type="button" aria-label=${cover ? "Remove cover image" : "Remove source"} title=${cover ? "Remove cover image" : "Remove source"} @click=${() => cover
-            ? this.dispatchEvent(new CustomEvent("media-attribute-change", {detail: {type, attribute: "poster", value: null}, bubbles: true, composed: true}))
+          ${source ? html`<button type="button" aria-label=${resource ? "Remove source URL" : cover ? "Remove cover image" : "Remove source"} title=${resource ? "Remove source URL" : cover ? "Remove cover image" : "Remove source"} @click=${() => resource
+            ? resourceAction("set-attribute", {attribute: "src", value: null})
+            : cover ? this.dispatchEvent(new CustomEvent("media-attribute-change", {detail: {type, attribute: "poster", value: null}, bubbles: true, composed: true}))
             : action("remove-media-source")}>×</button>` : nothing}
         </div>
       </div>
@@ -1451,15 +1458,6 @@ export class DomEditorToolbox extends EditingControls {
       })
         .filter((drawer): drawer is TemplateResult<1> => drawer !== nothing)
     }
-    if(this.activeTool === "Edit" && !this.elementAttributes && !this.math?.active
-      && this.currentMenuGroups.length === 1 && this.currentMenuGroups[0].label === "Attributes") {
-      const drawers = [html`
-        <ribbon-drawer label="Attributes" icon="Develop" layout="attributes" expandable>
-          <element-attribute-editor slot="more" disabled></element-attribute-editor>
-        </ribbon-drawer>
-      `]
-      return drawers
-    }
     const specialized = this.activeTool === "Edit" && !this.documentSelected ? this.renderSpecializedDrawer() : nothing
     const drawers: TemplateResult<1>[] = specialized !== nothing
       ? [specialized]
@@ -1517,7 +1515,7 @@ export class DomEditorToolbox extends EditingControls {
           ` : nothing}
           ${["canvas", "slides"].includes(this.documentLayout.mode) ? html`
           <span class="float-placement-label">Placement</span>
-          <div class="float-button-group" role="group" aria-label="Placement">
+          <div class="float-button-group placement-action-group" role="group" aria-label="Placement">
             ${([
               {direction: "front", label: "Move to front", icon: "Bring to front", enabled: target?.placement?.canMoveUp},
               {direction: "up", label: "Move up", icon: "Bring forward", enabled: target?.placement?.canMoveUp},

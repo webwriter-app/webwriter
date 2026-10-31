@@ -427,9 +427,10 @@ export function createAttributionController(doc, options = {}) {
     button.hidden = !target
     if(!target) { anchors?.release(bridge); anchors?.release(popup); return }
     button.classList.toggle("empty-attribution", empty)
-    const placement = container?.matches('[part~="transform-overlay-board"]') ? " transform-overlay-attribution-board"
+    const board = container?.matches('[part~="transform-overlay-board"]')
+    const placement = board ? " transform-overlay-attribution-board"
       : container ? " transform-overlay-attribution-freeform" : ""
-    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${placement}` : "")
+    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${placement}${board ? " transform-overlay-board-control" : ""}` : "")
     bridge.setAttribute("part", empty ? "transform-overlay" : "")
     button.querySelector("svg").toggleAttribute("hidden", empty || values(target).type !== "copyright")
     // Paint with the normal controls, above the native drag hit regions.
@@ -437,8 +438,11 @@ export function createAttributionController(doc, options = {}) {
     if(anchors) {
       const size = empty ? 20 : 16
       const width = empty ? "20px" : "max(16px,var(--ww-page-gutter,1rem))"
+      const html = doc.documentElement
+      const gutter = view.navigator.userAgent.includes("Firefox") && view.getComputedStyle(html).scrollbarGutter?.includes("both-edges")
+        ? Math.max(0, view.innerWidth - html.clientWidth) / 2 : 0
       if(container) anchors.release(bridge)
-      else anchors.bind(bridge, target, `left:clamp(0px,calc(anchor(right) - ${empty ? size / 2 : 0}px),calc(100vw - ${width}));top:clamp(0px,calc(anchor(center) - ${size / 2}px),calc(100dvh - ${size}px));width:${width};height:${size}px;position-visibility:anchors-visible;`)
+      else anchors.bind(bridge, target, `left:clamp(0px,calc(anchor(${empty ? "left" : "right"}) - ${(empty ? size / 2 : 0) + gutter}px),calc(100vw - ${width}));top:clamp(0px,calc(anchor(${empty ? "top" : "center"}) - ${size / 2 + (empty ? 3 : 0)}px),calc(100dvh - ${size}px));width:${width};height:${size}px;position-visibility:anchors-visible;`)
       if(opened) {
         if(!editable()) { form.hidden = true; details.hidden = false; renderDetails() }
         anchors.bind(popup, container || empty ? button : notes.get(target)?.label ?? target, "inset:auto;position-area:bottom span-right;justify-self:start;align-self:start;margin:4px 0;position-try-fallbacks:flip-block,flip-inline,flip-block flip-inline,--ww-ui-popup-below,--ww-ui-popup-above;position-visibility:anchors-visible;")
@@ -462,12 +466,12 @@ export function createAttributionController(doc, options = {}) {
     if(empty) bridge.style.width = `${size}px`
     else bridge.style.removeProperty("width")
     const gutter = empty ? size : bridge.getBoundingClientRect().width || size
-    // Center the editing affordance on the right edge, below the delete control.
-    const left = Math.max(offset, Math.min(rect.right - (empty ? size / 2 : 0), view.innerWidth - gutter - offset))
-    const top = Math.max(0, Math.min(view.innerHeight - size, (rect.top + rect.bottom) / 2 - size / 2))
+    // Center the editing affordance on the top-left corner; saved credits stay in the right margin.
+    const left = Math.max(offset, Math.min(empty ? rect.left - size / 2 : rect.right, view.innerWidth - gutter - offset))
+    const top = Math.max(0, Math.min(view.innerHeight - size, (empty ? rect.top - 3 : (rect.top + rect.bottom) / 2) - size / 2))
     bridge.style.left = `${Math.max(0, left - offset)}px`
     bridge.style.top = `${top}px`
-    // Touch the right edge so reading hover reaches the button without a gap.
+    // Keep the bridge large enough for the saved credit's hover target.
     bridge.style.height = `${size}px`
     if(opened) {
       if(!editable()) { form.hidden = true; details.hidden = false; renderDetails() }

@@ -237,6 +237,7 @@ export type GraphicMode = "select" | "draw" | "lines" | "curves"
 export type GraphicSelectionState = {
   active: true
   capture: boolean
+  alternativeText?: string
   mode?: GraphicMode
   selectionCount?: number
   shape?: GraphicShapeType

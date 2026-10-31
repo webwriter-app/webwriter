@@ -1640,6 +1640,19 @@ export class MediaFeature extends EditorFeature {
     return changed
   }
 
+  private setResourceFile(media: Element, target: Element, file: Blob) {
+    if(!this.isEnabled || this.editor.isEditingLocked || !document.body.contains(media)
+      || target.parentElement !== media || !isTimedResourceElement(target, "source")
+      || sourceEditingBlocked(media, this.editor.schema)) return false
+    const source = this.editor.createMediaURL(file)
+    this.rememberSource(media, source, file instanceof File ? file.name : "Media file", "file")
+    this.editor.doc.stopCapturing()
+    target.setAttribute("src", source)
+    this.finishTimedMediaChange()
+    this.editor.doc.stopCapturing()
+    return true
+  }
+
   captureListeners = {
     loadedmetadata: this.handleVideoPlaybackChange,
     loadeddata: this.handleVideoPlaybackChange,
@@ -1687,12 +1700,18 @@ export class MediaFeature extends EditorFeature {
   }
 
   actions = {
-    setMediaFile: ({file, attribute, pickerId}: {type: "setMediaFile", file: Blob | null, attribute?: "poster", pickerId?: string}) => {
+    setMediaFile: ({file, attribute, pickerId, resource}: {type: "setMediaFile", file: Blob | null, attribute?: "poster", pickerId?: string,
+      resource?: {index: number, expected: Record<string, string>}}) => {
       if(pickerId !== undefined) {
         return this.pendingFile?.pickerId === pickerId ? this.pendingFile.apply(file) : false
       }
       const element = this.selectedMedia()
-      return element && file instanceof Blob ? this.setFile(element, file, attribute) : false
+      if(!element || !(file instanceof Blob)) return false
+      if(resource) {
+        const target = this.timedMediaResource("source", resource.index, resource.expected)
+        return target ? this.setResourceFile(element, target, file) : false
+      }
+      return this.setFile(element, file, attribute)
     },
     setMediaCrop: ({crop}: {type: "setMediaCrop", crop: import("../editor-bridge").ElementStyleMutation}) => {
       if(!this.isEnabled) return false
@@ -1703,9 +1722,12 @@ export class MediaFeature extends EditorFeature {
       this.refresh()
       return changed
     },
-    selectMediaFile: ({attribute, pickerId}: {type: "selectMediaFile", attribute?: "poster", pickerId?: string}) => {
+    selectMediaFile: ({attribute, pickerId, resource}: {type: "selectMediaFile", attribute?: "poster", pickerId?: string,
+      resource?: {index: number, expected: Record<string, string>}}) => {
       const element = this.selectedMedia()
-      if(!this.isEnabled || !element || attribute && !element.matches("video") || sourceEditingBlocked(element, this.editor.schema)) return false
+      const row = resource ? this.timedMediaResource("source", resource.index, resource.expected) : null
+      if(!this.isEnabled || !element || attribute && !element.matches("video") || resource && !row
+        || sourceEditingBlocked(element, this.editor.schema)) return false
       this.cancelSourceFile()
       const snapshot = this.sourceSnapshot(element)
       const sourceTarget = mediaSourceTarget(element, false)
@@ -1716,13 +1738,14 @@ export class MediaFeature extends EditorFeature {
         : element.matches("video") ? "video/*" : ".html,.htm,text/html"
       const pending = {picker, pickerId, apply: (file: Blob | null): boolean => {
         if(!valid() || !(file instanceof Blob)) { if(this.pendingFile === pending) this.cancelSourceFile(); return false }
-        try { return this.setFile(element, file, attribute) }
+        try { return row ? this.setResourceFile(element, row, file) : this.setFile(element, file, attribute) }
         finally { this.cancelSourceFile() }
       }}
       this.pendingFile = pending
       const valid = () => this.pendingFile === pending && this.isEnabled && document.body.contains(element)
         && !sourceEditingBlocked(element, this.editor.schema) && snapshot === this.sourceSnapshot(element)
         && sourceTarget === mediaSourceTarget(element, false)
+        && (!resource || this.resourceIn(element, "source", resource.index, resource.expected) === row)
       // The host opens its own picker while its click still has user activation.
       // Retain the same DOM guards used by the in-document picker.
       if(pickerId !== undefined) return true
@@ -1819,6 +1842,17 @@ export class MediaFeature extends EditorFeature {
       this.finishTimedMediaChange()
       return true
     },
+    captureTimedMediaResource: ({index, expected, mode}: {
+      type: "captureTimedMediaResource"
+      index: number
+      expected: Record<string, string>
+      mode: MediaCaptureMode
+    }) => {
+      const media = this.selectedTimedMedia()
+      if(!media || !this.timedMediaResource("source", index, expected)
+        || !mediaCaptureOptions(media.localName as MediaType).some(option => option.mode === mode)) return false
+      return this.openCapture(media, mode, true, undefined, {index, expected})
+    },
     moveTimedMediaResource: ({resource, index, expected, direction}: {
       type: "moveTimedMediaResource"
       resource: TimedMediaResourceType
@@ -1911,7 +1945,7 @@ export class MediaFeature extends EditorFeature {
       if(!isImageMapHotspotShape(shape)) throw new TypeError(`Unsupported hotspot shape '${String(shape)}'`)
       const image = this.selectedImage(false)
       const map = image ? this.associatedImageMap(image) : null
-      if(!image) return false
+      if(!image || isEmptyMedia(mediaContainerForNode(image) ?? image)) return false
       if(!map) {
         const pending = document.createElement("map")
         pending.setAttribute("name", this.uniqueImageMapName())
@@ -2091,6 +2125,7 @@ export class MediaFeature extends EditorFeature {
     }
     if(element.matches("picture, img")) {
       const image = this.imageForMedia(element, false)
+      state.hasSource = Boolean(image && !isEmptyMedia(element))
       const map = image ? this.associatedImageMap(image) : null
       state.imageMap = image && map ? {
         name: map.getAttribute("name") ?? "",
@@ -2370,11 +2405,14 @@ export class MediaFeature extends EditorFeature {
   }
 
   private resourceState(media: Element, resource: TimedMediaResourceType): TimedMediaResourceState[] {
-    return Array.from(media.childNodes).flatMap((node, index) => (
-      isTimedResourceElement(node, resource)
-        ? [{index, attributes: stateAttributes(node)}]
-        : []
-    ))
+    return Array.from(media.childNodes).flatMap((node, index) => {
+      if(!isTimedResourceElement(node, resource)) return []
+      const source = resource === "source" ? this.sourceLabels.get(media)?.get(node.getAttribute("src") ?? "") : undefined
+      return [{index, attributes: stateAttributes(node), ...(source ? {
+        sourceLabel: source.label || (source.kind === "capture" ? "Capture" : source.kind === "recording" ? "Recording" : "Media file"),
+        sourceKind: source.kind,
+      } : {})}]
+    })
   }
 
   private timedMediaResource(resource: TimedMediaResourceType, index: number, expected: Record<string, string>) {
@@ -2383,10 +2421,12 @@ export class MediaFeature extends EditorFeature {
       || !expected || typeof expected !== "object" || Array.isArray(expected)
       || Object.entries(expected).some(([name, value]) => !name || typeof value !== "string")) return null
     const media = this.selectedTimedMedia()
-    const target = media?.childNodes.item(index)
-    return target && isTimedResourceElement(target, resource) && equalAttributes(target, expected)
-      ? target
-      : null
+    return media ? this.resourceIn(media, resource, index, expected) : null
+  }
+
+  private resourceIn(media: Element, resource: TimedMediaResourceType, index: number, expected: Record<string, string>) {
+    const target = media.childNodes.item(index)
+    return target && isTimedResourceElement(target, resource) && equalAttributes(target, expected) ? target : null
   }
 
   private fallbackHTML(media: Element) {
@@ -2431,20 +2471,29 @@ export class MediaFeature extends EditorFeature {
     return true
   }
 
-  private openCapture(target: Element, mode: MediaCaptureMode, replace = false, attribute?: "poster") {
+  private openCapture(target: Element, mode: MediaCaptureMode, replace = false, attribute?: "poster",
+    resource?: {index: number, expected: Record<string, string>}) {
     const sourceTarget = mediaSourceTarget(target, false)
     const snapshot = this.sourceSnapshot(target)
     const valid = () => this.isEnabled && document.body.contains(target)
       && !sourceEditingBlocked(target, this.editor.schema)
       && (!attribute || target.matches("video"))
       && mediaCaptureOptions(attribute === "poster" ? "picture" : placeholderMediaType(target)).some(option => option.mode === mode)
-      && (replace || isEmptyMedia(target)) && this.sourceSnapshot(target) === snapshot && mediaSourceTarget(target, false) === sourceTarget
+      && (resource ? Boolean(this.resourceIn(target, "source", resource.index, resource.expected))
+        : (replace || isEmptyMedia(target)) && this.sourceSnapshot(target) === snapshot && mediaSourceTarget(target, false) === sourceTarget)
     if(!valid()) return false
     this.mediaCapture?.controller.close()
     const controller = new MediaCapture(mode, blob => {
       if(!valid()) return false
       const source = this.editor.createMediaURL(blob)
       this.rememberSource(target, source, "", mode.endsWith("image") ? "capture" : "recording")
+      if(resource) {
+        const row = this.resourceIn(target, "source", resource.index, resource.expected)
+        if(!row) return false
+        row.setAttribute("src", source)
+        this.finishTimedMediaChange()
+        return true
+      }
       return this.setSource(target, source, replace, attribute)
     }, () => {
       if(this.mediaCapture?.controller !== controller) return

@@ -1038,10 +1038,10 @@ describe("toolbox", () => {
     expect(tab.hasAttribute("data-available")).toBe(true)
   })
 
-  it("names selected element types without a generic Selection label", async () => {
+  it("names only the innermost selected element type without a generic Selection label", async () => {
     const toolbox = await mountToolbox()
-    const group = (localName: string, name: string, count: number) => ({
-      element: {localName, namespaceURI: "http://www.w3.org/1999/xhtml", path: null, name, attributes: {}},
+    const group = (localName: string, name: string, count: number, path: number[] | null = null) => ({
+      element: {localName, namespaceURI: "http://www.w3.org/1999/xhtml", path, name, attributes: {}},
       count, style: toolbox.elementStyle, styleProperties: [], configuredWidgetOptions: [],
     })
     toolbox.elementSelected = true
@@ -1049,9 +1049,10 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const edit = toolButton(toolbox, "Edit")
     expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph")
-    toolbox.selectedElementTypes = [group("p", "Paragraph", 1), group("demo-widget", "Demo widget", 1)]
+    toolbox.selectedElementTypes = [group("p", "Paragraph", 1, [0, 0]), group("section", "Section", 1, [0])]
     await toolbox.updateComplete
-    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph, Demo widget")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph")
+    expect(edit.querySelector(".toolbox-tab-label")?.textContent).toBe("Paragraph")
     expect(edit.closest(".toolbox-tab")!.hasAttribute("data-contextual")).toBe(true)
     toolbox.selectedElementTypes = []
     toolbox.selectionPath = []
@@ -1274,14 +1275,8 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     let drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Style", "Attributes"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Style"])
     expect(drawers.every(drawer => drawer.pane && !drawer.collapsed)).toBe(true)
-    const defaultAttributes = drawers[1].querySelector("element-attribute-editor")!
-    await defaultAttributes.updateComplete
-    expect(defaultAttributes.disabled).toBe(true)
-    expect(Array.from(defaultAttributes.shadowRoot!.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
-      "input, select, button",
-    )).every(control => control.disabled)).toBe(true)
 
     toolButton(toolbox, "Review").click()
     await toolbox.updateComplete
@@ -1339,7 +1334,7 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector(".developer-console-toggle")).not.toBeNull()
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
-    expect(drawers.map(drawer => drawer.label)).toEqual(["Style", "Attributes"])
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Style"])
   })
 })
 
@@ -1362,7 +1357,7 @@ it("limits the document Style drawer to Background", async () => {
 })
 
 
-it("enables heading Reset only for authored drawer styles and resets them together", async () => {
+it("enables Style Reset for any inline style and requests a complete reset", async () => {
   const toolbox = await mountToolbox()
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
@@ -1375,7 +1370,7 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
     computed: {width: "400px"}, context: {display: "block", parentDisplay: "block"},
   }
   await toolbox.updateComplete
-  expect(reset().disabled).toBe(true)
+  expect(reset().disabled).toBe(false)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {
     ...toolbox.elementStyle.inline,
     width: {value: "100px", priority: ""},
@@ -1388,20 +1383,22 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
   await toolbox.updateComplete
   expect(reset().disabled).toBe(false)
   const changes: unknown[] = []
-  toolbox.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  toolbox.addEventListener("element-style-reset", event => changes.push((event as CustomEvent).detail))
   reset().click()
-  expect(changes).toEqual([{styles: {color: null, width: null, padding: null, "border-radius": null, "border-color": null, opacity: null,
-    "padding-top": null, "border-top-left-radius": null, "border-left-color": null}}])
+  expect(changes).toEqual([null])
   toolbox.documentSelected = true
   await toolbox.updateComplete
-  expect(reset().disabled).toBe(true)
+  expect(reset().disabled).toBe(false)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {...toolbox.elementStyle.inline, "background-color": {value: "red", priority: ""}}}
   await toolbox.updateComplete
   reset().click()
-  expect(changes.at(-1)).toEqual({styles: {"background-color": null}})
+  expect(changes).toHaveLength(2)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {}}
   await toolbox.updateComplete
   expect(reset().disabled).toBe(true)
+  toolbox.elementStyle = {...toolbox.elementStyle, hasInlineStyles: true}
+  await toolbox.updateComplete
+  expect(reset().disabled).toBe(false)
 })
 
 

@@ -61,7 +61,7 @@ const expectedChecks = [
   "SVG overflow fades while retaining native shape selection",
   "standalone SVG arrowheads remain visible in canvas previews and exports",
   "editing affordances align with media inside symmetric scrollbar gutters",
-  "document scrollbar gutters stay symmetric as content grows",
+  "document background reaches the left edge without shifting the reading column",
   "empty Details retains summary height and padding in standalone documents",
   "media stays centered in editing and standalone documents",
   "unfloated placements align within the content column",
@@ -237,6 +237,10 @@ const swiftDeveloperDir = process.env.WEBKIT_DEVELOPER_DIR ?? process.env.DEVELO
     ? bundledXcodeDeveloperDir
     : undefined)
 const expectedSmokeChecks = [
+  "copyright affordance meets the selected element top-left corner",
+  "document frames align with text",
+  "empty document starts at its paragraph",
+  "editor page starts with a visible document",
   "typing after deleting the initial paragraph stays in a paragraph",
   "native widget grouping dialog and processing instruction roundtrip",
   "native Range and Selection",

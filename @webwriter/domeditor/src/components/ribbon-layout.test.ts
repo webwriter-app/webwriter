@@ -27,8 +27,8 @@ describe("element drawer without layout presets", () => {
   })
 
   it.each(["grid", "flex", "columns"] as const)("does not offer old layout controls for %s content", kind => {
-    const groups = contextDrawerPolicy({menu: "Edit", surface: "toolbox", activeTool: "Edit", layout: kind, attributes: true})
-    expect(groups.map(group => group.label)).toEqual(["Attributes"])
+    const groups = contextDrawerPolicy({menu: "Edit", surface: "toolbox", activeTool: "Edit", layout: kind})
+    expect(groups.map(group => group.label)).toEqual([])
   })
 })
 

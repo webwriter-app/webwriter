@@ -1106,6 +1106,30 @@ describe("CSS-only Slides layout", () => {
     expect(editor.appendix.querySelector("[part=slide-navigation-actions]")).toBeNull()
   })
 
+  it("reuses the visible slide until scrolling or authored changes invalidate its geometry", () => {
+    const [one, two] = seed()
+    const viewport = one.parentElement!
+    Object.defineProperty(viewport, "clientWidth", {configurable: true, value: 640})
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360))
+    const first = vi.spyOn(one, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 640, 360))
+    const second = vi.spyOn(two, "getBoundingClientRect").mockReturnValue(new DOMRect(640, 0, 640, 360))
+    expect(editor.features.slides.current()).toBe(one)
+    const measurements = first.mock.calls.length + second.mock.calls.length
+    expect(editor.features.slides.current()).toBe(one)
+    expect(first.mock.calls.length + second.mock.calls.length).toBe(measurements)
+    one.classList.add("◆test-marker")
+    expect(editor.features.slides.current()).toBe(one)
+    expect(first.mock.calls.length + second.mock.calls.length).toBe(measurements)
+    one.classList.remove("◆test-marker")
+    viewport.scrollLeft = 640
+    first.mockReturnValue(new DOMRect(-640, 0, 640, 360))
+    second.mockReturnValue(new DOMRect(0, 0, 640, 360))
+    expect(editor.features.slides.current()).toBe(two)
+    two.setAttribute("title", "changed outside the editor")
+    editor.features.slides.current()
+    expect(first.mock.calls.length + second.mock.calls.length).toBeGreaterThan(measurements + 2)
+  })
+
   it("removes the bubble's slide and keeps neighboring previous/next links correct", async () => {
     const [one, two] = seed(); $.move(two.firstElementChild!)
     await settle()

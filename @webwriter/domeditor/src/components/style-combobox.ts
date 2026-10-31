@@ -15,6 +15,10 @@ export class StyleCombobox extends EditorCombobox {
     :host {height: 1.7rem; --metadata-combobox-height: 1.7rem; --metadata-combobox-font-size: .68rem;}
     .control {border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-radius: 4px;}
     :host([open]) .control {border-radius: 4px 4px 0 0;}
+    :host([language-picker]) .control {border-radius: 0 0 4px 4px; background: #fff;}
+    :host([language-picker][open]) .control {border-radius: 0;}
+    :host([language-picker]) .toggle {display: none;}
+    :host([language-picker]) .listbox {max-height: min(26rem, var(--language-list-max-height, 26rem));}
     :host([joined]) .control {border-top-left-radius: 0; border-bottom-left-radius: 0;}
     .control:focus-within {border-color: #c5ccd5; outline: 2px solid #b9d7f5; outline-offset: 0;}
     input {padding: .2rem;}

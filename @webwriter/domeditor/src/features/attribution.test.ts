@@ -279,7 +279,7 @@ describe("element attribution editing", () => {
     expect(element.getAttribute(attributionAttributes.license)).toBe("MIT")
   })
 
-  it.each([false, true])("aligns the copyright affordance below the delete control at the right midpoint (capture: %s)", captured => {
+  it.each([false, true])("aligns the copyright affordance at the document element's top-left corner (capture: %s)", captured => {
     const element = start()
     bounds(element)
     const original = element.innerHTML
@@ -302,6 +302,9 @@ describe("element attribution editing", () => {
     expect(bridge.style.width).toBe("")
     expect(bridge.style.height).toBe("")
     expect(bridge.getAttribute("part")).toContain("anchor-control-")
+    const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
+    expect(state.sheets.get(document).source).toContain("anchor(left) - 10px")
+    expect(state.sheets.get(document).source).toContain("anchor(top) - 13px")
     expect(button().getAttribute("part")).toBe("transform-overlay-button transform-overlay-attribution")
     expect(button().querySelector("svg")!.hasAttribute("hidden")).toBe(true)
     expect(button().classList.contains("empty-attribution")).toBe(true)
@@ -314,6 +317,40 @@ describe("element attribution editing", () => {
     button().click()
     expect(popup().hidden).toBe(false)
     expect(input("name").value).toBe("")
+  })
+
+  it.each(["pointerup", "pointercancel"] as const)("keeps the copyright affordance visible while a drag range includes one whole element until %s", eventType => {
+    const element = start()
+    bounds(element)
+    const original = element.innerHTML
+    select(element)
+    expect(button().hidden).toBe(false)
+
+    editor!.features.selection.isInDragSelection = true
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(button().hidden).toBe(false)
+    editor!.features.attribution.refresh()
+    expect(button().hidden).toBe(false)
+
+    document.dispatchEvent(new PointerEvent(eventType, {bubbles: true}))
+    expect(editor!.features.selection.isInDragSelection).toBe(false)
+    expect(button().hidden).toBe(false)
+    expect(element.innerHTML).toBe(original)
+    expect(editor!.toHTML(true)).not.toContain("◆attribution-ui")
+  })
+
+  it("compensates the Firefox document gutter when anchoring the copyright affordance", () => {
+    const element = start()
+    bounds(element)
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Firefox")
+    vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth - 30)
+    document.documentElement.style.scrollbarGutter = "stable both-edges"
+    try {
+      select(element)
+      const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
+      expect(state.sheets.get(document).source).toContain("anchor(left) - 25px")
+    }
+    finally { document.documentElement.style.removeProperty("scrollbar-gutter") }
   })
 
   describe.each(["canvas", "slides"] as const)("%s copyright affordance", mode => {
@@ -382,6 +419,7 @@ describe("element attribution editing", () => {
     const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
     expect(control.parentElement).toBe(overlay)
     expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.getAttribute("part")).toContain("transform-overlay-board-control")
     expect(control.hidden).toBe(false)
     editor!.features.board.refresh()
     expect(control.getAttribute("aria-label")).toBe("Copyright and attribution")
@@ -391,6 +429,32 @@ describe("element attribution editing", () => {
     expect(editor!.setDocumentLayout("document", "board")).toBe(true)
     await settle()
     expect(control.parentElement).toBe(ui().querySelector(".bridge"))
+    expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
+  })
+
+  it.each(["card", "column"] as const)("places the copyright affordance on the grey %s frame and selects its element", async role => {
+    start()
+    expect(editor!.setDocumentLayout("board", "document")).toBe(true)
+    const board = editor!.features.board, column = board.columns()[0]
+    const target = role === "card" ? board.cards(column)[0] : column
+    bounds(target)
+    const content = target.querySelector(role === "card" ? "p" : "h2")!
+    $.move(content); editor!.features.selection.processSelection(); board.refresh()
+    editor!.features.attribution.refresh()
+    await settle()
+    const overlay = board.transformOverlay(target)!
+    const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
+    expect($.selectedElement).not.toBe(target)
+    expect(control.parentElement).toBe(overlay)
+    expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.getAttribute("part")).toContain("transform-overlay-board-control")
+    control.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    expect($.selectedElement).toBe(target)
+    expect(control.hidden).toBe(false)
+    control.click()
+    expect(popup().hidden).toBe(false)
+    ui().querySelector<HTMLButtonElement>(".close")!.click()
+    expect(editor!.setDocumentLayout("document", "board")).toBe(true)
     expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
   })
 

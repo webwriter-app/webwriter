@@ -23,6 +23,8 @@ export class CanvasFeature extends EditorFeature {
   private layoutStylesheet: CSSStyleSheet | null = null
   private observer: MutationObserver | null = null
   private frame: number | null = null
+  private cameraFrame: number | null = null
+  private cameraZoom = 1
   private signature = ""
   private hand = false
   private spaceHand = false
@@ -177,7 +179,7 @@ export class CanvasFeature extends EditorFeature {
     const outline = this.startingViewOutline
     if(!outline) return
     const frame = this.active ? canvasStartingView() : null
-    outline.hidden = !frame
+    if(outline.hidden !== !frame) outline.hidden = !frame
     if(!frame) { this.anchors.release(outline); return }
     if(this.editor.features.transformation.boxTransformed(frame)) {
       this.anchors.release(outline)
@@ -374,12 +376,27 @@ export class CanvasFeature extends EditorFeature {
   }
 
   private cameraChanged = () => {
-    this.updateStartingViewOutline()
-    this.editor.features.transformation.updateInfo()
-    this.editor.features.layout.refresh()
-    this.editor.features.graphic.refresh()
+    const zoom = this.viewer?.zoom ?? 1
+    const zoomChanged = zoom !== this.cameraZoom
+    this.cameraZoom = zoom
+    if(zoomChanged) {
+      if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
+      this.cameraFrame = null
+      this.updateStartingViewOutline()
+      this.editor.features.transformation.updateInfo()
+      this.editor.features.layout.refresh()
+      this.editor.features.graphic.refresh()
+      this.editor.postSelectionPath()
+    }
+    else if(this.cameraFrame === null) this.cameraFrame = requestAnimationFrame(() => {
+      this.cameraFrame = null
+      if(!this.active || !this.isEnabled) return
+      this.updateStartingViewOutline()
+      this.editor.features.transformation.updateInfo()
+      this.editor.features.layout.refresh()
+      this.editor.features.graphic.refresh()
+    })
     document.dispatchEvent(new Event("scroll"))
-    this.editor.postSelectionPath()
   }
 
   private stopPan() { this.viewer?.stopPan() }
@@ -619,6 +636,8 @@ export class CanvasFeature extends EditorFeature {
     this.observer?.disconnect(); this.observer = null
     if(this.frame !== null) cancelAnimationFrame(this.frame)
     this.frame = null
+    if(this.cameraFrame !== null) cancelAnimationFrame(this.cameraFrame)
+    this.cameraFrame = null; this.cameraZoom = 1
     window.removeEventListener("blur", this.release)
     window.removeEventListener("resize", this.schedule)
     this.restoreSlot()

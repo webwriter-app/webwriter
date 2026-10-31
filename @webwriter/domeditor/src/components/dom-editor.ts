@@ -84,6 +84,7 @@ import {
   isTimedMediaResourceType,
   isWebsiteType,
   mediaAttributeOptions,
+  mediaCaptureModes,
   timedMediaResourceAttributeOptions,
   type MediaSelectionState,
 } from "../media"
@@ -1042,7 +1043,7 @@ export class DomEditor extends LitElement {
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
     .document-layouts-documents {position: relative; align-self: stretch; margin-left: auto; width: min(20.45rem, 100%); min-width: 0}
-    .document-layouts-documents ul {position: absolute; inset: 0; overflow-y: auto; display: grid; grid-auto-rows: 1.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
+    .document-layouts-documents ul {position: absolute; inset: 0; overflow-y: auto; scrollbar-width: thin; display: grid; grid-auto-rows: 1.6rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .15rem .45rem; list-style: none; margin: 0; padding: 0}
     .document-layouts-documents li {min-width: 0}
     .document-layouts-documents li:last-child:nth-child(odd) {grid-column: 1 / -1}
     .document-layout-document {display: flex; align-items: center; gap: .35rem; width: 100%; min-width: 0; height: 100%; border: 1px solid transparent; border-radius: .25rem; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: .15rem .3rem}
@@ -3721,12 +3722,12 @@ export class DomEditor extends LitElement {
     })
   }
 
-  private async pickMediaFile(attribute?: "poster") {
+  private async pickMediaFile(attribute?: "poster", resource?: {index: number, expected: Record<string, string>}) {
     const media = this.mediaSelection
     if(!media || attribute && media.type !== "video") return
     const accept = attribute === "poster" || media.type === "picture" || media.type === "img" ? "image/*"
       : media.type === "audio" ? "audio/*" : media.type === "video" ? "video/*" : ".html,.htm,text/html"
-    return this.pickEditorFile({type: "selectMediaFile", attribute}, accept)
+    return this.pickEditorFile({type: "selectMediaFile", attribute, resource}, accept)
   }
 
   private async pickEditorFile(action: Extract<EditingAction, {type: "selectMediaFile" | "importGraphic"}>, accept: string) {
@@ -5717,6 +5718,8 @@ export class DomEditor extends LitElement {
       direction?: unknown
       html?: unknown
       expectedHTML?: unknown
+      file?: unknown
+      mode?: unknown
     }>).detail
     if((detail?.type !== "audio" && detail?.type !== "video") || typeof detail.action !== "string") {
       this.focusEditor()
@@ -5748,6 +5751,19 @@ export class DomEditor extends LitElement {
     }
     const index = detail.index as number
     const expected = detail.expected as Record<string, string>
+    if(detail.resource === "source" && detail.action === "pick-file") {
+      void this.pickMediaFile(undefined, {index, expected})
+      return
+    }
+    if(detail.resource === "source" && detail.action === "set-file" && detail.file instanceof Blob) {
+      void this.execute({type: "setMediaFile", file: detail.file, resource: {index, expected}})
+      return
+    }
+    if(detail.resource === "source" && detail.action === "capture" && isMediaCaptureMode(detail.mode)
+      && mediaCaptureModes[detail.mode].media === detail.type) {
+      void this.execute({type: "captureTimedMediaResource", index, expected, mode: detail.mode})
+      return
+    }
     if(detail.action === "remove") {
       void this.execute({type: "removeTimedMediaResource", resource: detail.resource, index, expected})
       return
@@ -6692,6 +6708,12 @@ export class DomEditor extends LitElement {
     }).finally(() => this.focusEditor())
   }
 
+  private handleGraphicAlternativeTextChange = (event: Event) => {
+    const value = (event as CustomEvent<{value?: unknown}>).detail?.value
+    if(value !== null && typeof value !== "string") return
+    void this.execute({type: "setGraphicAlternativeText", value})
+  }
+
   private handleGraphicLayerAction = (event: Event) => {
     const detail = (event as CustomEvent<{operation?: unknown, index?: unknown}>).detail
     if(!isGraphicLayerOperation(detail?.operation)
@@ -6921,6 +6943,7 @@ export class DomEditor extends LitElement {
     return {
       target,
       inline,
+      ...(typeof value.hasInlineStyles === "boolean" ? {hasInlineStyles: value.hasInlineStyles} : {}),
       ...(Array.isArray(value.authoredProperties) ? {
         authoredProperties: value.authoredProperties.filter((name): name is string => typeof name === "string"),
       } : {}),
@@ -7015,6 +7038,13 @@ export class DomEditor extends LitElement {
       this.elementStyle = previousState
       return this.refreshElementStyleState()
     })
+  }
+
+  private handleElementStyleReset = (event: Event) => {
+    const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
+      && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
+    void this.execute({type: "resetStyle", ...(topLevel ? {topLevel: true} : {})})
+      .then(() => this.refreshElementStyleState())
   }
 
   private handleElementStyleTargetHover = (event: Event) => {
@@ -7938,9 +7968,11 @@ export class DomEditor extends LitElement {
       "layout-action": this.handleLayoutAction.bind(this),
       "table-style-change": this.handleTableStyleChange.bind(this),
       "graphic-parameter-change": this.handleGraphicParameterChange.bind(this),
+      "graphic-alternative-text-change": this.handleGraphicAlternativeTextChange.bind(this),
       "graphic-layer-action": this.handleGraphicLayerAction.bind(this),
       "graphic-viewport-action": this.handleGraphicViewportAction.bind(this),
       "element-style-change": this.handleElementStyleChange.bind(this),
+      "element-style-reset": this.handleElementStyleReset.bind(this),
       "element-style-target-hover": this.handleElementStyleTargetHover.bind(this),
       "element-style-state-request": this.queueElementStyleRefresh.bind(this),
       "history-state-request": this.requestHistoryState.bind(this),
