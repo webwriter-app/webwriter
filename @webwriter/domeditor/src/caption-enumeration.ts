@@ -12,8 +12,8 @@ export type CaptionEnumeration = {figure: CaptionSeries, table: CaptionSeries}
 export const captionEnumerationSelector = "style[data-ww-caption-enumeration]"
 
 export const defaultCaptionEnumeration = (): CaptionEnumeration => ({
-  figure: {enabled: true, style: "decimal", start: 1, separator: ": ", labels: {default: "Fig.", en: "Fig.", de: "Abb.", fr: "Fig.", es: "Fig."}},
-  table: {enabled: true, style: "decimal", start: 1, separator: ": ", labels: {default: "Table", en: "Table", de: "Tab.", fr: "Tableau", es: "Tabla"}},
+  figure: {enabled: true, style: "decimal", start: 1, separator: ": ", labels: {default: "Fig."}},
+  table: {enabled: true, style: "decimal", start: 1, separator: ": ", labels: {default: "Table"}},
 })
 
 export function isCaptionEnumeration(value: unknown): value is CaptionEnumeration {

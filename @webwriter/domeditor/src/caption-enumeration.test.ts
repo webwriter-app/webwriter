@@ -15,6 +15,7 @@ describe("caption enumeration", () => {
     const config = defaultCaptionEnumeration()
     config.figure.start = 4
     config.figure.style = "upper-roman"
+    config.figure.labels.de = "Abb."
     config.table.enabled = false
     writeCaptionEnumeration(doc.head, config)
     writeCaptionEnumeration(doc.head, config)
@@ -27,6 +28,13 @@ describe("caption enumeration", () => {
     expect(source).toContain("counter(ww-figures, upper-roman)")
     expect(source).not.toContain("table > caption")
     expect(source).toContain('figcaption:lang(de)::before')
+  })
+
+  it("uses one label for each series by default", () => {
+    const config = defaultCaptionEnumeration()
+    expect(config.figure.labels).toEqual({default: "Fig."})
+    expect(config.table.labels).toEqual({default: "Table"})
+    expect(captionEnumerationCSS(config)).not.toContain(":lang(")
   })
 
   it("puts more specific language overrides last regardless of configuration order", () => {
