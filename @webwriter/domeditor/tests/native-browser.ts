@@ -1603,6 +1603,31 @@ await check("insertion and saved-reader controls align inside symmetric scrollba
         assert(Math.abs(bubble.left + arrow - anchor.left - anchor.width / 2) < 1, `saved feedback arrow drifted from its link: ${JSON.stringify({bubble: bubble.toJSON(), anchor: anchor.toJSON(), arrow, gutter, scroll})}`)
       }
     }
+    const figure = savedDoc.querySelector<HTMLElement>("figure#photo")!
+    const image = figure.querySelector("img")!
+    const permalink = appendix.querySelector<HTMLAnchorElement>('.◆document-reader-control[aria-label="figure controls"] a')!
+    const fullscreenButton = appendix.querySelector<HTMLButtonElement>('.◆document-reader-control[aria-label="figure controls"] button')!
+    figure.style.transform = "translateX(26px)"
+    await layoutFrame()
+    const transformedMedia = image.getBoundingClientRect()
+    assert(Math.abs(fullscreenButton.getBoundingClientRect().left - (transformedMedia.right - 40)) < 1
+      && Math.abs(fullscreenButton.getBoundingClientRect().top - (transformedMedia.top + 8)) < 1,
+    "saved fullscreen button did not follow transformed media")
+    assert(Math.abs(permalink.getBoundingClientRect().top - figure.getBoundingClientRect().top) < 1
+      && permalink.style.top !== "" && fullscreenButton.style.left !== "",
+    "saved reader controls did not use measured positions for transformed anchors")
+    figure.style.removeProperty("transform")
+    await layoutFrame()
+    assert(permalink.style.top === "" && fullscreenButton.style.left === ""
+      && figure.classList.toString().includes("◆anchor-target-"),
+    "saved reader controls did not restore native anchors after the transform")
+    figure.style.translate = "26px 0px"
+    await layoutFrame()
+    const translatedMedia = image.getBoundingClientRect()
+    assert(Math.abs(fullscreenButton.getBoundingClientRect().left - (translatedMedia.right - 40)) < 1
+      && fullscreenButton.style.left !== "",
+    "saved fullscreen button did not follow an individual translate")
+    figure.style.removeProperty("translate")
   }
   finally {
     (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()

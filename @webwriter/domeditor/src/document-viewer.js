@@ -89,6 +89,24 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     return root.clientWidth && getComputedStyle(root).scrollbarGutter?.includes("both-edges")
       ? Math.max(0, window.innerWidth - root.clientWidth) : 0
   }
+  // Anchors in older WebKit use pre-transform geometry. The reader's measured
+  // fallback also handles transforms on ancestors of the authored target.
+  const transformedAnchor = element => {
+    for(let current = element; current; current = current.parentElement) {
+      const style = getComputedStyle(current)
+      if(["transform", "translate", "rotate", "scale"].some(name => style[name] && style[name] !== "none")
+        || (parseFloat(style.zoom) || 1) !== 1) return true
+      if(current === body) break
+    }
+    return false
+  }
+  const animatingAnchor = element => {
+    for(let current = element; current; current = current.parentElement) {
+      if(current.getAnimations?.().some(animation => animation.playState === "running")) return true
+      if(current === body) break
+    }
+    return false
+  }
   const style = document.createElement("style")
   style.textContent = `
     .◆document-reader-control { display: contents; }
@@ -465,11 +483,15 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     feedbackAnchor = null
     feedback.hidden = true
     feedback.textContent = ""
+    feedback.style.removeProperty("left")
+    feedback.style.removeProperty("top")
   }
   const positionFeedback = (offset = fixedGutterOffset()) => {
     if(!feedbackAnchor) return
     if(!feedbackAnchor.isConnected) { hideFeedback(); return }
-    if(positioner) {
+    if(positioner && !transformedAnchor(feedbackAnchor)) {
+      feedback.style.removeProperty("left")
+      feedback.style.removeProperty("top")
       positioner.bind(feedback, feedbackAnchor,
         "position-area:top center;position-try-fallbacks:flip-block;position-visibility:anchors-visible;")
       positioner.refresh()
@@ -484,6 +506,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
       })
       return
     }
+    positioner?.release(feedback)
     const rect = feedbackAnchor.getBoundingClientRect()
     const bubble = feedback.getBoundingClientRect()
     const center = rect.left + rect.width / 2
@@ -564,6 +587,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     frame = 0
     if(destroyed) return
     const offset = fixedGutterOffset()
+    let movingAnchor = false
     updateReferences()
     const current = targets(body)
     const gutterTarget = current.find(target => target.kind === "heading" && target.element.getBoundingClientRect().width > 0)
@@ -610,15 +634,20 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
         const captionInset = target.caption ? (parseFloat(style.paddingTop) || 0) + (parseFloat(style.borderTopWidth) || 0) : 0
         const captionBottomInset = target.caption ? (parseFloat(style.paddingBottom) || 0) + (parseFloat(style.borderBottomWidth) || 0) : 0
         const firstLineHeight = Math.min(Math.max(0, rect.height - captionInset - captionBottomInset), lineHeight)
-        if(positioner) {
+        if(positioner && !transformedAnchor(positionAnchor)) {
+          control.permalink.style.removeProperty("left")
+          control.permalink.style.removeProperty("top")
           control.permalink.style.setProperty("--reader-gutter-left", `${Math.max(0, (gutter ?? targetRect.left)) - offset}px`)
           control.permalink.style.setProperty("--reader-caption-offset", `${target.kind === "figure" && !target.caption ? 0 : captionInset + firstLineHeight / 2 - 14}px`)
           positioner.bind(control.permalink, positionAnchor,
             "left:calc(var(--reader-gutter-left) - 30px);top:calc(anchor(top) + var(--reader-caption-offset));position-visibility:anchors-visible;")
         }
         else {
+          positioner?.release(control.permalink)
           control.permalink.style.left = `${left - offset}px`
           control.permalink.style.top = `${target.kind === "figure" && !target.caption ? targetRect.top : rect.top + captionInset + firstLineHeight / 2 - 14}px`
+          if(visible && (hovered || control.permalink.matches(":focus") || feedbackAnchor === control.permalink)
+            && animatingAnchor(positionAnchor)) movingAnchor = true
         }
       }
       if(control.fullscreen) {
@@ -630,14 +659,19 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
         control.media = media
         control.fullscreen.hidden = !canFullscreen(target.element) || mediaRect.width <= 0 || mediaRect.height <= 0
           || mediaStyle.display === "none" || mediaStyle.visibility === "hidden"
-        control.group.toggleAttribute("data-fullscreen-visible", Boolean(inside(mediaRect)))
-        if(positioner) {
+        const fullscreenVisible = Boolean(inside(mediaRect))
+        control.group.toggleAttribute("data-fullscreen-visible", fullscreenVisible)
+        if(positioner && !transformedAnchor(media)) {
+          control.fullscreen.style.removeProperty("left")
+          control.fullscreen.style.removeProperty("top")
           positioner.bind(control.fullscreen, media,
             "left:calc(anchor(right) - 40px);top:calc(anchor(top) + 8px);position-visibility:anchors-visible;")
         }
         else {
+          positioner?.release(control.fullscreen)
           control.fullscreen.style.left = `${mediaRect.right - 40 - offset}px`
           control.fullscreen.style.top = `${mediaRect.top + 8}px`
+          if(visible && (fullscreenVisible || control.fullscreen.matches(":focus")) && animatingAnchor(media)) movingAnchor = true
         }
       }
       if(!control.permalink && control.fullscreen?.hidden) control.group.hidden = true
@@ -647,6 +681,7 @@ export function mountDocumentReader(licenses = [], appIcon = "", formatReference
     // no matching leading gutter is reserved.
     const rootWidth = document.documentElement.clientWidth
     updatePane(rootWidth ? Math.max(0, window.innerWidth - rootWidth) : 0)
+    if(movingAnchor) schedule()
   }
   const schedule = () => { if(!frame && !destroyed) frame = requestAnimationFrame(update) }
   const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule)
