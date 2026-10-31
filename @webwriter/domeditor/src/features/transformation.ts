@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, closestAlignment, atomicEditingContainer, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, closestAlignment, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {SVG_NAMESPACE, standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
@@ -9,7 +9,6 @@ import {captionIconSource} from "../caption-icon"
 import {mathRoot} from "../math"
 import {captionedFigureContent} from "../figure-layout.js"
 import {canvasGridSize, isCanvasStartingView} from "../canvas-viewer.js"
-import type {RelativePosition} from "yjs"
 import {createAnchorPositioner} from "../utility"
 import {isAuthoredMutation} from "../editor-artifacts"
 
@@ -50,7 +49,6 @@ type Gesture = {
   crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
   endUndoGroup: () => void
   group?: {members: GroupMember[], transform: DOMMatrix}
-  textSelection?: {range: Range, backwards: boolean, start: RelativePosition | null, end: RelativePosition | null}
 }
 
 /** Selection-owned spatial controls in the shadow appendix.
@@ -1029,12 +1027,6 @@ export class TransformationFeature extends EditorFeature {
     const cropBox = media ? this.boxGeometry(media, false) : null
     if(mode === "crop" && (!media || !insets || !cropBox || cropBox.width <= 0 || cropBox.height <= 0
       || !cropBox.matrix.is2D || Math.abs(cropBox.matrix.a * cropBox.matrix.d - cropBox.matrix.b * cropBox.matrix.c) < 1e-8)) return false
-    const selection = document.getSelection()
-    const textSelection: Gesture["textSelection"] = mode === "move" && this.#isFreeformItem(target) && selection?.rangeCount === 1
-      && !this.editor.features.selection.isCaptureSelection && !this.editor.features.table.hasCellSelection
-      && $.isTextSelection && target.contains(selection.anchorNode) && target.contains(selection.focusNode)
-      && !atomicEditingContainer(selection.anchorNode, this.editor.schema) && !atomicEditingContainer(selection.focusNode, this.editor.schema)
-      ? {range: selection.getRangeAt(0).cloneRange(), backwards: $.isBackwards, start: null, end: null} : undefined
     if(this.#isFreeformItem(target)) {
       document.body.focus({preventScroll: true})
       this.editor.features.selection.selectElement(target)
@@ -1050,17 +1042,12 @@ export class TransformationFeature extends EditorFeature {
     const imageStyle = document.createElement("div").style
     imageStyle.cssText = image?.style.cssText ?? ""
     const endUndoGroup = this.editor.doc.beginUndoGroup()
-    if(textSelection) {
-      const {range} = textSelection
-      textSelection.start = this.editor.doc.relativePositionFromDOMPoint(range.startContainer, range.startOffset)
-      textSelection.end = this.editor.doc.relativePositionFromDOMPoint(range.endContainer, range.endOffset)
-    }
     this.#gesture = {
       target, parent: target.parentElement, mode, handle,
       pointerId: event instanceof PointerEvent ? event.pointerId : undefined,
       x: event.clientX, y: event.clientY, rect: (rotationTarget ?? target).getBoundingClientRect(), ...this.#size(target),
       matrix, parentMatrix: this.#matrix(renderedParentElement(rotationTarget ?? target)), rotate: this.#angle(getComputedStyle(rotationTarget ?? target).getPropertyValue("rotate")), scale: this.#scale(style.getPropertyValue("scale")),
-      initial, written: new Map(), moved: false, textSelection,
+      initial, written: new Map(), moved: false,
       image: image && this.#canTransform(image) ? {target: image, parent: image.parentElement, initial: imageStyle, written: new Map()} : undefined,
       canvas: mode === "scale" ? this.#canvasViewport(target) : undefined,
       crop: media && insets && cropBox ? {target: media, parent: media.parentElement, width: cropBox.width, height: cropBox.height,
@@ -1617,19 +1604,6 @@ export class TransformationFeature extends EditorFeature {
     document.body.classList.remove(...cropDirections.map(direction => `◆transform-cropping-${direction}`))
     this.#clearDrop()
     this.editor.features.manipulation.clearFloatDropTargets()
-    const textSelection = gesture.textSelection
-    if(valid && gesture.moved && textSelection && !this.editor.isEditingLocked && !this.editor.features.selection.isCaptureSelection && $.selectedElement === target
-      && target.contains(textSelection.range.startContainer) && target.contains(textSelection.range.endContainer)) {
-      // A border click selects the box; a drag lets typing continue in its
-      // text selection. Relative positions follow local and remote text edits.
-      this.editor.doc.syncFromDOM()
-      const start = textSelection.start && this.editor.doc.domPointFromRelativePosition(textSelection.start)
-      const end = textSelection.end && this.editor.doc.domPointFromRelativePosition(textSelection.end)
-      if(start && end && target.contains(start.node) && target.contains(end.node)) {
-        const [anchor, focus] = textSelection.backwards ? [end, start] : [start, end]
-        $.selectRange(anchor.node, anchor.offset, focus.node, focus.offset)
-      }
-    }
     gesture.endUndoGroup()
     if(valid) {
       if(gesture.captured && !cancel && !gesture.moved && (gesture.mode === "move" || gesture.mode === "scale")) {
@@ -1784,6 +1758,10 @@ export class TransformationFeature extends EditorFeature {
       const handle = event.composedPath()[0]
       if(!(handle instanceof HTMLElement) || !this.overlay.contains(handle)) return
       if(this.editor.isEditingLocked) { event.preventDefault(); event.stopImmediatePropagation(); return }
+      if(!this.#group.length && this.overlay.getAttribute("part")?.split(/\s+/).includes("transform-overlay-content-selected")) {
+        const target = this.target
+        if(target) this.editor.features.selection.selectElement(target)
+      }
       if(handle.dataset.transformMode === "move" && handle.draggable) {
         // Leave the native default available so the button can start a node drag.
         event.stopImmediatePropagation()

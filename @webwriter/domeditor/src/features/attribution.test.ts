@@ -431,6 +431,30 @@ describe("element attribution editing", () => {
     expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
   })
 
+  it.each(["card", "column"] as const)("places the copyright affordance on the grey %s frame and selects its element", async role => {
+    start()
+    expect(editor!.setDocumentLayout("board", "document")).toBe(true)
+    const board = editor!.features.board, column = board.columns()[0]
+    const target = role === "card" ? board.cards(column)[0] : column
+    bounds(target)
+    const content = target.querySelector(role === "card" ? "p" : "h2")!
+    $.move(content); editor!.features.selection.processSelection(); board.refresh()
+    editor!.features.attribution.refresh()
+    await settle()
+    const overlay = board.transformOverlay(target)!
+    const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
+    expect($.selectedElement).not.toBe(target)
+    expect(control.parentElement).toBe(overlay)
+    expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    control.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
+    expect($.selectedElement).toBe(target)
+    control.click()
+    expect(popup().hidden).toBe(false)
+    ui().querySelector<HTMLButtonElement>(".close")!.click()
+    expect(editor!.setDocumentLayout("document", "board")).toBe(true)
+    expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
+  })
+
   it.each(["card", "grouped column"] as const)("edits attribution on a %s board frame", async role => {
     start()
     expect(editor!.setDocumentLayout("board", "document")).toBe(true)

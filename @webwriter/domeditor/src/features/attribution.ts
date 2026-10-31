@@ -49,7 +49,13 @@ export class AttributionFeature extends EditorFeature {
         if(this.editor.features.selection.isInDragSelection) return null
         const target = this.editor.features.selection.captureSelectedElement
           ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
-        return target ? atomicEditingContainer(target, this.editor.schema) ?? target : null
+        const owner = target ? atomicEditingContainer(target, this.editor.schema) ?? target : null
+        if(this.editor.features.board.active) {
+          const node = owner ?? document.getSelection()?.anchorNode ?? null
+          return this.editor.features.board.containingCard(node)
+            ?? this.editor.features.board.containingColumn(node) ?? owner
+        }
+        return owner
       },
       append: element => this.editor.addAppendix(element),
       save: (elements, values) => this.save(elements, values),

@@ -1487,7 +1487,7 @@ describe("selection-owned transformation", () => {
       return article
     }
 
-    it.each([[2, 2], [1, 4], [4, 1]])("keeps the text selection %i → %i after dragging a text box", (anchorOffset, focusOffset) => {
+    it.each([[2, 2], [1, 4], [4, 1]])("keeps the text box element-selected after dragging from %i → %i", (anchorOffset, focusOffset) => {
       const article = item(), text = article.querySelector("em")!.firstChild!
       Object.assign(article.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
       mockRect(article)
@@ -1499,21 +1499,14 @@ describe("selection-owned transformation", () => {
       expect($.selectedElement).toBe(article)
       document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, altKey: true, clientX: 220, clientY: 180}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3, clientX: 220, clientY: 180}))
-      expect(document.getSelection()!.anchorNode).toBe(text)
-      expect(document.getSelection()!.anchorOffset).toBe(anchorOffset)
-      expect(document.getSelection()!.focusNode).toBe(text)
-      expect(document.getSelection()!.focusOffset).toBe(focusOffset)
+      expect($.selectedElement).toBe(article)
       expect(article.style.left).toBe("20px")
       expect(article.style.top).toBe("30px")
       expect(Array.from(article.childNodes)).toEqual(children)
       expect(cloneWithoutEditorMarkers(article, true).innerHTML).toBe(content)
-      const event = new InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "X"})
-      article.dispatchEvent(event)
-      expect(event.defaultPrevented).toBe(false)
-      expect(article.isConnected).toBe(true)
     })
 
-    it.each(["pointercancel", "Escape"])("restores the text caret when a move ends with %s", outcome => {
+    it.each(["pointercancel", "Escape"])("keeps the text box selected when a move ends with %s", outcome => {
       const article = item(), text = article.querySelector("em")!.firstChild!
       Object.assign(article.style, {position: "absolute", left: "0px", top: "0px", width: "100px", height: "50px"})
       mockRect(article)
@@ -1524,8 +1517,7 @@ describe("selection-owned transformation", () => {
       document.dispatchEvent(pointer("pointermove", {pointerId: 3, altKey: true, clientX: 220, clientY: 180}))
       if(outcome === "Escape") document.dispatchEvent(new KeyboardEvent("keydown", {bubbles: true, key: "Escape"}))
       else document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
-      expect(document.getSelection()!.anchorNode).toBe(text)
-      expect(document.getSelection()!.anchorOffset).toBe(2)
+      expect($.selectedElement).toBe(article)
       expect(article.style.left).toBe("0px")
       expect(article.style.top).toBe("0px")
       expect(document.body).not.toHaveClass("◆transform-moving")
@@ -1568,9 +1560,8 @@ describe("selection-owned transformation", () => {
         expect(article).not.toHaveClass("◆transform-target")
       }
       else {
-        expect(document.getSelection()!.anchorNode).toBe(text)
+        expect($.selectedElement).toBe(article)
         expect(text.data).toBe(outcome === "local text edit" ? "local world" : "remote world")
-        expect(document.getSelection()!.anchorOffset).toBe(outcome === "local text edit" ? 8 : 9)
       }
       expect(neighbor.textContent).toBe("Neighbor")
       expect(document.body).not.toHaveClass("◆transform-moving")
@@ -1678,10 +1669,7 @@ describe("selection-owned transformation", () => {
       expect(article.style.cssText).not.toBe(before)
       expect(feature.target).toBe(article)
       if(control === "scale-right") {
-        expect(document.getSelection()!.anchorNode).toBe(text)
-        expect(document.getSelection()!.anchorOffset).toBe(4)
-        expect(document.getSelection()!.focusNode).toBe(text)
-        expect(document.getSelection()!.focusOffset).toBe(1)
+        expect($.selectedElement).toBe(article)
         expect(article.style.width).toBe("100px"); expect(article.style.height).toBe("50px")
         expect(article.style.left).toBe("20px"); expect(article.style.top).toBe("30px")
       }
@@ -1717,6 +1705,22 @@ describe("selection-owned transformation", () => {
       editor.features.table.clearCellSelection()
       editor.features.selection.selectElement(article)
       expect(feature.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-content-selected")
+    })
+
+    it.each(["scale-right", "scale-down-right", "mover", "delete", "arranger", "orderer", "caption", "anchor"])("element-selects on the grey frame's %s affordance", control => {
+      const article = item(), text = article.querySelector("em")!.firstChild!
+      mockRect(article)
+      $.selectRange(text, 1, text, 4)
+      editor.features.selection.processSelection()
+      expect(feature.overlay.getAttribute("part")?.split(/\s+/)).toContain("transform-overlay-content-selected")
+      const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-${control}`)!
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+      expect($.selectedElement).toBe(article)
+      expect(article).toHaveClass("◆element-selected")
+      expect(feature.overlay.getAttribute("part")?.split(/\s+/)).not.toContain("transform-overlay-content-selected")
+      document.dispatchEvent(pointer("pointercancel", {pointerId: 3}))
+      expect($.selectedElement).toBe(article)
+      expect(editor.toHTML(true)).not.toContain("◆")
     })
 
     it("frames the direct item for nested node and capture selections, then follows another item", () => {

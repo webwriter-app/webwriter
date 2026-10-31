@@ -4,8 +4,6 @@ import {getDocumentRoot} from "../document-template"
 import {boardClass, boardColumns, boardColumnSelector, boardStyles, documentLayoutMode, isBoardCard, isBoardColumn, isBoardGroup} from "../document-layout"
 import {attributionAttributes} from "../attribution.js"
 
-type DragSelection = {anchor: Node | null, focus: Node | null, anchorOffset: number, focusOffset: number}
-
 /** Authored sections and articles own the board; editing controls stay in the appendix. */
 export class BoardFeature extends EditorFeature {
   readonly readerPermission = "view" as const
@@ -20,8 +18,7 @@ export class BoardFeature extends EditorFeature {
   private groupsCache: HTMLElement[] = []
   private cardsCache: HTMLElement[] = []
   private pressedHandle = false
-  private pressedSelection: DragSelection | null = null
-  private drag: {source: HTMLElement, parent: HTMLElement, token: string, selection: DragSelection} | null = null
+  private drag: {source: HTMLElement, parent: HTMLElement, token: string} | null = null
   private dropIndicator: HTMLElement | null = null
   private readonly dragType = "application/x-webwriter-board"
   private transformOverlays = new Map<HTMLElement, HTMLElement>()
@@ -351,9 +348,9 @@ export class BoardFeature extends EditorFeature {
       || !document.body.contains(source) || !this.editor.allows("move", source) || !isBoardColumn(source) && !isBoardCard(source)) {
       this.endDrag(); event.preventDefault(); return
     }
-    const selection = this.pressedSelection ?? this.selectionBookmark()
+    this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(source))
     this.endDrag()
-    this.drag = {source, parent: source.parentElement!, token: crypto.randomUUID(), selection}
+    this.drag = {source, parent: source.parentElement!, token: crypto.randomUUID()}
     try {
       event.dataTransfer.setData(this.dragType, this.drag.token)
       event.dataTransfer.effectAllowed = "move"
@@ -362,14 +359,9 @@ export class BoardFeature extends EditorFeature {
     }
     catch { this.endDrag(); event.preventDefault() }
   }
-  private selectionBookmark(): DragSelection {
-    const selection = document.getSelection()
-    return {anchor: selection?.anchorNode ?? null, focus: selection?.focusNode ?? null, anchorOffset: selection?.anchorOffset ?? 0, focusOffset: selection?.focusOffset ?? 0}
-  }
   private endDrag() {
     if(this.drag) removeEditorMarker(this.drag.source, "◆board-dragging")
     for(const source of document.body.querySelectorAll(".◆board-dragging")) removeEditorMarker(source, "◆board-dragging")
-    this.pressedSelection = null
     this.drag = null
     this.pressedHandle = false
     if(this.dropIndicator) this.dropIndicator.hidden = true
@@ -422,7 +414,6 @@ export class BoardFeature extends EditorFeature {
       const destination = this.dragDestination(event), source = this.drag?.source
       if(!destination || !source || this.drag!.token !== event.dataTransfer.getData(this.dragType)) return
       if(source.parentElement === destination.parent && (source.nextElementSibling === destination.before || !destination.before && source === destination.parent.lastElementChild)) return
-      const selection = document.getSelection(), {anchor, focus, anchorOffset, focusOffset} = this.drag!.selection
       const end = this.editor.doc.beginUndoGroup()
       try {
         const previousParent = source.parentElement
@@ -430,11 +421,7 @@ export class BoardFeature extends EditorFeature {
         if(parent.moveBefore) parent.moveBefore(source, destination.before)
         else parent.insertBefore(source, destination.before)
         if(isBoardColumn(source)) this.removeEmptyGroup(previousParent)
-        if(anchor?.isConnected && focus?.isConnected && document.body.contains(anchor) && document.body.contains(focus)) {
-          const length = (node: Node) => node instanceof CharacterData ? node.length : node.childNodes.length
-          selection?.setBaseAndExtent(anchor, Math.min(anchorOffset, length(anchor)), focus, Math.min(focusOffset, length(focus)))
-        }
-        this.editor.features.selection.processSelection(false, {scrollIntoView: false})
+        this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(source))
         this.editor.postSelectionPath()
       }
       finally { end() }
@@ -478,8 +465,8 @@ export class BoardFeature extends EditorFeature {
     dragover: event => this.dragOver(event),
     drop: event => this.drop(event),
     dragend: event => { if(event.dataTransfer?.types.includes(this.dragType)) this.endDrag() },
-    pointerup: () => { this.pressedHandle = false; if(!this.drag) this.pressedSelection = null; this.schedule() },
-    pointercancel: () => { this.pressedHandle = false; if(!this.drag) this.pressedSelection = null; this.schedule() },
+    pointerup: () => { this.pressedHandle = false; this.schedule() },
+    pointercancel: () => { this.pressedHandle = false; this.schedule() },
     dragleave: event => { if(!event.relatedTarget && this.dropIndicator) this.dropIndicator.hidden = true },
     keydown: event => {
       if(!this.active || event.isComposing || isAppendixInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || isFormControlInteraction(event)) return
@@ -553,6 +540,14 @@ export class BoardFeature extends EditorFeature {
         overlay = this.editor.features.transformation.createFlowOverlay(`◆board-transform-${role}`, role)
         this.transformOverlays.set(target, overlay)
         this.editor.addAppendix(overlay)
+        const selectTarget = () => {
+          if(this.active && !this.editor.isEditingLocked && target.isConnected && (isBoardColumn(target) || isBoardCard(target))
+            && $.selectedElement !== target && this.editor.allows("select", target)) {
+            this.editor.features.selection.withoutSelectionScroll(() => this.editor.features.selection.selectElement(target))
+          }
+        }
+        overlay.addEventListener("pointerdown", event => { if(event.button === 0) selectTarget() }, {capture: true})
+        overlay.addEventListener("click", selectTarget, {capture: true})
         if(isBoardColumn(target)) {
           const grouper = document.createElement("button")
           grouper.type = "button"; grouper.setAttribute("part", "transform-overlay-button transform-overlay-board-control transform-overlay-group")
@@ -564,7 +559,7 @@ export class BoardFeature extends EditorFeature {
           handle.draggable = true
           handle.addEventListener("pointerdown", event => {
             if(event.button !== 0 || this.editor.isEditingLocked || !this.editor.allows("move", target)) return
-            this.pressedHandle = true; this.pressedSelection = this.selectionBookmark()
+            this.pressedHandle = true
             event.stopPropagation()
           })
           handle.addEventListener("dragstart", event => this.startDrag(event, target))
