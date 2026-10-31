@@ -1038,10 +1038,10 @@ describe("toolbox", () => {
     expect(tab.hasAttribute("data-available")).toBe(true)
   })
 
-  it("names selected element types without a generic Selection label", async () => {
+  it("names only the innermost selected element type without a generic Selection label", async () => {
     const toolbox = await mountToolbox()
-    const group = (localName: string, name: string, count: number) => ({
-      element: {localName, namespaceURI: "http://www.w3.org/1999/xhtml", path: null, name, attributes: {}},
+    const group = (localName: string, name: string, count: number, path: number[] | null = null) => ({
+      element: {localName, namespaceURI: "http://www.w3.org/1999/xhtml", path, name, attributes: {}},
       count, style: toolbox.elementStyle, styleProperties: [], configuredWidgetOptions: [],
     })
     toolbox.elementSelected = true
@@ -1049,9 +1049,10 @@ describe("toolbox", () => {
     await toolbox.updateComplete
     const edit = toolButton(toolbox, "Edit")
     expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph")
-    toolbox.selectedElementTypes = [group("p", "Paragraph", 1), group("demo-widget", "Demo widget", 1)]
+    toolbox.selectedElementTypes = [group("p", "Paragraph", 1, [0, 0]), group("section", "Section", 1, [0])]
     await toolbox.updateComplete
-    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph, Demo widget")
+    expect(edit.getAttribute("aria-label")).toBe("Edit Paragraph")
+    expect(edit.querySelector(".toolbox-tab-label")?.textContent).toBe("Paragraph")
     expect(edit.closest(".toolbox-tab")!.hasAttribute("data-contextual")).toBe(true)
     toolbox.selectedElementTypes = []
     toolbox.selectionPath = []

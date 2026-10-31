@@ -861,7 +861,8 @@ export class DomEditorToolbox extends EditingControls {
     if(this.documentSelected) return "Document"
     if(this.sectionSelected) return getSectionOption(this.sectionType).label
     if(!this.elementSelected) return null
-    if(this.selectedElementTypes.length) return this.selectedElementTypes.map(group => group.element.name).join(", ")
+    if(this.selectedElementTypes.length) return this.selectedElementTypes.reduce((inner, group) =>
+      (group.element.path?.length ?? -1) > (inner.element.path?.length ?? -1) ? group : inner).element.name
     return this.elementAttributes?.name ?? this.selectionPath.at(-1)?.name ?? null
   }
 
