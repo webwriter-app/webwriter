@@ -6921,6 +6921,7 @@ export class DomEditor extends LitElement {
     return {
       target,
       inline,
+      ...(typeof value.hasInlineStyles === "boolean" ? {hasInlineStyles: value.hasInlineStyles} : {}),
       ...(Array.isArray(value.authoredProperties) ? {
         authoredProperties: value.authoredProperties.filter((name): name is string => typeof name === "string"),
       } : {}),
@@ -7015,6 +7016,13 @@ export class DomEditor extends LitElement {
       this.elementStyle = previousState
       return this.refreshElementStyleState()
     })
+  }
+
+  private handleElementStyleReset = (event: Event) => {
+    const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
+      && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
+    void this.execute({type: "resetStyle", ...(topLevel ? {topLevel: true} : {})})
+      .then(() => this.refreshElementStyleState())
   }
 
   private handleElementStyleTargetHover = (event: Event) => {
@@ -7941,6 +7949,7 @@ export class DomEditor extends LitElement {
       "graphic-layer-action": this.handleGraphicLayerAction.bind(this),
       "graphic-viewport-action": this.handleGraphicViewportAction.bind(this),
       "element-style-change": this.handleElementStyleChange.bind(this),
+      "element-style-reset": this.handleElementStyleReset.bind(this),
       "element-style-target-hover": this.handleElementStyleTargetHover.bind(this),
       "element-style-state-request": this.queueElementStyleRefresh.bind(this),
       "history-state-request": this.requestHistoryState.bind(this),

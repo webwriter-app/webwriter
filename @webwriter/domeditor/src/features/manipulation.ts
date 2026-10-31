@@ -2522,6 +2522,7 @@ export class ManipulationFeature extends EditorFeature {
       return {
         target: null,
         inline: {},
+        hasInlineStyles: false,
         authoredProperties: [],
         computed: {},
         context: {display: "", parentDisplay: ""},
@@ -2603,6 +2604,7 @@ export class ManipulationFeature extends EditorFeature {
         ...(isDocumentRoot(target) || target === document.body || target === document.documentElement && documentLayoutMode() === "document"
           ? {documentRoot: true as const} : {})},
       inline,
+      hasInlineStyles: target.hasAttribute("style"),
       authoredProperties,
       computed,
       context: {display: computedStyle.display, parentDisplay, positioning: this.editor.features.canvas.active || this.editor.features.slides.active,
@@ -2615,6 +2617,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!elements.length) return this.getStyleState(properties, null, false)
     const styles = elements.map(element => this.getStyleState(properties, element, false))
     return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
+      hasInlineStyles: styles.some(state => state.hasInlineStyles),
       authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
       computed: commonValues(styles.map(state => state.computed))}
   }
@@ -2738,6 +2741,25 @@ export class ManipulationFeature extends EditorFeature {
     }
     finally { end() }
     return true
+  }
+
+  private resetStyleAttributes(elements: Element[]) {
+    if(this.editor.isEditingLocked) return false
+    const root = getDocumentRoot()
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      let changed = false
+      for(const element of elements) {
+        const target = this.documentStyleTarget(element)
+        if(target.isConnected && (root.contains(target) || target === document.documentElement && documentLayoutMode() === "document")
+          && target.hasAttribute("style")) {
+          target.removeAttribute("style")
+          changed = true
+        }
+      }
+      return changed
+    }
+    finally { end() }
   }
 
   /** Start empty document flow after its lone float so the float can wrap
@@ -3586,6 +3608,12 @@ export class ManipulationFeature extends EditorFeature {
         finally { end() }
       }
       else this.setStyle(styles)
+    },
+    resetStyle: ({topLevel}: {type: "resetStyle", topLevel?: boolean}) => {
+      const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
+      const targets = topLevel && !cells.length ? this.topLevelStyleTargets
+        : cells.length ? cells : $.isMultiElementSelection ? $.selectedElements : [this.styleTarget]
+      return this.resetStyleAttributes(targets.filter((target): target is Element => target instanceof Element))
     },
     setBlockStyle: ({styles}: {type: "setBlockStyle", styles: Record<string, ElementStyleMutation>}) => {
       this.setBlockStyle(styles)

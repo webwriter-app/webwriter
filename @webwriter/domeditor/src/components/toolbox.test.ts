@@ -1362,7 +1362,7 @@ it("limits the document Style drawer to Background", async () => {
 })
 
 
-it("enables heading Reset only for authored drawer styles and resets them together", async () => {
+it("enables Style Reset for any inline style and requests a complete reset", async () => {
   const toolbox = await mountToolbox()
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
@@ -1375,7 +1375,7 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
     computed: {width: "400px"}, context: {display: "block", parentDisplay: "block"},
   }
   await toolbox.updateComplete
-  expect(reset().disabled).toBe(true)
+  expect(reset().disabled).toBe(false)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {
     ...toolbox.elementStyle.inline,
     width: {value: "100px", priority: ""},
@@ -1388,20 +1388,22 @@ it("enables heading Reset only for authored drawer styles and resets them togeth
   await toolbox.updateComplete
   expect(reset().disabled).toBe(false)
   const changes: unknown[] = []
-  toolbox.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  toolbox.addEventListener("element-style-reset", event => changes.push((event as CustomEvent).detail))
   reset().click()
-  expect(changes).toEqual([{styles: {color: null, width: null, padding: null, "border-radius": null, "border-color": null, opacity: null,
-    "padding-top": null, "border-top-left-radius": null, "border-left-color": null}}])
+  expect(changes).toEqual([null])
   toolbox.documentSelected = true
   await toolbox.updateComplete
-  expect(reset().disabled).toBe(true)
+  expect(reset().disabled).toBe(false)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {...toolbox.elementStyle.inline, "background-color": {value: "red", priority: ""}}}
   await toolbox.updateComplete
   reset().click()
-  expect(changes.at(-1)).toEqual({styles: {"background-color": null}})
+  expect(changes).toHaveLength(2)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {}}
   await toolbox.updateComplete
   expect(reset().disabled).toBe(true)
+  toolbox.elementStyle = {...toolbox.elementStyle, hasInlineStyles: true}
+  await toolbox.updateComplete
+  expect(reset().disabled).toBe(false)
 })
 
 

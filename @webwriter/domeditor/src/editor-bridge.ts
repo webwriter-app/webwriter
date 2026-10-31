@@ -434,6 +434,8 @@ export type ElementStyleState = {
     namespaceURI: string | null
   } | null
   inline: Record<string, ElementStyleDeclaration>
+  /** At least one targeted element has a style attribute, including differing group styles. */
+  hasInlineStyles?: boolean
   /** CSS declarations explicitly present in the authored style attribute. */
   authoredProperties?: string[]
   computed: Record<string, string>

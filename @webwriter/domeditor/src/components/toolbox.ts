@@ -938,12 +938,9 @@ export class DomEditorToolbox extends EditingControls {
         ?inert=${disabled} aria-disabled=${disabled ? "true" : "false"}
         style=${disabled ? "opacity: 0.5" : ""}>
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
-          ?disabled=${disabled || !Object.keys(this.resettableStyles).length}
+          ?disabled=${disabled || !(this.elementStyle.hasInlineStyles ?? Object.keys(this.elementStyle.inline).length > 0)}
           @click=${() => {
-            const styles = this.resettableStyles
-            if(Object.keys(styles).length) this.dispatchEvent(new CustomEvent("element-style-change", {
-              detail: {styles}, bubbles: true, composed: true,
-            }))
+            this.dispatchEvent(new CustomEvent("element-style-reset", {bubbles: true, composed: true}))
           }}>${ribbonIcon("Restore")}Reset</button>
         <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
         ${this.renderElementLayoutControls()}

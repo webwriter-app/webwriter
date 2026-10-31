@@ -4600,6 +4600,39 @@ describe("setStyle()", () => {
     expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe(tag)
   })
 
+  it("resets all top-level inline styles without changing nested content and supports undo", () => {
+    document.body.innerHTML = '<section id="target" style="color: red; --custom: 1; rotate: 30deg"><p style="color: blue">hello</p></section><p style="opacity: 0.5">other</p>'
+    const target = document.body.firstElementChild!
+    $.move(target.querySelector("p")!.firstChild!, 2)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).hasInlineStyles).toBe(true)
+    editor.features.manipulation.actions.resetStyle({type: "resetStyle", topLevel: true})
+    expect(target).not.toHaveAttribute("style")
+    expect(target.querySelector("p")).toHaveAttribute("style", "color: blue")
+    expect(document.body.lastElementChild).toHaveAttribute("style", "opacity: 0.5")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(target).toHaveAttribute("style", "color: red; --custom: 1; rotate: 30deg")
+    editor.doc.redo()
+    expect(target).not.toHaveAttribute("style")
+  })
+
+  it("resets differently styled sibling targets from the same selection", () => {
+    document.body.innerHTML = '<p style="color: red">one</p><!--keep--><p style="font-family: serif; --custom: 1">two</p><p style="opacity: 0.5">three</p>'
+    const paragraphs = Array.from(document.querySelectorAll("p"))
+    $.selectRange(paragraphs[0].firstChild!, 1, paragraphs[1].firstChild!, 1)
+    const manipulation = editor.features.manipulation
+    const state = manipulation.actions.getStyleState({type: "getStyleState", topLevel: true})
+    expect(state.inline).toEqual({})
+    expect(state.hasInlineStyles).toBe(true)
+    manipulation.actions.resetStyle({type: "resetStyle", topLevel: true})
+    expect(paragraphs[0]).not.toHaveAttribute("style")
+    expect(paragraphs[1]).not.toHaveAttribute("style")
+    expect(paragraphs[2]).toHaveAttribute("style", "opacity: 0.5")
+    expect(document.body.childNodes[1]).toBeInstanceOf(Comment)
+  })
+
   it.each(["img", "demo-widget"])("keeps styling available for a capture-selected %s with a native top-level gap", tag => {
     document.body.innerHTML = `<${tag} style="opacity: 0.8"></${tag}><p>other</p>`
     const captured = document.body.firstElementChild!
