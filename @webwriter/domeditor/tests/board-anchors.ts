@@ -75,8 +75,12 @@ export async function checkBoardAnchors(inspect = false) {
     const copyright = activeOverlay.querySelector<HTMLButtonElement>('[part~="transform-overlay-attribution-board"]')
     assert(copyright && !copyright.hidden, "selected column frame has no copyright control")
     const copyrightRect = copyright!.getBoundingClientRect()
-    near(copyrightRect.left + copyrightRect.width / 2, overlayRect.right, "copyright corner x")
-    near(copyrightRect.top + copyrightRect.height / 2, overlayRect.bottom, "copyright corner y")
+    near(copyrightRect.left + copyrightRect.width / 2, overlayRect.left, "copyright corner x")
+    near(copyrightRect.top + copyrightRect.height / 2, overlayRect.top - 3, "copyright top row y")
+    const grouper = activeOverlay.querySelector<HTMLButtonElement>('[part~="transform-overlay-group"]')!
+    const groupRect = grouper.getBoundingClientRect()
+    assert(groupRect.left >= copyrightRect.right, "group control overlaps the copyright corner")
+    near(groupRect.top + groupRect.height / 2, copyrightRect.top + copyrightRect.height / 2, "group and copyright top row")
 
     const root = doc.documentElement
     assert(root.scrollWidth > root.clientWidth && root.scrollHeight > root.clientHeight, "fixture did not overflow both axes")
@@ -116,8 +120,8 @@ export async function checkBoardAnchors(inspect = false) {
     const cardCopyright = cardFrame?.querySelector<HTMLButtonElement>('[part~="transform-overlay-attribution-board"]')
     assert(cardCopyright && !cardCopyright.hidden, "selected card frame has no copyright control")
     const cardFrameRect = cardFrame.getBoundingClientRect(), cardCopyrightRect = cardCopyright!.getBoundingClientRect()
-    near(cardCopyrightRect.left + cardCopyrightRect.width / 2, cardFrameRect.right, "card copyright corner x")
-    near(cardCopyrightRect.top + cardCopyrightRect.height / 2, cardFrameRect.bottom, "card copyright corner y")
+    near(cardCopyrightRect.left + cardCopyrightRect.width / 2, cardFrameRect.left, "card copyright corner x")
+    near(cardCopyrightRect.top + cardCopyrightRect.height / 2, cardFrameRect.top - 3, "card copyright top row y")
     board.setGrouping("new", board.columns()[0]); await layout(view); board.refresh()
     ;({card: cardButton, column: columnButton} = getControls())
     const groupedColumn = board.columns()[0]
@@ -140,8 +144,8 @@ export async function checkBoardAnchors(inspect = false) {
     const groupedCopyright = groupedFrame?.querySelector<HTMLButtonElement>('[part~="transform-overlay-attribution-board"]')
     assert(groupedCopyright && !groupedCopyright.hidden, "selected grouped column frame has no copyright control")
     const groupedFrameRect = groupedFrame.getBoundingClientRect(), groupedCopyrightRect = groupedCopyright!.getBoundingClientRect()
-    near(groupedCopyrightRect.left + groupedCopyrightRect.width / 2, groupedFrameRect.right, "grouped column copyright corner x")
-    near(groupedCopyrightRect.top + groupedCopyrightRect.height / 2, groupedFrameRect.bottom, "grouped column copyright corner y")
+    near(groupedCopyrightRect.left + groupedCopyrightRect.width / 2, groupedFrameRect.left, "grouped column copyright corner x")
+    near(groupedCopyrightRect.top + groupedCopyrightRect.height / 2, groupedFrameRect.top - 3, "grouped column copyright top row y")
     groupedColumn.style.rotate = "12deg"
     board.refresh(); await layout(view)
     const rotated = board.transformOverlay(groupedColumn)!

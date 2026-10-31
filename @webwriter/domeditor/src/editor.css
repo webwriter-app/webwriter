@@ -2310,7 +2310,7 @@ body::part(transform-overlay-group) {
   border-radius: 50%;
 }
 body::part(transform-overlay-group) {
-  left: -10px;
+  left: 14px;
   cursor: pointer;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5M8 12h8M12 8v8"/></svg>');
 }
@@ -2334,10 +2334,10 @@ body::part(transform-overlay-attribution) {
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M16 8a6 6 0 1 0 0 8"/></svg>');
 }
 body::part(transform-overlay-attribution-board) {
-  top: auto;
-  left: auto;
-  right: -10px;
-  bottom: -10px;
+  top: -13px;
+  left: -10px;
+  right: auto;
+  bottom: auto;
 }
 body::part(transform-overlay-mover)::before {
   width: 16px;

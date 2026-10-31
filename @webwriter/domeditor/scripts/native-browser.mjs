@@ -237,7 +237,7 @@ const swiftDeveloperDir = process.env.WEBKIT_DEVELOPER_DIR ?? process.env.DEVELO
     ? bundledXcodeDeveloperDir
     : undefined)
 const expectedSmokeChecks = [
-  "copyright affordance meets the selected element edge",
+  "copyright affordance meets the selected element top-left corner",
   "document frames align with text",
   "empty document starts at its paragraph",
   "editor page starts with a visible document",

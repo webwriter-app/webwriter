@@ -279,7 +279,7 @@ describe("element attribution editing", () => {
     expect(element.getAttribute(attributionAttributes.license)).toBe("MIT")
   })
 
-  it.each([false, true])("aligns the copyright affordance below the delete control at the right midpoint (capture: %s)", captured => {
+  it.each([false, true])("aligns the copyright affordance at the document element's top-left corner (capture: %s)", captured => {
     const element = start()
     bounds(element)
     const original = element.innerHTML
@@ -302,6 +302,9 @@ describe("element attribution editing", () => {
     expect(bridge.style.width).toBe("")
     expect(bridge.style.height).toBe("")
     expect(bridge.getAttribute("part")).toContain("anchor-control-")
+    const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
+    expect(state.sheets.get(document).source).toContain("anchor(left) - 10px")
+    expect(state.sheets.get(document).source).toContain("anchor(top) - 13px")
     expect(button().getAttribute("part")).toBe("transform-overlay-button transform-overlay-attribution")
     expect(button().querySelector("svg")!.hasAttribute("hidden")).toBe(true)
     expect(button().classList.contains("empty-attribution")).toBe(true)
@@ -325,7 +328,7 @@ describe("element attribution editing", () => {
     try {
       select(element)
       const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
-      expect(state.sheets.get(document).source).toContain("anchor(right) - 25px")
+      expect(state.sheets.get(document).source).toContain("anchor(left) - 25px")
     }
     finally { document.documentElement.style.removeProperty("scrollbar-gutter") }
   })

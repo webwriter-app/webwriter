@@ -271,7 +271,7 @@ await check("document frames align with text", async () => {
   }
   finally { fresh.destroy(); theme.remove(); document.documentElement.style.removeProperty("scrollbar-gutter") }
 })
-await check("copyright affordance meets the selected element edge", () => {
+await check("copyright affordance meets the selected element top-left corner", () => {
   document.body.innerHTML = "<p>Copyright target</p>"
   const theme = document.createElement("style")
   theme.textContent = defaultDocumentTheme.source
@@ -284,7 +284,8 @@ await check("copyright affordance meets the selected element edge", () => {
     const bridge = fresh.appendix.querySelector<HTMLElement>(".◆attribution-ui .bridge")!
     assert(bridge && !bridge.hidden, "copyright bridge is hidden")
     const target = paragraph.getBoundingClientRect(), actual = bridge.getBoundingClientRect()
-    assert(Math.abs(actual.left + actual.width / 2 - target.right) < 2,
+    assert(Math.abs(actual.left + actual.width / 2 - target.left) < 2
+      && Math.abs(actual.top + actual.height / 2 - (target.top - 3)) < 2,
       `copyright offset: ${JSON.stringify({target: target.toJSON(), actual: actual.toJSON()})}`)
   }
   finally { fresh.destroy(); theme.remove() }
