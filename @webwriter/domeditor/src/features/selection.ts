@@ -1455,13 +1455,14 @@ export class SelectionFeature extends EditorFeature {
     return this.hoverCaret ?? this.#createHoverCaret()
   }
 
-  #clearHoverGeometry() {
+  #clearHoverGeometry(releaseAnchor = true) {
     if(this.#hoverFrame !== null) cancelAnimationFrame(this.#hoverFrame)
     this.#hoverFrame = null
     if(this.#hoverOwner && !this.#hoverOwner.isConnected) removeEditorMarker(this.#hoverOwner, "◆element-hovered", "◆style-target-hovered", "◆snippet-hovered")
     this.#hoverOwner = null
     const caret = this.hoverCaret
     if(!caret) return
+    if(releaseAnchor) this.#atomicAnchors.release(caret)
     for(const property of ["left", "top", "width", "height", "transform", "transform-origin", "position-anchor", "position-area", "translate"]) caret.style.removeProperty(property)
     caret.replaceChildren()
     setPart(caret, "hover-caret-floats", false)
@@ -1498,15 +1499,18 @@ export class SelectionFeature extends EditorFeature {
       const rect = target.getBoundingClientRect()
       const floats = this.floatExclusions(target, rect)
       if(!floats.length) {
-        this.#clearHoverGeometry()
+        this.#clearHoverGeometry(false)
         this.#hoverOwner = target
+        this.#atomicAnchors.bind(caret, target)
         this.#hoverFrame = requestAnimationFrame(this.#refreshHoverGeometry)
         return
       }
+      this.#atomicAnchors.release(caret)
       for(const [property, value] of Object.entries({left: `${fixedClientX(rect.left)}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transform: "none"})) caret.style.setProperty(property, value, "important")
       this.#floatOutline(caret, rect, floats, "hover")
     }
     else {
+      this.#atomicAnchors.release(caret)
       caret.replaceChildren()
       setPart(caret, "hover-caret-floats", false)
       const {styles} = this.editor.features.transformation.boxGeometry(target)

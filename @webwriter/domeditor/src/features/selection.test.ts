@@ -2686,13 +2686,15 @@ describe("processSelection()", () => {
     expect(p).toHaveClass("◆element-hovered")
     expect(feature.hoverCaret).toBeInstanceOf(HTMLElement)
     expect(feature.hoverCaret?.getRootNode()).toBe(document.body.shadowRoot)
-    expect(feature.hoverCaret).toHaveAttribute("part", "hover-caret")
+    expect(feature.hoverCaret?.getAttribute("part")).toContain("hover-caret")
+    expect(feature.hoverCaret?.getAttribute("part")).toContain("anchor-control-")
     expect(feature.hoverCaret).toHaveAttribute("aria-hidden", "true")
 
     feature.actions.hoverNode({type: "hoverNode", path: null})
 
     expect(p).not.toHaveClass("◆element-hovered")
     expect(editor.appendix.querySelectorAll(".◆hover-caret")).toHaveLength(1)
+    expect(feature.hoverCaret).toHaveAttribute("part", "hover-caret")
   })
   it("shows the thin hover preview on the live style target", () => {
     const p = el("p", "hello")

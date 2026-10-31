@@ -1,6 +1,7 @@
 import * as Y from "yjs"
 import {DOMEditor} from "../src/domeditor"
 import {sharedDOMBody} from "../src/domdoc"
+import {defaultDocumentTheme} from "../src/document-themes"
 
 type Check = {name: string, error?: string}
 const checks: Check[] = []
@@ -188,7 +189,88 @@ await check("typing after deleting the initial paragraph stays in a paragraph", 
   }
 })
 
+await check("editor page starts with a visible document", async () => {
+  const frame = document.createElement("iframe")
+  frame.src = "/editor/"
+  frame.style.width = "1906px"
+  frame.style.height = "800px"
+  frame.style.maxWidth = "none"
+  document.body.append(frame)
+  try {
+    const deadline = Date.now() + 15000
+    let host: any
+    while(Date.now() < deadline) {
+      host = frame.contentDocument?.querySelector("dom-editor")
+      if(host?.editorDocument?.body?.querySelector(":scope > p") && !host.documentFramePending) break
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+    assert(host?.editorDocument?.body?.querySelector(":scope > p"), `editor document stayed empty: ${JSON.stringify({
+      page: frame.contentDocument?.body?.innerHTML?.slice(0, 300),
+      frameStarted: host?.frameStarted,
+      shellRevision: host?.editorShellRevision,
+      initializedRevision: host?.editorInitializedRevision,
+      framePending: host?.documentFramePending,
+      body: host?.editorDocument?.body?.innerHTML,
+      error: host?.fileError,
+    })}`)
+  }
+  finally { frame.remove() }
+})
+
 editor.destroy()
+await check("empty document starts at its paragraph", () => {
+  document.body.replaceChildren()
+  const fresh = new DOMEditor()
+  try {
+    const paragraph = document.body.firstElementChild
+    const selection = document.getSelection()
+    assert(paragraph?.localName === "p", `initial paragraph missing: ${document.body.innerHTML}`)
+    assert(fresh.toHTML(true) === "<p></p>", `unexpected initial document: ${fresh.toHTML(true)}`)
+    assert(selection?.anchorNode === paragraph, `selection starts at ${selection?.anchorNode?.nodeName}`)
+    assert(paragraph!.getBoundingClientRect().height > 0, "initial paragraph has no visible box")
+  }
+  finally { fresh.destroy() }
+})
+await check("document frames align with text", async () => {
+  document.body.innerHTML = "<details open><summary>Nested content</summary><p>Frame alignment</p></details>"
+  const theme = document.createElement("style")
+  theme.textContent = defaultDocumentTheme.source
+  document.head.append(theme)
+  const fresh = new DOMEditor()
+  try {
+    const paragraph = document.querySelector("details p") as HTMLElement
+    await new Promise(requestAnimationFrame)
+    fresh.features.transformation.startTransform(paragraph)
+    const frame = fresh.features.transformation.overlay
+    for(const gutter of ["stable both-edges", "auto"]) {
+      document.documentElement.style.scrollbarGutter = gutter
+      fresh.features.transformation.updateInfo()
+      const target = paragraph.getBoundingClientRect(), actual = frame.getBoundingClientRect()
+      const textRange = document.createRange()
+      textRange.setStart(paragraph.firstChild!, 0)
+      textRange.setEnd(paragraph.firstChild!, 1)
+      const text = textRange.getBoundingClientRect()
+      assert(Math.abs(target.left - actual.left) < 2 && Math.abs(target.right - actual.right) < 2
+        && text.left >= actual.left - 2,
+        `frame offset: ${JSON.stringify({target: target.toJSON(), actual: actual.toJSON(), text: text.toJSON(), gutter})}`)
+    }
+    fresh.features.selection.selectElement(paragraph)
+    const selectionFrame = fresh.features.selection.selectionCaret
+    assert(selectionFrame, "selected paragraph has no selection frame")
+    const target = paragraph.getBoundingClientRect(), selected = selectionFrame!.getBoundingClientRect()
+    assert(Math.abs(target.left - selected.left) < 2,
+      `selection frame offset: ${JSON.stringify({target: target.toJSON(), selected: selected.toJSON()})}`)
+    paragraph.classList.add("◆element-hovered")
+    paragraph.dispatchEvent(new PointerEvent("pointerover", {bubbles: true, composed: true}))
+    await new Promise(requestAnimationFrame)
+    const hoverFrame = fresh.features.selection.hoverCaret
+    assert(hoverFrame, "hovered paragraph has no hover frame")
+    const hovered = hoverFrame!.getBoundingClientRect()
+    assert(Math.abs(target.left - hovered.left) < 2,
+      `hover frame offset: ${JSON.stringify({target: target.toJSON(), hovered: hovered.toJSON()})}`)
+  }
+  finally { fresh.destroy(); theme.remove(); document.documentElement.style.removeProperty("scrollbar-gutter") }
+})
 const failed = checks.filter(item => item.error)
 document.documentElement.dataset.nativeSmokeStatus = failed.length ? "failed" : "passed"
 if(new URLSearchParams(location.search).has("run")) {

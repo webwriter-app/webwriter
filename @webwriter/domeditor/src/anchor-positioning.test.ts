@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import {afterEach, describe, expect, it} from "vitest"
+import {afterEach, describe, expect, it, vi} from "vitest"
 import {createAnchorPositioner} from "./anchor-positioning.js"
 
 const sheets = () => [...document.adoptedStyleSheets]
@@ -16,9 +16,58 @@ afterEach(() => {
   for(const value of positioners) value.destroy()
   positioners = []
   document.body.replaceChildren()
+  vi.restoreAllMocks()
 })
 
 describe("shared UI anchor positioning", () => {
+  it("calibrates a Gecko frame against its target when the gutter estimate is short", () => {
+    document.body.innerHTML = '<button id="frame"></button><p>Target</p>'
+    const frame = document.querySelector("button")!
+    const target = document.querySelector("p")!
+    const root = document.documentElement
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Firefox")
+    vi.spyOn(root, "clientWidth", "get").mockReturnValue(window.innerWidth - 30)
+    const computed = window.getComputedStyle.bind(window)
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) =>
+      element === root ? {scrollbarGutter: "stable both-edges"} as CSSStyleDeclaration : computed(element, pseudo))
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue({left: 100, width: 200, height: 30} as DOMRect)
+    vi.spyOn(frame, "getBoundingClientRect").mockImplementation(() => {
+      const css = (document as any)[Symbol.for("webwriter.anchor-positioning")].sheets.get(document).source as string
+      const offset = Number(css.match(/anchor\(left\) - ([\d.]+)px/)?.[1] ?? 0)
+      return {left: 130 - offset, width: 200, height: 30} as DOMRect
+    })
+    const ui = positioner()
+    ui.bind(frame, target)
+    ui.refresh()
+    const css = (document as any)[Symbol.for("webwriter.anchor-positioning")].sheets.get(document).source as string
+    expect(css).toContain("anchor(left) - 30px")
+  })
+
+  it("corrects the Gecko leading gutter for default frames and refreshes when the gutter changes", () => {
+    document.body.innerHTML = '<button id="frame"></button><button id="custom"></button><p>Target</p>'
+    const [frame, custom] = document.querySelectorAll("button")
+    const target = document.querySelector("p")!
+    const root = document.documentElement
+    let gutter = "stable both-edges"
+    vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Firefox")
+    vi.spyOn(root, "clientWidth", "get").mockReturnValue(window.innerWidth - 30)
+    const computed = window.getComputedStyle.bind(window)
+    vi.spyOn(window, "getComputedStyle").mockImplementation((element, pseudo) =>
+      element === root ? {scrollbarGutter: gutter} as CSSStyleDeclaration : computed(element, pseudo))
+    const ui = positioner()
+    ui.bind(frame, target)
+    ui.bind(custom, target, "left:anchor(right);top:anchor(top)")
+    ui.refresh()
+    const css = () => (document as any)[Symbol.for("webwriter.anchor-positioning")].sheets.get(document).source as string
+    expect(css()).toContain("anchor(left) - 15px")
+    expect(css()).toContain("anchor(right)")
+
+    gutter = "auto"
+    ui.refresh()
+    expect(css()).not.toContain("anchor(left) - 15px")
+    expect(css()).toContain("anchor(right)")
+  })
+
   it("binds controls to authored targets through a shared stylesheet and removes markers on release", () => {
     document.body.innerHTML = '<button class="authored-control"></button><div class="authored-target"></div>'
     const control = document.querySelector("button")!

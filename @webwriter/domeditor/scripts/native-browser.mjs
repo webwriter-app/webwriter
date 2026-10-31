@@ -237,6 +237,9 @@ const swiftDeveloperDir = process.env.WEBKIT_DEVELOPER_DIR ?? process.env.DEVELO
     ? bundledXcodeDeveloperDir
     : undefined)
 const expectedSmokeChecks = [
+  "document frames align with text",
+  "empty document starts at its paragraph",
+  "editor page starts with a visible document",
   "typing after deleting the initial paragraph stays in a paragraph",
   "native widget grouping dialog and processing instruction roundtrip",
   "native Range and Selection",
