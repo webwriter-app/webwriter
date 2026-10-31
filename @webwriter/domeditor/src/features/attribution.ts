@@ -46,7 +46,6 @@ export class AttributionFeature extends EditorFeature {
       editable: () => !this.editor.isEditingLocked,
       resolveElement: element => figureSelectionTarget(atomicEditingContainer(element, this.editor.schema) ?? element),
       selectedElement: () => {
-        if(this.editor.features.selection.isInDragSelection) return null
         const target = this.editor.features.selection.captureSelectedElement
           ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
         const owner = target ? atomicEditingContainer(target, this.editor.schema) ?? target : null

@@ -319,7 +319,7 @@ describe("element attribution editing", () => {
     expect(input("name").value).toBe("")
   })
 
-  it.each(["pointerup", "pointercancel"] as const)("hides the copyright affordance while a drag range includes one whole element until %s", eventType => {
+  it.each(["pointerup", "pointercancel"] as const)("keeps the copyright affordance visible while a drag range includes one whole element until %s", eventType => {
     const element = start()
     bounds(element)
     const original = element.innerHTML
@@ -328,9 +328,9 @@ describe("element attribution editing", () => {
 
     editor!.features.selection.isInDragSelection = true
     document.dispatchEvent(new Event("selectionchange"))
-    expect(button().hidden).toBe(true)
+    expect(button().hidden).toBe(false)
     editor!.features.attribution.refresh()
-    expect(button().hidden).toBe(true)
+    expect(button().hidden).toBe(false)
 
     document.dispatchEvent(new PointerEvent(eventType, {bubbles: true}))
     expect(editor!.features.selection.isInDragSelection).toBe(false)
@@ -419,6 +419,7 @@ describe("element attribution editing", () => {
     const control = editor!.appendix.querySelector<HTMLButtonElement>(".copyright")!
     expect(control.parentElement).toBe(overlay)
     expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.getAttribute("part")).toContain("transform-overlay-board-control")
     expect(control.hidden).toBe(false)
     editor!.features.board.refresh()
     expect(control.getAttribute("aria-label")).toBe("Copyright and attribution")
@@ -446,8 +447,10 @@ describe("element attribution editing", () => {
     expect($.selectedElement).not.toBe(target)
     expect(control.parentElement).toBe(overlay)
     expect(control.getAttribute("part")).toContain("transform-overlay-attribution-board")
+    expect(control.getAttribute("part")).toContain("transform-overlay-board-control")
     control.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
     expect($.selectedElement).toBe(target)
+    expect(control.hidden).toBe(false)
     control.click()
     expect(popup().hidden).toBe(false)
     ui().querySelector<HTMLButtonElement>(".close")!.click()
