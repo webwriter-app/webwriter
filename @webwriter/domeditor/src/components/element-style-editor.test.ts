@@ -24,6 +24,16 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it("does not offer break inside in the general style controls", () => {
+  expect(elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced]).map(definition => definition.name))
+    .not.toContain("break-inside")
+})
+
+it.each(["ul", "ol", "menu", "table", "section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote", "figure"])("does not offer break inside in the %s style profile", localName => {
+  const profile = specializedElementStyle(localName)!
+  expect([...profile.primary, ...profile.advanced]).not.toContain("break-inside")
+})
+
 describe("media cropping", () => {
   const definitions = specializedStyleDefinitions.filter(definition => definition.name === "object-view-box")
   async function mountCrop(style: ElementStyleState) {

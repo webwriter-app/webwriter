@@ -187,7 +187,6 @@ const layoutAdvanced = [
   select("caption-side", "Caption side", "Table", values("top", "bottom")),
   select("empty-cells", "Empty cells", "Table", values("show", "hide")),
   select("break-before", "Break before", "Fragmentation", values("auto", "avoid", "page", "column", "left", "right")),
-  select("break-inside", "Break inside", "Fragmentation", values("auto", "avoid", "avoid-page", "avoid-column")),
   select("break-after", "Break after", "Fragmentation", values("auto", "avoid", "page", "column", "left", "right")),
 ] as const
 
@@ -404,7 +403,7 @@ const headings: SpecializedElementStyle = {
 }
 const listStyles: SpecializedElementStyle = {
   primary: ["list-style-type", "list-style-image"],
-  advanced: ["list-style-position", "break-inside"],
+  advanced: ["list-style-position"],
 }
 const imageStyles: SpecializedElementStyle = {
   primary: ["object-fit", "object-view-box"],
@@ -419,13 +418,13 @@ export function specializedElementStyle(localName: string): SpecializedElementSt
   if(["audio", "iframe", "embed", "object"].includes(localName)) return {primary: [], advanced: []}
   if(localName === "details") return {primary: [], advanced: []}
   if(localName === "summary") return {primary: ["list-style-type", "list-style-position"], advanced: []}
-  if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells", "break-inside"]}
+  if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells"]}
   if(["td", "th"].includes(localName)) return {primary: ["text-align", "vertical-align"], advanced: []}
   if(["svg", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "g"].includes(localName)) return {
     primary: ["stroke-linecap", "stroke-linejoin"], advanced: ["stroke-dasharray", "fill-rule", "paint-order", "vector-effect"],
   }
   if(["section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote", "figure"].includes(localName)) return {
-    primary: ["break-inside"], advanced: ["break-before", "break-after"],
+    primary: [], advanced: ["break-before", "break-after"],
   }
   if(localName === "math") return {primary: ["math-style"], advanced: ["math-depth", "math-shift"]}
   return undefined

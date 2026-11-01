@@ -41,6 +41,15 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it.each(["ul", "ol", "menu", "table", "section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote"])("does not offer break inside for %s", async localName => {
+    const toolbox = await mountElement(localName, {}, {"break-inside": "avoid"})
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!
+    for(const editor of drawer.querySelectorAll<ElementStyleEditor>("element-style-editor")) {
+      expect(editor.propertyNames).not.toContain("break-inside")
+      expect(editor.shadowRoot!.querySelector('[data-property="break-inside"]')).toBeNull()
+    }
+  })
+
   it("puts Open by default in Details primary controls without a break-inside option", async () => {
     const toolbox = await mountElement("details")
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="details"]')!
