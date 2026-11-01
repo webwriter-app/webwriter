@@ -171,7 +171,6 @@ const expectedChecks = [
   "modifier clicks select table cells and outer borders",
   "table insertion controls follow rotated edges and preview lines",
   "touch caret and ranges use shared pointer selection",
-  "drag selection defers node selection until release",
   "layout based hit testing returns the rendered target",
   "clicks below closed details keep hidden media collapsed",
   "focused AI previews preserve widgets, contextual HTML, and rendered styles",

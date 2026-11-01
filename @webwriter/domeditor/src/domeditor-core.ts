@@ -761,10 +761,8 @@ export class DOMEditor {
     const selection = document.getSelection()
     if(!selection?.anchorNode) return
 
-    if(!(this.features.selection.isSelectingByPointer && $.isElementSelection)) {
-      this.doc.updateLocalSelection(selection)
-      this.postMarkState()
-    }
+    this.doc.updateLocalSelection(selection)
+    this.postMarkState()
     this.postCommentState()
     this.postSelectionPath()
   }
@@ -938,8 +936,7 @@ export class DOMEditor {
     const selectedSection = this.features.selection.selectedSectionElement
     if(selectedSection) return selectedSection
     if(this.features.table.hasCellSelection) return this.features.table.selectionFocusCell
-    const selected = this.features.selection.captureSelectedElement
-      ?? ($.isElementSelection && !this.features.selection.isSelectingByPointer ? $.selectedElement : null)
+    const selected = this.features.selection.captureSelectedElement ?? ($.isElementSelection ? $.selectedElement : null)
     if(!selected) return null
     const root = getDocumentRoot()
     if(selected === document.body || selected === root && root === document.body) return document.documentElement
@@ -1080,7 +1077,7 @@ export class DOMEditor {
       documentLayout: this.getDocumentLayoutState(),
       ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
-      ...($.isElementSelection && !selectedSection && !this.features.selection.isSelectingByPointer ? {nodeSelected: true} : {}),
+      ...($.isElementSelection && !selectedSection ? {nodeSelected: true} : {}),
       ...(this.features.selection.isCaptureSelection ? {capture: true} : {}),
       ...(selectedSection ? {section: {
         path: this.pathToElement(selectedSection),

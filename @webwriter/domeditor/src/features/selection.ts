@@ -69,7 +69,6 @@ export class SelectionFeature extends EditorFeature {
   #selectedSection: Element | null = null
   #atomicExtension: {range: Range, backwards: boolean} | null = null
   #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string} | null = null
-  #nativeSelectionPointer: number | null = null
   #settingBoxSelection = false
   #boxDrag: {root: HTMLElement, x: number, y: number, pointerId?: number, pointerType: string, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
   #selectionMarkers = new Set<Element>()
@@ -795,7 +794,6 @@ export class SelectionFeature extends EditorFeature {
       this.#atomicOverlayFrame = null
     }
     this.#drag = null
-    this.#nativeSelectionPointer = null
     this.dragAnchor = null
     this.isInDragSelection = false
     this.#updatePointerHover(null)
@@ -806,9 +804,6 @@ export class SelectionFeature extends EditorFeature {
   }
 
   readonly #finishDrag = (event: PointerEvent) => {
-    // Native selection may release pointer capture before the mouse button is
-    // released. Keep the gesture active until pointerup or pointercancel.
-    if(event.type === "lostpointercapture" && (event.buttons & 1) !== 0) return
     if(this.#boxDrag) {
       if(this.#boxDrag.pointerId !== undefined && this.#boxDrag.pointerId !== event.pointerId) return
       if(event.type === "pointerup") {
@@ -827,15 +822,6 @@ export class SelectionFeature extends EditorFeature {
       this.processSelection(false, {scrollIntoView: false})
       return
     }
-    if(this.#nativeSelectionPointer !== null) {
-      if(this.#nativeSelectionPointer !== event.pointerId) return
-      this.#endDrag()
-      this.processSelection(false, {scrollIntoView: false})
-      this.editor.doc.updateLocalSelection()
-      this.editor.postMarkState()
-      this.editor.postSelectionPath()
-      return
-    }
     if(this.#drag?.pointerId !== undefined && this.#drag.pointerId !== event.pointerId) return
     const drag = this.#drag
     if(event.type === "pointerup" && drag && !drag.nativeClick && !drag.moved) {
@@ -852,12 +838,7 @@ export class SelectionFeature extends EditorFeature {
     const dragging = this.isInDragSelection
     if(drag?.scope) this.#constrainSelectionToFlow()
     this.#endDrag()
-    if(dragging) {
-      this.processSelection()
-      this.editor.doc.updateLocalSelection()
-      this.editor.postMarkState()
-      this.editor.postSelectionPath()
-    }
+    if(dragging) this.processSelection()
   }
 
   #beginDrag(event: PointerEvent, nativeClick: boolean) {
@@ -1074,7 +1055,6 @@ export class SelectionFeature extends EditorFeature {
         if(isContentfulWidget(element, this.editor.schema)) {
           this.#clearSelections()
           this.editor.features.transformation.clearTransform()
-          this.#nativeSelectionPointer = ev.pointerId
           return
         }
       }
@@ -1463,9 +1443,6 @@ export class SelectionFeature extends EditorFeature {
 
   /** Whether a pointer-driven drag selection is in progress. */
   isInDragSelection = false
-
-  /** Native slotted text selection also keeps element UI deferred until release. */
-  get isSelectingByPointer() { return this.isInDragSelection || this.#nativeSelectionPointer !== null }
 
   dragAnchor: {node: Node, offset: number} | null = null
 
@@ -1975,7 +1952,7 @@ export class SelectionFeature extends EditorFeature {
     if(this.editor.features.list.isVirtualSelection) return "virtual"
     if(inlineMathRoot(selection.anchorNode) && inlineMathRoot(selection.anchorNode) === inlineMathRoot(selection.focusNode)) return "text"
     if($.isGapSelection) return "gap"
-    if($.isElementSelection && !inDragSelection && !this.isSelectingByPointer) return "element"
+    if($.isElementSelection && !inDragSelection) return "element"
     const anchorContainer = getContainer(selection.anchorNode)
     if(anchorContainer && $.isTextSelection) return "text"
     if(anchorContainer && $.isEmptySelection) return "empty"
@@ -2203,7 +2180,7 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     const focusedWidget = focusedWidgetHost()
-    if(focusedWidget && !this.isSelectingByPointer) {
+    if(focusedWidget && !this.isInDragSelection) {
       this.#capturedElement = !isContentfulWidget(focusedWidget, this.editor.schema)
         || shadowFocused ? focusedWidget : null
     }
@@ -2242,7 +2219,7 @@ export class SelectionFeature extends EditorFeature {
         if(!this.editor.features.slides.active) $.selectDocumentStart()
         sel = document.getSelection()
       }
-      if(!inDragSelection && !this.isSelectingByPointer) this.#normalizeNativeSelection()
+      if(!inDragSelection) this.#normalizeNativeSelection()
       this.editor.features.slides.constrainSelection()
       this.editor.features.board.constrainSelection()
       sel = document.getSelection()
@@ -2574,6 +2551,7 @@ export class SelectionFeature extends EditorFeature {
     "pointerdown": ev => this.#handlePointerDown(ev),
     "pointerup": event => {
       if(event.pointerType === "touch" && event.isPrimary === false) return
+      this.isInDragSelection = false
       if(getDocumentRoot().childNodes.length === 0) {
         $.selectDocumentStart()
         this.processSelection()
