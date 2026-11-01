@@ -1691,6 +1691,59 @@ describe("Yjs to DOM synchronization", () => {
     expect(left.root.textContent).toContain("R")
     expect(left.root.querySelectorAll("aside")).toHaveLength(2)
   })
+
+  it.each([1, 17, 2026])("converges reproducible mixed DOM edit sequences (seed %i)", async seed => {
+    const left = createShared('<p>start</p><x-note data-kind="authored"><span>widget</span></x-note><!--note--><section><em>stable</em></section>')
+    const right = cloneShared(left.shared)
+    const stable = [left.root.querySelector("section"), right.root.querySelector("section")]
+    const widget = [left.root.querySelector("x-note"), right.root.querySelector("x-note")]
+    const clients = [left, right]
+    const trace: string[] = []
+    let randomState = seed
+    const next = () => ((randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0) >>> 16)
+    const edit = (clientIndex: number, step: number) => {
+      const {root} = clients[clientIndex]
+      const operation = next() % 4
+      trace.push(`${clientIndex}:${operation}`)
+      if(operation === 0) root.querySelector("p")!.append(String(step))
+      else if(operation === 1) root.querySelector("p")!.setAttribute("data-step", String(step))
+      else if(operation === 2) {
+        const aside = document.createElement("aside")
+        aside.textContent = `${clientIndex}-${step}`
+        root.insertBefore(aside, root.querySelector("section"))
+      }
+      else Array.from(root.childNodes).find(node => node.nodeType === Node.COMMENT_NODE)!.textContent = `note-${clientIndex}-${step}`
+    }
+
+    for(let step = 0; step < 12; step++) {
+      const clientIndex = next() % 2
+      edit(clientIndex, step)
+      if(step % 3 === 0) edit(1 - clientIndex, step)
+      await mutationsDelivered()
+      const updates = clients.map(({shared}) => Y.encodeStateAsUpdate(shared.doc))
+      Y.applyUpdate(left.shared.doc, updates[1], "right-client")
+      Y.applyUpdate(right.shared.doc, updates[0], "left-client")
+      const context = `seed ${seed}, step ${step}, edits ${trace.join(" ")}`
+      expect(right.root.innerHTML, context).toBe(left.root.innerHTML)
+      expect(right.shared.body.toString(), context).toBe(left.shared.body.toString())
+      expect(Y.encodeStateVector(right.shared.doc), context).toEqual(Y.encodeStateVector(left.shared.doc))
+      for(let index = 0; index < clients.length; index++) {
+        expect(clients[index].root.querySelector("section"), context).toBe(stable[index])
+        expect(clients[index].root.querySelector("x-note"), context).toBe(widget[index])
+        expect(clients[index].root.querySelector("x-note")?.outerHTML, context).toBe('<x-note data-kind="authored"><span>widget</span></x-note>')
+      }
+    }
+
+    const beforeUndo = left.root.innerHTML
+    left.shared.undo()
+    expect(left.root.innerHTML, `seed ${seed}, undo changed the document`).not.toBe(beforeUndo)
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-undo")
+    expect(right.root.innerHTML, `seed ${seed}, undo`).toBe(left.root.innerHTML)
+    left.shared.redo()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-redo")
+    expect(left.root.innerHTML, `seed ${seed}, redo`).toBe(beforeUndo)
+    expect(right.root.innerHTML, `seed ${seed}, remote redo`).toBe(beforeUndo)
+  })
 })
 
 describe("relative selections and history", () => {

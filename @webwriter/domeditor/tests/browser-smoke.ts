@@ -29,6 +29,31 @@ await check("designMode editing", () => {
   assert(document.querySelector("#baseline")!.textContent === "S!art", "native editing did not change the selected text")
 })
 
+await check("native selection survives an unrelated DOM edit", () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "Hello"
+  const unrelated = document.createElement("aside")
+  document.body.append(paragraph, unrelated)
+  const text = paragraph.firstChild!, selection = document.getSelection()!
+  const previous = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : undefined
+  try {
+    selection.setBaseAndExtent(text, 1, text, 4)
+    unrelated.append(document.createElement("span"))
+    assert(selection.anchorNode === text && selection.anchorOffset === 1
+      && selection.focusNode === text && selection.focusOffset === 4,
+    "an unrelated DOM edit moved the native selection")
+    assert(document.execCommand("insertText", false, "i"), "native replacement was rejected")
+    assert(paragraph.textContent === "Hio", `native replacement changed the wrong text: ${paragraph.textContent}`)
+    assert(selection.isCollapsed && paragraph.contains(selection.anchorNode), "caret left the edited paragraph")
+  }
+  finally {
+    paragraph.remove()
+    unrelated.remove()
+    selection.removeAllRanges()
+    if(previous) selection.addRange(previous)
+  }
+})
+
 await check("atomic widget editability survives serialization", () => {
   const widget = document.createElement("smoke-widget")
   widget.setAttribute("contenteditable", "false")

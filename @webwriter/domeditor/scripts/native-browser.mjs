@@ -245,6 +245,7 @@ const expectedSmokeChecks = [
   "native widget grouping dialog and processing instruction roundtrip",
   "native Range and Selection",
   "designMode editing",
+  "native selection survives an unrelated DOM edit",
   "atomic widget editability survives serialization",
   "shadow appendix stays out of authored serialization",
   "Yjs remote updates and local undo",

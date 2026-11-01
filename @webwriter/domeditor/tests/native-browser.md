@@ -97,17 +97,15 @@ website data store; no Safari profile is opened. `CHROME_BIN` and `FIREFOX_BIN`
 can select other installed binaries; `WEBKIT_DEVELOPER_DIR` selects the Xcode
 developer directory for the WKWebView host when more than one Swift toolchain
 is installed. The smoke checks cover native Range and
-Selection, designMode editing, atomic widget editability, shadow appendix
+Selection, selection preservation across unrelated DOM edits, designMode editing,
+atomic widget editability, shadow appendix
 exclusion, remote Yjs updates plus local undo, SVG and MathML namespaces,
 document-template serialization, widget grouping and processing instructions,
 typing after deleting the initial paragraph, and isolated package migrations
 and tests. This validates these specific behaviors in
 each engine; it does not claim broad layout, accessibility, or full editor
 compatibility coverage. The detailed regression and math geometry suites remain
-Chromium-only. Current validation: Chromium and WebKit passed all eleven checks.
-Firefox launches headlessly with a temporary profile but timed out before the
-fixture reported, even with first-run prompts and automatic updates disabled;
-it remains unvalidated on this host.
+Chromium-only.
 
 ## Formula visual audit
 
