@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import { $, closestAlignment, fixedClientX, clearInlinePlacement, editingFlowRoot, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
+import { $, closestAlignment, fixedClientX, clearInlinePlacement, editingFlowRoot, figureSelectionTarget, findContainingBlock, findScrollingAncestor, findStackingContainer, getDescendantsInStackingOrder, getStaticCoords, isElement, modifierKeyDown, removeEditorMarker, renderedParentElement, roundByDPR, roundTo, setPart } from "../utility"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {SVG_NAMESPACE, standaloneGraphicShape} from "../graphic"
 import {boardLayoutRole, isSlide} from "../document-layout"
@@ -416,8 +416,9 @@ export class TransformationFeature extends EditorFeature {
   get anchor() { return this.overlay.querySelector<HTMLElement>("#◆transform-overlay-anchor")! }
   get isNarrow() { return this.overlay.classList.contains("◆transform-overlay-narrow") }
 
-  freeformControlContainer(element: Element) {
-    return !this.#group.length && this.target === element && this.#isFreeformItem(element) ? this.overlay : null
+  controlContainer(element: Element) {
+    return !this.#group.length && this.target
+      && (this.target === element || figureSelectionTarget(this.target) === element) ? this.overlay : null
   }
 
   #canTransform(element: Element): element is TransformElement {

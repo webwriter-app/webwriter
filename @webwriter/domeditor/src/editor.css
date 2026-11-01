@@ -2368,9 +2368,19 @@ body::part(transform-overlay-board-control) {
   border-style: dotted;
 }
 body::part(transform-overlay-attribution) {
-  top: 0;
-  left: 0;
+  top: -13px;
+  left: -10px;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M16 8a6 6 0 1 0 0 8"/></svg>');
+}
+body::part(transform-overlay-attribution-saved) {
+  top: calc(50% - 8px);
+  left: auto;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 3px;
+  background: #fff;
 }
 body::part(transform-overlay-attribution-board) {
   top: -13px;

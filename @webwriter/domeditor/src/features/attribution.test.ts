@@ -12,7 +12,7 @@ import type {AttributionLicensePicker} from "../components/attribution-license-p
 let editor: DOMEditor | undefined
 let reader: AttributionController | null
 const ui = () => document.body.shadowRoot!.querySelector<HTMLElement>(".◆attribution-ui")!
-const button = () => ui().querySelector<HTMLButtonElement>(".copyright")!
+const button = () => document.body.shadowRoot!.querySelector<HTMLButtonElement>(".copyright")!
 const popup = () => ui().querySelector<HTMLElement>(".popup")!
 const input = (key: string) => ui().querySelector<HTMLInputElement>(`input[name="${key}"]`)!
 const licensePicker = () => ui().querySelector<AttributionLicensePicker>("attribution-license-picker")!
@@ -296,15 +296,13 @@ describe("element attribution editing", () => {
     if(captured) editor!.features.selection.captureElement(element)
     else select(element)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(bridge.hidden).toBe(false)
+    expect(bridge.hidden).toBe(true)
+    expect(button().parentElement).toBe(editor!.features.transformation.overlay)
     expect(bridge.style.left).toBe("")
     expect(bridge.style.top).toBe("")
     expect(bridge.style.width).toBe("")
     expect(bridge.style.height).toBe("")
-    expect(bridge.getAttribute("part")).toContain("anchor-control-")
-    const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
-    expect(state.sheets.get(document).source).toContain("anchor(left) - 10px")
-    expect(state.sheets.get(document).source).toContain("anchor(top) - 13px")
+    expect(editor!.features.transformation.target).toBe(element)
     expect(button().getAttribute("part")).toBe("transform-overlay-button transform-overlay-attribution")
     expect(button().querySelector("svg")!.hasAttribute("hidden")).toBe(true)
     expect(button().classList.contains("empty-attribution")).toBe(true)
@@ -319,7 +317,7 @@ describe("element attribution editing", () => {
     expect(input("name").value).toBe("")
   })
 
-  it.each(["pointerup", "pointercancel"] as const)("keeps the copyright affordance visible while a drag range includes one whole element until %s", eventType => {
+  it.each(["pointerup", "pointercancel"] as const)("hides the copyright affordance while a drag range includes one whole element until %s", eventType => {
     const element = start()
     bounds(element)
     const original = element.innerHTML
@@ -327,19 +325,24 @@ describe("element attribution editing", () => {
     expect(button().hidden).toBe(false)
 
     editor!.features.selection.isInDragSelection = true
+    editor!.features.selection.processSelection()
     document.dispatchEvent(new Event("selectionchange"))
-    expect(button().hidden).toBe(false)
+    expect(button().hidden).toBe(true)
     editor!.features.attribution.refresh()
-    expect(button().hidden).toBe(false)
+    expect(button().hidden).toBe(true)
+    expect(editor!.features.transformation.target).toBeNull()
 
     document.dispatchEvent(new PointerEvent(eventType, {bubbles: true}))
     expect(editor!.features.selection.isInDragSelection).toBe(false)
+    editor!.features.selection.processSelection()
+    editor!.features.attribution.refresh()
     expect(button().hidden).toBe(false)
+    expect(button().parentElement).toBe(editor!.features.transformation.overlay)
     expect(element.innerHTML).toBe(original)
     expect(editor!.toHTML(true)).not.toContain("◆attribution-ui")
   })
 
-  it("compensates the Firefox document gutter when anchoring the copyright affordance", () => {
+  it("keeps the copyright affordance inside the document frame with a Firefox gutter", () => {
     const element = start()
     bounds(element)
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue("Firefox")
@@ -347,8 +350,8 @@ describe("element attribution editing", () => {
     document.documentElement.style.scrollbarGutter = "stable both-edges"
     try {
       select(element)
-      const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
-      expect(state.sheets.get(document).source).toContain("anchor(left) - 25px")
+      expect(button().parentElement).toBe(editor!.features.transformation.overlay)
+      expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(true)
     }
     finally { document.documentElement.style.removeProperty("scrollbar-gutter") }
   })
@@ -376,7 +379,7 @@ describe("element attribution editing", () => {
       editor!.features.selection.processSelection()
       document.dispatchEvent(new Event("selectionchange"))
       await settle()
-      expect(control.parentElement).toBe(ui().querySelector(".bridge"))
+      expect(control.parentElement).toBe(editor!.features.transformation.overlay)
       expect(control.getAttribute("part")).not.toContain("transform-overlay-attribution-freeform")
       expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
       editor!.features.attribution.disable()
@@ -428,7 +431,7 @@ describe("element attribution editing", () => {
     ui().querySelector<HTMLButtonElement>(".close")!.click()
     expect(editor!.setDocumentLayout("document", "board")).toBe(true)
     await settle()
-    expect(control.parentElement).toBe(ui().querySelector(".bridge"))
+    expect(control.parentElement).toBe(editor!.features.transformation.overlay)
     expect(editor!.toHTML(true)).not.toMatch(/◆|transform-overlay|copyright/)
   })
 
@@ -632,7 +635,7 @@ describe("element attribution editing", () => {
     bounds(element)
     $.selectElement(element)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(false)
+    expect(button().parentElement).toBe(editor!.features.transformation.overlay)
     button().click()
     input("contact").value = "https://example.com/author"
     submit()
@@ -771,7 +774,7 @@ describe("top-level attribution", () => {
     expect(figure.localName).toBe("figure")
     bounds(figure)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(false)
+    expect(button().parentElement).toBe(editor!.features.transformation.overlay)
     button().click()
     expect(popup().hidden).toBe(false)
     input("name").value = "Figure author"
@@ -802,8 +805,15 @@ describe("top-level attribution", () => {
     bounds(figure)
     editor!.features.selection.captureElement(descendant)
     document.dispatchEvent(new Event("selectionchange"))
-    expect(ui().querySelector<HTMLElement>(".bridge")!.hidden).toBe(false)
-    button().click()
+    if(content.startsWith("<svg")) {
+      expect(editor!.features.transformation.target).toBeNull()
+      expect(button().hidden).toBe(true)
+      expect(editor!.features.attribution.actions.openAttribution({type: "openAttribution"})).toBe(true)
+    }
+    else {
+      expect(button().parentElement).toBe(editor!.features.transformation.overlay)
+      button().click()
+    }
     input("license").value = "CC-BY-4.0"
     submit()
     expect(figure.getAttribute(attributionAttributes.license)).toBe("CC-BY-4.0")

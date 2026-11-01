@@ -420,19 +420,22 @@ export function createAttributionController(doc, options = {}) {
       if(target) resize?.observe(target)
     }
     const empty = Boolean(target && options.selectedElement) && !hasCredit(values(target))
-    bridge.hidden = !empty
-    const container = empty ? options.affordanceContainer?.(target) : null
+    bridge.hidden = !empty || Boolean(options.affordanceContainer)
+    const container = target ? options.affordanceContainer?.(target) ?? null : null
     const parent = container ?? bridge
     if(button.parentElement !== parent) parent.append(button)
-    button.hidden = !target
-    if(!target) { anchors?.release(bridge); anchors?.release(popup); return }
+    button.hidden = !target || Boolean(options.affordanceContainer && !container)
+    if(!target) { button.removeAttribute("part"); bridge.removeAttribute("part"); anchors?.release(bridge); anchors?.release(popup); return }
     button.classList.toggle("empty-attribution", empty)
     const board = container?.matches('[part~="transform-overlay-board"]')
+    const freeform = container?.matches('[part~="transform-overlay-freeform"]')
     const placement = board ? " transform-overlay-attribution-board"
-      : container ? " transform-overlay-attribution-freeform" : ""
-    button.setAttribute("part", empty ? `transform-overlay-button transform-overlay-attribution${placement}${board ? " transform-overlay-board-control" : ""}` : "")
-    bridge.setAttribute("part", empty ? "transform-overlay" : "")
-    button.querySelector("svg").toggleAttribute("hidden", empty || values(target).type !== "copyright")
+      : freeform ? " transform-overlay-attribution-freeform" : ""
+    const saved = !empty && !board && !freeform ? " transform-overlay-attribution-saved" : ""
+    button.setAttribute("part", container || (empty && !options.affordanceContainer)
+      ? `transform-overlay-button transform-overlay-attribution${placement}${saved}${board ? " transform-overlay-board-control" : ""}` : "")
+    bridge.setAttribute("part", empty && !options.affordanceContainer ? "transform-overlay" : "")
+    button.querySelector("svg").toggleAttribute("hidden", Boolean(container) || empty || values(target).type !== "copyright")
     // Paint with the normal controls, above the native drag hit regions.
     if(empty && !opened && appendix.lastElementChild !== root) appendix.append(root)
     if(anchors) {
@@ -441,7 +444,7 @@ export function createAttributionController(doc, options = {}) {
       const html = doc.documentElement
       const gutter = view.navigator.userAgent.includes("Firefox") && view.getComputedStyle(html).scrollbarGutter?.includes("both-edges")
         ? Math.max(0, view.innerWidth - html.clientWidth) / 2 : 0
-      if(container) anchors.release(bridge)
+      if(options.affordanceContainer) anchors.release(bridge)
       else anchors.bind(bridge, target, `left:clamp(0px,calc(anchor(${empty ? "left" : "right"}) - ${(empty ? size / 2 : 0) + gutter}px),calc(100vw - ${width}));top:clamp(0px,calc(anchor(${empty ? "top" : "center"}) - ${size / 2 + (empty ? 3 : 0)}px),calc(100dvh - ${size}px));width:${width};height:${size}px;position-visibility:anchors-visible;`)
       if(opened) {
         if(!editable()) { form.hidden = true; details.hidden = false; renderDetails() }

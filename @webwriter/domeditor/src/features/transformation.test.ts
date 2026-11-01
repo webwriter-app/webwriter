@@ -811,7 +811,7 @@ describe("freeform group transformation", () => {
     expect(feature.overlay.style.height).toBe("50px")
     expect(feature.overlay.querySelectorAll(".◆transform-overlay-scale:not([hidden])")).toHaveLength(0)
     expect(feature.overlay.querySelector("#◆transform-overlay-rotator")).not.toHaveAttribute("hidden")
-    expect(feature.freeformControlContainer(first)).toBeNull()
+    expect(feature.controlContainer(first)).toBeNull()
     editor.doc.syncFromDOM()
     const initial = editor.toHTML(true)
     start("scale-right", 400, 125)

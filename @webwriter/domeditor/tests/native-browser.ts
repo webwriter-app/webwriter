@@ -2856,10 +2856,12 @@ await check("text containers resize horizontally and fit their content", async (
         await layoutFrame()
         const feature = editor.features.transformation, before = target.getBoundingClientRect()
         if(mode === "document") {
-          const copyright = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui .copyright")!.getBoundingClientRect()
-          const deleter = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-delete")!.getBoundingClientRect()
-          assert(Math.abs(copyright.left + copyright.width / 2 - (deleter.left + deleter.width / 2)) < 1, `${tag}: copyright is not aligned below the delete control`)
-          assert(Math.abs(copyright.top + copyright.height / 2 - (before.top + before.bottom) / 2) < 1, `${tag}: copyright is not at the right midpoint`)
+          const control = editor.appendix.querySelector<HTMLElement>(".copyright")!
+          const copyright = control.getBoundingClientRect()
+          assert(control.parentElement === feature.overlay, `${tag}: copyright is outside the transform frame`)
+          assert(Math.abs(copyright.left + copyright.width / 2 - before.left) < 2
+            && Math.abs(copyright.top + copyright.height / 2 - (before.top - 3)) < 2,
+            `${tag}: copyright is not at the frame's top-left corner`)
         }
         const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
         assert(handles.length === 1 && handles[0].dataset.resizeDirection === "down-right", `${mode}/${tag}: vertical handles remain visible`)
@@ -3651,8 +3653,9 @@ await check("attribution is limited to top-level elements and follows nesting", 
       doc.dispatchEvent(new view.Event("selectionchange"))
       await layoutFrame()
       if(!existing) {
-        const add = ui.querySelector<HTMLButtonElement>(".copyright")!
-        assert(!ui.querySelector<HTMLElement>(".bridge")!.hidden, "top-level section has no attribution affordance")
+        const add = editor.appendix.querySelector<HTMLButtonElement>(".copyright")!
+        assert(add.parentElement === editor.features.transformation.overlay && !add.hidden,
+          "top-level section has no attribution affordance in its transform frame")
         add.click()
         assert(!ui.querySelector<HTMLElement>(".popup")!.hidden, "top-level section cannot open attribution")
         ui.querySelector<HTMLButtonElement>(".close")!.click()
