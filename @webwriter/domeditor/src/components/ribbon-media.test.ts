@@ -784,6 +784,7 @@ describe("primary media alternative text", () => {
     document.body.append(toolbox)
     await toolbox.updateComplete
     const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label$=": Alternative text"]')!
+    expect(input.closest(".media-alternative-text")).not.toBeNull()
     expect(input.value).toBe("Description")
     expect(input.placeholder).toBe(type === "picture" || type === "img" ? "Describe the image"
       : type === "audio" ? "Describe the audio" : type === "video" ? "Describe the video" : "Describe the website")

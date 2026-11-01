@@ -2315,7 +2315,7 @@ export abstract class EditingControls extends LitElement {
 
   protected renderGraphicAlternativeTextField() {
     if(!this.graphic?.active) return nothing
-    return html`<div class="media-toolbox-controls media-primary-options">
+    return html`<div class="media-toolbox-controls media-primary-options media-alternative-text">
       ${this.renderMediaAttributeField({name: "aria-label", label: "Alternative text", placeholder: "Describe the graphic"}, {
         attributes: {"aria-label": this.graphic.alternativeText ?? ""},
         label: "Graphic: Alternative text",

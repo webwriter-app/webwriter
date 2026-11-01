@@ -21,6 +21,7 @@ describe("graphic ribbon", () => {
     await toolbox.updateComplete
     const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="svg"]')!
     const input = drawer.querySelector<HTMLInputElement>('input[aria-label="Graphic: Alternative text"]')!
+    expect(input.closest(".media-alternative-text")).not.toBeNull()
     expect(input.value).toBe("A flowchart")
     expect(input.placeholder).toBe("Describe the graphic")
     expect(input.closest('[slot="more"]')).toBeNull()

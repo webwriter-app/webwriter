@@ -694,6 +694,8 @@ export class DomEditorToolbox extends EditingControls {
     .list-indent {grid-column: 1 / -1; width: 100%; margin-bottom: .4rem;}
     .list-indent button {justify-content: space-between; padding-inline: .5rem; font-size: .68rem;}
     .media-toolbox-controls .media-attribute style-combobox {width: 100%;}
+    .media-alternative-text {grid-column: 1 / -1;}
+    .media-alternative-text .media-attribute {flex: 1 1 auto;}
     .specialized-options {display: flex; flex-direction: column; gap: .4rem; min-width: 0;}
     .document-primary, .document-options {grid-column: 1 / -1; width: 100%;}
     .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
@@ -1214,7 +1216,7 @@ export class DomEditorToolbox extends EditingControls {
         ${mediaPrimaryOptions.length ? html`<div class="media-toolbox-controls media-primary-options">
           ${mediaPrimaryOptions.map(option => this.renderMediaAttribute(this.media!.type, option))}
         </div>` : nothing}
-        <div class="media-toolbox-controls">
+        <div class="media-toolbox-controls media-alternative-text">
           ${mediaAttributeOptions[this.media.type].filter(option => ["alt", "aria-label"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
         </div>` : nothing}
