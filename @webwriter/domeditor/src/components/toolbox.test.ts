@@ -115,23 +115,13 @@ describe("toolbox", () => {
     expect(toolButton(toolbox, "Review").getAttribute("aria-selected")).toBe("true")
   })
 
-  it("keeps developer console controls available beside Versions in Review and locks them during pending HTML edits", async () => {
+  it("keeps only Versions controls in the Review footer when the console is open", async () => {
     const toolbox = await mountToolbox()
     toolbox.consoleOpen = true
     toolbox.selectTool("Review")
     await toolbox.updateComplete
-    const change = vi.fn()
-    toolbox.addEventListener("developer-console-change", change)
-    const close = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!
     expect(toolbox.shadowRoot!.querySelector(".versions-console-toggle")).not.toBeNull()
-    expect(close().disabled).toBe(false)
-    close().click()
-    expect(change.mock.calls[0][0].detail).toEqual({enabled: false})
-    toolbox.htmlPending = true
-    await toolbox.updateComplete
-    expect(close().disabled).toBe(true)
-    close().click()
-    expect(change).toHaveBeenCalledTimes(1)
+    expect(toolbox.shadowRoot!.querySelector('[aria-label="Developer console controls"]')).toBeNull()
   })
 
   it("puts Comments above Issues with independent thin scroll areas and a Versions footer", async () => {
@@ -988,32 +978,15 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("122px")
   })
 
-  it("opens one developer console from Edit and locks its toggle during pending HTML edits", async () => {
+  it("does not show console controls in the Edit toolbox", async () => {
     const toolbox = await mountToolbox()
     toolButton(toolbox, "Edit").click()
-    await toolbox.updateComplete
-    const footer = toolbox.shadowRoot!.querySelector(".edit-mode-footer")!
-    const toggle = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!
-    const change = vi.fn()
-    toolbox.addEventListener("developer-console-change", change)
-    expect(toggle.textContent).toContain("Developer console")
-    expect(toolbox.shadowRoot!.querySelector(".html-mode-toggle, .develop-mode-toggle")).toBeNull()
-    toggle.click()
-    expect(change).toHaveBeenCalledWith(expect.objectContaining({detail: {enabled: true}}))
     toolbox.consoleOpen = true
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBe(footer)
-    expect(toggle.getAttribute("aria-pressed")).toBe("true")
-    expect(toolbox.shadowRoot!.querySelector(".console-pin")).toBeNull()
-    const close = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".console-close")!
-    expect(close.disabled).toBe(false)
-    close.click()
-    expect(change).toHaveBeenLastCalledWith(expect.objectContaining({detail: {enabled: false}}))
-    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).not.toBeNull()
-    toolbox.consoleOpen = false
+    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[aria-label="Close developer console"]')).toBeNull()
     toolbox.htmlPending = true
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.disabled).toBe(true)
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!.inert).toBe(true)
     toolbox.selectTool("Style")
     expect(toolbox.activeTool).toBe("Edit")
@@ -1342,14 +1315,14 @@ describe("toolbox", () => {
 
     toolButton(toolbox, "Edit").click()
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".developer-console-toggle")).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".developer-console-toggle")).toBeNull()
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.map(drawer => drawer.label)).toEqual(["Style"])
   })
 })
 
 
-it("limits the document Style drawer to Background", async () => {
+it("shows document theme options in the Style drawer", async () => {
   const toolbox = await mountToolbox()
   toolbox.documentSelected = true
   toolbox.elementStyle = {

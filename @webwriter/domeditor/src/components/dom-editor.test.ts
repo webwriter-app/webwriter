@@ -2631,7 +2631,8 @@ describe("DomEditor breadcrumb visibility", () => {
     await editor.updateComplete
     await toolbox.updateComplete
     if(surface === "console" || surface === "versions") {
-      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(surface === "console" ? ".developer-console-toggle" : ".versions-console-toggle")!.click()
+      if(surface === "console") await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+      else toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
     }
     else if(surface === "math") host.mathSelection = {active: true, display: "inline"}
     else if(surface === "shape") host.graphicSelection = {active: true, capture: true}
@@ -3000,7 +3001,7 @@ describe("Develop local packages", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
     await editor.updateComplete
     const console = editor.shadowRoot!.querySelector("developer-console")!
     await console.updateComplete
@@ -4911,7 +4912,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
     show.click()
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("false")
+    expect((editor as any).consoleOpen).toBe(false)
   })
 
   it("ignores previously pinned documents while restoring console pinning", async () => {
@@ -4948,8 +4949,8 @@ describe("DomEditor.execute()", () => {
     ;(editor as any).handleRibbonCollapse()
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
-    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.disabled).toBe(false)
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
+    expect(console.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.disabled).toBe(false)
+    console.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
     await editor.updateComplete
     expect((editor as any).consoleOpen).toBe(false)
     expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(true)
@@ -4972,7 +4973,7 @@ describe("DomEditor.execute()", () => {
     expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(false)
     expect(restored.pinned).toBe(false)
     expect((reloaded as any).consoleOpen).toBe(true)
-    restoredToolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
+    restored.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
     await reloaded.updateComplete
     expect((reloaded as any).consoleOpen).toBe(false)
   })
@@ -5052,7 +5053,7 @@ describe("DomEditor.execute()", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
     await editor.updateComplete
     expect((editor as any).consoleOpen).toBe(true)
     expect((editor as any).consoleTab).toBe(tab)
@@ -5093,7 +5094,7 @@ describe("DomEditor.execute()", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
     await vi.waitFor(() => expect((editor as any).htmlSource).toBe("<p>Hello</p>"))
     await editor.updateComplete
     const console = editor.shadowRoot!.querySelector("developer-console")!

@@ -4232,7 +4232,7 @@ export class DomEditor extends LitElement {
       return
     }
     if(label === "show-developer-console") {
-      void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+      void this.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: !this.consoleOpen}}))
       return
     }
     if(label === "local-package-add") {

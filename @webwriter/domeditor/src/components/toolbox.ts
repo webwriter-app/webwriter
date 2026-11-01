@@ -1645,28 +1645,7 @@ export class DomEditorToolbox extends EditingControls {
             detail: {enabled: false}, bubbles: true, composed: true,
           }))}>${ribbonIcon("Reject")}</button>` : nothing}
       </div>
-      ${this.consoleOpen ? this.renderDeveloperConsoleControls() : nothing}
     </footer>`
-  }
-
-  private renderEditModeFooter() {
-    return html`<footer class="edit-mode-footer">
-      ${this.renderDeveloperConsoleControls()}
-    </footer>`
-  }
-
-  private renderDeveloperConsoleControls() {
-    return html`<div class="developer-console-controls" role="group" aria-label="Developer console controls">
-        <button class="developer-console-toggle" type="button" aria-label="Developer console" title="Developer console"
-          aria-pressed=${this.consoleOpen} ?disabled=${this.htmlPending}
-          @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: !this.consoleOpen}, bubbles: true, composed: true}))}
-        >${ribbonIcon("Develop")}<span>Developer console</span></button>
-        ${this.consoleOpen ? html`<button class="console-close" type="button" aria-label="Close developer console" title="Close developer console"
-          ?disabled=${this.htmlPending}
-          @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: false}, bubbles: true, composed: true}))}
-        >${ribbonIcon("Reject")}</button>` : ""}
-      </div>
-    `
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
@@ -1901,8 +1880,7 @@ export class DomEditorToolbox extends EditingControls {
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
-          ${this.activeTool === "Review" ? this.renderVersionsFooter()
-            : (this.activeTool === "Edit" || this.consoleOpen && this.activeTool !== "Feedback") ? this.renderEditModeFooter() : ""}
+          ${this.activeTool === "Review" ? this.renderVersionsFooter() : ""}
         </aside>
       </div>
     `

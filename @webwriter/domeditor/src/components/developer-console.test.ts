@@ -120,6 +120,22 @@ describe("Developer console", () => {
     expect(console.shadowRoot!.querySelector(".developer-console-controls")).toBeNull()
   })
 
+  it("closes from the top right and prevents closing during pending HTML edits", async () => {
+    const console = await mount()
+    const close = console.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!
+    const change = vi.fn()
+    console.addEventListener("developer-console-change", change)
+    expect(close.parentElement?.tagName).toBe("HEADER")
+    expect(getComputedStyle(close).right).toBe("0px")
+    close.click()
+    expect(change).toHaveBeenCalledWith(expect.objectContaining({detail: {enabled: false}}))
+    console.htmlPending = true
+    await console.updateComplete
+    expect(close.disabled).toBe(true)
+    close.click()
+    expect(change).toHaveBeenCalledTimes(1)
+  })
+
   it("links to documentation in a new tab beside auto-reload", async () => {
     const console = await mount()
     const link = console.shadowRoot!.querySelector<HTMLAnchorElement>("a.documentation-link")!
