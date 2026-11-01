@@ -1,4 +1,5 @@
 import floatLeft from "@tabler/icons/outline/float-left.svg?raw"
+import circleSquare from "@tabler/icons/outline/circle-square.svg?raw"
 import floatNone from "@tabler/icons/outline/float-none.svg?raw"
 import floatRight from "@tabler/icons/outline/float-right.svg?raw"
 import alignCenter from "@tabler/icons/outline/align-center.svg?raw"
@@ -424,6 +425,7 @@ const icons: Record<string, string> = {
   Image: photo,
   "Image hotspot": handClick,
   Graphic: vector,
+  Shape: circleSquare,
   Rectangle: rectangle,
   Ellipse: oval,
   Triangle: triangle,

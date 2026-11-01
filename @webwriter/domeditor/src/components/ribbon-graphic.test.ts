@@ -115,7 +115,7 @@ describe("graphic ribbon", () => {
     expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).toHaveAttribute("label", "Shapes")
   })
 
-  it("uses the Preset drawer for new insertions without changing graphic parameters", async () => {
+  it("uses the Shape drawer for new insertions without changing graphic parameters", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.graphic = {
@@ -128,8 +128,8 @@ describe("graphic ribbon", () => {
     await toolbox.updateComplete
 
     const drawer = toolbox.shadowRoot!.querySelector<HTMLElement>('ribbon-drawer[layout="shape-paint"]')!
-    expect(drawer).toHaveAttribute("label", "Preset")
-    expect(drawer).toHaveAttribute("icon", "Graphic")
+    expect(drawer).toHaveAttribute("label", "Shape")
+    expect(drawer).toHaveAttribute("icon", "Shape")
     await (drawer as RibbonDrawer).updateComplete
     const fill = drawer.querySelector<HTMLInputElement>('[aria-label="Shape key fill color"]')!
     const stroke = drawer.querySelector<HTMLInputElement>('[aria-label="Shape key stroke color"]')!
@@ -217,7 +217,7 @@ describe("graphic ribbon", () => {
     expect(editListener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {name: "fill", value: "#ff0000"}}))
     toolbox.graphic = {active: true, capture: true, selectionCount: 0}
     await toolbox.updateComplete
-    expect(drawer.label).toBe("Preset")
+    expect(drawer.label).toBe("Shape")
     expect(fill.value).toBe("#ffffff")
   })
 

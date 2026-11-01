@@ -1367,7 +1367,7 @@ export class DomEditorToolbox extends EditingControls {
     const option = selected && this.graphic.shape ? graphicShapeOptions.find(option => option.type === this.graphic!.shape) : undefined
     const shapeName = this.graphic.shape
       ? this.graphic.shape[0].toUpperCase() + this.graphic.shape.slice(1).replaceAll("-", " ") : "Shape"
-    const label = !selected ? "Preset" : count > 1 ? "Shapes" : option?.label ?? shapeName
+    const label = !selected ? "Shape" : count > 1 ? "Shapes" : option?.label ?? shapeName
     const paint = selected ? {
       fill: this.graphic.parameters?.fill ?? defaultGraphicShapePaint.fill,
       stroke: this.graphic.parameters?.stroke ?? defaultGraphicShapePaint.stroke,
@@ -1375,7 +1375,7 @@ export class DomEditorToolbox extends EditingControls {
       opacity: this.graphic.parameters?.opacity ?? defaultGraphicShapePaint.opacity,
     } : this.shapePaint
     const fillColor = paint.fill === "none" ? (selected ? this.selectedShapeFillColor : this.shapeFillColor) : paint.fill
-    return html`<ribbon-drawer label=${label} icon=${option?.icon ?? "Graphic"} icon-path=${option?.path ?? nothing}
+    return html`<ribbon-drawer label=${label} icon=${option?.icon ?? "Shape"} icon-path=${option?.path ?? nothing}
       layout="shape-paint" show-pane-icon .elementCount=${count > 1 ? count : 1}>
       <div class="shape-paint-controls" role="group" aria-label=${selected ? "Selected shape style" : "New shape style"}>
         ${fillUnavailable ? nothing : html`
