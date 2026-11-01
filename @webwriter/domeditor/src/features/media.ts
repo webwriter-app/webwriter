@@ -2529,6 +2529,10 @@ export class MediaFeature extends EditorFeature {
   refreshPlaceholder() {
     if(!this.isEnabled) return null
     this.syncGraphicImagePlaceholders()
+    if(this.editor.features.selection.isInDragSelection) {
+      this.mediaPlaceholder?.hide()
+      return null
+    }
     // A control pointerdown can clear the authored Selection before focusin.
     // Keep the affordance bound to its existing media for the full interaction
     // without restoring the Selection, which would steal focus from the input.

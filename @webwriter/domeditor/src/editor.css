@@ -447,6 +447,14 @@ body::part(insertion-preview) {
   background: transparent;
 }
 
+/* Chromium paints a text caret at a backward range's paragraph endpoint even
+ * when the range already contains an atomic element. Its range overlay is the
+ * visible selection in that case. */
+body:has(.◆atomic-range-selected),
+body:has(.◆atomic-range-selected) * {
+  caret-color: transparent !important;
+}
+
 .◆element-selected {
   anchor-name: --selection-anchor;
 }

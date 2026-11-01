@@ -1598,6 +1598,8 @@ describe("canvas and slide box selection", () => {
 
     // Touching the extreme rotated corners still counts as full coverage.
     feature.beginBoxSelection(new PointerEvent("pointerdown", {button: 0, pointerId: 1, clientX: 150 - extent, clientY: 150 - extent}))
+    expect(item).not.toHaveClass("◆element-selected")
+    expect(editor.features.transformation.target).toBeNull()
     pointer("pointermove", 150 + extent, 150 + extent, root)
     expect(selected()).toEqual([item])
     expect(editor.appendix.querySelectorAll('[part~="box-selection-preview"]')).toHaveLength(1)
@@ -2070,6 +2072,25 @@ describe("processSelection()", () => {
     expect(paragraph.innerHTML).toBe(authored)
   })
 
+  it.each([
+    "<img>", '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>',
+    "<video></video>", "<audio></audio>", "<iframe></iframe>", "<figure><img></figure>",
+  ])("includes %s in a drag range from the only empty paragraph", html => {
+    document.body.innerHTML = `<p></p>${html}`
+    const paragraph = document.querySelector("p")!, atomic = document.body.lastElementChild!
+    document.getSelection()!.setBaseAndExtent(paragraph, 0, document.body, document.body.childNodes.length)
+
+    feature.processSelection(true)
+
+    expect(document.getSelection()!.isCollapsed).toBe(false)
+    expect(atomic.localName === "figure" ? atomic.querySelector("img") : atomic).toHaveClass("◆atomic-range-selected")
+    expect(atomicOverlays()).toHaveLength(1)
+    expect(paragraph).not.toHaveClass("◆empty-selected")
+    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(editor.features.transformation.target).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it.each(["test-widget", "img", "video", "input", "select", "textarea", "button", "svg", "hr"])("overlays a selected %s and removes the overlay on collapse", tag => {
     const element = tag === "svg" ? document.createElementNS("http://www.w3.org/2000/svg", "svg") : el(tag)
     if(tag === "svg") appendToBody(element)
@@ -2329,8 +2350,25 @@ describe("processSelection()", () => {
   it("skips element markers during drag selection", () => {
     const p = el("p", "hello")
     $.selectElement(p)
-    feature.processSelection(true)
-    expect(p.classList.contains("◆element-selected")).toBe(false)
+    feature.processSelection()
+    const post = vi.spyOn(editor, "postHostMessage")
+    feature.isInDragSelection = true
+    feature.processSelection()
+    editor.postSelectionPath()
+    const dragging = (post.mock.lastCall![0] as {detail: Record<string, unknown>}).detail
+    expect(p).not.toHaveClass("◆element-selected")
+    expect(document.body).not.toHaveClass("◆node-selection-active")
+    expect(editor.features.transformation.target).toBeNull()
+    expect(dragging).not.toHaveProperty("nodeSelected")
+    expect(dragging).not.toHaveProperty("capture")
+    expect(dragging).not.toHaveProperty("element")
+    expect(dragging).not.toHaveProperty("selectedElementTypes")
+    feature.isInDragSelection = false
+    feature.processSelection()
+    editor.postSelectionPath()
+    const released = (post.mock.lastCall![0] as {detail: Record<string, unknown>}).detail
+    expect(released.nodeSelected).toBe(true)
+    expect(released.element).toBeDefined()
   })
   it("marks the container of a text selection", () => {
     const p = el("p", "hello")
@@ -5079,6 +5117,7 @@ describe("divider selection", () => {
 
 describe("selection invariants", () => {
   const originalHitTest = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+  const originalElementHitTest = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
   beforeEach(() => {
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, writable: true, value: () => null})
   })
@@ -5087,6 +5126,8 @@ describe("selection invariants", () => {
     vi.restoreAllMocks()
     if(originalHitTest) Object.defineProperty(document, "caretPositionFromPoint", originalHitTest)
     else Reflect.deleteProperty(document, "caretPositionFromPoint")
+    if(originalElementHitTest) Object.defineProperty(document, "elementsFromPoint", originalElementHitTest)
+    else Reflect.deleteProperty(document, "elementsFromPoint")
   })
 
   function pointer(target: EventTarget, type: string, x: number, y: number, options: MouseEventInit = {}) {
@@ -5109,6 +5150,81 @@ describe("selection invariants", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
     return paragraph
   }
+
+  it("shows an image in the live range while dragging from the only empty paragraph", () => {
+    document.body.innerHTML = "<p></p><img>"
+    const paragraph = document.querySelector("p")!, image = document.querySelector("img")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 100, 30))
+    vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 50, 100, 100))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: paragraph, offset: 0} as unknown as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: (_x: number, y: number) => [y < 50 ? paragraph : image]})
+    $.move(paragraph, 0)
+
+    pointer(paragraph, "pointerdown", 20, 20)
+    pointer(document.body, "pointermove", 20, 125)
+
+    expect(feature.isInDragSelection).toBe(true)
+    expect($.anchor).toBe(paragraph)
+    expect($.focus).toBe(document.body)
+    expect($.focusOffset).toBe(2)
+    expect(image).toHaveClass("◆atomic-range-selected")
+    expect(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')).toHaveLength(1)
+    expect(paragraph).not.toHaveClass("◆empty-selected")
+    expect(document.body).not.toHaveClass("◆node-selection-active")
+    pointer(document.body, "pointerup", 20, 125)
+    expect(feature.isInDragSelection).toBe(false)
+  })
+
+  it.each([
+    ["before", "img"], ["after", "img"], ["after", "svg"], ["after", "video"], ["after", "audio"], ["after", "iframe"],
+  ] as const)("keeps %s-origin %s in the drag range while the pointer stays inside it", (origin, tag) => {
+    const html = tag === "img" ? "<img>" : tag === "svg" ? '<svg><rect width="100" height="100"/></svg>' : `<${tag}></${tag}>`
+    document.body.innerHTML = origin === "before" ? `<p></p>${html}` : `${html}<p></p>`
+    const paragraph = document.querySelector("p")!, media = document.querySelector(tag)!
+    const startY = origin === "before" ? 20 : 190
+    const mediaOffset = origin === "before" ? 2 : 0
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(10, startY - 10, 100, 30))
+    vi.spyOn(media, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 50, 100, 100))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: paragraph, offset: 0} as unknown as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true,
+      value: (_x: number, y: number) => [y >= 50 && y <= 150 ? media : paragraph]})
+    $.move(paragraph, 0)
+    pointer(paragraph, "pointerdown", 20, startY)
+
+    for(const y of [140, 110, 60, 110, 140]) {
+      pointer(document.body, "pointermove", 20, y)
+      expect(feature.isInDragSelection).toBe(true)
+      expect($.anchor).toBe(paragraph)
+      expect($.focus).toBe(document.body)
+      expect($.focusOffset).toBe(mediaOffset)
+      expect(media).toHaveClass("◆atomic-range-selected")
+      expect(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]')).toHaveLength(1)
+      expect(editor.features.transformation.target).toBeNull()
+    }
+    pointer(document.body, "pointermove", 20, startY)
+    expect($.focus).toBe(paragraph)
+    expect(media).not.toHaveClass("◆atomic-range-selected")
+    expect(editor.appendix.querySelector('[part~="atomic-selection-overlay"]')).toBeNull()
+    pointer(document.body, "pointerup", 20, startY)
+  })
+
+  it("hides empty image source controls as soon as a drag starts", () => {
+    document.body.innerHTML = "<p></p><img>"
+    const paragraph = document.querySelector("p")!, image = document.querySelector("img")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 100, 30))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: paragraph, offset: 0} as unknown as CaretPosition)
+    $.move(paragraph, 0)
+    const placeholder = editor.features.media.placeholder
+    placeholder.showFor(image)
+    expect(placeholder.element).toHaveAttribute("data-open")
+
+    pointer(paragraph, "pointerdown", 20, 20)
+
+    expect(feature.isInDragSelection).toBe(true)
+    expect(placeholder.target).toBeNull()
+    expect(placeholder.element).not.toHaveAttribute("data-open")
+    pointer(document.body, "pointerup", 20, 20)
+  })
 
   describe("touch uses shared pointer selection", () => {
     it("routes iframe-targeted touch through the same caret and range selection", () => {

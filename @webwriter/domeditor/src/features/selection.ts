@@ -783,6 +783,7 @@ export class SelectionFeature extends EditorFeature {
   /** Pointer capture keeps the whole editor drag in the outer document, even
    * when crossing a widget, native media controls, or a child frame. */
   readonly #endDrag = () => {
+    const wasDragging = this.isInDragSelection
     const pointerId = this.#boxDrag?.pointerId ?? this.#drag?.pointerId
     const target = this.#boxDrag ? document.body : this.#drag?.target
     this.#boxDrag?.overlay.remove()
@@ -798,6 +799,10 @@ export class SelectionFeature extends EditorFeature {
     this.isInDragSelection = false
     this.#updatePointerHover(null)
     document.body.classList.remove("◆selection-dragging")
+    if(wasDragging) {
+      this.editor.postSelectionPath()
+      queueMicrotask(() => this.editor.features.media.refreshPlaceholder())
+    }
     if(pointerId !== undefined && target?.hasPointerCapture?.(pointerId)) {
       target.releasePointerCapture(pointerId)
     }
@@ -857,6 +862,8 @@ export class SelectionFeature extends EditorFeature {
       nativeClick, moved: false, target, pointerId: event.pointerId, pointerType: event.pointerType}
     this.dragAnchor = {node: selection.anchorNode, offset: selection.anchorOffset}
     this.isInDragSelection = true
+    this.editor.features.media.refreshPlaceholder()
+    this.editor.postSelectionPath()
     // BODY capture suppresses descendant :hover; retain the native hover path
     // and hit-test subsequent moves independently of the captured event target.
     this.#updatePointerHover(event.target instanceof Element ? event.target : null)
@@ -903,7 +910,7 @@ export class SelectionFeature extends EditorFeature {
     }
     const point = atOrigin
       ? {node: drag.focus.startContainer, offset: drag.focus.startOffset}
-      : $.pointFromCoords(x, y, event.target, this.editor.schema, editingFlowRoot(drag.anchor.startContainer), drag.scope ?? undefined)
+      : $.pointFromCoords(x, y, event.target, this.editor.schema, editingFlowRoot(drag.anchor.startContainer), drag.scope ?? undefined, drag.anchor)
     if(!point || !root.contains(point.node)) return
     drag.lastFocus.setStart(point.node, point.offset)
     drag.lastFocus.collapse(true)
@@ -919,6 +926,9 @@ export class SelectionFeature extends EditorFeature {
     this.#releaseCaptureSelection()
     this.clearSelectedSection()
     this.editor.features.table.clearCellSelection(false)
+    this.#clearSelections()
+    this.editor.features.transformation.clearTransform()
+    this.editor.features.manipulation.refreshNodeDragTarget(null)
     if(focusedWidgetHost() && document.activeElement instanceof HTMLElement) document.activeElement.blur()
     event.preventDefault()
     const overlay = document.createElement("div")
@@ -934,6 +944,8 @@ export class SelectionFeature extends EditorFeature {
       pointerId: event.pointerId, pointerType: event.pointerType, overlay, elements: [], previews: new Map()}
     this.isInDragSelection = true
     document.body.classList.add("◆", "◆selection-dragging")
+    this.editor.features.media.refreshPlaceholder()
+    this.editor.postSelectionPath()
     if(event.pointerId !== undefined) {
       try { document.body.setPointerCapture(event.pointerId) } catch { /* Synthetic pointer. */ }
     }
@@ -1944,6 +1956,7 @@ export class SelectionFeature extends EditorFeature {
    * presentation branch can be applied during this refresh. */
   #selectionKind(inDragSelection: boolean, capturedElement: Element | null): SelectionKind {
     if(this.editor.features.mark.isSVGTextSelection) return "text"
+    if(inDragSelection && (capturedElement || this.selectedSectionElement || $.isElementSelection || $.isMultiElementSelection)) return "text"
     if(capturedElement) return "capture"
     if(this.selectedSectionElement) return "section"
     const selection = document.getSelection()
@@ -1955,7 +1968,7 @@ export class SelectionFeature extends EditorFeature {
     if($.isElementSelection && !inDragSelection) return "element"
     const anchorContainer = getContainer(selection.anchorNode)
     if(anchorContainer && $.isTextSelection) return "text"
-    if(anchorContainer && $.isEmptySelection) return "empty"
+    if(anchorContainer && selection.isCollapsed && $.isEmptySelection) return "empty"
     return "text"
   }
 
@@ -2153,7 +2166,7 @@ export class SelectionFeature extends EditorFeature {
           && element.classList.contains("◆element-selected") && standaloneGraphicShape(element))
       if(retained) $.selectElement(retained, false)
     }
-    if($.isMultiElementSelection) {
+    if($.isMultiElementSelection && !inDragSelection) {
       this.editor.features.widget.syncLegacyOptions(null)
       this.editor.doc.updateLocalSelection()
       this.#releaseCaptureSelection()
@@ -2267,10 +2280,11 @@ export class SelectionFeature extends EditorFeature {
     if(selectedCapturedSvg && capturedElement.isConnected && $.selectedElement !== figureSelectionTarget(capturedElement)) {
       $.selectElement(figureSelectionTarget(capturedElement), false)
     }
-    const transformTarget = layoutItem ?? selectedElement
+    const transformTarget = inDragSelection ? null : layoutItem ?? selectedElement
     this.editor.features.transformation.syncSelection(transformTarget && !boardLayoutRole(transformTarget) && !slideLayoutRole(transformTarget) ? transformTarget : null, Boolean(layoutItem && layoutItem !== selectedElement))
     this.editor.features.board.refresh()
-    this.editor.features.manipulation.refreshNodeDragTarget(this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
+    this.editor.features.manipulation.refreshNodeDragTarget(inDragSelection ? null
+      : this.editor.features.math.selectedMath ?? (kind === "element" ? $.selectedElement ?? null : null))
     this.editor.features.graphic.refresh()
     this.editor.features.layout.refresh()
     if(scrollIntoView && !isContentfulWidget(focusedWidget, this.editor.schema)) {

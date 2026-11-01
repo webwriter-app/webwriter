@@ -555,10 +555,11 @@ export class EditingSelection {
     }
   }
 
-  /** Resolves text and structural gaps identically for clicks and drags,
-   * without installing an intermediate selection inside atomic content.
+  /** Resolves text and structural gaps without installing an intermediate
+   * selection inside atomic content. A drag includes an atomic element from
+   * the edge opposite its anchor; clicks still use the nearest half.
    * A selectionRoot confines hit testing to one canvas/slide item's content. */
-  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element, selectionRoot?: Element): {node: Node, offset: number, overrideNative?: boolean} | undefined {
+  static pointFromCoords(x: number, y: number, pointerTarget?: EventTarget | null, schema?: Schema, flowRoot?: Element, selectionRoot?: Element, dragAnchor?: Range): {node: Node, offset: number, overrideNative?: boolean} | undefined {
     const widgetGap = this.widgetGapFromCoords(x, y, pointerTarget, schema)
     if(widgetGap && (!selectionRoot || selectionRoot.contains(widgetGap.node))) return widgetGap
     let {offset, offsetNode} = document.caretPositionFromPoint(x, y) ?? {}
@@ -742,9 +743,14 @@ export class EditingSelection {
     if(atomic && !isOutOfFlow(atomic)) {
       const rect = atomic.getBoundingClientRect()
       const inline = getComputedStyle(atomic).display.startsWith("inline")
-      const after = y > rect.bottom || y >= rect.top && (inline
+      let after = y > rect.bottom || y >= rect.top && (inline
         ? x > rect.left + rect.width / 2
         : y > rect.top + rect.height / 2)
+      if(dragAnchor && atomic.parentNode) {
+        const index = Array.from(atomic.parentNode.childNodes).indexOf(atomic)
+        if(dragAnchor.comparePoint(atomic.parentNode, index) >= 0) after = true
+        else if(dragAnchor.comparePoint(atomic.parentNode, index + 1) <= 0) after = false
+      }
       return gap(atomic, after ? "after" : "before")
     }
     if(offsetNode && offsetNode !== root && !root.contains(offsetNode)) return

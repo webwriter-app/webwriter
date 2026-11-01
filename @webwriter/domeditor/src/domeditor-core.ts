@@ -913,9 +913,14 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
+    const root = getDocumentRoot()
+    if(this.features.selection.isInDragSelection) {
+      const anchor = document.getSelection()?.anchorNode
+      const container = anchor instanceof Element ? anchor : anchor?.parentElement
+      return container && root.contains(container) ? container : root
+    }
     const dragged = this.features.manipulation.draggedElement
     if(dragged) return dragged
-    const root = getDocumentRoot()
     const target = this.features.manipulation.styleTarget
     const selectedSection = this.features.selection.selectedSectionElement
     if(target !== document.body && target !== root && target !== selectedSection) return target
@@ -933,6 +938,7 @@ export class DOMEditor {
   /** Returns an exact, explicitly selected authored element. Text selections
    * deliberately have no generic attribute target. */
   private selectedAttributeElement() {
+    if(this.features.selection.isInDragSelection) return null
     const selectedSection = this.features.selection.selectedSectionElement
     if(selectedSection) return selectedSection
     if(this.features.table.hasCellSelection) return this.features.table.selectionFocusCell
@@ -948,6 +954,7 @@ export class DOMEditor {
     if(this.options.reader) { window.dispatchEvent(new Event("webwriter-distribution-selection")); return }
     const body = document.body
     const root = getDocumentRoot(body)
+    const inDragSelection = this.features.selection.isInDragSelection
     const focusedHost = focusedWidgetHost()
     const focusedWidget = isContentfulWidget(focusedHost, this.schema) ? null : focusedHost
     const selected = this.selectedElementForPath()
@@ -1048,16 +1055,16 @@ export class DOMEditor {
       : undefined
     const list = this.features.list.getState()
     const headingGroup = this.features.manipulation.getHeadingGroupState()
-    const figure = this.features.manipulation.getFigureState()
-    const captionPosition = this.features.manipulation.getCaptionPosition()
-    const captionAlignment = this.features.manipulation.getCaptionAlignment()
-    const media = this.features.media.getState()
-    const dialog = this.features.dialog.getState()
-    const table = this.features.table.getState()
-    const graphic = this.features.graphic.getState()
-    const math = this.features.math.getState()
-    const layout = this.features.layout.getState()
-    const selectedSection = this.features.selection.selectedSectionElement
+    const figure = inDragSelection ? null : this.features.manipulation.getFigureState()
+    const captionPosition = inDragSelection ? null : this.features.manipulation.getCaptionPosition()
+    const captionAlignment = inDragSelection ? null : this.features.manipulation.getCaptionAlignment()
+    const media = inDragSelection ? null : this.features.media.getState()
+    const dialog = inDragSelection ? null : this.features.dialog.getState()
+    const table = inDragSelection ? null : this.features.table.getState()
+    const graphic = inDragSelection ? null : this.features.graphic.getState()
+    const math = inDragSelection ? null : this.features.math.getState()
+    const layout = inDragSelection ? null : this.features.layout.getState()
+    const selectedSection = inDragSelection ? null : this.features.selection.selectedSectionElement
     const attributeElement = this.selectedAttributeElement()
     const elementState = attributeElement
       ? elementAttributeState(
@@ -1065,20 +1072,20 @@ export class DOMEditor {
         attributeElement === document.documentElement ? null : this.pathToElement(attributeElement),
       )
       : null
-    const widgetOptions = this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
+    const widgetOptions = inDragSelection ? null : this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
     const canSection = this.features.manipulation.canSectionSelection()
-    const selectedElementTypes = this.features.manipulation.getSelectedElementTypes()
+    const selectedElementTypes = inDragSelection ? [] : this.features.manipulation.getSelectedElementTypes()
     const detail: SelectionChangeDetail = {
       path,
       distribution: this.features.distribution.getState(attributeElement),
       distributionGeneral: this.features.distribution.getState(document.documentElement),
       ...(selectedElementTypes.length ? {selectedElementTypes} : {}),
-      ...($.isMultiElementSelection ? {nodeSelected: true} : {}),
+      ...($.isMultiElementSelection && !inDragSelection ? {nodeSelected: true} : {}),
       documentLayout: this.getDocumentLayoutState(),
       ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
-      ...($.isElementSelection && !selectedSection ? {nodeSelected: true} : {}),
-      ...(this.features.selection.isCaptureSelection ? {capture: true} : {}),
+      ...($.isElementSelection && !selectedSection && !inDragSelection ? {nodeSelected: true} : {}),
+      ...(this.features.selection.isCaptureSelection && !inDragSelection ? {capture: true} : {}),
       ...(selectedSection ? {section: {
         path: this.pathToElement(selectedSection),
         type: selectedSection.localName as SelectionPathSection["type"],
