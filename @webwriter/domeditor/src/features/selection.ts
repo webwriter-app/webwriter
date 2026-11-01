@@ -565,6 +565,23 @@ export class SelectionFeature extends EditorFeature {
     return true
   }
 
+  /** ArrowUp from a structural gap enters the preceding text block.
+   * Native line navigation can skip that block when BODY hosts a shadow slot. */
+  #navigateTextFromGap() {
+    if(!$.isGapSelection || !$.isEmpty) return false
+    const adjacent = this.#adjacentNavigationElement("backward")
+    if(!adjacent || Boolean(isAtomicEditingElement(adjacent, this.editor.schema))) return false
+    const nearest = this.#disclosureEdge(adjacent, "backward")
+    if(!(nearest instanceof Text)) return false
+    const block = this.#selectionBlock(nearest)
+    if(!block || !adjacent.contains(block)) return false
+    const start = this.#disclosureEdge(block, "forward")
+    if(!(start instanceof Text)) return false
+    $.move(start, 0)
+    this.processSelection()
+    return true
+  }
+
   readonly #handleSharedChange = () => {
     if(this.#sharedRefreshQueued) return
     this.#sharedRefreshQueued = true
@@ -2466,7 +2483,8 @@ export class SelectionFeature extends EditorFeature {
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
         && (this.#navigateMathBoundary(direction)
           || this.#navigateContainerGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
-          || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown"))) {
+          || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
+          || ev.key === "ArrowUp" && this.#navigateTextFromGap())) {
         ev.preventDefault()
       }
       else if(direction && ev.shiftKey && !ev.defaultPrevented && !ev.altKey && !ev.ctrlKey && !ev.metaKey

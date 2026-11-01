@@ -2585,6 +2585,16 @@ await check("gap carets track their authored boundary", async () => {
         assert(!view.editor!.toHTML(true).includes("◆"), `${tag}: gap markers leaked into HTML`)
       }
     }
+    doc.body.innerHTML = "<p>one one</p><!--keep--><p><span>two</span></p>"
+    const second = doc.querySelectorAll("p")[1], text = second.querySelector("span")!.firstChild!
+    selection.setPosition(doc.body, doc.body.childNodes.length)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    assert(second.classList.contains("◆gap-after-selected"), "trailing gap did not select the second paragraph")
+    const up = new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    doc.dispatchEvent(up)
+    assert(up.defaultPrevented, "ArrowUp from the trailing gap was left to native navigation")
+    assert(selection.anchorNode === text && selection.anchorOffset === 0, "ArrowUp skipped the adjacent paragraph")
+    assert(!view.editor!.toHTML(true).includes("◆"), "gap navigation leaked markers into HTML")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })

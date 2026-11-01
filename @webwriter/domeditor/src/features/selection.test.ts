@@ -4863,6 +4863,22 @@ describe("document listeners", () => {
     expect($.anchorOffset).toBe(0)
     expect(p.classList.contains("◆gap-before-selected")).toBe(true)
   })
+  it("moves up from the trailing body gap into the adjacent paragraph", () => {
+    document.body.innerHTML = "<p>one one</p><!--keep--><p><span>two</span></p>"
+    const second = document.querySelectorAll("p")[1]
+    const text = second.querySelector("span")!.firstChild!
+    $.selectGap(second, "after")
+    feature.processSelection()
+
+    const event = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(0)
+    expect(editor.toHTML(true)).toContain("<!--keep-->")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
   it("clamps a selection before the body to its start", () => {
     const p = el("p", "hello")
     $.selectRange(document.documentElement, 0)
