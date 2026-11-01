@@ -255,16 +255,20 @@ describe("media ribbon drawer", () => {
     }))
   })
 
-  it.each(["audio", "video"] as const)("shows %s playback options in two primary columns", async type => {
+  it.each(["audio", "video"] as const)("shows %s playback options in one spaced row with checkboxes first", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.media = {type, attributes: {autoplay: "", preload: "metadata", playsinline: ""}}
     document.body.append(toolbox)
     await toolbox.updateComplete
     const primary = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-primary-options")!
-    expect(getComputedStyle(primary).display).toBe("grid")
-    expect(getComputedStyle(primary).gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))")
+    expect(getComputedStyle(primary).display).toBe("flex")
+    expect(getComputedStyle(primary).flexDirection).toBe("row")
+    expect(getComputedStyle(primary).justifyContent).toBe("space-between")
     expect(primary.closest('[slot="more"]')).toBeNull()
+    expect(primary.nextElementSibling?.querySelector<HTMLInputElement>(`input[aria-label="${type === "audio" ? "Audio" : "Video"}: Alternative text"]`)).not.toBeNull()
+    expect(Array.from(primary.children).map(item => [item.firstElementChild?.tagName, item.lastElementChild?.textContent?.trim()]))
+      .toEqual([["INPUT", "Autoplay"], ["INPUT", "Loop"], ["INPUT", "Muted"]])
     expect(Array.from(primary.querySelectorAll("input")).map(input => input.getAttribute("aria-label")))
       .toEqual([`${type === "audio" ? "Audio" : "Video"}: Autoplay`, `${type === "audio" ? "Audio" : "Video"}: Loop`, `${type === "audio" ? "Audio" : "Video"}: Muted`])
     expect(primary.querySelector<HTMLInputElement>("input")!.checked).toBe(true)

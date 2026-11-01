@@ -1050,13 +1050,13 @@ export const editingControlStyles = css`
     }
 
     .media-primary-options {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: .4rem .75rem;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem;
       width: 100%;
     }
-
-    .media-toolbox-controls.media-primary-options {display: grid;}
 
     .media-toolbox-controls .media-attribute {
       box-sizing: border-box;
@@ -1073,7 +1073,7 @@ export const editingControlStyles = css`
       color: #2f3742;
       font: .68rem/1.2 system-ui, sans-serif;
     }
-    .media-primary-options > .media-attribute:only-child {grid-column: 1 / -1;}
+    .media-primary-options .media-attribute-boolean {justify-content: flex-start; gap: .25rem; white-space: nowrap;}
 
     .media-toolbox-controls .media-attribute input,
     .media-toolbox-controls .media-attribute select {

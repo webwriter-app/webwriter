@@ -32,6 +32,17 @@ describe("media cropping", () => {
     await editor.updateComplete
     return editor
   }
+  it("shows the crop heading above four inputs with edge labels below", async () => {
+    const editor = await mountCrop(state())
+    const row = editor.shadowRoot!.querySelector<HTMLElement>('[data-property="object-view-box"]')!
+    expect(row.querySelector<HTMLElement>(".field-label")!.textContent).toContain("Crop")
+    expect(Array.from(row.querySelectorAll(".crop-edge")).map(label => [
+      label.querySelector("input")?.getAttribute("aria-label"), label.lastElementChild?.textContent,
+    ])).toEqual([
+      ["Crop top (%)", "Top"], ["Crop right (%)", "Right"],
+      ["Crop bottom (%)", "Bottom"], ["Crop left (%)", "Left"],
+    ])
+  })
   it.each([
     ["inset(10%)", [10, 10, 10, 10]],
     ["inset(10% 20%)", [10, 20, 10, 20]],

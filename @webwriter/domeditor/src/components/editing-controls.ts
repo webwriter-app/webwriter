@@ -1473,7 +1473,6 @@ export abstract class EditingControls extends LitElement {
   ) {
     if(option.kind === "boolean") return html`
       <label class=${`${className} media-attribute-boolean`}>
-        <span>${option.label}</span>
         <input
           type="checkbox"
           data-ribbon-input-persistent
@@ -1482,6 +1481,7 @@ export abstract class EditingControls extends LitElement {
           ?disabled=${disabled}
           @change=${onChange}
         />
+        <span>${option.label}</span>
       </label>
     `
     if(option.kind === "select") return html`

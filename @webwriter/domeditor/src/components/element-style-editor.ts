@@ -218,7 +218,9 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .specialized-input .length-control select {width: 2.8rem; border: 0; border-left: 1px solid #c5ccd5; border-radius: 0; background: transparent;}
     .specialized-input > input, .specialized-input > select {width: 100%; min-width: 0; border-radius: 4px;}
     .specialized-input style-combobox {flex: 1; min-width: 0;}
-    .crop-edges {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; width: 100%; min-width: 0;}
+    .compact-row[data-property="object-view-box"] {flex-direction: column; align-items: stretch; gap: .3rem;}
+    .compact-row[data-property="object-view-box"] > .field-label {flex: none; font-weight: bold;}
+    .crop-edges {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; width: 100%; min-width: 0;}
     .crop-edge {display: grid; gap: .15rem; min-width: 0;}
     .crop-edge .specialized-input {min-width: 0;}
     .crop-edge .crop-unit {align-self: center; padding-right: .3rem; color: #666;}
@@ -1932,7 +1934,7 @@ export class ElementStyleEditor extends LitElement {
     if(!edges) return this.renderInput(definition, this.declaration("object-view-box"))
     return html`<div class="crop-edges" role="group" aria-label="Crop edges in percent">
       ${["Top", "Right", "Bottom", "Left"].map((edge, index) => html`<label class="crop-edge">
-        <span>${edge}</span><span class="specialized-input">
+        <span class="specialized-input">
           <input type="number" min="0" max="100" step="any" aria-label=${`Crop ${edge.toLowerCase()} (%)`}
             .value=${String(edges[index])}
             @change=${(event: Event) => {
@@ -1945,7 +1947,7 @@ export class ElementStyleEditor extends LitElement {
               }
               this.commitValue("object-view-box", next.every(value => value === 0) ? "" : `inset(${next.map(value => `${value}%`).join(" ")})`)
             }}><span class="crop-unit" aria-hidden="true">%</span>
-        </span>
+        </span><span>${edge}</span>
       </label>`)}
     </div>`
   }

@@ -1135,6 +1135,7 @@ export class DomEditorToolbox extends EditingControls {
     const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
+    const mediaPrimaryOptions = this.media?.type ? mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name)) : []
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? attributes?.name ?? getElementPresentation(localName).name : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
@@ -1210,12 +1211,11 @@ export class DomEditorToolbox extends EditingControls {
         ${this.media.type === "video" && this.media.videoPlaybackWarning ? html`<div class="video-playback-warning" role="status">${this.media.videoPlaybackWarning === "unsupported"
           ? "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."
           : "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."}</div>` : nothing}
+        ${mediaPrimaryOptions.length ? html`<div class="media-toolbox-controls media-primary-options">
+          ${mediaPrimaryOptions.map(option => this.renderMediaAttribute(this.media!.type, option))}
+        </div>` : nothing}
         <div class="media-toolbox-controls">
           ${mediaAttributeOptions[this.media.type].filter(option => ["alt", "aria-label"].includes(option.name))
-            .map(option => this.renderMediaAttribute(this.media!.type, option))}
-        </div>
-        <div class="media-toolbox-controls media-primary-options">
-          ${mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
         </div>` : nothing}
       ${widgetOptions ? html`<div class="specialized-widget-primary">${groupedWidgetOptions
