@@ -199,6 +199,7 @@ describe("document head form", () => {
     expect(choices).toHaveLength(creativeCommonsLicenses.length)
     expect(choices[0].querySelector(".option-code")?.textContent).toBe("CC0-1.0")
     expect(choices[0].querySelector(".option-name")?.textContent).toBe("Creative Commons Zero 1.0 Universal")
+    expect(Array.from(choices[5].querySelectorAll(".option-icons img"), icon => icon.getAttribute("data-icon"))).toEqual(["CC", "BY", "NC", "SA"])
     const descriptions = [
       "The work can be copied, modified, distributed and performed, even for commercial purposes, all without asking permission.",
       "Credit must be given to the creator.",

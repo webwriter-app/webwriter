@@ -1,6 +1,7 @@
 import {css} from "lit"
 import {creativeCommonsLicenses} from "../document-head"
 import {EditorCombobox} from "./editor-combobox"
+import {ccLicenseIcons} from "./cc-license-icons"
 
 /** The attribution form uses the same rich options as the document metadata picker. */
 export class AttributionLicensePicker extends EditorCombobox {
@@ -28,6 +29,7 @@ export class AttributionLicensePicker extends EditorCombobox {
       label: license.code,
       description: license.name,
       detail: license.description,
+      icons: ccLicenseIcons(license.code),
     })), {value: "", label: "No license", detail: "All rights reserved"}]
   }
 

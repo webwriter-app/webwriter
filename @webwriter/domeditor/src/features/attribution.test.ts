@@ -231,6 +231,11 @@ describe("element attribution editing", () => {
     expect(licenses.map(choice => choice.querySelector(".option-code")!.textContent)).toEqual(creativeCommonsLicenses.map(license => license.code))
     expect(licenses.map(choice => choice.querySelector(".option-name")!.textContent)).toEqual(creativeCommonsLicenses.map(license => license.name))
     expect(licenses.map(choice => choice.querySelector(".option-description")!.textContent)).toEqual(creativeCommonsLicenses.map(license => license.description))
+    expect(licenses.map(choice => Array.from(choice.querySelectorAll(".option-icons img"), icon => icon.getAttribute("data-icon")))).toEqual([
+      ["CC", "ZERO"], ["CC", "BY"], ["CC", "BY", "SA"], ["CC", "BY", "NC"],
+      ["CC", "BY", "ND"], ["CC", "BY", "NC", "SA"], ["CC", "BY", "NC", "ND"],
+    ])
+    expect(choices.at(-1)!.querySelector(".option-icons")).toBeNull()
     for(const choice of licenses) expect(choice.children[2].className).toBe("option-description")
     expect(picker.options.some(option => option.value === "MIT")).toBe(false)
     expect(picker.shadowRoot!.textContent).not.toContain("Noncommercial means")

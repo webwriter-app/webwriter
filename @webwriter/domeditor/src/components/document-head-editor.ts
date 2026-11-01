@@ -13,6 +13,7 @@ import {
   type DocumentHeadState,
 } from "../document-head"
 import {EditorCombobox, type ComboboxOption} from "./editor-combobox"
+import {ccLicenseIcons} from "./cc-license-icons"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {documentLanguages} from "../document-languages"
 import {documentThemes} from "../document-themes"
@@ -859,6 +860,7 @@ export class DocumentHeadEditor extends LitElement {
       label: license.code,
       description: license.name,
       detail: license.description,
+      icons: ccLicenseIcons(license.code),
     }))
     return html`
       <div class="common-grid" aria-label="Common document metadata">
