@@ -1036,18 +1036,18 @@ describe("semantic list editing", () => {
     finally { remote.destroy() }
   })
 
-  it("accepts other Details content and preserves a missing summary", () => {
-    document.body.innerHTML = '<details><summary>Title</summary><test-widget></test-widget></details><details><!--keep--></details>'
+  it("preserves other Details content and adds a paragraph only to an empty body", () => {
+    document.body.innerHTML = '<details><summary>Title</summary><test-widget></test-widget></details><details><summary>Text</summary>Body</details><details><!--keep--></details>'
     editor.doc.syncFromDOM()
-    expect(cleanHTML()).toBe('<details><summary>Title</summary><test-widget></test-widget><p></p></details><details><!--keep--><p></p></details>')
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><test-widget></test-widget></details><details><summary>Text</summary>Body</details><details><!--keep--><p></p></details>')
   })
 
-  it("restores a direct paragraph even while other Details content remains", () => {
+  it("does not restore a direct paragraph while other Details content remains", () => {
     document.body.innerHTML = '<details><summary>Title</summary><test-widget></test-widget><p>Body</p></details>'
     editor.doc.syncFromDOM()
     document.querySelector("details > p")!.remove()
     editor.doc.syncFromDOM()
-    expect(cleanHTML()).toBe('<details><summary>Title</summary><test-widget></test-widget><p></p></details>')
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><test-widget></test-widget></details>')
   })
 
   it("places selected inline content below the summary and opens Details", () => {
@@ -1056,7 +1056,7 @@ describe("semantic list editing", () => {
 
     editor.features.list.actions.insertDetails({type: "insertDetails"})
 
-    expect(cleanHTML()).toBe('<p>before </p><details open=""><summary></summary><b>selected</b><p></p></details><p> after</p>')
+    expect(cleanHTML()).toBe('<p>before </p><details open=""><summary></summary><b>selected</b></details><p> after</p>')
     expect($.anchor).toBe(document.querySelector("summary"))
   })
 
@@ -1084,9 +1084,9 @@ describe("semantic list editing", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
 
-    const inserted = '<p>before </p><details open=""><summary></summary>selected<p></p></details><p> after</p>'
+    const inserted = '<p>before </p><details open=""><summary></summary>selected</details><p> after</p>'
     expect(cleanHTML()).toBe(inserted)
-    expect(editor.doc.body.toString()).toContain('<details open=""><summary></summary>selected<p></p></details>')
+    expect(editor.doc.body.toString()).toContain('<details open=""><summary></summary>selected</details>')
     expect(editor.doc.body.toString()).not.toContain("◆")
     editor.doc.undo()
     await Promise.resolve()
@@ -1445,7 +1445,7 @@ describe("semantic list editing", () => {
     $.move(summary.firstChild!, 2)
     summary.click()
     expect(summary.nextSibling).toBe(existing)
-    expect(cleanHTML()).toBe(`<details><summary>Heading</summary>${content}${content.startsWith("<p") ? "" : "<p></p>"}</details>`)
+    expect(cleanHTML()).toBe(`<details><summary>Heading</summary>${content}</details>`)
     if(content.startsWith("<test-widget")) {
       expect($.anchor).toBe(summary.parentElement)
       expect($.anchorOffset).toBe(1)
@@ -1501,7 +1501,7 @@ describe("semantic list editing", () => {
     summary.parentElement!.append(widget)
     summary.click()
     expect(summary.nextSibling).toBe(widget)
-    expect(document.querySelectorAll("details > p")).toHaveLength(1)
+    expect(document.querySelectorAll("details > p")).toHaveLength(0)
   })
 
   it("keeps opening an empty disclosure out of the authored document", () => {
@@ -1629,7 +1629,7 @@ describe("semantic list editing", () => {
     expect(keydown("Enter").defaultPrevented).toBe(true)
     expect(document.querySelector("details")!.open).toBe(true)
     expect($.selectedElement).toBe(document.querySelector("test-widget"))
-    expect(cleanHTML()).toBe('<details><summary>Heading</summary><test-widget></test-widget><p></p></details>')
+    expect(cleanHTML()).toBe('<details><summary>Heading</summary><test-widget></test-widget></details>')
   })
 
   it("redirects insertParagraph at the Summary end into its first content", () => {

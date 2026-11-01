@@ -1031,7 +1031,7 @@ export class ListFeature extends EditorFeature {
     if(details.isConnected) $.move(summary)
   }
 
-  /** Repair disclosure summaries and minimum body content at editing boundaries.
+  /** Repair disclosure summaries and empty bodies at editing boundaries.
    * Widget internals own their structure. */
   ensureDetailsSummaries(roots: Iterable<Element> = [document.body]) {
     const disclosures = new Set<Element>()
@@ -1050,7 +1050,7 @@ export class ListFeature extends EditorFeature {
     }
   }
 
-  /** Keep an editable body without reordering or recreating authored summaries. */
+  /** Give empty disclosures an editable body without changing authored content. */
   ensureDetailsBodyContent() {
     for(const details of document.body.querySelectorAll("details:not([is])")) {
       if(details.namespaceURI !== "http://www.w3.org/1999/xhtml" || atomicEditingContainer(details, this.editor.schema)) continue
@@ -1059,7 +1059,8 @@ export class ListFeature extends EditorFeature {
   }
 
   private ensureDetailsBody(details: Element) {
-    if(Array.from(details.children).some(child => child.matches("p"))) return null
+    if(Array.from(details.childNodes).some(node =>
+      isElement(node) && !node.matches("summary") || isText(node) && Boolean(node.data.trim()))) return null
     const paragraph = details.ownerDocument.createElement("p")
     details.append(paragraph)
     return paragraph
