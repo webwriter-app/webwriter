@@ -12,6 +12,9 @@ import {aiChatStyles} from "./ai-chat.styles"
 import {proofreadingCardStyles, renderProofreadingCard} from "./proofreading-card"
 import {emptyDocumentHeadState, type DocumentHeadField, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
+import "./document-theme-options"
+import {documentThemeProperties} from "../document-theme-options"
+import {themeAccentProperties} from "../css-color"
 import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
@@ -715,6 +718,7 @@ export class DomEditorToolbox extends EditingControls {
     .table-structure-controls > [action="table-header"] {grid-area: 3 / 2;}
     .table-structure-controls > [action="table-footer"] {grid-area: 3 / 3;}
     .specialized-options input, .specialized-options select {min-width: 0; border: 1px solid #c5ccd5; border-radius: 4px; background: #fff; font: inherit;}
+    .toolbox-pane-content :is(input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea):hover:not(:disabled), .media-source-field:hover, .shape-color-control:hover {border-color: #8eb6df; background-color: #eef4fb;}
 
     .style-reset {
       display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.2rem;
@@ -900,7 +904,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private get resettableStyles() {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const properties = documentTarget ? ["background-color"] : [
+    const properties = documentTarget ? documentThemeProperties : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
       "width", "height", "margin", "border-radius", "opacity", "box-shadow", "filter",
       ...Object.keys(this.elementStyle.inline).filter(name => /^(margin|padding)-(top|right|bottom|left|block(?:-start|-end)?|inline(?:-start|-end)?)$/.test(name)
@@ -926,6 +930,16 @@ export class DomEditorToolbox extends EditingControls {
 
   private advancedOpen = new Map<string, boolean>()
 
+  /** Open the document Style options and keep them open through selection updates. */
+  openDocumentThemeOptions() {
+    this.advancedOpen.set("element-style:Style", true)
+    this.selectTool("Edit", true)
+    void this.updateComplete.then(() => {
+      const drawer = this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"][layout="element-style"]')
+      if(drawer?.isConnected) drawer.openDrawer()
+    })
+  }
+
   // Toolbox panes are persistent controls, not transient ribbon popups.
   dismissDrawers() {}
 
@@ -939,11 +953,12 @@ export class DomEditorToolbox extends EditingControls {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
     const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
-    const advancedCount = advancedProperties.filter(name => name === "border-width"
+    const advancedCount = (documentTarget ? documentThemeProperties.filter(name => !themeAccentProperties.includes(name)) : advancedProperties).filter(name => name === "border-width"
       ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
-      : Object.hasOwn(setProperties, name)).length
+      : Object.hasOwn(setProperties, name)).length + Number(documentTarget && themeAccentProperties.some(name => Object.hasOwn(setProperties, name)))
     return html`
       <ribbon-drawer label="Style" icon="Theme" layout="element-style" show-pane-icon expandable .advancedCount=${advancedCount}
+        ?options-actions=${documentTarget}
         ?inert=${disabled} aria-disabled=${disabled ? "true" : "false"}
         style=${disabled ? "opacity: 0.5" : ""}>
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
@@ -953,9 +968,11 @@ export class DomEditorToolbox extends EditingControls {
           }}>${ribbonIcon("Restore")}Reset</button>
         <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
         ${this.renderElementLayoutControls()}
-        <element-style-editor slot="more" mode="compact" orientation="vertical"
+        ${documentTarget ? html`<document-theme-presets slot="options-action" .state=${this.elementStyle}></document-theme-presets>` : nothing}
+        ${!documentTarget ? html`<element-style-editor slot="more" mode="compact" orientation="vertical"
           .selectionKey=${JSON.stringify([this.elementAttributes?.path, this.elementStyle.target])}
-          .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>
+          .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>` : nothing}
+        ${documentTarget ? html`<document-theme-options slot="more" .state=${this.elementStyle}></document-theme-options>` : nothing}
       </ribbon-drawer>
     `
   }

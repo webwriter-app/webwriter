@@ -9,8 +9,10 @@ import type {LiveWidgetAggregateOptions} from "../widget-aggregate-view"
 import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-services"
 import type {GitPackageSource} from "../git-package"
 import {appIconUrl, ribbonIcon} from "../ribbon-icons"
+import {themeAccentColumn, themeAccentProperties} from "../css-color"
 import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
+import "./document-theme-presets"
 import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
 import type {MathKeyboard} from "./math-keyboard"
@@ -552,6 +554,7 @@ export class DomEditor extends LitElement {
   }
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
+  private documentPaletteSignature = ""
   private consoleOpen = false
   private consoleRendered = false
   private reviewOpen = false
@@ -1034,6 +1037,7 @@ export class DomEditor extends LitElement {
       font: 0.75rem/1.25 system-ui, sans-serif;
     }
     .document-layouts-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; min-height: 1.45rem; }
+    .document-layouts-main-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; width: min(38.1rem, calc(100% - 21.45rem)); }
     .document-layouts-bar .recent-documents-title {width: min(20.45rem, calc(100% - 6rem)); margin-left: auto; box-sizing: border-box; padding-right: 1.5rem}
     .document-layouts-close { position: absolute; right: 0; border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
     .document-layouts-close:hover { background: #e2e5e9; }
@@ -1059,6 +1063,7 @@ export class DomEditor extends LitElement {
     .document-layouts-documents p {margin: .3rem 0; color: #687383; font-size: .7rem}
 
     @container document-layouts (max-width: calc(63rem - 40px)) {
+      .document-layouts-main-heading { width: calc((100% - 1.8rem) / 5.25 * 4 + 1.35rem); }
       .document-layouts-options {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 1.25fr); align-items: stretch; gap: .45rem}
       .document-layouts-bar .document-layout-cards {grid-column: span 4; grid-template-columns: repeat(4, minmax(0, 1fr))}
       .document-layouts-bar .recent-documents-title {width: calc((100% - 1.8rem) / 5.25 * 1.25)}
@@ -1067,6 +1072,7 @@ export class DomEditor extends LitElement {
     }
 
     @container document-layouts (max-width: 40rem) {
+      .document-layouts-main-heading { width: calc((100% - .9rem) / 3.25 * 2 + .45rem); }
       .document-layouts-options {grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.25fr); height: calc(6.45rem + 2px)}
       .document-layouts-bar .document-layout-cards {grid-column: span 2; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); min-height: 0}
       .document-layouts-bar .document-layout-preview {height: 0; min-height: 0; flex: 1 1 auto}
@@ -1084,6 +1090,7 @@ export class DomEditor extends LitElement {
       .document-layouts-bar {padding-block: .25rem; min-height: 5.85rem}
       .document-layouts-heading {min-height: 1rem; margin-bottom: .2rem}
       .document-layouts-combined-title {display: inline}
+      .document-layouts-main-heading {width: calc(100% - 1.8rem)}
       .document-layouts-bar .recent-documents-title {display: none}
       .document-layouts-options {display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 1.25rem 2.6rem; gap: .15rem; height: auto}
       .document-layouts-bar .document-layout-cards {grid-column: 1; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: none; gap: .3rem}
@@ -1931,6 +1938,7 @@ export class DomEditor extends LitElement {
     this.clearMotionStylesheet()
     this.editorOpaque = iframe.contentDocument === null
     this.editorDocument = iframe.contentDocument
+    this.syncDocumentPalette()
     this.editorWindow = iframe.contentWindow
     this.updateMotionPreference()
     // Happy DOM can parse the initial srcdoc's metadata
@@ -1985,6 +1993,7 @@ export class DomEditor extends LitElement {
         }
         const hasAuthoredMutation = mutations.some(mutation => isCurrentTarget(mutation.target) && this.isAuthoredMutation(mutation))
         if(hasAuthoredMutation) {
+          this.syncDocumentPalette()
           this.dismissGuidedTour()
           this.documentChangeSequence++
           this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
@@ -2295,6 +2304,7 @@ export class DomEditor extends LitElement {
       if(revision !== this.frameRevision) return
       if(typeof response.html !== "string") throw new Error("The editor did not return its document")
       this.editorDocument = new DOMParser().parseFromString(response.html, "text/html")
+      this.syncDocumentPalette()
       restoreSnapshotTextNodeRuns(this.editorDocument.body, response.textNodeRuns)
       this.documentTree = this.buildDocumentTree()
     }
@@ -6026,6 +6036,19 @@ export class DomEditor extends LitElement {
     this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.selectTool("Edit", expand)
   }
 
+  private async openDocumentThemeOptions() {
+    const path = this.selectionPath[0]?.path ?? []
+    try {
+      await this.execute({type: "selectNode", path: [...path]})
+      this.breadcrumbVisible = true
+      await this.updateComplete
+      this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.openDocumentThemeOptions()
+    }
+    catch {
+      // The document may have been replaced while the picker was open.
+    }
+  }
+
   private async refreshHTMLSource() {
     if(!this.htmlMode || this.htmlPending) return
     const sequence = ++this.htmlSourceRefreshSequence
@@ -6961,12 +6984,30 @@ export class DomEditor extends LitElement {
     }
   }
 
+  /** Project authored palette variables into the editor UI's shadow trees. */
+  private syncDocumentPalette() {
+    const doc = this.editorDocument
+    const style = doc?.documentElement.style
+    const values = themeAccentProperties.map(name => style?.getPropertyValue(name).trim() ?? "")
+    const signature = JSON.stringify(values)
+    if(signature === this.documentPaletteSignature) return
+    this.documentPaletteSignature = signature
+    values.forEach((value, index) => {
+      const colors = themeAccentColumn(value)
+      for(let row = 0; row < 6; row++) {
+        const property = `--ww-editor-color-${index + 3}-${row}`
+        if(colors[row]) this.style.setProperty(property, `#${colors[row]}`)
+        else this.style.removeProperty(property)
+      }
+    })
+  }
+
   private refreshElementStyleState = async () => {
     const sequence = ++this.elementStyleRefreshSequence
     try {
       const result = await this.execute({
         type: "getStyleState",
-        properties: elementStylePropertyNames,
+        properties: [...elementStylePropertyNames, ...themeAccentProperties],
         ...(this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit" ? {topLevel: true} : {}),
       })
       const state = this.normalizedElementStyleState(result)
@@ -7218,6 +7259,7 @@ export class DomEditor extends LitElement {
       const authoredChange = typeof event.data.treeChanged === "boolean"
       const before = authoredChange ? null : this.authoredDocumentSnapshot(true)
       this.editorDocument = new DOMParser().parseFromString(event.data.html, "text/html")
+      this.syncDocumentPalette()
       restoreSnapshotTextNodeRuns(this.editorDocument.body, event.data.textNodeRuns)
       this.frameSnapshot = {document: this.editorDocument, html: event.data.html, textNodeRunsKey}
       if(event.data.treeChanged !== false || !this.documentTree) this.documentTree = this.buildDocumentTree()
@@ -8246,7 +8288,13 @@ export class DomEditor extends LitElement {
               this.documentLayoutError, ...recentDocumentsDependencies,
             ], () => html`<section class="document-layouts-bar" aria-labelledby="document-layouts-title">
               <div class="document-layouts-heading">
-                <h2 id="document-layouts-title">Layouts<span class="document-layouts-combined-title"> &amp; Recently opened</span></h2>
+                <div class="document-layouts-main-heading"><h2 id="document-layouts-title">Layouts<span class="document-layouts-combined-title"> &amp; Recently opened</span></h2>
+                  <document-theme-presets select-only ?disabled=${this.fileOperationActive || this.htmlPending || this.historyState.preview !== null}
+                    @document-theme-customize=${() => void this.openDocumentThemeOptions()}
+                    @document-theme-apply=${(event: CustomEvent<{styles: Record<string, ElementStyleMutation>}>) => {
+                      void this.execute({type: "setDocumentThemeStyles", styles: event.detail.styles})
+                        .then(() => this.refreshElementStyleState()).catch(() => this.refreshElementStyleState())
+                    }}></document-theme-presets></div>
                 <h2 id="recent-documents-title" class="recent-documents-title"><span class="recent-documents-full-title">Recently opened</span><span class="recent-documents-short-title">Recent</span></h2>
                 <button class="document-layouts-close" type="button" aria-label="Hide layouts" title="Hide layouts"
                   @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}

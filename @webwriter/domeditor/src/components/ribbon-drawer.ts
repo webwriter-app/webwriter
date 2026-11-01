@@ -1133,6 +1133,13 @@ export class RibbonDrawer extends LitElement {
       line-height: 1;
     }
 
+    :host([pane][options-actions]) .options-row { position: relative; display: flex; align-items: center; margin: .35rem 0 0; }
+    :host([pane][options-actions]) .drawer.options .options-row .drawer-toggle {
+      width: auto; flex: 0 0 auto; margin: 0; padding-right: .2rem;
+    }
+    :host([pane][options-actions]) .options-row .drawer-icon { position: absolute; right: .9rem; }
+    :host([pane][options-actions]) slot[name="options-action"] { display: flex; align-items: center; }
+
     @media (prefers-reduced-motion: reduce) {
       .drawer,
       .controls,
@@ -1607,7 +1614,7 @@ export class RibbonDrawer extends LitElement {
           ` : html`
             <slot ?hidden=${this.compact}></slot>
             <slot name="compact" ?hidden=${!this.compact}></slot>
-            ${stylePaneToggle ? toggle : ""}
+            ${stylePaneToggle ? html`<div class="options-row">${toggle}<slot name="options-action"></slot></div>` : ""}
             <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
             <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
           `}

@@ -4656,6 +4656,10 @@ describe("setStyle()", () => {
     expect(root.style.width).toBe("500px")
     expect(root.style.backgroundColor).toBe("")
     expect(document.documentElement.style.backgroundColor).toBe("red")
+    editor.features.manipulation.setStyle({"--ww-prose-max": "60rem", "--unrelated": "10px"})
+    expect(document.documentElement.style.getPropertyValue("--ww-prose-max")).toBe("60rem")
+    expect(document.documentElement.style.getPropertyValue("--unrelated")).toBe("")
+    document.documentElement.style.removeProperty("--ww-prose-max")
     expect(editor.features.manipulation.getStyleState().target).toMatchObject({localName: "html", documentRoot: true})
     expect(editor.features.manipulation.setElementStyles(root, {padding: "5px"})).toBe(false)
     editor.features.manipulation.setStyle({"background-color": null})
@@ -4665,6 +4669,74 @@ describe("setStyle()", () => {
     $.selectElement(root.firstElementChild!)
     editor.features.manipulation.setStyle({width: "20px"})
     expect(root.firstElementChild).toHaveStyle({width: "20px"})
+  })
+
+  it("adds document typography support to older embedded themes without replacing them", () => {
+    const oldHead = document.head.innerHTML
+    const oldStyle = document.documentElement.getAttribute("style")
+    try {
+      document.head.innerHTML = '<style data-ww-theme="base">p { color: purple }</style>'
+      document.body.innerHTML = '<p>Text <a href="#x">Link</a></p>'
+      $.selectElement(document.body)
+      editor.features.manipulation.setStyle({"--ww-font-family": "serif", "--ww-font-size": "20px", "--ww-text-color": "red", "--ww-link-color": "blue"})
+      expect(document.head.querySelector('style[data-ww-theme="base"]')?.textContent).toBe('p { color: purple }')
+      expect(document.head.querySelectorAll('style[data-ww-theme-options]')).toHaveLength(1)
+      expect(document.documentElement.outerHTML).toContain("--ww-font-family: serif")
+      expect(document.documentElement.outerHTML).toContain("@layer webwriter-theme-options")
+      editor.features.manipulation.setStyle({"--ww-font-family": "sans-serif"})
+      expect(document.head.querySelectorAll('style[data-ww-theme-options]')).toHaveLength(1)
+    }
+    finally {
+      document.head.innerHTML = oldHead
+      if(oldStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", oldStyle)
+    }
+  })
+
+  it("applies saved theme styles to the document independently of the selection", () => {
+    const previous = document.documentElement.getAttribute("style")
+    try {
+      document.body.innerHTML = '<p style="color: purple">Text</p>'
+      const paragraph = document.querySelector("p")!
+      $.selectElement(paragraph)
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {
+        "background-color": "gold", "--ww-prose-max": "60rem", color: "red",
+      }})
+      expect(document.documentElement.style.backgroundColor).toBe("gold")
+      expect(document.documentElement.style.getPropertyValue("--ww-prose-max")).toBe("60rem")
+      expect(paragraph.style.color).toBe("purple")
+      expect(document.documentElement.style.color).not.toBe("red")
+    }
+    finally {
+      if(previous === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", previous)
+    }
+  })
+
+  it.each(["document", "slides"])("keeps theme accents on html in %s layout and supports undo", async mode => {
+    const previous = document.documentElement.getAttribute("style")
+    const bodyClass = document.body.className
+    try {
+      document.body.className = mode === "slides" ? "ww-slides" : ""
+      document.body.innerHTML = '<p>Text</p><unfamiliar-widget><!--keep--><p>Widget</p></unfamiliar-widget>'
+      $.move(document.body.firstElementChild!)
+      await new Promise<void>(resolve => setTimeout(resolve))
+      document.documentElement.style.removeProperty("--ww-theme-accent-2")
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {"--ww-theme-accent-2": "#123456"}})
+      await new Promise<void>(resolve => setTimeout(resolve))
+      expect(document.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("#123456")
+      expect(editor.features.manipulation.getStyleState(["--ww-theme-accent-2"], document.body, false).inline["--ww-theme-accent-2"]?.value).toBe("#123456")
+      expect(document.querySelector("unfamiliar-widget")!.innerHTML).toBe("<!--keep--><p>Widget</p>")
+      editor.doc.undo()
+      expect(document.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("")
+    }
+    finally {
+      document.body.className = bodyClass
+      if(previous === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", previous)
+    }
   })
 
   it.each(["section", "div", "demo-widget"])("styles the top-level %s from nested content in the Edit toolbox", tag => {

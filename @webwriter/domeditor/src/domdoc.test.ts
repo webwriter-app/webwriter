@@ -1051,6 +1051,16 @@ describe("SharedDOMDoc initialization", () => {
     expect(owner.documentElement.getAttribute("dir")).toBe("rtl")
   })
 
+  it("synchronizes document palette accents with peers and undo history", async () => {
+    const {owner, shared} = createDocumentShared("", "<p>Body</p>")
+    owner.documentElement.style.setProperty("--ww-theme-accent-2", "#123456")
+    await mutationsDelivered()
+    const peer = cloneDocumentShared(shared)
+    expect(peer.owner.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("#123456")
+    shared.undo()
+    expect(owner.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("")
+  })
+
   it("reconciles wide documents without materializing the sibling array for each child", () => {
     const {root, shared} = createShared("<p>text</p>".repeat(1000))
     const first = root.firstElementChild!

@@ -8178,6 +8178,40 @@ describe("DomEditor.execute()", () => {
     expect(Array.from(bar.querySelectorAll<HTMLButtonElement>(".layout-preset"), button => button.disabled)).toEqual([true, true, true, true])
   })
 
+  it("offers a document-scoped theme picker in the Layouts heading", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const picker = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-main-heading document-theme-presets")!
+    expect(picker.hasAttribute("select-only")).toBe(true)
+    const styles = {"background-color": {value: "red", priority: ""}}
+    picker.dispatchEvent(new CustomEvent("document-theme-apply", {detail: {styles}, bubbles: true, composed: true}))
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentThemeStyles", styles})
+  })
+
+  it("selects the document and opens advanced Style options for theme customization", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const toolbox = editor.shadowRoot!.querySelector<any>("dom-editor-toolbox")!
+    const open = vi.spyOn(toolbox, "openDocumentThemeOptions")
+    const picker = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-main-heading document-theme-presets")!
+    picker.dispatchEvent(new CustomEvent("document-theme-customize", {bubbles: true, composed: true}))
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce())
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: []})
+  })
+
+  it("projects document palette accents into editor controls and clears them on document changes", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const doc = new DOMParser().parseFromString('<html style="--ww-theme-accent-2: #336699"><head></head><body><p>Text</p></body></html>', "text/html")
+    host.editorDocument = doc
+    host.syncDocumentPalette()
+    expect(editor.style.getPropertyValue("--ww-editor-color-4-0")).toBe("#336699")
+    expect(editor.style.getPropertyValue("--ww-editor-color-4-1")).toBe("#d6e0eb")
+    doc.documentElement.style.removeProperty("--ww-theme-accent-2")
+    host.syncDocumentPalette()
+    expect(editor.style.getPropertyValue("--ww-editor-color-4-0")).toBe("")
+  })
+
   it("keeps the full-width Layouts bar in every layout and reflects live conversion availability", async () => {
     const {editor, editorWindow} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)

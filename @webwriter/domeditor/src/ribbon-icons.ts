@@ -42,6 +42,7 @@ import paintOrderFillFirst from "./assets/paint-order-fill-first.svg?raw"
 import pageBreak from "@tabler/icons/outline/page-break.svg?raw"
 import crop from "@tabler/icons/outline/crop.svg?raw"
 import blur from "@tabler/icons/outline/blur.svg?raw"
+import brush from "@tabler/icons/outline/brush.svg?raw"
 import scan from "@tabler/icons/outline/scan.svg?raw"
 import clock from "@tabler/icons/outline/clock.svg?raw"
 import checkbox from "@tabler/icons/outline/checkbox.svg?raw"
@@ -298,6 +299,7 @@ const splitTable = `
 const autoReloadIcon = (off = false) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="icon-tabler-refresh">${iconContents(refresh)}</g><g class="icon-tabler-bolt" transform="translate(6 6) scale(.5)">${iconContents(bolt)}</g>${off ? '<path class="auto-reload-strike" d="M3 21L21 3" />' : ""}</svg>`
 
 const icons: Record<string, string> = {
+  Brush: brush,
   Migration: signRight,
   AutoReload: autoReloadIcon(),
   AutoReloadOff: autoReloadIcon(true),

@@ -1,6 +1,11 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {colorHex, isCssColor, safeCssColor} from "./css-color"
+import {colorHex, isCssColor, safeCssColor, themeAccentColumn} from "./css-color"
+
+it("derives three tints and two shades from each accent", () => {
+  expect(themeAccentColumn("#336699")).toEqual(["336699", "d6e0eb", "adc2d6", "85a3c2", "264d73", "1a334d"])
+  expect(themeAccentColumn("not a color")).toEqual([])
+})
 
 describe("CSS color validation", () => {
   it("preserves valid browser color values", () => {

@@ -941,7 +941,7 @@ it("offers eight palette-based box presets and applies each as one style change"
   const buttons = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")
   expect(buttons).toHaveLength(8)
   expect(Array.from(buttons, button => button.getAttribute("aria-label"))).toEqual([
-    "White style preset", "Gray style preset", "Blue style preset", "Green style preset",
+    "White style preset", "Slate style preset", "Blue style preset", "Green style preset",
     "Orange style preset", "Yellow style preset", "Red style preset", "Purple style preset",
   ])
   const changes: unknown[] = []
@@ -961,6 +961,22 @@ it("offers eight palette-based box presets and applies each as one style change"
   await editor.updateComplete
   buttons[3].click()
   expect(changes.at(-1)).toEqual({styles: {"background-color": {value: "#e2efda", priority: ""}}})
+})
+
+it("uses document accent colors for Style presets and color choices", async () => {
+  const editor = await mount([], state(), "compact")
+  editor.style.setProperty("--ww-editor-color-4-0", "#12ab34")
+  editor.style.setProperty("--ww-editor-color-4-1", "#d0eed6")
+  editor.showPresets = true
+  editor.propertyNames = ["color"]
+  await editor.updateComplete
+  const preset = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Accent 2 style preset"]')!
+  expect(preset.title).toContain("#d0eed6")
+  const changes = vi.fn()
+  editor.addEventListener("element-style-change", changes)
+  preset.click()
+  expect(changes.mock.calls[0][0].detail.styles["border-color"].value).toBe("#12ab34")
+  expect(editor.shadowRoot!.querySelector('[aria-label="Color #12ab34"]')).not.toBeNull()
 })
 
 it.each(["td", "th"])("keeps all %s presets limited to cell paint and padding", async localName => {

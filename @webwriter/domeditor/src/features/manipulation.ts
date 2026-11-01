@@ -1,4 +1,6 @@
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
+import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties} from "../document-theme-options"
+import {themeAccentProperties} from "../css-color"
 import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
@@ -2574,6 +2576,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
   private stylePropertyTarget(target: Element, name: string) {
+    if(themeAccentProperties.includes(name) && (target === document.documentElement || target === document.body || isDocumentRoot(target))) return document.documentElement
     if(target.matches("figure:not([is])") && target.querySelector(":scope > figcaption")
       && ["rotate", "scale", "translate", "transform", "transform-origin"].includes(name)) {
       return captionedFigureContent(target)
@@ -3687,6 +3690,14 @@ export class ManipulationFeature extends EditorFeature {
       }
       else this.setStyle(styles)
     },
+    setDocumentThemeStyles: ({styles}: {type: "setDocumentThemeStyles", styles: Record<string, ElementStyleMutation>}) => {
+      const entries = this.validateElementStyles(styles).filter(entry => documentThemeProperties.includes(entry.name))
+      if(!entries.length || this.editor.isEditingLocked) return false
+      const target = this.documentStyleTarget(getDocumentRoot())
+      const end = this.editor.doc.beginUndoGroup()
+      try { return this.applyElementStyleEntries(target, entries) }
+      finally { end() }
+    },
     resetStyle: ({topLevel}: {type: "resetStyle", topLevel?: boolean}) => {
       const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
       const targets = topLevel && !cells.length ? this.topLevelStyleTargets
@@ -4642,6 +4653,17 @@ export class ManipulationFeature extends EditorFeature {
   private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[]) {
     if(!element.isConnected || !(getDocumentRoot().contains(element)
       || element === document.documentElement && documentLayoutMode() === "document") || this.editor.isEditingLocked) return false
+    if((element === document.documentElement || element === document.body || isDocumentRoot(element))
+      && entries.some(entry => entry.value !== null && documentTypographyProperties.includes(entry.name))
+      && !Array.from(document.head.querySelectorAll("style"))
+        .some(style => style.textContent?.includes(documentTypographyCSS))) {
+      // Older documents embed an earlier bundled theme. Keep their stylesheet
+      // intact and make the new options work in standalone HTML as well.
+      const style = document.createElement("style")
+      style.setAttribute("data-ww-theme-options", "")
+      style.textContent = documentTypographyCSS
+      document.head.append(style)
+    }
     const targets = new Map<Element, ValidatedStyleEntry[]>()
     const add = (target: Element, entry: ValidatedStyleEntry) => targets.set(target, [...(targets.get(target) ?? []), entry])
     for(const entry of this.allowedElementStyles(element, entries)) {
@@ -4693,7 +4715,7 @@ export class ManipulationFeature extends EditorFeature {
         || !["relative", "absolute", "sticky"].includes(value.trim().toLowerCase()))
     }
     return isDocumentRoot(target) || target === document.body || target === document.documentElement && documentLayoutMode() === "document"
-      ? entries.filter(({name}) => name === "background" || name.startsWith("background-"))
+      ? entries.filter(({name}) => name === "background" || name.startsWith("background-") || documentThemeProperties.includes(name))
       : entries
   }
 

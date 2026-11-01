@@ -14,6 +14,7 @@ export class StyleCombobox extends EditorCombobox {
   static styles = [EditorCombobox.styles, css`
     :host {height: 1.7rem; --metadata-combobox-height: 1.7rem; --metadata-combobox-font-size: .68rem;}
     .control {border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-radius: 4px;}
+    .control:hover {border-color: #8eb6df; background: #eef4fb;}
     :host([open]) .control {border-radius: 4px 4px 0 0;}
     :host([language-picker]) .control {border-radius: 0 0 4px 4px; background: #fff;}
     :host([language-picker][open]) .control {border-radius: 0;}
@@ -29,7 +30,7 @@ export class StyleCombobox extends EditorCombobox {
     :host([open]) .toggle svg {transform: rotate(270deg);}
     .unit {display: flex; flex: 0 0 1.1rem; align-items: center; justify-content: center; box-sizing: border-box; border-left: var(--editor-control-border-width, .5px) solid #c5ccd5; font-size: .55rem;}
     :host([unit="deg"]) .unit {font-size: .85rem;}
-    .listbox {margin: 0; padding: 0; border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: #fff; box-shadow: 0 3px 6px #0002;}
+    .listbox {width: var(--style-combobox-popup-width, anchor-size(width)); position-try-fallbacks: var(--style-combobox-popup-fallbacks, flip-block); margin: 0; padding: 0; border: var(--editor-control-border-width, .5px) solid #c5ccd5; border-top: 0; border-radius: 0 0 4px 4px; background: #fff; box-shadow: 0 3px 6px #0002;}
     .option {display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .35rem; border-radius: 0;}
     .option-code {font: inherit; font-size: .68rem; font-weight: normal;}
     .option-name {color: #6b7787; font-variant-numeric: tabular-nums;}

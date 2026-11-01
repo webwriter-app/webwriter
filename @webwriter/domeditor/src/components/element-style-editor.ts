@@ -3,7 +3,7 @@ import {tokenize} from "@csstools/css-tokenizer"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
-import {colorHex, themeColorColumns as borderColorColumns} from "../css-color"
+import {colorHex, themeColorColumns as borderColorColumns, themeColorCSS} from "../css-color"
 import {mediaSourceButtonStyles} from "./media-source.styles"
 import {mediaCropInsets} from "../media"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
@@ -74,7 +74,7 @@ const simpleDimension = (value: string, units: readonly string[]) => {
 
 const boxStylePresets = [
   {name: "White", background: borderColorColumns[0][0], border: borderColorColumns[1][0]},
-  {name: "Gray", background: borderColorColumns[0][1], border: borderColorColumns[1][1]},
+  {name: "Slate", background: borderColorColumns[3][1], border: borderColorColumns[3][0]},
   {name: "Blue", background: borderColorColumns[4][1], border: borderColorColumns[4][0]},
   {name: "Green", background: borderColorColumns[9][1], border: borderColorColumns[9][0]},
   {name: "Orange", background: borderColorColumns[5][1], border: borderColorColumns[5][0]},
@@ -209,8 +209,9 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .style-gallery button:focus-visible {
       outline: 2px solid #b9d7f5; outline-offset: 2px;
     }
-    .style-gallery button:hover { box-shadow: 0 0 0 2px #b9d7f5; }
+    .style-gallery button:hover { outline: 2px solid #8eb6df; outline-offset: 2px; }
     :host([mode="compact"]) .specialized-input {display: flex; align-items: stretch; min-height: 1.7rem; box-sizing: border-box; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent;}
+    :host([mode="compact"]) .specialized-input:hover, :host([mode="compact"]) .compact-input:hover {border-color: #8eb6df; background: #eef4fb;}
     :host([mode="compact"]) .specialized-input > input, :host([mode="compact"]) .specialized-input > select {flex: 1; width: 0; height: 100%; min-width: 0; padding: .2rem .35rem; border: 0; border-radius: 0; background: transparent; outline: none; box-shadow: none;}
     :host([mode="compact"]) .specialized-input input::placeholder {font-size: .5rem;}
     :host([mode="compact"]) .specialized-input .length-control {display: flex; flex: 1; min-width: 0;}
@@ -373,6 +374,8 @@ export class ElementStyleEditor extends LitElement {
     }
     .border-options button { background: white; border: 0; cursor: pointer; }
     .background-control { border: 1px solid #c5ccd5; height: 1.7rem; box-sizing: border-box; }
+    .background-control:hover { border-color: #8eb6df; }
+    .background-control summary:hover { background: #eef4fb; }
     .background-control .border-color-picker { width: 100%; border-left: 0; }
     .background-control .border-color-picker > summary { width: 100%; }
     .color-fields > [data-property] { display: flex; flex: 1; min-width: 0; }
@@ -1381,7 +1384,7 @@ export class ElementStyleEditor extends LitElement {
         ? html`<span class="text-color-preview" style=${`border-color:${current || selected}`}>Abc</span>`
         : html`<span class="border-color-chip" style=${`background:${current || (property === "background-color" ? "transparent" : selected)}`}></span>`}</summary>
       <div class="border-color-palette" role="group" aria-label=${`${label} palette`}>
-        ${renderColorPalette(label, current, choose, {automaticValue: property === "border-color" ? "currentColor" : ""})}
+        ${renderColorPalette(label, current, choose, {automaticValue: property === "border-color" ? "currentColor" : "", paletteHost: this})}
       </div>
     </details>`
   }
@@ -1979,21 +1982,26 @@ export class ElementStyleEditor extends LitElement {
     const cellTarget = ["td", "th"].includes(this.state.target?.localName ?? "")
     const saturated = this.galleryPage >= 2
     const columns = [1, 3, 4, 9, 5, 7, 6, 8]
+    const palette = getComputedStyle(this)
     const presets = boxStylePresets.map((preset, index) => ({...preset,
-      background: saturated ? borderColorColumns[columns[index]][4] : preset.background,
-      border: saturated ? borderColorColumns[columns[index]][5] : preset.border,
+      name: columns[index] >= 3 && palette.getPropertyValue(`--ww-editor-color-${columns[index]}-0`).trim() ? `Accent ${columns[index] - 2}` : preset.name,
+      background: colorHex(palette.getPropertyValue(`--ww-editor-color-${columns[index]}-${saturated ? 4 : 1}`), `#${saturated ? borderColorColumns[columns[index]][4] : preset.background}`).slice(1),
+      border: colorHex(palette.getPropertyValue(`--ww-editor-color-${columns[index]}-${saturated ? 5 : 0}`), `#${saturated ? borderColorColumns[columns[index]][5] : preset.border}`).slice(1),
     }))
     return html`<div class="gallery-pages">
       <button class="gallery-page" aria-label="Previous style presets" ?disabled=${this.galleryPage === 0}
         @click=${() => this.galleryPage--}>${ribbonIcon("ChevronRight")}</button>
       <div class="style-gallery" role="group" aria-label=${`Style presets, page ${this.galleryPage + 1} of 4`}>
-      ${presets.map(preset => html`<button type="button" aria-label=${`${preset.name} style preset`}
+      ${presets.map((preset, index) => html`<button type="button" aria-label=${`${preset.name} style preset`}
         title=${`${preset.name}: #${preset.background}${this.documentRootTarget ? "" : `, 1px solid #${preset.border}${cellTarget ? "" : ", 4px corners"}, 8px padding`}`}
-        style=${`background:#${preset.background};border-color:#${preset.border};box-shadow:${shadow};color:${saturated ? "#fff" : "#2f3742"}`}
-        @click=${() => {
-          const values: Record<string, string> = {"background-color": `#${preset.background}`}
+        style=${`background:${index === 0 && !saturated ? `#${preset.background}` : themeColorCSS(columns[index], saturated ? 4 : 1)};border-color:${index === 0 && !saturated ? `#${preset.border}` : themeColorCSS(columns[index], saturated ? 5 : 0)};box-shadow:${shadow};color:${saturated ? "#fff" : "#2f3742"}`}
+        @click=${(event: Event) => {
+          const computed = getComputedStyle(event.currentTarget as Element)
+          const background = colorHex(computed.backgroundColor, `#${preset.background}`)
+          const border = colorHex(computed.borderColor, `#${preset.border}`)
+          const values: Record<string, string> = {"background-color": background}
           if(!this.documentRootTarget) Object.assign(values, {
-            "border-width": "1px", "border-style": "solid", "border-color": `#${preset.border}`,
+            "border-width": "1px", "border-style": "solid", "border-color": border,
             "padding": "8px", "color": saturated ? "#ffffff" : "#2f3742",
             ...(!cellTarget ? {"border-radius": "4px", "box-shadow": shadow} : {}),
           })

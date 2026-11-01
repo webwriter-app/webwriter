@@ -752,6 +752,7 @@ export class DocumentHeadEditor extends LitElement {
     :host([compact]) .field-label {font: inherit; color: inherit; white-space: normal;}
     :host([compact]) .common-control,
     :host([compact]) .generator-control {height: 1.7rem; padding: .2rem; font-size: .68rem; border-color: #c5ccd5;}
+    :host([compact]) .common-control:hover {border-color: #8eb6df; background: #eef4fb;}
     :host([compact]) document-head-combobox {height: 1.7rem; --metadata-combobox-height: 1.7rem; --metadata-combobox-font-size: .68rem;}
     :host([compact]) .advanced {height: auto; padding: 0; border: 0;}
     :host([compact]) .advanced-metadata {grid-template-columns: minmax(0, 1fr);}

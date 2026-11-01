@@ -1334,9 +1334,16 @@ it("shows document theme options in the Style drawer", async () => {
   const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
   await drawer.updateComplete
   expect(drawer.expandable).toBe(true)
-  const controls = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
-  await controls.updateComplete
-  expect(Array.from(controls.shadowRoot!.querySelectorAll("[data-property]"), row => row.getAttribute("data-property"))).toEqual(["background-color"])
+  const controls = drawer.querySelector('document-theme-options[slot="more"]')!
+  expect(controls).not.toBeNull()
+  expect(drawer.querySelector('document-theme-presets[slot="options-action"]')).not.toBeNull()
+  expect(drawer.querySelector('element-style-editor[slot="more"]')).toBeNull()
+  toolbox.elementStyle = {...toolbox.elementStyle, inline: {
+    "--ww-theme-accent-1": {value: "#123456", priority: ""},
+    "--ww-theme-accent-2": {value: "#abcdef", priority: ""},
+  }}
+  await toolbox.updateComplete
+  expect(drawer.advancedCount).toBe(1)
 })
 
 
