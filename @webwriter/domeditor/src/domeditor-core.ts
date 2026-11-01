@@ -1,6 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
-import {isAuthoredMutation} from "./editor-artifacts"
+import {isAuthoredMutation, restoreAuthoredDetailsState, temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -530,6 +530,7 @@ export class DOMEditor {
       const beforeSyncFromDOM = options.reader ? undefined : (local: boolean) => {
         this.features.widget.flushMutations(local)
         this.features.attribution.normalize()
+        this.features.list.ensureDetailsBodyContent()
       }
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
@@ -682,6 +683,7 @@ export class DOMEditor {
    * becomes a normal collapsed selection in the new paragraph. */
   #ensureDocumentContent() {
     if(this.options.reader) return null
+    this.features.list.ensureDetailsBodyContent()
     if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
     if(documentLayoutMode() === "board") return this.features.board.ensureContent()
     if(documentLayoutMode() === "canvas") return null
@@ -732,6 +734,11 @@ export class DOMEditor {
     }
     for(const owner of Array.from(this.#editingLocks)) attempt(() => this.unlockEditing(owner))
     Object.values(this.features).forEach(feature => attempt(() => feature.disable()))
+    if(this.doc) attempt(() => {
+      this.doc.syncFromDOM()
+      this.doc.root.querySelectorAll(`details.${temporaryDetailsOpenMarker}, details.${temporaryDetailsClosedMarker}`)
+        .forEach(restoreAuthoredDetailsState)
+    })
     this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
     this.mediaBlobs.clear()
     document.removeEventListener("input", this.#handleInput)

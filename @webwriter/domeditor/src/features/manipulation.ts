@@ -26,6 +26,7 @@ import {
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
+import {authoredDetailsOpen, isHTMLDetailsElement} from "../editor-artifacts"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
@@ -507,7 +508,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     if(tag === "details") {
       const details = document.createElement("details")
-      details.append(document.createElement("summary"))
+      details.append(document.createElement("summary"), document.createElement("p"))
       return details
     }
     if(isMediaType(tag)) {
@@ -4062,6 +4063,7 @@ export class ManipulationFeature extends EditorFeature {
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")
       || direction && this.editor.features.board.atBoundary(direction)) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
+    if(direction === "backward" && this.joinFirstDetailsParagraphIntoSummary()) return
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     const range = $.range
     // A widget exposes its content, not its own identity or its sibling pages,
@@ -4189,6 +4191,28 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     })
+  }
+
+  /** Backspace at the first Details paragraph joins its children into Summary,
+   * retaining the paragraph as the required editable body. */
+  private joinFirstDetailsParagraphIntoSummary() {
+    const selection = document.getSelection()
+    if(!selection?.isCollapsed || !selection.anchorNode) return false
+    const paragraph = getContainer(selection.anchorNode).closest("p")
+    const details = paragraph?.parentElement
+    if(!paragraph || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || atomicEditingContainer(paragraph, this.editor.schema)
+      || !isCaretAtBoundary(paragraph, "start")) return false
+    const summary = details.querySelector(":scope > summary")
+    const content = Array.from(details.childNodes).filter(node => node.nodeType !== Node.COMMENT_NODE
+      && !(node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()))
+    if(!summary || content[0] !== summary || content[1] !== paragraph) return false
+    this.withNormalization(() => {
+      const seam = summary.childNodes.length
+      summary.append(...Array.from(paragraph.childNodes))
+      $.move(summary, seam)
+    })
+    return true
   }
 
   /** Range deletion leaves trailing ASCII spaces collapsed by native editing.
@@ -4406,14 +4430,30 @@ export class ManipulationFeature extends EditorFeature {
       ?? (name.includes(":") ? null : node.getAttributeNode(name))
     const previousAttribute = previousName ? attribute(previousName) : null
 
-    // Set the new name before removing the old one so an invalid XML name
-    // cannot turn a failed rename into data loss.
-    set(name, value)
-    if(previousAttribute && node.getAttributeNodeNS(previousAttribute.namespaceURI, previousAttribute.localName) === previousAttribute
-      && previousAttribute !== attribute(name)) {
-      if(previousAttribute.name === "class" && !previousAttribute.namespaceURI) setClass(null)
-      else node.removeAttributeNode(previousAttribute)
+    const apply = () => {
+      // Set the new name before removing the old one so an invalid XML name
+      // cannot turn a failed rename into data loss.
+      set(name, value)
+      if(previousAttribute && node.getAttributeNodeNS(previousAttribute.namespaceURI, previousAttribute.localName) === previousAttribute
+        && previousAttribute !== attribute(name)) {
+        if(previousAttribute.name === "class" && !previousAttribute.namespaceURI) setClass(null)
+        else node.removeAttributeNode(previousAttribute)
+      }
     }
+    if(isHTMLDetailsElement(node)
+      && (name.toLowerCase() === "open" || previousName?.toLowerCase() === "open") && this.editor.doc.root.contains(node)) {
+      this.editor.doc.commitAuthoredDetailsOpen(node, () => {
+        const nextOpen = name.toLowerCase() === "open" && value !== null
+        // A disclosure may already have the desired live state through a native
+        // toggle. Produce an attribute mutation for authored-change observers.
+        if(authoredDetailsOpen(node) !== nextOpen && node.hasAttribute("open") === nextOpen) {
+          if(nextOpen) node.removeAttribute("open")
+          else node.setAttribute("open", "")
+        }
+        apply()
+      })
+    }
+    else apply()
   }
 
   private validatedStyleEntries(styles: Record<string, ElementStyleMutation>) {

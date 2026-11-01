@@ -82,7 +82,7 @@ describe("element attribute editor", () => {
     expect(trigger.getAttribute("aria-haspopup")).toBe("dialog")
     expect(trigger.querySelectorAll("circle")).toHaveLength(3)
     expect(dialog.open).toBe(false)
-    expect(root.querySelector('[aria-label="Details: Initially open"]')!.closest("dialog")).toBe(dialog)
+    expect(root.querySelector('[aria-label="Details: Initially open"]')).toBeNull()
 
     trigger.click()
     expect(dialog.open).toBe(true)
@@ -139,12 +139,12 @@ describe("element attribute editor", () => {
     const editor = await mount("details", {name: "faq", open: "", id: "shipping"})
 
     expect(editor.shadowRoot!.querySelector('[aria-label="Details: Accordion group"]')).toBeNull()
-    expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: Initially open"]')!.checked)
-      .toBe(true)
+    expect(editor.shadowRoot!.querySelector('input[aria-label="Details: Initially open"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector('[aria-label="Details: ID"]')!.closest("dialog")).not.toBeNull()
     expect(editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: ID"]')!.value)
       .toBe("shipping")
-    expect(editor.shadowRoot!.querySelector("h3")?.textContent).toContain("All attributes (3)")
+    expect(editor.shadowRoot!.querySelector("h3")?.textContent).toContain("All attributes (2)")
+    expect(editor.shadowRoot!.querySelector('[aria-label="Details: open"]')).toBeNull()
   })
 
   it("uses editable number comboboxes with named suggestions and a clear action in expanded fields", async () => {
@@ -260,14 +260,10 @@ describe("element attribute editor", () => {
     expect(editor.shadowRoot!.querySelector('[aria-label="Element: Language"]')).not.toBeNull()
   })
 
-  it("dispatches boolean, custom, rename, value, and removal mutations", async () => {
+  it("dispatches custom, rename, value, and removal mutations", async () => {
     const editor = await mount("details", {"data-kind": "faq"})
     const listener = vi.fn()
     editor.addEventListener("element-attribute-change", listener)
-
-    const open = editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: Initially open"]')!
-    open.checked = true
-    open.dispatchEvent(new Event("change", {bubbles: true, composed: true}))
 
     const value = editor.shadowRoot!.querySelector<HTMLInputElement>('input[aria-label="Details: data-kind"]')!
     value.value = "guide"
@@ -285,7 +281,6 @@ describe("element attribute editor", () => {
     form.dispatchEvent(new SubmitEvent("submit", {bubbles: true, composed: true, cancelable: true}))
 
     expect(listener.mock.calls.map(([event]) => event.detail)).toEqual([
-      expect.objectContaining({name: "open", value: ""}),
       expect.objectContaining({name: "data-kind", value: "guide"}),
       expect.objectContaining({name: "data-topic", previousName: "data-kind", value: "faq"}),
       expect.objectContaining({name: "data-kind", value: null}),

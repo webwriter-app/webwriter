@@ -7,6 +7,8 @@ import {updateDocumentPermalinks} from "./document-permalinks"
 import {SVG_NAMESPACE} from "./graphic"
 import type {EditorStateSnapshot} from "./editor-state"
 import {WidgetDataBindings, stampUndo, widgetDataHistoryTime, widgetDataHistoryGroup, type WidgetDataOptions} from "./widget-data"
+import {authoredDetailsOpen, clearTemporaryDetailsState, isHTMLDetailsElement, markTemporaryDetailsState,
+  temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
 
 const INTERNAL_NODE_KIND = "__domeditor_node_kind"
 const INTERNAL_NAMESPACE = "__domeditor_namespace"
@@ -189,6 +191,7 @@ export class SharedDOMDoc {
   readonly #scopeBoundaryBaselines = new WeakMap<Element, ScopeBoundarySnapshot>()
   readonly #minimumRepairs = new Set<Element>()
   readonly #repairBaselines = new WeakMap<Element, string>()
+  readonly #authoredDetailsChanges = new WeakSet<Element>()
   readonly #document: Document
 
   #relativeSelection: RelativeSelection | null = null
@@ -736,6 +739,7 @@ export class SharedDOMDoc {
     const pending = this.#isObserving ? this.#observer.takeRecords() : undefined
     let records = mutations ? [...mutations, ...(pending ?? [])] : pending
     if(records) records = records.filter(record => !this.#insideScopeBoundary(record.target))
+    if(records) this.#markTemporaryDetailsChanges(records)
     // Explicit synchronization without pending records still discovers upgrades
     // and retries invalid data. Ordinary edits inspect only affected bindings.
     const discover = !mutations && !records?.length
@@ -769,6 +773,36 @@ export class SharedDOMDoc {
       this.#pendingHistorySelection.after = this.#relativeSelection
       this.#pendingHistorySelection = undefined
     }
+  }
+
+  /** Explicit authoring of the default disclosure state, separate from native toggling. */
+  commitAuthoredDetailsOpen(element: Element, change: () => void) {
+    this.#authoredDetailsChanges.add(element)
+    try {
+      change()
+      clearTemporaryDetailsState(element)
+      this.syncFromDOM()
+      // Removing a temporary marker may not itself produce a relevant mutation.
+      const shared = this.#xmlNodes.get(element)
+      if(shared instanceof Y.XmlElement) this.doc.transact(() => this.#copyDOMAttributesToY(element, shared), this.#domOrigin)
+    }
+    finally { this.#authoredDetailsChanges.delete(element) }
+  }
+
+  #markTemporaryDetailsChanges(records: MutationRecord[]) {
+    const defaults = new Map<Element, boolean>()
+    for(const record of records) {
+      if(record.type !== "attributes" || record.attributeName !== "open" || !isElement(record.target)
+        || !isHTMLDetailsElement(record.target) || this.#authoredDetailsChanges.has(record.target)) continue
+      if(!defaults.has(record.target)) {
+        const element = record.target
+        const shared = this.#xmlNodes.get(element)
+        defaults.set(element, element.classList.contains(temporaryDetailsOpenMarker) ? false
+          : element.classList.contains(temporaryDetailsClosedMarker) ? true
+          : shared instanceof Y.XmlElement ? shared.getAttribute("open") !== undefined : record.oldValue !== null)
+      }
+    }
+    defaults.forEach((authoredOpen, element) => markTemporaryDetailsState(element, authoredOpen))
   }
 
   /** Transient collaboration provenance for a generated minimum flow child.
@@ -1693,6 +1727,7 @@ export class SharedDOMDoc {
   #copyDOMAttributesToY(element: Element, yElement: Y.XmlElement, excluded: string[] = []) {
     const desired = new Map<string, string>()
     for(const attribute of Array.from(element.attributes)) {
+      if(isHTMLDetailsElement(element) && attribute.name === "open") continue
       if(this.#isIgnoredAttribute(attribute.name, element) || excluded.includes(attribute.name)) continue
       const key = this.#encodeDOMAttribute(attribute)
       if(attribute.namespaceURI === null && attribute.name.toLowerCase() === "class") {
@@ -1703,6 +1738,7 @@ export class SharedDOMDoc {
         desired.set(key, attribute.value)
       }
     }
+    if(isHTMLDetailsElement(element) && authoredDetailsOpen(element)) desired.set("open", "")
 
     const current = yElement.getAttributes()
     for(const name of Object.keys(current)) {
@@ -1716,6 +1752,10 @@ export class SharedDOMDoc {
 
   #copyYAttributesToDOM(yElement: Y.XmlElement, element: Element, excluded: string[] = []) {
     const shared = yElement.getAttributes()
+    const temporaryDetails = isHTMLDetailsElement(element) && (element.classList.contains(temporaryDetailsOpenMarker)
+      || element.classList.contains(temporaryDetailsClosedMarker))
+    const preserveTemporaryOpen = temporaryDetails && authoredDetailsOpen(element) === Object.hasOwn(shared, "open")
+    if(temporaryDetails && !preserveTemporaryOpen) clearTemporaryDetailsState(element)
     if(this.#xmlNodes.get(element) === yElement && typeof shared[INTERNAL_MINIMUM_REPAIR] === "string") this.#minimumRepairs.add(element)
     const sharedClassNames = String(shared.class ?? "").split(/\s+/).filter(Boolean)
     const internalClassNames = Array.from(element.classList).filter(name => this.#isIgnoredClass(name))
@@ -1723,13 +1763,15 @@ export class SharedDOMDoc {
 
     const decodedAttributes = Object.entries(shared).flatMap(([name, value]) => {
       const attribute = this.#decodeYAttribute(name)
-      return attribute && !excluded.includes(attribute.name) ? [{...attribute, value: String(value)}] : []
+      return attribute && !excluded.includes(attribute.name) && !(preserveTemporaryOpen && attribute.name === "open")
+        ? [{...attribute, value: String(value)}] : []
     })
     const desiredNames = new Set(decodedAttributes.map(attribute => this.#encodeDOMAttribute(attribute)))
 
     for(const attribute of Array.from(element.attributes)) {
       const name = attribute.name
-      if(this.#isIgnoredAttribute(name, element) || name.toLowerCase() === "class" || excluded.includes(name)) continue
+      if(this.#isIgnoredAttribute(name, element) || name.toLowerCase() === "class" || excluded.includes(name)
+        || preserveTemporaryOpen && name === "open") continue
       if(!desiredNames.has(this.#encodeDOMAttribute(attribute))) element.removeAttributeNS(attribute.namespaceURI, attribute.localName)
     }
     decodedAttributes.forEach(attribute => {

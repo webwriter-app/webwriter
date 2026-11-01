@@ -9,6 +9,7 @@ import * as syncProtocol from "y-protocols/sync"
 import {applyAwarenessUpdate, encodeAwarenessUpdate} from "y-protocols/awareness"
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
 import {collectReferences} from "./document-viewer.js"
+import {elementAttributeState} from "./element-attributes"
 import {$} from "./utility"
 
 const sharedDocs: SharedDOMDoc[] = []
@@ -54,6 +55,64 @@ async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
   await new Promise<void>(resolve => queueMicrotask(resolve))
 }
+
+describe("temporary details disclosure", () => {
+  it("preserves open on a namespaced element with the same local name", async () => {
+    const {root, shared} = createShared('<svg xmlns="http://www.w3.org/2000/svg"><details open="vector"/></svg>')
+    const details = root.querySelector("details")!
+    expect(details.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    details.setAttribute("open", "changed")
+    await mutationsDelivered()
+    const mirrored = (shared.body.get(0) as Y.XmlElement).get(0) as Y.XmlElement
+    expect(mirrored.getAttribute("open")).toBe("changed")
+    expect(details.classList.contains("◆details-temporary-open")).toBe(false)
+  })
+
+  it.each([false, true])("keeps native toggles local when the authored default is %s", async defaultOpen => {
+    const {root, shared} = createShared(`<details${defaultOpen ? " open" : ""}><summary>Question</summary><p>Answer</p></details>`)
+    const details = root.querySelector("details")!
+    const mirrored = shared.body.get(0) as Y.XmlElement
+    details.open = !defaultOpen
+    await mutationsDelivered()
+
+    expect(details.open).toBe(!defaultOpen)
+    expect(mirrored.getAttribute("open") !== undefined).toBe(defaultOpen)
+    expect(details.classList.contains(defaultOpen ? "◆details-temporary-closed" : "◆details-temporary-open")).toBe(true)
+    expect(elementAttributeState(details, [0]).attributes.open !== undefined).toBe(defaultOpen)
+
+    const copy = cloneShared(shared)
+    expect(copy.root.querySelector("details")!.open).toBe(defaultOpen)
+    shared.doc.transact(() => mirrored.setAttribute("title", "remote"), "remote-test")
+    expect(details.open).toBe(!defaultOpen)
+
+    details.open = defaultOpen
+    await mutationsDelivered()
+    expect(details.classList.contains("◆details-temporary-open") || details.classList.contains("◆details-temporary-closed")).toBe(false)
+  })
+
+  it("commits the checkbox default, and remote edits replace an earlier temporary state", async () => {
+    const {root, shared} = createShared("<details><summary>Question</summary></details>")
+    const details = root.querySelector("details")!
+    const mirrored = shared.body.get(0) as Y.XmlElement
+    details.open = true
+    await mutationsDelivered()
+    shared.commitAuthoredDetailsOpen(details, () => details.setAttribute("open", ""))
+    expect(mirrored.getAttribute("open") !== undefined).toBe(true)
+    expect(details.classList.contains("◆details-temporary-open")).toBe(false)
+    shared.undo()
+    expect(details.open).toBe(false)
+    shared.redo()
+    expect(details.open).toBe(true)
+
+    details.open = false
+    await mutationsDelivered()
+    expect(details.classList.contains("◆details-temporary-closed")).toBe(true)
+    shared.doc.transact(() => mirrored.removeAttribute("open"), "remote-test")
+    expect(details.open).toBe(false)
+    expect(details.classList.contains("◆details-temporary-closed")).toBe(false)
+    expect(elementAttributeState(details, [0]).attributes.open).toBeUndefined()
+  })
+})
 
 it("does not reapply identical live selection endpoints and still restores a changed selection", () => {
   const {root, shared} = createShared("<p>Selected text</p>")

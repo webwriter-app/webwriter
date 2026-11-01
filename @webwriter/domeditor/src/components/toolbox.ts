@@ -686,6 +686,7 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-widget-primary input[type="checkbox"]:not(.editor-switch), .specialized-widget-primary input[type="radio"] {
       width: 0.9rem; height: 0.9rem; flex: 0 0 auto; margin: 0;
     }
+    .details-open-default {display: flex; align-items: center; gap: .4rem; margin: .25rem 0;}
     .specialized-choice-group {min-height: 1.7rem;}
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: .6rem system-ui, sans-serif;}
     .specialized-choice-group button {display: flex; align-items: center; justify-content: center; gap: .2rem;}
@@ -1115,6 +1116,7 @@ export class DomEditorToolbox extends EditingControls {
     const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
     if(!this.isElementDrawerVisible(localName, namespaceURI)) return nothing
     const heading = namespaceURI === "http://www.w3.org/1999/xhtml" && /^h[1-6]$/.test(localName)
+    const details = namespaceURI === "http://www.w3.org/1999/xhtml" && localName === "details"
     const list = namespaceURI === "http://www.w3.org/1999/xhtml" && (localName === "ul" || localName === "ol")
     const listScopes = listGroups?.map(list => ({localName: list.element.localName, namespaceURI: list.element.namespaceURI}))
       ?? [selectionType ?? {localName, namespaceURI}]
@@ -1156,6 +1158,14 @@ export class DomEditorToolbox extends EditingControls {
           configuredWidgetOptions.forEach(option => dispatchOption(option.name, null))
         }}>${ribbonIcon("Restore")}Reset</button>
       ${tableControls ? html`<div class="table-structure-controls" role="group" aria-label="Table structure">${this.renderTableStructureControls()}</div>` : nothing}
+      ${details && attributes ? html`<label class="specialized-widget-primary details-open-default">
+        <input type="checkbox" data-ribbon-input-persistent .checked=${Object.hasOwn(attributes.attributes, "open")}
+          @change=${(event: Event) => (event.currentTarget as HTMLInputElement).dispatchEvent(new CustomEvent("element-attribute-change", {
+            detail: {path: attributes.path, targetId: attributes.targetId, localName, namespaceURI,
+              name: "open", value: (event.currentTarget as HTMLInputElement).checked ? "" : null},
+            bubbles: true, composed: true,
+          }))}>Open by default
+      </label>` : nothing}
       ${heading ? html`<div class="specialized-widget-primary heading-level"><div class="develop-field">
         <span class="field-label" id=${`heading-level-${localName}`}>Level</span>
         <div class="specialized-choice-group" style="--choice-columns: 3" role="group" aria-labelledby=${`heading-level-${localName}`}>

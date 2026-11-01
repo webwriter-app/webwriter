@@ -50,6 +50,23 @@ describe("collaborative minimum flow content", () => {
 })
 
 describe("collaborative disclosure structure", () => {
+  it.each([false, true])("serializes the authored Details default and clears temporary state on destroy (%s)", defaultOpen => {
+    document.body.innerHTML = `<details${defaultOpen ? " open" : ""}><summary>Title</summary><p>Body</p></details>`
+    const editor = new DOMEditor()
+    const details = document.querySelector("details")!
+    try {
+      details.open = !defaultOpen
+      expect(editor.toHTML(true)).toBe(`<details${defaultOpen ? ' open=""' : ""}><summary>Title</summary><p>Body</p></details>`)
+      expect(details.open).toBe(!defaultOpen)
+    }
+    finally {
+      editor.destroy()
+      expect(details.open).toBe(defaultOpen)
+      expect(details.className).not.toContain("◆details-temporary")
+      document.body.replaceChildren()
+    }
+  })
+
   it("preserves missing summaries through remote updates, unrelated local input, and shared snapshot startup", async () => {
     document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details><p>Other</p>'
     const initialEditor = new DOMEditor()

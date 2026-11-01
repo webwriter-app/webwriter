@@ -984,9 +984,70 @@ describe("semantic list editing", () => {
   it("inserts Details with a real editable summary and no UI nodes in the main DOM", () => {
     editor.features.list.insertDetails()
 
-    expect(cleanHTML()).toBe("<details><summary></summary></details>")
+    expect(cleanHTML()).toBe("<details><summary></summary><p></p></details>")
     expect($.anchor).toBe(document.querySelector("summary"))
     expect(document.body.querySelector(".◆editor-only")).toBeNull()
+  })
+
+  it("restores a paragraph when the last Details body node is deleted", () => {
+    document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
+    editor.doc.syncFromDOM()
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    details.querySelector("p")!.remove()
+    editor.doc.syncFromDOM()
+
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><p></p></details>')
+    expect(details.firstElementChild).toBe(summary)
+    expect(details.querySelectorAll(":scope > p")).toHaveLength(1)
+  })
+
+  it("undoes and redoes deletion of the last Details body node", async () => {
+    document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    document.querySelector("details > p")!.remove()
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><p></p></details>')
+
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><p>Body</p></details>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><p></p></details>')
+  })
+
+  it("repairs a remotely emptied Details body while preserving its summary and comments", async () => {
+    document.body.innerHTML = '<details><summary title="keep">Title</summary><!--keep--><p>Body</p></details>'
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    try {
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+      const details = sharedDOMBody(remote).get(0) as Y.XmlElement
+      remote.transact(() => details.delete(details.length - 1, 1))
+      Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(editor.doc.doc)), "remote-client")
+      editor.doc.syncFromDOM()
+      expect(cleanHTML()).toBe('<details><summary title="keep">Title</summary><!--keep--><p></p></details>')
+      expect(editor.doc.body.toString()).toContain('<summary title="keep">Title</summary>')
+      expect(editor.doc.body.toString()).toContain('<p></p></details>')
+    }
+    finally { remote.destroy() }
+  })
+
+  it("accepts other Details content and preserves a missing summary", () => {
+    document.body.innerHTML = '<details><summary>Title</summary><test-widget></test-widget></details><details><!--keep--></details>'
+    editor.doc.syncFromDOM()
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><test-widget></test-widget><p></p></details><details><!--keep--><p></p></details>')
+  })
+
+  it("restores a direct paragraph even while other Details content remains", () => {
+    document.body.innerHTML = '<details><summary>Title</summary><test-widget></test-widget><p>Body</p></details>'
+    editor.doc.syncFromDOM()
+    document.querySelector("details > p")!.remove()
+    editor.doc.syncFromDOM()
+    expect(cleanHTML()).toBe('<details><summary>Title</summary><test-widget></test-widget><p></p></details>')
   })
 
   it("places selected inline content below the summary and opens Details", () => {
@@ -995,7 +1056,7 @@ describe("semantic list editing", () => {
 
     editor.features.list.actions.insertDetails({type: "insertDetails"})
 
-    expect(cleanHTML()).toBe('<p>before </p><details open=""><summary></summary><b>selected</b></details><p> after</p>')
+    expect(cleanHTML()).toBe('<p>before </p><details open=""><summary></summary><b>selected</b><p></p></details><p> after</p>')
     expect($.anchor).toBe(document.querySelector("summary"))
   })
 
@@ -1023,9 +1084,9 @@ describe("semantic list editing", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
 
-    const inserted = '<p>before </p><details open=""><summary></summary>selected</details><p> after</p>'
+    const inserted = '<p>before </p><details open=""><summary></summary>selected<p></p></details><p> after</p>'
     expect(cleanHTML()).toBe(inserted)
-    expect(editor.doc.body.toString()).toContain('<details open=""><summary></summary>selected</details>')
+    expect(editor.doc.body.toString()).toContain('<details open=""><summary></summary>selected<p></p></details>')
     expect(editor.doc.body.toString()).not.toContain("◆")
     editor.doc.undo()
     await Promise.resolve()
@@ -1042,7 +1103,7 @@ describe("semantic list editing", () => {
 
     expect(keydown("H").defaultPrevented).toBe(true)
 
-    expect(cleanHTML()).toBe("<details><summary>H</summary></details>")
+    expect(cleanHTML()).toBe("<details><summary>H</summary><p></p></details>")
     expect($.anchor).toBe(summary.firstChild)
     expect($.anchorOffset).toBe(1)
     expect($.isTextSelection).toBe(true)
@@ -1056,7 +1117,7 @@ describe("semantic list editing", () => {
     editor.features.manipulation.delete(direction)
 
     expect(document.querySelector("summary")).toBe(summary)
-    expect(cleanHTML()).toBe("<details><summary></summary></details>")
+    expect(cleanHTML()).toBe("<details><summary></summary><p></p></details>")
     expect($.anchor).toBe(summary)
   })
 
@@ -1071,13 +1132,15 @@ describe("semantic list editing", () => {
     expect(document.querySelector("summary")).toBe(summary)
   })
 
-  it("keeps summary when deleting backwards from the first body paragraph", () => {
+  it("joins the first body paragraph backwards into the summary", () => {
     document.body.innerHTML = '<details open><summary></summary><p>Body</p></details>'
     $.move(document.querySelector("p")!.firstChild!, 0)
 
     editor.features.manipulation.delete("backward")
 
-    expect(cleanHTML()).toBe('<details open=""><summary></summary><p>Body</p></details>')
+    expect(cleanHTML()).toBe('<details open=""><summary>Body</summary><p></p></details>')
+    expect($.anchor).toBe(document.querySelector("summary"))
+    expect($.anchorOffset).toBe(0)
   })
 
   it("allows summary text deletion through beforeinput without deleting its element", () => {
@@ -1171,7 +1234,7 @@ describe("semantic list editing", () => {
 
     keydown("H")
 
-    expect(cleanHTML()).toBe("<details><summary><b>H</b></summary></details>")
+    expect(cleanHTML()).toBe("<details><summary><b>H</b></summary><p></p></details>")
     expect($.anchorOffset).toBe(1)
   })
 
@@ -1185,14 +1248,14 @@ describe("semantic list editing", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
 
-    expect(editor.doc.body.toString()).toContain("<details><summary>H</summary></details>")
+    expect(editor.doc.body.toString()).toContain("<details><summary>H</summary><p></p></details>")
     expect(editor.doc.body.toString()).not.toContain("◆")
     editor.doc.undo()
     await Promise.resolve()
-    expect(cleanHTML()).toBe("<details><summary></summary></details>")
+    expect(cleanHTML()).toBe("<details><summary></summary><p></p></details>")
     editor.doc.redo()
     await Promise.resolve()
-    expect(cleanHTML()).toBe("<details><summary>H</summary></details>")
+    expect(cleanHTML()).toBe("<details><summary>H</summary><p></p></details>")
   })
 
   it.each([
@@ -1201,7 +1264,7 @@ describe("semantic list editing", () => {
     editor.features.list.insertDetails()
 
     expect(keydown("h", init).defaultPrevented).toBe(false)
-    expect(cleanHTML()).toBe("<details><summary></summary></details>")
+    expect(cleanHTML()).toBe("<details><summary></summary><p></p></details>")
   })
 
   it("respects cancellation of the initial summary input", () => {
@@ -1368,7 +1431,7 @@ describe("semantic list editing", () => {
     expect($.anchor).toBe(paragraph)
     expect($.anchorOffset).toBe(0)
     expect(document.getSelection()!.isCollapsed).toBe(true)
-    expect(cleanHTML()).toBe(`<details open=""><summary>Heading</summary>${extra}<p></p></details>`)
+    expect(cleanHTML()).toBe(`<details><summary>Heading</summary>${extra}<p></p></details>`)
     summary.click()
     expect(details.open).toBe(false)
     summary.click()
@@ -1382,7 +1445,7 @@ describe("semantic list editing", () => {
     $.move(summary.firstChild!, 2)
     summary.click()
     expect(summary.nextSibling).toBe(existing)
-    expect(cleanHTML()).toBe(`<details open=""><summary>Heading</summary>${content}</details>`)
+    expect(cleanHTML()).toBe(`<details><summary>Heading</summary>${content}${content.startsWith("<p") ? "" : "<p></p>"}</details>`)
     if(content.startsWith("<test-widget")) {
       expect($.anchor).toBe(summary.parentElement)
       expect($.anchorOffset).toBe(1)
@@ -1438,25 +1501,19 @@ describe("semantic list editing", () => {
     summary.parentElement!.append(widget)
     summary.click()
     expect(summary.nextSibling).toBe(widget)
-    expect(document.querySelector("details > p")).toBeNull()
+    expect(document.querySelectorAll("details > p")).toHaveLength(1)
   })
 
-  it("undoes and redoes opening an empty disclosure with its new paragraph", async () => {
+  it("keeps opening an empty disclosure out of the authored document", () => {
     document.body.innerHTML = '<details><summary>Heading</summary></details>'
     $.move(document.querySelector("summary")!.firstChild!, 2)
     editor.doc.syncFromDOM()
-    editor.doc.stopCapturing()
     document.querySelector("summary")!.click()
     editor.doc.syncFromDOM()
-    editor.doc.stopCapturing()
-    expect(editor.doc.body.toString()).toContain('<details open=""><summary>Heading</summary><p></p></details>')
+    expect(document.querySelector("details")!.open).toBe(true)
+    expect(editor.doc.body.toString()).toContain('<details><summary>Heading</summary><p></p></details>')
     expect(editor.doc.body.toString()).not.toContain("◆")
-    editor.doc.undo()
-    await Promise.resolve()
-    expect(cleanHTML()).toBe('<details><summary>Heading</summary></details>')
-    editor.doc.redo()
-    await Promise.resolve()
-    expect(cleanHTML()).toBe('<details open=""><summary>Heading</summary><p></p></details>')
+    expect(cleanHTML()).toBe('<details><summary>Heading</summary><p></p></details>')
   })
 
   it("leaves widget shadow interactions inside summaries alone", () => {
@@ -1488,48 +1545,191 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(0)
   })
 
-  it("splits Summary content into a paragraph without ever creating another Summary", () => {
+  it("splits Summary content into a paragraph when Enter is before its end", () => {
     document.body.innerHTML = "<details><summary>Heading text</summary></details>"
     const text = document.querySelector("summary")!.firstChild!
     $.move(text, 7)
 
-    keydown("Enter")
-
+    expect(keydown("Enter").defaultPrevented).toBe(true)
     const details = document.querySelector("details")!
-    expect(cleanHTML()).toBe("<details open=\"\"><summary>Heading</summary><p> text</p></details>")
+    expect(cleanHTML()).toBe("<details><summary>Heading</summary><p> text</p><p></p></details>")
     expect(details.querySelectorAll("summary")).toHaveLength(1)
-    expect(details.querySelectorAll("p")).toHaveLength(1)
+    expect(details.querySelectorAll("p")).toHaveLength(2)
     expect($.anchor).toBe(details.querySelector("p")!.firstChild)
     expect($.anchorOffset).toBe(0)
   })
 
-  it("creates the empty first Details content block with a retained caret", () => {
+  it.each([false, true])("moves Enter at the Summary end to the first text in Details (open: %s)", open => {
+    document.body.innerHTML = `<details${open ? " open" : ""}><summary>Heading</summary><p><b>Body</b></p></details>`
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    $.move(summary.firstChild!, -1)
+
+    expect(keydown("Enter").defaultPrevented).toBe(true)
+    expect(details.open).toBe(true)
+    expect($.anchor).toBe(details.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(0)
+    expect($.isTextSelection).toBe(true)
+    expect(cleanHTML()).toBe(`<details${open ? ' open=""' : ""}><summary>Heading</summary><p><b>Body</b></p></details>`)
+  })
+
+  it("places a caret in an empty first Details paragraph from the Summary end", () => {
     document.body.innerHTML = "<details><summary>Heading</summary></details>"
     const summaryText = document.querySelector("summary")!.firstChild!
     $.move(summaryText, -1)
 
-    keydown("Enter")
-
+    expect(keydown("Enter").defaultPrevented).toBe(true)
+    expect(document.querySelector("details")!.open).toBe(true)
     const content = document.querySelector("details > p")!
-    expect(content).not.toBeNull()
-    expect(content.matches(":empty")).toBe(true)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
     expect($.anchor).toBe(content)
     expect($.anchorOffset).toBe(0)
+    expect($.selectedElement).not.toBe(content)
+    expect($.isElementSelection).toBe(false)
+    expect(cleanHTML()).toBe("<details><summary>Heading</summary><p></p></details>")
+
+    keydown("Enter")
+    expect(document.querySelectorAll("details > p")).toHaveLength(2)
+    expect(document.querySelector("details")!.nextElementSibling).toBeNull()
   })
 
-  it("redirects insertParagraph input in Summary into a paragraph split", () => {
+  it("returns from the first Details paragraph to the Summary with Backspace", () => {
+    document.body.innerHTML = "<details><summary>Heading</summary><p></p></details>"
+    const summary = document.querySelector("summary")!
+    const paragraph = document.querySelector("p")!
+    $.move(summary.firstChild!, -1)
+
+    keydown("Enter")
+    expect($.anchor).toBe(paragraph)
+    keydown("Backspace")
+
+    expect($.anchor).toBe(summary)
+    expect($.anchorOffset).toBe(1)
+    expect(paragraph.isConnected).toBe(true)
+    expect(cleanHTML()).toBe("<details><summary>Heading</summary><p></p></details>")
+  })
+
+  it("uses a text caret for an empty inline wrapper at the start of Details content", () => {
+    document.body.innerHTML = "<details><summary>Heading</summary><p><span></span>Body</p></details>"
+    $.move(document.querySelector("summary")!.firstChild!, -1)
+
+    keydown("Enter")
+
+    expect($.anchor).toBe(document.querySelector("span"))
+    expect($.anchorOffset).toBe(0)
+    expect($.isTextSelection).toBe(true)
+    expect($.isElementSelection).toBe(false)
+  })
+
+  it("selects a first widget as an element from the Summary end", () => {
+    document.body.innerHTML = '<details><summary>Heading</summary><test-widget></test-widget></details>'
+    const summary = document.querySelector("summary")!
+    $.move(summary.firstChild!, -1)
+
+    expect(keydown("Enter").defaultPrevented).toBe(true)
+    expect(document.querySelector("details")!.open).toBe(true)
+    expect($.selectedElement).toBe(document.querySelector("test-widget"))
+    expect(cleanHTML()).toBe('<details><summary>Heading</summary><test-widget></test-widget><p></p></details>')
+  })
+
+  it("redirects insertParagraph at the Summary end into its first content", () => {
     document.body.innerHTML = "<details><summary>Heading</summary></details>"
     const text = document.querySelector("summary")!.firstChild!
-    $.move(text, 4)
+    $.move(text, -1)
     const event = new InputEvent("beforeinput", {
       inputType: "insertParagraph", bubbles: true, cancelable: true,
     })
 
     document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(document.querySelector("details")!.open).toBe(true)
+    expect(cleanHTML()).toBe("<details><summary>Heading</summary><p></p></details>")
+    expect($.anchor).toBe(document.querySelector("details > p"))
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+  })
+
+  it("splits Summary on insertParagraph before its end", () => {
+    document.body.innerHTML = '<details><summary>Heading</summary><p>Body</p></details>'
+    const text = document.querySelector("summary")!.firstChild!
+    $.move(text, 4)
+    const event = new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
 
     expect(event.defaultPrevented).toBe(true)
-    expect(cleanHTML()).toBe("<details open=\"\"><summary>Head</summary><p>ing</p></details>")
-    expect(document.querySelectorAll("summary")).toHaveLength(1)
+    expect(cleanHTML()).toBe('<details><summary>Head</summary><p>ing</p><p>Body</p></details>')
+  })
+
+  it("lifts a later empty paragraph even when content follows it", () => {
+    document.body.innerHTML = '<details open><summary>Title</summary><p>First</p><p></p><p>Later</p></details>'
+    const details = document.querySelector("details")!
+    const empty = details.querySelectorAll("p")[1]
+    $.move(empty)
+
+    expect(keydown("Enter").defaultPrevented).toBe(true)
+    expect(details.nextElementSibling).toBe(empty)
+    expect(cleanHTML()).toBe('<details open=""><summary>Title</summary><p>First</p><p>Later</p></details><p></p>')
+    expect($.anchor).toBe(empty)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("lifts a later empty paragraph on beforeinput and supports undo and redo", async () => {
+    document.body.innerHTML = '<details open><summary>Title</summary><p>First</p><p></p></details>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const empty = document.querySelectorAll("details > p")[1]
+    $.move(empty)
+    const event = new InputEvent("beforeinput", {inputType: "insertParagraph", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(event.defaultPrevented).toBe(true)
+    expect(cleanHTML()).toBe('<details open=""><summary>Title</summary><p>First</p></details><p></p>')
+    expect($.anchor).toBe(empty)
+
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<details open=""><summary>Title</summary><p>First</p><p></p></details>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<details open=""><summary>Title</summary><p>First</p></details><p></p>')
+  })
+
+  it("splits the first empty paragraph inside Details", () => {
+    document.body.innerHTML = '<details open><summary>Title</summary><p></p><p>Later</p></details>'
+    const details = document.querySelector("details")!
+    const first = details.querySelector("p")!
+    $.move(first)
+
+    keydown("Enter")
+
+    expect(first.parentElement).toBe(details)
+    expect(details.querySelectorAll(":scope > p")).toHaveLength(3)
+    expect(details.nextElementSibling).toBeNull()
+  })
+
+  it("splits text inside a Details paragraph without splitting the Details element", () => {
+    document.body.innerHTML = '<details open><summary>Title</summary><p>Before after</p></details>'
+    const details = document.querySelector("details")!
+    $.move(details.querySelector("p")!.firstChild!, 6)
+
+    keydown("Enter")
+
+    expect(cleanHTML()).toBe('<details open=""><summary>Title</summary><p>Before</p><p> after</p></details>')
+    expect(details.nextElementSibling).toBeNull()
+  })
+
+  it("splits Details content inside a list item without splitting the list item", () => {
+    document.body.innerHTML = '<ol><li><details open><summary>Title</summary><p>Before after</p></details></li></ol>'
+    const details = document.querySelector("details")!
+    $.move(details.querySelector("p")!.firstChild!, 6)
+
+    keydown("Enter")
+
+    expect(document.querySelectorAll("ol > li")).toHaveLength(1)
+    expect(details.querySelectorAll(":scope > p")).toHaveLength(2)
+    expect(cleanHTML()).toBe('<ol><li><details open=""><summary>Title</summary><p>Before</p><p> after</p></details></li></ol>')
   })
 })
 

@@ -41,6 +41,25 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it("puts Open by default in Details primary controls without a break-inside option", async () => {
+    const toolbox = await mountElement("details")
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="details"]')!
+    const checkbox = drawer.querySelector<HTMLInputElement>('.details-open-default input[type="checkbox"]')!
+    expect(checkbox.checked).toBe(false)
+    expect(drawer.querySelector('.details-open-default')?.textContent).toContain("Open by default")
+    expect(drawer.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')?.propertyNames ?? [])
+      .not.toContain("break-inside")
+    const change = vi.fn()
+    toolbox.addEventListener("element-attribute-change", change)
+    checkbox.click()
+    expect(change.mock.calls[0][0].detail).toMatchObject({path: [0], name: "open", value: ""})
+    toolbox.elementAttributes = selectedElement("details", {open: ""})
+    await toolbox.updateComplete
+    expect(drawer.querySelector<HTMLInputElement>('.details-open-default input')!.checked).toBe(true)
+    drawer.querySelector<HTMLInputElement>('.details-open-default input')!.click()
+    expect(change.mock.calls.at(-1)![0].detail).toMatchObject({name: "open", value: null})
+  })
+
   it("labels a child widget drawer with its readable name and package icon", async () => {
     const toolbox = await mountElement("webwriter-task-prompt")
     toolbox.elementAttributes = {...toolbox.elementAttributes!, ...getElementPresentation("webwriter-task-prompt", [{

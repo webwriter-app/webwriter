@@ -1,5 +1,5 @@
 import {getElementPresentation} from "./element-names"
-import {authoredClassValue} from "./editor-artifacts"
+import {authoredClassValue, authoredDetailsOpen} from "./editor-artifacts"
 
 export type ElementAttributeState = {
   /** BODY-relative child-node path. Null addresses the document element. */
@@ -116,9 +116,6 @@ const optionsByElement: Readonly<Record<string, readonly ElementAttributeOption[
   ],
   blockquote: [{name: "cite", label: "Source URL", kind: "url", placeholder: "https://…"}],
   q: [{name: "cite", label: "Source URL", kind: "url", placeholder: "https://…"}],
-  details: [
-    {name: "open", label: "Initially open", kind: "boolean"},
-  ],
   ol: [
     {name: "start", label: "Start at", kind: "number"},
     {name: "reversed", label: "Reverse numbering", kind: "boolean"},
@@ -273,6 +270,10 @@ export function elementAttributeState(element: Element, path: number[] | null): 
     }
     return [[attribute.name, attribute.value]]
   }))
+  if(element.localName === "details" && element.namespaceURI === htmlNamespace) {
+    if(authoredDetailsOpen(element)) attributes.open = ""
+    else delete attributes.open
+  }
   const presentation = getElementPresentation(element)
   return {
     path: path ? [...path] : null,

@@ -1025,7 +1025,8 @@ describe("revealing selections inside details", () => {
     expect(inner.open).toBe(true)
     expect(other.open).toBe(false)
     expect(inner.querySelector("p")).toBe(paragraph)
-    expect(outer.innerHTML.replaceAll(' open=""', "").replace(/ class="[^"]*"/g, "")).toBe(original)
+    editor.doc.syncFromDOM()
+    expect(outer.innerHTML.replaceAll(' open=""', "").replace(/ class="[^"]*"/g, "")).toBe(`${original}<p></p>`)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -1080,7 +1081,7 @@ describe("revealing selections inside details", () => {
     expect(details.open).toBe(true)
     expect(details.querySelector("summary")!.textContent).toBe("Title")
     expect(details.querySelector("p")!.textContent).toBe("Body")
-    expect(editor.toHTML(true)).toBe('<details open=""><summary>Title</summary><test-widget id="inserted-widget"></test-widget><!--keep--><p>Body</p></details>')
+    expect(editor.toHTML(true)).toBe('<details><summary>Title</summary><test-widget id="inserted-widget"></test-widget><!--keep--><p>Body</p></details>')
   })
 })
 
@@ -6107,7 +6108,7 @@ describe("disclosure gap navigation", () => {
     press("ArrowRight")
     expect($.detailsGap?.element).toBe(inner)
     press("ArrowRight")
-    expect($.detailsGap?.element).toBe(outer)
+    expect($.anchor).toBe(outer.querySelector(":scope > p"))
   })
 
   it("keeps the caret in an outer document gap when there is nowhere farther to move", () => {

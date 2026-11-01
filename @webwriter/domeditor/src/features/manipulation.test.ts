@@ -2959,6 +2959,64 @@ describe("Tab paragraph behavior", () => {
   })
 })
 describe("delete()", () => {
+  it("joins first Details paragraph content into Summary on Backspace while keeping its paragraph", () => {
+    document.body.innerHTML = '<details open><summary title="keep">Head <b>line</b></summary><!--between--><p class="authored"><em>Body</em><!--inside--></p><p>Later</p></details>'
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    const paragraph = details.querySelector("p")!
+    const content = paragraph.firstChild
+    $.move(paragraph.querySelector("em")!.firstChild!, 0)
+
+    const event = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(paragraph.isConnected).toBe(true)
+    expect(paragraph.childNodes).toHaveLength(0)
+    expect(summary.childNodes.item(2)).toBe(content)
+    expect(editor.toHTML(true)).toBe('<details open=""><summary title="keep">Head <b>line</b><em>Body</em><!--inside--></summary><!--between--><p class="authored"></p><p>Later</p></details>')
+    expect($.anchor).toBe(summary)
+    expect($.anchorOffset).toBe(2)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+  })
+
+  it("moves Backspace from an empty first Details paragraph into Summary", () => {
+    document.body.innerHTML = '<details open><summary>Head</summary><p></p></details>'
+    const summary = document.querySelector("summary")!
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+
+    editor.features.manipulation.delete("backward")
+
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>Head</summary><p></p></details>')
+    expect($.anchor).toBe(summary)
+    expect($.anchorOffset).toBe(1)
+    expect(paragraph.isConnected).toBe(true)
+  })
+
+  it("joins the first Details paragraph through deleteContentBackward", () => {
+    document.body.innerHTML = '<details open><summary>Head</summary><p>Body</p></details>'
+    $.move(document.querySelector("p")!.firstChild!, 0)
+    const event = new InputEvent("beforeinput", {inputType: "deleteContentBackward", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>HeadBody</summary><p></p></details>')
+  })
+
+  it("keeps an inline widget intact when joining the first Details paragraph", () => {
+    document.body.innerHTML = '<details open><summary>Head</summary><p><inline-widget data-authored="keep"></inline-widget>Body</p></details>'
+    const widget = document.querySelector("inline-widget")!
+    $.move(document.querySelector("p")!)
+
+    editor.features.manipulation.delete("backward")
+
+    expect(document.querySelector("summary > inline-widget")).toBe(widget)
+    expect(widget.getAttribute("data-authored")).toBe("keep")
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>Head<inline-widget data-authored="keep"></inline-widget>Body</summary><p></p></details>')
+  })
+
   it.each(["hello w", "hello <b>w</b>", "hello <!--keep--><b data-authored='keep'><i>w</i></b>"])("preserves the trailing space when deleting the last letter in %s", html => {
     document.body.innerHTML = `<p>${html}</p>`
     const paragraph = document.querySelector("p")!
@@ -3942,6 +4000,29 @@ describe("paste()", () => {
   })
 })
 describe("setAttributes()", () => {
+  it("authors Details open only through the explicit attribute action", () => {
+    document.body.innerHTML = "<details><summary>More</summary><p>Body</p></details>"
+    const details = document.querySelector("details")!
+    editor.doc.syncFromDOM()
+    const setOpen = (value: string | null) => editor.features.manipulation.actions.setElementAttribute({
+      ...elementAttributeState(details, [0]), type: "setElementAttribute", name: "open", value,
+    })
+
+    details.open = true
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).not.toContain(" open")
+    setOpen("")
+    expect(editor.toHTML(true)).toContain(' open=""')
+    expect(details).not.toHaveClass("◆details-temporary-open")
+
+    details.open = false
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).toContain(' open=""')
+    setOpen(null)
+    expect(editor.toHTML(true)).not.toContain(" open")
+    expect(details).not.toHaveClass("◆details-temporary-closed")
+  })
+
   it("can set a title attribute", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectElement(document.body.firstElementChild!)

@@ -417,7 +417,7 @@ export function specializedElementStyle(localName: string): SpecializedElementSt
   if(["picture", "img"].includes(localName)) return imageStyles
   if(localName === "video") return {...imageStyles, advanced: []}
   if(["audio", "iframe", "embed", "object"].includes(localName)) return {primary: [], advanced: []}
-  if(localName === "details") return {primary: [], advanced: ["break-inside"]}
+  if(localName === "details") return {primary: [], advanced: []}
   if(localName === "summary") return {primary: ["list-style-type", "list-style-position"], advanced: []}
   if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells", "break-inside"]}
   if(["td", "th"].includes(localName)) return {primary: ["text-align", "vertical-align"], advanced: []}

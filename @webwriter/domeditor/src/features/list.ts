@@ -1,6 +1,7 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ElementSelectionType, ListSelectionState, ListType} from "../editor-bridge"
 import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isCaretAtBoundary, isElement, isText, modifierKeyDown, removeEditorMarker, setPart, createAnchorPositioner} from "../utility"
+import {isMarkElement} from "../marks"
 import {isDocumentRoot} from "../document-template"
 import {listMarkerImageProperty} from "../element-styles"
 
@@ -451,6 +452,21 @@ export class ListFeature extends EditorFeature {
 
   private handleBeforeInput(event: InputEvent) {
     if(event.defaultPrevented) return
+    if(event.inputType === "insertParagraph" && this.enterFromSummaryEnd()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    if(event.inputType === "insertParagraph" && this.liftLaterEmptyDetailsParagraph()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    if(event.inputType === "insertParagraph" && this.splitSelectedDetailsParagraph()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
     const point = this.virtualPoint
     if(!point && event.inputType === "insertParagraph" && this.enterItem()) {
       event.preventDefault()
@@ -485,7 +501,17 @@ export class ListFeature extends EditorFeature {
     const point = this.virtualPoint
 
     if(event.key === "Enter" && !event.altKey && !event.shiftKey && !modifierKeyDown(event)) {
-      if(this.liftTrailingDetailsBlock()) {
+      if(!event.isComposing && this.enterFromSummaryEnd()) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
+      if(this.liftLaterEmptyDetailsParagraph()) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
+      if(this.splitSelectedDetailsParagraph()) {
         event.preventDefault()
         event.stopImmediatePropagation()
         return
@@ -576,6 +602,8 @@ export class ListFeature extends EditorFeature {
     if(!selection?.rangeCount) return false
     const range = selection.getRangeAt(0)
     const start = getContainer(range.startContainer)
+    const details = start?.closest("details")
+    if(details?.namespaceURI === "http://www.w3.org/1999/xhtml" && details.contains(range.endContainer)) return false
     const item = start?.closest<HTMLElement>(listItemSelector)
     if(!item?.isConnected || !item.parentElement?.matches(listSelector)
       || !item.parentElement.contains(range.endContainer)
@@ -998,11 +1026,12 @@ export class ListFeature extends EditorFeature {
       details.append($.slice)
       details.open = true
     }
+    this.ensureDetailsBody(details)
     this.editor.features.manipulation.insert(details, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     if(details.isConnected) $.move(summary)
   }
 
-  /** Repair disclosure summaries at local editing boundaries.
+  /** Repair disclosure summaries and minimum body content at editing boundaries.
    * Widget internals own their structure. */
   ensureDetailsSummaries(roots: Iterable<Element> = [document.body]) {
     const disclosures = new Set<Element>()
@@ -1013,10 +1042,27 @@ export class ListFeature extends EditorFeature {
     }
     for(const details of disclosures) {
       if(!document.body.contains(details)) continue
+      if(details.namespaceURI !== "http://www.w3.org/1999/xhtml") continue
       if(atomicEditingContainer(details, this.editor.schema)) continue
       const summary = details.querySelector(":scope > summary") ?? document.createElement("summary")
       if(details.firstElementChild !== summary) details.prepend(summary)
+      this.ensureDetailsBody(details)
     }
+  }
+
+  /** Keep an editable body without reordering or recreating authored summaries. */
+  ensureDetailsBodyContent() {
+    for(const details of document.body.querySelectorAll("details:not([is])")) {
+      if(details.namespaceURI !== "http://www.w3.org/1999/xhtml" || atomicEditingContainer(details, this.editor.schema)) continue
+      this.ensureDetailsBody(details)
+    }
+  }
+
+  private ensureDetailsBody(details: Element) {
+    if(Array.from(details.children).some(child => child.matches("p"))) return null
+    const paragraph = details.ownerDocument.createElement("p")
+    details.append(paragraph)
+    return paragraph
   }
 
   /** Opening follows editing intent, not just pointer activation: any
@@ -1105,15 +1151,42 @@ export class ListFeature extends EditorFeature {
     else if(isElement(first)) $.selectGap(first, "before")
   }
 
+  private enterFromSummaryEnd() {
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode
+    if(!selection?.isCollapsed || !anchor || !selection.focusNode
+      || atomicEditingContainer(anchor, this.editor.schema)) return false
+    const summary = getContainer(anchor).closest("summary")
+    const details = summary?.parentElement as HTMLDetailsElement | null
+    if(!summary || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || !document.body.contains(details) || !summary.contains(selection.focusNode)
+      || !isCaretAtBoundary(summary, "end")) return false
+    this.ensureDetailsBody(details)
+    details.open = true
+    const first = Array.from(details.childNodes).find(node =>
+      isText(node) && Boolean(node.data.trim()) || isElement(node) && !node.matches("summary"))
+    if(isText(first)) $.move(first)
+    else if(isElement(first)) {
+      let target: Node = first
+      while(isElement(target) && !atomicEditingContainer(target, this.editor.schema)
+        && !target.localName.includes("-") && !target.hasAttribute("is") && !this.isEmptyTextBlock(target)) {
+        const child = Array.from(target.childNodes).find(node => isText(node) && Boolean(node.data)
+          || isElement(node))
+        if(!child) break
+        target = child
+      }
+      if(isText(target) || isElement(target) && !atomicEditingContainer(target, this.editor.schema)
+        && (this.editor.features.manipulation.isTextBlock(target) || isMarkElement(target))) $.move(target)
+      else if(isElement(target)) $.selectElement(target)
+    }
+    return true
+  }
+
   private focusEmptyDetails(details: HTMLDetailsElement) {
     const summary = details.querySelector(":scope > summary")
     if(!details.isConnected || !details.open || !summary) return
-    const hasContent = Array.from(details.childNodes).some(node => node !== summary
-      && (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim())))
-    if(hasContent) return
-    const paragraph = document.createElement("p")
-    details.append(paragraph)
-    $.move(paragraph)
+    const paragraph = this.ensureDetailsBody(details)
+    if(paragraph) $.move(paragraph)
   }
 
   private isEmptyTextBlock(block: Element) {
@@ -1121,21 +1194,33 @@ export class ListFeature extends EditorFeature {
       && Array.from(block.children).every(child => child.matches("br"))
   }
 
-  /** Enter on the final empty flow block leaves DETAILS, matching the editor's
-   * list-exit behavior while preserving that same block and editing point. */
-  private liftTrailingDetailsBlock() {
+  /** A later empty paragraph exits DETAILS; the first remains its content. */
+  private liftLaterEmptyDetailsParagraph() {
     const selection = document.getSelection()
-    if(!selection?.isCollapsed || !selection.anchorNode) return false
-    let block: Element | null = getContainer(selection.anchorNode)
-    while(block && block.parentElement && block.parentElement !== document.body) {
-      if(block.parentElement.matches("details")) break
-      block = block.parentElement
-    }
-    const details = block?.parentElement
-    if(!block || !details?.matches("details") || block.matches("summary") || !this.editor.schema.isBlock(block)) return false
-    if(details.lastElementChild !== block || !this.isEmptyTextBlock(block)) return false
-    details.after(block)
-    $.move(block)
+    if(!selection?.anchorNode) return false
+    const selected = $.selectedElement
+    const container = getContainer(selection.anchorNode)
+    const paragraph = selected?.matches("p") ? selected
+      : selection.isCollapsed ? container.matches("p") ? container : container.closest("p") : null
+    const details = paragraph?.parentElement
+    if(!paragraph || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || atomicEditingContainer(paragraph, this.editor.schema)
+      || !this.isEmptyTextBlock(paragraph) || Array.from(paragraph.childNodes).some(node =>
+        !isText(node) && !(isElement(node) && node.matches("br")))) return false
+    const first = Array.from(details.children).find(child => child.matches("p"))
+    if(first === paragraph) return false
+    details.after(paragraph)
+    $.move(paragraph)
+    return true
+  }
+
+  private splitSelectedDetailsParagraph() {
+    const paragraph = $.selectedElement
+    const details = paragraph?.parentElement
+    if(!paragraph?.matches("p") || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || atomicEditingContainer(paragraph, this.editor.schema)) return false
+    $.move(paragraph)
+    this.editor.features.manipulation.insert(undefined, 0)
     return true
   }
 
