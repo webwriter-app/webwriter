@@ -10,6 +10,7 @@ import {cloudServiceExpired, tokenExpiresAt, type CloudService} from "../cloud-s
 import type {GitPackageSource} from "../git-package"
 import {appIconUrl, ribbonIcon} from "../ribbon-icons"
 import {themeAccentColumn, themeAccentProperties} from "../css-color"
+import {documentThemeProperties, type SavedDocumentTheme} from "../document-theme-options"
 import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
 import "./document-theme-presets"
@@ -333,6 +334,7 @@ type LiveSessionIdentity = {
 export class DomEditor extends LitElement {
   static properties = {
     selectionPath: {attribute: false, state: true},
+    documentRootHovered: {state: true},
     distributionSelection: {attribute: false, state: true},
     distributionGeneral: {attribute: false, state: true},
     distributionItems: {attribute: false, state: true},
@@ -555,6 +557,8 @@ export class DomEditor extends LitElement {
   private elementStyleRefreshSequence = 0
   private elementStyleRefreshQueued = false
   private documentPaletteSignature = ""
+  private documentThemeStyles: SavedDocumentTheme["styles"] = {}
+  private documentThemeSignature = ""
   private consoleOpen = false
   private consoleRendered = false
   private reviewOpen = false
@@ -730,6 +734,7 @@ export class DomEditor extends LitElement {
   private installedPackagesRestored = false
   private readonly packageRegistry = new WebWriterPackageRegistry()
   private breadcrumbHoverPath: number[] | null = null
+  private documentRootHovered = false
   private pendingExecutions = new Map<string, {
     resolve: (value: unknown) => void
     reject: (reason?: unknown) => void
@@ -1116,6 +1121,16 @@ export class DomEditor extends LitElement {
 
     iframe.window-inactive {
       pointer-events: none;
+    }
+
+    iframe.editor-frame.root-hovered {
+      outline: 1px solid rgb(56 189 248 / 40%);
+      outline-offset: -1px;
+    }
+
+    iframe.editor-frame.root-selected {
+      outline: 1px solid var(--sl-color-primary-400, #38bdf8);
+      outline-offset: -1px;
     }
 
     /* Touch must be able to focus the frame even while DevTools owns focus.
@@ -2287,7 +2302,7 @@ export class DomEditor extends LitElement {
     // cloning, cleaning and reparsing a large document on every snapshot.
     const text = current.ownerDocument.createTreeWalker(current, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
       acceptNode: node => node.nodeType === Node.ELEMENT_NODE
-        ? (node as Element).matches(".◆editor-only, [data-webwriter-editor-only]") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
+        ? (node as Element).matches(".◆editor-only, [data-webwriter-editor-only], body.ww-slides > nav.ww-slides-navigation, body.ww-slides > .ww-slides-viewport > .ww-slide > nav.ww-slide-directions") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_SKIP
         : node.nodeValue?.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
     })
     if(text.nextNode()) { this.documentLayoutsDismissed = true; return }
@@ -2528,6 +2543,10 @@ export class DomEditor extends LitElement {
 
   private editorIframe() {
     return this.renderRoot.querySelector<HTMLIFrameElement>("iframe.editor-frame")
+  }
+
+  private get documentRootSelected() {
+    return this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1
   }
 
   private isEditorFocused() {
@@ -6815,6 +6834,8 @@ export class DomEditor extends LitElement {
     const item = (event as CustomEvent<SelectionPathItem | null>).detail
     const path = item && Array.isArray(item.path) ? [...item.path] : null
     this.breadcrumbHoverPath = path
+    const rootPath = this.selectionPath[0]?.path ?? []
+    this.documentRootHovered = path !== null && path.length === rootPath.length && path.every((value, index) => value === rootPath[index])
     void this.execute({
       type: "hoverNode",
       path,
@@ -6828,6 +6849,7 @@ export class DomEditor extends LitElement {
     const section = (event as CustomEvent<SelectionPathSection | null>).detail
     const path = section && Array.isArray(section.path) ? [...section.path] : null
     this.breadcrumbHoverPath = path
+    this.documentRootHovered = false
     void this.execute({type: "hoverSection", path}).catch(() => {
       // Hover is best-effort; the editor may be unloading while the pointer
       // leaves the breadcrumb.
@@ -6988,6 +7010,18 @@ export class DomEditor extends LitElement {
   private syncDocumentPalette() {
     const doc = this.editorDocument
     const style = doc?.documentElement.style
+    const bodyStyle = doc?.body?.style
+    const styles = Object.fromEntries(documentThemeProperties.flatMap(name => {
+      const source = bodyStyle?.getPropertyValue(name) ? bodyStyle : style
+      const value = source?.getPropertyValue(name).trim()
+      return value ? [[name, {value, priority: source!.getPropertyPriority(name)}]] : []
+    })) as SavedDocumentTheme["styles"]
+    const themeSignature = JSON.stringify(styles)
+    if(themeSignature !== this.documentThemeSignature) {
+      this.documentThemeSignature = themeSignature
+      this.documentThemeStyles = styles
+      this.requestUpdate()
+    }
     const values = themeAccentProperties.map(name => style?.getPropertyValue(name).trim() ?? "")
     const signature = JSON.stringify(values)
     if(signature === this.documentPaletteSignature) return
@@ -7835,6 +7869,7 @@ export class DomEditor extends LitElement {
     this.ribbonInputSession = false
     this.restoreEditorAfterRibbonInput = false
     this.breadcrumbHoverPath = null
+    this.documentRootHovered = false
     this.documentTree = null
     this.presenceUsers = []
     this.editorReadyReject?.(new Error("The DOM editor component was disconnected"))
@@ -8167,7 +8202,7 @@ export class DomEditor extends LitElement {
           ></iframe>
         ` : ""}
         ${this.frameStarted ? keyed(this.frameRevision, html`<iframe
-          class=${documentLoading || this.documentFramePending ? "editor-frame loading" : "editor-frame"}
+          class=${`editor-frame${documentLoading || this.documentFramePending ? " loading" : ""}${this.documentRootHovered ? " root-hovered" : ""}${this.documentRootSelected ? " root-selected" : ""}`}
           allow="camera; microphone; display-capture"
           title="DOM editor"
           sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
@@ -8261,7 +8296,7 @@ export class DomEditor extends LitElement {
         @distribution-insert-drop=${this.handleDistributionInsertDrop}
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}
-        .documentSelected=${this.nodeSelection && !this.captureSelection && !this.selectedElementTypes.length && this.selectionPath.length === 1}
+        .documentSelected=${this.documentRootSelected}
         .documentLayout=${this.documentLayout}
         .documentLayoutError=${this.documentLayoutError}
         .documentHead=${this.documentHead}
@@ -8285,11 +8320,11 @@ export class DomEditor extends LitElement {
           <div class="document-layouts-clip">
             ${when(!this.documentLayoutsDismissed && !documentLoading, () => guard([
               this.documentLayout, this.historyState.preview, this.htmlPending, this.fileOperationActive,
-              this.documentLayoutError, ...recentDocumentsDependencies,
+              this.documentLayoutError, this.documentThemeSignature, ...recentDocumentsDependencies,
             ], () => html`<section class="document-layouts-bar" aria-labelledby="document-layouts-title">
               <div class="document-layouts-heading">
                 <div class="document-layouts-main-heading"><h2 id="document-layouts-title">Layouts<span class="document-layouts-combined-title"> &amp; Recently opened</span></h2>
-                  <document-theme-presets select-only ?disabled=${this.fileOperationActive || this.htmlPending || this.historyState.preview !== null}
+                  <document-theme-presets select-only .themeStyles=${this.documentThemeStyles} ?disabled=${this.fileOperationActive || this.htmlPending || this.historyState.preview !== null}
                     @document-theme-customize=${() => void this.openDocumentThemeOptions()}
                     @document-theme-apply=${(event: CustomEvent<{styles: Record<string, ElementStyleMutation>}>) => {
                       void this.execute({type: "setDocumentThemeStyles", styles: event.detail.styles})

@@ -26,6 +26,20 @@ export const documentTypographyCSS = `@layer webwriter-theme-options {
 }`
 export type SavedDocumentTheme = {name: string, styles: Record<string, {value: string, priority: "" | "important"}>}
 
+/** Built-in choices remain separate from the user's browser-local themes. */
+export const defaultDocumentThemes: SavedDocumentTheme[] = [
+  {name: "Standard", styles: {}},
+  {name: "Ocean", styles: themeColors("#f7fbff", "#243746", "#176b91", ["#397da2", "#2a9d8f", "#e9a23b", "#df775b", "#7c6ba5", "#6a9c68", "#d55d70"])},
+  {name: "Forest", styles: themeColors("#f8faf4", "#303c30", "#39734b", ["#4f875e", "#73a592", "#bf9748", "#c4754e", "#8b75a4", "#6d8791", "#b96777"])},
+  {name: "Sunset", styles: themeColors("#fff9f5", "#49352f", "#a74c3d", ["#c6614d", "#db9364", "#d6a73f", "#a86b84", "#806fa1", "#638e91", "#83a16a"])},
+]
+
+function themeColors(background: string, text: string, link: string, accents: string[]): SavedDocumentTheme["styles"] {
+  return Object.fromEntries(Object.entries({"background-color": background, "--ww-text-color": text, "--ww-link-color": link,
+    ...Object.fromEntries(themeAccentProperties.map((property, index) => [property, accents[index]])),
+  }).map(([property, value]) => [property, {value, priority: ""}]))
+}
+
 export function loadDocumentThemes(): SavedDocumentTheme[] {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(documentThemeStorageKey) ?? "[]")

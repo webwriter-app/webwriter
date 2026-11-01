@@ -968,6 +968,8 @@ export class RibbonDrawer extends LitElement {
     :host([pane]) .drawer.options .pane-label,
     :host([pane][layout="comments"]) .pane-label { padding-right: 0; }
     slot[name="heading-action"] { display: flex; margin-left: auto; }
+    slot[name="heading-control"] { display: flex; align-items: center; }
+    :host([theme-primary]) .options-row { display: none; }
 
     :host([pane][hide-pane-label][layout="history-versions"]) .drawer {
       display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0; border: 0; overflow: hidden;
@@ -1600,6 +1602,7 @@ export class RibbonDrawer extends LitElement {
        <span class="pane-label">
          ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
          ${this.label}${elementCount}
+         <slot name="heading-control"></slot>
          <slot name="heading-action"></slot>
        </span>
        <div id="drawer-controls" class="controls">

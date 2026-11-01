@@ -3695,7 +3695,18 @@ export class ManipulationFeature extends EditorFeature {
       if(!entries.length || this.editor.isEditingLocked) return false
       const target = this.documentStyleTarget(getDocumentRoot())
       const end = this.editor.doc.beginUndoGroup()
-      try { return this.applyElementStyleEntries(target, entries) }
+      try {
+        // Theme overrides can have been set on either root across layout
+        // changes. Clear the other declaration so it cannot mask this preset.
+        let changed = false
+        for(const entry of entries) {
+          const destination = this.stylePropertyTarget(target, entry.name)
+          const other = destination === document.documentElement ? document.body : document.documentElement
+          changed = this.applyStyleEntries(other, [{...entry, value: null}]) || changed
+          if(!this.inlineStyleOf(other)?.length) other.removeAttribute("style")
+        }
+        return this.applyElementStyleEntries(target, entries) || changed
+      }
       finally { end() }
     },
     resetStyle: ({topLevel}: {type: "resetStyle", topLevel?: boolean}) => {

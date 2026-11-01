@@ -1,26 +1,30 @@
 import {LitElement, css, html, nothing} from "lit"
 import type {ElementStyleState} from "../editor-bridge"
-import {documentThemeProperties, documentThemeStorageKey, loadDocumentThemes} from "../document-theme-options"
+import {defaultDocumentThemes, documentThemeProperties, documentThemeStorageKey, loadDocumentThemes, type SavedDocumentTheme} from "../document-theme-options"
 import {createAnchorPositioner} from "../anchor-positioning.js"
 import {connectPopup, popupAnchorCSS} from "./popup-position"
 import {connectedComboboxStyles} from "./dropdown-content.styles"
 import {ribbonIcon} from "../ribbon-icons"
-import {defaultThemeAccents, safeCssColor, themeAccentProperties} from "../css-color"
+import {colorHex, defaultThemeAccents, safeCssColor, themeAccentProperties} from "../css-color"
 
 /** Browser-local document theme presets, accessible from the Style options row. */
 export class DocumentThemePresets extends LitElement {
-  static properties = {state: {attribute: false}, selectOnly: {type: Boolean, attribute: "select-only", reflect: true}, disabled: {type: Boolean}, open: {type: Boolean, reflect: true}, saving: {state: true}, error: {state: true}}
+  static properties = {state: {attribute: false}, themeStyles: {attribute: false}, selectOnly: {type: Boolean, attribute: "select-only", reflect: true}, heading: {type: Boolean, reflect: true}, disabled: {type: Boolean}, open: {type: Boolean, reflect: true}, saving: {state: true}, error: {state: true}}
   static styles = css`
     :host { display: inline-flex; color: #526b86; font: .68rem/1.2 system-ui, sans-serif; }
     .icon { display: grid; place-items: center; box-sizing: border-box; width: 1.35rem; height: 1.35rem; padding: .15rem; border: 0; border-radius: .2rem; background: transparent; color: inherit; cursor: pointer; }
     .icon:hover, .icon[aria-expanded="true"] { background: #dce7f2; }
     .icon:focus-visible { outline: 2px solid #3977c7; }
     .icon svg { width: 1.15rem; height: 1.15rem; }
+    :host([heading]) .icon { width: 1.25rem; height: 1.35rem; }
+    :host([heading]) .chevron { margin: -.15rem 0 0; }
+    :host([heading]) .trigger[aria-expanded="true"] .chevron { margin-top: .15rem; }
     :host([select-only]) .trigger { display: inline-flex; align-items: center; gap: .3rem; width: auto; min-width: 5.8rem; padding: .15rem .35rem; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent; }
     :host([select-only]) .trigger:hover:not(:disabled) { background: #e8eef5; }
     :host([select-only]) .trigger[aria-expanded="true"] { background: #fff; }
     :host([select-only]) .trigger:active:not(:disabled) { background: #dce7f2; }
     :host([select-only]) .trigger:disabled { opacity: .5; cursor: default; }
+    .trigger-label { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .chevron { flex: none; align-self: center; width: .3rem; height: .3rem; margin: -.15rem 0 0 auto; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor; transform: rotate(45deg); }
     .trigger[aria-expanded="true"] .chevron { margin-top: .15rem; transform: rotate(225deg); }
     .popup { position: fixed; inset: auto; box-sizing: border-box; width: 13rem; max-width: calc(100vw - 1rem); max-height: min(20rem, calc(100dvh - 1rem)); overflow: auto; padding: .45rem; margin: 0; border: 1px solid #c5ccd5; border-radius: 4px; background: white; color: #2f3742; box-shadow: 0 3px 8px #0002; font: inherit; }
@@ -37,8 +41,10 @@ export class DocumentThemePresets extends LitElement {
     .theme-text { display: grid; place-items: center; min-width: 1.7rem; padding: 0 .15rem; border: 1px solid #c5ccd5; border-radius: 2px; font-weight: 700; }
     .theme .delete { width: 1.7rem; height: 1.7rem; }
     .empty, .error { margin: .4rem 0; }
-    .empty { color: #7a8795; }
-    .customize { display: block; width: 100%; margin-top: .3rem; padding: .5rem .4rem .2rem; border: 0; border-top: 1px solid #d8dee6; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    .empty { padding-inline: .4rem; color: #7a8795; }
+    .customize { display: flex; align-items: center; justify-content: space-between; gap: .5rem; box-sizing: border-box; width: 100%; min-height: 2.25rem; margin-top: .3rem; padding: .5rem .4rem; border: 0; border-top: 1px solid #d8dee6; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+    .customize span:last-child { display: flex; flex: none; }
+    .customize svg { width: 1rem; height: 1rem; }
     .customize:hover { background: #e8eef5; }
     .error { color: #b42318; }
     form { display: grid; gap: .4rem; margin: .3rem 0 .5rem; }
@@ -50,7 +56,9 @@ export class DocumentThemePresets extends LitElement {
     :host([select-only][open]) .trigger[data-connected="above"] { border-top-color: #fff; border-bottom-color: #c5ccd5; border-radius: 0 0 4px 4px; }
   `
   state!: ElementStyleState
+  themeStyles: SavedDocumentTheme["styles"] = {}
   selectOnly = false
+  heading = false
   disabled = false
   private open = false
   private saving = false
@@ -148,24 +156,40 @@ export class DocumentThemePresets extends LitElement {
   }
   render() {
     const themes = loadDocumentThemes()
-    return html`<button type="button" class=${this.selectOnly ? "icon trigger control" : "icon trigger"} aria-label="Choose theme" title="Choose theme" aria-haspopup="dialog" ?disabled=${this.disabled} aria-expanded=${String(this.open)} @click=${this.toggle}>${ribbonIcon("Brush")}${this.selectOnly ? html`<span>Theme</span><span class="chevron" aria-hidden="true"></span>` : nothing}</button>
+    const normalize = (property: string, value: string) => {
+      if(property === "background-color" || property === "--ww-text-color" || property === "--ww-link-color" || themeAccentProperties.includes(property)) {
+        const style = this.ownerDocument.createElement("span").style
+        style.color = value
+        return colorHex(value, "") || colorHex(style.color, "") || style.color || value.trim()
+      }
+      return value.trim()
+    }
+    const active = [...themes, ...defaultDocumentThemes].find(theme => documentThemeProperties.every(property => {
+      const current = this.themeStyles[property], preset = theme.styles[property]
+      return !current && !preset || Boolean(current && preset && current.priority === preset.priority
+        && normalize(property, current.value) === normalize(property, preset.value))
+    }))
+    const label = active === defaultDocumentThemes.find(theme => theme.name === "Standard") ? "Theme" : active?.name ?? (Object.keys(this.themeStyles).length ? "Custom" : "Theme")
+    const renderTheme = (theme: SavedDocumentTheme, saved: boolean) => html`<div class="theme">
+      <button type="button" class="apply" @click=${() => {
+        this.dispatchEvent(new CustomEvent(this.selectOnly ? "document-theme-apply" : "element-style-change", {detail: {styles: Object.fromEntries(documentThemeProperties.map(property => [property, theme.styles[property] ?? null]))}, bubbles: true, composed: true}))
+        this.close()
+      }}><span>${theme.name}</span><span class="theme-preview" aria-hidden="true"><span class="theme-ribbon">${themeAccentProperties.map((name, index) => html`<span style=${`background:${safeCssColor(theme.styles[name]?.value, defaultThemeAccents[index])}`}></span>`)}</span><span class="theme-text" style=${`color:${safeCssColor(theme.styles["--ww-text-color"]?.value, "#2f3742")};background:${safeCssColor(theme.styles["background-color"]?.value, "#ffffff")}`}>Aa</span></span></button>
+      ${saved ? html`<button type="button" class="delete" aria-label=${`Delete ${theme.name}`} title=${`Delete ${theme.name}`} @click=${() => this.write(themes.filter(item => item.name !== theme.name))}>×</button>` : nothing}
+    </div>`
+    return html`<button type="button" class=${this.selectOnly ? "icon trigger control" : "icon trigger"} aria-label="Choose theme" title=${this.selectOnly ? `Theme: ${label}` : "Choose theme"} aria-haspopup="dialog" ?disabled=${this.disabled} aria-expanded=${String(this.open)} @click=${this.toggle}>${this.heading ? html`<span class="chevron" aria-hidden="true"></span>` : ribbonIcon("Brush")}${this.selectOnly ? html`<span class="trigger-label">${label}</span><span class="chevron" aria-hidden="true"></span>` : nothing}</button>
     ${this.open ? html`<div class=${this.selectOnly ? "popup listbox" : "popup"} popover="manual" role="dialog" aria-label="Saved themes">
-      ${this.selectOnly ? nothing : html`<div class="heading"><h3>Saved themes</h3><button type="button" class="icon" aria-label="Save theme" title="Save theme" @click=${this.beginSave}>${ribbonIcon("Save")}</button></div>`}
+      ${this.selectOnly ? nothing : html`<div class="heading"><h3>Themes</h3><button type="button" class="icon" aria-label="Save theme" title="Save theme" @click=${this.beginSave}>${ribbonIcon("Save")}</button></div>`}
       ${this.saving ? html`<form @submit=${this.save}>
           <input id="theme-name" aria-label="Theme name" placeholder="Theme name" autocomplete="off">
           <button type="submit" class="save">Save</button>
         </form>` : nothing}
-        ${themes.length ? themes.map(theme => html`<div class="theme">
-          <button type="button" class="apply" @click=${() => {
-            this.dispatchEvent(new CustomEvent(this.selectOnly ? "document-theme-apply" : "element-style-change", {detail: {styles: Object.fromEntries(documentThemeProperties.map(property => [property, theme.styles[property] ?? null]))}, bubbles: true, composed: true}))
-            this.close()
-          }}><span>${theme.name}</span><span class="theme-preview" aria-hidden="true"><span class="theme-ribbon">${themeAccentProperties.map((name, index) => html`<span style=${`background:${safeCssColor(theme.styles[name]?.value, defaultThemeAccents[index])}`}></span>`)}</span><span class="theme-text" style=${`color:${safeCssColor(theme.styles["--ww-text-color"]?.value, "#2f3742")};background:${safeCssColor(theme.styles["background-color"]?.value, "#ffffff")}`}>Aa</span></span></button>
-          <button type="button" class="delete" aria-label=${`Delete ${theme.name}`} title=${`Delete ${theme.name}`} @click=${() => this.write(themes.filter(item => item.name !== theme.name))}>×</button>
-        </div>`) : html`<p class="empty">No saved themes</p>`}
+        ${defaultDocumentThemes.map(theme => renderTheme(theme, false))}
+        ${themes.length ? themes.map(theme => renderTheme(theme, true)) : html`<p class="empty">No saved themes</p>`}
       ${this.selectOnly ? html`<button type="button" class="customize" @click=${() => {
         this.close()
         this.dispatchEvent(new CustomEvent("document-theme-customize", {bubbles: true, composed: true}))
-      }}>Make your own theme</button>` : nothing}
+      }}><span>Make your own theme</span><span aria-hidden="true">${ribbonIcon("ArrowRight")}</span></button>` : nothing}
       ${this.error ? html`<p class="error" role="alert">${this.error}</p>` : nothing}
     </div>` : nothing}`
   }

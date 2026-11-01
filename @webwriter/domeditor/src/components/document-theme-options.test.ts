@@ -2,7 +2,7 @@
 import {afterEach, expect, it, vi} from "vitest"
 import {DocumentThemeOptions} from "./document-theme-options"
 import {DocumentThemePresets} from "./document-theme-presets"
-import {documentThemeStorageKey, loadDocumentThemes} from "../document-theme-options"
+import {defaultDocumentThemes, documentThemeStorageKey, loadDocumentThemes} from "../document-theme-options"
 import {themeAccentProperties} from "../css-color"
 
 afterEach(() => { document.body.replaceChildren(); localStorage.removeItem(documentThemeStorageKey); vi.restoreAllMocks() })
@@ -30,12 +30,14 @@ it("saves, applies and deletes named document overrides", async () => {
     "--ww-font-family": {value: "serif", priority: ""}, "--ww-link-color": {value: "blue", priority: ""},
     "--ww-theme-accent-1": {value: "#123456", priority: ""}, "--ww-text-color": {value: "#334455", priority: ""},
   }}])
-  expect(control.shadowRoot!.querySelectorAll(".theme-ribbon span")).toHaveLength(7)
-  expect(control.shadowRoot!.querySelector<HTMLElement>(".theme-ribbon span")!.style.background).toBe("#123456")
-  expect(control.shadowRoot!.querySelector<HTMLElement>(".theme-text")!.style.color).toBe("#334455")
+  const saved = control.shadowRoot!.querySelector('[aria-label="Delete Reading"]')!.closest(".theme")!
+  expect(saved.querySelector(".theme-ribbon")!.querySelectorAll("span")).toHaveLength(7)
+  expect(saved.querySelector<HTMLElement>(".theme-ribbon span")!.style.background).toBe("#123456")
+  expect(saved.querySelector<HTMLElement>(".theme-text")!.style.color).toBe("#334455")
+  expect([...control.shadowRoot!.querySelectorAll(".theme")].at(-1)).toBe(saved)
   const changes = vi.fn()
   control.addEventListener("element-style-change", changes)
-  control.shadowRoot!.querySelector<HTMLButtonElement>(".apply")!.click()
+  saved.querySelector<HTMLButtonElement>(".apply")!.click()
   expect(changes.mock.calls[0][0].detail.styles).toEqual({"background-color": {value: "red", priority: ""},
     "--ww-font-family": {value: "serif", priority: ""}, "--ww-font-size": null, "--ww-text-color": {value: "#334455", priority: ""},
     "--ww-link-color": {value: "blue", priority: ""}, "--ww-prose-max": {value: "60rem", priority: "important"}, "--ww-page-max": null, "--ww-page-gutter": null, "--ww-block-spacing": null,
@@ -45,6 +47,44 @@ it("saves, applies and deletes named document overrides", async () => {
   await control.updateComplete
   control.shadowRoot!.querySelector<HTMLButtonElement>(".delete")!.click()
   expect(loadDocumentThemes()).toEqual([])
+})
+
+it.each([false, true])("offers built-in themes in both pickers (selectOnly: %s)", async selectOnly => {
+  const control = new DocumentThemePresets()
+  control.selectOnly = selectOnly
+  document.body.append(control)
+  await control.updateComplete
+  control.shadowRoot!.querySelector<HTMLButtonElement>(".trigger")!.click()
+  await control.updateComplete
+  expect(loadDocumentThemes()).toEqual([])
+  expect(control.shadowRoot!.querySelectorAll(".theme")).toHaveLength(defaultDocumentThemes.length)
+  expect(control.shadowRoot!.querySelector(".empty")!.previousElementSibling).toBe(control.shadowRoot!.querySelectorAll(".theme").item(defaultDocumentThemes.length - 1))
+  expect(control.shadowRoot!.querySelector(".delete")).toBeNull()
+  const apply = vi.fn()
+  control.addEventListener(selectOnly ? "document-theme-apply" : "element-style-change", apply)
+  const standard = [...control.shadowRoot!.querySelectorAll<HTMLButtonElement>(".apply")].find(button => button.textContent?.includes("Standard"))!
+  expect(standard.querySelectorAll(".theme-ribbon span")).toHaveLength(7)
+  expect(standard.querySelector(".theme-text")).not.toBeNull()
+  standard.click()
+  const styles = apply.mock.calls[0][0].detail.styles
+  expect(Object.values(styles).every(value => value === null)).toBe(true)
+  expect(styles["--ww-font-size"]).toBeNull()
+})
+
+it("shows the matching theme name and updates for custom changes", async () => {
+  const control = new DocumentThemePresets()
+  control.selectOnly = true
+  control.themeStyles = {...defaultDocumentThemes.find(theme => theme.name === "Ocean")!.styles, "background-color": {value: "rgb(247, 251, 255)", priority: ""}}
+  document.body.append(control)
+  await control.updateComplete
+  expect(control.shadowRoot!.querySelector(".trigger-label")!.textContent).toBe("Ocean")
+  control.themeStyles = {...control.themeStyles, "--ww-font-size": {value: "20px", priority: ""}}
+  await control.updateComplete
+  expect(control.shadowRoot!.querySelector(".trigger-label")!.textContent).toBe("Custom")
+  control.themeStyles = {}
+  await control.updateComplete
+  expect(control.shadowRoot!.querySelector(".trigger-label")!.textContent).toBe("Theme")
+  expect(defaultDocumentThemes.map(theme => theme.name)).not.toContain("Midnight")
 })
 
 it("handles damaged and unavailable browser storage", async () => {
@@ -77,9 +117,10 @@ it("offers a document-scoped picker without the save action", async () => {
   expect(control.shadowRoot!.querySelector('[aria-label="Save theme"]')).toBeNull()
   expect(control.shadowRoot!.querySelector("h3")).toBeNull()
   expect(control.shadowRoot!.querySelector<HTMLButtonElement>(".customize")!.textContent).toContain("Make your own theme")
+  expect(control.shadowRoot!.querySelector('.customize [aria-hidden="true"] svg')).not.toBeNull()
   const apply = vi.fn()
   control.addEventListener("document-theme-apply", apply)
-  control.shadowRoot!.querySelector<HTMLButtonElement>(".apply")!.click()
+  control.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Delete Reading"]')!.closest(".theme")!.querySelector<HTMLButtonElement>(".apply")!.click()
   expect(apply.mock.calls[0][0].detail.styles["--ww-font-size"]).toEqual({value: "20px", priority: ""})
 })
 

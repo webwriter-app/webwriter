@@ -8144,6 +8144,7 @@ describe("DomEditor.execute()", () => {
       toolbox.selectTool(activeTool)
       await editor.updateComplete
       await breadcrumb.updateComplete
+      expect(iframe.classList.contains("root-selected")).toBe(false)
 
       breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>("button.item")!.click()
       await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "selectNode", path: rootPath}))
@@ -8152,6 +8153,7 @@ describe("DomEditor.execute()", () => {
 
       expect(toolbox.activeTool).toBe(activeTool)
       expect(toolbox.documentSelected).toBe(true)
+      expect(iframe.classList.contains("root-selected")).toBe(true)
       expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Edit"]')!.getAttribute("aria-label")).toBe("Edit Document")
     }
   })
@@ -8186,6 +8188,22 @@ describe("DomEditor.execute()", () => {
     const styles = {"background-color": {value: "red", priority: ""}}
     picker.dispatchEvent(new CustomEvent("document-theme-apply", {detail: {styles}, bubbles: true, composed: true}))
     expect(execute).toHaveBeenCalledWith({type: "setDocumentThemeStyles", styles})
+  })
+
+  it("keeps Layouts visible when a theme styles an empty document", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    const doc = iframe.contentDocument!
+    doc.documentElement.style.setProperty("--ww-theme-accent-1", "#397da2")
+    doc.documentElement.style.setProperty("--ww-text-color", "#243746")
+    doc.documentElement.style.backgroundColor = "#f7fbff"
+    await vi.waitFor(() => expect(host.fileDirty).toBe(true))
+    expect(host.documentLayoutsDismissed).toBe(false)
+    doc.body.className = "ww-slides"
+    doc.body.innerHTML = '<div class="ww-slides-viewport"><section class="ww-slide" tabindex="-1" id="slide-cbb92aae-6b1b-40f9-9d11-70108719738b"><nav class="ww-slide-directions" contenteditable="false" aria-label="Slide navigation"><a>‹</a><a>›</a></nav></section></div><nav class="ww-slides-navigation" aria-label="Slides" contenteditable="false"><a>1</a></nav>'
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(host.documentLayoutsDismissed).toBe(false)
   })
 
   it("selects the document and opens advanced Style options for theme customization", async () => {
@@ -9151,14 +9169,18 @@ describe("DomEditor.execute()", () => {
   })
 
   it("starts and ends an element hover from a breadcrumb item", async () => {
-    const {editor} = await mountEditor()
+    const {editor, iframe} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
     const item = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>("button.item")!
 
     item.dispatchEvent(new MouseEvent("mouseenter"))
+    await editor.updateComplete
+    expect(iframe.classList.contains("root-hovered")).toBe(true)
     item.dispatchEvent(new MouseEvent("mouseleave"))
+    await editor.updateComplete
+    expect(iframe.classList.contains("root-hovered")).toBe(false)
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "hoverNode", path: []})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "hoverNode", path: null})

@@ -14,7 +14,6 @@ import {emptyDocumentHeadState, type DocumentHeadField, type DocumentHeadState} 
 import "./document-head-editor"
 import "./document-theme-options"
 import {documentThemeProperties} from "../document-theme-options"
-import {themeAccentProperties} from "../css-color"
 import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
@@ -930,14 +929,9 @@ export class DomEditorToolbox extends EditingControls {
 
   private advancedOpen = new Map<string, boolean>()
 
-  /** Open the document Style options and keep them open through selection updates. */
+  /** Show the document's theme controls. */
   openDocumentThemeOptions() {
-    this.advancedOpen.set("element-style:Style", true)
     this.selectTool("Edit", true)
-    void this.updateComplete.then(() => {
-      const drawer = this.renderRoot.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"][layout="element-style"]')
-      if(drawer?.isConnected) drawer.openDrawer()
-    })
   }
 
   // Toolbox panes are persistent controls, not transient ribbon popups.
@@ -951,14 +945,14 @@ export class DomEditorToolbox extends EditingControls {
   private renderUniversalStyleDrawer() {
     const disabled = !this.elementStyle.target
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
+    const advancedProperties = ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
-    const advancedCount = (documentTarget ? documentThemeProperties.filter(name => !themeAccentProperties.includes(name)) : advancedProperties).filter(name => name === "border-width"
+    const advancedCount = advancedProperties.filter(name => name === "border-width"
       ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
-      : Object.hasOwn(setProperties, name)).length + Number(documentTarget && themeAccentProperties.some(name => Object.hasOwn(setProperties, name)))
+      : Object.hasOwn(setProperties, name)).length
     return html`
-      <ribbon-drawer label="Style" icon="Theme" layout="element-style" show-pane-icon expandable .advancedCount=${advancedCount}
-        ?options-actions=${documentTarget}
+      <ribbon-drawer label=${documentTarget ? "Theme" : "Style"} icon=${documentTarget ? "Brush" : "Theme"} layout="element-style" show-pane-icon ?expandable=${!documentTarget} .advancedCount=${advancedCount}
+        ?theme-primary=${documentTarget}
         ?inert=${disabled} aria-disabled=${disabled ? "true" : "false"}
         style=${disabled ? "opacity: 0.5" : ""}>
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
@@ -966,13 +960,12 @@ export class DomEditorToolbox extends EditingControls {
           @click=${() => {
             this.dispatchEvent(new CustomEvent("element-style-reset", {bubbles: true, composed: true}))
           }}>${ribbonIcon("Restore")}Reset</button>
-        <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
+        ${documentTarget ? html`<document-theme-presets slot="heading-control" heading .state=${this.elementStyle}></document-theme-presets>
+          <document-theme-options .state=${this.elementStyle}></document-theme-options>` : html`<element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>`}
         ${this.renderElementLayoutControls()}
-        ${documentTarget ? html`<document-theme-presets slot="options-action" .state=${this.elementStyle}></document-theme-presets>` : nothing}
         ${!documentTarget ? html`<element-style-editor slot="more" mode="compact" orientation="vertical"
           .selectionKey=${JSON.stringify([this.elementAttributes?.path, this.elementStyle.target])}
           .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>` : nothing}
-        ${documentTarget ? html`<document-theme-options slot="more" .state=${this.elementStyle}></document-theme-options>` : nothing}
       </ribbon-drawer>
     `
   }

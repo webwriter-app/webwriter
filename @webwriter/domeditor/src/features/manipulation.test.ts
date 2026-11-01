@@ -4713,6 +4713,36 @@ describe("setStyle()", () => {
     }
   })
 
+  it("replaces theme overrides left on the other document root by a layout change", () => {
+    const rootStyle = document.documentElement.getAttribute("style")
+    const bodyStyle = document.body.getAttribute("style")
+    const bodyClass = document.body.className
+    try {
+      document.body.className = ""
+      document.body.style.setProperty("--ww-text-color", "red")
+      document.body.style.backgroundColor = "red"
+      document.body.style.setProperty("--ww-theme-accent-1", "#112233")
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {
+        "--ww-text-color": "blue", "background-color": "white", "--ww-theme-accent-1": "#445566",
+      }})
+      expect(document.body.style.getPropertyValue("--ww-text-color")).toBe("")
+      expect(document.body.style.backgroundColor).toBe("")
+      expect(document.body.style.getPropertyValue("--ww-theme-accent-1")).toBe("")
+      expect(document.documentElement.style.getPropertyValue("--ww-text-color")).toBe("blue")
+      document.body.className = "ww-slides"
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {"--ww-text-color": "green"}})
+      expect(document.documentElement.style.getPropertyValue("--ww-text-color")).toBe("")
+      expect(document.body.style.getPropertyValue("--ww-text-color")).toBe("green")
+    }
+    finally {
+      document.body.className = bodyClass
+      if(rootStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", rootStyle)
+      if(bodyStyle === null) document.body.removeAttribute("style")
+      else document.body.setAttribute("style", bodyStyle)
+    }
+  })
+
   it.each(["document", "slides"])("keeps theme accents on html in %s layout and supports undo", async mode => {
     const previous = document.documentElement.getAttribute("style")
     const bodyClass = document.body.className

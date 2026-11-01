@@ -18,7 +18,7 @@ it("combines document options without exposing a root widget or separate languag
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
   const drawers = [...toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer")]
-  expect(drawers.map(drawer => drawer.label)).toEqual(["Style", "Document"])
+  expect(drawers.map(drawer => drawer.label)).toEqual(["Theme", "Document"])
   const drawer = drawers[1]
   await drawer.updateComplete
   expect(drawer.icon).toBe("Document")
@@ -1296,9 +1296,9 @@ describe("toolbox", () => {
       /:host\(\[pane\]\[layout="element-style"\]\) ::slotted\(element-style-editor\)\s*\{[\s\S]*?width:\s*100%;/,
     )
     const toggle = position.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
-    expect(toggle.parentElement).toBe(controls)
+    expect(toggle.parentElement?.parentElement).toBe(controls)
     expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Options")
-    expect(toggle.nextElementSibling?.getAttribute("name")).toBe("more")
+    expect(toggle.parentElement?.nextElementSibling?.getAttribute("name")).toBe("more")
     expect(getComputedStyle(toggle).position).toBe("static")
     expect(getComputedStyle(toggle).width).toBe("100%")
     expect(getComputedStyle(toggle).backgroundColor).toBe("transparent")
@@ -1322,28 +1322,25 @@ describe("toolbox", () => {
 })
 
 
-it("shows document theme options in the Style drawer", async () => {
+it.each(["document", "canvas", "slides", "board"] as const)("shows theme controls directly for the %s root", async mode => {
   const toolbox = await mountToolbox()
   toolbox.documentSelected = true
+  toolbox.documentLayout = {mode, canConvert: true, zoom: 100}
   toolbox.elementStyle = {
     target: {localName: "my-document", namespaceURI: "http://www.w3.org/1999/xhtml", documentRoot: true},
     inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"},
   }
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
-  const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+  const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Theme"]')!
   await drawer.updateComplete
-  expect(drawer.expandable).toBe(true)
-  const controls = drawer.querySelector('document-theme-options[slot="more"]')!
+  expect(drawer.icon).toBe("Brush")
+  expect(drawer.expandable).toBe(false)
+  const controls = drawer.querySelector('document-theme-options:not([slot])')!
   expect(controls).not.toBeNull()
-  expect(drawer.querySelector('document-theme-presets[slot="options-action"]')).not.toBeNull()
-  expect(drawer.querySelector('element-style-editor[slot="more"]')).toBeNull()
-  toolbox.elementStyle = {...toolbox.elementStyle, inline: {
-    "--ww-theme-accent-1": {value: "#123456", priority: ""},
-    "--ww-theme-accent-2": {value: "#abcdef", priority: ""},
-  }}
-  await toolbox.updateComplete
-  expect(drawer.advancedCount).toBe(1)
+  expect(drawer.querySelector('document-theme-presets[slot="heading-control"][heading]')).not.toBeNull()
+  expect(drawer.querySelector('element-style-editor')).toBeNull()
+  expect(getComputedStyle(drawer.shadowRoot!.querySelector<HTMLElement>(".options-row")!).display).toBe("none")
 })
 
 
@@ -1437,7 +1434,9 @@ it("retains Style advanced options through selection changes and outside clicks"
   expect(drawer().shadowRoot!.querySelector(".drawer-toggle")!.getAttribute("aria-expanded")).toBe("true")
   toolbox.documentSelected = true
   await toolbox.updateComplete
-  await drawer().updateComplete
+  const theme = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Theme"]')!
+  await theme.updateComplete
+  expect(theme.querySelector("document-theme-options")).not.toBeNull()
   toolbox.documentSelected = false
   await toolbox.updateComplete
   await drawer().updateComplete
