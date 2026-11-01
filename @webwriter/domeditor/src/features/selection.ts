@@ -81,6 +81,7 @@ export class SelectionFeature extends EditorFeature {
   #hoverFrame: number | null = null
   #nativeHoverTarget: Element | null = null
   #focusedContentfulShadow: Element | null = null
+  #blurringWidget: Element | null = null
   #hoverOwner: Element | null = null
   #floatObserver: MutationObserver | null = null
   #floatCandidates: {root: Element, elements: Element[], expires: number} | null = null
@@ -1097,6 +1098,29 @@ export class SelectionFeature extends EditorFeature {
   }
 
   captureListeners: DocumentListenerMap = {
+    blur: event => {
+      const widget = event.composedPath()[0]
+      if(!(widget instanceof HTMLElement) || widget !== this.captureSelectedWidget
+        || !(widget.localName.includes("-") || widget.hasAttribute("is"))) return
+      const next = event.relatedTarget
+      if(next instanceof Node && (widget === next || widget.contains(next) || widget.shadowRoot?.contains(next))) return
+      this.#blurringWidget = widget
+      this.#releaseCaptureSelection()
+      // Establish the ordinary node selection before the widget's blur handler
+      // runs, so a selection it deliberately sets afterward remains authoritative.
+      $.selectElement(widget, false)
+      queueMicrotask(() => {
+        if(this.#blurringWidget !== widget) return
+        this.#blurringWidget = null
+        if(this.isEnabled && !focusedWidgetHost() && !document.body.shadowRoot?.activeElement) {
+          this.processSelection(undefined, {scrollIntoView: false})
+          this.editor.doc.updateLocalSelection()
+          this.editor.postMarkState()
+          this.editor.postCommentState()
+          this.editor.postSelectionPath()
+        }
+      })
+    },
     contextmenu: event => {
       if(isAppendixInteraction(event) && !isTextFieldInteraction(event)) event.preventDefault()
     },
@@ -1191,6 +1215,7 @@ export class SelectionFeature extends EditorFeature {
     focusin: event => {
       this.#invalidateFloatCandidates()
       const widget = widgetHostForShadowInteraction(event, this.editor.schema)
+      if(widget === this.#blurringWidget) this.#blurringWidget = null
       this.#focusedContentfulShadow = widget && isContentfulWidget(widget, this.editor.schema) ? widget : null
       this.#handleWidgetShadowInteraction(event)
       if(!isAppendixInteraction(event) && !this.editor.features.media.isPlaceholderInteraction) {
@@ -2145,7 +2170,7 @@ export class SelectionFeature extends EditorFeature {
     // Shadow controls own capture and their native selection. Focus on a
     // contentful host with a range in its authored children stays ordinary
     // document editing, including when those children are slotted.
-    const shadowOwner = focusedWidgetHost()
+    const shadowOwner = focusedWidgetHost() === this.#blurringWidget ? null : focusedWidgetHost()
     const nativeRange = document.getSelection()
     const authoredFocus = nativeRange?.anchorNode && nativeRange.focusNode
       && shadowOwner?.contains(nativeRange.anchorNode) && shadowOwner.contains(nativeRange.focusNode)
@@ -2192,7 +2217,7 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.layout.refresh()
       return
     }
-    const focusedWidget = focusedWidgetHost()
+    const focusedWidget = focusedWidgetHost() === this.#blurringWidget ? null : focusedWidgetHost()
     if(focusedWidget && !this.isInDragSelection) {
       this.#capturedElement = !isContentfulWidget(focusedWidget, this.editor.schema)
         || shadowFocused ? focusedWidget : null

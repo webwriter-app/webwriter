@@ -4407,6 +4407,56 @@ describe("document listeners", () => {
     expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-capture")
     expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
   })
+  it("downgrades direct widget focus to node selection on blur and follows a later native selection", async () => {
+    const widget = document.createElement("interactive-widget")
+    widget.tabIndex = 0
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "outside"
+    appendToBody(widget, paragraph)
+    widget.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+
+    widget.blur()
+    await Promise.resolve()
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect($.selectedElement).toBe(widget)
+    expect(widget).toHaveClass("◆element-selected")
+    expect(widget).not.toHaveClass("◆element-capture-selected")
+
+    document.getSelection()!.setBaseAndExtent(paragraph.firstChild!, 1, paragraph.firstChild!, 4)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(document.getSelection()!.toString()).toBe("uts")
+    expect(paragraph).toHaveClass("◆text-selected")
+    expect(editor.doc.domSelection).toMatchObject({anchorNode: paragraph.firstChild, anchorOffset: 1, focusNode: paragraph.firstChild, focusOffset: 4})
+  })
+  it("preserves a selection set by the widget's direct blur handler", async () => {
+    const widget = document.createElement("interactive-widget")
+    widget.tabIndex = 0
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "outside"
+    appendToBody(widget, paragraph)
+    widget.focus()
+    widget.addEventListener("blur", () => document.getSelection()!.setPosition(paragraph.firstChild!, 3))
+    widget.blur()
+    await Promise.resolve()
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.captureSelectedWidget).toBeNull()
+    expect(document.getSelection()!.anchorNode).toBe(paragraph.firstChild)
+    expect(document.getSelection()!.anchorOffset).toBe(3)
+    expect(editor.doc.domSelection).toMatchObject({anchorNode: paragraph.firstChild, anchorOffset: 3})
+  })
+  it("keeps capture when focus moves between a widget's shadow controls", async () => {
+    const widget = document.createElement("interactive-widget")
+    const first = document.createElement("button"), second = document.createElement("button")
+    widget.attachShadow({mode: "open"}).append(first, second)
+    appendToBody(widget)
+    first.focus()
+    expect(feature.captureSelectedWidget).toBe(widget)
+    second.focus()
+    await Promise.resolve()
+    expect(feature.captureSelectedWidget).toBe(widget)
+    expect(widget).toHaveClass("◆element-capture-selected")
+  })
   it("posts capture without a gap when a widget control projects the native selection above it", () => {
     const widget = document.createElement("interactive-widget")
     const button = document.createElement("button")
