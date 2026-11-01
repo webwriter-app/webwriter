@@ -24,6 +24,16 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+it("does not offer break inside in the general style controls", () => {
+  expect(elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced]).map(definition => definition.name))
+    .not.toContain("break-inside")
+})
+
+it.each(["ul", "ol", "menu", "table", "section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote", "figure"])("does not offer break inside in the %s style profile", localName => {
+  const profile = specializedElementStyle(localName)!
+  expect([...profile.primary, ...profile.advanced]).not.toContain("break-inside")
+})
+
 describe("media cropping", () => {
   const definitions = specializedStyleDefinitions.filter(definition => definition.name === "object-view-box")
   async function mountCrop(style: ElementStyleState) {
@@ -32,6 +42,17 @@ describe("media cropping", () => {
     await editor.updateComplete
     return editor
   }
+  it("shows the crop heading above four inputs with edge labels below", async () => {
+    const editor = await mountCrop(state())
+    const row = editor.shadowRoot!.querySelector<HTMLElement>('[data-property="object-view-box"]')!
+    expect(row.querySelector<HTMLElement>(".field-label")!.textContent).toContain("Crop")
+    expect(Array.from(row.querySelectorAll(".crop-edge")).map(label => [
+      label.querySelector("input")?.getAttribute("aria-label"), label.lastElementChild?.textContent,
+    ])).toEqual([
+      ["Crop top (%)", "Top"], ["Crop right (%)", "Right"],
+      ["Crop bottom (%)", "Bottom"], ["Crop left (%)", "Left"],
+    ])
+  })
   it.each([
     ["inset(10%)", [10, 10, 10, 10]],
     ["inset(10% 20%)", [10, 20, 10, 20]],
@@ -108,16 +129,19 @@ it("distinguishes computed defaults from explicit choices of the same value", as
   expect(group().hasAttribute("data-default")).toBe(true)
 })
 
-it("fits six advanced choices across the available control width", async () => {
+it.each([false, true])("shows the four text transform choices in one row (dense: %s)", async dense => {
   const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
   const editor = await mount(definitions, state(), "compact")
   editor.propertyNames = ["text-transform"]
-  editor.setAttribute("dense-choices", "")
+  if(dense) editor.setAttribute("dense-choices", "")
   await editor.updateComplete
 
   const group = editor.shadowRoot!.querySelector<HTMLElement>(".specialized-choice-group")!
-  expect(group.querySelectorAll("button")).toHaveLength(6)
-  expect(group.style.getPropertyValue("--choice-columns")).toBe("6")
+  expect(Array.from(group.querySelectorAll("button"), button => button.getAttribute("aria-label")))
+    .toEqual(["None", "Capitalize", "Uppercase", "Lowercase"])
+  expect(group.querySelector('button[aria-label="None"] svg.icon-tabler-minus')).not.toBeNull()
+  expect(group.querySelector('button[aria-label="Capitalize"] svg.icon-tabler-letter-case')).not.toBeNull()
+  expect(group.style.getPropertyValue("--choice-columns")).toBe("4")
 })
 
 it("uses each advanced default and honors computed hyphenation and authored values", async () => {
@@ -161,6 +185,22 @@ it("offers wrap, nowrap, and balance with a distinct balance icon", async () => 
   editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
   buttons[2].click()
   expect(change).toEqual({property: "text-wrap", mutation: {value: "balance", priority: ""}})
+})
+
+it("keeps text wrap icons at regular size in dense advanced controls", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const editor = await mount(definitions, state(), "compact")
+  editor.propertyNames = ["text-wrap", "hyphens"]
+  editor.setAttribute("dense-choices", "")
+  await editor.updateComplete
+
+  const wrapIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="text-wrap"] svg')!
+  const wrapButton = wrapIcon.closest("button")!
+  const hyphenIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="hyphens"] svg')!
+  expect(getComputedStyle(wrapButton).height).toBe("24px")
+  expect(getComputedStyle(wrapIcon).width).toBe("16px")
+  expect(getComputedStyle(wrapIcon).height).toBe("16px")
+  expect(getComputedStyle(hyphenIcon).width).toBe("12px")
 })
 
 it("renders the original hyphenation icons", async () => {
@@ -901,7 +941,7 @@ it("offers eight palette-based box presets and applies each as one style change"
   const buttons = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")
   expect(buttons).toHaveLength(8)
   expect(Array.from(buttons, button => button.getAttribute("aria-label"))).toEqual([
-    "White style preset", "Gray style preset", "Blue style preset", "Green style preset",
+    "White style preset", "Slate style preset", "Blue style preset", "Green style preset",
     "Orange style preset", "Yellow style preset", "Red style preset", "Purple style preset",
   ])
   const changes: unknown[] = []
@@ -921,6 +961,22 @@ it("offers eight palette-based box presets and applies each as one style change"
   await editor.updateComplete
   buttons[3].click()
   expect(changes.at(-1)).toEqual({styles: {"background-color": {value: "#e2efda", priority: ""}}})
+})
+
+it("uses document accent colors for Style presets and color choices", async () => {
+  const editor = await mount([], state(), "compact")
+  editor.style.setProperty("--ww-editor-color-4-0", "#12ab34")
+  editor.style.setProperty("--ww-editor-color-4-1", "#d0eed6")
+  editor.showPresets = true
+  editor.propertyNames = ["color"]
+  await editor.updateComplete
+  const preset = editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Accent 2 style preset"]')!
+  expect(preset.title).toContain("#d0eed6")
+  const changes = vi.fn()
+  editor.addEventListener("element-style-change", changes)
+  preset.click()
+  expect(changes.mock.calls[0][0].detail.styles["border-color"].value).toBe("#12ab34")
+  expect(editor.shadowRoot!.querySelector('[aria-label="Color #12ab34"]')).not.toBeNull()
 })
 
 it.each(["td", "th"])("keeps all %s presets limited to cell paint and padding", async localName => {

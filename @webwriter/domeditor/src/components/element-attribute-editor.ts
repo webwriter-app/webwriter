@@ -513,7 +513,8 @@ export class ElementAttributeEditor extends LitElement {
     const mediaNames = new Set(this.mediaOwned && isMediaType(state.localName)
       ? [...mediaAttributeOptions[state.localName].map(option => option.name), "controls", "usemap"]
       : [])
-    const attributes = Object.entries(state.attributes).filter(([name]) => !mediaNames.has(name))
+    const attributes = Object.entries(state.attributes).filter(([name]) => !mediaNames.has(name)
+      && !(state.localName === "details" && name === "open"))
     const mediaOptions = !this.mediaOwned && isMediaType(state.localName) ? mediaAttributeOptions[state.localName] : []
     const options = [...new Map([...elementAttributeOptions(state.localName), ...mediaOptions].map(option => [option.name, option])).values()]
       .filter(option => !mediaNames.has(option.name))

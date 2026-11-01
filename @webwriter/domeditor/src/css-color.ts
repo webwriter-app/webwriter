@@ -11,6 +11,24 @@ export const themeColorColumns = [
   ["8064a2", "e4dfec", "ccc1d9", "b2a1c7", "60497a", "403152"],
   ["70ad47", "e2efda", "c6e0b4", "a9d18e", "548235", "375623"],
 ] as const
+
+/** Seven document accents follow the three neutral palette columns. */
+export const defaultThemeAccents = themeColorColumns.slice(3).map(column => `#${column[0]}`)
+export const themeAccentProperties = defaultThemeAccents.map((_, index) => `--ww-theme-accent-${index + 1}`)
+
+/** Generate three tints and two shades by mixing sRGB channels with white or black. */
+export function themeAccentColumn(color: string): string[] {
+  const hex = colorHex(color, "")
+  if(!hex) return []
+  const channels = [1, 3, 5].map(index => parseInt(hex.slice(index, index + 2), 16))
+  const mix = (target: number, amount: number) => channels.map(channel =>
+    Math.round(channel * (1 - amount) + target * amount).toString(16).padStart(2, "0")).join("")
+  return [hex.slice(1), mix(255, .8), mix(255, .6), mix(255, .4), mix(0, .25), mix(0, .5)]
+}
+
+/** Each cell has a fixed fallback so the default palette remains unchanged. */
+export const themeColorCSS = (column: number, row: number) =>
+  `var(--ww-editor-color-${column}-${row}, #${themeColorColumns[column][row]})`
 /** True when the value parses as a CSS color in the current browser. */
 export function isCssColor(value: unknown): value is string {
   if(typeof value !== "string" || value.length > 64) return false

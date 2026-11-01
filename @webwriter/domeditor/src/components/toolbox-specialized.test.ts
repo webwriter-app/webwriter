@@ -41,6 +41,47 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it("selects the drawer's element from its heading without activating heading controls", async () => {
+    const toolbox = await mountElement("p")
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="p"]')!
+    await drawer.updateComplete
+    const select = vi.fn()
+    toolbox.addEventListener("toolbox-element-select", select)
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".pane-label-button")!.click()
+    expect(select).toHaveBeenCalledOnce()
+    expect(select.mock.calls[0][0].detail.selectionTypes).toEqual([{localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", path: [0]}])
+    drawer.querySelector<HTMLButtonElement>(".style-reset")!.click()
+    expect(select).toHaveBeenCalledOnce()
+  })
+
+  it.each(["ul", "ol", "menu", "table", "section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote"])("does not offer break inside for %s", async localName => {
+    const toolbox = await mountElement(localName, {}, {"break-inside": "avoid"})
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!
+    for(const editor of drawer.querySelectorAll<ElementStyleEditor>("element-style-editor")) {
+      expect(editor.propertyNames).not.toContain("break-inside")
+      expect(editor.shadowRoot!.querySelector('[data-property="break-inside"]')).toBeNull()
+    }
+  })
+
+  it("puts Open by default in Details primary controls without a break-inside option", async () => {
+    const toolbox = await mountElement("details")
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="details"]')!
+    const checkbox = drawer.querySelector<HTMLInputElement>('.details-open-default input[type="checkbox"]')!
+    expect(checkbox.checked).toBe(false)
+    expect(drawer.querySelector('.details-open-default')?.textContent).toContain("Open by default")
+    expect(drawer.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')?.propertyNames ?? [])
+      .not.toContain("break-inside")
+    const change = vi.fn()
+    toolbox.addEventListener("element-attribute-change", change)
+    checkbox.click()
+    expect(change.mock.calls[0][0].detail).toMatchObject({path: [0], name: "open", value: ""})
+    toolbox.elementAttributes = selectedElement("details", {open: ""})
+    await toolbox.updateComplete
+    expect(drawer.querySelector<HTMLInputElement>('.details-open-default input')!.checked).toBe(true)
+    drawer.querySelector<HTMLInputElement>('.details-open-default input')!.click()
+    expect(change.mock.calls.at(-1)![0].detail).toMatchObject({name: "open", value: null})
+  })
+
   it("labels a child widget drawer with its readable name and package icon", async () => {
     const toolbox = await mountElement("webwriter-task-prompt")
     toolbox.elementAttributes = {...toolbox.elementAttributes!, ...getElementPresentation("webwriter-task-prompt", [{
@@ -125,6 +166,13 @@ describe("specialized element toolbox", () => {
     expect(advanced.propertyNames).toContain("list-style-position")
     expect(primary.shadowRoot!.querySelector('[data-property="list-style-position"]')).toBeNull()
     expect(advanced.shadowRoot!.querySelector('[data-property="list-style-position"]')).not.toBeNull()
+    const positionButtons = Array.from(advanced.shadowRoot!.querySelectorAll<HTMLButtonElement>('[data-property="list-style-position"] .specialized-choice-group button'))
+    expect(positionButtons.map(button => button.getAttribute("aria-label"))).toEqual(["Inside", "Outside"])
+    expect(positionButtons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false"])
+    advanced.state = {...advanced.state, computed: {...advanced.state.computed, "list-style-position": "outside"}}
+    await advanced.updateComplete
+    expect(Array.from(advanced.shadowRoot!.querySelectorAll<HTMLButtonElement>('[data-property="list-style-position"] .specialized-choice-group button'), button => button.getAttribute("aria-pressed")))
+      .toEqual(["false", "true"])
     const root = primary.shadowRoot!
     expect(root.querySelector('[data-property="list-style-type"] select')).toBeNull()
     const group = root.querySelector('.marker-control > .specialized-choice-group')!
@@ -233,6 +281,10 @@ describe("specialized element toolbox", () => {
     expect(drawer.label).toBe("Heading")
     expect(drawer.icon).toBe("Heading")
     expect(drawer.iconUrl).toBe("")
+    expect(drawer.querySelector<ElementStyleEditor>('element-style-editor:not([slot])')!.propertyNames)
+      .toEqual(["text-align", "text-transform"])
+    expect(drawer.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')!.propertyNames)
+      .toEqual(["text-wrap", "line-height", "letter-spacing", "word-spacing"])
     const group = drawer.querySelector<HTMLElement>(".heading-level .specialized-choice-group")!
     expect(getComputedStyle(group).overflow).toBe("hidden")
     expect(getComputedStyle(group).gap).toBe("1px")
@@ -278,6 +330,16 @@ describe("specialized element toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector('[data-specialized="p"] .heading-level')).toBeNull()
   })
 
+  it("hides heading level controls in the board layout", async () => {
+    const toolbox = await mountElement("h2")
+    toolbox.documentLayout = {mode: "board", canConvert: true, zoom: 100}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[data-specialized="h2"] .heading-level')).toBeNull()
+    toolbox.documentLayout = {mode: "document", canConvert: true, zoom: 100}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[data-specialized="h2"] .heading-level')).not.toBeNull()
+  })
+
   it("shows one scoped drawer for each selected type and updates them when the selection changes", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
@@ -297,6 +359,12 @@ describe("specialized element toolbox", () => {
     expect(drawers[0].shadowRoot!.querySelector(".pane-label .element-count")?.textContent).toBe("2")
     expect(drawers[1].shadowRoot!.querySelector(".element-count")).toBeNull()
     expect(drawers[2].expandable).toBe(false)
+    const emptyOptions = drawers[2].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(emptyOptions.hidden).toBe(false)
+    expect(emptyOptions.disabled).toBe(true)
+    expect(emptyOptions.textContent).toContain("Options")
+    const paragraphOptions = drawers[0].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(paragraphOptions.disabled).toBe(false)
     expect(drawers[2].querySelector('element-attribute-editor[language-button]')).not.toBeNull()
     const styleChanges = vi.fn(), attributeChanges = vi.fn()
     toolbox.addEventListener("element-style-change", styleChanges)
@@ -515,17 +583,44 @@ describe("specialized element toolbox", () => {
       .querySelector<ElementStyleEditor>('element-style-editor:not([slot="more"])')!
     const vertical = cellPrimary.shadowRoot!.querySelector<HTMLElement>('[data-property="vertical-align"]')!
     const verticalGroup = vertical.querySelector<HTMLElement>(".specialized-choice-group")!
-    expect(verticalGroup.querySelectorAll('button[aria-pressed]')).toHaveLength(8)
-    expect(verticalGroup.style.getPropertyValue("--choice-columns")).toBe("4")
+    expect(Array.from(verticalGroup.querySelectorAll('button[aria-pressed]'), button => button.getAttribute("aria-label")))
+      .toEqual(["Middle", "Top", "Bottom", "Text top", "Text bottom", "Baseline"])
+    expect(verticalGroup.style.getPropertyValue("--choice-columns")).toBe("6")
+    expect(verticalGroup.querySelectorAll('svg.icon-tabler-vertical-align-text-top')).toHaveLength(1)
+    expect(verticalGroup.querySelectorAll('svg.icon-tabler-vertical-align-text-bottom')).toHaveLength(1)
 
-    const graphic = await mountElement("svg")
+    const table = await mountElement("table")
+    const tableDrawer = table.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="table"]')!
+    const tablePrimary = tableDrawer.querySelector<ElementStyleEditor>('element-style-editor:not([slot="more"])')!
+    const collapse = tablePrimary.shadowRoot!.querySelector('[data-property="border-collapse"]')!
+    expect(Array.from(collapse.querySelectorAll('button[aria-pressed]'), button => button.getAttribute("aria-label")))
+      .toEqual(["Collapse", "Separate"])
+    const tableOptions = tableDrawer.querySelector<HTMLElement>(".specialized-options")!
+      .querySelector<ElementStyleEditor>("element-style-editor")!
+    expect(tableOptions.hasAttribute("dense-choices")).toBe(true)
+    expect(tableOptions.shadowRoot!.querySelector('[data-property="caption-side"] svg.icon-tabler-caption-side-top')).not.toBeNull()
+    expect(tableOptions.shadowRoot!.querySelector('[data-property="empty-cells"] svg.icon-tabler-empty-cells-show')).not.toBeNull()
+
+    const graphic = await mountElement("svg", {}, {"paint-order": "stroke fill markers", "vector-effect": "non-scaling-stroke"})
     const advanced = graphic.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="svg"]')!
       .querySelector<HTMLElement>(".specialized-options")!
-    const paintOrder = advanced.querySelectorAll<ElementStyleEditor>("element-style-editor")[0]!
-      .shadowRoot!.querySelector<HTMLElement>('[data-property="paint-order"]')!
-    const paintOrderCombo = paintOrder.querySelector<HTMLElement>("style-combobox")!
-    expect(paintOrderCombo).not.toBeNull()
-    expect((paintOrderCombo as HTMLElement & {editable: boolean}).editable).toBe(false)
+    const graphicStyles = advanced.querySelectorAll<ElementStyleEditor>("element-style-editor")[0]!.shadowRoot!
+    expect(graphicStyles.querySelector('[data-property="stroke-dasharray"]')).toBeNull()
+    const changes = vi.fn()
+    graphic.addEventListener("element-style-change", changes)
+    for(const [property, labels, selected, value] of [
+      ["paint-order", ["Normal", "Stroke first", "Fill first"], "Stroke first", "normal"],
+      ["vector-effect", ["None", "Fixed stroke"], "Fixed stroke", "none"],
+    ] as const) {
+      const row = graphicStyles.querySelector<HTMLElement>(`[data-property="${property}"]`)!
+      const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('.specialized-choice-group button'))
+      expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(labels)
+      expect(buttons.every(button => button.querySelector("svg") && !button.textContent!.trim())).toBe(true)
+      expect(new Set(buttons.map(button => button.querySelector("svg")!.outerHTML)).size).toBe(buttons.length)
+      expect(buttons.find(button => button.getAttribute("aria-pressed") === "true")?.getAttribute("aria-label")).toBe(selected)
+      buttons[0].click()
+      expect(changes.mock.calls.at(-1)![0].detail).toMatchObject({property, mutation: {value}})
+    }
   })
 
   it("shows compact fields first and places Language and extra CSS controls under Options", async () => {

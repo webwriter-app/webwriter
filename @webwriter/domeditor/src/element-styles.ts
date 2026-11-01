@@ -182,12 +182,11 @@ const layoutAdvanced = [
   color("column-rule-color", "Column rule color", "Columns"),
   select("column-span", "Column span", "Columns", values("none", "all")),
   select("table-layout", "Table layout", "Table", values("auto", "fixed")),
-  select("border-collapse", "Border collapse", "Table", values("separate", "collapse")),
+  select("border-collapse", "Border collapse", "Table", values("collapse", "separate")),
   text("border-spacing", "Border spacing", "Table"),
   select("caption-side", "Caption side", "Table", values("top", "bottom")),
   select("empty-cells", "Empty cells", "Table", values("show", "hide")),
   select("break-before", "Break before", "Fragmentation", values("auto", "avoid", "page", "column", "left", "right")),
-  select("break-inside", "Break inside", "Fragmentation", values("auto", "avoid", "avoid-page", "avoid-column")),
   select("break-after", "Break after", "Fragmentation", values("auto", "avoid", "page", "column", "left", "right")),
 ] as const
 
@@ -213,7 +212,7 @@ const textAdvanced = [
   select("text-justify", "Justification", "Paragraph", values("auto", "inter-word", "inter-character", "none")),
   select("text-wrap", "Text wrap", "Wrapping & breaking", values("wrap", "nowrap", "balance")),
   select("hyphens", "Hyphenation", "Wrapping & breaking", values("manual", "auto", "none")),
-  select("text-transform", "Text transform", "Decoration", values("none", "capitalize", "uppercase", "lowercase", "full-width", "full-size-kana")),
+  select("text-transform", "Text transform", "Decoration", values("none", "capitalize", "uppercase", "lowercase")),
   select("text-decoration-line", "Decoration line", "Decoration", values("none", "underline", "overline", "line-through", "underline overline")),
   select("text-decoration-style", "Decoration style", "Decoration", values("solid", "double", "dotted", "dashed", "wavy")),
   color("text-decoration-color", "Decoration color", "Decoration"),
@@ -376,7 +375,7 @@ export const specializedStyleDefinitions: readonly ElementStylePropertyDefinitio
   text("object-view-box", "Crop", "Media"),
   text("line-height", "Line height", "Paragraph"),
   select("list-style-type", "Marker", "Lists", values(...listMarkerTypes, ...enumerationMarkerTypes, "none")),
-  select("vertical-align", "Vertical alignment", "Text", values("baseline", "middle", "top", "bottom", "sub", "super", "text-top", "text-bottom")),
+  select("vertical-align", "Vertical alignment", "Text", values("middle", "top", "bottom", "text-top", "text-bottom", "baseline")),
   select("math-style", "Math style", "Formula", values("normal", "compact")),
   text("math-depth", "Math depth", "Formula"),
   select("math-shift", "Math shift", "Formula", values("normal", "compact")),
@@ -399,12 +398,12 @@ const paragraphs: SpecializedElementStyle = {
   advanced: ["text-indent", "text-align-last", "text-wrap", "hyphens", "letter-spacing", "word-spacing"],
 }
 const headings: SpecializedElementStyle = {
-  primary: ["text-align", "text-wrap", "text-transform"],
-  advanced: ["line-height", "letter-spacing", "word-spacing", "break-after", "break-inside"],
+  primary: ["text-align", "text-transform"],
+  advanced: ["text-wrap", "line-height", "letter-spacing", "word-spacing"],
 }
 const listStyles: SpecializedElementStyle = {
   primary: ["list-style-type", "list-style-image"],
-  advanced: ["list-style-position", "break-inside"],
+  advanced: ["list-style-position"],
 }
 const imageStyles: SpecializedElementStyle = {
   primary: ["object-fit", "object-view-box"],
@@ -417,15 +416,15 @@ export function specializedElementStyle(localName: string): SpecializedElementSt
   if(["picture", "img"].includes(localName)) return imageStyles
   if(localName === "video") return {...imageStyles, advanced: []}
   if(["audio", "iframe", "embed", "object"].includes(localName)) return {primary: [], advanced: []}
-  if(localName === "details") return {primary: [], advanced: ["break-inside"]}
+  if(localName === "details") return {primary: [], advanced: []}
   if(localName === "summary") return {primary: ["list-style-type", "list-style-position"], advanced: []}
-  if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells", "break-inside"]}
+  if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells"]}
   if(["td", "th"].includes(localName)) return {primary: ["text-align", "vertical-align"], advanced: []}
   if(["svg", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "g"].includes(localName)) return {
-    primary: ["stroke-linecap", "stroke-linejoin"], advanced: ["stroke-dasharray", "fill-rule", "paint-order", "vector-effect"],
+    primary: ["stroke-linecap", "stroke-linejoin"], advanced: ["fill-rule", "paint-order", "vector-effect"],
   }
   if(["section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote", "figure"].includes(localName)) return {
-    primary: ["break-inside"], advanced: ["break-before", "break-after"],
+    primary: [], advanced: ["break-before", "break-after"],
   }
   if(localName === "math") return {primary: ["math-style"], advanced: ["math-depth", "math-shift"]}
   return undefined

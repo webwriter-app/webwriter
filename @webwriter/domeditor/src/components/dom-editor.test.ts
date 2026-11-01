@@ -1,11 +1,12 @@
 // @vitest-environment happy-dom
 import {emptyVersionHistoryState} from "../editor-bridge"
+import {documentThemeProperties} from "../document-theme-options"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {nothing} from "lit"
 import {DomEditor} from "./dom-editor"
 import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
-import {elementDragType} from "./insertion-menu"
+import {elementDragType, ribbonInsertionDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
 import type {ShapeKeyboard} from "./shape-keyboard"
 import type {MathKeyboard} from "./math-keyboard"
@@ -2579,6 +2580,28 @@ describe("DomEditor ribbon drag relay", () => {
     expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeNull()
   })
 
+  it("relays a compact element button through the same frame shield as a widget", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[slot="compact"][label="Text"]')!
+    await button.updateComplete
+    const source = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const data = new DataTransfer()
+    vi.spyOn(data, "setDragImage").mockImplementation(() => {})
+    source.dispatchEvent(dragEvent("dragstart", data))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).not.toBeNull()
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
+    editor.shadowRoot!.querySelector(".ribbon-drag-shield")!
+      .dispatchEvent(dragEvent("drop", data, {clientX: 60, clientY: 70}))
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({
+      type: editorFrameControlMessage, command: "drag", event: "drop", x: 50, y: 50,
+      data: expect.objectContaining({[ribbonInsertionDragType]: "element:p"}),
+    }), expect.anything())
+  })
+
   it("clears the frame's drop caret when a ribbon drag is cancelled", async () => {
     const {editor, iframe} = await mountEditor()
     const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
@@ -2609,7 +2632,8 @@ describe("DomEditor breadcrumb visibility", () => {
     await editor.updateComplete
     await toolbox.updateComplete
     if(surface === "console" || surface === "versions") {
-      toolbox.shadowRoot!.querySelector<HTMLButtonElement>(surface === "console" ? ".developer-console-toggle" : ".versions-console-toggle")!.click()
+      if(surface === "console") await host.handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
+      else toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".versions-console-toggle")!.click()
     }
     else if(surface === "math") host.mathSelection = {active: true, display: "inline"}
     else if(surface === "shape") host.graphicSelection = {active: true, capture: true}
@@ -2978,7 +3002,7 @@ describe("Develop local packages", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
     await editor.updateComplete
     const console = editor.shadowRoot!.querySelector("developer-console")!
     await console.updateComplete
@@ -4889,7 +4913,7 @@ describe("DomEditor.execute()", () => {
     await ribbon.updateComplete
     show.click()
     await editor.updateComplete
-    expect(editor.shadowRoot!.querySelector(".html-source-panel")!.getAttribute("aria-hidden")).toBe("false")
+    expect((editor as any).consoleOpen).toBe(false)
   })
 
   it("ignores previously pinned documents while restoring console pinning", async () => {
@@ -4926,8 +4950,8 @@ describe("DomEditor.execute()", () => {
     ;(editor as any).handleRibbonCollapse()
     await editor.updateComplete
     expect(editor.shadowRoot!.querySelector("developer-console")).toBe(console)
-    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.disabled).toBe(false)
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
+    expect(console.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.disabled).toBe(false)
+    console.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
     await editor.updateComplete
     expect((editor as any).consoleOpen).toBe(false)
     expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(true)
@@ -4950,7 +4974,7 @@ describe("DomEditor.execute()", () => {
     expect(JSON.parse(localStorage.getItem(APP_SETTINGS_STORAGE_KEY)!).pinDeveloperConsole).toBe(false)
     expect(restored.pinned).toBe(false)
     expect((reloaded as any).consoleOpen).toBe(true)
-    restoredToolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
+    restored.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!.click()
     await reloaded.updateComplete
     expect((reloaded as any).consoleOpen).toBe(false)
   })
@@ -5030,7 +5054,7 @@ describe("DomEditor.execute()", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
     await editor.updateComplete
     expect((editor as any).consoleOpen).toBe(true)
     expect((editor as any).consoleTab).toBe(tab)
@@ -5071,7 +5095,7 @@ describe("DomEditor.execute()", () => {
     const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
     toolbox.selectTool("Edit")
     await toolbox.updateComplete
-    toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.click()
+    await (editor as any).handleDeveloperConsoleChange(new CustomEvent("developer-console-change", {detail: {enabled: true}}))
     await vi.waitFor(() => expect((editor as any).htmlSource).toBe("<p>Hello</p>"))
     await editor.updateComplete
     const console = editor.shadowRoot!.querySelector("developer-console")!
@@ -8121,6 +8145,7 @@ describe("DomEditor.execute()", () => {
       toolbox.selectTool(activeTool)
       await editor.updateComplete
       await breadcrumb.updateComplete
+      expect(iframe.classList.contains("root-selected")).toBe(false)
 
       breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>("button.item")!.click()
       await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "selectNode", path: rootPath}))
@@ -8129,6 +8154,7 @@ describe("DomEditor.execute()", () => {
 
       expect(toolbox.activeTool).toBe(activeTool)
       expect(toolbox.documentSelected).toBe(true)
+      expect(iframe.classList.contains("root-selected")).toBe(true)
       expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[data-tool="Edit"]')!.getAttribute("aria-label")).toBe("Edit Document")
     }
   })
@@ -8153,6 +8179,84 @@ describe("DomEditor.execute()", () => {
     host.htmlPending = true
     await editor.updateComplete
     expect(Array.from(bar.querySelectorAll<HTMLButtonElement>(".layout-preset"), button => button.disabled)).toEqual([true, true, true, true])
+  })
+
+  it("offers a document-scoped theme picker in the Layouts heading", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const picker = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-main-heading document-theme-presets")!
+    expect(picker.hasAttribute("select-only")).toBe(true)
+    const styles = {"background-color": {value: "red", priority: ""}}
+    picker.dispatchEvent(new CustomEvent("document-theme-apply", {detail: {styles}, bubbles: true, composed: true}))
+    expect(execute).toHaveBeenCalledWith({type: "setDocumentThemeStyles", styles})
+  })
+
+  it("resets document themes through the Standard preset action", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const toolbox = editor.shadowRoot!.querySelector<any>("dom-editor-toolbox")!
+    toolbox.dispatchEvent(new CustomEvent("element-style-reset", {detail: {theme: true}, bubbles: true, composed: true}))
+    const action = execute.mock.calls[0][0]
+    expect(action.type).toBe("setDocumentThemeStyles")
+    expect((action as any).styles).toEqual(Object.fromEntries(documentThemeProperties.map(name => [name, null])))
+  })
+
+  it.each(["focus", "pointer", "isolated focus", "isolated pointer"])("closes the Layouts theme picker on editor %s", async mode => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const picker = editor.shadowRoot!.querySelector<any>(".document-layouts-main-heading document-theme-presets")!
+    await picker.updateComplete
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".trigger")!.click()
+    await picker.updateComplete
+    expect(picker.hasAttribute("open")).toBe(true)
+    if(mode.startsWith("isolated")) {
+      ;(editor as any).editorOpaque = true
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: mode.endsWith("focus") ? "editor-frame-focusin" : "editor-frame-pointerdown"}}))
+      ;(editor as any).editorOpaque = false
+    }
+    else iframe.contentDocument!.body.dispatchEvent(new Event(mode === "focus" ? "focusin" : "pointerdown", {bubbles: true, composed: true}))
+    await picker.updateComplete
+    expect(picker.hasAttribute("open")).toBe(false)
+    expect(picker.shadowRoot!.querySelector(".popup")).toBeNull()
+  })
+
+  it("keeps Layouts visible when a theme styles an empty document", async () => {
+    const {editor, iframe} = await mountEditor()
+    const host = editor as any
+    await vi.waitFor(() => expect(host.dirtyTrackingReady).toBe(true))
+    const doc = iframe.contentDocument!
+    doc.documentElement.style.setProperty("--ww-theme-accent-1", "#397da2")
+    doc.documentElement.style.setProperty("--ww-text-color", "#243746")
+    doc.documentElement.style.backgroundColor = "#f7fbff"
+    await vi.waitFor(() => expect(host.fileDirty).toBe(true))
+    expect(host.documentLayoutsDismissed).toBe(false)
+    doc.body.className = "ww-slides"
+    doc.body.innerHTML = '<div class="ww-slides-viewport"><section class="ww-slide" tabindex="-1" id="slide-cbb92aae-6b1b-40f9-9d11-70108719738b"><nav class="ww-slide-directions" contenteditable="false" aria-label="Slide navigation"><a>‹</a><a>›</a></nav></section></div><nav class="ww-slides-navigation" aria-label="Slides" contenteditable="false"><a>1</a></nav>'
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(host.documentLayoutsDismissed).toBe(false)
+  })
+
+  it("selects the document and opens advanced Style options for theme customization", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const toolbox = editor.shadowRoot!.querySelector<any>("dom-editor-toolbox")!
+    const open = vi.spyOn(toolbox, "openDocumentThemeOptions")
+    const picker = editor.shadowRoot!.querySelector<HTMLElement>(".document-layouts-main-heading document-theme-presets")!
+    picker.dispatchEvent(new CustomEvent("document-theme-customize", {bubbles: true, composed: true}))
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce())
+    expect(execute).toHaveBeenCalledWith({type: "selectNode", path: []})
+  })
+
+  it("projects document palette accents into editor controls and clears them on document changes", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const doc = new DOMParser().parseFromString('<html style="--ww-theme-accent-2: #336699"><head></head><body><p>Text</p></body></html>', "text/html")
+    host.editorDocument = doc
+    host.syncDocumentPalette()
+    expect(editor.style.getPropertyValue("--ww-editor-color-4-0")).toBe("#336699")
+    expect(editor.style.getPropertyValue("--ww-editor-color-4-1")).toBe("#d6e0eb")
+    doc.documentElement.style.removeProperty("--ww-theme-accent-2")
+    host.syncDocumentPalette()
+    expect(editor.style.getPropertyValue("--ww-editor-color-4-0")).toBe("")
   })
 
   it("keeps the full-width Layouts bar in every layout and reflects live conversion availability", async () => {
@@ -9094,14 +9198,18 @@ describe("DomEditor.execute()", () => {
   })
 
   it("starts and ends an element hover from a breadcrumb item", async () => {
-    const {editor} = await mountEditor()
+    const {editor, iframe} = await mountEditor()
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(undefined)
     const breadcrumb = editor.shadowRoot!.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")!
     await breadcrumb.updateComplete
     const item = breadcrumb.shadowRoot!.querySelector<HTMLButtonElement>("button.item")!
 
     item.dispatchEvent(new MouseEvent("mouseenter"))
+    await editor.updateComplete
+    expect(iframe.classList.contains("root-hovered")).toBe(true)
     item.dispatchEvent(new MouseEvent("mouseleave"))
+    await editor.updateComplete
+    expect(iframe.classList.contains("root-hovered")).toBe(false)
 
     expect(execute).toHaveBeenNthCalledWith(1, {type: "hoverNode", path: []})
     expect(execute).toHaveBeenNthCalledWith(2, {type: "hoverNode", path: null})

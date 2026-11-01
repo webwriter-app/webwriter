@@ -1,6 +1,6 @@
 import {hydrateWidgetGroupings, prepareWidgetGroupingsForSerialization, restoreWidgetGroupingClones} from "./widget-grouping-dom"
 import {SharedDOMDoc, type EditingMutation} from "./domdoc"
-import {isAuthoredMutation} from "./editor-artifacts"
+import {isAuthoredMutation, restoreAuthoredDetailsState, temporaryDetailsClosedMarker, temporaryDetailsOpenMarker} from "./editor-artifacts"
 import {collectFeatureActions} from "./features"
 import {editorFeatureNames, type EditorFeatures, type EditorExtensionFactory} from "./editor-features"
 import { HistoryFeature } from "./features/history"
@@ -530,6 +530,7 @@ export class DOMEditor {
       const beforeSyncFromDOM = options.reader ? undefined : (local: boolean) => {
         this.features.widget.flushMutations(local)
         this.features.attribution.normalize()
+        this.features.list.ensureDetailsBodyContent()
       }
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
@@ -682,6 +683,7 @@ export class DOMEditor {
    * becomes a normal collapsed selection in the new paragraph. */
   #ensureDocumentContent() {
     if(this.options.reader) return null
+    this.features.list.ensureDetailsBodyContent()
     if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
     if(documentLayoutMode() === "board") return this.features.board.ensureContent()
     if(documentLayoutMode() === "canvas") return null
@@ -732,6 +734,11 @@ export class DOMEditor {
     }
     for(const owner of Array.from(this.#editingLocks)) attempt(() => this.unlockEditing(owner))
     Object.values(this.features).forEach(feature => attempt(() => feature.disable()))
+    if(this.doc) attempt(() => {
+      this.doc.syncFromDOM()
+      this.doc.root.querySelectorAll(`details.${temporaryDetailsOpenMarker}, details.${temporaryDetailsClosedMarker}`)
+        .forEach(restoreAuthoredDetailsState)
+    })
     this.mediaBlobs.forEach((_, url) => attempt(() => URL.revokeObjectURL(url)))
     this.mediaBlobs.clear()
     document.removeEventListener("input", this.#handleInput)
@@ -906,9 +913,14 @@ export class DOMEditor {
   }
 
   private selectedElementForPath() {
+    const root = getDocumentRoot()
+    if(this.features.selection.isInDragSelection) {
+      const anchor = document.getSelection()?.anchorNode
+      const container = anchor instanceof Element ? anchor : anchor?.parentElement
+      return container && root.contains(container) ? container : root
+    }
     const dragged = this.features.manipulation.draggedElement
     if(dragged) return dragged
-    const root = getDocumentRoot()
     const target = this.features.manipulation.styleTarget
     const selectedSection = this.features.selection.selectedSectionElement
     if(target !== document.body && target !== root && target !== selectedSection) return target
@@ -926,6 +938,7 @@ export class DOMEditor {
   /** Returns an exact, explicitly selected authored element. Text selections
    * deliberately have no generic attribute target. */
   private selectedAttributeElement() {
+    if(this.features.selection.isInDragSelection) return null
     const selectedSection = this.features.selection.selectedSectionElement
     if(selectedSection) return selectedSection
     if(this.features.table.hasCellSelection) return this.features.table.selectionFocusCell
@@ -938,9 +951,11 @@ export class DOMEditor {
 
   /** Sends the current element path to the host application through the bridge. */
   postSelectionPath(inserted = false) {
+    if(this.features.selection.isInDragSelection) return
     if(this.options.reader) { window.dispatchEvent(new Event("webwriter-distribution-selection")); return }
     const body = document.body
     const root = getDocumentRoot(body)
+    const inDragSelection = this.features.selection.isInDragSelection
     const focusedHost = focusedWidgetHost()
     const focusedWidget = isContentfulWidget(focusedHost, this.schema) ? null : focusedHost
     const selected = this.selectedElementForPath()
@@ -1041,16 +1056,16 @@ export class DOMEditor {
       : undefined
     const list = this.features.list.getState()
     const headingGroup = this.features.manipulation.getHeadingGroupState()
-    const figure = this.features.manipulation.getFigureState()
-    const captionPosition = this.features.manipulation.getCaptionPosition()
-    const captionAlignment = this.features.manipulation.getCaptionAlignment()
-    const media = this.features.media.getState()
-    const dialog = this.features.dialog.getState()
-    const table = this.features.table.getState()
-    const graphic = this.features.graphic.getState()
-    const math = this.features.math.getState()
-    const layout = this.features.layout.getState()
-    const selectedSection = this.features.selection.selectedSectionElement
+    const figure = inDragSelection ? null : this.features.manipulation.getFigureState()
+    const captionPosition = inDragSelection ? null : this.features.manipulation.getCaptionPosition()
+    const captionAlignment = inDragSelection ? null : this.features.manipulation.getCaptionAlignment()
+    const media = inDragSelection ? null : this.features.media.getState()
+    const dialog = inDragSelection ? null : this.features.dialog.getState()
+    const table = inDragSelection ? null : this.features.table.getState()
+    const graphic = inDragSelection ? null : this.features.graphic.getState()
+    const math = inDragSelection ? null : this.features.math.getState()
+    const layout = inDragSelection ? null : this.features.layout.getState()
+    const selectedSection = inDragSelection ? null : this.features.selection.selectedSectionElement
     const attributeElement = this.selectedAttributeElement()
     const elementState = attributeElement
       ? elementAttributeState(
@@ -1058,20 +1073,20 @@ export class DOMEditor {
         attributeElement === document.documentElement ? null : this.pathToElement(attributeElement),
       )
       : null
-    const widgetOptions = this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
+    const widgetOptions = inDragSelection ? null : this.features.widget.getOptionsState(focusedWidget ? [...elements, focusedWidget] : elements)
     const canSection = this.features.manipulation.canSectionSelection()
-    const selectedElementTypes = this.features.manipulation.getSelectedElementTypes()
+    const selectedElementTypes = inDragSelection ? [] : this.features.manipulation.getSelectedElementTypes()
     const detail: SelectionChangeDetail = {
       path,
       distribution: this.features.distribution.getState(attributeElement),
       distributionGeneral: this.features.distribution.getState(document.documentElement),
       ...(selectedElementTypes.length ? {selectedElementTypes} : {}),
-      ...($.isMultiElementSelection ? {nodeSelected: true} : {}),
+      ...($.isMultiElementSelection && !inDragSelection ? {nodeSelected: true} : {}),
       documentLayout: this.getDocumentLayoutState(),
       ...(canSection && path.at(-1)?.path.join(".") === this.pathToElement(root).join(".") ? {canSection: true} : {}),
       ...(inserted ? {inserted: true} : {}),
-      ...($.isElementSelection && !selectedSection ? {nodeSelected: true} : {}),
-      ...(this.features.selection.isCaptureSelection ? {capture: true} : {}),
+      ...($.isElementSelection && !selectedSection && !inDragSelection ? {nodeSelected: true} : {}),
+      ...(this.features.selection.isCaptureSelection && !inDragSelection ? {capture: true} : {}),
       ...(selectedSection ? {section: {
         path: this.pathToElement(selectedSection),
         type: selectedSection.localName as SelectionPathSection["type"],
@@ -1096,7 +1111,7 @@ export class DOMEditor {
 
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
-    if(this.options.reader) return
+    if(this.options.reader || this.features.selection.isInDragSelection) return
     this.features.graphic.rememberTextSelection()
     if(this.features.selection.selectedSectionElement) {
       this.postBridgeEvent(markStateChangeEvent, {
@@ -1119,7 +1134,7 @@ export class DOMEditor {
 
   /** Sends in-document comment availability and active comment state. */
   postCommentState() {
-    if(this.options.reader) return
+    if(this.options.reader || this.features.selection.isInDragSelection) return
     this.postBridgeEvent(commentStateChangeEvent, this.features.comment.getState())
   }
 

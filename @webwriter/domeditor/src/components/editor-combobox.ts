@@ -8,6 +8,7 @@ export type ComboboxOption = {
   label: string
   description?: string
   detail?: string
+  icons?: readonly {name: string, src: string}[]
   dividerBefore?: boolean
   group?: string
   disabled?: boolean
@@ -193,6 +194,13 @@ export class EditorCombobox extends LitElement {
       font-weight: 750;
       line-height: 1rem;
     }
+
+    .option:has(.option-icons) {grid-template-columns: minmax(0, 1fr) auto;}
+    .option:has(.option-icons) .option-code {grid-column: 1; grid-row: 1;}
+    .option:has(.option-icons) .option-name,
+    .option:has(.option-icons) .option-description {grid-column: 1 / -1;}
+    .option-icons {grid-column: 2; grid-row: 1; display: flex; gap: 0.2rem; align-items: center;}
+    .option-icons img {display: block; width: 1rem; height: 1rem;}
 
     .option-name {
       overflow: hidden;
@@ -454,6 +462,7 @@ export class EditorCombobox extends LitElement {
         ${this.showValue ? html`<span class="option-name option-value">${option.description ?? option.value}</span>`
           : option.description ? html`<span class="option-name">${option.description}</span>` : nothing}
         ${option.detail ? html`<span class="option-description">${option.detail}</span>` : nothing}
+        ${option.icons?.length ? html`<span class="option-icons" aria-hidden="true">${option.icons.map(icon => html`<img src=${icon.src} alt="" data-icon=${icon.name}>`)}</span>` : nothing}
       </button>
     `)}`
   }

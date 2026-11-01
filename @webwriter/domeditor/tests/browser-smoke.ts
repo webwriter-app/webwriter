@@ -29,6 +29,31 @@ await check("designMode editing", () => {
   assert(document.querySelector("#baseline")!.textContent === "S!art", "native editing did not change the selected text")
 })
 
+await check("native selection survives an unrelated DOM edit", () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "Hello"
+  const unrelated = document.createElement("aside")
+  document.body.append(paragraph, unrelated)
+  const text = paragraph.firstChild!, selection = document.getSelection()!
+  const previous = selection.rangeCount ? selection.getRangeAt(0).cloneRange() : undefined
+  try {
+    selection.setBaseAndExtent(text, 1, text, 4)
+    unrelated.append(document.createElement("span"))
+    assert(selection.anchorNode === text && selection.anchorOffset === 1
+      && selection.focusNode === text && selection.focusOffset === 4,
+    "an unrelated DOM edit moved the native selection")
+    assert(document.execCommand("insertText", false, "i"), "native replacement was rejected")
+    assert(paragraph.textContent === "Hio", `native replacement changed the wrong text: ${paragraph.textContent}`)
+    assert(selection.isCollapsed && paragraph.contains(selection.anchorNode), "caret left the edited paragraph")
+  }
+  finally {
+    paragraph.remove()
+    unrelated.remove()
+    selection.removeAllRanges()
+    if(previous) selection.addRange(previous)
+  }
+})
+
 await check("atomic widget editability survives serialization", () => {
   const widget = document.createElement("smoke-widget")
   widget.setAttribute("contenteditable", "false")
@@ -282,11 +307,30 @@ await check("copyright affordance meets the selected element top-left corner", (
     fresh.features.selection.selectElement(paragraph)
     fresh.features.attribution.refresh()
     const bridge = fresh.appendix.querySelector<HTMLElement>(".◆attribution-ui .bridge")!
-    assert(bridge && !bridge.hidden, "copyright bridge is hidden")
-    const target = paragraph.getBoundingClientRect(), actual = bridge.getBoundingClientRect()
+    const button = fresh.appendix.querySelector<HTMLElement>(".copyright")!
+    assert(button.parentElement === fresh.features.transformation.overlay && bridge.hidden, "copyright affordance is outside the transform frame")
+    const target = paragraph.getBoundingClientRect(), actual = button.getBoundingClientRect()
     assert(Math.abs(actual.left + actual.width / 2 - target.left) < 2
       && Math.abs(actual.top + actual.height / 2 - (target.top - 3)) < 2,
       `copyright offset: ${JSON.stringify({target: target.toJSON(), actual: actual.toJSON()})}`)
+    paragraph.setAttribute("data-ww-attribution-name", "Ada")
+    fresh.features.attribution.refresh()
+    const saved = button.getBoundingClientRect()
+    assert(button.parentElement === fresh.features.transformation.overlay && !button.hidden && bridge.hidden,
+      "saved copyright affordance left the transform frame")
+    assert(Math.abs(saved.left + saved.width / 2 - target.right) < 2
+      && Math.abs(saved.top + saved.height / 2 - (target.top + target.bottom) / 2) < 2,
+      `saved copyright offset: ${JSON.stringify({target: target.toJSON(), saved: saved.toJSON()})}`)
+    fresh.features.selection.isInDragSelection = true
+    fresh.features.selection.processSelection()
+    fresh.features.attribution.refresh()
+    assert(button.hidden && fresh.features.transformation.overlay.getAttribute("visibility") === "hidden",
+      "copyright affordance remains visible during a drag selection")
+    fresh.features.selection.isInDragSelection = false
+    fresh.features.selection.processSelection()
+    fresh.features.attribution.refresh()
+    assert(!button.hidden && button.parentElement === fresh.features.transformation.overlay,
+      "copyright affordance did not return with the transform frame")
   }
   finally { fresh.destroy(); theme.remove() }
 })

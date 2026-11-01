@@ -4,11 +4,6 @@ body {
   overscroll-behavior: contain;
 }
 
-/* Reserve room beside the authored slide links for appendix-only actions. */
-body.ww-slides > nav.ww-slides-navigation.◆slide-navigation-editing {
-  max-width: calc(100% - 5rem);
-}
-
 /* The reader clips at the slide boundary; only editing exposes the margins. */
 @media screen {
   body.ww-slides:not(.◆editing-locked) > .ww-slides-viewport > section.ww-slide:not([is]) {
@@ -18,8 +13,7 @@ body.ww-slides > nav.ww-slides-navigation.◆slide-navigation-editing {
 
 /* Local scroll state also highlights the current bubble without native scroll-target support. */
 body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
-  background: #e2e5e9;
-  box-shadow: inset 0 0 0 1px currentColor;
+  background: #dbeafe;
 }
 
 html {
@@ -447,6 +441,14 @@ body::part(insertion-preview) {
   background: transparent;
 }
 
+/* Chromium paints a text caret at a backward range's paragraph endpoint even
+ * when the range already contains an atomic element. Its range overlay is the
+ * visible selection in that case. */
+body:has(.◆atomic-range-selected),
+body:has(.◆atomic-range-selected) * {
+  caret-color: transparent !important;
+}
+
 .◆element-selected {
   anchor-name: --selection-anchor;
 }
@@ -630,7 +632,12 @@ body.◆element-hovered::part(hover-caret) {
   width: auto;
   height: auto;
   outline: none;
-  background: rgb(56 189 248 / 6%);
+  background: transparent;
+}
+
+body.◆template-active:has(> [role~="document"].◆element-hovered:only-child)::part(hover-caret) {
+  outline: none;
+  background: transparent;
 }
 
 body:has(.◆snippet-hovered.◆element-hovered)::part(hover-caret) {
@@ -717,16 +724,17 @@ body.◆element-selected::part(selection-caret-node) {
   width: auto;
   height: auto;
   outline: none;
-  background: rgb(56 189 248 / 6%);
+  background: transparent;
 }
 
-/* Template roots use the same quiet document-selection fill as BODY while
- * retaining the template's own content-sized box. */
+/* The outer editor frame indicates selection of the document root. */
 body.◆template-active:has(> [role~="document"].◆element-selected:only-child)::part(selection-caret-node) {
   outline: none;
   outline-offset: 0;
-  background: rgb(56 189 248 / 6%);
+  background: transparent;
 }
+
+body.◆element-selected::part(hover-caret) { background: transparent; }
 
 body.◆key-mod-down, body.◆key-mod-down * {
   cursor: pointer;
@@ -791,6 +799,13 @@ body::part(virtual-list-item) {
   display: block;
   color: #9ca3af;
   font: inherit;
+  font-family: var(--virtual-list-font-family, inherit);
+  font-size: var(--virtual-list-font-size, inherit);
+  font-stretch: var(--virtual-list-font-stretch, inherit);
+  font-style: var(--virtual-list-font-style, inherit);
+  font-variant: var(--virtual-list-font-variant, inherit);
+  font-weight: var(--virtual-list-font-weight, inherit);
+  letter-spacing: var(--virtual-list-letter-spacing, inherit);
   line-height: var(--virtual-list-line-height, 1.25em);
   pointer-events: none;
   user-select: none;
@@ -802,7 +817,6 @@ body::part(virtual-list-item-ol),
 body::part(virtual-list-item-menu) {
   display: list-item;
   width: 0;
-  list-style-position: outside;
 }
 
 body::part(virtual-list-item-custom-marker)::marker {
@@ -821,6 +835,18 @@ body::part(virtual-list-item-image-marker)::before {
   block-size: 1em;
   background: var(--ww-list-marker-image) center / contain no-repeat;
 }
+body::part(virtual-list-item-image-marker virtual-list-item-inside)::before {
+  position: static;
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-end: .4em;
+}
+
+/* The real LI paints its marker; the shadow copy only measures its inline
+ * advance so the editor caret can follow it without changing authored DOM. */
+li.◆list-empty-caret:empty { caret-color: transparent; }
+body::part(virtual-list-item-caret-only)::marker { color: transparent; }
+body::part(virtual-list-item-caret-only)::before { visibility: hidden; }
 
 body::part(virtual-list-item-dl) {
   font-size: 0.8em;
@@ -853,7 +879,7 @@ body::part(virtual-list-caret) {
   inset-inline-start: 0;
   top: 0;
   width: 1px;
-  height: var(--virtual-list-line-height, 1.25em);
+  height: 1lh;
   min-height: 16px;
   background: CanvasText;
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
@@ -861,6 +887,23 @@ body::part(virtual-list-caret) {
 
 body::part(virtual-list-caret-hidden) {
   display: none;
+}
+
+body::part(virtual-list-caret-inside) {
+  position: relative;
+  display: inline-block;
+  height: 0;
+  min-height: 0;
+  vertical-align: baseline;
+}
+body::part(virtual-list-caret-inside)::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: -.2em;
+  width: 1px;
+  height: 1em;
+  background: CanvasText;
 }
 
 .◆virtual-list-selected {
@@ -2360,9 +2403,19 @@ body::part(transform-overlay-board-control) {
   border-style: dotted;
 }
 body::part(transform-overlay-attribution) {
-  top: 0;
-  left: 0;
+  top: -13px;
+  left: -10px;
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M16 8a6 6 0 1 0 0 8"/></svg>');
+}
+body::part(transform-overlay-attribution-saved) {
+  top: calc(50% - 8px);
+  left: auto;
+  right: -8px;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 3px;
+  background: #fff;
 }
 body::part(transform-overlay-attribution-board) {
   top: -13px;

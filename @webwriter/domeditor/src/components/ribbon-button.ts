@@ -937,6 +937,12 @@ export class RibbonButton extends LitElement {
       transform: none;
     }
 
+    :host([variant="package"]) .corner-trigger {
+      width: 1.2rem;
+      aspect-ratio: auto;
+      padding-inline: 0;
+    }
+
     :host([variant="package"]) .submenu-placeholder {
       box-sizing: border-box;
       visibility: hidden;

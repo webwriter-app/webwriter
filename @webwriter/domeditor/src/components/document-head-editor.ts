@@ -13,6 +13,7 @@ import {
   type DocumentHeadState,
 } from "../document-head"
 import {EditorCombobox, type ComboboxOption} from "./editor-combobox"
+import {ccLicenseIcons} from "./cc-license-icons"
 import {editorInteractionStyles} from "./editing-controls.styles"
 import {documentLanguages} from "../document-languages"
 import {documentThemes} from "../document-themes"
@@ -752,6 +753,7 @@ export class DocumentHeadEditor extends LitElement {
     :host([compact]) .field-label {font: inherit; color: inherit; white-space: normal;}
     :host([compact]) .common-control,
     :host([compact]) .generator-control {height: 1.7rem; padding: .2rem; font-size: .68rem; border-color: #c5ccd5;}
+    :host([compact]) .common-control:hover {border-color: #8eb6df; background: #eef4fb;}
     :host([compact]) document-head-combobox {height: 1.7rem; --metadata-combobox-height: 1.7rem; --metadata-combobox-font-size: .68rem;}
     :host([compact]) .advanced {height: auto; padding: 0; border: 0;}
     :host([compact]) .advanced-metadata {grid-template-columns: minmax(0, 1fr);}
@@ -858,6 +860,7 @@ export class DocumentHeadEditor extends LitElement {
       label: license.code,
       description: license.name,
       detail: license.description,
+      icons: ccLicenseIcons(license.code),
     }))
     return html`
       <div class="common-grid" aria-label="Common document metadata">
@@ -1067,9 +1070,6 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   private renderEntry(entry: DocumentHeadElementState) {
-    const blocked = entry.tagName === "script" || entry.tagName === "style"
-      || entry.tagName === "link" && entry.attributes.some(attribute => attribute.name.toLowerCase() === "rel"
-        && attribute.value.toLowerCase().split(/\s+/).includes("stylesheet"))
     return html`
       <article class="entry" data-head-id=${entry.id}>
         <header class="entry-header">
@@ -1098,10 +1098,8 @@ export class DocumentHeadEditor extends LitElement {
             @click=${() => this.dispatchAction({type: "removeDocumentHeadElement", id: entry.id})}
           >×</button>
         </header>
-        ${blocked ? html`
-          <p class="blocked-content">Authored scripts and styles are blocked while editing. This element is preserved but cannot be edited.</p>
-        ` : this.renderAttributes(entry)}
-        ${blocked || entry.content === undefined ? nothing : html`
+        ${this.renderAttributes(entry)}
+        ${entry.content === undefined ? nothing : html`
           <label class="content-field">
             <span class="field-label">${entry.contentLabel ?? "Content"}</span>
             <textarea
@@ -1153,6 +1151,9 @@ export class DocumentHeadEditor extends LitElement {
       return element ? [element.id] : []
     }))
     const entries = this.state.elements.filter(element => !representedIds.has(element.id)
+      && element.tagName !== "script" && element.tagName !== "style"
+      && !(element.tagName === "link" && element.attributes.some(attribute => attribute.name.toLowerCase() === "rel"
+        && attribute.value.toLowerCase().split(/\s+/).includes("stylesheet")))
       && (!this.compact || element.preset !== "theme" && element.preset !== "generator"))
     const attributeEntry = this.state.elements.find(element =>
       element.id === this.attributeEditorId && representedIds.has(element.id),

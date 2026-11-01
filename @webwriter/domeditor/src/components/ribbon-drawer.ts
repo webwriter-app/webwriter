@@ -37,6 +37,7 @@ export class RibbonDrawer extends LitElement {
     label: {type: String},
     elementCount: {type: Number, attribute: "element-count"},
     showPaneIcon: {type: Boolean, attribute: "show-pane-icon"},
+    selectableHeading: {type: Boolean, attribute: "selectable-heading"},
     hidePaneLabel: {type: Boolean, reflect: true, attribute: "hide-pane-label"},
     layout: {type: String, reflect: true},
     pane: {type: Boolean, reflect: true},
@@ -702,7 +703,7 @@ export class RibbonDrawer extends LitElement {
       display: none;
     }
 
-    .drawer-toggle:hover,
+    .drawer-toggle:hover:not(:disabled),
     .drawer-toggle[aria-expanded="true"] {
       border-color: #c8d2df;
       color: var(--ribbon-control-color, #1e4f87);
@@ -965,9 +966,14 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
     }
 
+    .pane-label-button { display: inline-flex; align-items: center; padding: 0; border: 0; color: inherit; background: none; font: inherit; cursor: pointer; }
+    .pane-label-button:hover .pane-label-text { text-decoration: underline; }
+
     :host([pane]) .drawer.options .pane-label,
     :host([pane][layout="comments"]) .pane-label { padding-right: 0; }
     slot[name="heading-action"] { display: flex; margin-left: auto; }
+    slot[name="heading-control"] { display: flex; align-items: center; }
+    :host([theme-primary]) .options-row { display: none; }
 
     :host([pane][hide-pane-label][layout="history-versions"]) .drawer {
       display: flex; flex-direction: column; height: 100%; min-height: 0; padding: 0; border: 0; overflow: hidden;
@@ -1116,9 +1122,14 @@ export class RibbonDrawer extends LitElement {
       transition: var(--ww-ui-transition, border-color 120ms ease, color 120ms ease, background-color 120ms ease);
     }
 
-    :host([pane]) .drawer.options .drawer-toggle:hover {
+    :host([pane]) .drawer.options .drawer-toggle:hover:not(:disabled) {
       border-color: transparent;
       background: #e8eef5;
+    }
+
+    :host([pane]) .drawer.options .drawer-toggle:disabled {
+      color: #a5adb7;
+      cursor: default;
     }
 
     :host([pane]) .drawer.options .drawer-toggle-label {
@@ -1127,6 +1138,13 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
       line-height: 1;
     }
+
+    :host([pane][options-actions]) .options-row { position: relative; display: flex; align-items: center; margin: .35rem 0 0; }
+    :host([pane][options-actions]) .drawer.options .options-row .drawer-toggle {
+      width: auto; flex: 0 0 auto; margin: 0; padding-right: .2rem;
+    }
+    :host([pane][options-actions]) .options-row .drawer-icon { position: absolute; right: .9rem; }
+    :host([pane][options-actions]) slot[name="options-action"] { display: flex; align-items: center; }
 
     @media (prefers-reduced-motion: reduce) {
       .drawer,
@@ -1149,6 +1167,7 @@ export class RibbonDrawer extends LitElement {
   label = "Drawer"
   elementCount = 1
   showPaneIcon = false
+  selectableHeading = false
   hidePaneLabel = false
   layout = "default"
   pane = false
@@ -1561,7 +1580,7 @@ export class RibbonDrawer extends LitElement {
     const toggle = this.layout === "marks" && !this.collapsed ? "" : html`<button
       class="drawer-toggle"
       type="button"
-      ?hidden=${toggleUnavailable}
+      ?hidden=${toggleUnavailable && !stylePaneToggle}
       ?disabled=${toggleUnavailable}
       aria-controls="drawer-controls"
       aria-expanded=${this.drawerOpen}
@@ -1586,8 +1605,14 @@ export class RibbonDrawer extends LitElement {
           <span class="summary-label">${this.label}${elementCount}</span>
         </div>
        <span class="pane-label">
-         ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
-         ${this.label}${elementCount}
+         ${this.selectableHeading ? html`<button type="button" class="pane-label-button"
+           @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+           @click=${() => this.dispatchEvent(new CustomEvent("drawer-heading-select", {bubbles: true, composed: true}))}>
+           ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+           <span class="pane-label-text">${this.label}${elementCount}</span></button>` : html`
+           ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+           ${this.label}${elementCount}`}
+         <slot name="heading-control"></slot>
          <slot name="heading-action"></slot>
        </span>
        <div id="drawer-controls" class="controls">
@@ -1602,7 +1627,7 @@ export class RibbonDrawer extends LitElement {
           ` : html`
             <slot ?hidden=${this.compact}></slot>
             <slot name="compact" ?hidden=${!this.compact}></slot>
-            ${stylePaneToggle ? toggle : ""}
+            ${stylePaneToggle ? html`<div class="options-row">${toggle}<slot name="options-action"></slot></div>` : ""}
             <slot name="more" ?hidden=${!this.drawerContentOpen}></slot>
             <slot name="detail" ?hidden=${this.layout !== "marks" && !this.drawerContentOpen}></slot>
           `}

@@ -6,16 +6,21 @@ import simpleSource from "../../core/model/schemas/resource/themes/simple.css?ra
 import waterSource from "../../core/model/schemas/resource/themes/water.css?raw"
 import floatSource from "./document-floats.css?raw"
 import type {WidgetSchemaDefinition} from "./schema"
+import {documentTypographyCSS} from "./document-theme-options"
 
 const layeredSource = (source: string) => `@layer webwriter-theme {\n${source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`
+const listDefaults = `@layer webwriter-theme {
+  :where(ul, ol, menu) { list-style-position: inside; }
+  :is(ul, ol, menu) > li { list-style-position: inherit; }
+}`
 
 export const documentThemes = [
-  {value: "base", label: "Base", source: baseSource + "\n" + floatSource},
-  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource},
-  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource},
-  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource},
-  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + floatSource},
-  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource},
+  {value: "base", label: "Base", source: baseSource + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
+  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource + "\n" + listDefaults + "\n" + documentTypographyCSS},
 ] as const
 
 export type DocumentThemeName = typeof documentThemes[number]["value"]

@@ -12,6 +12,8 @@ import {aiChatStyles} from "./ai-chat.styles"
 import {proofreadingCardStyles, renderProofreadingCard} from "./proofreading-card"
 import {emptyDocumentHeadState, type DocumentHeadField, type DocumentHeadState} from "../document-head"
 import "./document-head-editor"
+import "./document-theme-options"
+import {documentThemeProperties} from "../document-theme-options"
 import {defaultCaptionEnumeration} from "../caption-enumeration"
 import type {SelectionPathItem, SelectedElementTypeState, ElementSelectionType} from "../editor-bridge"
 import {emptyProofreadingState, type ProofreadingAction, type ProofreadingState} from "../editor-bridge"
@@ -49,6 +51,7 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * contract. */
 export class DomEditorToolbox extends EditingControls {
   protected get commentReviewMode() { return this.activeTool === "Review" }
+  protected get headingLevelEditable() { return this.documentLayout.mode !== "board" }
 
   protected usesNativePointerInteraction(event: MouseEvent) {
     return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content") || target.localName === "distribution-controls"))
@@ -85,6 +88,7 @@ export class DomEditorToolbox extends EditingControls {
     collapsed: {type: Boolean, reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
+    documentThemeStyles: {attribute: false},
     elementSelected: {type: Boolean, attribute: false},
     documentHead: {attribute: false},
     documentHeadAttributeEditorId: {state: true},
@@ -686,6 +690,7 @@ export class DomEditorToolbox extends EditingControls {
     .specialized-widget-primary input[type="checkbox"]:not(.editor-switch), .specialized-widget-primary input[type="radio"] {
       width: 0.9rem; height: 0.9rem; flex: 0 0 auto; margin: 0;
     }
+    .details-open-default {display: flex; align-items: center; gap: .4rem; margin: .25rem 0;}
     .specialized-choice-group {min-height: 1.7rem;}
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: .6rem system-ui, sans-serif;}
     .specialized-choice-group button {display: flex; align-items: center; justify-content: center; gap: .2rem;}
@@ -693,6 +698,8 @@ export class DomEditorToolbox extends EditingControls {
     .list-indent {grid-column: 1 / -1; width: 100%; margin-bottom: .4rem;}
     .list-indent button {justify-content: space-between; padding-inline: .5rem; font-size: .68rem;}
     .media-toolbox-controls .media-attribute style-combobox {width: 100%;}
+    .media-alternative-text {grid-column: 1 / -1;}
+    .media-alternative-text .media-attribute {flex: 1 1 auto;}
     .specialized-options {display: flex; flex-direction: column; gap: .4rem; min-width: 0;}
     .document-primary, .document-options {grid-column: 1 / -1; width: 100%;}
     .field-label {display: flex; align-items: center; justify-content: space-between; gap: .15rem; min-width: 0;}
@@ -712,6 +719,7 @@ export class DomEditorToolbox extends EditingControls {
     .table-structure-controls > [action="table-header"] {grid-area: 3 / 2;}
     .table-structure-controls > [action="table-footer"] {grid-area: 3 / 3;}
     .specialized-options input, .specialized-options select {min-width: 0; border: 1px solid #c5ccd5; border-radius: 4px; background: #fff; font: inherit;}
+    .toolbox-pane-content :is(input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea):hover:not(:disabled), .media-source-field:hover, .shape-color-control:hover {border-color: #8eb6df; background-color: #eef4fb;}
 
     .style-reset {
       display: inline-flex; align-items: center; gap: 0.2rem; padding: 0.2rem;
@@ -806,6 +814,7 @@ export class DomEditorToolbox extends EditingControls {
   collapsed = false
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
+  documentThemeStyles: Record<string, unknown> = {}
   elementSelected = false
   documentHead: DocumentHeadState = emptyDocumentHeadState()
   private documentHeadAttributeEditorId = ""
@@ -897,7 +906,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private get resettableStyles() {
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const properties = documentTarget ? ["background-color"] : [
+    const properties = documentTarget ? documentThemeProperties : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
       "width", "height", "margin", "border-radius", "opacity", "box-shadow", "filter",
       ...Object.keys(this.elementStyle.inline).filter(name => /^(margin|padding)-(top|right|bottom|left|block(?:-start|-end)?|inline(?:-start|-end)?)$/.test(name)
@@ -923,6 +932,11 @@ export class DomEditorToolbox extends EditingControls {
 
   private advancedOpen = new Map<string, boolean>()
 
+  /** Show the document's theme controls. */
+  openDocumentThemeOptions() {
+    this.selectTool("Edit", true)
+  }
+
   // Toolbox panes are persistent controls, not transient ribbon popups.
   dismissDrawers() {}
 
@@ -934,25 +948,29 @@ export class DomEditorToolbox extends EditingControls {
   private renderUniversalStyleDrawer() {
     const disabled = !this.elementStyle.target
     const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
-    const advancedProperties = documentTarget ? ["background-color"] : ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
+    const advancedProperties = ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
     const advancedCount = advancedProperties.filter(name => name === "border-width"
       ? ["border-width", "border-style", "border-color"].some(property => Object.hasOwn(setProperties, property))
       : Object.hasOwn(setProperties, name)).length
     return html`
-      <ribbon-drawer label="Style" icon="Theme" layout="element-style" show-pane-icon expandable .advancedCount=${advancedCount}
+      <ribbon-drawer label=${documentTarget ? "Theme" : "Style"} icon=${documentTarget ? "Brush" : "Theme"} layout="element-style" show-pane-icon ?expandable=${!documentTarget} .advancedCount=${advancedCount}
+        ?theme-primary=${documentTarget}
         ?inert=${disabled} aria-disabled=${disabled ? "true" : "false"}
         style=${disabled ? "opacity: 0.5" : ""}>
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
-          ?disabled=${disabled || !(this.elementStyle.hasInlineStyles ?? Object.keys(this.elementStyle.inline).length > 0)}
+          ?disabled=${disabled || (documentTarget
+            ? !documentThemeProperties.some(name => this.elementStyle.inline[name] || this.documentThemeStyles[name])
+            : !(this.elementStyle.hasInlineStyles ?? Object.keys(this.elementStyle.inline).length > 0))}
           @click=${() => {
-            this.dispatchEvent(new CustomEvent("element-style-reset", {bubbles: true, composed: true}))
+            this.dispatchEvent(new CustomEvent("element-style-reset", {detail: documentTarget ? {theme: true} : null, bubbles: true, composed: true}))
           }}>${ribbonIcon("Restore")}Reset</button>
-        <element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>
+        ${documentTarget ? html`<document-theme-presets slot="heading-control" heading .state=${this.elementStyle}></document-theme-presets>
+          <document-theme-options .state=${this.elementStyle}></document-theme-options>` : html`<element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>`}
         ${this.renderElementLayoutControls()}
-        <element-style-editor slot="more" mode="compact" orientation="vertical"
+        ${!documentTarget ? html`<element-style-editor slot="more" mode="compact" orientation="vertical"
           .selectionKey=${JSON.stringify([this.elementAttributes?.path, this.elementStyle.target])}
-          .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>
+          .propertyNames=${advancedProperties} .state=${this.elementStyle}></element-style-editor>` : nothing}
       </ribbon-drawer>
     `
   }
@@ -1115,6 +1133,7 @@ export class DomEditorToolbox extends EditingControls {
     const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
     if(!this.isElementDrawerVisible(localName, namespaceURI)) return nothing
     const heading = namespaceURI === "http://www.w3.org/1999/xhtml" && /^h[1-6]$/.test(localName)
+    const details = namespaceURI === "http://www.w3.org/1999/xhtml" && localName === "details"
     const list = namespaceURI === "http://www.w3.org/1999/xhtml" && (localName === "ul" || localName === "ol")
     const listScopes = listGroups?.map(list => ({localName: list.element.localName, namespaceURI: list.element.namespaceURI}))
       ?? [selectionType ?? {localName, namespaceURI}]
@@ -1133,6 +1152,7 @@ export class DomEditorToolbox extends EditingControls {
     const count = [...advanced, ...mediaStyles].filter(name => Object.hasOwn(style.inline, name)).length
       + Object.keys(group ? {} : this.media?.attributes ?? {}).filter(name => name !== "style").length
       + (groupedWidgetOptions ? 0 : widgetOptions?.options.slice(3).filter(option => option.value !== null && option.value !== "").length ?? 0)
+    const mediaPrimaryOptions = this.media?.type ? mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name)) : []
     const label = heading ? "Heading" : list ? "List" : group ? attributes!.name : widget ? attributes?.name ?? getElementPresentation(localName).name : this.graphic?.active ? "Graphic" : this.math?.active ? "Formula" : this.table?.active && ["table", "td", "th"].includes(localName) ? (localName === "table" ? "Table" : "Table cell")
       : this.media ? this.mediaLabel(this.media.type) : attributes?.name ?? localName
     const tableGroup = this.selectedElementTypes.find(item => item.element.localName === "table")
@@ -1143,7 +1163,12 @@ export class DomEditorToolbox extends EditingControls {
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
     const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
-      .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
+      .elementCount=${group?.count ?? 1} show-pane-icon selectable-heading ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
+      @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("toolbox-element-select", {
+        detail: {selectionTypes: listGroups && listGroups.length > 1 ? listScopes : [{localName, namespaceURI,
+          ...((group?.count ?? 1) === 1 && attributes?.path ? {path: attributes.path} : {}),
+        }]}, bubbles: true, composed: true,
+      }))}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
       ${attributes ? html`<element-attribute-editor slot="heading-action" language-button .state=${attributes}
         .documentLanguage=${this.documentHead.language}></element-attribute-editor>` : nothing}
@@ -1156,7 +1181,15 @@ export class DomEditorToolbox extends EditingControls {
           configuredWidgetOptions.forEach(option => dispatchOption(option.name, null))
         }}>${ribbonIcon("Restore")}Reset</button>
       ${tableControls ? html`<div class="table-structure-controls" role="group" aria-label="Table structure">${this.renderTableStructureControls()}</div>` : nothing}
-      ${heading ? html`<div class="specialized-widget-primary heading-level"><div class="develop-field">
+      ${details && attributes ? html`<label class="specialized-widget-primary details-open-default">
+        <input type="checkbox" data-ribbon-input-persistent .checked=${Object.hasOwn(attributes.attributes, "open")}
+          @change=${(event: Event) => (event.currentTarget as HTMLInputElement).dispatchEvent(new CustomEvent("element-attribute-change", {
+            detail: {path: attributes.path, targetId: attributes.targetId, localName, namespaceURI,
+              name: "open", value: (event.currentTarget as HTMLInputElement).checked ? "" : null},
+            bubbles: true, composed: true,
+          }))}>Open by default
+      </label>` : nothing}
+      ${heading && this.headingLevelEditable ? html`<div class="specialized-widget-primary heading-level"><div class="develop-field">
         <span class="field-label" id=${`heading-level-${localName}`}>Level</span>
         <div class="specialized-choice-group" style="--choice-columns: 3" role="group" aria-labelledby=${`heading-level-${localName}`}>
           ${[1, 2, 3, 4, 5, 6].map(level => html`<button type="button"
@@ -1200,12 +1233,11 @@ export class DomEditorToolbox extends EditingControls {
         ${this.media.type === "video" && this.media.videoPlaybackWarning ? html`<div class="video-playback-warning" role="status">${this.media.videoPlaybackWarning === "unsupported"
           ? "This browser cannot play this video. Its format or codec may be unsupported. Try a WebM or MP4 version."
           : "No video track can be played; only audio may be available. The video codec may be unsupported. Try a WebM or MP4 version."}</div>` : nothing}
-        <div class="media-toolbox-controls">
+        ${mediaPrimaryOptions.length ? html`<div class="media-toolbox-controls media-primary-options">
+          ${mediaPrimaryOptions.map(option => this.renderMediaAttribute(this.media!.type, option))}
+        </div>` : nothing}
+        <div class="media-toolbox-controls media-alternative-text">
           ${mediaAttributeOptions[this.media.type].filter(option => ["alt", "aria-label"].includes(option.name))
-            .map(option => this.renderMediaAttribute(this.media!.type, option))}
-        </div>
-        <div class="media-toolbox-controls media-primary-options">
-          ${mediaAttributeOptions[this.media.type].filter(option => ["autoplay", "loop", "muted", "allowfullscreen"].includes(option.name))
             .map(option => this.renderMediaAttribute(this.media!.type, option))}
         </div>` : nothing}
       ${widgetOptions ? html`<div class="specialized-widget-primary">${groupedWidgetOptions
@@ -1305,7 +1337,6 @@ export class DomEditorToolbox extends EditingControls {
         <ribbon-button label="Import graphic" action="import-graphic" icon="Upload"></ribbon-button>
         <ribbon-button label="Save graphic" action="save-graphic" icon="Download"></ribbon-button>
         ${this.graphic.shape === "connector" ? this.renderGraphicConnectorControls(!captured) : nothing}
-        <ribbon-button label="Shapes" action="show-shape-keyboard" icon="Graphic" ?disabled=${!captured}></ribbon-button>
         ${this.renderGraphicArrangeControls(count, count > 0, captured)}
         ${["grid", "snap", "guides"].map(option => html`<ribbon-button label=${option[0].toUpperCase() + option.slice(1)}
           action=${`toggle-graphic-option:${option}`} toggle .active=${this.graphic?.options?.[option as "grid" | "snap" | "guides"] ?? true}
@@ -1355,7 +1386,7 @@ export class DomEditorToolbox extends EditingControls {
     const option = selected && this.graphic.shape ? graphicShapeOptions.find(option => option.type === this.graphic!.shape) : undefined
     const shapeName = this.graphic.shape
       ? this.graphic.shape[0].toUpperCase() + this.graphic.shape.slice(1).replaceAll("-", " ") : "Shape"
-    const label = !selected ? "Preset" : count > 1 ? "Shapes" : option?.label ?? shapeName
+    const label = !selected ? "Shape" : count > 1 ? "Shapes" : option?.label ?? shapeName
     const paint = selected ? {
       fill: this.graphic.parameters?.fill ?? defaultGraphicShapePaint.fill,
       stroke: this.graphic.parameters?.stroke ?? defaultGraphicShapePaint.stroke,
@@ -1363,7 +1394,7 @@ export class DomEditorToolbox extends EditingControls {
       opacity: this.graphic.parameters?.opacity ?? defaultGraphicShapePaint.opacity,
     } : this.shapePaint
     const fillColor = paint.fill === "none" ? (selected ? this.selectedShapeFillColor : this.shapeFillColor) : paint.fill
-    return html`<ribbon-drawer label=${label} icon=${option?.icon ?? "Graphic"} icon-path=${option?.path ?? nothing}
+    return html`<ribbon-drawer label=${label} icon=${option?.icon ?? "Shape"} icon-path=${option?.path ?? nothing}
       layout="shape-paint" show-pane-icon .elementCount=${count > 1 ? count : 1}>
       <div class="shape-paint-controls" role="group" aria-label=${selected ? "Selected shape style" : "New shape style"}>
         ${fillUnavailable ? nothing : html`
@@ -1398,7 +1429,10 @@ export class DomEditorToolbox extends EditingControls {
     const advancedCount = ["description", "keywords"].filter(field => this.documentHead[field as "description" | "keywords"]).length
       + this.documentHead.elements.filter(element => !["title", "author", "license", "description", "keywords", "generator", "theme", "caption-enumeration"].includes(element.preset ?? "")).length
       + Number(hasCaptions)
-    return html`<ribbon-drawer label="Document" icon="Document" layout="element-style" show-pane-icon expandable
+    return html`<ribbon-drawer label="Document" icon="Document" layout="element-style" show-pane-icon selectable-heading expandable
+      @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("breadcrumb-item-select", {
+        detail: this.selectionPath[0] ?? {path: [], name: "Document"}, bubbles: true, composed: true,
+      }))}
       data-specialized="document" .advancedCount=${advancedCount}
       @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
         this.documentHeadAttributeEditorId = event.detail.id
@@ -1634,28 +1668,7 @@ export class DomEditorToolbox extends EditingControls {
             detail: {enabled: false}, bubbles: true, composed: true,
           }))}>${ribbonIcon("Reject")}</button>` : nothing}
       </div>
-      ${this.consoleOpen ? this.renderDeveloperConsoleControls() : nothing}
     </footer>`
-  }
-
-  private renderEditModeFooter() {
-    return html`<footer class="edit-mode-footer">
-      ${this.renderDeveloperConsoleControls()}
-    </footer>`
-  }
-
-  private renderDeveloperConsoleControls() {
-    return html`<div class="developer-console-controls" role="group" aria-label="Developer console controls">
-        <button class="developer-console-toggle" type="button" aria-label="Developer console" title="Developer console"
-          aria-pressed=${this.consoleOpen} ?disabled=${this.htmlPending}
-          @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: !this.consoleOpen}, bubbles: true, composed: true}))}
-        >${ribbonIcon("Develop")}<span>Developer console</span></button>
-        ${this.consoleOpen ? html`<button class="console-close" type="button" aria-label="Close developer console" title="Close developer console"
-          ?disabled=${this.htmlPending}
-          @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: false}, bubbles: true, composed: true}))}
-        >${ribbonIcon("Reject")}</button>` : ""}
-      </div>
-    `
   }
 
   protected willUpdate(changed: Map<string, unknown>) {
@@ -1890,8 +1903,7 @@ export class DomEditorToolbox extends EditingControls {
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>
           </div>
-          ${this.activeTool === "Review" ? this.renderVersionsFooter()
-            : (this.activeTool === "Edit" || this.consoleOpen && this.activeTool !== "Feedback") ? this.renderEditModeFooter() : ""}
+          ${this.activeTool === "Review" ? this.renderVersionsFooter() : ""}
         </aside>
       </div>
     `

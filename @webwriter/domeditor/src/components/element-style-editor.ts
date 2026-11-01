@@ -3,7 +3,7 @@ import {tokenize} from "@csstools/css-tokenizer"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
-import {colorHex, themeColorColumns as borderColorColumns} from "../css-color"
+import {colorHex, themeColorColumns as borderColorColumns, themeColorCSS} from "../css-color"
 import {mediaSourceButtonStyles} from "./media-source.styles"
 import {mediaCropInsets} from "../media"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
@@ -74,7 +74,7 @@ const simpleDimension = (value: string, units: readonly string[]) => {
 
 const boxStylePresets = [
   {name: "White", background: borderColorColumns[0][0], border: borderColorColumns[1][0]},
-  {name: "Gray", background: borderColorColumns[0][1], border: borderColorColumns[1][1]},
+  {name: "Slate", background: borderColorColumns[3][1], border: borderColorColumns[3][0]},
   {name: "Blue", background: borderColorColumns[4][1], border: borderColorColumns[4][0]},
   {name: "Green", background: borderColorColumns[9][1], border: borderColorColumns[9][0]},
   {name: "Orange", background: borderColorColumns[5][1], border: borderColorColumns[5][0]},
@@ -209,8 +209,9 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .style-gallery button:focus-visible {
       outline: 2px solid #b9d7f5; outline-offset: 2px;
     }
-    .style-gallery button:hover { box-shadow: 0 0 0 2px #b9d7f5; }
+    .style-gallery button:hover { outline: 2px solid #8eb6df; outline-offset: 2px; }
     :host([mode="compact"]) .specialized-input {display: flex; align-items: stretch; min-height: 1.7rem; box-sizing: border-box; border: 1px solid #c5ccd5; border-radius: 4px; background: transparent;}
+    :host([mode="compact"]) .specialized-input:hover, :host([mode="compact"]) .compact-input:hover {border-color: #8eb6df; background: #eef4fb;}
     :host([mode="compact"]) .specialized-input > input, :host([mode="compact"]) .specialized-input > select {flex: 1; width: 0; height: 100%; min-width: 0; padding: .2rem .35rem; border: 0; border-radius: 0; background: transparent; outline: none; box-shadow: none;}
     :host([mode="compact"]) .specialized-input input::placeholder {font-size: .5rem;}
     :host([mode="compact"]) .specialized-input .length-control {display: flex; flex: 1; min-width: 0;}
@@ -218,7 +219,9 @@ export class ElementStyleEditor extends LitElement {
     :host([mode="compact"]) .specialized-input .length-control select {width: 2.8rem; border: 0; border-left: 1px solid #c5ccd5; border-radius: 0; background: transparent;}
     .specialized-input > input, .specialized-input > select {width: 100%; min-width: 0; border-radius: 4px;}
     .specialized-input style-combobox {flex: 1; min-width: 0;}
-    .crop-edges {display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; width: 100%; min-width: 0;}
+    .compact-row[data-property="object-view-box"] {flex-direction: column; align-items: stretch; gap: .3rem;}
+    .compact-row[data-property="object-view-box"] > .field-label {flex: none; font-weight: bold;}
+    .crop-edges {display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; width: 100%; min-width: 0;}
     .crop-edge {display: grid; gap: .15rem; min-width: 0;}
     .crop-edge .specialized-input {min-width: 0;}
     .crop-edge .crop-unit {align-self: center; padding-right: .3rem; color: #666;}
@@ -258,8 +261,13 @@ export class ElementStyleEditor extends LitElement {
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: inherit; font-size: .6rem;}
     .specialized-choice-group button span {display: flex; justify-content: center;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    [data-property="vertical-align"] .specialized-choice-group button {padding-inline: 0;}
+    [data-property="vertical-align"] .specialized-choice-group svg {width: .75rem; height: .75rem;}
     :host([dense-choices]) .specialized-choice-group button {padding-inline: 0;}
     :host([dense-choices]) .specialized-choice-group svg {width: .75rem; height: .75rem;}
+    :host([dense-choices]) :is([data-property="caption-side"], [data-property="empty-cells"]) .specialized-choice-group svg {width: 1rem; height: 1rem;}
+    :host([dense-choices]) [data-property="text-wrap"] .specialized-choice-group button {height: 1.5rem; min-height: 0; padding-block: 0;}
+    :host([dense-choices]) [data-property="text-wrap"] .specialized-choice-group svg {width: 1rem; height: 1rem;}
     .marker-control {width: 100%;}
     .marker-control [hidden] {display: none !important;}
     .marker-control .marker-popup {padding: .35rem; border-top: 1px solid #c5ccd5; border-radius: 4px;}
@@ -366,6 +374,8 @@ export class ElementStyleEditor extends LitElement {
     }
     .border-options button { background: white; border: 0; cursor: pointer; }
     .background-control { border: 1px solid #c5ccd5; height: 1.7rem; box-sizing: border-box; }
+    .background-control:hover { border-color: #8eb6df; }
+    .background-control summary:hover { background: #eef4fb; }
     .background-control .border-color-picker { width: 100%; border-left: 0; }
     .background-control .border-color-picker > summary { width: 100%; }
     .color-fields > [data-property] { display: flex; flex: 1; min-width: 0; }
@@ -1374,7 +1384,7 @@ export class ElementStyleEditor extends LitElement {
         ? html`<span class="text-color-preview" style=${`border-color:${current || selected}`}>Abc</span>`
         : html`<span class="border-color-chip" style=${`background:${current || (property === "background-color" ? "transparent" : selected)}`}></span>`}</summary>
       <div class="border-color-palette" role="group" aria-label=${`${label} palette`}>
-        ${renderColorPalette(label, current, choose, {automaticValue: property === "border-color" ? "currentColor" : ""})}
+        ${renderColorPalette(label, current, choose, {automaticValue: property === "border-color" ? "currentColor" : "", paletteHost: this})}
       </div>
     </details>`
   }
@@ -1558,21 +1568,26 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private renderCompactChoices(definition: ElementStylePropertyDefinition) {
+    const textChoices: Record<string, Record<string, string>> = {
+      "paint-order": {normal: "Normal", "stroke fill markers": "Stroke first", "fill stroke markers": "Fill first"},
+      "vector-effect": {none: "None", "non-scaling-stroke": "Fixed stroke"},
+    }
     const computed = this.state.computed[definition.name]?.trim()
     const value = this.editableValue(definition.name) || (definition.name === "hyphens" ? computed || "manual"
+      : definition.name === "list-style-position" ? computed || "inside"
       : !this.declaration(definition.name) && this.hasAttribute("dense-choices") ? definition.values![0] : computed)
     const rtl = this.state.computed.direction === "rtl"
     const current = ["text-align", "text-align-last"].includes(definition.name)
       ? value === "start" ? rtl ? "right" : "left" : value === "end" ? rtl ? "left" : "right" : value : value
-    const columns = this.hasAttribute("dense-choices")
+    const columns = definition.name === "vertical-align" ? definition.values!.length : this.hasAttribute("dense-choices")
       ? Math.min(6, definition.values!.length)
       : Math.min(4, Math.ceil(definition.values!.length / (definition.values!.length > 4 ? 2 : 1)))
     return html`<div class="specialized-choice-group" ?data-default=${!this.declaration(definition.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${definition.name}`}>
       ${definition.values!.map((value, index) => html`<button type="button"
         ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((definition.values!.length - 1) / columns) * columns}
         aria-pressed=${current === value}
-        title=${value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
-        aria-label=${value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
+        title=${textChoices[definition.name]?.[value] ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
+        aria-label=${textChoices[definition.name]?.[value] ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
         @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
         @click=${() => this.commitValue(definition.name, value)}><span aria-hidden="true">${ribbonOptionIcon(definition.name, value)}</span></button>`)}
     </div>`
@@ -1930,7 +1945,7 @@ export class ElementStyleEditor extends LitElement {
     if(!edges) return this.renderInput(definition, this.declaration("object-view-box"))
     return html`<div class="crop-edges" role="group" aria-label="Crop edges in percent">
       ${["Top", "Right", "Bottom", "Left"].map((edge, index) => html`<label class="crop-edge">
-        <span>${edge}</span><span class="specialized-input">
+        <span class="specialized-input">
           <input type="number" min="0" max="100" step="any" aria-label=${`Crop ${edge.toLowerCase()} (%)`}
             .value=${String(edges[index])}
             @change=${(event: Event) => {
@@ -1943,7 +1958,7 @@ export class ElementStyleEditor extends LitElement {
               }
               this.commitValue("object-view-box", next.every(value => value === 0) ? "" : `inset(${next.map(value => `${value}%`).join(" ")})`)
             }}><span class="crop-unit" aria-hidden="true">%</span>
-        </span>
+        </span><span>${edge}</span>
       </label>`)}
     </div>`
   }
@@ -1956,7 +1971,7 @@ export class ElementStyleEditor extends LitElement {
         ${mediaCrop ? this.renderMediaCrop(definition) : definition.name === "list-style-type" && definition.control === "select" && definition.values?.length
           ? this.renderMarkerChoices(definition) : definition.control === "number" || definition.control === "length" || ["line-height", "border-spacing", "math-depth"].includes(definition.name)
           ? this.renderSpecializedNumber(definition) : definition.control === "select" && definition.values?.length && definition.values.length <= 8
-          && definition.values.every(value => value.length <= 14)
+          && (definition.values.every(value => value.length <= 14) || ["paint-order", "vector-effect"].includes(definition.name))
           ? this.renderCompactChoices(definition) : this.renderInput(definition, this.declaration(definition.name))}
       </div>
     </div>`
@@ -1967,21 +1982,26 @@ export class ElementStyleEditor extends LitElement {
     const cellTarget = ["td", "th"].includes(this.state.target?.localName ?? "")
     const saturated = this.galleryPage >= 2
     const columns = [1, 3, 4, 9, 5, 7, 6, 8]
+    const palette = getComputedStyle(this)
     const presets = boxStylePresets.map((preset, index) => ({...preset,
-      background: saturated ? borderColorColumns[columns[index]][4] : preset.background,
-      border: saturated ? borderColorColumns[columns[index]][5] : preset.border,
+      name: columns[index] >= 3 && palette.getPropertyValue(`--ww-editor-color-${columns[index]}-0`).trim() ? `Accent ${columns[index] - 2}` : preset.name,
+      background: colorHex(palette.getPropertyValue(`--ww-editor-color-${columns[index]}-${saturated ? 4 : 1}`), `#${saturated ? borderColorColumns[columns[index]][4] : preset.background}`).slice(1),
+      border: colorHex(palette.getPropertyValue(`--ww-editor-color-${columns[index]}-${saturated ? 5 : 0}`), `#${saturated ? borderColorColumns[columns[index]][5] : preset.border}`).slice(1),
     }))
     return html`<div class="gallery-pages">
       <button class="gallery-page" aria-label="Previous style presets" ?disabled=${this.galleryPage === 0}
         @click=${() => this.galleryPage--}>${ribbonIcon("ChevronRight")}</button>
       <div class="style-gallery" role="group" aria-label=${`Style presets, page ${this.galleryPage + 1} of 4`}>
-      ${presets.map(preset => html`<button type="button" aria-label=${`${preset.name} style preset`}
+      ${presets.map((preset, index) => html`<button type="button" aria-label=${`${preset.name} style preset`}
         title=${`${preset.name}: #${preset.background}${this.documentRootTarget ? "" : `, 1px solid #${preset.border}${cellTarget ? "" : ", 4px corners"}, 8px padding`}`}
-        style=${`background:#${preset.background};border-color:#${preset.border};box-shadow:${shadow};color:${saturated ? "#fff" : "#2f3742"}`}
-        @click=${() => {
-          const values: Record<string, string> = {"background-color": `#${preset.background}`}
+        style=${`background:${index === 0 && !saturated ? `#${preset.background}` : themeColorCSS(columns[index], saturated ? 4 : 1)};border-color:${index === 0 && !saturated ? `#${preset.border}` : themeColorCSS(columns[index], saturated ? 5 : 0)};box-shadow:${shadow};color:${saturated ? "#fff" : "#2f3742"}`}
+        @click=${(event: Event) => {
+          const computed = getComputedStyle(event.currentTarget as Element)
+          const background = colorHex(computed.backgroundColor, `#${preset.background}`)
+          const border = colorHex(computed.borderColor, `#${preset.border}`)
+          const values: Record<string, string> = {"background-color": background}
           if(!this.documentRootTarget) Object.assign(values, {
-            "border-width": "1px", "border-style": "solid", "border-color": `#${preset.border}`,
+            "border-width": "1px", "border-style": "solid", "border-color": border,
             "padding": "8px", "color": saturated ? "#ffffff" : "#2f3742",
             ...(!cellTarget ? {"border-radius": "4px", "box-shadow": shadow} : {}),
           })

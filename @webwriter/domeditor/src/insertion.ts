@@ -100,6 +100,10 @@ export function startRibbonInsertionDrag(event: DragEvent, action: string, icon:
 
 /** Only insertion commands that create an element can be dragged from the ribbon. */
 export function ribbonElementTag(label: string, action = label) {
+  if(action.startsWith("element:")) {
+    const tag = action.slice("element:".length)
+    return insertionMenuItems.some(item => item.tag === tag) ? tag : null
+  }
   if(label === "Heading") return "h1"
   if(action === "toggle-list:ul") return "ul"
   if(action === "toggle-list:ol") return "ol"
@@ -110,10 +114,5 @@ export function ribbonElementTag(label: string, action = label) {
 
 export function startElementDrag(event: DragEvent, tag: string, icon: Element | null) {
   if(!event.dataTransfer || !insertionMenuItems.some(item => item.tag === tag)) return
-  // Use the same boundary-routing marker as widgets. During dragover the
-  // payload may be hidden, but the drag must still reach editor overlays.
-  startRibbonInsertionDrag(event, `element:${tag}`, icon, emptyElementHTML(tag))
-  event.dataTransfer.setData(elementDragType, tag)
-  // Dragover may inspect types, but browsers hide data values until drop.
-  event.dataTransfer.setData(`${elementDragType}-${tag}`, tag)
+  startRibbonInsertionDrag(event, `element:${tag}`, icon)
 }

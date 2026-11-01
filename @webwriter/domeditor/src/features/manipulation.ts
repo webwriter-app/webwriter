@@ -1,4 +1,6 @@
 import {createRelativePositionFromJSON, relativePositionToJSON} from "yjs"
+import {documentThemeProperties, documentTypographyCSS, documentTypographyProperties} from "../document-theme-options"
+import {themeAccentProperties} from "../css-color"
 import {tokenize} from "@csstools/css-tokenizer"
 import {mediaElementSelector, isMediaType, mediaDefaultHTML} from "../media"
 import {MATH_NAMESPACE} from "../math"
@@ -26,6 +28,7 @@ import {
 import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStylePropertyNameSet, specializedElementStyle} from "../element-styles"
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
+import {authoredDetailsOpen, isHTMLDetailsElement} from "../editor-artifacts"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
@@ -507,7 +510,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     if(tag === "details") {
       const details = document.createElement("details")
-      details.append(document.createElement("summary"))
+      details.append(document.createElement("summary"), document.createElement("p"))
       return details
     }
     if(isMediaType(tag)) {
@@ -1343,6 +1346,72 @@ export class ManipulationFeature extends EditorFeature {
     return paragraph.isConnected
   }
 
+  /** Replace a selected disclosure with its summary and body in document order. */
+  private unwrapDetailsForParagraphInsertion(range: Range, selected: Element | null) {
+    if(selected?.matches("ul, ol, dl, menu, li, dt, dd")) return false
+    const origin = selected ?? getContainer(range.startContainer)
+    const owner = origin.closest("details, ul, ol, dl, menu")
+    if(!(owner instanceof HTMLDetailsElement) || owner.hasAttribute("is")
+      || !owner.isConnected || atomicEditingContainer(owner, this.editor.schema)) return false
+    if(selected !== owner && (!owner.contains(range.startContainer) || !owner.contains(range.endContainer))) return false
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode, focus = selection?.focusNode
+    const anchorOffset = selection?.anchorOffset ?? 0, focusOffset = selection?.focusOffset ?? 0
+    const summary = Array.from(owner.children).find(child => child.localName === "summary" && child.namespaceURI === owner.namespaceURI)
+    const result: Node[] = []
+    let paragraph: HTMLParagraphElement | null = null
+    for(const child of Array.from(owner.childNodes)) {
+      if(child === summary) {
+        const start = result.length
+        for(const node of Array.from(summary.childNodes)) {
+          if(isElement(node) && !this.isInlineClipboardNode(node) && !isAtomicEditingElement(node, this.editor.schema)) {
+            result.push(node)
+            paragraph = null
+          }
+          else {
+            if(!paragraph) {
+              paragraph = document.createElement("p")
+              result.push(paragraph)
+            }
+            paragraph.append(node)
+          }
+        }
+        if(result.length === start) result.push(document.createElement("p"))
+        const firstSummaryBlock = result.slice(start).find(isElement)!
+        for(const attribute of Array.from((cloneWithoutEditorMarkers(summary, false) as Element).attributes)) {
+          if(!firstSummaryBlock.hasAttributeNS(attribute.namespaceURI, attribute.localName)) firstSummaryBlock.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        }
+        paragraph = null
+      }
+      else if(child.nodeType === Node.COMMENT_NODE || isElement(child) && !this.isInlineClipboardNode(child)) {
+        result.push(child)
+        paragraph = null
+      }
+      else {
+        if(!paragraph) {
+          paragraph = document.createElement("p")
+          result.push(paragraph)
+        }
+        paragraph.append(child)
+      }
+    }
+    if(!result.some(isElement)) result.push(document.createElement("p"))
+    const first = result.find(isElement)!
+    const authored = cloneWithoutEditorMarkers(owner, false) as Element
+    for(const attribute of Array.from(authored.attributes)) {
+      if(attribute.namespaceURI === null && attribute.name === "open") continue
+      if(!first.hasAttributeNS(attribute.namespaceURI, attribute.localName)) first.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+    }
+    owner.replaceWith(...result)
+    if(selection && anchor?.isConnected && focus?.isConnected && owner !== anchor && owner !== focus
+      && selected !== owner) {
+      const clamp = (node: Node, offset: number) => Math.min(offset, node instanceof Text ? node.length : node.childNodes.length)
+      selection.setBaseAndExtent(anchor, clamp(anchor, anchorOffset), focus, clamp(focus, focusOffset))
+    }
+    else $.move(first)
+    return true
+  }
+
   /** Converts the live selection before falling back to ordinary insertion.
    * Validate the exact split on an inert DOM first, so unsupported shapes
    * leave authored content untouched. A claimed but invalid conversion is
@@ -1360,6 +1429,9 @@ export class ManipulationFeature extends EditorFeature {
     if(!root.contains(range.startContainer) || !root.contains(range.endContainer)
       || atomicEditingContainer(range.startContainer, this.editor.schema)
       || atomicEditingContainer(range.endContainer, this.editor.schema)) return true
+
+    if(tag === "p" && (this.unwrapDetailsForParagraphInsertion(range, this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? null)
+      || this.editor.features.list.unwrapSelectionToParagraphs())) return true
 
     if(/^h[1-6]$/.test(tag) && (getContainer(range.startContainer).closest("li, dt, dd")
       || getContainer(range.endContainer).closest("li, dt, dd"))) return true
@@ -1407,8 +1479,13 @@ export class ManipulationFeature extends EditorFeature {
         output.append(wrapper)
         return output
       }
+      const convertedHeadings = new WeakSet<Element>()
       if(tag === "ul" || tag === "ol") {
-        for(const child of Array.from(fragment.children)) this.editor.features.list.prepareItemContent(child)
+        for(const child of Array.from(fragment.children)) {
+          const heading = child.matches("h1, h2, h3, h4, h5, h6")
+          const prepared = this.editor.features.list.prepareItemContent(child)
+          if(heading && prepared !== child) convertedHeadings.add(prepared)
+        }
       }
       // List items and table cells become text units. Keep their contents,
       // including nested lists, comments, and unfamiliar flow elements.
@@ -1497,7 +1574,10 @@ export class ManipulationFeature extends EditorFeature {
         }
         else target = inline
         if(block && unit.matches("p, h1, h2, h3, h4, h5, h6")) {
-          if(wrapper) target.append(unit)
+          if(wrapper && tag !== "table" && unit.matches("p") && !convertedHeadings.has(unit)) {
+            this.editor.features.list.appendItemContent(target, unit)
+          }
+          else if(wrapper) target.append(unit)
           else target.append(...Array.from(unit.childNodes))
         }
         else if(block && unit.localName === "div") {
@@ -1950,6 +2030,7 @@ export class ManipulationFeature extends EditorFeature {
 
   setHeadingGroupLevel(level: HeadingGroupSelectionState["heading"]) {
     if(!level) throw new TypeError("A heading group requires a heading level")
+    if(documentLayoutMode() === "board") return
     const group = this.activeHeadingGroup()
     if(!group) return
     const heading = this.directHeading(group)
@@ -2461,6 +2542,7 @@ export class ManipulationFeature extends EditorFeature {
 
     const count = this.withNormalization(() => blocks.reduce((converted, block) => {
       if(block.localName === tag || !block.isConnected
+        || documentLayoutMode() === "board" && /^h[1-6]$/.test(block.localName) && /^h[1-6]$/.test(tag)
         || /^h[1-6]$/.test(tag) && block.closest("li, dt, dd")) return converted
       const candidate = document.createElement(tag)
       this.copyAuthoredAttributes(block, candidate)
@@ -2496,6 +2578,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Returns authored declarations and the requested computed values without
    * retaining or exposing a live CSSStyleDeclaration across the editor bridge. */
   private stylePropertyTarget(target: Element, name: string) {
+    if(themeAccentProperties.includes(name) && (target === document.documentElement || target === document.body || isDocumentRoot(target))) return document.documentElement
     if(target.matches("figure:not([is])") && target.querySelector(":scope > figcaption")
       && ["rotate", "scale", "translate", "transform", "transform-origin"].includes(name)) {
       return captionedFigureContent(target)
@@ -3609,6 +3692,25 @@ export class ManipulationFeature extends EditorFeature {
       }
       else this.setStyle(styles)
     },
+    setDocumentThemeStyles: ({styles}: {type: "setDocumentThemeStyles", styles: Record<string, ElementStyleMutation>}) => {
+      const entries = this.validateElementStyles(styles).filter(entry => documentThemeProperties.includes(entry.name))
+      if(!entries.length || this.editor.isEditingLocked) return false
+      const target = this.documentStyleTarget(getDocumentRoot())
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        // Theme overrides can have been set on either root across layout
+        // changes. Clear the other declaration so it cannot mask this preset.
+        let changed = false
+        for(const entry of entries) {
+          const destination = this.stylePropertyTarget(target, entry.name)
+          const other = destination === document.documentElement ? document.body : document.documentElement
+          changed = this.applyStyleEntries(other, [{...entry, value: null}]) || changed
+          if(!this.inlineStyleOf(other)?.length) other.removeAttribute("style")
+        }
+        return this.applyElementStyleEntries(target, entries) || changed
+      }
+      finally { end() }
+    },
     resetStyle: ({topLevel}: {type: "resetStyle", topLevel?: boolean}) => {
       const cells = this.editor.features.table.hasCellSelection ? this.editor.features.table.selectedCells : []
       const targets = topLevel && !cells.length ? this.topLevelStyleTargets
@@ -4062,6 +4164,7 @@ export class ManipulationFeature extends EditorFeature {
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")
       || direction && this.editor.features.board.atBoundary(direction)) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
+    if(direction === "backward" && this.joinFirstDetailsParagraphIntoSummary()) return
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     const range = $.range
     // A widget exposes its content, not its own identity or its sibling pages,
@@ -4189,6 +4292,28 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     })
+  }
+
+  /** Backspace at the first Details paragraph joins its children into Summary,
+   * retaining the paragraph as the required editable body. */
+  private joinFirstDetailsParagraphIntoSummary() {
+    const selection = document.getSelection()
+    if(!selection?.isCollapsed || !selection.anchorNode) return false
+    const paragraph = getContainer(selection.anchorNode).closest("p")
+    const details = paragraph?.parentElement
+    if(!paragraph || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || atomicEditingContainer(paragraph, this.editor.schema)
+      || !isCaretAtBoundary(paragraph, "start")) return false
+    const summary = details.querySelector(":scope > summary")
+    const content = Array.from(details.childNodes).filter(node => node.nodeType !== Node.COMMENT_NODE
+      && !(node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()))
+    if(!summary || content[0] !== summary || content[1] !== paragraph) return false
+    this.withNormalization(() => {
+      const seam = summary.childNodes.length
+      summary.append(...Array.from(paragraph.childNodes))
+      $.move(summary, seam)
+    })
+    return true
   }
 
   /** Range deletion leaves trailing ASCII spaces collapsed by native editing.
@@ -4406,14 +4531,30 @@ export class ManipulationFeature extends EditorFeature {
       ?? (name.includes(":") ? null : node.getAttributeNode(name))
     const previousAttribute = previousName ? attribute(previousName) : null
 
-    // Set the new name before removing the old one so an invalid XML name
-    // cannot turn a failed rename into data loss.
-    set(name, value)
-    if(previousAttribute && node.getAttributeNodeNS(previousAttribute.namespaceURI, previousAttribute.localName) === previousAttribute
-      && previousAttribute !== attribute(name)) {
-      if(previousAttribute.name === "class" && !previousAttribute.namespaceURI) setClass(null)
-      else node.removeAttributeNode(previousAttribute)
+    const apply = () => {
+      // Set the new name before removing the old one so an invalid XML name
+      // cannot turn a failed rename into data loss.
+      set(name, value)
+      if(previousAttribute && node.getAttributeNodeNS(previousAttribute.namespaceURI, previousAttribute.localName) === previousAttribute
+        && previousAttribute !== attribute(name)) {
+        if(previousAttribute.name === "class" && !previousAttribute.namespaceURI) setClass(null)
+        else node.removeAttributeNode(previousAttribute)
+      }
     }
+    if(isHTMLDetailsElement(node)
+      && (name.toLowerCase() === "open" || previousName?.toLowerCase() === "open") && this.editor.doc.root.contains(node)) {
+      this.editor.doc.commitAuthoredDetailsOpen(node, () => {
+        const nextOpen = name.toLowerCase() === "open" && value !== null
+        // A disclosure may already have the desired live state through a native
+        // toggle. Produce an attribute mutation for authored-change observers.
+        if(authoredDetailsOpen(node) !== nextOpen && node.hasAttribute("open") === nextOpen) {
+          if(nextOpen) node.removeAttribute("open")
+          else node.setAttribute("open", "")
+        }
+        apply()
+      })
+    }
+    else apply()
   }
 
   private validatedStyleEntries(styles: Record<string, ElementStyleMutation>) {
@@ -4525,6 +4666,17 @@ export class ManipulationFeature extends EditorFeature {
   private applyElementStyleEntries(element: Element, entries: ValidatedStyleEntry[]) {
     if(!element.isConnected || !(getDocumentRoot().contains(element)
       || element === document.documentElement && documentLayoutMode() === "document") || this.editor.isEditingLocked) return false
+    if((element === document.documentElement || element === document.body || isDocumentRoot(element))
+      && entries.some(entry => entry.value !== null && documentTypographyProperties.includes(entry.name))
+      && !Array.from(document.head.querySelectorAll("style"))
+        .some(style => style.textContent?.includes(documentTypographyCSS))) {
+      // Older documents embed an earlier bundled theme. Keep their stylesheet
+      // intact and make the new options work in standalone HTML as well.
+      const style = document.createElement("style")
+      style.setAttribute("data-ww-theme-options", "")
+      style.textContent = documentTypographyCSS
+      document.head.append(style)
+    }
     const targets = new Map<Element, ValidatedStyleEntry[]>()
     const add = (target: Element, entry: ValidatedStyleEntry) => targets.set(target, [...(targets.get(target) ?? []), entry])
     for(const entry of this.allowedElementStyles(element, entries)) {
@@ -4576,7 +4728,7 @@ export class ManipulationFeature extends EditorFeature {
         || !["relative", "absolute", "sticky"].includes(value.trim().toLowerCase()))
     }
     return isDocumentRoot(target) || target === document.body || target === document.documentElement && documentLayoutMode() === "document"
-      ? entries.filter(({name}) => name === "background" || name.startsWith("background-"))
+      ? entries.filter(({name}) => name === "background" || name.startsWith("background-") || documentThemeProperties.includes(name))
       : entries
   }
 

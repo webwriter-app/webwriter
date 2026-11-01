@@ -2585,6 +2585,16 @@ await check("gap carets track their authored boundary", async () => {
         assert(!view.editor!.toHTML(true).includes("◆"), `${tag}: gap markers leaked into HTML`)
       }
     }
+    doc.body.innerHTML = "<p>one one</p><!--keep--><p><span>two</span></p>"
+    const second = doc.querySelectorAll("p")[1], text = second.querySelector("span")!.firstChild!
+    selection.setPosition(doc.body, doc.body.childNodes.length)
+    feature.processSelection(undefined, {scrollIntoView: false})
+    assert(second.classList.contains("◆gap-after-selected"), "trailing gap did not select the second paragraph")
+    const up = new (view as Window & typeof globalThis).KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    doc.dispatchEvent(up)
+    assert(up.defaultPrevented, "ArrowUp from the trailing gap was left to native navigation")
+    assert(selection.anchorNode === text && selection.anchorOffset === 0, "ArrowUp skipped the adjacent paragraph")
+    assert(!view.editor!.toHTML(true).includes("◆"), "gap navigation leaked markers into HTML")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
@@ -2846,10 +2856,12 @@ await check("text containers resize horizontally and fit their content", async (
         await layoutFrame()
         const feature = editor.features.transformation, before = target.getBoundingClientRect()
         if(mode === "document") {
-          const copyright = editor.appendix.querySelector<HTMLElement>(".◆attribution-ui .copyright")!.getBoundingClientRect()
-          const deleter = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-delete")!.getBoundingClientRect()
-          assert(Math.abs(copyright.left + copyright.width / 2 - (deleter.left + deleter.width / 2)) < 1, `${tag}: copyright is not aligned below the delete control`)
-          assert(Math.abs(copyright.top + copyright.height / 2 - (before.top + before.bottom) / 2) < 1, `${tag}: copyright is not at the right midpoint`)
+          const control = editor.appendix.querySelector<HTMLElement>(".copyright")!
+          const copyright = control.getBoundingClientRect()
+          assert(control.parentElement === feature.overlay, `${tag}: copyright is outside the transform frame`)
+          assert(Math.abs(copyright.left + copyright.width / 2 - before.left) < 2
+            && Math.abs(copyright.top + copyright.height / 2 - (before.top - 3)) < 2,
+            `${tag}: copyright is not at the frame's top-left corner`)
         }
         const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
         assert(handles.length === 1 && handles[0].dataset.resizeDirection === "down-right", `${mode}/${tag}: vertical handles remain visible`)
@@ -3641,8 +3653,9 @@ await check("attribution is limited to top-level elements and follows nesting", 
       doc.dispatchEvent(new view.Event("selectionchange"))
       await layoutFrame()
       if(!existing) {
-        const add = ui.querySelector<HTMLButtonElement>(".copyright")!
-        assert(!ui.querySelector<HTMLElement>(".bridge")!.hidden, "top-level section has no attribution affordance")
+        const add = editor.appendix.querySelector<HTMLButtonElement>(".copyright")!
+        assert(add.parentElement === editor.features.transformation.overlay && !add.hidden,
+          "top-level section has no attribution affordance in its transform frame")
         add.click()
         assert(!ui.querySelector<HTMLElement>(".popup")!.hidden, "top-level section cannot open attribution")
         ui.querySelector<HTMLButtonElement>(".close")!.click()
@@ -4700,6 +4713,22 @@ await check("touch caret and ranges use shared pointer selection", async () => {
     touch("pointerup", end)
     assert($.anchor === before && $.anchorOffset === 2 && $.focus === after && $.focusOffset === 2, "touch drag did not use shared range selection")
     assert(!editor.features.selection.isInDragSelection && !document.body.classList.contains("◆selection-dragging"), "touch selection did not clean up")
+    start = point(before); end = point(after)
+    touch("pointerdown")
+    touch("pointermove", end)
+    const transient = document.createRange()
+    transient.selectNode(paragraph)
+    getSelection()!.removeAllRanges()
+    getSelection()!.addRange(transient)
+    document.dispatchEvent(new Event("selectionchange"))
+    const transform = editor.appendix.querySelector<HTMLElement>("#◆transform-overlay")
+    assert(editor.features.selection.isInDragSelection && $.selectedElement === paragraph, "drag did not reach the transient element range")
+    assert(!paragraph.classList.contains("◆element-selected") && !document.body.classList.contains("◆node-selection-active")
+      && editor.features.transformation.target === null && transform?.getAttribute("visibility") === "hidden",
+      "transient element range showed active element controls during drag")
+    touch("pointerup", end)
+    assert(paragraph.classList.contains("◆element-selected") && editor.features.transformation.target === paragraph,
+      "released drag did not restore the element selection")
     const relay = (event: "pointerdown" | "pointermove" | "pointerup", coordinates = start) => replayHostPointer({
       event, x: coordinates.clientX, y: coordinates.clientY, pointerId: 72, buttons: event === "pointerup" ? 0 : 1,
     })
@@ -4908,6 +4937,147 @@ await check("selection feature treats custom element as atomic", async () => {
     }
   }
   finally { paragraph.remove(); $.selectElement(widget); editor.features.selection.processSelection() }
+})
+
+await check("reverse drag hit testing keeps atomic media inside the range", async () => {
+  const container = document.createElement("div")
+  fixture.append(container)
+  try {
+    for(const [tag, html] of [
+      ["img", "<img>"],
+      ["svg", '<svg viewBox="0 0 320 180"><rect width="320" height="180"/></svg>'],
+      ["video", "<video></video>"],
+      ["audio", "<audio></audio>"],
+      ["iframe", "<iframe></iframe>"],
+    ] as const) {
+      container.innerHTML = `${html}<p></p>`
+      const media = container.firstElementChild!, paragraph = container.querySelector("p")!
+      const styledMedia = media as HTMLElement | SVGSVGElement
+      styledMedia.style.cssText = "display:block;width:320px;height:180px"
+      paragraph.style.cssText = "height:32px;margin:24px 0 0"
+      media.scrollIntoView({block: "center", behavior: "instant"})
+      await layoutFrame()
+      const rect = media.getBoundingClientRect(), parent = media.parentNode!, index = Array.from(parent.childNodes).indexOf(media)
+      assert(rect.width > 0 && rect.height > 0, `${tag}: media has no hit-test box`)
+      const anchor = document.createRange()
+      anchor.setStart(paragraph, 0)
+      anchor.collapse(true)
+      for(const fraction of [.9, .6, .4, .2, .6, .9]) {
+        const point = $.pointFromCoords(rect.left + rect.width / 2, rect.top + rect.height * fraction,
+          document.body, editor.schema, undefined, undefined, anchor)
+        assert(point?.node === parent && point.offset === index,
+          `${tag}: reverse drag left the media at ${fraction} of its box (${point?.node.nodeName}:${point?.offset})`)
+      }
+    }
+  }
+  finally {
+    container.remove()
+    $.selectDocumentStart()
+    editor.features.selection.processSelection()
+  }
+})
+
+await check("drag ranges keep empty media icons while hiding source controls", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:700px;height:400px;border:0"
+  frame.srcdoc = '<!doctype html><body><p></p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "image selection fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    doc.body.innerHTML = '<p style="height:30px;margin:0"></p><img style="display:block;width:240px;height:120px" src="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'240\' height=\'120\'%3E%3Crect width=\'240\' height=\'120\' fill=\'skyblue\'/%3E%3C/svg%3E">'
+    const paragraph = doc.querySelector("p")!, image = doc.querySelector("img")!
+    await image.decode()
+    await layoutFrame()
+    const media = image.getBoundingClientRect()
+    doc.getSelection()!.setBaseAndExtent(paragraph, 0, doc.body, 2)
+    editor.features.selection.isInDragSelection = true
+    editor.features.selection.processSelection(true)
+    await layoutFrame()
+    const selection = doc.getSelection()!, overlay = editor.appendix.querySelector<HTMLElement>('[part~="atomic-selection-overlay"]')
+    assert(editor.features.selection.isInDragSelection, "selection refresh cleared the drag state")
+    assert(!selection.isCollapsed && selection.anchorNode === paragraph && selection.focusNode === doc.body
+      && selection.focusOffset === 2, "live range did not include the image")
+    assert(image.classList.contains("◆atomic-range-selected") && overlay, "image did not join the visible live range")
+    const painted = overlay!.getBoundingClientRect()
+    assert(painted.width >= media.width - 1 && painted.height >= media.height - 1
+      && Math.abs(painted.left - media.left) < 2 && Math.abs(painted.top - media.top) < 2,
+    "image selection overlay does not cover the image")
+    assert(!paragraph.classList.contains("◆empty-selected") && !doc.body.classList.contains("◆node-selection-active")
+      && !editor.features.transformation.target, "drag exposed an empty caret or active element selection")
+    assert(!editor.toHTML(true).includes("◆"), "selection marker entered authored HTML")
+    image.removeAttribute("src")
+    const placeholder = editor.features.media.placeholder
+    placeholder.showFor(image)
+    assert(placeholder.element.hasAttribute("data-open"), "empty image controls did not open")
+    editor.features.media.refreshPlaceholder()
+    editor.features.selection.processSelection(true)
+    await layoutFrame()
+    assert(!placeholder.element.hasAttribute("data-open") && view.getComputedStyle(placeholder.element).display === "none",
+      "empty image controls stayed visible during the range drag")
+    assert(image.classList.contains("◆atomic-range-selected")
+      && editor.appendix.querySelector('[part~="atomic-selection-overlay"]'), "empty image lost its live range overlay")
+    editor.features.selection.isInDragSelection = false
+    editor.features.selection.processSelection()
+    doc.body.innerHTML = '<p></p><svg viewBox="0 0 320 180" style="width:320px;height:180px"><image width="320" height="180"/></svg><iframe style="width:320px;height:180px"></iframe>'
+    await layoutFrame()
+    const graphicPlaceholder = editor.appendix.querySelector<HTMLElement>('[part="graphic-image-placeholder"]')!
+    const shield = editor.appendix.querySelector<HTMLElement>('[data-empty-website]')!
+    assert(graphicPlaceholder && shield && view.getComputedStyle(graphicPlaceholder).display === "grid",
+      "empty SVG image and website cues did not render before the drag")
+    placeholder.showFor(doc.querySelector("iframe")!)
+    assert(placeholder.element.hasAttribute("data-open"), "empty website source controls did not open")
+    const emptyParagraph = doc.querySelector("p")!
+    doc.getSelection()!.setBaseAndExtent(emptyParagraph, 0, doc.body, 3)
+    editor.features.selection.isInDragSelection = true
+    editor.features.media.refreshPlaceholder()
+    editor.features.selection.processSelection(true)
+    await layoutFrame()
+    assert(view.getComputedStyle(graphicPlaceholder).display === "grid" && shield.hasAttribute("data-empty-website")
+      && view.getComputedStyle(shield.shadowRoot!.querySelector("svg")!).display === "block",
+      "empty SVG image or website icon disappeared during the drag")
+    assert(!placeholder.element.hasAttribute("data-open"), "empty website source controls stayed visible during the drag")
+    assert(editor.appendix.querySelectorAll('[part~="atomic-selection-overlay"]').length === 2,
+      "empty SVG image and website did not stay in the visible range")
+    editor.features.selection.isInDragSelection = false
+    editor.features.media.refreshPlaceholder()
+    assert(view.getComputedStyle(graphicPlaceholder).display === "grid" && shield.hasAttribute("data-empty-website"),
+      "empty SVG image or website cue did not return after the drag")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("backward media ranges suppress the boundary text caret", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:700px;height:500px;border:0"
+  frame.srcdoc = '<!doctype html><body><video controls style="display:block;width:320px;height:180px"></video><p>text</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  fixture.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "backward video range fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const video = doc.querySelector("video")!, paragraph = doc.querySelector("p")!, text = paragraph.firstChild!
+    doc.getSelection()!.setBaseAndExtent(text, 0, doc.body, 0)
+    editor.features.selection.isInDragSelection = true
+    editor.features.selection.processSelection(true)
+    assert(!doc.getSelection()!.isCollapsed && video.classList.contains("◆atomic-range-selected"),
+      "backward drag did not include the video")
+    assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)",
+      "backward drag showed a caret beside the selected video")
+    editor.features.selection.isInDragSelection = false
+    editor.features.selection.processSelection(false)
+    assert(view.getComputedStyle(paragraph).caretColor === "rgba(0, 0, 0, 0)",
+      "boundary caret returned while the video remained selected")
+    doc.getSelection()!.collapse(text, 0)
+    editor.features.selection.processSelection(false)
+    assert(!video.classList.contains("◆atomic-range-selected")
+      && view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)",
+      "ordinary paragraph caret did not return after the range collapsed")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
 await check("node drag borders leave native text and table editing reachable", async () => {
@@ -6808,6 +6978,73 @@ await check("ribbon elements drop on the blank canvas slot", async () => {
     assert(heading?.style.position === "absolute", "canvas slot did not insert the dropped heading")
   }
   finally { canvasEditor?.destroy(); frame.remove() }
+})
+
+await check("relayed standard elements preview and drop into a blank document", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  document.body.append(frame)
+  let frameEditor: DOMEditor | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `standard drop editor did not initialize: ${view.editorError}`)
+    frameEditor = view.editor!
+    const doc = frame.contentDocument!
+    await layoutFrame()
+    const data = {"application/x-webwriter-ribbon-insertion": "element:audio"}
+    const x = frame.clientWidth / 2, y = 250
+    assert(replayHostDrag({event: "dragover", x, y, data}, doc), "blank document did not accept Audio hover")
+    assert(doc.body.classList.contains("◆drop-selection-active"), "Audio hover showed no drop caret")
+    assert(replayHostDrag({event: "drop", x, y, data}, doc), "blank document did not accept Audio drop")
+    assert(doc.body.querySelector("audio"), `Audio was not inserted: ${doc.body.innerHTML}`)
+  }
+  finally { frameEditor?.destroy(); frame.remove() }
+})
+
+await check("ribbon Audio drag crosses the host and editor frame", async () => {
+  const {DomEditor} = await import("../src/components/dom-editor")
+  const app = new DomEditor()
+  app.style.cssText = "width:950px;height:700px"
+  fixture.append(app)
+  try {
+    for(let attempt = 0; attempt < 200; attempt++) {
+      if(app.shadowRoot?.querySelector("app-ribbon")?.shadowRoot?.querySelector('ribbon-button[label="Audio"]')) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    const ribbon = app.shadowRoot?.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")
+    if(!ribbon) throw new Error("host did not initialize")
+    for(let attempt = 0; !app.shadowRoot?.querySelector("iframe.editor-frame") && attempt < 200; attempt++)
+      await new Promise(resolve => setTimeout(resolve, 25))
+    assert(app.shadowRoot?.querySelector("iframe.editor-frame"), "editor frame did not start")
+    await app.execute({type: "serializeDocument"})
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Audio"]')!
+    await button.updateComplete
+    const source = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const data = new DataTransfer()
+    source.dispatchEvent(new DragEvent("dragstart", {dataTransfer: data, bubbles: true, composed: true, cancelable: true}))
+    assert(Array.from(data.types).join(",") === "application/x-webwriter-ribbon-insertion",
+      "Audio drag used a different transfer from widgets: " + Array.from(data.types))
+    await app.updateComplete
+    const shield = app.shadowRoot!.querySelector<HTMLElement>(".ribbon-drag-shield")
+    if(!shield) throw new Error("host did not show drag shield")
+    const target = app.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    const rect = target.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + 200
+    assert(getComputedStyle(target).pointerEvents === "none", "editor frame still intercepted the ribbon drag")
+    assert(app.shadowRoot!.elementFromPoint(x, y) === shield, "drag shield did not receive pointer events over the editor frame")
+    const init = {dataTransfer: data, clientX: x, clientY: y, bubbles: true, composed: true, cancelable: true}
+    const over = new DragEvent("dragover", init)
+    shield.dispatchEvent(over)
+    assert(over.defaultPrevented, "host did not accept Audio dragover")
+    shield.dispatchEvent(new DragEvent("drop", init))
+    for(let attempt = 0; attempt < 100 && !(await app.execute({type: "serializeDocument"}) as string).includes("<audio"); attempt++)
+      await new Promise(resolve => setTimeout(resolve, 25))
+    assert((await app.execute({type: "serializeDocument"}) as string).includes("<audio"), "Audio did not cross the frame")
+    await app.updateComplete
+    assert(getComputedStyle(target).pointerEvents === "auto", "editor frame remained disabled after the drop")
+  }
+  finally { app.remove() }
 })
 
 await check("relayed ribbon elements drop onto the selected element beneath editor overlays", async () => {

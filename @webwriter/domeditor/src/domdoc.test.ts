@@ -9,6 +9,7 @@ import * as syncProtocol from "y-protocols/sync"
 import {applyAwarenessUpdate, encodeAwarenessUpdate} from "y-protocols/awareness"
 import {SharedDOMDoc, sharedDOMBody} from "./domdoc"
 import {collectReferences} from "./document-viewer.js"
+import {elementAttributeState} from "./element-attributes"
 import {$} from "./utility"
 
 const sharedDocs: SharedDOMDoc[] = []
@@ -54,6 +55,64 @@ async function mutationsDelivered() {
   await new Promise<void>(resolve => queueMicrotask(resolve))
   await new Promise<void>(resolve => queueMicrotask(resolve))
 }
+
+describe("temporary details disclosure", () => {
+  it("preserves open on a namespaced element with the same local name", async () => {
+    const {root, shared} = createShared('<svg xmlns="http://www.w3.org/2000/svg"><details open="vector"/></svg>')
+    const details = root.querySelector("details")!
+    expect(details.namespaceURI).toBe("http://www.w3.org/2000/svg")
+    details.setAttribute("open", "changed")
+    await mutationsDelivered()
+    const mirrored = (shared.body.get(0) as Y.XmlElement).get(0) as Y.XmlElement
+    expect(mirrored.getAttribute("open")).toBe("changed")
+    expect(details.classList.contains("◆details-temporary-open")).toBe(false)
+  })
+
+  it.each([false, true])("keeps native toggles local when the authored default is %s", async defaultOpen => {
+    const {root, shared} = createShared(`<details${defaultOpen ? " open" : ""}><summary>Question</summary><p>Answer</p></details>`)
+    const details = root.querySelector("details")!
+    const mirrored = shared.body.get(0) as Y.XmlElement
+    details.open = !defaultOpen
+    await mutationsDelivered()
+
+    expect(details.open).toBe(!defaultOpen)
+    expect(mirrored.getAttribute("open") !== undefined).toBe(defaultOpen)
+    expect(details.classList.contains(defaultOpen ? "◆details-temporary-closed" : "◆details-temporary-open")).toBe(true)
+    expect(elementAttributeState(details, [0]).attributes.open !== undefined).toBe(defaultOpen)
+
+    const copy = cloneShared(shared)
+    expect(copy.root.querySelector("details")!.open).toBe(defaultOpen)
+    shared.doc.transact(() => mirrored.setAttribute("title", "remote"), "remote-test")
+    expect(details.open).toBe(!defaultOpen)
+
+    details.open = defaultOpen
+    await mutationsDelivered()
+    expect(details.classList.contains("◆details-temporary-open") || details.classList.contains("◆details-temporary-closed")).toBe(false)
+  })
+
+  it("commits the checkbox default, and remote edits replace an earlier temporary state", async () => {
+    const {root, shared} = createShared("<details><summary>Question</summary></details>")
+    const details = root.querySelector("details")!
+    const mirrored = shared.body.get(0) as Y.XmlElement
+    details.open = true
+    await mutationsDelivered()
+    shared.commitAuthoredDetailsOpen(details, () => details.setAttribute("open", ""))
+    expect(mirrored.getAttribute("open") !== undefined).toBe(true)
+    expect(details.classList.contains("◆details-temporary-open")).toBe(false)
+    shared.undo()
+    expect(details.open).toBe(false)
+    shared.redo()
+    expect(details.open).toBe(true)
+
+    details.open = false
+    await mutationsDelivered()
+    expect(details.classList.contains("◆details-temporary-closed")).toBe(true)
+    shared.doc.transact(() => mirrored.removeAttribute("open"), "remote-test")
+    expect(details.open).toBe(false)
+    expect(details.classList.contains("◆details-temporary-closed")).toBe(false)
+    expect(elementAttributeState(details, [0]).attributes.open).toBeUndefined()
+  })
+})
 
 it("does not reapply identical live selection endpoints and still restores a changed selection", () => {
   const {root, shared} = createShared("<p>Selected text</p>")
@@ -992,6 +1051,16 @@ describe("SharedDOMDoc initialization", () => {
     expect(owner.documentElement.getAttribute("dir")).toBe("rtl")
   })
 
+  it("synchronizes document palette accents with peers and undo history", async () => {
+    const {owner, shared} = createDocumentShared("", "<p>Body</p>")
+    owner.documentElement.style.setProperty("--ww-theme-accent-2", "#123456")
+    await mutationsDelivered()
+    const peer = cloneDocumentShared(shared)
+    expect(peer.owner.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("#123456")
+    shared.undo()
+    expect(owner.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("")
+  })
+
   it("reconciles wide documents without materializing the sibling array for each child", () => {
     const {root, shared} = createShared("<p>text</p>".repeat(1000))
     const first = root.firstElementChild!
@@ -1690,6 +1759,59 @@ describe("Yjs to DOM synchronization", () => {
     expect(left.root.textContent).toContain("L")
     expect(left.root.textContent).toContain("R")
     expect(left.root.querySelectorAll("aside")).toHaveLength(2)
+  })
+
+  it.each([1, 17, 2026])("converges reproducible mixed DOM edit sequences (seed %i)", async seed => {
+    const left = createShared('<p>start</p><x-note data-kind="authored"><span>widget</span></x-note><!--note--><section><em>stable</em></section>')
+    const right = cloneShared(left.shared)
+    const stable = [left.root.querySelector("section"), right.root.querySelector("section")]
+    const widget = [left.root.querySelector("x-note"), right.root.querySelector("x-note")]
+    const clients = [left, right]
+    const trace: string[] = []
+    let randomState = seed
+    const next = () => ((randomState = (Math.imul(randomState, 1664525) + 1013904223) >>> 0) >>> 16)
+    const edit = (clientIndex: number, step: number) => {
+      const {root} = clients[clientIndex]
+      const operation = next() % 4
+      trace.push(`${clientIndex}:${operation}`)
+      if(operation === 0) root.querySelector("p")!.append(String(step))
+      else if(operation === 1) root.querySelector("p")!.setAttribute("data-step", String(step))
+      else if(operation === 2) {
+        const aside = document.createElement("aside")
+        aside.textContent = `${clientIndex}-${step}`
+        root.insertBefore(aside, root.querySelector("section"))
+      }
+      else Array.from(root.childNodes).find(node => node.nodeType === Node.COMMENT_NODE)!.textContent = `note-${clientIndex}-${step}`
+    }
+
+    for(let step = 0; step < 12; step++) {
+      const clientIndex = next() % 2
+      edit(clientIndex, step)
+      if(step % 3 === 0) edit(1 - clientIndex, step)
+      await mutationsDelivered()
+      const updates = clients.map(({shared}) => Y.encodeStateAsUpdate(shared.doc))
+      Y.applyUpdate(left.shared.doc, updates[1], "right-client")
+      Y.applyUpdate(right.shared.doc, updates[0], "left-client")
+      const context = `seed ${seed}, step ${step}, edits ${trace.join(" ")}`
+      expect(right.root.innerHTML, context).toBe(left.root.innerHTML)
+      expect(right.shared.body.toString(), context).toBe(left.shared.body.toString())
+      expect(Y.encodeStateVector(right.shared.doc), context).toEqual(Y.encodeStateVector(left.shared.doc))
+      for(let index = 0; index < clients.length; index++) {
+        expect(clients[index].root.querySelector("section"), context).toBe(stable[index])
+        expect(clients[index].root.querySelector("x-note"), context).toBe(widget[index])
+        expect(clients[index].root.querySelector("x-note")?.outerHTML, context).toBe('<x-note data-kind="authored"><span>widget</span></x-note>')
+      }
+    }
+
+    const beforeUndo = left.root.innerHTML
+    left.shared.undo()
+    expect(left.root.innerHTML, `seed ${seed}, undo changed the document`).not.toBe(beforeUndo)
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-undo")
+    expect(right.root.innerHTML, `seed ${seed}, undo`).toBe(left.root.innerHTML)
+    left.shared.redo()
+    Y.applyUpdate(right.shared.doc, Y.encodeStateAsUpdate(left.shared.doc), "left-redo")
+    expect(left.root.innerHTML, `seed ${seed}, redo`).toBe(beforeUndo)
+    expect(right.root.innerHTML, `seed ${seed}, remote redo`).toBe(beforeUndo)
   })
 })
 

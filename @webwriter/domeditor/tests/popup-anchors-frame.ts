@@ -1,5 +1,6 @@
 import {RibbonButton} from "../src/components/ribbon-button"
 import {RibbonCombobox} from "../src/components/ribbon-combobox"
+import {FloatInfo} from "../src/components/float-info"
 import type {StyleMarkOption} from "../src/marks"
 
 declare global {
@@ -20,6 +21,20 @@ window.runPopupAnchorCheck = async (inspect = false) => {
   document.body.replaceChildren()
   document.body.style.cssText = "margin:0;min-height:1800px;font:16px system-ui"
   scrollTo(0, 0)
+  const info = new FloatInfo()
+  info.placement = "right"
+  Object.assign(info.style, {position: "absolute", left: "80px", top: "150px"})
+  document.body.append(info)
+  await info.updateComplete
+  info.shadowRoot!.querySelector<HTMLElement>(".info")!.dispatchEvent(new MouseEvent("mouseenter"))
+  await info.updateComplete; await layout()
+  const badgeRect = info.getBoundingClientRect()
+  const tooltipRect = info.shadowRoot!.querySelector<HTMLElement>(".popup")!.getBoundingClientRect()
+  insideViewport(tooltipRect, document.documentElement.clientWidth, document.documentElement.clientHeight, "float explanation")
+  assert(Math.abs((tooltipRect.top + tooltipRect.bottom) / 2 - (badgeRect.top + badgeRect.bottom) / 2) < 1,
+    `float explanation is not vertically aligned with its badge: ${JSON.stringify({badge: badgeRect.toJSON(), tooltip: tooltipRect.toJSON()})}`)
+  assert(Math.abs(tooltipRect.left - badgeRect.right - 8) < 1, "float explanation is not beside its badge")
+  if(!inspect) info.remove()
   const button = new RibbonButton()
   Object.assign(button, {label:"Actions", submenu:["First item", "Second item", "Third item"]})
   Object.assign(button.style, {position:"absolute", left:`${document.documentElement.clientWidth - 156}px`, top:`${innerHeight - 60}px`, width:"148px"})

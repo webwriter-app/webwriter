@@ -15,7 +15,7 @@ export const connectedComboboxStyles = css`
   :host([disabled]) input, :host([disabled]) .toggle {cursor: default;}
   :host([open]:not([disabled])) .control {background: #fff;}
   :host([open]:not([disabled])) .control[data-connected] {
-    border: 1px solid #a8a8a8;
+    border: 1px solid var(--connected-popup-border-color, #a8a8a8);
     border-bottom-color: #fff;
     border-radius: 4px 4px 0 0;
     background: #fff;
@@ -24,11 +24,11 @@ export const connectedComboboxStyles = css`
   }
   :host([open]:not([disabled])) .control[data-connected="above"] {
     border-top-color: #fff;
-    border-bottom-color: #a8a8a8;
+    border-bottom-color: var(--connected-popup-border-color, #a8a8a8);
     border-radius: 4px;
   }
   .listbox[data-connected] {
-    border: 1px solid #a8a8a8;
+    border: 1px solid var(--connected-popup-border-color, #a8a8a8);
     border-radius: var(--popup-border-radius);
   }
   .listbox[data-connected="below"] {border-top-width: 0; padding-top: 1px; clip-path: inset(0 -2rem -2rem -2rem);}
@@ -43,9 +43,9 @@ export const connectedComboboxStyles = css`
     height: 1px;
     /* Draw the remaining edge inside the clipped popup, leaving the join white. */
     background: linear-gradient(to right,
-      #a8a8a8 0 var(--popup-join-left),
+      var(--connected-popup-border-color, #a8a8a8) 0 var(--popup-join-left),
       #fff var(--popup-join-left) calc(var(--popup-join-left) + var(--popup-join-width)),
-      #a8a8a8 calc(var(--popup-join-left) + var(--popup-join-width)) 100%);
+      var(--connected-popup-border-color, #a8a8a8) calc(var(--popup-join-left) + var(--popup-join-width)) 100%);
     pointer-events: none;
   }
   .listbox[data-connected="above"]::before {top: auto; bottom: 0;}

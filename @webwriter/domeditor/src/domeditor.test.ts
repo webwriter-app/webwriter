@@ -50,6 +50,23 @@ describe("collaborative minimum flow content", () => {
 })
 
 describe("collaborative disclosure structure", () => {
+  it.each([false, true])("serializes the authored Details default and clears temporary state on destroy (%s)", defaultOpen => {
+    document.body.innerHTML = `<details${defaultOpen ? " open" : ""}><summary>Title</summary><p>Body</p></details>`
+    const editor = new DOMEditor()
+    const details = document.querySelector("details")!
+    try {
+      details.open = !defaultOpen
+      expect(editor.toHTML(true)).toBe(`<details${defaultOpen ? ' open=""' : ""}><summary>Title</summary><p>Body</p></details>`)
+      expect(details.open).toBe(!defaultOpen)
+    }
+    finally {
+      editor.destroy()
+      expect(details.open).toBe(defaultOpen)
+      expect(details.className).not.toContain("◆details-temporary")
+      document.body.replaceChildren()
+    }
+  })
+
   it("preserves missing summaries through remote updates, unrelated local input, and shared snapshot startup", async () => {
     document.body.innerHTML = '<details><summary>Title</summary><p>Body</p></details><p>Other</p>'
     const initialEditor = new DOMEditor()
@@ -306,9 +323,9 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/body::part\(hover-caret\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?position-anchor:\s*--hover-anchor;[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*1px dotted var\(--sl-color-gray-400, black\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆style-target-hovered\)::part\(hover-caret\),\s*body\.◆style-target-hovered::part\(hover-caret\)\s*\{[\s\S]*?display:\s*block;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆element-hovered\)::part\(hover-caret\)\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);/)
-    expect(editorStyleString).toMatch(/body\.◆element-hovered::part\(hover-caret\)\s*\{[\s\S]*?position-anchor:\s*auto;[\s\S]*?inset:\s*0;[\s\S]*?background:\s*rgb\(56 189 248 \/ 6%\);/)
+    expect(editorStyleString).toMatch(/body\.◆element-hovered::part\(hover-caret\)\s*\{[\s\S]*?position-anchor:\s*auto;[\s\S]*?inset:\s*0;[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toContain("body.◆element-hovered::after")
-    expect(editorStyleString).toMatch(/body\.◆element-selected::part\(selection-caret-node\)\s*\{[\s\S]*?inset:\s*0;[\s\S]*?outline:\s*none;[\s\S]*?background:\s*rgb\(56 189 248 \/ 6%\);/)
+    expect(editorStyleString).toMatch(/body\.◆element-selected::part\(selection-caret-node\)\s*\{[\s\S]*?inset:\s*0;[\s\S]*?outline:\s*none;[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toContain("body.◆element-selected::after")
     expect(editorStyleString).toContain("body::part(hover-caret)")
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)::before\s*\{[\s\S]*?content:\s*"Summary";/)
@@ -322,7 +339,7 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).not.toMatch(/^(?:html|body)(?:\.◆template-active)?\s*\{[^}]*overflow(?:-x)?:\s*hidden;/m)
     expect(editorStyleString).not.toMatch(/body\.◆template-active\s*\{/)
     expect(editorStyleString).not.toMatch(/body\.◆template-active > \[role~="document"\]:only-child\s*\{/)
-    expect(editorStyleString).toMatch(/body\.◆template-active:has\(> \[role~="document"\]\.◆element-selected:only-child\)::part\(selection-caret-node\)[\s\S]*?background:\s*rgb\(56 189 248 \/ 6%\);/)
+    expect(editorStyleString).toMatch(/body\.◆template-active:has\(> \[role~="document"\]\.◆element-selected:only-child\)::part\(selection-caret-node\)[\s\S]*?background:\s*transparent;/)
     expect(editorStyleString).not.toContain("template-add")
     expect(editorStyleString).not.toContain('content: "Content"')
     expect(editorStyleString).toMatch(/summary:is\(:empty, :has\(> br:only-child\)\)\.◆empty-selected::before[\s\S]*?border-inline-start-color:\s*currentColor;/)

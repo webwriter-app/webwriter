@@ -16,6 +16,46 @@ export async function checkListEditing() {
     assert(view.editor, `list editing fixture did not initialize: ${view.editorError ?? "timed out"}`)
     const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
     const waitForEdit = async () => new Promise<void>(resolve => view.requestAnimationFrame(() => resolve()))
+    for(const position of ["inside", "outside"]) {
+      for(const lineHeight of ["normal", "48px"]) {
+        doc.body.innerHTML = `<ul style="list-style-position: ${position}; font: 32px/${lineHeight} sans-serif"></ul>`
+        const list = doc.querySelector("ul")!
+        selection.collapse(list, 0)
+        editor.features.list.refreshSelectionPresentation()
+        const preview = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
+        const emptyHeight = list.getBoundingClientRect().height
+        const previewHeight = preview.getBoundingClientRect().height
+        const item = editor.features.list.materializeVirtualItem()!
+        item.textContent = "Example"
+        await waitForEdit()
+        const itemHeight = item.getBoundingClientRect().height
+        assert(Math.abs(emptyHeight - list.getBoundingClientRect().height) < 1,
+          `${position} ${lineHeight}: list height changed when the first item was populated`)
+        assert(Math.abs(previewHeight - itemHeight) < 1,
+          `${position} ${lineHeight}: preview height ${previewHeight} differs from item height ${itemHeight}`)
+      }
+    }
+    for(const position of ["inside", "outside"]) {
+      doc.body.innerHTML = `<ul style="list-style-position: ${position}"><li>One</li></ul>`
+      const text = doc.querySelector("li")!.firstChild!
+      selection.collapse(text, text.textContent!.length)
+      doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+      await waitForEdit()
+      editor.features.selection.processSelection()
+      const item = doc.querySelectorAll("li")[1]!
+      const caret = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-caret")
+      if(position === "inside") {
+        const textRange = doc.createRange()
+        textRange.setStart(text, 0); textRange.collapse(true)
+        assert(item.classList.contains("◆list-empty-caret"), "inside empty item did not use the shadow caret")
+        assert(Boolean(caret) && Math.abs(caret!.getBoundingClientRect().left - textRange.getBoundingClientRect().left) < 2,
+          "inside empty item caret is not aligned with the preceding item's text")
+        selection.collapse(text, 0)
+        editor.features.list.refreshSelectionPresentation()
+        assert(!item.classList.contains("◆list-empty-caret"), "empty item caret marker was not cleaned up")
+      }
+      else assert(!item.classList.contains("◆list-empty-caret"), "outside item unnecessarily replaced its native caret")
+    }
     const enterCases = [
       {name: "direct li keydown", html: "<ul><li>OneTwo</li></ul>", kind: "keydown"},
       {name: "direct li beforeinput", html: "<ol><li>OneTwo</li></ol>", kind: "beforeinput"},

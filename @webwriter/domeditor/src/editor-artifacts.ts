@@ -1,5 +1,33 @@
 /** Marks a widget whose `contenteditable` attribute the editor set. */
 export const widgetEditableMarker = "◆widget-editable"
+export const temporaryDetailsOpenMarker = "◆details-temporary-open"
+export const temporaryDetailsClosedMarker = "◆details-temporary-closed"
+export const isHTMLDetailsElement = (element: Element): boolean =>
+  element.localName === "details" && element.namespaceURI === "http://www.w3.org/1999/xhtml"
+
+/** The authored default, which may differ from a temporarily toggled live disclosure. */
+export function authoredDetailsOpen(element: Element) {
+  if(element.classList.contains(temporaryDetailsOpenMarker)) return false
+  if(element.classList.contains(temporaryDetailsClosedMarker)) return true
+  return element.hasAttribute("open")
+}
+
+export function markTemporaryDetailsState(element: Element, authoredOpen: boolean) {
+  removeEditorMarker(element, temporaryDetailsOpenMarker, temporaryDetailsClosedMarker)
+  if(element.hasAttribute("open") !== authoredOpen) {
+    element.classList.add(element.hasAttribute("open") ? temporaryDetailsOpenMarker : temporaryDetailsClosedMarker)
+  }
+}
+
+export function clearTemporaryDetailsState(element: Element) {
+  removeEditorMarker(element, temporaryDetailsOpenMarker, temporaryDetailsClosedMarker)
+}
+
+export function restoreAuthoredDetailsState(element: Element) {
+  if(element.classList.contains(temporaryDetailsOpenMarker)) element.removeAttribute("open")
+  else if(element.classList.contains(temporaryDetailsClosedMarker)) element.setAttribute("open", "")
+  clearTemporaryDetailsState(element)
+}
 
 /** Whether a DOM mutation changes authored document content. */
 export function isAuthoredMutation(mutation: MutationRecord) {
@@ -11,6 +39,8 @@ export function isAuthoredMutation(mutation: MutationRecord) {
   if(mutation.type === "characterData") return mutation.oldValue !== mutation.target.nodeValue
   if(mutation.type === "attributes") {
     const name = mutation.attributeName!
+    if(name === "open" && element && isHTMLDetailsElement(element)
+      && (element.classList.contains(temporaryDetailsOpenMarker) || element.classList.contains(temporaryDetailsClosedMarker))) return false
     const current = mutation.attributeNamespace
       ? element?.getAttributeNS(mutation.attributeNamespace, name) ?? null
       : element?.getAttribute(name) ?? null
@@ -68,6 +98,7 @@ export function clearEditorOwnedAttributes(root: Node) {
 }
 
 function clearElementEditorMarkers(element: Element) {
+  if(isHTMLDetailsElement(element)) restoreAuthoredDetailsState(element)
   if(isEditorOwnedAttribute(element, "contenteditable")) element.removeAttribute("contenteditable")
   const markers = Array.from(element.classList).filter(name => name.startsWith("◆"))
   if(markers.length) element.classList.remove(...markers)

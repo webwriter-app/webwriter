@@ -1,5 +1,5 @@
 import {css, html} from "lit"
-import {colorHex, isCssColor, safeCssColor, themeColorColumns} from "../css-color"
+import {colorHex, isCssColor, safeCssColor, themeColorColumns, themeColorCSS} from "../css-color"
 import {ribbonIcon} from "../ribbon-icons"
 
 const standardColors = ["c00000", "ff0000", "ffc000", "ffff00", "92d050", "00b050", "00b0f0", "0070c0", "002060", "7030a0"]
@@ -40,16 +40,26 @@ export const colorPaletteStyles = css`
 `
 
 /** Shared palette contents; the containing control owns popup placement and dismissal. */
-export function renderColorPalette(label: string, value: string, choose: (event: Event, value: string) => void, {automaticValue = "", disabled = false, persistent = false, swatches = [] as readonly string[]} = {}) {
+export function renderColorPalette(label: string, value: string, choose: (event: Event, value: string) => void, {automaticValue = "", disabled = false, persistent = false, swatches = [] as readonly string[], paletteHost}: {automaticValue?: string, disabled?: boolean, persistent?: boolean, swatches?: readonly string[], paletteHost?: Element} = {}) {
   const selected = colorHex(value, "")
   const swatch = (hex: string) => html`<button type="button" class="color-swatch" ?disabled=${disabled}
     style=${`background:#${hex}`} aria-label=${`Color #${hex}`} title=${`#${hex}`}
     aria-pressed=${selected === `#${hex}`} @click=${(event: Event) => choose(event, `#${hex}`)}></button>`
+  const themedSwatch = (hex: string, column: number, row: number) => {
+    const variable = `--ww-editor-color-${column}-${row}`
+    const current = colorHex(paletteHost ? getComputedStyle(paletteHost).getPropertyValue(variable) : "", `#${hex}`)
+    return html`<button type="button" class="color-swatch" ?disabled=${disabled}
+      style=${`background:${themeColorCSS(column, row)}`} aria-label=${`Color ${current}`} title=${current}
+      aria-pressed=${selected === current} @click=${(event: Event) => {
+        const actual = colorHex(getComputedStyle(event.currentTarget as Element).backgroundColor, current)
+        choose(event, actual)
+      }}></button>`
+  }
   return html`
     <button type="button" class="palette-action palette-automatic" ?disabled=${disabled} @click=${(event: Event) => choose(event, automaticValue)}>
       <span class="border-color-chip"></span>Automatic
     </button>
-    <div class="color-grid">${themeColorColumns.map(column => html`<div class="color-column">${column.map(swatch)}</div>`)}</div>
+    <div class="color-grid">${themeColorColumns.map((column, columnIndex) => html`<div class="color-column">${column.map((hex, row) => themedSwatch(hex, columnIndex, row))}</div>`)}</div>
     ${swatches.some(isCssColor) ? html`<div class="color-grid color-suggested">${swatches.filter(isCssColor).map(color => html`<button type="button" class="color-swatch" ?disabled=${disabled}
       style=${`background:${safeCssColor(color)}`} aria-label=${`Color ${color}`} title=${color}
       aria-pressed=${value.trim().toLowerCase() === color.trim().toLowerCase()} @click=${(event: Event) => choose(event, color)}></button>`)}</div>` : ""}

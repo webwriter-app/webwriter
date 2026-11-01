@@ -9,7 +9,7 @@ These guides help you complete a specific task in an existing widget. For a firs
 | [Support live sessions](live-sessions.md) | Show learner responses together in the editor. |
 | [Make layouts responsive](responsiveness.md) | Fit the space allocated to a widget. |
 | [Nest widgets and editable content](content.md) | Display and edit light-DOM children. |
-| [Handle focus and keyboard input](focus.md) | Keep controls usable with a keyboard. |
+| [Handle focus, selection and input](focus.md) | Manage widget focus, document selection, and keyboard input. |
 | [Support editing and viewing](editing.md) | Adapt the interface for authors and users. |
 | [Localize a widget](localization.md) | Follow the document's language. |
 | [Support printing](printing.md) | Provide a useful paper representation. |

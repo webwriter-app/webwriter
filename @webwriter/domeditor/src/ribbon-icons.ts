@@ -1,4 +1,5 @@
 import floatLeft from "@tabler/icons/outline/float-left.svg?raw"
+import circleSquare from "@tabler/icons/outline/circle-square.svg?raw"
 import floatNone from "@tabler/icons/outline/float-none.svg?raw"
 import floatRight from "@tabler/icons/outline/float-right.svg?raw"
 import alignCenter from "@tabler/icons/outline/align-center.svg?raw"
@@ -19,12 +20,29 @@ import hyphensAuto from "./assets/hyphens-auto.svg?raw"
 import letterCaseUpper from "@tabler/icons/outline/letter-case-upper.svg?raw"
 import letterCaseLower from "@tabler/icons/outline/letter-case-lower.svg?raw"
 import letterCase from "@tabler/icons/outline/letter-case.svg?raw"
+import minus from "@tabler/icons/outline/minus.svg?raw"
 import arrowsMinimize from "@tabler/icons/outline/arrows-minimize.svg?raw"
 import arrowsMaximize from "@tabler/icons/outline/arrows-maximize.svg?raw"
-import baseline from "@tabler/icons/outline/baseline.svg?raw"
+import verticalAlignBaseline from "./assets/vertical-align-baseline.svg?raw"
+import verticalAlignMiddle from "./assets/vertical-align-middle.svg?raw"
+import verticalAlignTop from "./assets/vertical-align-top.svg?raw"
+import verticalAlignBottom from "./assets/vertical-align-bottom.svg?raw"
+import verticalAlignTextTop from "./assets/vertical-align-text-top.svg?raw"
+import verticalAlignTextBottom from "./assets/vertical-align-text-bottom.svg?raw"
+import tableLayoutAuto from "./assets/table-layout-auto.svg?raw"
+import tableLayoutFixed from "./assets/table-layout-fixed.svg?raw"
+import borderCollapseCollapse from "./assets/border-collapse-collapse.svg?raw"
+import borderCollapseSeparate from "./assets/border-collapse-separate.svg?raw"
+import captionSideTop from "./assets/caption-side-top.svg?raw"
+import captionSideBottom from "./assets/caption-side-bottom.svg?raw"
+import emptyCellsShow from "./assets/empty-cells-show.svg?raw"
+import emptyCellsHide from "./assets/empty-cells-hide.svg?raw"
+import paintOrderStrokeFirst from "./assets/paint-order-stroke-first.svg?raw"
+import paintOrderFillFirst from "./assets/paint-order-fill-first.svg?raw"
 import pageBreak from "@tabler/icons/outline/page-break.svg?raw"
 import crop from "@tabler/icons/outline/crop.svg?raw"
 import blur from "@tabler/icons/outline/blur.svg?raw"
+import brush from "@tabler/icons/outline/brush.svg?raw"
 import scan from "@tabler/icons/outline/scan.svg?raw"
 import clock from "@tabler/icons/outline/clock.svg?raw"
 import checkbox from "@tabler/icons/outline/checkbox.svg?raw"
@@ -281,6 +299,7 @@ const splitTable = `
 const autoReloadIcon = (off = false) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><g class="icon-tabler-refresh">${iconContents(refresh)}</g><g class="icon-tabler-bolt" transform="translate(6 6) scale(.5)">${iconContents(bolt)}</g>${off ? '<path class="auto-reload-strike" d="M3 21L21 3" />' : ""}</svg>`
 
 const icons: Record<string, string> = {
+  Brush: brush,
   Migration: signRight,
   AutoReload: autoReloadIcon(),
   AutoReloadOff: autoReloadIcon(true),
@@ -410,6 +429,7 @@ const icons: Record<string, string> = {
   Image: photo,
   "Image hotspot": handClick,
   Graphic: vector,
+  Shape: circleSquare,
   Rectangle: rectangle,
   Ellipse: oval,
   Triangle: triangle,
@@ -551,13 +571,13 @@ const optionIcons: Record<string, Record<string, string>> = {
   "stroke-linecap": {butt: capStraight, round: capRounded, square: capProjecting},
   "stroke-linejoin": {miter: joinStraight, round: joinRound, bevel: joinBevel},
   "text-wrap": {wrap: textWrap, nowrap: textWrapDisabled, balance: textWrapBalance},
-  "text-transform": {none: letterCase, uppercase: letterCaseUpper, lowercase: letterCaseLower, capitalize: letterCase, "full-width": arrowsMaximize, "full-size-kana": textSize},
-  "vertical-align": {baseline, middle: alignBoxCenterMiddle, top: alignBoxTopCenter, bottom: alignBoxBottomCenter,
-    sub: subscript, super: superscript, "text-top": alignBoxTopCenter, "text-bottom": alignBoxBottomCenter},
-  "table-layout": {auto: table, fixed: layoutGrid},
-  "border-collapse": {collapse: arrowsMinimize, separate: arrowsMaximize},
-  "caption-side": {top: alignBoxTopCenter, bottom: alignBoxBottomCenter},
-  "empty-cells": {show: eye, hide: eyeOff},
+  "text-transform": {none: minus, uppercase: letterCaseUpper, lowercase: letterCaseLower, capitalize: letterCase},
+  "vertical-align": {baseline: verticalAlignBaseline, middle: verticalAlignMiddle, top: verticalAlignTop, bottom: verticalAlignBottom,
+    sub: subscript, super: superscript, "text-top": verticalAlignTextTop, "text-bottom": verticalAlignTextBottom},
+  "table-layout": {auto: tableLayoutAuto, fixed: tableLayoutFixed},
+  "border-collapse": {collapse: borderCollapseCollapse, separate: borderCollapseSeparate},
+  "caption-side": {top: captionSideTop, bottom: captionSideBottom},
+  "empty-cells": {show: emptyCellsShow, hide: emptyCellsHide},
   "list-style-position": {inside: alignBoxCenterMiddle, outside: alignBoxLeftMiddle},
   "hyphens": {manual: hyphensManual, auto: hyphensAuto, none: hyphensNone},
   "object-fit": {fill: arrowsMaximize, contain: rectangle, cover: crop, none: photo, "scale-down": arrowsMinimize},
@@ -565,6 +585,8 @@ const optionIcons: Record<string, Record<string, string>> = {
   "math-style": {normal: math, compact: arrowsMinimize},
   "math-shift": {normal: math, compact: arrowsMinimize},
   "fill-rule": {nonzero: polygon, evenodd: layersUnion},
+  "paint-order": {normal: check, "stroke fill markers": paintOrderStrokeFirst, "fill stroke markers": paintOrderFillFirst},
+  "vector-effect": {none: arrowsMaximize, "non-scaling-stroke": lock},
   "break-inside": {auto: pageBreak, avoid: link, "avoid-page": file, "avoid-column": columns3},
   loading: {"": check, eager: bolt, lazy: clock},
   decoding: {"": check, auto: check, sync: bolt, async: clock},

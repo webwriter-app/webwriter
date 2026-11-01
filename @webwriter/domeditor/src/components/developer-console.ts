@@ -61,7 +61,7 @@ export class DeveloperConsole extends EditingControls {
     [role="tabpanel"] {grid-column: 2; grid-row: 2; min-width: 0; min-height: 0; overflow: auto}
     #console-panel-HTML, #console-panel-Packages, #console-panel-Tests {overflow: hidden}
     ::slotted(.html-source-editor) {height: 100%}
-    header {grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; background: #e9e9e9; align-items: center; gap: .5rem; padding: 0; border-bottom: 1px solid #c8c8c8}
+    header {grid-column: 2; grid-row: 1; min-width: 0; display: flex; flex-wrap: wrap; background: #e9e9e9; align-items: center; gap: .5rem; padding: 0 2.5rem 0 0; border-bottom: 1px solid #c8c8c8}
     [role="tablist"] {display: flex; gap: .25rem; padding: .25rem .65rem}
     button {font: inherit; font-size: .8rem; color: inherit; background: transparent; border: 1px solid transparent; border-radius: .25rem; padding: .3rem .6rem; cursor: pointer}
     button:hover:not(:disabled) {background: #e3e3e3}
@@ -76,6 +76,8 @@ export class DeveloperConsole extends EditingControls {
     .auto-reload > svg {width: 18px; height: 18px}
     .console-pin {display: inline-flex; align-items: center; justify-content: center; margin-right: .4rem}
     .console-pin > svg {width: 15px; height: 15px}
+    .console-close {position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; justify-content: center; padding: .5rem}
+    .console-close > svg {width: 15px; height: 15px}
     .console-pin[aria-pressed="true"] {color: #153b5c; background: #dbe7f2}
     .actions {display: flex; align-items: center; gap: .25rem}
     .actions svg {width: 1rem; height: 1rem}
@@ -422,6 +424,10 @@ export class DeveloperConsole extends EditingControls {
           title=${this.pinned ? "Unpin developer console" : "Pin developer console"} aria-pressed=${this.pinned}
           @click=${() => this.dispatchEvent(new CustomEvent("developer-console-pin-change", {detail: {pinned: !this.pinned}, bubbles: true, composed: true}))}
         >${ribbonIcon("Pin")}</button>
+        <button class="console-close" type="button" aria-label="Close developer console" title="Close developer console"
+          ?disabled=${this.htmlPending}
+          @click=${() => this.dispatchEvent(new CustomEvent("developer-console-change", {detail: {enabled: false}, bubbles: true, composed: true}))}
+        >${ribbonIcon("Reject")}</button>
       </header>
       <div role="tabpanel" id="console-panel-HTML" aria-labelledby="console-tab-HTML" ?hidden=${this.tab !== "HTML"}><slot></slot></div>
       <div role="tabpanel" id="console-panel-Packages" aria-labelledby="console-tab-Packages" ?hidden=${this.tab !== "Packages"}>

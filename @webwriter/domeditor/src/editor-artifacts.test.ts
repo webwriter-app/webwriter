@@ -69,6 +69,19 @@ describe("isAuthoredMutation", () => {
     expect(records.every(isAuthoredMutation)).toBe(false)
   })
 
+  it("distinguishes temporary Details toggles from authored open changes", async () => {
+    const details = document.createElement("details")
+    details.classList.add("◆details-temporary-open")
+    const temporary = await recordMutation(details, () => details.setAttribute("open", ""),
+      {attributes: true, attributeOldValue: true})
+    expect(isAuthoredMutation(temporary)).toBe(false)
+    details.classList.remove("◆details-temporary-open")
+    details.removeAttribute("open")
+    const authored = await recordMutation(details, () => details.setAttribute("open", ""),
+      {attributes: true, attributeOldValue: true})
+    expect(isAuthoredMutation(authored)).toBe(true)
+  })
+
   it("detects text, comments, and authored child changes while ignoring editor UI", async () => {
     const root = document.createElement("div")
     const text = document.createTextNode("before")

@@ -30,10 +30,9 @@ export class FloatInfo extends LitElement {
     if(!this.open || !this.isConnected) return
     const popup = this.renderRoot.querySelector<HTMLElement>(".popup")!
     popup.showPopover?.()
-    const trigger = this.badge ? this.renderRoot.querySelector<HTMLElement>(".info")! : this.parentElement ?? this
     this.anchorPositioner.bind(popup, this.badge ? this : this.parentElement ?? this,
       this.placement === "right"
-        ? `${popupAnchorCSS(8)}position-area:right span-all;justify-self:start;align-self:center;margin:0 8px;`
+        ? `${popupAnchorCSS(8)}position-area:right span-all;justify-self:start;align-self:anchor-center;margin:0 8px;`
         : popupAnchorCSS(8))
     this.anchorPositioner.refresh()
   }

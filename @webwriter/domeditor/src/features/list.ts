@@ -1,6 +1,7 @@
 import {DocumentListenerMap, EditorFeature} from "."
 import type {ElementSelectionType, ListSelectionState, ListType} from "../editor-bridge"
 import {$, atomicEditingContainer, cloneWithoutEditorMarkers, editingFlowRoot, fixedClientX, getContainer, isAtomicEditingElement, isCaretAtBoundary, isElement, isText, modifierKeyDown, removeEditorMarker, setPart, createAnchorPositioner} from "../utility"
+import {isMarkElement} from "../marks"
 import {isDocumentRoot} from "../document-template"
 import {listMarkerImageProperty} from "../element-styles"
 
@@ -21,6 +22,7 @@ type VirtualListPoint = {
 export class ListFeature extends EditorFeature {
   private readonly markerClass = "◆virtual-list-anchor"
   private readonly selectedListClass = "◆virtual-list-selected"
+  private readonly emptyItemCaretClass = "◆list-empty-caret"
   private anchorPositioner: ReturnType<typeof createAnchorPositioner> | null = null
   private virtualUsesCoordinates = false
 
@@ -215,17 +217,22 @@ export class ListFeature extends EditorFeature {
   private clearVirtualMarker() {
     const marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
     if(marker) this.anchorPositioner?.release(marker)
-    document.querySelectorAll(`.${this.markerClass}, .${this.selectedListClass}`).forEach(element => {
-      removeEditorMarker(element, this.markerClass, this.selectedListClass)
+    document.querySelectorAll(`.${this.markerClass}, .${this.selectedListClass}, .${this.emptyItemCaretClass}`).forEach(element => {
+      removeEditorMarker(element, this.markerClass, this.selectedListClass, this.emptyItemCaretClass)
     })
     if(marker) {
       setPart(marker, "virtual-list-item-hidden")
       ;(["ul", "ol", "dl", "menu"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, false))
       setPart(marker, "virtual-list-item-custom-marker", false)
       setPart(marker, "virtual-list-item-image-marker", false)
+      setPart(marker, "virtual-list-item-inside", false)
+      setPart(marker, "virtual-list-item-caret-only", false)
       setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden")
+      setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-inside", false)
       marker.style.listStyleType = "none"
       marker.style.listStyleImage = "none"
+      marker.style.removeProperty("list-style-position")
+      marker.style.removeProperty("direction")
       ;[
         "font-family",
         "font-size",
@@ -241,6 +248,8 @@ export class ListFeature extends EditorFeature {
         "--virtual-list-marker-font-weight",
         listMarkerImageProperty,
       ].forEach(property => marker.style.removeProperty(property))
+      ;["font-family", "font-size", "font-stretch", "font-style", "font-variant", "font-weight", "letter-spacing"]
+        .forEach(property => marker.style.removeProperty(`--virtual-list-${property}`))
       marker.removeAttribute("value")
       marker.style.removeProperty("left")
       marker.style.removeProperty("top")
@@ -267,6 +276,10 @@ export class ListFeature extends EditorFeature {
       || listStyle.listStyleType
       || (list.matches("ol") ? "decimal" : "disc")
     marker.style.listStyleImage = sourceStyle.listStyleImage || listStyle.listStyleImage || "none"
+    const inside = (sourceStyle.listStylePosition || listStyle.listStylePosition) === "inside"
+    marker.style.listStylePosition = inside ? "inside" : "outside"
+    setPart(marker, "virtual-list-item-inside", inside)
+    setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-inside", inside)
 
     ;[
       "font-family",
@@ -278,7 +291,7 @@ export class ListFeature extends EditorFeature {
       "letter-spacing",
     ].forEach(property => {
       const value = sourceStyle.getPropertyValue(property)
-      if(value) marker.style.setProperty(property, value)
+      if(value) marker.style.setProperty(`--virtual-list-${property}`, value)
     })
 
     // Native markers are completely described by list-style-* above. When
@@ -347,6 +360,7 @@ export class ListFeature extends EditorFeature {
     this.clearVirtualMarker()
     const point = this.virtualPoint
     if(!point) {
+      this.syncEmptyItemCaret()
       return
     }
 
@@ -382,7 +396,7 @@ export class ListFeature extends EditorFeature {
       && !this.ancestors(anchor.parentElement ?? list).some(parent => getComputedStyle(parent).display === "none")
     const useListAnchor = !previous || !hasAnchorBox
     const anchorHasBox = useListAnchor ? list : anchor
-    const lineHeight = Number.parseFloat(getComputedStyle(anchorHasBox).lineHeight) || 20
+    const lineHeight = getComputedStyle(anchorHasBox).lineHeight || "normal"
     const transformed = this.editor.features.transformation.boxTransformed(list)
       || this.editor.features.transformation.boxTransformed(anchorHasBox)
     this.updateCoordinateListeners(transformed)
@@ -408,8 +422,35 @@ export class ListFeature extends EditorFeature {
       this.anchorPositioner?.bind(marker, anchorHasBox, css)
       this.anchorPositioner?.refresh()
     }
+    marker.style.minHeight = lineHeight === "normal" ? "1lh" : lineHeight
+    marker.style.setProperty("--virtual-list-line-height", lineHeight)
+  }
+
+  private syncEmptyItemCaret() {
+    const selection = document.getSelection()
+    const item = selection?.anchorNode
+    if(!selection?.isCollapsed || !(item instanceof HTMLElement) || !item.matches("li:empty")) return
+    const list = item.parentElement
+    if(!list?.matches("ul, ol, menu") || getComputedStyle(item).listStylePosition !== "inside") return
+    const rect = item.getBoundingClientRect()
+    if(!item.isConnected || !item.getClientRects().length) return
+    const style = getComputedStyle(item)
+    const marker = this.marker
+    const offset = Array.from(list.childNodes).indexOf(item)
+    this.syncVirtualMarkerAppearance(marker, {list, offset}, item)
+    if(list.matches("ol")) marker.setAttribute("value", String(this.orderedValueOf(list as HTMLOListElement, item as HTMLLIElement)))
+    marker.style.direction = style.direction
+    const lineHeight = Number.parseFloat(style.lineHeight) || rect.height || 20
+    marker.style.left = `${fixedClientX(style.direction === "rtl" ? rect.right : rect.left)}px`
+    marker.style.top = `${rect.top}px`
     marker.style.minHeight = `${lineHeight}px`
     marker.style.setProperty("--virtual-list-line-height", `${lineHeight}px`)
+    setPart(marker, `virtual-list-item-${list.localName}`, true)
+    setPart(marker, "virtual-list-item-hidden", false)
+    setPart(marker, "virtual-list-item-caret-only", true)
+    setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden", false)
+    item.classList.add("◆", this.emptyItemCaretClass)
+    this.updateCoordinateListeners(true)
   }
 
   private ancestors(element: Element): Element[] {
@@ -451,6 +492,21 @@ export class ListFeature extends EditorFeature {
 
   private handleBeforeInput(event: InputEvent) {
     if(event.defaultPrevented) return
+    if(event.inputType === "insertParagraph" && this.enterFromSummaryEnd()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    if(event.inputType === "insertParagraph" && this.liftLaterEmptyDetailsParagraph()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
+    if(event.inputType === "insertParagraph" && this.splitSelectedDetailsParagraph()) {
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      return
+    }
     const point = this.virtualPoint
     if(!point && event.inputType === "insertParagraph" && this.enterItem()) {
       event.preventDefault()
@@ -485,7 +541,17 @@ export class ListFeature extends EditorFeature {
     const point = this.virtualPoint
 
     if(event.key === "Enter" && !event.altKey && !event.shiftKey && !modifierKeyDown(event)) {
-      if(this.liftTrailingDetailsBlock()) {
+      if(!event.isComposing && this.enterFromSummaryEnd()) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
+      if(this.liftLaterEmptyDetailsParagraph()) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
+      if(this.splitSelectedDetailsParagraph()) {
         event.preventDefault()
         event.stopImmediatePropagation()
         return
@@ -576,6 +642,8 @@ export class ListFeature extends EditorFeature {
     if(!selection?.rangeCount) return false
     const range = selection.getRangeAt(0)
     const start = getContainer(range.startContainer)
+    const details = start?.closest("details")
+    if(details?.namespaceURI === "http://www.w3.org/1999/xhtml" && details.contains(range.endContainer)) return false
     const item = start?.closest<HTMLElement>(listItemSelector)
     if(!item?.isConnected || !item.parentElement?.matches(listSelector)
       || !item.parentElement.contains(range.endContainer)
@@ -921,7 +989,8 @@ export class ListFeature extends EditorFeature {
 
     const blocks = this.selectedTextBlocks()
     if(blocks.length) {
-      if(blocks.length === 1 && this.isEmptyTextBlock(blocks[0])) {
+      if(blocks.length === 1 && this.isEmptyTextBlock(blocks[0])
+        && !(cloneWithoutEditorMarkers(blocks[0], false) as Element).attributes.length) {
         const list = document.createElement(type)
         blocks[0].replaceWith(list)
         this.moveToVirtual(list, 0)
@@ -998,11 +1067,12 @@ export class ListFeature extends EditorFeature {
       details.append($.slice)
       details.open = true
     }
+    this.ensureDetailsBody(details)
     this.editor.features.manipulation.insert(details, 0, false, (this.editor.features.canvas.active || this.editor.features.slides.active) || undefined)
     if(details.isConnected) $.move(summary)
   }
 
-  /** Repair disclosure summaries at local editing boundaries.
+  /** Repair disclosure summaries and empty bodies at editing boundaries.
    * Widget internals own their structure. */
   ensureDetailsSummaries(roots: Iterable<Element> = [document.body]) {
     const disclosures = new Set<Element>()
@@ -1013,10 +1083,28 @@ export class ListFeature extends EditorFeature {
     }
     for(const details of disclosures) {
       if(!document.body.contains(details)) continue
+      if(details.namespaceURI !== "http://www.w3.org/1999/xhtml") continue
       if(atomicEditingContainer(details, this.editor.schema)) continue
       const summary = details.querySelector(":scope > summary") ?? document.createElement("summary")
       if(details.firstElementChild !== summary) details.prepend(summary)
+      this.ensureDetailsBody(details)
     }
+  }
+
+  /** Give empty disclosures an editable body without changing authored content. */
+  ensureDetailsBodyContent() {
+    for(const details of document.body.querySelectorAll("details:not([is])")) {
+      if(details.namespaceURI !== "http://www.w3.org/1999/xhtml" || atomicEditingContainer(details, this.editor.schema)) continue
+      this.ensureDetailsBody(details)
+    }
+  }
+
+  private ensureDetailsBody(details: Element) {
+    if(Array.from(details.childNodes).some(node =>
+      isElement(node) && !node.matches("summary") || isText(node) && Boolean(node.data.trim()))) return null
+    const paragraph = details.ownerDocument.createElement("p")
+    details.append(paragraph)
+    return paragraph
   }
 
   /** Opening follows editing intent, not just pointer activation: any
@@ -1105,15 +1193,42 @@ export class ListFeature extends EditorFeature {
     else if(isElement(first)) $.selectGap(first, "before")
   }
 
+  private enterFromSummaryEnd() {
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode
+    if(!selection?.isCollapsed || !anchor || !selection.focusNode
+      || atomicEditingContainer(anchor, this.editor.schema)) return false
+    const summary = getContainer(anchor).closest("summary")
+    const details = summary?.parentElement as HTMLDetailsElement | null
+    if(!summary || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || !document.body.contains(details) || !summary.contains(selection.focusNode)
+      || !isCaretAtBoundary(summary, "end")) return false
+    this.ensureDetailsBody(details)
+    details.open = true
+    const first = Array.from(details.childNodes).find(node =>
+      isText(node) && Boolean(node.data.trim()) || isElement(node) && !node.matches("summary"))
+    if(isText(first)) $.move(first)
+    else if(isElement(first)) {
+      let target: Node = first
+      while(isElement(target) && !atomicEditingContainer(target, this.editor.schema)
+        && !target.localName.includes("-") && !target.hasAttribute("is") && !this.isEmptyTextBlock(target)) {
+        const child = Array.from(target.childNodes).find(node => isText(node) && Boolean(node.data)
+          || isElement(node))
+        if(!child) break
+        target = child
+      }
+      if(isText(target) || isElement(target) && !atomicEditingContainer(target, this.editor.schema)
+        && (this.editor.features.manipulation.isTextBlock(target) || isMarkElement(target))) $.move(target)
+      else if(isElement(target)) $.selectElement(target)
+    }
+    return true
+  }
+
   private focusEmptyDetails(details: HTMLDetailsElement) {
     const summary = details.querySelector(":scope > summary")
     if(!details.isConnected || !details.open || !summary) return
-    const hasContent = Array.from(details.childNodes).some(node => node !== summary
-      && (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim())))
-    if(hasContent) return
-    const paragraph = document.createElement("p")
-    details.append(paragraph)
-    $.move(paragraph)
+    const paragraph = this.ensureDetailsBody(details)
+    if(paragraph) $.move(paragraph)
   }
 
   private isEmptyTextBlock(block: Element) {
@@ -1121,21 +1236,33 @@ export class ListFeature extends EditorFeature {
       && Array.from(block.children).every(child => child.matches("br"))
   }
 
-  /** Enter on the final empty flow block leaves DETAILS, matching the editor's
-   * list-exit behavior while preserving that same block and editing point. */
-  private liftTrailingDetailsBlock() {
+  /** A later empty paragraph exits DETAILS; the first remains its content. */
+  private liftLaterEmptyDetailsParagraph() {
     const selection = document.getSelection()
-    if(!selection?.isCollapsed || !selection.anchorNode) return false
-    let block: Element | null = getContainer(selection.anchorNode)
-    while(block && block.parentElement && block.parentElement !== document.body) {
-      if(block.parentElement.matches("details")) break
-      block = block.parentElement
-    }
-    const details = block?.parentElement
-    if(!block || !details?.matches("details") || block.matches("summary") || !this.editor.schema.isBlock(block)) return false
-    if(details.lastElementChild !== block || !this.isEmptyTextBlock(block)) return false
-    details.after(block)
-    $.move(block)
+    if(!selection?.anchorNode) return false
+    const selected = $.selectedElement
+    const container = getContainer(selection.anchorNode)
+    const paragraph = selected?.matches("p") ? selected
+      : selection.isCollapsed ? container.matches("p") ? container : container.closest("p") : null
+    const details = paragraph?.parentElement
+    if(!paragraph || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || atomicEditingContainer(paragraph, this.editor.schema)
+      || !this.isEmptyTextBlock(paragraph) || Array.from(paragraph.childNodes).some(node =>
+        !isText(node) && !(isElement(node) && node.matches("br")))) return false
+    const first = Array.from(details.children).find(child => child.matches("p"))
+    if(first === paragraph) return false
+    details.after(paragraph)
+    $.move(paragraph)
+    return true
+  }
+
+  private splitSelectedDetailsParagraph() {
+    const paragraph = $.selectedElement
+    const details = paragraph?.parentElement
+    if(!paragraph?.matches("p") || details?.localName !== "details" || details.namespaceURI !== "http://www.w3.org/1999/xhtml"
+      || details.hasAttribute("is") || atomicEditingContainer(paragraph, this.editor.schema)) return false
+    $.move(paragraph)
+    this.editor.features.manipulation.insert(undefined, 0)
     return true
   }
 
@@ -1196,6 +1323,20 @@ export class ListFeature extends EditorFeature {
     return result
   }
 
+  /** Move an ordinary paragraph's attributes and children onto its new item. */
+  appendItemContent(item: Element, root: Element) {
+    if(root.localName === "p" && root.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && !Boolean(isAtomicEditingElement(root, this.editor.schema))) {
+      const authored = cloneWithoutEditorMarkers(root, false) as Element
+      for(const attribute of Array.from(authored.attributes)) {
+        item.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      }
+      item.append(...Array.from(root.childNodes))
+      root.remove()
+    }
+    else item.append(this.prepareItemContent(root))
+  }
+
   private wrapTextBlocks(blocks: HTMLElement[], type: ListType) {
     const runs: HTMLElement[][] = []
     blocks.forEach(block => {
@@ -1210,7 +1351,7 @@ export class ListFeature extends EditorFeature {
       run.forEach((block, index) => {
         const item = document.createElement(type === "dl" ? index % 2 ? "dd" : "dt" : "li")
         list.append(item)
-        item.append(this.prepareItemContent(block))
+        this.appendItemContent(item, block)
       })
       return list
     })
@@ -1279,33 +1420,81 @@ export class ListFeature extends EditorFeature {
     return replacement
   }
 
-  private unwrapSelectedItems(list: HTMLElement) {
-    const selected = this.selectedItems().filter(item => item.parentElement === list)
+  /** Convert the selected items of one list when the paragraph ribbon is used. */
+  unwrapSelectionToParagraphs() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount) return false
+    const range = selection.getRangeAt(0)
+    const selectedElement = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    const list = selectedElement?.matches(listSelector) ? selectedElement as HTMLElement
+      : this.activeItem()?.parentElement as HTMLElement | null
+    if(!list?.isConnected || !list.matches(listSelector) || atomicEditingContainer(list, this.editor.schema)) return false
+    const selectsList = selectedElement === list
+    if(!selectsList && (!list.contains(range.startContainer) || !list.contains(range.endContainer))) return false
+    const selected = selectsList ? this.directItems(list) : this.selectedItems().filter(item => item.parentElement === list)
+    if(!selected.length) {
+      if(this.directItems(list).length || list.childNodes.length) return false
+      const paragraph = document.createElement("p")
+      for(const attribute of Array.from((cloneWithoutEditorMarkers(list, false) as Element).attributes)) {
+        paragraph.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      }
+      list.replaceWith(paragraph)
+      $.move(paragraph)
+    }
+    else this.unwrapSelectedItems(list, selected, selectsList)
+    this.syncVirtualMarker()
+    return true
+  }
+
+  private unwrapSelectedItems(list: HTMLElement, selected = this.selectedItems().filter(item => item.parentElement === list), wholeList = false) {
     if(!selected.length) return
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode, focus = selection?.focusNode
+    const anchorOffset = selection?.anchorOffset ?? 0, focusOffset = selection?.focusOffset ?? 0
     const children = Array.from(list.childNodes)
     const indexes = selected.map(item => children.indexOf(item))
-    const firstIndex = Math.min(...indexes)
-    const lastIndex = Math.max(...indexes)
+    const firstIndex = wholeList ? 0 : Math.min(...indexes)
+    const lastIndex = wholeList ? children.length - 1 : Math.max(...indexes)
     const before = children.slice(0, firstIndex)
     const chosen = children.slice(firstIndex, lastIndex + 1)
     const after = children.slice(lastIndex + 1)
     const replacement: Node[] = []
+    const right = after.length ? before.length
+      ? this.editor.features.manipulation.cloneSplitContinuation(list)
+      : cloneWithoutEditorMarkers(list, false) as HTMLElement : null
+    if(right) {
+      this.prepareSplitContinuation(list, right, after)
+      if(!before.length && list.hasAttribute("id")) right.setAttribute("id", list.id)
+    }
     if(before.length) {
       const left = cloneWithoutEditorMarkers(list, false) as HTMLElement
       left.append(...before)
       replacement.push(left)
     }
-    replacement.push(...chosen.flatMap(node => isElement(node) && node.matches(listItemSelector)
+    const unwrapped = chosen.flatMap(node => isElement(node) && node.matches(listItemSelector)
       ? this.itemToBlocks(node as HTMLElement)
-      : [node]))
-    if(after.length) {
-      const right = this.editor.features.manipulation.cloneSplitContinuation(list)
+      : [node])
+    replacement.push(...unwrapped)
+    if(wholeList) {
+      const first = replacement.find(isElement)
+      if(first) for(const attribute of Array.from((cloneWithoutEditorMarkers(list, false) as Element).attributes)) {
+        if(!first.hasAttributeNS(attribute.namespaceURI, attribute.localName)) {
+          first.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        }
+      }
+    }
+    if(right) {
       right.append(...after)
       replacement.push(right)
     }
     list.replaceWith(...replacement)
-    if(!$.anchor?.isConnected) {
-      const target = replacement.find(isElement)
+    if(selection && anchor?.isConnected && focus?.isConnected && list.contains(anchor) === false && list.contains(focus) === false
+      && !wholeList && anchor !== list && focus !== list) {
+      const clamp = (node: Node, offset: number) => Math.min(offset, node instanceof Text ? node.length : node.childNodes.length)
+      selection.setBaseAndExtent(anchor, clamp(anchor, anchorOffset), focus, clamp(focus, focusOffset))
+    }
+    else {
+      const target = unwrapped.find(isElement)
       if(target) $.selectElement(target)
     }
   }
@@ -1319,7 +1508,8 @@ export class ListFeature extends EditorFeature {
       if(!result.includes(paragraph)) result.push(paragraph)
     }
     for(const child of Array.from(item.childNodes)) {
-      if(isElement(child) && !this.editor.schema.isPhrasing(child)) {
+      if(isElement(child) && !this.editor.schema.isPhrasing(child)
+        && !isAtomicEditingElement(child, this.editor.schema)) {
         paragraph = null
         result.push(child)
       }
@@ -1328,6 +1518,15 @@ export class ListFeature extends EditorFeature {
       }
     }
     if(!result.length) result.push(document.createElement("p"))
+    const first = result.find(isElement)
+    if(first) {
+      const authored = cloneWithoutEditorMarkers(item, false) as Element
+      for(const attribute of Array.from(authored.attributes)) {
+        if(!first.hasAttributeNS(attribute.namespaceURI, attribute.localName)) {
+          first.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        }
+      }
+    }
     item.remove()
     return result
   }

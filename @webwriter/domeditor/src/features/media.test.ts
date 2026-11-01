@@ -200,6 +200,29 @@ describe("media editing", () => {
     expect(placeholder.root.activeElement).toBe(file)
   })
 
+  it.each([
+    '<picture><img></picture>', '<img>', '<audio controls=""></audio>',
+    '<video controls=""></video>', '<iframe></iframe>', '<embed>', '<object></object>',
+  ])("hides empty media source controls throughout a drag range: %s", html => {
+    document.body.innerHTML = `<p></p>${html}`
+    const target = document.querySelector("picture, img, audio, video, iframe, embed, object")!
+    editor.features.selection.captureElement(target)
+    const placeholder = editor.features.media.placeholder
+    expect(placeholder.element).toHaveAttribute("data-open")
+
+    editor.features.selection.isInDragSelection = true
+    editor.features.media.refreshPlaceholder()
+    expect(placeholder.target).toBeNull()
+    expect(placeholder.element).not.toHaveAttribute("data-open")
+    expect(placeholder.element).toHaveAttribute("aria-hidden", "true")
+
+    editor.features.selection.isInDragSelection = false
+    editor.features.media.refreshPlaceholder()
+    expect(placeholder.target).toBe(target)
+    expect(placeholder.element).toHaveAttribute("data-open")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
   it("opens a compact media popover and focuses its URL input on selection", () => {
     document.body.innerHTML = "<picture><img></picture>"
     const image = document.querySelector("picture")!
@@ -901,6 +924,12 @@ describe("media editing", () => {
     expect(placeholders[0].style.left).toBe("20px")
     expect(placeholders[0].style.width).toBe("100px")
     expect(editor.features.media.placeholder.element).not.toHaveAttribute("data-open")
+    editor.features.selection.isInDragSelection = true
+    editor.features.media.refreshPlaceholder()
+    expect(placeholders.every(placeholder => !placeholder.hidden)).toBe(true)
+    editor.features.selection.isInDragSelection = false
+    editor.features.media.refreshPlaceholder()
+    expect(placeholders.every(placeholder => !placeholder.hidden)).toBe(true)
     editor.doc.syncFromDOM()
     const html = editor.toHTML(true)
     expect(html).toContain('<!--keep--><g transform="translate(10 20)"><image x="5" y="7" width="100" height="60"></image><title>Image group</title></g>')
@@ -984,6 +1013,12 @@ describe("media editing", () => {
     expect(style.left).toBe("50%")
     expect(style.top).toBe("50%")
     expect(style.transform).toBe("translate(-50%, -50%)")
+    editor.features.selection.isInDragSelection = true
+    editor.features.media.refreshPlaceholder()
+    expect(shield).toHaveAttribute("data-empty-website")
+    editor.features.selection.isInDragSelection = false
+    editor.features.media.refreshPlaceholder()
+    expect(shield).toHaveAttribute("data-empty-website")
     expect(document.body.querySelector("svg")).toBeNull()
     editor.doc.syncFromDOM()
     expect(editor.doc.body.toString()).not.toMatch(/svg|data-empty-website/)

@@ -172,6 +172,8 @@ export class RibbonCombobox extends LitElement {
       background: transparent;
     }
 
+    :host([variant="color"]) .combobox:hover:not(:disabled) { background: #eef4fb; }
+
     :host([name="font-family"]) .combobox,
     :host([name="font-size"]) .combobox {
       background: transparent;
@@ -464,7 +466,7 @@ export class RibbonCombobox extends LitElement {
             const keyboardFocus = this.shadowRoot?.activeElement === event.currentTarget
             this.select({label: value || "Automatic", value})
             if(keyboardFocus && !this.disabled) this.renderRoot.querySelector<HTMLButtonElement>(".combobox")?.focus()
-          }, {disabled: this.disabled, persistent: true, swatches: this.swatches}) : options}
+          }, {disabled: this.disabled, persistent: true, swatches: this.swatches, paletteHost: this}) : options}
         </div>
       `: ""}
     `

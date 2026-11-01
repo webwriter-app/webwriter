@@ -1,5 +1,6 @@
 import {readCaptionEnumeration} from "../caption-enumeration"
 import {attributionAttributes} from "../attribution.js"
+import {documentThemeProperties} from "../document-theme-options"
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import "happy-dom"
@@ -2554,6 +2555,18 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 })
 
 describe("heading groups", () => {
+  it("keeps heading group levels on a board", () => {
+    try {
+      document.body.innerHTML = '<section class="ww-board-column"><hgroup><h2>Title</h2><p>Deck</p></hgroup></section>'
+      const heading = document.querySelector("h2")!
+      $.move(heading.firstChild!)
+      document.body.classList.add("ww-board")
+      editor.features.manipulation.setHeadingGroupLevel("h3")
+      expect(document.querySelector("hgroup > h2")).toBe(heading)
+    }
+    finally { document.body.classList.remove("ww-board") }
+  })
+
   it("reports and changes the direct heading while preserving attributes and irregular children", () => {
     document.body.innerHTML = '<hgroup data-origin="remote"><p>Eyebrow</p><h2 id="title"><em>Title</em></h2><x-note></x-note><p>Deck</p></hgroup>'
     $.move(document.querySelector("em")!.firstChild!, 2)
@@ -2959,6 +2972,64 @@ describe("Tab paragraph behavior", () => {
   })
 })
 describe("delete()", () => {
+  it("joins first Details paragraph content into Summary on Backspace while keeping its paragraph", () => {
+    document.body.innerHTML = '<details open><summary title="keep">Head <b>line</b></summary><!--between--><p class="authored"><em>Body</em><!--inside--></p><p>Later</p></details>'
+    const details = document.querySelector("details")!
+    const summary = details.querySelector("summary")!
+    const paragraph = details.querySelector("p")!
+    const content = paragraph.firstChild
+    $.move(paragraph.querySelector("em")!.firstChild!, 0)
+
+    const event = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(paragraph.isConnected).toBe(true)
+    expect(paragraph.childNodes).toHaveLength(0)
+    expect(summary.childNodes.item(2)).toBe(content)
+    expect(editor.toHTML(true)).toBe('<details open=""><summary title="keep">Head <b>line</b><em>Body</em><!--inside--></summary><!--between--><p class="authored"></p><p>Later</p></details>')
+    expect($.anchor).toBe(summary)
+    expect($.anchorOffset).toBe(2)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+  })
+
+  it("moves Backspace from an empty first Details paragraph into Summary", () => {
+    document.body.innerHTML = '<details open><summary>Head</summary><p></p></details>'
+    const summary = document.querySelector("summary")!
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph)
+
+    editor.features.manipulation.delete("backward")
+
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>Head</summary><p></p></details>')
+    expect($.anchor).toBe(summary)
+    expect($.anchorOffset).toBe(1)
+    expect(paragraph.isConnected).toBe(true)
+  })
+
+  it("joins the first Details paragraph through deleteContentBackward", () => {
+    document.body.innerHTML = '<details open><summary>Head</summary><p>Body</p></details>'
+    $.move(document.querySelector("p")!.firstChild!, 0)
+    const event = new InputEvent("beforeinput", {inputType: "deleteContentBackward", bubbles: true, cancelable: true})
+
+    document.dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>HeadBody</summary><p></p></details>')
+  })
+
+  it("keeps an inline widget intact when joining the first Details paragraph", () => {
+    document.body.innerHTML = '<details open><summary>Head</summary><p><inline-widget data-authored="keep"></inline-widget>Body</p></details>'
+    const widget = document.querySelector("inline-widget")!
+    $.move(document.querySelector("p")!)
+
+    editor.features.manipulation.delete("backward")
+
+    expect(document.querySelector("summary > inline-widget")).toBe(widget)
+    expect(widget.getAttribute("data-authored")).toBe("keep")
+    expect(editor.toHTML(true)).toBe('<details open=""><summary>Head<inline-widget data-authored="keep"></inline-widget>Body</summary><p></p></details>')
+  })
+
   it.each(["hello w", "hello <b>w</b>", "hello <!--keep--><b data-authored='keep'><i>w</i></b>"])("preserves the trailing space when deleting the last letter in %s", html => {
     document.body.innerHTML = `<p>${html}</p>`
     const paragraph = document.querySelector("p")!
@@ -3942,6 +4013,29 @@ describe("paste()", () => {
   })
 })
 describe("setAttributes()", () => {
+  it("authors Details open only through the explicit attribute action", () => {
+    document.body.innerHTML = "<details><summary>More</summary><p>Body</p></details>"
+    const details = document.querySelector("details")!
+    editor.doc.syncFromDOM()
+    const setOpen = (value: string | null) => editor.features.manipulation.actions.setElementAttribute({
+      ...elementAttributeState(details, [0]), type: "setElementAttribute", name: "open", value,
+    })
+
+    details.open = true
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).not.toContain(" open")
+    setOpen("")
+    expect(editor.toHTML(true)).toContain(' open=""')
+    expect(details).not.toHaveClass("◆details-temporary-open")
+
+    details.open = false
+    editor.doc.syncFromDOM()
+    expect(editor.toHTML(true)).toContain(' open=""')
+    setOpen(null)
+    expect(editor.toHTML(true)).not.toContain(" open")
+    expect(details).not.toHaveClass("◆details-temporary-closed")
+  })
+
   it("can set a title attribute", () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectElement(document.body.firstElementChild!)
@@ -4256,6 +4350,18 @@ describe("text input normalization", () => {
   })
 })
 describe("setBlockType()", () => {
+  it("does not change heading levels on a board", () => {
+    try {
+      document.body.innerHTML = '<section class="ww-board-column"><h2>Title</h2><section class="ww-board-card"><h3>Card heading</h3></section></section>'
+      const heading = document.querySelector("h3")!
+      $.move(heading.firstChild!)
+      document.body.classList.add("ww-board")
+      expect(editor.features.manipulation.setBlockType("h4")).toBe(0)
+      expect(document.querySelector("h3")).toBe(heading)
+    }
+    finally { document.body.classList.remove("ww-board") }
+  })
+
   it("changes only scoped headings in a mixed selection and preserves DOM and undo", () => {
     document.body.innerHTML = '<section><h2 id="intro" class="lead"><b>Hello</b><!--keep--></h2><p>Paragraph</p><h3>Other level</h3><h2>Second</h2><test-widget><h2>Widget heading</h2></test-widget></section>'
     const section = document.querySelector("section")!, first = document.querySelector("h2")!
@@ -4575,6 +4681,10 @@ describe("setStyle()", () => {
     expect(root.style.width).toBe("500px")
     expect(root.style.backgroundColor).toBe("")
     expect(document.documentElement.style.backgroundColor).toBe("red")
+    editor.features.manipulation.setStyle({"--ww-prose-max": "60rem", "--unrelated": "10px"})
+    expect(document.documentElement.style.getPropertyValue("--ww-prose-max")).toBe("60rem")
+    expect(document.documentElement.style.getPropertyValue("--unrelated")).toBe("")
+    document.documentElement.style.removeProperty("--ww-prose-max")
     expect(editor.features.manipulation.getStyleState().target).toMatchObject({localName: "html", documentRoot: true})
     expect(editor.features.manipulation.setElementStyles(root, {padding: "5px"})).toBe(false)
     editor.features.manipulation.setStyle({"background-color": null})
@@ -4584,6 +4694,129 @@ describe("setStyle()", () => {
     $.selectElement(root.firstElementChild!)
     editor.features.manipulation.setStyle({width: "20px"})
     expect(root.firstElementChild).toHaveStyle({width: "20px"})
+  })
+
+  it("adds document typography support to older embedded themes without replacing them", () => {
+    const oldHead = document.head.innerHTML
+    const oldStyle = document.documentElement.getAttribute("style")
+    try {
+      document.head.innerHTML = '<style data-ww-theme="base">p { color: purple }</style>'
+      document.body.innerHTML = '<p>Text <a href="#x">Link</a></p>'
+      $.selectElement(document.body)
+      editor.features.manipulation.setStyle({"--ww-font-family": "serif", "--ww-font-size": "20px", "--ww-text-color": "red", "--ww-link-color": "blue"})
+      expect(document.head.querySelector('style[data-ww-theme="base"]')?.textContent).toBe('p { color: purple }')
+      expect(document.head.querySelectorAll('style[data-ww-theme-options]')).toHaveLength(1)
+      expect(document.documentElement.outerHTML).toContain("--ww-font-family: serif")
+      expect(document.documentElement.outerHTML).toContain("@layer webwriter-theme-options")
+      editor.features.manipulation.setStyle({"--ww-font-family": "sans-serif"})
+      expect(document.head.querySelectorAll('style[data-ww-theme-options]')).toHaveLength(1)
+    }
+    finally {
+      document.head.innerHTML = oldHead
+      if(oldStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", oldStyle)
+    }
+  })
+
+  it("applies saved theme styles to the document independently of the selection", () => {
+    const previous = document.documentElement.getAttribute("style")
+    try {
+      document.body.innerHTML = '<p style="color: purple">Text</p>'
+      const paragraph = document.querySelector("p")!
+      $.selectElement(paragraph)
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {
+        "background-color": "gold", "--ww-prose-max": "60rem", color: "red",
+      }})
+      expect(document.documentElement.style.backgroundColor).toBe("gold")
+      expect(document.documentElement.style.getPropertyValue("--ww-prose-max")).toBe("60rem")
+      expect(paragraph.style.color).toBe("purple")
+      expect(document.documentElement.style.color).not.toBe("red")
+    }
+    finally {
+      if(previous === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", previous)
+    }
+  })
+
+  it("replaces theme overrides left on the other document root by a layout change", () => {
+    const rootStyle = document.documentElement.getAttribute("style")
+    const bodyStyle = document.body.getAttribute("style")
+    const bodyClass = document.body.className
+    try {
+      document.body.className = ""
+      document.body.style.setProperty("--ww-text-color", "red")
+      document.body.style.backgroundColor = "red"
+      document.body.style.setProperty("--ww-theme-accent-1", "#112233")
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {
+        "--ww-text-color": "blue", "background-color": "white", "--ww-theme-accent-1": "#445566",
+      }})
+      expect(document.body.style.getPropertyValue("--ww-text-color")).toBe("")
+      expect(document.body.style.backgroundColor).toBe("")
+      expect(document.body.style.getPropertyValue("--ww-theme-accent-1")).toBe("")
+      expect(document.documentElement.style.getPropertyValue("--ww-text-color")).toBe("blue")
+      document.body.className = "ww-slides"
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {"--ww-text-color": "green"}})
+      expect(document.documentElement.style.getPropertyValue("--ww-text-color")).toBe("")
+      expect(document.body.style.getPropertyValue("--ww-text-color")).toBe("green")
+    }
+    finally {
+      document.body.className = bodyClass
+      if(rootStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", rootStyle)
+      if(bodyStyle === null) document.body.removeAttribute("style")
+      else document.body.setAttribute("style", bodyStyle)
+    }
+  })
+
+  it("restores Standard by clearing theme overrides on both roots while preserving other styles", () => {
+    const rootStyle = document.documentElement.getAttribute("style")
+    const bodyStyle = document.body.getAttribute("style")
+    try {
+      document.documentElement.style.setProperty("--ww-theme-accent-1", "#112233")
+      document.documentElement.style.setProperty("--ww-text-color", "red")
+      document.documentElement.style.setProperty("--other", "keep")
+      document.body.style.setProperty("--ww-text-color", "blue")
+      document.body.style.backgroundColor = "red"
+      document.body.style.setProperty("--other", "keep")
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles",
+        styles: Object.fromEntries(documentThemeProperties.map(name => [name, null]))})
+      for(const root of [document.documentElement, document.body]) {
+        expect(documentThemeProperties.every(name => !root.style.getPropertyValue(name))).toBe(true)
+        expect(root.style.getPropertyValue("--other")).toBe("keep")
+      }
+    }
+    finally {
+      if(rootStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", rootStyle)
+      if(bodyStyle === null) document.body.removeAttribute("style")
+      else document.body.setAttribute("style", bodyStyle)
+    }
+  })
+
+  it.each(["document", "slides"])("keeps theme accents on html in %s layout and supports undo", async mode => {
+    const previous = document.documentElement.getAttribute("style")
+    const bodyClass = document.body.className
+    try {
+      document.body.className = mode === "slides" ? "ww-slides" : ""
+      document.body.innerHTML = '<p>Text</p><unfamiliar-widget><!--keep--><p>Widget</p></unfamiliar-widget>'
+      $.move(document.body.firstElementChild!)
+      await new Promise<void>(resolve => setTimeout(resolve))
+      document.documentElement.style.removeProperty("--ww-theme-accent-2")
+      editor.doc.syncFromDOM()
+      editor.doc.stopCapturing()
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {"--ww-theme-accent-2": "#123456"}})
+      await new Promise<void>(resolve => setTimeout(resolve))
+      expect(document.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("#123456")
+      expect(editor.features.manipulation.getStyleState(["--ww-theme-accent-2"], document.body, false).inline["--ww-theme-accent-2"]?.value).toBe("#123456")
+      expect(document.querySelector("unfamiliar-widget")!.innerHTML).toBe("<!--keep--><p>Widget</p>")
+      editor.doc.undo()
+      expect(document.documentElement.style.getPropertyValue("--ww-theme-accent-2")).toBe("")
+    }
+    finally {
+      document.body.className = bodyClass
+      if(previous === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", previous)
+    }
   })
 
   it.each(["section", "div", "demo-widget"])("styles the top-level %s from nested content in the Edit toolbox", tag => {
@@ -7267,11 +7500,15 @@ describe("element insertion conversions", () => {
     const wrapper = document.body.firstElementChild!
     expect(wrapper.localName).toBe(tag)
     expect(wrapper.querySelectorAll(tag === "table" ? "td" : "li")).toHaveLength(2)
-    expect(wrapper.querySelector("p")).toBe(first)
-    if(tag === "table") expect(wrapper.querySelector("h2")).toBe(second)
+    if(tag === "table") {
+      expect(wrapper.querySelector("p")).toBe(first)
+      expect(wrapper.querySelector("h2")).toBe(second)
+    }
     else {
+      expect(wrapper.querySelector("li")?.id).toBe("one")
+      expect(wrapper.querySelector("li")?.textContent).toBe("first")
       expect(wrapper.querySelector("h2")).toBeNull()
-      expect(wrapper.querySelectorAll("li > p")[1]?.textContent).toBe("second")
+      expect(wrapper.querySelector("li > p")?.textContent).toBe("second")
     }
     expect(wrapper.querySelectorAll("#one")).toHaveLength(1)
     expect(editor.toHTML(true)).toContain("<!--keep-->")
@@ -7298,6 +7535,138 @@ describe("element insertion conversions", () => {
     convert("p")
     expect(Array.from(document.body.children).map(element => element.localName)).toEqual(["p", "p", "p"])
     expect(document.body.textContent).toBe("firstsecondother")
+  })
+
+  it.each(["ul", "ol", "menu", "dl"])("unwraps a selected %s into paragraphs, retaining item content", type => {
+    const firstTag = type === "dl" ? "dt" : "li", secondTag = type === "dl" ? "dd" : "li"
+    document.body.innerHTML = `<${type}><!--lead--><${firstTag} id="first" class="authored">One <b>bold</b><!--inside--></${firstTag}><${secondTag} lang="de">Two</${secondTag}><!--tail--></${type}><p>After</p>`
+    const bold = document.querySelector("b")!
+    $.selectElement(document.body.firstElementChild!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<!--lead--><p id="first" class="authored">One <b>bold</b><!--inside--></p><p lang="de">Two</p><!--tail--><p>After</p>')
+    expect(document.querySelector("b")).toBe(bold)
+  })
+
+  it("unwraps selected ordered items while preserving surrounding numbering, widgets, and undo", async () => {
+    document.body.innerHTML = '<ol start="4" id="list"><li>First</li><li id="middle">Middle <b>bold</b><my-widget></my-widget></li><li>Last</li></ol>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const middle = document.querySelector("#middle")!, bold = middle.querySelector("b")!, widget = middle.querySelector("my-widget")!
+    $.selectElement(middle)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<ol start="4" id="list"><li>First</li></ol><p id="middle">Middle <b>bold</b><my-widget></my-widget></p><ol start="6"><li>Last</li></ol>')
+    expect(document.querySelector("b")).toBe(bold)
+    expect(document.querySelector("my-widget")).toBe(widget)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    editor.doc.undo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); await Promise.resolve()
+    expect(document.querySelector("p#middle")?.textContent).toBe("Middle bold")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("unwraps the items touched by a partial text selection", () => {
+    document.body.innerHTML = '<ul><li>First</li><li>Second</li><li>Third</li><li>Fourth</li></ul>'
+    const items = document.querySelectorAll("li")
+    const second = items[1].firstChild!, third = items[2].firstChild!
+    $.selectRange(second, 2, third, 2)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<ul><li>First</li></ul><p>Second</p><p>Third</p><ul><li>Fourth</li></ul>')
+    expect($.anchor).toBe(second)
+    expect($.focus).toBe(third)
+  })
+
+  it("keeps the remaining ordered list's identity and numbering when its first item is unwrapped", () => {
+    document.body.innerHTML = '<ol id="ordered" start="7"><li>First</li><li>Second</li></ol>'
+    $.move(document.querySelector("li")!.firstChild!, 2)
+    convert("p")
+    expect(document.body.firstElementChild?.localName).toBe("p")
+    expect(document.body.firstElementChild?.textContent).toBe("First")
+    expect(document.querySelector("ol")?.id).toBe("ordered")
+    expect(document.querySelector("ol")?.getAttribute("start")).toBe("8")
+    expect(document.querySelector("ol")?.textContent).toBe("Second")
+  })
+
+  it("converts an empty selected list to an empty paragraph", () => {
+    document.body.innerHTML = '<ul id="empty"></ul>'
+    $.selectElement(document.querySelector("ul")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p id="empty"></p>')
+  })
+
+  it("preserves nested lists and list attributes when unwrapping a selected list", () => {
+    document.body.innerHTML = '<ul id="outer" lang="de"><li>Parent<ul><li>Nested</li></ul>After</li></ul>'
+    const nested = document.querySelector("ul ul")!
+    $.selectElement(document.body.firstElementChild!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p id="outer" lang="de">Parent</p><ul><li>Nested</li></ul><p>After</p>')
+    expect(document.querySelector("ul")).toBe(nested)
+  })
+
+  it("unwraps a selected disclosure into its summary and body without rebuilding content", async () => {
+    document.body.innerHTML = '<details id="disclosure" open><summary title="title">Intro <b>bold</b><!--inside--></summary><!--between--><p class="body">Body <my-widget></my-widget></p><ul><li>List</li></ul></details><p>After</p>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const details = document.querySelector("details")!, bold = details.querySelector("b")!
+    const body = details.querySelector("p")!, widget = details.querySelector("my-widget")!, list = details.querySelector("ul")!
+    $.selectElement(details)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p title="title" id="disclosure">Intro <b>bold</b><!--inside--></p><!--between--><p class="body">Body <my-widget></my-widget></p><ul><li>List</li></ul><p>After</p>')
+    expect(document.querySelector("b")).toBe(bold)
+    expect(document.querySelector("p.body")).toBe(body)
+    expect(document.querySelector("my-widget")).toBe(widget)
+    expect(document.querySelector("ul")).toBe(list)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    editor.doc.undo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); await Promise.resolve()
+    expect(document.querySelector("details")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["summary", "p"])("unwraps a disclosure when its %s is selected", part => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><p>Body</p></details>'
+    const text = document.querySelector(part)!.firstChild!
+    $.selectRange(text, 1, text, 3)
+    convert("p")
+    expect(document.querySelector("details")).toBeNull()
+    expect(Array.from(document.querySelectorAll("p"), paragraph => paragraph.textContent)).toEqual(["Heading", "Body"])
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+    expect($.focusOffset).toBe(3)
+  })
+
+  it("preserves block content in a disclosure summary and its body", () => {
+    document.body.innerHTML = '<details><summary><h2 id="heading">Heading</h2> tail</summary><!--keep--><section><p>Body</p></section></details>'
+    const heading = document.querySelector("h2")!, section = document.querySelector("section")!
+    $.selectElement(document.querySelector("details")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<h2 id="heading">Heading</h2><p> tail</p><!--keep--><section><p>Body</p></section>')
+    expect(document.querySelector("h2")).toBe(heading)
+    expect(document.querySelector("section")).toBe(section)
+  })
+
+  it("unwraps a list inside a disclosure without unwrapping the disclosure", () => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><ul><li>Item</li></ul></details>'
+    const list = document.querySelector("ul")!
+    $.selectElement(list)
+    convert("p")
+    expect(document.querySelector("details > p")?.textContent).toBe("Item")
+    expect(document.querySelector("details > summary")?.textContent).toBe("Heading")
+  })
+
+  it("does not copy a temporary disclosure open state into the unwrapped document", () => {
+    document.body.innerHTML = '<details open class="◆ ◆details-temporary-open"><summary>Heading</summary></details>'
+    $.selectElement(document.querySelector("details")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p>Heading</p>')
+  })
+
+  it("unwraps an empty disclosure into an empty paragraph", () => {
+    document.body.innerHTML = '<details id="empty"></details>'
+    $.selectElement(document.querySelector("details")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p id="empty"></p>')
   })
 
   it("wraps a whole unfamiliar element in details without rebuilding it", () => {
@@ -7334,7 +7703,7 @@ describe("conversion boundaries", () => {
     const first = document.querySelector("p")!.firstChild!, second = document.querySelector("h2")!.firstChild!
     $.selectRange(first, 7, second, 6)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
-    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li><p>first</p></li><!--keep--><li><p id="second-after">second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
+    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li>first</li><!--keep--><li><p id="second-after">second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
   })
 
   it("leaves an invalid heading conversion untouched", () => {

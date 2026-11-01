@@ -18,7 +18,7 @@ it("combines document options without exposing a root widget or separate languag
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
   const drawers = [...toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer")]
-  expect(drawers.map(drawer => drawer.label)).toEqual(["Style", "Document"])
+  expect(drawers.map(drawer => drawer.label)).toEqual(["Theme", "Document"])
   const drawer = drawers[1]
   await drawer.updateComplete
   expect(drawer.icon).toBe("Document")
@@ -78,6 +78,16 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("omits the duplicate Shapes button from graphic commands", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Edit")
+    toolbox.graphic = {active: true, capture: true}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[action="show-shape-keyboard"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[action="import-graphic"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[action="save-graphic"]')).not.toBeNull()
+  })
+
   it("collapses to unselected tabs without clearing the current tool or its contents", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")
@@ -105,23 +115,13 @@ describe("toolbox", () => {
     expect(toolButton(toolbox, "Review").getAttribute("aria-selected")).toBe("true")
   })
 
-  it("keeps developer console controls available beside Versions in Review and locks them during pending HTML edits", async () => {
+  it("keeps only Versions controls in the Review footer when the console is open", async () => {
     const toolbox = await mountToolbox()
     toolbox.consoleOpen = true
     toolbox.selectTool("Review")
     await toolbox.updateComplete
-    const change = vi.fn()
-    toolbox.addEventListener("developer-console-change", change)
-    const close = () => toolbox.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Close developer console"]')!
     expect(toolbox.shadowRoot!.querySelector(".versions-console-toggle")).not.toBeNull()
-    expect(close().disabled).toBe(false)
-    close().click()
-    expect(change.mock.calls[0][0].detail).toEqual({enabled: false})
-    toolbox.htmlPending = true
-    await toolbox.updateComplete
-    expect(close().disabled).toBe(true)
-    close().click()
-    expect(change).toHaveBeenCalledTimes(1)
+    expect(toolbox.shadowRoot!.querySelector('[aria-label="Developer console controls"]')).toBeNull()
   })
 
   it("puts Comments above Issues with independent thin scroll areas and a Versions footer", async () => {
@@ -978,32 +978,15 @@ describe("toolbox", () => {
     expect(getComputedStyle(toolbox).width).toBe("122px")
   })
 
-  it("opens one developer console from Edit and locks its toggle during pending HTML edits", async () => {
+  it("does not show console controls in the Edit toolbox", async () => {
     const toolbox = await mountToolbox()
     toolButton(toolbox, "Edit").click()
-    await toolbox.updateComplete
-    const footer = toolbox.shadowRoot!.querySelector(".edit-mode-footer")!
-    const toggle = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!
-    const change = vi.fn()
-    toolbox.addEventListener("developer-console-change", change)
-    expect(toggle.textContent).toContain("Developer console")
-    expect(toolbox.shadowRoot!.querySelector(".html-mode-toggle, .develop-mode-toggle")).toBeNull()
-    toggle.click()
-    expect(change).toHaveBeenCalledWith(expect.objectContaining({detail: {enabled: true}}))
     toolbox.consoleOpen = true
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBe(footer)
-    expect(toggle.getAttribute("aria-pressed")).toBe("true")
-    expect(toolbox.shadowRoot!.querySelector(".console-pin")).toBeNull()
-    const close = toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".console-close")!
-    expect(close.disabled).toBe(false)
-    close.click()
-    expect(change).toHaveBeenLastCalledWith(expect.objectContaining({detail: {enabled: false}}))
-    expect(toolbox.shadowRoot!.querySelector("ribbon-drawer")).not.toBeNull()
-    toolbox.consoleOpen = false
+    expect(toolbox.shadowRoot!.querySelector(".edit-mode-footer")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[aria-label="Close developer console"]')).toBeNull()
     toolbox.htmlPending = true
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>(".developer-console-toggle")!.disabled).toBe(true)
     expect(toolbox.shadowRoot!.querySelector<HTMLElement>(".toolbox-pane-content")!.inert).toBe(true)
     toolbox.selectTool("Style")
     expect(toolbox.activeTool).toBe("Edit")
@@ -1313,9 +1296,9 @@ describe("toolbox", () => {
       /:host\(\[pane\]\[layout="element-style"\]\) ::slotted\(element-style-editor\)\s*\{[\s\S]*?width:\s*100%;/,
     )
     const toggle = position.shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
-    expect(toggle.parentElement).toBe(controls)
+    expect(toggle.parentElement?.parentElement).toBe(controls)
     expect(toggle.querySelector(".drawer-toggle-label")?.textContent).toBe("Options")
-    expect(toggle.nextElementSibling?.getAttribute("name")).toBe("more")
+    expect(toggle.parentElement?.nextElementSibling?.getAttribute("name")).toBe("more")
     expect(getComputedStyle(toggle).position).toBe("static")
     expect(getComputedStyle(toggle).width).toBe("100%")
     expect(getComputedStyle(toggle).backgroundColor).toBe("transparent")
@@ -1332,28 +1315,32 @@ describe("toolbox", () => {
 
     toolButton(toolbox, "Edit").click()
     await toolbox.updateComplete
-    expect(toolbox.shadowRoot!.querySelector(".developer-console-toggle")).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".developer-console-toggle")).toBeNull()
     drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"))
     expect(drawers.map(drawer => drawer.label)).toEqual(["Style"])
   })
 })
 
 
-it("limits the document Style drawer to Background", async () => {
+it.each(["document", "canvas", "slides", "board"] as const)("shows theme controls directly for the %s root", async mode => {
   const toolbox = await mountToolbox()
   toolbox.documentSelected = true
+  toolbox.documentLayout = {mode, canConvert: true, zoom: 100}
   toolbox.elementStyle = {
     target: {localName: "my-document", namespaceURI: "http://www.w3.org/1999/xhtml", documentRoot: true},
     inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"},
   }
   toolbox.selectTool("Edit")
   await toolbox.updateComplete
-  const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Style"]')!
+  const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Theme"]')!
   await drawer.updateComplete
-  expect(drawer.expandable).toBe(true)
-  const controls = drawer.querySelector<ElementStyleEditor>('element-style-editor[slot="more"]')!
-  await controls.updateComplete
-  expect(Array.from(controls.shadowRoot!.querySelectorAll("[data-property]"), row => row.getAttribute("data-property"))).toEqual(["background-color"])
+  expect(drawer.icon).toBe("Brush")
+  expect(drawer.expandable).toBe(false)
+  const controls = drawer.querySelector('document-theme-options:not([slot])')!
+  expect(controls).not.toBeNull()
+  expect(drawer.querySelector('document-theme-presets[slot="heading-control"][heading]')).not.toBeNull()
+  expect(drawer.querySelector('element-style-editor')).toBeNull()
+  expect(getComputedStyle(drawer.shadowRoot!.querySelector<HTMLElement>(".options-row")!).display).toBe("none")
 })
 
 
@@ -1388,15 +1375,18 @@ it("enables Style Reset for any inline style and requests a complete reset", asy
   expect(changes).toEqual([null])
   toolbox.documentSelected = true
   await toolbox.updateComplete
-  expect(reset().disabled).toBe(false)
+  expect(reset().disabled).toBe(true)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {...toolbox.elementStyle.inline, "background-color": {value: "red", priority: ""}}}
   await toolbox.updateComplete
   reset().click()
-  expect(changes).toHaveLength(2)
+  expect(changes).toEqual([null, {theme: true}])
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {}}
   await toolbox.updateComplete
   expect(reset().disabled).toBe(true)
   toolbox.elementStyle = {...toolbox.elementStyle, hasInlineStyles: true}
+  await toolbox.updateComplete
+  expect(reset().disabled).toBe(true)
+  toolbox.documentThemeStyles = {"--ww-theme-accent-1": {value: "#123456", priority: ""}}
   await toolbox.updateComplete
   expect(reset().disabled).toBe(false)
 })
@@ -1447,7 +1437,9 @@ it("retains Style advanced options through selection changes and outside clicks"
   expect(drawer().shadowRoot!.querySelector(".drawer-toggle")!.getAttribute("aria-expanded")).toBe("true")
   toolbox.documentSelected = true
   await toolbox.updateComplete
-  await drawer().updateComplete
+  const theme = toolbox.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[label="Theme"]')!
+  await theme.updateComplete
+  expect(theme.querySelector("document-theme-options")).not.toBeNull()
   toolbox.documentSelected = false
   await toolbox.updateComplete
   await drawer().updateComplete
