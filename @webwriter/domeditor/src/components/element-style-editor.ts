@@ -260,8 +260,11 @@ export class ElementStyleEditor extends LitElement {
     .specialized-choice-group button {min-height: 1.6rem; padding: .15rem .2rem; font: inherit; font-size: .6rem;}
     .specialized-choice-group button span {display: flex; justify-content: center;}
     .specialized-choice-group svg {width: 1rem; height: 1rem; display: block;}
+    [data-property="vertical-align"] .specialized-choice-group button {padding-inline: 0;}
+    [data-property="vertical-align"] .specialized-choice-group svg {width: .75rem; height: .75rem;}
     :host([dense-choices]) .specialized-choice-group button {padding-inline: 0;}
     :host([dense-choices]) .specialized-choice-group svg {width: .75rem; height: .75rem;}
+    :host([dense-choices]) :is([data-property="caption-side"], [data-property="empty-cells"]) .specialized-choice-group svg {width: 1rem; height: 1rem;}
     :host([dense-choices]) [data-property="text-wrap"] .specialized-choice-group button {height: 1.5rem; min-height: 0; padding-block: 0;}
     :host([dense-choices]) [data-property="text-wrap"] .specialized-choice-group svg {width: 1rem; height: 1rem;}
     .marker-control {width: 100%;}
@@ -1569,7 +1572,7 @@ export class ElementStyleEditor extends LitElement {
     const rtl = this.state.computed.direction === "rtl"
     const current = ["text-align", "text-align-last"].includes(definition.name)
       ? value === "start" ? rtl ? "right" : "left" : value === "end" ? rtl ? "left" : "right" : value : value
-    const columns = this.hasAttribute("dense-choices")
+    const columns = definition.name === "vertical-align" ? definition.values!.length : this.hasAttribute("dense-choices")
       ? Math.min(6, definition.values!.length)
       : Math.min(4, Math.ceil(definition.values!.length / (definition.values!.length > 4 ? 2 : 1)))
     return html`<div class="specialized-choice-group" ?data-default=${!this.declaration(definition.name)} style=${`--choice-columns: ${columns}`} role="group" aria-labelledby=${`style-label-${definition.name}`}>

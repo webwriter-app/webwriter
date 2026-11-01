@@ -22,7 +22,20 @@ import letterCase from "@tabler/icons/outline/letter-case.svg?raw"
 import minus from "@tabler/icons/outline/minus.svg?raw"
 import arrowsMinimize from "@tabler/icons/outline/arrows-minimize.svg?raw"
 import arrowsMaximize from "@tabler/icons/outline/arrows-maximize.svg?raw"
-import baseline from "@tabler/icons/outline/baseline.svg?raw"
+import verticalAlignBaseline from "./assets/vertical-align-baseline.svg?raw"
+import verticalAlignMiddle from "./assets/vertical-align-middle.svg?raw"
+import verticalAlignTop from "./assets/vertical-align-top.svg?raw"
+import verticalAlignBottom from "./assets/vertical-align-bottom.svg?raw"
+import verticalAlignTextTop from "./assets/vertical-align-text-top.svg?raw"
+import verticalAlignTextBottom from "./assets/vertical-align-text-bottom.svg?raw"
+import tableLayoutAuto from "./assets/table-layout-auto.svg?raw"
+import tableLayoutFixed from "./assets/table-layout-fixed.svg?raw"
+import borderCollapseCollapse from "./assets/border-collapse-collapse.svg?raw"
+import borderCollapseSeparate from "./assets/border-collapse-separate.svg?raw"
+import captionSideTop from "./assets/caption-side-top.svg?raw"
+import captionSideBottom from "./assets/caption-side-bottom.svg?raw"
+import emptyCellsShow from "./assets/empty-cells-show.svg?raw"
+import emptyCellsHide from "./assets/empty-cells-hide.svg?raw"
 import pageBreak from "@tabler/icons/outline/page-break.svg?raw"
 import crop from "@tabler/icons/outline/crop.svg?raw"
 import blur from "@tabler/icons/outline/blur.svg?raw"
@@ -553,12 +566,12 @@ const optionIcons: Record<string, Record<string, string>> = {
   "stroke-linejoin": {miter: joinStraight, round: joinRound, bevel: joinBevel},
   "text-wrap": {wrap: textWrap, nowrap: textWrapDisabled, balance: textWrapBalance},
   "text-transform": {none: minus, uppercase: letterCaseUpper, lowercase: letterCaseLower, capitalize: letterCase},
-  "vertical-align": {baseline, middle: alignBoxCenterMiddle, top: alignBoxTopCenter, bottom: alignBoxBottomCenter,
-    sub: subscript, super: superscript, "text-top": alignBoxTopCenter, "text-bottom": alignBoxBottomCenter},
-  "table-layout": {auto: table, fixed: layoutGrid},
-  "border-collapse": {collapse: arrowsMinimize, separate: arrowsMaximize},
-  "caption-side": {top: alignBoxTopCenter, bottom: alignBoxBottomCenter},
-  "empty-cells": {show: eye, hide: eyeOff},
+  "vertical-align": {baseline: verticalAlignBaseline, middle: verticalAlignMiddle, top: verticalAlignTop, bottom: verticalAlignBottom,
+    sub: subscript, super: superscript, "text-top": verticalAlignTextTop, "text-bottom": verticalAlignTextBottom},
+  "table-layout": {auto: tableLayoutAuto, fixed: tableLayoutFixed},
+  "border-collapse": {collapse: borderCollapseCollapse, separate: borderCollapseSeparate},
+  "caption-side": {top: captionSideTop, bottom: captionSideBottom},
+  "empty-cells": {show: emptyCellsShow, hide: emptyCellsHide},
   "list-style-position": {inside: alignBoxCenterMiddle, outside: alignBoxLeftMiddle},
   "hyphens": {manual: hyphensManual, auto: hyphensAuto, none: hyphensNone},
   "object-fit": {fill: arrowsMaximize, contain: rectangle, cover: crop, none: photo, "scale-down": arrowsMinimize},

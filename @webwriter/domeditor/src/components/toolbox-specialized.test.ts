@@ -560,8 +560,23 @@ describe("specialized element toolbox", () => {
       .querySelector<ElementStyleEditor>('element-style-editor:not([slot="more"])')!
     const vertical = cellPrimary.shadowRoot!.querySelector<HTMLElement>('[data-property="vertical-align"]')!
     const verticalGroup = vertical.querySelector<HTMLElement>(".specialized-choice-group")!
-    expect(verticalGroup.querySelectorAll('button[aria-pressed]')).toHaveLength(8)
-    expect(verticalGroup.style.getPropertyValue("--choice-columns")).toBe("4")
+    expect(Array.from(verticalGroup.querySelectorAll('button[aria-pressed]'), button => button.getAttribute("aria-label")))
+      .toEqual(["Middle", "Top", "Bottom", "Text top", "Text bottom", "Baseline"])
+    expect(verticalGroup.style.getPropertyValue("--choice-columns")).toBe("6")
+    expect(verticalGroup.querySelectorAll('svg.icon-tabler-vertical-align-text-top')).toHaveLength(1)
+    expect(verticalGroup.querySelectorAll('svg.icon-tabler-vertical-align-text-bottom')).toHaveLength(1)
+
+    const table = await mountElement("table")
+    const tableDrawer = table.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="table"]')!
+    const tablePrimary = tableDrawer.querySelector<ElementStyleEditor>('element-style-editor:not([slot="more"])')!
+    const collapse = tablePrimary.shadowRoot!.querySelector('[data-property="border-collapse"]')!
+    expect(Array.from(collapse.querySelectorAll('button[aria-pressed]'), button => button.getAttribute("aria-label")))
+      .toEqual(["Collapse", "Separate"])
+    const tableOptions = tableDrawer.querySelector<HTMLElement>(".specialized-options")!
+      .querySelector<ElementStyleEditor>("element-style-editor")!
+    expect(tableOptions.hasAttribute("dense-choices")).toBe(true)
+    expect(tableOptions.shadowRoot!.querySelector('[data-property="caption-side"] svg.icon-tabler-caption-side-top')).not.toBeNull()
+    expect(tableOptions.shadowRoot!.querySelector('[data-property="empty-cells"] svg.icon-tabler-empty-cells-show')).not.toBeNull()
 
     const graphic = await mountElement("svg")
     const advanced = graphic.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="svg"]')!
