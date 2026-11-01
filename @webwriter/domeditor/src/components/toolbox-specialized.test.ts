@@ -578,14 +578,26 @@ describe("specialized element toolbox", () => {
     expect(tableOptions.shadowRoot!.querySelector('[data-property="caption-side"] svg.icon-tabler-caption-side-top')).not.toBeNull()
     expect(tableOptions.shadowRoot!.querySelector('[data-property="empty-cells"] svg.icon-tabler-empty-cells-show')).not.toBeNull()
 
-    const graphic = await mountElement("svg")
+    const graphic = await mountElement("svg", {}, {"paint-order": "stroke fill markers", "vector-effect": "non-scaling-stroke"})
     const advanced = graphic.shadowRoot!.querySelector<RibbonDrawer>('ribbon-drawer[data-specialized="svg"]')!
       .querySelector<HTMLElement>(".specialized-options")!
-    const paintOrder = advanced.querySelectorAll<ElementStyleEditor>("element-style-editor")[0]!
-      .shadowRoot!.querySelector<HTMLElement>('[data-property="paint-order"]')!
-    const paintOrderCombo = paintOrder.querySelector<HTMLElement>("style-combobox")!
-    expect(paintOrderCombo).not.toBeNull()
-    expect((paintOrderCombo as HTMLElement & {editable: boolean}).editable).toBe(false)
+    const graphicStyles = advanced.querySelectorAll<ElementStyleEditor>("element-style-editor")[0]!.shadowRoot!
+    expect(graphicStyles.querySelector('[data-property="stroke-dasharray"]')).toBeNull()
+    const changes = vi.fn()
+    graphic.addEventListener("element-style-change", changes)
+    for(const [property, labels, selected, value] of [
+      ["paint-order", ["Normal", "Stroke first", "Fill first"], "Stroke first", "normal"],
+      ["vector-effect", ["None", "Fixed stroke"], "Fixed stroke", "none"],
+    ] as const) {
+      const row = graphicStyles.querySelector<HTMLElement>(`[data-property="${property}"]`)!
+      const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('.specialized-choice-group button'))
+      expect(buttons.map(button => button.getAttribute("aria-label"))).toEqual(labels)
+      expect(buttons.every(button => button.querySelector("svg") && !button.textContent!.trim())).toBe(true)
+      expect(new Set(buttons.map(button => button.querySelector("svg")!.outerHTML)).size).toBe(buttons.length)
+      expect(buttons.find(button => button.getAttribute("aria-pressed") === "true")?.getAttribute("aria-label")).toBe(selected)
+      buttons[0].click()
+      expect(changes.mock.calls.at(-1)![0].detail).toMatchObject({property, mutation: {value}})
+    }
   })
 
   it("shows compact fields first and places Language and extra CSS controls under Options", async () => {

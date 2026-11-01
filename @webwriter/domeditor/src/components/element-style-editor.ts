@@ -1565,6 +1565,10 @@ export class ElementStyleEditor extends LitElement {
   }
 
   private renderCompactChoices(definition: ElementStylePropertyDefinition) {
+    const textChoices: Record<string, Record<string, string>> = {
+      "paint-order": {normal: "Normal", "stroke fill markers": "Stroke first", "fill stroke markers": "Fill first"},
+      "vector-effect": {none: "None", "non-scaling-stroke": "Fixed stroke"},
+    }
     const computed = this.state.computed[definition.name]?.trim()
     const value = this.editableValue(definition.name) || (definition.name === "hyphens" ? computed || "manual"
       : definition.name === "list-style-position" ? computed || "inside"
@@ -1579,8 +1583,8 @@ export class ElementStyleEditor extends LitElement {
       ${definition.values!.map((value, index) => html`<button type="button"
         ?data-top-right=${index === columns - 1} ?data-bottom-left=${index === Math.floor((definition.values!.length - 1) / columns) * columns}
         aria-pressed=${current === value}
-        title=${value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
-        aria-label=${value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
+        title=${textChoices[definition.name]?.[value] ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
+        aria-label=${textChoices[definition.name]?.[value] ?? value[0].toUpperCase() + value.slice(1).replaceAll("-", " ")}
         @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
         @click=${() => this.commitValue(definition.name, value)}><span aria-hidden="true">${ribbonOptionIcon(definition.name, value)}</span></button>`)}
     </div>`
@@ -1964,7 +1968,7 @@ export class ElementStyleEditor extends LitElement {
         ${mediaCrop ? this.renderMediaCrop(definition) : definition.name === "list-style-type" && definition.control === "select" && definition.values?.length
           ? this.renderMarkerChoices(definition) : definition.control === "number" || definition.control === "length" || ["line-height", "border-spacing", "math-depth"].includes(definition.name)
           ? this.renderSpecializedNumber(definition) : definition.control === "select" && definition.values?.length && definition.values.length <= 8
-          && definition.values.every(value => value.length <= 14)
+          && (definition.values.every(value => value.length <= 14) || ["paint-order", "vector-effect"].includes(definition.name))
           ? this.renderCompactChoices(definition) : this.renderInput(definition, this.declaration(definition.name))}
       </div>
     </div>`

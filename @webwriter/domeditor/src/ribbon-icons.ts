@@ -37,6 +37,8 @@ import captionSideTop from "./assets/caption-side-top.svg?raw"
 import captionSideBottom from "./assets/caption-side-bottom.svg?raw"
 import emptyCellsShow from "./assets/empty-cells-show.svg?raw"
 import emptyCellsHide from "./assets/empty-cells-hide.svg?raw"
+import paintOrderStrokeFirst from "./assets/paint-order-stroke-first.svg?raw"
+import paintOrderFillFirst from "./assets/paint-order-fill-first.svg?raw"
 import pageBreak from "@tabler/icons/outline/page-break.svg?raw"
 import crop from "@tabler/icons/outline/crop.svg?raw"
 import blur from "@tabler/icons/outline/blur.svg?raw"
@@ -581,6 +583,8 @@ const optionIcons: Record<string, Record<string, string>> = {
   "math-style": {normal: math, compact: arrowsMinimize},
   "math-shift": {normal: math, compact: arrowsMinimize},
   "fill-rule": {nonzero: polygon, evenodd: layersUnion},
+  "paint-order": {normal: check, "stroke fill markers": paintOrderStrokeFirst, "fill stroke markers": paintOrderFillFirst},
+  "vector-effect": {none: arrowsMaximize, "non-scaling-stroke": lock},
   "break-inside": {auto: pageBreak, avoid: link, "avoid-page": file, "avoid-column": columns3},
   loading: {"": check, eager: bolt, lazy: clock},
   decoding: {"": check, auto: check, sync: bolt, async: clock},

@@ -421,7 +421,7 @@ export function specializedElementStyle(localName: string): SpecializedElementSt
   if(localName === "table") return {primary: ["table-layout", "border-collapse", "border-spacing"], advanced: ["caption-side", "empty-cells"]}
   if(["td", "th"].includes(localName)) return {primary: ["text-align", "vertical-align"], advanced: []}
   if(["svg", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "g"].includes(localName)) return {
-    primary: ["stroke-linecap", "stroke-linejoin"], advanced: ["stroke-dasharray", "fill-rule", "paint-order", "vector-effect"],
+    primary: ["stroke-linecap", "stroke-linejoin"], advanced: ["fill-rule", "paint-order", "vector-effect"],
   }
   if(["section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote", "figure"].includes(localName)) return {
     primary: [], advanced: ["break-before", "break-after"],
