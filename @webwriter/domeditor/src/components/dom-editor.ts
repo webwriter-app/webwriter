@@ -3129,8 +3129,15 @@ export class DomEditor extends LitElement {
   private guidedTourAnchor = (step: number) => {
     if(step === 0) return this.renderRoot.querySelector<HTMLElement>(".document-stage")
     const ribbon = this.renderRoot.querySelector("app-ribbon")?.shadowRoot
-    const selectors = ["", 'ribbon-drawer[label="Elements"]', ".preview-button", 'ribbon-tab[label="File"]']
-    const anchor = ribbon?.querySelector<HTMLElement>(selectors[step])
+    const toolbox = this.renderRoot.querySelector("dom-editor-toolbox")?.shadowRoot
+    const selectors = ["", 'ribbon-drawer[label="Marks"]', 'ribbon-drawer[label="Elements"]', 'ribbon-drawer[label="Packages"]']
+    const tools = ["Edit", "AI", "Review", "Distribute"]
+    const anchor = step === 8
+      ? this.renderRoot.querySelector<HTMLElement>(".document-layout-cards")
+        ?? toolbox?.querySelector<HTMLElement>('button[data-tool="Edit"]')
+      : step >= 4
+        ? toolbox?.querySelector<HTMLElement>(`button[data-tool="${tools[step - 4]}"]`)
+        : ribbon?.querySelector<HTMLElement>(selectors[step])
     const rect = anchor?.getBoundingClientRect()
     return anchor && rect?.width && rect.height ? anchor : ribbon?.querySelector<HTMLElement>(".brand") ?? null
   }
@@ -8190,7 +8197,7 @@ export class DomEditor extends LitElement {
       ></open-document-menu>
       <div class="document-stage" aria-busy=${documentLoading || this.previewFramePending ? "true" : "false"}>
         ${this.settings.showGuidedTour && this.guidedTourReady && !documentLoading && !this.previewActive && !this.liveSessionActive ? html`
-          <guided-tour .anchor=${this.guidedTourAnchor} @tour-dismiss=${this.dismissGuidedTour}></guided-tour>
+          <guided-tour .anchor=${this.guidedTourAnchor} .packages=${[...this.installedPackages, ...this.packages].filter((pkg, index, list) => list.findIndex(item => item.name === pkg.name) === index)} @tour-dismiss=${this.dismissGuidedTour}></guided-tour>
         ` : nothing}
         ${documentLoading ? html`
           <div class="document-loading" role="status" aria-label="Loading document">
