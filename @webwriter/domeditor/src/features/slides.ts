@@ -1,4 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
+import {canvasControlsStyles, canvasIcons} from "../canvas-viewer.js"
 import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
@@ -52,7 +53,7 @@ export class SlidesFeature extends EditorFeature {
 
   private fit = () => {
     this.currentCache = null
-    if(this.active && this.fitting) this.applyZoom(Math.min(1, window.innerWidth / slideWidth, window.innerHeight / slideHeight))
+    if(this.active && this.fitting) this.applyZoom(Math.min(1, window.innerWidth / slideWidth, (this.viewport()?.clientHeight || window.innerHeight) / slideHeight))
     this.schedule()
   }
 
@@ -62,6 +63,7 @@ export class SlidesFeature extends EditorFeature {
   private observer: MutationObserver | null = null
   private anchors = createAnchorPositioner()
   private navigationVisibility: IntersectionObserver | null = null
+  private navigationResize: ResizeObserver | null = null
   private markedNavigation: HTMLElement | null = null
   private activeLink: HTMLAnchorElement | null = null
   private frame: number | null = null
@@ -473,9 +475,11 @@ export class SlidesFeature extends EditorFeature {
     if(nav !== this.markedNavigation) {
       if(this.markedNavigation) removeEditorMarker(this.markedNavigation, "◆slide-navigation-editing")
       this.navigationVisibility?.disconnect(); this.navigationVisibility = null
+      this.navigationResize?.disconnect(); this.navigationResize = null
       this.markedNavigation = nav
       if(nav) {
         nav.classList.add("◆slide-navigation-editing")
+        if(typeof ResizeObserver !== "undefined") { this.navigationResize = new ResizeObserver(this.schedule); this.navigationResize.observe(nav) }
         if(typeof IntersectionObserver !== "undefined") this.navigationVisibility = new IntersectionObserver(entries => {
           for(const entry of entries) {
             const control = this.removalTargets.find(({link}) => link === entry.target)
@@ -517,15 +521,30 @@ export class SlidesFeature extends EditorFeature {
         this.controls!.append(button)
         return button
       }
+      button("scroll-back", "Scroll slide tabs backward", "‹", () => this.navigation()?.scrollBy({left: -(this.navigation()?.clientWidth || 0), behavior: "smooth"}))
+      button("scroll-forward", "Scroll slide tabs forward", "›", () => this.navigation()?.scrollBy({left: this.navigation()?.clientWidth || 0, behavior: "smooth"}))
       button("add", "Add slide", "+", () => this.actions.addSlide({type: "addSlide"})).hidden = !canInsert
       this.removalTargets = targets.map(({slide, link}, i) => ({slide, link,
         button: Object.assign(button("remove", `Remove slide ${i + 1}`, "×", () => this.edit("remove", slide)), {
           hidden: !this.editor.allows("delete", slide),
         })}))
     }
-    if(nav && (rebuildControls || this.anchorsDirty)) {
+    const back = this.controls.querySelector<HTMLButtonElement>('[name="scroll-back"]')
+    const forward = this.controls.querySelector<HTMLButtonElement>('[name="scroll-forward"]')
+    const overflowing = Boolean(nav && nav.scrollWidth > nav.clientWidth + 1)
+    if(back && forward) {
+      back.hidden = forward.hidden = !overflowing
+      back.disabled = !nav || nav.scrollLeft <= 0
+      forward.disabled = !nav || nav.scrollLeft >= nav.scrollWidth - nav.clientWidth - 1
+    }
+    if(nav && (rebuildControls || this.anchorsDirty || back?.dataset.overflow !== String(overflowing))) {
+      if(back) back.dataset.overflow = String(overflowing)
       const add = this.controls.querySelector<HTMLElement>('[name="add"]')!
-      this.anchors.bind(add, nav, "left:calc(anchor(right) + 8px);top:anchor(center);translate:0 -50%;position-visibility:anchors-visible;")
+      if(back && forward) {
+        this.anchors.bind(back, nav, "left:calc(anchor(right) + 8px);top:anchor(center);translate:0 -50%;position-visibility:anchors-visible;")
+        this.anchors.bind(forward, nav, "left:calc(anchor(right) + 40px);top:anchor(center);translate:0 -50%;position-visibility:anchors-visible;")
+      }
+      this.anchors.bind(add, nav, `left:calc(anchor(right) + ${overflowing ? 72 : 8}px);top:anchor(center);translate:0 -50%;position-visibility:anchors-visible;`)
       for(const {slide, link, button} of this.removalTargets) {
         this.anchors.bind(button, link, "left:calc(anchor(right) - 4px);top:calc(anchor(top) + 4px);translate:-50% -50%;position-visibility:anchors-visible;")
         this.navigationVisibility?.observe(link)
@@ -553,29 +572,27 @@ export class SlidesFeature extends EditorFeature {
     this.controls.setAttribute("role", "toolbar"); this.controls.setAttribute("aria-label", "Slide actions")
     this.editor.addAppendix(this.controls)
     this.zoomControls = document.createElement("div")
+    this.zoomControls.className = "◆canvas-controls"
     this.zoomControls.setAttribute("part", "slide-zoom-controls")
     this.zoomControls.contentEditable = "false"
     this.zoomControls.setAttribute("role", "toolbar"); this.zoomControls.setAttribute("aria-label", "Slide zoom")
-    for(const [operation, label, text] of [["zoom-out", "Zoom out", "−"], ["zoom-in", "Zoom in", "+"], ["actual-size", "Actual size", "100%"], ["fit-content", "Fit slide", "Fit"]] as const) {
+    for(const [operation, label, text] of [["zoom-out", "Zoom out", "−"], ["zoom-in", "Zoom in", "+"], ["actual-size", "Actual size", "100%"], ["fit-content", "Fit slide", ""]] as const) {
       if(operation === "zoom-in") this.zoomControls.append(document.createElement("output"))
       const button = document.createElement("button")
       button.type = "button"; button.name = operation; button.textContent = text
+      if(operation === "fit-content") button.innerHTML = canvasIcons.fit
       button.title = label; button.setAttribute("aria-label", label)
       button.addEventListener("pointerdown", event => event.preventDefault())
       button.addEventListener("click", () => this.actions.navigateSlides({type: "navigateSlides", operation}))
       this.zoomControls.append(button)
     }
     this.editor.addAppendix(this.zoomControls)
-    this.stylesheet = createStylesheet(`
-      [part=slide-zoom-controls] {position:fixed;right:1rem;bottom:1rem;z-index:2;display:flex;align-items:center;gap:6px;padding:6px;border-radius:10px;background:white;color:#2f3742;font:13px system-ui}
-      [part=slide-zoom-controls][hidden] {display:none}
-      [part=slide-zoom-controls] button {font:inherit;border:0;border-radius:6px;padding:7px 10px;background:#f2f2f2;color:inherit;cursor:pointer}
-      [part=slide-zoom-controls] output {min-width:3em;text-align:center}
-      @media print {[part=slide-zoom-controls] {display:none}}
-
+    this.stylesheet = createStylesheet(canvasControlsStyles + `
+      [part=slide-zoom-controls] { flex-wrap: nowrap; overflow-x: auto; }
+      @media screen and (max-width: 600px) { [part=slide-zoom-controls] { top: 52px; } }
       [part=slide-navigation-actions] {position:fixed;inset:0;z-index:2;pointer-events:none}
       [part=slide-navigation-actions][hidden] {display:none}
-      [part=slide-navigation-actions] button {position:fixed;pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:32px;height:32px;margin:0;padding:0;border:1px solid currentColor;border-radius:50%;background:#fff;color:#2f3742;font:20px/1 system-ui;cursor:pointer;user-select:none;-webkit-user-drag:none}
+      [part=slide-navigation-actions] button {position:fixed;pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;justify-content:center;width:28px;height:28px;margin:0;padding:0;border:0;border-radius:6px;background:#f1f5f9;color:#334155;font:20px/1 system-ui;cursor:pointer;user-select:none;-webkit-user-drag:none}
       [part=slide-navigation-actions] button[name=add] {font-size:0}
       [part=slide-navigation-actions] button[name=add]::before,
       [part=slide-navigation-actions] button[name=add]::after {content:"";position:absolute;left:50%;top:50%;width:12px;height:2px;background:currentColor;transform:translate(-50%,-50%)}
@@ -583,8 +600,8 @@ export class SlidesFeature extends EditorFeature {
       [part=slide-navigation-actions] button[name=remove] {width:16px;height:16px;font:12px/1 system-ui;visibility:hidden;pointer-events:none}
       [part=slide-navigation-actions] button[name=remove].shown {visibility:visible;pointer-events:auto}
       [part=slide-navigation-actions] button[hidden] {display:none}
-      [part=slide-navigation-actions] button:not(:disabled):hover {background:#f2f2f2}
-      [part=slide-navigation-actions] button:not(:disabled):active {background:#d8dee6}
+      [part=slide-navigation-actions] button:not(:disabled):hover {background:#dbeafe}
+      [part=slide-navigation-actions] button:not(:disabled):active {background:#dbeafe}
       [part=slide-navigation-actions] button:focus-visible {outline:2px solid currentColor;outline-offset:2px}
       [part=slide-navigation-actions] button:disabled {opacity:.4;cursor:not-allowed}
       @media print {[part=slide-navigation-actions] {display:none}}
@@ -602,6 +619,7 @@ export class SlidesFeature extends EditorFeature {
     if(this.layoutStylesheet) document.adoptedStyleSheets = document.adoptedStyleSheets.filter(sheet => sheet !== this.layoutStylesheet)
     this.layoutStylesheet = null
     this.navigationVisibility?.disconnect(); this.navigationVisibility = null
+    this.navigationResize?.disconnect(); this.navigationResize = null
     this.anchors.destroy()
     window.removeEventListener("resize", this.fit)
     this.removeZoomStyle?.(); this.removeZoomStyle = null

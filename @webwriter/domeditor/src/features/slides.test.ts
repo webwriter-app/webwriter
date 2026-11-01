@@ -296,6 +296,10 @@ describe("CSS-only Slides layout", () => {
   it("keeps slide zoom and controls local, and restores the view on teardown", async () => {
     seed()
     const feature = editor.features.slides
+    const toolbar = editor.appendix.querySelector<HTMLElement>("[part=slide-zoom-controls]")!
+    expect(toolbar.classList.contains("◆canvas-controls")).toBe(true)
+    expect(toolbar.querySelector('button[name="fit-content"] svg')).not.toBeNull()
+    expect(toolbar.querySelector('button[name="fit-content"]')?.getAttribute("aria-label")).toBe("Fit slide")
     feature.actions.navigateSlides({type: "navigateSlides", operation: "actual-size"})
     const before = await editor.serializeHTML()
     editor.appendix.querySelector<HTMLButtonElement>('[part=slide-zoom-controls] button[name=zoom-in]')!.click()
@@ -306,8 +310,10 @@ describe("CSS-only Slides layout", () => {
     expect(feature.clientPoint(slides()[0], 120, 240)).toEqual({x: 100, y: 200})
     feature.actions.navigateSlides({type: "navigateSlides", operation: "zoom-out"})
     expect(feature.zoom).toBeCloseTo(1)
+    const viewport = document.querySelector<HTMLElement>(".ww-slides-viewport")!
+    vi.spyOn(viewport, "clientHeight", "get").mockReturnValue(360)
     feature.actions.navigateSlides({type: "navigateSlides", operation: "fit-content"})
-    expect(feature.zoom).toBeCloseTo(Math.min(1, window.innerWidth / 1280, window.innerHeight / 720))
+    expect(feature.zoom).toBeCloseTo(Math.min(1, window.innerWidth / 1280, 360 / 720))
     feature.disable()
     expect(feature.zoom).toBe(1)
     expect(editor.appendix.querySelector('[part=slide-zoom-controls]')).toBeNull()
@@ -1092,7 +1098,7 @@ describe("CSS-only Slides layout", () => {
     const nav = document.querySelector("nav.ww-slides-navigation")!
     const actions = editor.appendix.querySelector("[part=slide-navigation-actions]")!
     expect(editor.appendix.querySelector("[part=slide-editing-controls]")).toBeNull()
-    expect(Array.from(actions.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["Add slide", "Remove slide 1", "Remove slide 2"])
+    expect(Array.from(actions.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["Scroll slide tabs backward", "Scroll slide tabs forward", "Add slide", "Remove slide 1", "Remove slide 2"])
     expect(document.body.querySelector("[part=slide-navigation-actions]")).toBeNull()
     expect(nav.classList.contains("◆slide-navigation-editing")).toBe(true)
     button("add").click(); expect(slides()).toHaveLength(3)
@@ -1104,6 +1110,28 @@ describe("CSS-only Slides layout", () => {
     editor.features.slides.disable()
     expect(nav.classList.contains("◆slide-navigation-editing")).toBe(false)
     expect(editor.appendix.querySelector("[part=slide-navigation-actions]")).toBeNull()
+  })
+
+  it("scrolls overflowing slide tabs and updates arrow availability", async () => {
+    seed(); await settle()
+    const nav = document.querySelector<HTMLElement>("nav.ww-slides-navigation")!
+    vi.spyOn(nav, "clientWidth", "get").mockReturnValue(100)
+    vi.spyOn(nav, "scrollWidth", "get").mockReturnValue(300)
+    const scroll = vi.spyOn(nav, "scrollBy").mockImplementation(() => {})
+    nav.dispatchEvent(new Event("scroll")); await settle()
+    expect(button("scroll-back").hidden).toBe(false)
+    expect(button("scroll-back").disabled).toBe(true)
+    expect(button("scroll-forward").disabled).toBe(false)
+    button("scroll-forward").click()
+    expect(scroll).toHaveBeenCalledWith({left: 100, behavior: "smooth"})
+    nav.scrollLeft = 200
+    nav.dispatchEvent(new Event("scroll")); await settle()
+    expect(button("scroll-back").disabled).toBe(false)
+    expect(button("scroll-forward").disabled).toBe(true)
+    button("scroll-back").click()
+    expect(scroll).toHaveBeenCalledWith({left: -100, behavior: "smooth"})
+    editor.features.slides.disable()
+    expect(editor.appendix.querySelector('[name="scroll-back"]')).toBeNull()
   })
 
   it("reuses the visible slide until scrolling or authored changes invalidate its geometry", () => {

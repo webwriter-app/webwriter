@@ -2,6 +2,12 @@
  * its exact source without an editor dependency or a network request. */
 export const canvasGridSize = 20
 
+// Tabler outline icons are embedded because this module is also exported standalone.
+export const canvasIcons = {
+  hand: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11v-3.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M11 9.5v-3a1.5 1.5 0 0 1 3 0v3.5"/><path d="M14 7.5a1.5 1.5 0 0 1 3 0v2.5"/><path d="M17 9.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7l-.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.47 1.47"/></svg>`,
+  fit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11a3 3 0 1 0 6 0a3 3 0 0 0 -6 0"/><path d="M16 16l-2.5 -2.5"/><path d="M3 7v-2a2 2 0 0 1 2 -2h2"/><path d="M3 17v2a2 2 0 0 0 2 2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M17 21h2a2 2 0 0 0 2 -2v-2"/></svg>`,
+}
+
 export function canvasStartingView(body = document.body) {
   return body.querySelector(":scope > div.ww-canvas-starting-view:not([is])")
 }
@@ -190,11 +196,12 @@ export class CanvasViewer {
 
 export const canvasControlsStyles = `
       .◆canvas-controls, .◆canvas-controls * { user-select: none; -webkit-user-select: none; }
-      .◆canvas-controls { position: fixed; bottom: 20px; left: 24px; max-width: calc(100vw - 48px); box-sizing: border-box; flex-wrap: wrap; z-index: 1000; display: flex; align-items: center; gap: 6px; padding: 6px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
+      .◆canvas-controls { position: fixed; top: 8px; right: 8px; max-width: calc(100vw - 16px); box-sizing: border-box; flex-wrap: wrap; z-index: 1000; display: flex; align-items: center; gap: 4px; padding: 4px; border: 1px solid #cbd5e1; border-radius: 10px; background: white; color: #334155; box-shadow: 0 2px 10px #0001; font: 13px system-ui; }
       .◆canvas-controls[hidden] { display: none; }
-      .◆canvas-controls button { font: inherit; padding: 7px 10px; border: 0; border-radius: 6px; color: inherit; background: #f1f5f9; cursor: pointer; }
+      .◆canvas-controls button { font: inherit; padding: 5px 8px; border: 0; border-radius: 6px; color: inherit; background: #f1f5f9; cursor: pointer; }
       .◆canvas-controls button:hover, .◆canvas-controls button[aria-pressed=true] { background: #dbeafe; }
       .◆canvas-controls button:disabled { opacity: .5; cursor: default; }
+      .◆canvas-controls button svg { display: block; width: 14px; height: 14px; }
       .◆canvas-controls output { min-width: 3em; text-align: center; }
 
 @media print { .◆canvas-controls { display: none; } }
@@ -280,12 +287,13 @@ export function mountCanvasReader() {
     return el
   }
   const handButton = button("hand", "Pan", "Toggle hand tool (middle-drag also pans)")
+  handButton.innerHTML = canvasIcons.hand
   handButton.setAttribute("aria-pressed", "false")
   button("zoom-out", "−", "Zoom out")
   controls.append(document.createElement("output"))
   button("zoom-in", "+", "Zoom in")
   button("actual-size", "100%", "Actual size")
-  button("fit-content", "Fit", "Fit content")
+  button("fit-content", "", "Fit content").innerHTML = canvasIcons.fit
   const release = () => viewer.stopPan()
   const ownEvent = event => {
     const origin = event.composedPath()[0]

@@ -697,7 +697,7 @@ describe("canvas document layout", () => {
     remote.destroy()
   })
 
-  it("supports local zoom and insertion controls in canvas mode", () => {
+  it("supports local zoom and accessible icon controls in canvas mode", () => {
     const canvas = editor.features.canvas
     expect(canvas.actions.startCanvas({type: "startCanvas"})).toBe(true)
     const controls = editor.appendix.querySelector<HTMLElement>('[part="canvas-controls"]')!
@@ -712,14 +712,12 @@ describe("canvas document layout", () => {
     expect(canvas.getState().zoom).toBe(100)
     expect(dots.style.backgroundSize).toBe("20px 20px")
 
-    const before = document.body.firstElementChild!
-    editor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
-    expect(before.isConnected).toBe(false)
-    expect(document.body.children.length).toBe(1)
-    const inserted = document.body.lastElementChild as HTMLElement
-    expect(inserted.localName).toBe("p")
-    expect(inserted.style.position).toBe("absolute")
-    expect(inserted.style.width).toBe("")
+    expect(controls.querySelector('button[name="text"]')).toBeNull()
+    for(const [name, label] of [["hand", "Toggle hand tool (middle-drag also pans)"], ["fit-content", "Fit content"]]) {
+      const button = controls.querySelector<HTMLButtonElement>(`button[name="${name}"]`)!
+      expect(button.getAttribute("aria-label")).toBe(label)
+      expect(button.querySelector("svg")).not.toBeNull()
+    }
   })
 
   it.each(["p", "h2", "details", "table", "widget", "table-command", "media-command", "details-command", "list-command", "graphic-command"])("centers clicked %s insertion in the current panned and zoomed view", tag => {

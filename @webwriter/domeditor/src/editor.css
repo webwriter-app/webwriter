@@ -4,11 +4,6 @@ body {
   overscroll-behavior: contain;
 }
 
-/* Reserve room beside the authored slide links for appendix-only actions. */
-body.ww-slides > nav.ww-slides-navigation.◆slide-navigation-editing {
-  max-width: calc(100% - 5rem);
-}
-
 /* The reader clips at the slide boundary; only editing exposes the margins. */
 @media screen {
   body.ww-slides:not(.◆editing-locked) > .ww-slides-viewport > section.ww-slide:not([is]) {
@@ -18,8 +13,7 @@ body.ww-slides > nav.ww-slides-navigation.◆slide-navigation-editing {
 
 /* Local scroll state also highlights the current bubble without native scroll-target support. */
 body.ww-slides > nav.ww-slides-navigation > a.◆slide-current {
-  background: #e2e5e9;
-  box-shadow: inset 0 0 0 1px currentColor;
+  background: #dbeafe;
 }
 
 html {

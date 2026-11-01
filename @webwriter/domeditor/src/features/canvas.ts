@@ -1,4 +1,4 @@
-import {CanvasViewer, canvasControlsStyles, canvasStartingView, isCanvasStartingView} from "../canvas-viewer.js"
+import {CanvasViewer, canvasControlsStyles, canvasIcons, canvasStartingView, isCanvasStartingView} from "../canvas-viewer.js"
 import {EditorFeature, type DocumentListenerMap} from "."
 import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
@@ -483,7 +483,6 @@ export class CanvasFeature extends EditorFeature {
       const target = origin instanceof Element ? origin.closest("button") : null
       if(!(target instanceof HTMLButtonElement) || !this.controls?.contains(target)) return
       if(target.name === "hand") { this.hand = !this.hand; this.schedule() }
-      else if(target.name === "text") this.insertCentered(() => this.insertText({x: window.innerWidth / 2, y: window.innerHeight / 2}))
       else if(target.name === "starting-view") this.actions.showCanvasStartingView({type: "showCanvasStartingView"})
       else if(target.name === "delete-starting-view") this.actions.deleteCanvasStartingView({type: "deleteCanvasStartingView"})
       else this.actions.navigateCanvas({type: "navigateCanvas", operation: target.name as "zoom-in" | "zoom-out" | "actual-size" | "fit-content"})
@@ -539,13 +538,14 @@ export class CanvasFeature extends EditorFeature {
       return button
     }
     if(this.active) {
-      button("hand", "Pan", "Toggle hand tool (middle-drag also pans)").setAttribute("aria-pressed", String(this.hand))
-      button("text", "Add text").hidden = !canInsert
+      const hand = button("hand", "", "Toggle hand tool (middle-drag also pans)")
+      hand.innerHTML = canvasIcons.hand
+      hand.setAttribute("aria-pressed", String(this.hand))
       button("zoom-out", "−", "Zoom out")
       const output = document.createElement("output"); output.textContent = `${Math.round(this.zoom * 100)}%`; this.controls!.append(output)
       button("zoom-in", "+", "Zoom in")
       button("actual-size", "100%", "Actual size")
-      button("fit-content", "Fit", "Fit content")
+      button("fit-content", "", "Fit content").innerHTML = canvasIcons.fit
       const group = document.createElement("div")
       group.className = "◆canvas-starting-view-controls"
       group.setAttribute("role", "group")
@@ -606,8 +606,9 @@ export class CanvasFeature extends EditorFeature {
     this.stylesheet = createStylesheet(canvasControlsStyles + `
       .◆canvas-starting-view-controls { display: inline-flex; }
       .◆canvas-starting-view-controls button:first-child { border-radius: 6px 0 0 6px; }
-      .◆canvas-starting-view-controls button:last-child { display: grid; place-items: center; border-left: 1px solid #cbd5e1; border-radius: 0 6px 6px 0; padding: 6px 8px; }
-      .◆canvas-starting-view-controls svg { width: 16px; height: 16px; }
+      .◆canvas-starting-view-controls button:last-child { display: grid; place-items: center; border-left: 1px solid #cbd5e1; border-radius: 0 6px 6px 0; padding: 5px 8px; }
+      .◆canvas-starting-view-controls button[hidden] { display: none; }
+      .◆canvas-starting-view-controls svg { width: 14px; height: 14px; }
       [part=canvas-starting-view] { position: fixed; box-sizing: border-box; border: 2px dotted #9ca3af; pointer-events: none; z-index: 0; }
       [part=canvas-starting-view][hidden] { display: none; }
       [part=canvas-starting-view] > div { position: absolute; pointer-events: auto; cursor: pointer; }
