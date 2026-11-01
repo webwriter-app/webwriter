@@ -99,9 +99,9 @@ export class PackageSearch extends LitElement {
       top: 0;
       right: 0;
       place-items: center;
-      width: 1.65rem;
+      width: 1.3rem;
       height: 100%;
-      padding: 0.4rem;
+      padding: 0.4rem 0.225rem;
       border: 0;
       border-radius: 0.25rem;
       color: #526b86;
