@@ -11,7 +11,7 @@ import {$, caretRect, pathFromNode, cloneWithoutEditorMarkers} from "../src/util
 import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
 import {floatSideFromStyles} from "../src/element-styles"
-import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
+import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, selectionChangeEvent, type ProofreadingAction} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
 import {buildTableMap} from "../src/table"
 import * as Y from "yjs"
@@ -2262,6 +2262,44 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 })
 
 const editor = new DOMEditor()
+
+await check("drag selection defers node selection until release", async () => {
+  const paragraph = document.createElement("p")
+  paragraph.textContent = "Drag across this element"
+  fixture.append(paragraph)
+  const details: Array<{nodeSelected?: boolean, element?: unknown}> = []
+  const listener = (event: Event) => details.push((event as CustomEvent).detail)
+  window.addEventListener(selectionChangeEvent, listener)
+  try {
+    await layoutFrame()
+    const text = paragraph.firstChild!
+    $.move(text, 1)
+    const rect = caretRect(text, 1)
+    const dispatch = (type: string, buttons: number) => paragraph.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, composed: true, cancelable: true, pointerType: "mouse", pointerId: 71,
+      button: 0, buttons, clientX: rect.left, clientY: rect.top + rect.height / 2,
+    }))
+    dispatch("pointerdown", 1)
+    assert(editor.features.selection.isInDragSelection, "pointerdown did not start the document drag")
+    dispatch("lostpointercapture", 1)
+    const previousPresence = JSON.stringify(editor.doc.awareness.getLocalState()?.selection)
+    $.selectElement(paragraph)
+    document.dispatchEvent(new Event("selectionchange"))
+    assert(editor.features.selection.isInDragSelection, "capture loss ended a held drag")
+    assert(!paragraph.classList.contains("◆element-selected") && !document.body.classList.contains("◆node-selection-active"), "drag displayed a node selection")
+    assert(!details.at(-1)?.nodeSelected && !details.at(-1)?.element, "drag published a node selection to the host")
+    assert(JSON.stringify(editor.doc.awareness.getLocalState()?.selection) === previousPresence, "drag published an element selection to collaborators")
+
+    dispatch("pointerup", 0)
+    assert(!editor.features.selection.isInDragSelection, "pointerup left the drag active")
+    assert(paragraph.classList.contains("◆element-selected") && details.at(-1)?.nodeSelected, "release did not publish the final node selection")
+    assert(JSON.stringify(editor.doc.awareness.getLocalState()?.selection) !== previousPresence, "release did not publish the final selection to collaborators")
+  }
+  finally {
+    window.removeEventListener(selectionChangeEvent, listener)
+    paragraph.remove()
+  }
+})
 
 await check("widget shadow interactions capture hosts while slotted children stay editable", async () => {
   editor.schema.extendWidgets([{tagName: "native-content-capture-widget", editingConfig: {content: "flow*"}}])

@@ -1808,6 +1808,25 @@ describe("contentful widgets", () => {
     caret.mockRestore()
   })
 
+  it("does not promote a native drag around a slotted element until pointerup", () => {
+    const {paragraph} = timeline(true)
+    const text = paragraph.querySelector("b")!.firstChild!
+    $.move(text, 1)
+    paragraph.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true,
+      cancelable: true, pointerId: 19, pointerType: "mouse", clientX: 10, clientY: 10}))
+    paragraph.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, composed: true,
+      pointerId: 19, pointerType: "mouse", buttons: 1, clientX: 30, clientY: 10}))
+    $.selectElement(paragraph)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(paragraph).not.toHaveClass("◆element-selected")
+    expect(document.body).not.toHaveClass("◆node-selection-active")
+
+    paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 20}))
+    expect(paragraph).not.toHaveClass("◆element-selected")
+    paragraph.dispatchEvent(new PointerEvent("pointerup", {bubbles: true, composed: true, pointerId: 19}))
+    expect(paragraph).toHaveClass("◆element-selected")
+  })
+
   it("allows a native widget drag to intentionally extend into preceding title text", () => {
     const {widget, paragraph} = timeline(true)
     const title = document.createElement("h3")
@@ -2331,6 +2350,28 @@ describe("processSelection()", () => {
     $.selectElement(p)
     feature.processSelection(true)
     expect(p.classList.contains("◆element-selected")).toBe(false)
+  })
+  it.each(["p", "figure", "custom-widget"])("does not publish a %s node selection during a drag", tag => {
+    const element = el(tag, "hello")
+    const details: Array<{nodeSelected?: boolean, element?: unknown}> = []
+    const listener = (event: Event) => details.push((event as CustomEvent).detail)
+    window.addEventListener(selectionChangeEvent, listener)
+    try {
+      feature.isInDragSelection = true
+      $.selectElement(element)
+      document.dispatchEvent(new Event("selectionchange"))
+      feature.processSelection(false)
+      expect(element).not.toHaveClass("◆element-selected")
+      expect(details.at(-1)?.nodeSelected).not.toBe(true)
+      expect(details.at(-1)?.element).toBeUndefined()
+
+      feature.isInDragSelection = false
+      feature.processSelection()
+      editor.postSelectionPath()
+      expect(element).toHaveClass("◆element-selected")
+      expect(details.at(-1)?.nodeSelected).toBe(true)
+    }
+    finally { window.removeEventListener(selectionChangeEvent, listener) }
   })
   it("marks the container of a text selection", () => {
     const p = el("p", "hello")
@@ -5109,6 +5150,38 @@ describe("selection invariants", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
     return paragraph
   }
+
+  it("keeps an ordinary element drag pending after early pointer-capture loss", () => {
+    const paragraph = textDocument()
+    hitTest()
+    $.move(paragraph.firstChild!, 1)
+    const details: Array<{nodeSelected?: boolean}> = []
+    const listener = (event: Event) => details.push((event as CustomEvent).detail)
+    window.addEventListener(selectionChangeEvent, listener)
+    try {
+      const dispatch = (type: string, buttons: number) => paragraph.dispatchEvent(new PointerEvent(type, {
+        bubbles: true, composed: true, cancelable: true, pointerId: 7, pointerType: "mouse",
+        button: 0, buttons, clientX: type === "pointerdown" ? 10 : 40, clientY: 25,
+      }))
+      dispatch("pointerdown", 1)
+      dispatch("pointermove", 1)
+      const previousPresence = JSON.stringify(editor.doc.awareness.getLocalState()?.selection)
+      $.selectElement(paragraph)
+      dispatch("lostpointercapture", 1)
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(feature.isInDragSelection).toBe(true)
+      expect(paragraph).not.toHaveClass("◆element-selected")
+      expect(details.at(-1)?.nodeSelected).not.toBe(true)
+      expect(JSON.stringify(editor.doc.awareness.getLocalState()?.selection)).toBe(previousPresence)
+
+      dispatch("pointerup", 0)
+      expect(feature.isInDragSelection).toBe(false)
+      expect(paragraph).toHaveClass("◆element-selected")
+      expect(details.at(-1)?.nodeSelected).toBe(true)
+      expect(JSON.stringify(editor.doc.awareness.getLocalState()?.selection)).not.toBe(previousPresence)
+    }
+    finally { window.removeEventListener(selectionChangeEvent, listener) }
+  })
 
   describe("touch uses shared pointer selection", () => {
     it("routes iframe-targeted touch through the same caret and range selection", () => {
