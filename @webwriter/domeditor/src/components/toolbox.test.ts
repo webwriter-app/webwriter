@@ -78,6 +78,16 @@ const toolButton = (toolbox: DomEditorToolbox, label: string) =>
   toolbox.shadowRoot!.querySelector<HTMLButtonElement>(`button[data-tool="${label}"]`)!
 
 describe("toolbox", () => {
+  it("omits the duplicate Shapes button from graphic commands", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.selectTool("Edit")
+    toolbox.graphic = {active: true, capture: true}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[action="show-shape-keyboard"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[action="import-graphic"]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('[action="save-graphic"]')).not.toBeNull()
+  })
+
   it("collapses to unselected tabs without clearing the current tool or its contents", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")

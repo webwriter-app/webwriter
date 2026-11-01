@@ -101,7 +101,7 @@ describe("graphic ribbon", () => {
     expect(graphic.querySelector(".graphic-geometry-controls")).toBeNull()
     const options = graphic.querySelector<HTMLElement>(".specialized-options")!
     expect(options.querySelector(".graphic-shape-gallery")).toBeNull()
-    expect(options.querySelector('[action="show-shape-keyboard"]')).not.toBeNull()
+    expect(options.querySelector('[action="show-shape-keyboard"]')).toBeNull()
     expect(options.querySelector('[action="import-graphic"]')).toHaveAttribute("icon", "Upload")
     expect(options.querySelector('[action="save-graphic"]')).toHaveAttribute("icon", "Download")
     expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).not.toBeNull()
