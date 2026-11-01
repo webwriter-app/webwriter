@@ -323,7 +323,7 @@ describe("document head form", () => {
     expect(label.nextElementSibling?.querySelector(".field-actions")).toBeNull()
   })
 
-  it("omits common values from the advanced list and keeps full controls for other elements", async () => {
+  it("omits common values, scripts and styles from the advanced list", async () => {
     const editor = await mount("advanced", state({
       title: "Lesson",
       elements: [
@@ -339,19 +339,17 @@ describe("document head form", () => {
           contentLabel: "JavaScript",
           canMoveUp: true,
         }),
+        element({id: "head-style", tagName: "style", label: "Style", content: "p {}"}),
+        element({id: "head-stylesheet", tagName: "link", label: "Stylesheet", attributes: [{name: "REL", value: "alternate StyleSheet"}]}),
+        element({id: "head-link", tagName: "link", label: "Link", attributes: [{name: "rel", value: "alternate"}]}),
       ],
     }))
-    const actions: DocumentHeadAction[] = []
-    editor.addEventListener("document-head-action", event => actions.push((event as CustomEvent<DocumentHeadAction>).detail))
-
     expect(editor.shadowRoot!.querySelector('[data-head-id="head-title"]')).toBeNull()
     expect(editor.shadowRoot!.querySelector('[data-head-id="head-title-duplicate"]')).not.toBeNull()
     expect(editor.shadowRoot!.querySelectorAll(".entry")).toHaveLength(2)
-    expect(editor.shadowRoot!.querySelector('[data-head-id="head-script"] .content')).toBeNull()
-    expect(editor.shadowRoot!.querySelector('[data-head-id="head-script"] .blocked-content')).not.toBeNull()
-    editor.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Remove Script"]')!.click()
-
-    expect(actions).toEqual([{type: "removeDocumentHeadElement", id: "head-script"}])
+    expect(editor.shadowRoot!.querySelector('[data-head-id="head-script"], [data-head-id="head-style"], [data-head-id="head-stylesheet"]')).toBeNull()
+    expect(editor.shadowRoot!.querySelector('[data-head-id="head-link"]')).not.toBeNull()
+    expect(editor.state.elements).toHaveLength(6)
   })
 
   it("opens only the extra attributes for a common field", async () => {

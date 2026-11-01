@@ -1067,9 +1067,6 @@ export class DocumentHeadEditor extends LitElement {
   }
 
   private renderEntry(entry: DocumentHeadElementState) {
-    const blocked = entry.tagName === "script" || entry.tagName === "style"
-      || entry.tagName === "link" && entry.attributes.some(attribute => attribute.name.toLowerCase() === "rel"
-        && attribute.value.toLowerCase().split(/\s+/).includes("stylesheet"))
     return html`
       <article class="entry" data-head-id=${entry.id}>
         <header class="entry-header">
@@ -1098,10 +1095,8 @@ export class DocumentHeadEditor extends LitElement {
             @click=${() => this.dispatchAction({type: "removeDocumentHeadElement", id: entry.id})}
           >×</button>
         </header>
-        ${blocked ? html`
-          <p class="blocked-content">Authored scripts and styles are blocked while editing. This element is preserved but cannot be edited.</p>
-        ` : this.renderAttributes(entry)}
-        ${blocked || entry.content === undefined ? nothing : html`
+        ${this.renderAttributes(entry)}
+        ${entry.content === undefined ? nothing : html`
           <label class="content-field">
             <span class="field-label">${entry.contentLabel ?? "Content"}</span>
             <textarea
@@ -1153,6 +1148,9 @@ export class DocumentHeadEditor extends LitElement {
       return element ? [element.id] : []
     }))
     const entries = this.state.elements.filter(element => !representedIds.has(element.id)
+      && element.tagName !== "script" && element.tagName !== "style"
+      && !(element.tagName === "link" && element.attributes.some(attribute => attribute.name.toLowerCase() === "rel"
+        && attribute.value.toLowerCase().split(/\s+/).includes("stylesheet")))
       && (!this.compact || element.preset !== "theme" && element.preset !== "generator"))
     const attributeEntry = this.state.elements.find(element =>
       element.id === this.attributeEditorId && representedIds.has(element.id),
