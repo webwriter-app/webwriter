@@ -28,4 +28,13 @@ describe("connected font dropdowns", () => {
     expect(trigger.hasAttribute("data-connected")).toBe(false)
     expect(popup.hasAttribute("data-connected")).toBe(false)
   })
+
+  it.each(["below", "above"] as const)("connects a two-pixel overlap %s", placement => {
+    const trigger = document.createElement("div"), popup = document.createElement("div")
+    trigger.getBoundingClientRect = () => new DOMRect(40, 100, 90, 28)
+    popup.getBoundingClientRect = () => new DOMRect(40, placement === "below" ? 126 : 22, 200, 80)
+    connectPopup(trigger, popup, "4px", 2)
+    expect(trigger.dataset.connected).toBe(placement)
+    expect(popup.dataset.connected).toBe(placement)
+  })
 })

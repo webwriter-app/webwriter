@@ -10,10 +10,10 @@ export function popupAnchorCSS(gap = 4) {
 export type FixedPopupPosition = {left: number, top: number}
 
 /** Match the ribbon buttons' shared border after a popup has been positioned. */
-export function connectPopup(trigger: HTMLElement, popup: HTMLElement, radius = ".35rem") {
+export function connectPopup(trigger: HTMLElement, popup: HTMLElement, radius = ".35rem", overlap = 1) {
   const button = trigger.getBoundingClientRect(), menu = popup.getBoundingClientRect()
-  const below = Math.abs(menu.top - button.bottom + 1) < .5
-  const above = Math.abs(menu.bottom - button.top - 1) < .5
+  const below = Math.abs(menu.top - button.bottom + overlap) < .5
+  const above = Math.abs(menu.bottom - button.top - overlap) < .5
   if(!below && !above) {
     trigger.removeAttribute("data-connected")
     popup.removeAttribute("data-connected")

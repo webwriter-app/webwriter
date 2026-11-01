@@ -14,6 +14,7 @@ import {documentThemeProperties, type SavedDocumentTheme} from "../document-them
 import {documentOpenReference, parseDocumentOpenReference, readLocalDocumentReference, matchesRecentDocumentSession, readRecentDocuments, recentDocumentAccessible, rememberRecentDocument, saveRecentDocuments, type RecentDocument, type RecentFileHandle} from "../recent-documents"
 import "./developer-console"
 import "./document-theme-presets"
+import type {DocumentThemePresets} from "./document-theme-presets"
 import type {DeveloperConsole} from "./developer-console"
 import "./math-keyboard"
 import type {MathKeyboard} from "./math-keyboard"
@@ -2451,12 +2452,17 @@ export class DomEditor extends LitElement {
   }
 
   private dismissEditorMenus() {
+    this.dismissThemePicker()
     this.renderRoot.querySelector<DomEditorBreadcrumb>("dom-editor-breadcrumb")?.collapseTree()
     const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
     ribbon?.dismissCollapsedMenu()
     ribbon?.dismissMenus()
     this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.dismissMenus()
     this.renderRoot.querySelector<DeveloperConsole>("developer-console")?.dismissMenus()
+  }
+
+  private dismissThemePicker() {
+    this.renderRoot.querySelector<DocumentThemePresets>(".document-layouts-main-heading document-theme-presets")?.close()
   }
 
   /** Keeps the mark area open while the pointer starts another text selection
@@ -2491,11 +2497,13 @@ export class DomEditor extends LitElement {
 
   private handleEditorFocus = (event: FocusEvent) => {
     if(isWidgetShadowInteraction(event)) return
+    this.dismissThemePicker()
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
   }
 
   private handleEditorFrameFocus = () => {
     this.handleHostWindowFocus()
+    this.dismissThemePicker()
     this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
   }
 
@@ -7345,6 +7353,7 @@ export class DomEditor extends LitElement {
     }
     if(event.data?.type === "editor-frame-focusin") {
       if(!this.editorOpaque || !this.isEditorMessage(event) || event.data.widgetShadow === true) return
+      this.dismissThemePicker()
       this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.dismissCollapsedMenu()
       return
     }

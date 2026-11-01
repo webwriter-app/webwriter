@@ -13,7 +13,7 @@ export class DocumentThemePresets extends LitElement {
   static styles = css`
     :host { display: inline-flex; color: #526b86; font: .68rem/1.2 system-ui, sans-serif; }
     .icon { display: grid; place-items: center; box-sizing: border-box; width: 1.35rem; height: 1.35rem; padding: .15rem; border: 0; border-radius: .2rem; background: transparent; color: inherit; cursor: pointer; }
-    .icon:hover, .icon[aria-expanded="true"] { background: #dce7f2; }
+    button.icon:hover, button.icon[aria-expanded="true"] { background: #dce7f2; }
     .icon:focus-visible { outline: 2px solid #3977c7; }
     .icon svg { width: 1.15rem; height: 1.15rem; }
     :host([heading]) .icon { width: 1.25rem; height: 1.35rem; }
@@ -52,8 +52,10 @@ export class DocumentThemePresets extends LitElement {
     .save { justify-self: end; background: #f7f7f7; cursor: pointer; }
     ${connectedComboboxStyles}
     :host([select-only]) { --connected-popup-border-color: #c5ccd5; }
+    /* The popup shadow otherwise crosses the white join over the trigger. */
+    :host([select-only]) .listbox[data-connected] { box-shadow: none; }
     :host([select-only][open]) .trigger[data-connected] { border: 1px solid #c5ccd5; border-bottom-color: #fff; border-radius: 4px 4px 0 0; }
-    :host([select-only][open]) .trigger[data-connected="above"] { border-top-color: #fff; border-bottom-color: #c5ccd5; border-radius: 0 0 4px 4px; }
+    :host([select-only][open]) .trigger[data-connected="above"] { border-top: 0; padding-top: calc(.15rem + 1px); border-bottom-color: #c5ccd5; border-radius: 0 0 4px 4px; }
   `
   state!: ElementStyleState
   themeStyles: SavedDocumentTheme["styles"] = {}
@@ -69,7 +71,7 @@ export class DocumentThemePresets extends LitElement {
   private reconnect = () => {
     const trigger = this.renderRoot.querySelector<HTMLElement>(".trigger")
     const popup = this.renderRoot.querySelector<HTMLElement>(".popup")
-    if(this.selectOnly && this.open && trigger && popup) connectPopup(trigger, popup, "4px")
+    if(this.selectOnly && this.open && trigger && popup) connectPopup(trigger, popup, "4px", 2)
   }
   private dismiss = (event: PointerEvent) => { if(this.open && !event.composedPath().includes(this)) this.close() }
   private keydown = (event: KeyboardEvent) => {
@@ -100,7 +102,7 @@ export class DocumentThemePresets extends LitElement {
     this.ownerDocument.defaultView?.removeEventListener("resize", this.reconnect)
     super.disconnectedCallback()
   }
-  private close() {
+  close() {
     this.popupObserver?.disconnect()
     this.popupObserver = null
     const popup = this.renderRoot?.querySelector<HTMLElement>(".popup")
@@ -119,7 +121,7 @@ export class DocumentThemePresets extends LitElement {
     const popup = this.renderRoot.querySelector<HTMLElement>(".popup")!
     const trigger = this.renderRoot.querySelector<HTMLElement>(".trigger")!
     popup.showPopover?.()
-    this.anchorPositioner.bind(popup, trigger, popupAnchorCSS(this.selectOnly ? -1 : 4))
+    this.anchorPositioner.bind(popup, trigger, popupAnchorCSS(this.selectOnly ? -2 : 4))
     this.anchorPositioner.refresh()
     if(this.selectOnly) {
       this.reconnect()

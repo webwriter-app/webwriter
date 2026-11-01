@@ -150,7 +150,7 @@ it.each(["below", "above"] as const)("connects the Layouts picker border when th
   expect(control.hasAttribute("open")).toBe(true)
   const popup = control.shadowRoot!.querySelector<HTMLElement>(".popup")!
   trigger.getBoundingClientRect = () => new DOMRect(100, 100, 90, 28)
-  popup.getBoundingClientRect = () => new DOMRect(100, placement === "below" ? 127 : 21, 208, 80)
+  popup.getBoundingClientRect = () => new DOMRect(100, placement === "below" ? 126 : 22, 208, 80)
   window.dispatchEvent(new Event("resize"))
   expect(trigger.dataset.connected).toBe(placement)
   expect(popup.dataset.connected).toBe(placement)

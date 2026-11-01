@@ -8190,6 +8190,24 @@ describe("DomEditor.execute()", () => {
     expect(execute).toHaveBeenCalledWith({type: "setDocumentThemeStyles", styles})
   })
 
+  it.each(["focus", "pointer", "isolated focus", "isolated pointer"])("closes the Layouts theme picker on editor %s", async mode => {
+    const {editor, iframe, editorWindow} = await mountEditor()
+    const picker = editor.shadowRoot!.querySelector<any>(".document-layouts-main-heading document-theme-presets")!
+    await picker.updateComplete
+    picker.shadowRoot!.querySelector<HTMLButtonElement>(".trigger")!.click()
+    await picker.updateComplete
+    expect(picker.hasAttribute("open")).toBe(true)
+    if(mode.startsWith("isolated")) {
+      ;(editor as any).editorOpaque = true
+      window.dispatchEvent(new MessageEvent("message", {source: editorWindow, data: {type: mode.endsWith("focus") ? "editor-frame-focusin" : "editor-frame-pointerdown"}}))
+      ;(editor as any).editorOpaque = false
+    }
+    else iframe.contentDocument!.body.dispatchEvent(new Event(mode === "focus" ? "focusin" : "pointerdown", {bubbles: true, composed: true}))
+    await picker.updateComplete
+    expect(picker.hasAttribute("open")).toBe(false)
+    expect(picker.shadowRoot!.querySelector(".popup")).toBeNull()
+  })
+
   it("keeps Layouts visible when a theme styles an empty document", async () => {
     const {editor, iframe} = await mountEditor()
     const host = editor as any
