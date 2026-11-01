@@ -205,6 +205,8 @@ const expectedChecks = [
   "paragraphs grow with content and retain explicit sizes in canvas",
   "paragraphs grow with content and retain explicit sizes in slides",
   "ribbon elements drop on the blank canvas slot",
+  "relayed standard elements preview and drop into a blank document",
+  "ribbon Audio drag crosses the host and editor frame",
   "relayed ribbon elements drop onto the selected element beneath editor overlays",
   "ribbon snippets drop at the caret and center in freeform layouts",
   "typing after moving a text box preserves its text and position",

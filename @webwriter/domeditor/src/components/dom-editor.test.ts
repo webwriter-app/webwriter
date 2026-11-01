@@ -5,7 +5,7 @@ import {nothing} from "lit"
 import {DomEditor} from "./dom-editor"
 import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
-import {elementDragType} from "./insertion-menu"
+import {elementDragType, ribbonInsertionDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
 import type {ShapeKeyboard} from "./shape-keyboard"
 import type {MathKeyboard} from "./math-keyboard"
@@ -2577,6 +2577,28 @@ describe("DomEditor ribbon drag relay", () => {
     await editor.updateComplete
     expect(relayed()).toHaveLength(count)
     expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).toBeNull()
+  })
+
+  it("relays a compact element button through the same frame shield as a widget", async () => {
+    const {editor, iframe} = await mountEditor()
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await ribbon.updateComplete
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[slot="compact"][label="Text"]')!
+    await button.updateComplete
+    const source = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const data = new DataTransfer()
+    vi.spyOn(data, "setDragImage").mockImplementation(() => {})
+    source.dispatchEvent(dragEvent("dragstart", data))
+    await editor.updateComplete
+    expect(editor.shadowRoot!.querySelector(".ribbon-drag-shield")).not.toBeNull()
+    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 300, 200))
+    const post = vi.spyOn(iframe.contentWindow!, "postMessage").mockImplementation(() => undefined)
+    editor.shadowRoot!.querySelector(".ribbon-drag-shield")!
+      .dispatchEvent(dragEvent("drop", data, {clientX: 60, clientY: 70}))
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({
+      type: editorFrameControlMessage, command: "drag", event: "drop", x: 50, y: 50,
+      data: expect.objectContaining({[ribbonInsertionDragType]: "element:p"}),
+    }), expect.anything())
   })
 
   it("clears the frame's drop caret when a ribbon drag is cancelled", async () => {

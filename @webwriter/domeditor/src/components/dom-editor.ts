@@ -870,6 +870,9 @@ export class DomEditor extends LitElement {
       z-index: 1;
     }
 
+    /* Chrome otherwise sends the native drop into the cross-origin frame. */
+    .document-stage:has(.ribbon-drag-shield) .editor-frame { pointer-events: none; }
+
     .math-keyboard-open {
       position: absolute;
       right: 0.6rem;

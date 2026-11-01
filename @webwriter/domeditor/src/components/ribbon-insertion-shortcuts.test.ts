@@ -6,7 +6,7 @@ import {SettingsPanel} from "./settings-panel"
 import type {RibbonButton} from "./ribbon-button"
 import {RibbonMenu} from "./ribbon-menu"
 import {insertionMenuGroups} from "./ribbon-menu-config"
-import {elementDragType, ribbonInsertionDragType} from "./insertion-menu"
+import {ribbonInsertionDragType} from "./insertion-menu"
 
 const insertionShortcuts = [
   ["Heading", "heading", "1"],
@@ -50,6 +50,7 @@ describe("insertion ribbon shortcuts", () => {
   it("drags ribbon elements and dropdown entries with their icon and tag", async () => {
     const ribbon = await mountRibbon()
     const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Paragraph"]')!
+    expect(button.action).toBe("element:p")
     const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
     const image = vi.spyOn(DataTransfer.prototype, "setDragImage").mockImplementation(() => {})
     const drag = (target: Element) => {
@@ -64,17 +65,17 @@ describe("insertion ribbon shortcuts", () => {
     main.dispatchEvent(down)
     expect(down.defaultPrevented).toBe(false)
     const paragraphData = drag(main)
-    expect(paragraphData.getData(elementDragType)).toBe("p")
+    expect(Array.from(paragraphData.types)).toEqual([ribbonInsertionDragType])
     expect(paragraphData.getData(ribbonInsertionDragType)).toBe("element:p")
     expect(image.mock.calls.at(-1)?.[0]).toBe(main.querySelector(".button-icon"))
     const paragraphIconData = drag(main.querySelector(".button-icon svg path")!)
-    expect(paragraphIconData.getData(elementDragType)).toBe("p")
+    expect(Array.from(paragraphIconData.types)).toEqual([ribbonInsertionDragType])
     expect(paragraphIconData.getData(ribbonInsertionDragType)).toBe("element:p")
     expect(paragraphIconData.effectAllowed).toBe("copy")
     const headingButton = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Heading"]')!
     const headingMain = headingButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
     expect(headingMain.getAttribute("draggable")).toBe("true")
-    expect(drag(headingMain).getData(elementDragType)).toBe("h1")
+    expect(drag(headingMain).getData(ribbonInsertionDragType)).toBe("element:h1")
     const formulaButton = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Formula"]')!
     await formulaButton.updateComplete
     const formulaMain = formulaButton.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
@@ -88,18 +89,35 @@ describe("insertion ribbon shortcuts", () => {
     const headingToggle = menu.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Show more Heading options"]')!
     const headingItem = headingToggle.previousElementSibling as HTMLButtonElement
     expect(headingItem.getAttribute("draggable")).toBe("true")
-    expect(drag(headingItem).getData(elementDragType)).toBe("h1")
+    expect(drag(headingItem).getData(ribbonInsertionDragType)).toBe("element:h1")
     headingToggle.click()
     await menu.updateComplete
     const heading2 = Array.from(menu.shadowRoot!.querySelectorAll<HTMLButtonElement>(".submenu button.item"))
       .find(item => item.textContent?.trim() === "Heading 2")!
     expect(heading2.getAttribute("draggable")).toBe("true")
-    expect(drag(heading2).getData(elementDragType)).toBe("h2")
+    expect(drag(heading2).getData(ribbonInsertionDragType)).toBe("element:h2")
     const headingIconData = drag(heading2.querySelector(".item-icon svg path")!)
-    expect(headingIconData.getData(elementDragType)).toBe("h2")
+    expect(Array.from(headingIconData.types)).toEqual([ribbonInsertionDragType])
     expect(headingIconData.getData(ribbonInsertionDragType)).toBe("element:h2")
     expect(image.mock.calls.at(-1)?.[0]).toBe(heading2.querySelector(".item-icon"))
   })
+
+  it.each([["Text", "p"], ["Media", "picture"]])("drags the compact %s control as its representative element", async (label, tag) => {
+    const ribbon = await mountRibbon()
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>(`ribbon-drawer[label="Elements"] ribbon-button[slot="compact"][label="${label}"]`)!
+    await button.updateComplete
+    const main = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    expect(main.getAttribute("draggable")).toBe("true")
+    const data = new DataTransfer()
+    vi.spyOn(data, "setDragImage").mockImplementation(() => {})
+    const event = new Event("dragstart", {bubbles: true, cancelable: true, composed: true})
+    Object.assign(event, {dataTransfer: data})
+    main.dispatchEvent(event)
+    expect(Array.from(data.types)).toEqual([ribbonInsertionDragType])
+    expect(data.getData(ribbonInsertionDragType)).toBe(`element:${tag}`)
+    expect(data.effectAllowed).toBe("copy")
+  })
+
   it("upgrades saved empty defaults in both tooltips and configurable shortcuts", async () => {
     saveLegacySettings()
     const settings = loadAppSettings()

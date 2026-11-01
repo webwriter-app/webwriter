@@ -6980,6 +6980,73 @@ await check("ribbon elements drop on the blank canvas slot", async () => {
   finally { canvasEditor?.destroy(); frame.remove() }
 })
 
+await check("relayed standard elements preview and drop into a blank document", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
+  document.body.append(frame)
+  let frameEditor: DOMEditor | undefined
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, `standard drop editor did not initialize: ${view.editorError}`)
+    frameEditor = view.editor!
+    const doc = frame.contentDocument!
+    await layoutFrame()
+    const data = {"application/x-webwriter-ribbon-insertion": "element:audio"}
+    const x = frame.clientWidth / 2, y = 250
+    assert(replayHostDrag({event: "dragover", x, y, data}, doc), "blank document did not accept Audio hover")
+    assert(doc.body.classList.contains("◆drop-selection-active"), "Audio hover showed no drop caret")
+    assert(replayHostDrag({event: "drop", x, y, data}, doc), "blank document did not accept Audio drop")
+    assert(doc.body.querySelector("audio"), `Audio was not inserted: ${doc.body.innerHTML}`)
+  }
+  finally { frameEditor?.destroy(); frame.remove() }
+})
+
+await check("ribbon Audio drag crosses the host and editor frame", async () => {
+  const {DomEditor} = await import("../src/components/dom-editor")
+  const app = new DomEditor()
+  app.style.cssText = "width:950px;height:700px"
+  fixture.append(app)
+  try {
+    for(let attempt = 0; attempt < 200; attempt++) {
+      if(app.shadowRoot?.querySelector("app-ribbon")?.shadowRoot?.querySelector('ribbon-button[label="Audio"]')) break
+      await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    const ribbon = app.shadowRoot?.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")
+    if(!ribbon) throw new Error("host did not initialize")
+    for(let attempt = 0; !app.shadowRoot?.querySelector("iframe.editor-frame") && attempt < 200; attempt++)
+      await new Promise(resolve => setTimeout(resolve, 25))
+    assert(app.shadowRoot?.querySelector("iframe.editor-frame"), "editor frame did not start")
+    await app.execute({type: "serializeDocument"})
+    const button = ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-button[label="Audio"]')!
+    await button.updateComplete
+    const source = button.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!
+    const data = new DataTransfer()
+    source.dispatchEvent(new DragEvent("dragstart", {dataTransfer: data, bubbles: true, composed: true, cancelable: true}))
+    assert(Array.from(data.types).join(",") === "application/x-webwriter-ribbon-insertion",
+      "Audio drag used a different transfer from widgets: " + Array.from(data.types))
+    await app.updateComplete
+    const shield = app.shadowRoot!.querySelector<HTMLElement>(".ribbon-drag-shield")
+    if(!shield) throw new Error("host did not show drag shield")
+    const target = app.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
+    const rect = target.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + 200
+    assert(getComputedStyle(target).pointerEvents === "none", "editor frame still intercepted the ribbon drag")
+    assert(app.shadowRoot!.elementFromPoint(x, y) === shield, "drag shield did not receive pointer events over the editor frame")
+    const init = {dataTransfer: data, clientX: x, clientY: y, bubbles: true, composed: true, cancelable: true}
+    const over = new DragEvent("dragover", init)
+    shield.dispatchEvent(over)
+    assert(over.defaultPrevented, "host did not accept Audio dragover")
+    shield.dispatchEvent(new DragEvent("drop", init))
+    for(let attempt = 0; attempt < 100 && !(await app.execute({type: "serializeDocument"}) as string).includes("<audio"); attempt++)
+      await new Promise(resolve => setTimeout(resolve, 25))
+    assert((await app.execute({type: "serializeDocument"}) as string).includes("<audio"), "Audio did not cross the frame")
+    await app.updateComplete
+    assert(getComputedStyle(target).pointerEvents === "auto", "editor frame remained disabled after the drop")
+  }
+  finally { app.remove() }
+})
+
 await check("relayed ribbon elements drop onto the selected element beneath editor overlays", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
