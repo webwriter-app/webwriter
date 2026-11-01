@@ -301,6 +301,12 @@ describe("specialized element toolbox", () => {
     expect(drawers[0].shadowRoot!.querySelector(".pane-label .element-count")?.textContent).toBe("2")
     expect(drawers[1].shadowRoot!.querySelector(".element-count")).toBeNull()
     expect(drawers[2].expandable).toBe(false)
+    const emptyOptions = drawers[2].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(emptyOptions.hidden).toBe(false)
+    expect(emptyOptions.disabled).toBe(true)
+    expect(emptyOptions.textContent).toContain("Options")
+    const paragraphOptions = drawers[0].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
+    expect(paragraphOptions.disabled).toBe(false)
     expect(drawers[2].querySelector('element-attribute-editor[language-button]')).not.toBeNull()
     const styleChanges = vi.fn(), attributeChanges = vi.fn()
     toolbox.addEventListener("element-style-change", styleChanges)

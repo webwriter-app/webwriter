@@ -702,7 +702,7 @@ export class RibbonDrawer extends LitElement {
       display: none;
     }
 
-    .drawer-toggle:hover,
+    .drawer-toggle:hover:not(:disabled),
     .drawer-toggle[aria-expanded="true"] {
       border-color: #c8d2df;
       color: var(--ribbon-control-color, #1e4f87);
@@ -1116,9 +1116,14 @@ export class RibbonDrawer extends LitElement {
       transition: var(--ww-ui-transition, border-color 120ms ease, color 120ms ease, background-color 120ms ease);
     }
 
-    :host([pane]) .drawer.options .drawer-toggle:hover {
+    :host([pane]) .drawer.options .drawer-toggle:hover:not(:disabled) {
       border-color: transparent;
       background: #e8eef5;
+    }
+
+    :host([pane]) .drawer.options .drawer-toggle:disabled {
+      color: #a5adb7;
+      cursor: default;
     }
 
     :host([pane]) .drawer.options .drawer-toggle-label {
@@ -1561,7 +1566,7 @@ export class RibbonDrawer extends LitElement {
     const toggle = this.layout === "marks" && !this.collapsed ? "" : html`<button
       class="drawer-toggle"
       type="button"
-      ?hidden=${toggleUnavailable}
+      ?hidden=${toggleUnavailable && !stylePaneToggle}
       ?disabled=${toggleUnavailable}
       aria-controls="drawer-controls"
       aria-expanded=${this.drawerOpen}
