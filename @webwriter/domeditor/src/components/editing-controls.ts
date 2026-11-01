@@ -795,11 +795,13 @@ export abstract class EditingControls extends LitElement {
       && (this.elementAttributes.localName === "p" || this.elementAttributes.localName === "pre")
   }
 
+  protected get headingLevelEditable() { return true }
+
   protected renderHeadingGroupDrawer() {
     if(!this.headingGroup) return nothing
     return html`
       <ribbon-drawer label="Heading group" icon="Heading" layout="form">
-        <label class="mark-attribute">
+        ${this.headingLevelEditable ? html`<label class="mark-attribute">
           <span>Heading level</span>
           <select
             .value=${this.headingGroup.heading ?? "h1"}
@@ -809,7 +811,7 @@ export abstract class EditingControls extends LitElement {
               composed: true,
             }))}
           >${[1, 2, 3, 4, 5, 6].map(level => html`<option value=${`h${level}`}>Heading ${level}</option>`)}</select>
-        </label>
+        </label>` : nothing}
         <ribbon-button label="Add text above" action="heading-group-add-before" icon="Plus"></ribbon-button>
         <ribbon-button label="Add text below" action="heading-group-add-after" icon="Plus"></ribbon-button>
       </ribbon-drawer>

@@ -51,6 +51,7 @@ const tools: readonly {label: ToolboxTool, icon: string}[] = [
  * contract. */
 export class DomEditorToolbox extends EditingControls {
   protected get commentReviewMode() { return this.activeTool === "Review" }
+  protected get headingLevelEditable() { return this.documentLayout.mode !== "board" }
 
   protected usesNativePointerInteraction(event: MouseEvent) {
     return event.composedPath().some(target => target instanceof HTMLElement && (target.classList.contains("ai-toolbox-content") || target.classList.contains("feedback-content") || target.localName === "distribution-controls"))
@@ -1183,7 +1184,7 @@ export class DomEditorToolbox extends EditingControls {
             bubbles: true, composed: true,
           }))}>Open by default
       </label>` : nothing}
-      ${heading ? html`<div class="specialized-widget-primary heading-level"><div class="develop-field">
+      ${heading && this.headingLevelEditable ? html`<div class="specialized-widget-primary heading-level"><div class="develop-field">
         <span class="field-label" id=${`heading-level-${localName}`}>Level</span>
         <div class="specialized-choice-group" style="--choice-columns: 3" role="group" aria-labelledby=${`heading-level-${localName}`}>
           ${[1, 2, 3, 4, 5, 6].map(level => html`<button type="button"

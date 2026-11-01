@@ -317,6 +317,16 @@ describe("specialized element toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector('[data-specialized="p"] .heading-level')).toBeNull()
   })
 
+  it("hides heading level controls in the board layout", async () => {
+    const toolbox = await mountElement("h2")
+    toolbox.documentLayout = {mode: "board", canConvert: true, zoom: 100}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[data-specialized="h2"] .heading-level')).toBeNull()
+    toolbox.documentLayout = {mode: "document", canConvert: true, zoom: 100}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('[data-specialized="h2"] .heading-level')).not.toBeNull()
+  })
+
   it("shows one scoped drawer for each selected type and updates them when the selection changes", async () => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"

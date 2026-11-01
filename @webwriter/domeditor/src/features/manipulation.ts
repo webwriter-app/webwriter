@@ -2030,6 +2030,7 @@ export class ManipulationFeature extends EditorFeature {
 
   setHeadingGroupLevel(level: HeadingGroupSelectionState["heading"]) {
     if(!level) throw new TypeError("A heading group requires a heading level")
+    if(documentLayoutMode() === "board") return
     const group = this.activeHeadingGroup()
     if(!group) return
     const heading = this.directHeading(group)
@@ -2541,6 +2542,7 @@ export class ManipulationFeature extends EditorFeature {
 
     const count = this.withNormalization(() => blocks.reduce((converted, block) => {
       if(block.localName === tag || !block.isConnected
+        || documentLayoutMode() === "board" && /^h[1-6]$/.test(block.localName) && /^h[1-6]$/.test(tag)
         || /^h[1-6]$/.test(tag) && block.closest("li, dt, dd")) return converted
       const candidate = document.createElement(tag)
       this.copyAuthoredAttributes(block, candidate)

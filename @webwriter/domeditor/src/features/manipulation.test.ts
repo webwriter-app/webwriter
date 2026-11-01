@@ -2555,6 +2555,18 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
 })
 
 describe("heading groups", () => {
+  it("keeps heading group levels on a board", () => {
+    try {
+      document.body.innerHTML = '<section class="ww-board-column"><hgroup><h2>Title</h2><p>Deck</p></hgroup></section>'
+      const heading = document.querySelector("h2")!
+      $.move(heading.firstChild!)
+      document.body.classList.add("ww-board")
+      editor.features.manipulation.setHeadingGroupLevel("h3")
+      expect(document.querySelector("hgroup > h2")).toBe(heading)
+    }
+    finally { document.body.classList.remove("ww-board") }
+  })
+
   it("reports and changes the direct heading while preserving attributes and irregular children", () => {
     document.body.innerHTML = '<hgroup data-origin="remote"><p>Eyebrow</p><h2 id="title"><em>Title</em></h2><x-note></x-note><p>Deck</p></hgroup>'
     $.move(document.querySelector("em")!.firstChild!, 2)
@@ -4338,6 +4350,18 @@ describe("text input normalization", () => {
   })
 })
 describe("setBlockType()", () => {
+  it("does not change heading levels on a board", () => {
+    try {
+      document.body.innerHTML = '<section class="ww-board-column"><h2>Title</h2><section class="ww-board-card"><h3>Card heading</h3></section></section>'
+      const heading = document.querySelector("h3")!
+      $.move(heading.firstChild!)
+      document.body.classList.add("ww-board")
+      expect(editor.features.manipulation.setBlockType("h4")).toBe(0)
+      expect(document.querySelector("h3")).toBe(heading)
+    }
+    finally { document.body.classList.remove("ww-board") }
+  })
+
   it("changes only scoped headings in a mixed selection and preserves DOM and undo", () => {
     document.body.innerHTML = '<section><h2 id="intro" class="lead"><b>Hello</b><!--keep--></h2><p>Paragraph</p><h3>Other level</h3><h2>Second</h2><test-widget><h2>Widget heading</h2></test-widget></section>'
     const section = document.querySelector("section")!, first = document.querySelector("h2")!
