@@ -951,6 +951,7 @@ export class DOMEditor {
 
   /** Sends the current element path to the host application through the bridge. */
   postSelectionPath(inserted = false) {
+    if(this.features.selection.isInDragSelection) return
     if(this.options.reader) { window.dispatchEvent(new Event("webwriter-distribution-selection")); return }
     const body = document.body
     const root = getDocumentRoot(body)
@@ -1110,7 +1111,7 @@ export class DOMEditor {
 
   /** Sends mark availability and active marks as a DOM-derived bridge event. */
   postMarkState() {
-    if(this.options.reader) return
+    if(this.options.reader || this.features.selection.isInDragSelection) return
     this.features.graphic.rememberTextSelection()
     if(this.features.selection.selectedSectionElement) {
       this.postBridgeEvent(markStateChangeEvent, {
@@ -1133,7 +1134,7 @@ export class DOMEditor {
 
   /** Sends in-document comment availability and active comment state. */
   postCommentState() {
-    if(this.options.reader) return
+    if(this.options.reader || this.features.selection.isInDragSelection) return
     this.postBridgeEvent(commentStateChangeEvent, this.features.comment.getState())
   }
 

@@ -802,6 +802,8 @@ export class SelectionFeature extends EditorFeature {
     document.body.classList.remove("◆selection-dragging")
     if(wasDragging) {
       this.editor.postSelectionPath()
+      this.editor.postMarkState()
+      this.editor.postCommentState()
       queueMicrotask(() => this.editor.features.media.refreshPlaceholder())
     }
     if(pointerId !== undefined && target?.hasPointerCapture?.(pointerId)) {
@@ -849,7 +851,10 @@ export class SelectionFeature extends EditorFeature {
 
   #beginDrag(event: PointerEvent, nativeClick: boolean) {
     const selection = document.getSelection()
-    if(!selection?.anchorNode || !selection.focusNode) return
+    if(!selection?.anchorNode || !selection.focusNode) {
+      this.#endDrag()
+      return
+    }
     const scope = this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
     if(scope && !scope.contains(selection.anchorNode)) selection.collapse(selection.focusNode, selection.focusOffset)
     const anchor = document.createRange()
@@ -1049,6 +1054,7 @@ export class SelectionFeature extends EditorFeature {
     const widgetGap = $.widgetGapFromCoords(ev.clientX, ev.clientY, origin, this.editor.schema)
     if(widgetGap) {
       ev.preventDefault()
+      this.isInDragSelection = true
       ev.shiftKey ? $.extend(widgetGap.node, widgetGap.offset) : $.selectRange(widgetGap.node, widgetGap.offset)
       this.#beginDrag(ev, false)
       this.processSelection(true)
@@ -1088,6 +1094,7 @@ export class SelectionFeature extends EditorFeature {
     const clickedItem = this.#layoutSelectionItem(canvasItem ?? (ev.target instanceof Node ? ev.target : null),
       canvasItem ?? (ev.target instanceof Node ? ev.target : null))
     const extend = ev.shiftKey && (!clickedItem || clickedItem === this.#layoutSelectionItem($.anchor, $.anchor))
+    this.isInDragSelection = true
     const point = $.selectCoords(ev.clientX, ev.clientY, extend, ev.target, this.editor.schema)
     const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
     const nativeClick = ev.pointerType !== "touch" && !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)

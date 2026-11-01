@@ -2355,14 +2355,10 @@ describe("processSelection()", () => {
     feature.isInDragSelection = true
     feature.processSelection()
     editor.postSelectionPath()
-    const dragging = (post.mock.lastCall![0] as {detail: Record<string, unknown>}).detail
     expect(p).not.toHaveClass("◆element-selected")
     expect(document.body).not.toHaveClass("◆node-selection-active")
     expect(editor.features.transformation.target).toBeNull()
-    expect(dragging).not.toHaveProperty("nodeSelected")
-    expect(dragging).not.toHaveProperty("capture")
-    expect(dragging).not.toHaveProperty("element")
-    expect(dragging).not.toHaveProperty("selectedElementTypes")
+    expect(post).not.toHaveBeenCalled()
     feature.isInDragSelection = false
     feature.processSelection()
     editor.postSelectionPath()
@@ -5200,6 +5196,29 @@ describe("selection invariants", () => {
     vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 60, 20))
     return paragraph
   }
+
+  it.each(["<table><tbody><tr><td>hello world</td></tr></tbody></table>", "<p>hello world</p>"])(
+    "holds toolbox selection updates until a drag finishes in %s", markup => {
+      document.body.innerHTML = markup
+      const target = document.querySelector("td, p")!, text = target.firstChild!
+      vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
+      vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 100, 20))
+      vi.spyOn(document, "caretPositionFromPoint").mockImplementation(x => ({offsetNode: text, offset: x < 50 ? 1 : 7}) as unknown as CaretPosition)
+      $.move(text, 1)
+      const post = vi.spyOn(editor, "postHostMessage")
+      pointer(target, "pointerdown", 20, 30)
+      pointer(target, "pointermove", 80, 30)
+      document.dispatchEvent(new Event("selectionchange"))
+      expect(feature.isInDragSelection).toBe(true)
+      const toolboxMessages = () => post.mock.calls.filter(([message]) => [selectionChangeEvent,
+        "dom-editor-mark-state-change", "dom-editor-comment-state-change"].includes(message.type))
+      expect(toolboxMessages()).toHaveLength(0)
+      pointer(target, "pointerup", 80, 30)
+      const update = toolboxMessages().find(([message]) => message.type === selectionChangeEvent)?.[0]
+      expect(update).toBeDefined()
+      expect(document.getSelection()!.toString()).toBe("ello w")
+    },
+  )
 
   it("shows an image in the live range while dragging from the only empty paragraph", () => {
     document.body.innerHTML = "<p></p><img>"
