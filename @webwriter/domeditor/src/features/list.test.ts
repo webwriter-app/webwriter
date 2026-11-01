@@ -234,6 +234,13 @@ describe("semantic list editing", () => {
       .not.toContain("virtual-list-item-hidden")
   })
 
+  it("preserves an empty paragraph's attributes on its list item", () => {
+    document.body.innerHTML = '<p id="empty" lang="de"></p>'
+    $.move(document.querySelector("p")!)
+    editor.features.list.toggleList("ul")
+    expect(cleanHTML()).toBe('<ul><li id="empty" lang="de"></li></ul>')
+  })
+
   it("materializes the virtual item before a modified Enter inserts a break", () => {
     editor.features.list.toggleList("ul")
 
@@ -323,6 +330,23 @@ describe("semantic list editing", () => {
       .toContain("selection-caret-hidden")
   })
 
+  it("uses and clears a shadow caret for an empty inside list item", () => {
+    document.body.innerHTML = '<ul style="list-style-position: inside"><li>Text</li><li></li></ul><p>Elsewhere</p>'
+    const item = document.querySelectorAll("li")[1]!
+    Object.defineProperty(item, "getClientRects", {value: () => [{left: 80, right: 280, top: 40, bottom: 60}]})
+    Object.defineProperty(item, "getBoundingClientRect", {value: () => ({left: 80, right: 280, top: 40, bottom: 60, height: 20})})
+    $.move(item, 0)
+    editor.features.list.refreshSelectionPresentation()
+    const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
+    expect(item.classList.contains("◆list-empty-caret")).toBe(true)
+    expect(marker.getAttribute("part")).toContain("virtual-list-item-caret-only")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    $.move(document.querySelector("p")!.firstChild!, 0)
+    editor.features.list.refreshSelectionPresentation()
+    expect(item.classList.contains("◆list-empty-caret")).toBe(false)
+    expect(marker.getAttribute("part")).toContain("virtual-list-item-hidden")
+  })
+
   it("matches the authored marker style for an empty list", async () => {
     document.body.innerHTML = '<ul style="list-style-type: square;"></ul>'
     $.move(document.querySelector("ul")!)
@@ -332,6 +356,22 @@ describe("semantic list editing", () => {
     const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
     expect(marker.style.listStyleType).toBe("square")
     expect(marker.getAttribute("value")).toBeNull()
+  })
+
+  it.each(["ul", "ol", "menu"])("mirrors and clears the inside marker position for an empty %s", type => {
+    document.body.innerHTML = `<${type} style="list-style-position: inside"></${type}><p>Elsewhere</p>`
+    $.move(document.querySelector(type)!, 0)
+    editor.features.list.refreshSelectionPresentation()
+    const marker = editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")!
+    const caret = marker.querySelector<HTMLElement>(".◆virtual-list-caret")!
+    expect(marker.style.listStylePosition).toBe("inside")
+    expect(marker.getAttribute("part")).toContain("virtual-list-item-inside")
+    expect(caret.getAttribute("part")).toContain("virtual-list-caret-inside")
+    $.move(document.querySelector("p")!.firstChild!, 0)
+    editor.features.list.refreshSelectionPresentation()
+    expect(marker.style.listStylePosition).toBe("")
+    expect(marker.getAttribute("part")).not.toContain("virtual-list-item-inside")
+    expect(caret.getAttribute("part")).not.toContain("virtual-list-caret-inside")
   })
 
   it("uses the authored start value for an empty ordered list", async () => {
@@ -719,7 +759,38 @@ describe("semantic list editing", () => {
 
     editor.features.list.toggleList("ol")
 
-    expect(cleanHTML()).toBe('<ol><li><p>A</p></li><li><p id="b">B</p></li></ol>')
+    expect(cleanHTML()).toBe('<ol><li>A</li><li><p id="b">B</p></li></ol>')
+  })
+
+  it.each(["toggle", "insert"] as const)("lifts paragraph content and attributes during %s list conversion", async method => {
+    document.body.innerHTML = '<p id="first" class="authored" style="color: red">A <b>bold</b><!--keep--><my-widget></my-widget></p><p lang="de">Second</p>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const bold = document.querySelector("b")!, widget = document.querySelector("my-widget")!
+    $.selectRange(document.body, 0, document.body, 2)
+    if(method === "toggle") editor.features.list.toggleList("ul")
+    else editor.features.list.insertList("ul")
+    const items = document.querySelectorAll("ul > li")
+    expect(items).toHaveLength(2)
+    expect(items[0].id).toBe("first")
+    expect(items[0].classList.contains("authored")).toBe(true)
+    expect((items[0] as HTMLElement).style.color).toBe("red")
+    expect(items[0].innerHTML).toContain("<!--keep-->")
+    expect(items[0].querySelector("p")).toBeNull()
+    expect(items[1].getAttribute("lang")).toBe("de")
+    if(method === "toggle") {
+      expect(items[0].querySelector("b")).toBe(bold)
+      expect(items[0].querySelector("my-widget")).toBe(widget)
+    }
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.querySelectorAll("body > p")).toHaveLength(2)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(document.querySelectorAll("ul > li > p")).toHaveLength(0)
+    expect(cleanHTML()).not.toContain("◆")
   })
 
   it.each(["ul", "ol"] as const)("keeps Backspace inside a converted %s item after its paragraph becomes empty", type => {
@@ -727,17 +798,14 @@ describe("semantic list editing", () => {
     $.selectRange(document.body, 0, document.body, 3)
     editor.features.list.toggleList(type)
     const items = Array.from(document.querySelectorAll("li"))
-    const text = items[2].querySelector("p")!.firstChild!
+    const text = items[2].firstChild!
     $.selectRange(text, 0, text, text.textContent!.length)
     keydown("Backspace")
-
-    keydown("Backspace")
-
     expect(items[2].childNodes).toHaveLength(0)
     expect($.anchor).toBe(items[2])
     expect($.anchorOffset).toBe(0)
     keydown("Backspace")
-    expect(cleanHTML()).toBe(`<${type}><li><p>One</p></li><li><p>Two</p></li></${type}>`)
+    expect(cleanHTML()).toBe(`<${type}><li>One</li><li>Two</li></${type}>`)
     expect($.anchor).toBe(items[1])
     expect($.anchorOffset).toBe(items[1].childNodes.length)
   })
@@ -978,7 +1046,7 @@ describe("semantic list editing", () => {
 
     editor.features.list.toggleList("dl")
 
-    expect(cleanHTML()).toBe("<dl><dt><p>One</p></dt><dd><p>First</p></dd><dt><p>Two</p></dt><dd><p>Second</p></dd></dl>")
+    expect(cleanHTML()).toBe("<dl><dt>One</dt><dd>First</dd><dt>Two</dt><dd>Second</dd></dl>")
   })
 
   it("inserts Details with a real editable summary and no UI nodes in the main DOM", () => {
@@ -1754,7 +1822,8 @@ it("wraps text blocks selected entirely inside a positioned editing flow", () =>
   editor.features.list.toggleList("ul")
 
   expect(floating.parentElement).toBe(document.body)
-  expect(floating.querySelector("ul > li > p")).toBe(paragraph)
+  expect(floating.querySelector("ul > li")?.textContent).toBe("floating")
+  expect(paragraph.isConnected).toBe(false)
   expect(before?.parentElement).toBe(document.body)
   expect(after?.parentElement).toBe(document.body)
   expect(before?.textContent).toBe("before")

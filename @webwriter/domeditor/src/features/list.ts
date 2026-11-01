@@ -22,6 +22,7 @@ type VirtualListPoint = {
 export class ListFeature extends EditorFeature {
   private readonly markerClass = "◆virtual-list-anchor"
   private readonly selectedListClass = "◆virtual-list-selected"
+  private readonly emptyItemCaretClass = "◆list-empty-caret"
   private anchorPositioner: ReturnType<typeof createAnchorPositioner> | null = null
   private virtualUsesCoordinates = false
 
@@ -216,17 +217,22 @@ export class ListFeature extends EditorFeature {
   private clearVirtualMarker() {
     const marker = this.editor.appendix.querySelector<HTMLElement>(".◆virtual-list-item")
     if(marker) this.anchorPositioner?.release(marker)
-    document.querySelectorAll(`.${this.markerClass}, .${this.selectedListClass}`).forEach(element => {
-      removeEditorMarker(element, this.markerClass, this.selectedListClass)
+    document.querySelectorAll(`.${this.markerClass}, .${this.selectedListClass}, .${this.emptyItemCaretClass}`).forEach(element => {
+      removeEditorMarker(element, this.markerClass, this.selectedListClass, this.emptyItemCaretClass)
     })
     if(marker) {
       setPart(marker, "virtual-list-item-hidden")
       ;(["ul", "ol", "dl", "menu"] as const).forEach(type => setPart(marker, `virtual-list-item-${type}`, false))
       setPart(marker, "virtual-list-item-custom-marker", false)
       setPart(marker, "virtual-list-item-image-marker", false)
+      setPart(marker, "virtual-list-item-inside", false)
+      setPart(marker, "virtual-list-item-caret-only", false)
       setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden")
+      setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-inside", false)
       marker.style.listStyleType = "none"
       marker.style.listStyleImage = "none"
+      marker.style.removeProperty("list-style-position")
+      marker.style.removeProperty("direction")
       ;[
         "font-family",
         "font-size",
@@ -242,6 +248,8 @@ export class ListFeature extends EditorFeature {
         "--virtual-list-marker-font-weight",
         listMarkerImageProperty,
       ].forEach(property => marker.style.removeProperty(property))
+      ;["font-family", "font-size", "font-stretch", "font-style", "font-variant", "font-weight", "letter-spacing"]
+        .forEach(property => marker.style.removeProperty(`--virtual-list-${property}`))
       marker.removeAttribute("value")
       marker.style.removeProperty("left")
       marker.style.removeProperty("top")
@@ -268,6 +276,10 @@ export class ListFeature extends EditorFeature {
       || listStyle.listStyleType
       || (list.matches("ol") ? "decimal" : "disc")
     marker.style.listStyleImage = sourceStyle.listStyleImage || listStyle.listStyleImage || "none"
+    const inside = (sourceStyle.listStylePosition || listStyle.listStylePosition) === "inside"
+    marker.style.listStylePosition = inside ? "inside" : "outside"
+    setPart(marker, "virtual-list-item-inside", inside)
+    setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-inside", inside)
 
     ;[
       "font-family",
@@ -279,7 +291,7 @@ export class ListFeature extends EditorFeature {
       "letter-spacing",
     ].forEach(property => {
       const value = sourceStyle.getPropertyValue(property)
-      if(value) marker.style.setProperty(property, value)
+      if(value) marker.style.setProperty(`--virtual-list-${property}`, value)
     })
 
     // Native markers are completely described by list-style-* above. When
@@ -348,6 +360,7 @@ export class ListFeature extends EditorFeature {
     this.clearVirtualMarker()
     const point = this.virtualPoint
     if(!point) {
+      this.syncEmptyItemCaret()
       return
     }
 
@@ -383,7 +396,7 @@ export class ListFeature extends EditorFeature {
       && !this.ancestors(anchor.parentElement ?? list).some(parent => getComputedStyle(parent).display === "none")
     const useListAnchor = !previous || !hasAnchorBox
     const anchorHasBox = useListAnchor ? list : anchor
-    const lineHeight = Number.parseFloat(getComputedStyle(anchorHasBox).lineHeight) || 20
+    const lineHeight = getComputedStyle(anchorHasBox).lineHeight || "normal"
     const transformed = this.editor.features.transformation.boxTransformed(list)
       || this.editor.features.transformation.boxTransformed(anchorHasBox)
     this.updateCoordinateListeners(transformed)
@@ -409,8 +422,35 @@ export class ListFeature extends EditorFeature {
       this.anchorPositioner?.bind(marker, anchorHasBox, css)
       this.anchorPositioner?.refresh()
     }
+    marker.style.minHeight = lineHeight === "normal" ? "1lh" : lineHeight
+    marker.style.setProperty("--virtual-list-line-height", lineHeight)
+  }
+
+  private syncEmptyItemCaret() {
+    const selection = document.getSelection()
+    const item = selection?.anchorNode
+    if(!selection?.isCollapsed || !(item instanceof HTMLElement) || !item.matches("li:empty")) return
+    const list = item.parentElement
+    if(!list?.matches("ul, ol, menu") || getComputedStyle(item).listStylePosition !== "inside") return
+    const rect = item.getBoundingClientRect()
+    if(!item.isConnected || !item.getClientRects().length) return
+    const style = getComputedStyle(item)
+    const marker = this.marker
+    const offset = Array.from(list.childNodes).indexOf(item)
+    this.syncVirtualMarkerAppearance(marker, {list, offset}, item)
+    if(list.matches("ol")) marker.setAttribute("value", String(this.orderedValueOf(list as HTMLOListElement, item as HTMLLIElement)))
+    marker.style.direction = style.direction
+    const lineHeight = Number.parseFloat(style.lineHeight) || rect.height || 20
+    marker.style.left = `${fixedClientX(style.direction === "rtl" ? rect.right : rect.left)}px`
+    marker.style.top = `${rect.top}px`
     marker.style.minHeight = `${lineHeight}px`
     marker.style.setProperty("--virtual-list-line-height", `${lineHeight}px`)
+    setPart(marker, `virtual-list-item-${list.localName}`, true)
+    setPart(marker, "virtual-list-item-hidden", false)
+    setPart(marker, "virtual-list-item-caret-only", true)
+    setPart(marker.querySelector(".◆virtual-list-caret")!, "virtual-list-caret-hidden", false)
+    item.classList.add("◆", this.emptyItemCaretClass)
+    this.updateCoordinateListeners(true)
   }
 
   private ancestors(element: Element): Element[] {
@@ -949,7 +989,8 @@ export class ListFeature extends EditorFeature {
 
     const blocks = this.selectedTextBlocks()
     if(blocks.length) {
-      if(blocks.length === 1 && this.isEmptyTextBlock(blocks[0])) {
+      if(blocks.length === 1 && this.isEmptyTextBlock(blocks[0])
+        && !(cloneWithoutEditorMarkers(blocks[0], false) as Element).attributes.length) {
         const list = document.createElement(type)
         blocks[0].replaceWith(list)
         this.moveToVirtual(list, 0)
@@ -1282,6 +1323,20 @@ export class ListFeature extends EditorFeature {
     return result
   }
 
+  /** Move an ordinary paragraph's attributes and children onto its new item. */
+  appendItemContent(item: Element, root: Element) {
+    if(root.localName === "p" && root.namespaceURI === "http://www.w3.org/1999/xhtml"
+      && !Boolean(isAtomicEditingElement(root, this.editor.schema))) {
+      const authored = cloneWithoutEditorMarkers(root, false) as Element
+      for(const attribute of Array.from(authored.attributes)) {
+        item.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      }
+      item.append(...Array.from(root.childNodes))
+      root.remove()
+    }
+    else item.append(this.prepareItemContent(root))
+  }
+
   private wrapTextBlocks(blocks: HTMLElement[], type: ListType) {
     const runs: HTMLElement[][] = []
     blocks.forEach(block => {
@@ -1296,7 +1351,7 @@ export class ListFeature extends EditorFeature {
       run.forEach((block, index) => {
         const item = document.createElement(type === "dl" ? index % 2 ? "dd" : "dt" : "li")
         list.append(item)
-        item.append(this.prepareItemContent(block))
+        this.appendItemContent(item, block)
       })
       return list
     })
@@ -1365,33 +1420,81 @@ export class ListFeature extends EditorFeature {
     return replacement
   }
 
-  private unwrapSelectedItems(list: HTMLElement) {
-    const selected = this.selectedItems().filter(item => item.parentElement === list)
+  /** Convert the selected items of one list when the paragraph ribbon is used. */
+  unwrapSelectionToParagraphs() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount) return false
+    const range = selection.getRangeAt(0)
+    const selectedElement = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    const list = selectedElement?.matches(listSelector) ? selectedElement as HTMLElement
+      : this.activeItem()?.parentElement as HTMLElement | null
+    if(!list?.isConnected || !list.matches(listSelector) || atomicEditingContainer(list, this.editor.schema)) return false
+    const selectsList = selectedElement === list
+    if(!selectsList && (!list.contains(range.startContainer) || !list.contains(range.endContainer))) return false
+    const selected = selectsList ? this.directItems(list) : this.selectedItems().filter(item => item.parentElement === list)
+    if(!selected.length) {
+      if(this.directItems(list).length || list.childNodes.length) return false
+      const paragraph = document.createElement("p")
+      for(const attribute of Array.from((cloneWithoutEditorMarkers(list, false) as Element).attributes)) {
+        paragraph.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      }
+      list.replaceWith(paragraph)
+      $.move(paragraph)
+    }
+    else this.unwrapSelectedItems(list, selected, selectsList)
+    this.syncVirtualMarker()
+    return true
+  }
+
+  private unwrapSelectedItems(list: HTMLElement, selected = this.selectedItems().filter(item => item.parentElement === list), wholeList = false) {
     if(!selected.length) return
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode, focus = selection?.focusNode
+    const anchorOffset = selection?.anchorOffset ?? 0, focusOffset = selection?.focusOffset ?? 0
     const children = Array.from(list.childNodes)
     const indexes = selected.map(item => children.indexOf(item))
-    const firstIndex = Math.min(...indexes)
-    const lastIndex = Math.max(...indexes)
+    const firstIndex = wholeList ? 0 : Math.min(...indexes)
+    const lastIndex = wholeList ? children.length - 1 : Math.max(...indexes)
     const before = children.slice(0, firstIndex)
     const chosen = children.slice(firstIndex, lastIndex + 1)
     const after = children.slice(lastIndex + 1)
     const replacement: Node[] = []
+    const right = after.length ? before.length
+      ? this.editor.features.manipulation.cloneSplitContinuation(list)
+      : cloneWithoutEditorMarkers(list, false) as HTMLElement : null
+    if(right) {
+      this.prepareSplitContinuation(list, right, after)
+      if(!before.length && list.hasAttribute("id")) right.setAttribute("id", list.id)
+    }
     if(before.length) {
       const left = cloneWithoutEditorMarkers(list, false) as HTMLElement
       left.append(...before)
       replacement.push(left)
     }
-    replacement.push(...chosen.flatMap(node => isElement(node) && node.matches(listItemSelector)
+    const unwrapped = chosen.flatMap(node => isElement(node) && node.matches(listItemSelector)
       ? this.itemToBlocks(node as HTMLElement)
-      : [node]))
-    if(after.length) {
-      const right = this.editor.features.manipulation.cloneSplitContinuation(list)
+      : [node])
+    replacement.push(...unwrapped)
+    if(wholeList) {
+      const first = replacement.find(isElement)
+      if(first) for(const attribute of Array.from((cloneWithoutEditorMarkers(list, false) as Element).attributes)) {
+        if(!first.hasAttributeNS(attribute.namespaceURI, attribute.localName)) {
+          first.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        }
+      }
+    }
+    if(right) {
       right.append(...after)
       replacement.push(right)
     }
     list.replaceWith(...replacement)
-    if(!$.anchor?.isConnected) {
-      const target = replacement.find(isElement)
+    if(selection && anchor?.isConnected && focus?.isConnected && list.contains(anchor) === false && list.contains(focus) === false
+      && !wholeList && anchor !== list && focus !== list) {
+      const clamp = (node: Node, offset: number) => Math.min(offset, node instanceof Text ? node.length : node.childNodes.length)
+      selection.setBaseAndExtent(anchor, clamp(anchor, anchorOffset), focus, clamp(focus, focusOffset))
+    }
+    else {
+      const target = unwrapped.find(isElement)
       if(target) $.selectElement(target)
     }
   }
@@ -1405,7 +1508,8 @@ export class ListFeature extends EditorFeature {
       if(!result.includes(paragraph)) result.push(paragraph)
     }
     for(const child of Array.from(item.childNodes)) {
-      if(isElement(child) && !this.editor.schema.isPhrasing(child)) {
+      if(isElement(child) && !this.editor.schema.isPhrasing(child)
+        && !isAtomicEditingElement(child, this.editor.schema)) {
         paragraph = null
         result.push(child)
       }
@@ -1414,6 +1518,15 @@ export class ListFeature extends EditorFeature {
       }
     }
     if(!result.length) result.push(document.createElement("p"))
+    const first = result.find(isElement)
+    if(first) {
+      const authored = cloneWithoutEditorMarkers(item, false) as Element
+      for(const attribute of Array.from(authored.attributes)) {
+        if(!first.hasAttributeNS(attribute.namespaceURI, attribute.localName)) {
+          first.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        }
+      }
+    }
     item.remove()
     return result
   }

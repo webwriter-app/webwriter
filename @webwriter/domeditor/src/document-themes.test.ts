@@ -37,6 +37,13 @@ describe("document themes", () => {
     }
   })
 
+  it("defaults list markers to inside in every document theme", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain(":where(ul, ol, menu) { list-style-position: inside; }")
+      expect(theme.source).toContain(":is(ul, ol, menu) > li { list-style-position: inherit; }")
+    }
+  })
+
   it("uses only light colors regardless of system preferences or theme attributes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain("color-scheme: only light;")

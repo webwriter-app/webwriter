@@ -1344,6 +1344,72 @@ export class ManipulationFeature extends EditorFeature {
     return paragraph.isConnected
   }
 
+  /** Replace a selected disclosure with its summary and body in document order. */
+  private unwrapDetailsForParagraphInsertion(range: Range, selected: Element | null) {
+    if(selected?.matches("ul, ol, dl, menu, li, dt, dd")) return false
+    const origin = selected ?? getContainer(range.startContainer)
+    const owner = origin.closest("details, ul, ol, dl, menu")
+    if(!(owner instanceof HTMLDetailsElement) || owner.hasAttribute("is")
+      || !owner.isConnected || atomicEditingContainer(owner, this.editor.schema)) return false
+    if(selected !== owner && (!owner.contains(range.startContainer) || !owner.contains(range.endContainer))) return false
+    const selection = document.getSelection()
+    const anchor = selection?.anchorNode, focus = selection?.focusNode
+    const anchorOffset = selection?.anchorOffset ?? 0, focusOffset = selection?.focusOffset ?? 0
+    const summary = Array.from(owner.children).find(child => child.localName === "summary" && child.namespaceURI === owner.namespaceURI)
+    const result: Node[] = []
+    let paragraph: HTMLParagraphElement | null = null
+    for(const child of Array.from(owner.childNodes)) {
+      if(child === summary) {
+        const start = result.length
+        for(const node of Array.from(summary.childNodes)) {
+          if(isElement(node) && !this.isInlineClipboardNode(node) && !isAtomicEditingElement(node, this.editor.schema)) {
+            result.push(node)
+            paragraph = null
+          }
+          else {
+            if(!paragraph) {
+              paragraph = document.createElement("p")
+              result.push(paragraph)
+            }
+            paragraph.append(node)
+          }
+        }
+        if(result.length === start) result.push(document.createElement("p"))
+        const firstSummaryBlock = result.slice(start).find(isElement)!
+        for(const attribute of Array.from((cloneWithoutEditorMarkers(summary, false) as Element).attributes)) {
+          if(!firstSummaryBlock.hasAttributeNS(attribute.namespaceURI, attribute.localName)) firstSummaryBlock.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+        }
+        paragraph = null
+      }
+      else if(child.nodeType === Node.COMMENT_NODE || isElement(child) && !this.isInlineClipboardNode(child)) {
+        result.push(child)
+        paragraph = null
+      }
+      else {
+        if(!paragraph) {
+          paragraph = document.createElement("p")
+          result.push(paragraph)
+        }
+        paragraph.append(child)
+      }
+    }
+    if(!result.some(isElement)) result.push(document.createElement("p"))
+    const first = result.find(isElement)!
+    const authored = cloneWithoutEditorMarkers(owner, false) as Element
+    for(const attribute of Array.from(authored.attributes)) {
+      if(attribute.namespaceURI === null && attribute.name === "open") continue
+      if(!first.hasAttributeNS(attribute.namespaceURI, attribute.localName)) first.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+    }
+    owner.replaceWith(...result)
+    if(selection && anchor?.isConnected && focus?.isConnected && owner !== anchor && owner !== focus
+      && selected !== owner) {
+      const clamp = (node: Node, offset: number) => Math.min(offset, node instanceof Text ? node.length : node.childNodes.length)
+      selection.setBaseAndExtent(anchor, clamp(anchor, anchorOffset), focus, clamp(focus, focusOffset))
+    }
+    else $.move(first)
+    return true
+  }
+
   /** Converts the live selection before falling back to ordinary insertion.
    * Validate the exact split on an inert DOM first, so unsupported shapes
    * leave authored content untouched. A claimed but invalid conversion is
@@ -1361,6 +1427,9 @@ export class ManipulationFeature extends EditorFeature {
     if(!root.contains(range.startContainer) || !root.contains(range.endContainer)
       || atomicEditingContainer(range.startContainer, this.editor.schema)
       || atomicEditingContainer(range.endContainer, this.editor.schema)) return true
+
+    if(tag === "p" && (this.unwrapDetailsForParagraphInsertion(range, this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? null)
+      || this.editor.features.list.unwrapSelectionToParagraphs())) return true
 
     if(/^h[1-6]$/.test(tag) && (getContainer(range.startContainer).closest("li, dt, dd")
       || getContainer(range.endContainer).closest("li, dt, dd"))) return true
@@ -1408,8 +1477,13 @@ export class ManipulationFeature extends EditorFeature {
         output.append(wrapper)
         return output
       }
+      const convertedHeadings = new WeakSet<Element>()
       if(tag === "ul" || tag === "ol") {
-        for(const child of Array.from(fragment.children)) this.editor.features.list.prepareItemContent(child)
+        for(const child of Array.from(fragment.children)) {
+          const heading = child.matches("h1, h2, h3, h4, h5, h6")
+          const prepared = this.editor.features.list.prepareItemContent(child)
+          if(heading && prepared !== child) convertedHeadings.add(prepared)
+        }
       }
       // List items and table cells become text units. Keep their contents,
       // including nested lists, comments, and unfamiliar flow elements.
@@ -1498,7 +1572,10 @@ export class ManipulationFeature extends EditorFeature {
         }
         else target = inline
         if(block && unit.matches("p, h1, h2, h3, h4, h5, h6")) {
-          if(wrapper) target.append(unit)
+          if(wrapper && tag !== "table" && unit.matches("p") && !convertedHeadings.has(unit)) {
+            this.editor.features.list.appendItemContent(target, unit)
+          }
+          else if(wrapper) target.append(unit)
           else target.append(...Array.from(unit.childNodes))
         }
         else if(block && unit.localName === "div") {

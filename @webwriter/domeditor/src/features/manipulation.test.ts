@@ -7348,11 +7348,15 @@ describe("element insertion conversions", () => {
     const wrapper = document.body.firstElementChild!
     expect(wrapper.localName).toBe(tag)
     expect(wrapper.querySelectorAll(tag === "table" ? "td" : "li")).toHaveLength(2)
-    expect(wrapper.querySelector("p")).toBe(first)
-    if(tag === "table") expect(wrapper.querySelector("h2")).toBe(second)
+    if(tag === "table") {
+      expect(wrapper.querySelector("p")).toBe(first)
+      expect(wrapper.querySelector("h2")).toBe(second)
+    }
     else {
+      expect(wrapper.querySelector("li")?.id).toBe("one")
+      expect(wrapper.querySelector("li")?.textContent).toBe("first")
       expect(wrapper.querySelector("h2")).toBeNull()
-      expect(wrapper.querySelectorAll("li > p")[1]?.textContent).toBe("second")
+      expect(wrapper.querySelector("li > p")?.textContent).toBe("second")
     }
     expect(wrapper.querySelectorAll("#one")).toHaveLength(1)
     expect(editor.toHTML(true)).toContain("<!--keep-->")
@@ -7379,6 +7383,138 @@ describe("element insertion conversions", () => {
     convert("p")
     expect(Array.from(document.body.children).map(element => element.localName)).toEqual(["p", "p", "p"])
     expect(document.body.textContent).toBe("firstsecondother")
+  })
+
+  it.each(["ul", "ol", "menu", "dl"])("unwraps a selected %s into paragraphs, retaining item content", type => {
+    const firstTag = type === "dl" ? "dt" : "li", secondTag = type === "dl" ? "dd" : "li"
+    document.body.innerHTML = `<${type}><!--lead--><${firstTag} id="first" class="authored">One <b>bold</b><!--inside--></${firstTag}><${secondTag} lang="de">Two</${secondTag}><!--tail--></${type}><p>After</p>`
+    const bold = document.querySelector("b")!
+    $.selectElement(document.body.firstElementChild!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<!--lead--><p id="first" class="authored">One <b>bold</b><!--inside--></p><p lang="de">Two</p><!--tail--><p>After</p>')
+    expect(document.querySelector("b")).toBe(bold)
+  })
+
+  it("unwraps selected ordered items while preserving surrounding numbering, widgets, and undo", async () => {
+    document.body.innerHTML = '<ol start="4" id="list"><li>First</li><li id="middle">Middle <b>bold</b><my-widget></my-widget></li><li>Last</li></ol>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const middle = document.querySelector("#middle")!, bold = middle.querySelector("b")!, widget = middle.querySelector("my-widget")!
+    $.selectElement(middle)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<ol start="4" id="list"><li>First</li></ol><p id="middle">Middle <b>bold</b><my-widget></my-widget></p><ol start="6"><li>Last</li></ol>')
+    expect(document.querySelector("b")).toBe(bold)
+    expect(document.querySelector("my-widget")).toBe(widget)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    editor.doc.undo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); await Promise.resolve()
+    expect(document.querySelector("p#middle")?.textContent).toBe("Middle bold")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("unwraps the items touched by a partial text selection", () => {
+    document.body.innerHTML = '<ul><li>First</li><li>Second</li><li>Third</li><li>Fourth</li></ul>'
+    const items = document.querySelectorAll("li")
+    const second = items[1].firstChild!, third = items[2].firstChild!
+    $.selectRange(second, 2, third, 2)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<ul><li>First</li></ul><p>Second</p><p>Third</p><ul><li>Fourth</li></ul>')
+    expect($.anchor).toBe(second)
+    expect($.focus).toBe(third)
+  })
+
+  it("keeps the remaining ordered list's identity and numbering when its first item is unwrapped", () => {
+    document.body.innerHTML = '<ol id="ordered" start="7"><li>First</li><li>Second</li></ol>'
+    $.move(document.querySelector("li")!.firstChild!, 2)
+    convert("p")
+    expect(document.body.firstElementChild?.localName).toBe("p")
+    expect(document.body.firstElementChild?.textContent).toBe("First")
+    expect(document.querySelector("ol")?.id).toBe("ordered")
+    expect(document.querySelector("ol")?.getAttribute("start")).toBe("8")
+    expect(document.querySelector("ol")?.textContent).toBe("Second")
+  })
+
+  it("converts an empty selected list to an empty paragraph", () => {
+    document.body.innerHTML = '<ul id="empty"></ul>'
+    $.selectElement(document.querySelector("ul")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p id="empty"></p>')
+  })
+
+  it("preserves nested lists and list attributes when unwrapping a selected list", () => {
+    document.body.innerHTML = '<ul id="outer" lang="de"><li>Parent<ul><li>Nested</li></ul>After</li></ul>'
+    const nested = document.querySelector("ul ul")!
+    $.selectElement(document.body.firstElementChild!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p id="outer" lang="de">Parent</p><ul><li>Nested</li></ul><p>After</p>')
+    expect(document.querySelector("ul")).toBe(nested)
+  })
+
+  it("unwraps a selected disclosure into its summary and body without rebuilding content", async () => {
+    document.body.innerHTML = '<details id="disclosure" open><summary title="title">Intro <b>bold</b><!--inside--></summary><!--between--><p class="body">Body <my-widget></my-widget></p><ul><li>List</li></ul></details><p>After</p>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const details = document.querySelector("details")!, bold = details.querySelector("b")!
+    const body = details.querySelector("p")!, widget = details.querySelector("my-widget")!, list = details.querySelector("ul")!
+    $.selectElement(details)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p title="title" id="disclosure">Intro <b>bold</b><!--inside--></p><!--between--><p class="body">Body <my-widget></my-widget></p><ul><li>List</li></ul><p>After</p>')
+    expect(document.querySelector("b")).toBe(bold)
+    expect(document.querySelector("p.body")).toBe(body)
+    expect(document.querySelector("my-widget")).toBe(widget)
+    expect(document.querySelector("ul")).toBe(list)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    editor.doc.undo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); await Promise.resolve()
+    expect(document.querySelector("details")).toBeNull()
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["summary", "p"])("unwraps a disclosure when its %s is selected", part => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><p>Body</p></details>'
+    const text = document.querySelector(part)!.firstChild!
+    $.selectRange(text, 1, text, 3)
+    convert("p")
+    expect(document.querySelector("details")).toBeNull()
+    expect(Array.from(document.querySelectorAll("p"), paragraph => paragraph.textContent)).toEqual(["Heading", "Body"])
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(1)
+    expect($.focusOffset).toBe(3)
+  })
+
+  it("preserves block content in a disclosure summary and its body", () => {
+    document.body.innerHTML = '<details><summary><h2 id="heading">Heading</h2> tail</summary><!--keep--><section><p>Body</p></section></details>'
+    const heading = document.querySelector("h2")!, section = document.querySelector("section")!
+    $.selectElement(document.querySelector("details")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<h2 id="heading">Heading</h2><p> tail</p><!--keep--><section><p>Body</p></section>')
+    expect(document.querySelector("h2")).toBe(heading)
+    expect(document.querySelector("section")).toBe(section)
+  })
+
+  it("unwraps a list inside a disclosure without unwrapping the disclosure", () => {
+    document.body.innerHTML = '<details open><summary>Heading</summary><ul><li>Item</li></ul></details>'
+    const list = document.querySelector("ul")!
+    $.selectElement(list)
+    convert("p")
+    expect(document.querySelector("details > p")?.textContent).toBe("Item")
+    expect(document.querySelector("details > summary")?.textContent).toBe("Heading")
+  })
+
+  it("does not copy a temporary disclosure open state into the unwrapped document", () => {
+    document.body.innerHTML = '<details open class="◆ ◆details-temporary-open"><summary>Heading</summary></details>'
+    $.selectElement(document.querySelector("details")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p>Heading</p>')
+  })
+
+  it("unwraps an empty disclosure into an empty paragraph", () => {
+    document.body.innerHTML = '<details id="empty"></details>'
+    $.selectElement(document.querySelector("details")!)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p id="empty"></p>')
   })
 
   it("wraps a whole unfamiliar element in details without rebuilding it", () => {
@@ -7415,7 +7551,7 @@ describe("conversion boundaries", () => {
     const first = document.querySelector("p")!.firstChild!, second = document.querySelector("h2")!.firstChild!
     $.selectRange(first, 7, second, 6)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
-    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li><p>first</p></li><!--keep--><li><p id="second-after">second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
+    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li>first</li><!--keep--><li><p id="second-after">second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
   })
 
   it("leaves an invalid heading conversion untouched", () => {

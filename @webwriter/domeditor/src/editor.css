@@ -799,6 +799,13 @@ body::part(virtual-list-item) {
   display: block;
   color: #9ca3af;
   font: inherit;
+  font-family: var(--virtual-list-font-family, inherit);
+  font-size: var(--virtual-list-font-size, inherit);
+  font-stretch: var(--virtual-list-font-stretch, inherit);
+  font-style: var(--virtual-list-font-style, inherit);
+  font-variant: var(--virtual-list-font-variant, inherit);
+  font-weight: var(--virtual-list-font-weight, inherit);
+  letter-spacing: var(--virtual-list-letter-spacing, inherit);
   line-height: var(--virtual-list-line-height, 1.25em);
   pointer-events: none;
   user-select: none;
@@ -810,7 +817,6 @@ body::part(virtual-list-item-ol),
 body::part(virtual-list-item-menu) {
   display: list-item;
   width: 0;
-  list-style-position: outside;
 }
 
 body::part(virtual-list-item-custom-marker)::marker {
@@ -829,6 +835,18 @@ body::part(virtual-list-item-image-marker)::before {
   block-size: 1em;
   background: var(--ww-list-marker-image) center / contain no-repeat;
 }
+body::part(virtual-list-item-image-marker virtual-list-item-inside)::before {
+  position: static;
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-end: .4em;
+}
+
+/* The real LI paints its marker; the shadow copy only measures its inline
+ * advance so the editor caret can follow it without changing authored DOM. */
+li.◆list-empty-caret:empty { caret-color: transparent; }
+body::part(virtual-list-item-caret-only)::marker { color: transparent; }
+body::part(virtual-list-item-caret-only)::before { visibility: hidden; }
 
 body::part(virtual-list-item-dl) {
   font-size: 0.8em;
@@ -861,7 +879,7 @@ body::part(virtual-list-caret) {
   inset-inline-start: 0;
   top: 0;
   width: 1px;
-  height: var(--virtual-list-line-height, 1.25em);
+  height: 1lh;
   min-height: 16px;
   background: CanvasText;
   animation: var(--ww-ui-animation, blink 1s step-end infinite);
@@ -869,6 +887,23 @@ body::part(virtual-list-caret) {
 
 body::part(virtual-list-caret-hidden) {
   display: none;
+}
+
+body::part(virtual-list-caret-inside) {
+  position: relative;
+  display: inline-block;
+  height: 0;
+  min-height: 0;
+  vertical-align: baseline;
+}
+body::part(virtual-list-caret-inside)::after {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  bottom: -.2em;
+  width: 1px;
+  height: 1em;
+  background: CanvasText;
 }
 
 .◆virtual-list-selected {

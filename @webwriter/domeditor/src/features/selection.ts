@@ -2402,6 +2402,7 @@ export class SelectionFeature extends EditorFeature {
       const element = getContainer($.commonAncestor)
       if(!element) return
       this.#markSelection(element, "◆empty-selected")
+      if(element.matches("li")) this.editor.features.list.refreshSelectionPresentation()
       if(element === getDocumentRoot()) {
         const caret = this.emptyDocumentCaret ?? this.#createEmptyDocumentCaret()
         const style = getComputedStyle(element)

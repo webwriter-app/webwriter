@@ -8,14 +8,18 @@ import floatSource from "./document-floats.css?raw"
 import type {WidgetSchemaDefinition} from "./schema"
 
 const layeredSource = (source: string) => `@layer webwriter-theme {\n${source.replace(/^@charset\s+[^;]+;\s*/i, "")}\n}`
+const listDefaults = `@layer webwriter-theme {
+  :where(ul, ol, menu) { list-style-position: inside; }
+  :is(ul, ol, menu) > li { list-style-position: inherit; }
+}`
 
 export const documentThemes = [
-  {value: "base", label: "Base", source: baseSource + "\n" + floatSource},
-  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource},
-  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource},
-  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource},
-  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + floatSource},
-  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource},
+  {value: "base", label: "Base", source: baseSource + "\n" + floatSource + "\n" + listDefaults},
+  {value: "water", label: "Water", source: layeredSource(waterSource) + "\n" + floatSource + "\n" + listDefaults},
+  {value: "simple", label: "Simple", source: layeredSource(simpleSource) + "\n" + floatSource + "\n" + listDefaults},
+  {value: "sakura", label: "Sakura", source: layeredSource(sakuraSource) + "\n" + floatSource + "\n" + listDefaults},
+  {value: "pico", label: "Pico", source: layeredSource(picoSource) + "\n" + floatSource + "\n" + listDefaults},
+  {value: "holiday", label: "Holiday", source: layeredSource(holidaySource) + "\n" + floatSource + "\n" + listDefaults},
 ] as const
 
 export type DocumentThemeName = typeof documentThemes[number]["value"]
