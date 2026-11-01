@@ -138,11 +138,11 @@ export const canvasClass = "ww-canvas"
 export const canvasStyles = `
 html:has(> body.ww-canvas) {
   min-height: 100%; overflow: auto;
-  background-image: radial-gradient(#ccd7e3 1px, transparent 1px); background-size: 20px 20px; background-repeat: repeat;
 }
 body.ww-canvas {
   position: relative; box-sizing: border-box; width: auto; inline-size: auto;
   max-width: none; max-inline-size: none; min-height: 100vh; margin: 0; padding: 0; background: transparent;
+  background-image: radial-gradient(#ccd7e3 1px, transparent 1px); background-size: 20px 20px; background-repeat: repeat;
 }
 body.ww-canvas > :not(style, script, link, meta, template) { position: absolute; }
 body.ww-canvas > p:not([is]) { inline-size: max-content; min-inline-size: 25px; max-inline-size: none; }
@@ -153,7 +153,7 @@ div.ww-canvas-starting-view:not([is]) { visibility: hidden; pointer-events: none
 @media print {
   @page ww-canvas { margin: 10mm; }
   html:has(> body.ww-canvas) { min-height: 0; overflow: clip; background: none; }
-  body.ww-canvas { page: ww-canvas; width: 100vw; height: 100vh; min-height: 0; overflow: clip; caret-color: transparent; }
+  body.ww-canvas { page: ww-canvas; width: 100vw; height: 100vh; min-height: 0; overflow: clip; caret-color: transparent; background-image: none; }
 }
 `
 

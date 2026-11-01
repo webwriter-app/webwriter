@@ -364,11 +364,31 @@ describe("canvas document layout", () => {
     editor.features.canvas.disable()
     expect(dots.isConnected).toBe(false)
     style.remove()
-    expect(getComputedStyle(document.documentElement).backgroundImage).toBe(image)
-    expect(getComputedStyle(document.documentElement).backgroundSize).toBe("20px 20px")
-    expect(getComputedStyle(document.documentElement).backgroundRepeat).toBe("repeat")
+    expect(getComputedStyle(document.body).backgroundImage).toBe(image)
+    expect(getComputedStyle(document.body).backgroundSize).toBe("20px 20px")
+    expect(getComputedStyle(document.body).backgroundRepeat).toBe("repeat")
     expect(editor.toHTML()).toContain("radial-gradient")
 
+  })
+
+  it("keeps the canvas grid over a themed background in the editor and exported layout", () => {
+    const originalRootStyle = document.documentElement.getAttribute("style")
+    try {
+      editor.features.canvas.convert("canvas")
+      $.selectElement(document.body)
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles", styles: {"background-color": "#f8faf4"}})
+      expect(document.body.style.backgroundColor).toBe("#f8faf4")
+      expect(editor.appendix.querySelector<HTMLElement>('[part="canvas-background"]')!.style.backgroundImage).toContain("radial-gradient")
+      expect(getComputedStyle(document.body).isolation).toBe("isolate")
+      editor.features.canvas.disable()
+      expect(getComputedStyle(document.body).backgroundImage).toContain("radial-gradient")
+      expect(editor.toHTML()).toContain("radial-gradient")
+      expect(document.body.style.backgroundColor).toBe("#f8faf4")
+    }
+    finally {
+      if(originalRootStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", originalRootStyle)
+    }
   })
 
   it("keeps native text input inside positioned paragraphs without materializing a new element", () => {

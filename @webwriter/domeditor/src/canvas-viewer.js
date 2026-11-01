@@ -222,6 +222,7 @@ html.◆canvas-active body {
   max-width: none !important;
   overflow: visible;
   background: transparent;
+  isolation: isolate;
   cursor: default;
 }
 
