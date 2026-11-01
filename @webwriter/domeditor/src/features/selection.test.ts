@@ -2817,6 +2817,16 @@ describe("processSelection()", () => {
 
     expect($.selectedElement).toBe(paragraph)
   })
+  it("selects the live element represented by a toolbox heading and ignores stale paths", () => {
+    document.body.innerHTML = "<section><p>hello</p></section>"
+    const paragraph = document.querySelector("p")!
+    document.getSelection()!.setPosition(paragraph.firstChild!, 2)
+    const selectionTypes = [{localName: "section", namespaceURI: "http://www.w3.org/1999/xhtml", path: [0]}]
+    feature.actions.selectElementTypes({type: "selectElementTypes", selectionTypes})
+    expect(feature.selectedSectionElement).toBe(document.querySelector("section"))
+    feature.actions.selectElementTypes({type: "selectElementTypes", selectionTypes: [{...selectionTypes[0], path: [99]}]})
+    expect(feature.selectedSectionElement).toBe(document.querySelector("section"))
+  })
   it("uses the shared node caret for the document breadcrumb", () => {
     el("p", "hello")
 

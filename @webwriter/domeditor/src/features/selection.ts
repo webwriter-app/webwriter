@@ -9,6 +9,7 @@ import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
 import {isAuthoredMutation} from "../editor-artifacts"
 import {isTextFieldInteraction} from "../utility"
 import {createAnchorPositioner} from "../utility"
+import type {ElementSelectionType} from "../editor-bridge"
 
 type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap" | "element" | "text" | "empty"
 
@@ -1404,6 +1405,21 @@ export class SelectionFeature extends EditorFeature {
 
   /** Selects the element addressed by a child-node path from BODY. */
   actions = {
+    selectElementTypes: ({selectionTypes}: {type: "selectElementTypes", selectionTypes: ElementSelectionType[]}) => {
+      const elements = [...new Set(selectionTypes.flatMap(type => this.editor.features.manipulation.selectedElementsOfType(type)))]
+        .filter(element => this.editor.allows("select", element))
+      if(!elements.length) return
+      if(elements.length === 1) {
+        if(isSectionElement(elements[0])) this.selectSectionElement(elements[0])
+        else this.selectElement(elements[0])
+        return
+      }
+      this.#releaseCaptureSelection()
+      this.clearSelectedSection()
+      this.editor.features.table.clearCellSelection(false)
+      $.selectElements(elements)
+      this.processSelection()
+    },
     selectNode: ({path}: {type: "selectNode", path: number[]}) => {
       const node = this.#elementAtPath(path)
       this.#releaseCaptureSelection()

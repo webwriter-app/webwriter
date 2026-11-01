@@ -37,6 +37,7 @@ export class RibbonDrawer extends LitElement {
     label: {type: String},
     elementCount: {type: Number, attribute: "element-count"},
     showPaneIcon: {type: Boolean, attribute: "show-pane-icon"},
+    selectableHeading: {type: Boolean, attribute: "selectable-heading"},
     hidePaneLabel: {type: Boolean, reflect: true, attribute: "hide-pane-label"},
     layout: {type: String, reflect: true},
     pane: {type: Boolean, reflect: true},
@@ -965,6 +966,9 @@ export class RibbonDrawer extends LitElement {
       font-weight: 650;
     }
 
+    .pane-label-button { display: inline-flex; align-items: center; padding: 0; border: 0; color: inherit; background: none; font: inherit; cursor: pointer; }
+    .pane-label-button:hover .pane-label-text { text-decoration: underline; }
+
     :host([pane]) .drawer.options .pane-label,
     :host([pane][layout="comments"]) .pane-label { padding-right: 0; }
     slot[name="heading-action"] { display: flex; margin-left: auto; }
@@ -1163,6 +1167,7 @@ export class RibbonDrawer extends LitElement {
   label = "Drawer"
   elementCount = 1
   showPaneIcon = false
+  selectableHeading = false
   hidePaneLabel = false
   layout = "default"
   pane = false
@@ -1600,8 +1605,13 @@ export class RibbonDrawer extends LitElement {
           <span class="summary-label">${this.label}${elementCount}</span>
         </div>
        <span class="pane-label">
-         ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
-         ${this.label}${elementCount}
+         ${this.selectableHeading ? html`<button type="button" class="pane-label-button"
+           @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+           @click=${() => this.dispatchEvent(new CustomEvent("drawer-heading-select", {bubbles: true, composed: true}))}>
+           ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+           <span class="pane-label-text">${this.label}${elementCount}</span></button>` : html`
+           ${this.showPaneIcon ? html`<span class="summary-icon pane-icon" aria-hidden="true">${icon}</span>` : ""}
+           ${this.label}${elementCount}`}
          <slot name="heading-control"></slot>
          <slot name="heading-action"></slot>
        </span>

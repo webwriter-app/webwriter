@@ -1163,7 +1163,12 @@ export class DomEditorToolbox extends EditingControls {
       : widgetOptions && widgetOptions.options.length > 3 ? html`${widgetOptions.options.slice(3).map(option => this.renderWidgetOptionField(option, dispatchOption))}` : nothing
     const hasOptions = advanced.length > 0 || mediaStyles.length > 0 || commands !== nothing
     return html`<ribbon-drawer label=${label} icon=${heading ? "Heading" : list ? "List" : attributes?.icon ?? label} .iconUrl=${heading || list ? "" : attributes?.iconUrl ?? ""} layout="element-style"
-      .elementCount=${group?.count ?? 1} show-pane-icon ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
+      .elementCount=${group?.count ?? 1} show-pane-icon selectable-heading ?expandable=${hasOptions} .advancedCount=${count} data-specialized=${localName}
+      @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("toolbox-element-select", {
+        detail: {selectionTypes: listGroups && listGroups.length > 1 ? listScopes : [{localName, namespaceURI,
+          ...((group?.count ?? 1) === 1 && attributes?.path ? {path: attributes.path} : {}),
+        }]}, bubbles: true, composed: true,
+      }))}
       @element-style-change=${scopeChange} @element-attribute-change=${scopeChange}>
       ${attributes ? html`<element-attribute-editor slot="heading-action" language-button .state=${attributes}
         .documentLanguage=${this.documentHead.language}></element-attribute-editor>` : nothing}
@@ -1424,7 +1429,10 @@ export class DomEditorToolbox extends EditingControls {
     const advancedCount = ["description", "keywords"].filter(field => this.documentHead[field as "description" | "keywords"]).length
       + this.documentHead.elements.filter(element => !["title", "author", "license", "description", "keywords", "generator", "theme", "caption-enumeration"].includes(element.preset ?? "")).length
       + Number(hasCaptions)
-    return html`<ribbon-drawer label="Document" icon="Document" layout="element-style" show-pane-icon expandable
+    return html`<ribbon-drawer label="Document" icon="Document" layout="element-style" show-pane-icon selectable-heading expandable
+      @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("breadcrumb-item-select", {
+        detail: this.selectionPath[0] ?? {path: [], name: "Document"}, bubbles: true, composed: true,
+      }))}
       data-specialized="document" .advancedCount=${advancedCount}
       @document-head-element-options-request=${(event: CustomEvent<{id: string}>) => {
         this.documentHeadAttributeEditorId = event.detail.id

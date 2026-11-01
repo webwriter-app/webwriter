@@ -41,6 +41,19 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it("selects the drawer's element from its heading without activating heading controls", async () => {
+    const toolbox = await mountElement("p")
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="p"]')!
+    await drawer.updateComplete
+    const select = vi.fn()
+    toolbox.addEventListener("toolbox-element-select", select)
+    drawer.shadowRoot!.querySelector<HTMLButtonElement>(".pane-label-button")!.click()
+    expect(select).toHaveBeenCalledOnce()
+    expect(select.mock.calls[0][0].detail.selectionTypes).toEqual([{localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", path: [0]}])
+    drawer.querySelector<HTMLButtonElement>(".style-reset")!.click()
+    expect(select).toHaveBeenCalledOnce()
+  })
+
   it.each(["ul", "ol", "menu", "table", "section", "div", "article", "aside", "main", "nav", "header", "footer", "search", "blockquote"])("does not offer break inside for %s", async localName => {
     const toolbox = await mountElement(localName, {}, {"break-inside": "avoid"})
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${localName}"]`)!

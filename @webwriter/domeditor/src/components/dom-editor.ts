@@ -8323,6 +8323,10 @@ export class DomEditor extends LitElement {
         .aiSidebar=${!this.breadcrumbVisible && this.aiToolboxOpen}
         ?hidden=${!this.previewActive && ((!this.breadcrumbVisible && !this.aiToolboxOpen) || this.liveSessionActive)}
         @toolbox-change=${this.handleToolboxChange}
+        @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
+        @toolbox-element-select=${(event: CustomEvent<{selectionTypes: import("../editor-bridge").ElementSelectionType[]}>) => {
+          void this.execute({type: "selectElementTypes", selectionTypes: event.detail.selectionTypes}).finally(() => this.focusEditor())
+        }}
         @proofreading-action=${this.handleProofreadingAction}
         @document-layout-change=${this.handleDocumentLayoutChange}
         @developer-console-change=${this.handleDeveloperConsoleChange}
