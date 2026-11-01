@@ -213,7 +213,7 @@ const textAdvanced = [
   select("text-justify", "Justification", "Paragraph", values("auto", "inter-word", "inter-character", "none")),
   select("text-wrap", "Text wrap", "Wrapping & breaking", values("wrap", "nowrap", "balance")),
   select("hyphens", "Hyphenation", "Wrapping & breaking", values("manual", "auto", "none")),
-  select("text-transform", "Text transform", "Decoration", values("none", "capitalize", "uppercase", "lowercase", "full-width", "full-size-kana")),
+  select("text-transform", "Text transform", "Decoration", values("none", "capitalize", "uppercase", "lowercase")),
   select("text-decoration-line", "Decoration line", "Decoration", values("none", "underline", "overline", "line-through", "underline overline")),
   select("text-decoration-style", "Decoration style", "Decoration", values("solid", "double", "dotted", "dashed", "wavy")),
   color("text-decoration-color", "Decoration color", "Decoration"),
@@ -399,8 +399,8 @@ const paragraphs: SpecializedElementStyle = {
   advanced: ["text-indent", "text-align-last", "text-wrap", "hyphens", "letter-spacing", "word-spacing"],
 }
 const headings: SpecializedElementStyle = {
-  primary: ["text-align", "text-wrap", "text-transform"],
-  advanced: ["line-height", "letter-spacing", "word-spacing", "break-after", "break-inside"],
+  primary: ["text-align", "text-transform"],
+  advanced: ["text-wrap", "line-height", "letter-spacing", "word-spacing"],
 }
 const listStyles: SpecializedElementStyle = {
   primary: ["list-style-type", "list-style-image"],

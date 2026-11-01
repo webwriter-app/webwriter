@@ -233,6 +233,10 @@ describe("specialized element toolbox", () => {
     expect(drawer.label).toBe("Heading")
     expect(drawer.icon).toBe("Heading")
     expect(drawer.iconUrl).toBe("")
+    expect(drawer.querySelector<ElementStyleEditor>('element-style-editor:not([slot])')!.propertyNames)
+      .toEqual(["text-align", "text-transform"])
+    expect(drawer.querySelector<ElementStyleEditor>('.specialized-options element-style-editor')!.propertyNames)
+      .toEqual(["text-wrap", "line-height", "letter-spacing", "word-spacing"])
     const group = drawer.querySelector<HTMLElement>(".heading-level .specialized-choice-group")!
     expect(getComputedStyle(group).overflow).toBe("hidden")
     expect(getComputedStyle(group).gap).toBe("1px")

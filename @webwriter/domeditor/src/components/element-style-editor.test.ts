@@ -108,16 +108,19 @@ it("distinguishes computed defaults from explicit choices of the same value", as
   expect(group().hasAttribute("data-default")).toBe(true)
 })
 
-it("fits six advanced choices across the available control width", async () => {
+it.each([false, true])("shows the four text transform choices in one row (dense: %s)", async dense => {
   const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
   const editor = await mount(definitions, state(), "compact")
   editor.propertyNames = ["text-transform"]
-  editor.setAttribute("dense-choices", "")
+  if(dense) editor.setAttribute("dense-choices", "")
   await editor.updateComplete
 
   const group = editor.shadowRoot!.querySelector<HTMLElement>(".specialized-choice-group")!
-  expect(group.querySelectorAll("button")).toHaveLength(6)
-  expect(group.style.getPropertyValue("--choice-columns")).toBe("6")
+  expect(Array.from(group.querySelectorAll("button"), button => button.getAttribute("aria-label")))
+    .toEqual(["None", "Capitalize", "Uppercase", "Lowercase"])
+  expect(group.querySelector('button[aria-label="None"] svg.icon-tabler-minus')).not.toBeNull()
+  expect(group.querySelector('button[aria-label="Capitalize"] svg.icon-tabler-letter-case')).not.toBeNull()
+  expect(group.style.getPropertyValue("--choice-columns")).toBe("4")
 })
 
 it("uses each advanced default and honors computed hyphenation and authored values", async () => {
@@ -161,6 +164,22 @@ it("offers wrap, nowrap, and balance with a distinct balance icon", async () => 
   editor.addEventListener("element-style-change", event => {change = (event as CustomEvent<ElementStyleChangeDetail>).detail})
   buttons[2].click()
   expect(change).toEqual({property: "text-wrap", mutation: {value: "balance", priority: ""}})
+})
+
+it("keeps text wrap icons at regular size in dense advanced controls", async () => {
+  const definitions = elementStyleCategories.flatMap(category => [...category.basic, ...category.advanced])
+  const editor = await mount(definitions, state(), "compact")
+  editor.propertyNames = ["text-wrap", "hyphens"]
+  editor.setAttribute("dense-choices", "")
+  await editor.updateComplete
+
+  const wrapIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="text-wrap"] svg')!
+  const wrapButton = wrapIcon.closest("button")!
+  const hyphenIcon = editor.shadowRoot!.querySelector<SVGElement>('[data-property="hyphens"] svg')!
+  expect(getComputedStyle(wrapButton).height).toBe("24px")
+  expect(getComputedStyle(wrapIcon).width).toBe("16px")
+  expect(getComputedStyle(wrapIcon).height).toBe("16px")
+  expect(getComputedStyle(hyphenIcon).width).toBe("12px")
 })
 
 it("renders the original hyphenation icons", async () => {

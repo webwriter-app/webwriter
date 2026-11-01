@@ -19,6 +19,7 @@ import hyphensAuto from "./assets/hyphens-auto.svg?raw"
 import letterCaseUpper from "@tabler/icons/outline/letter-case-upper.svg?raw"
 import letterCaseLower from "@tabler/icons/outline/letter-case-lower.svg?raw"
 import letterCase from "@tabler/icons/outline/letter-case.svg?raw"
+import minus from "@tabler/icons/outline/minus.svg?raw"
 import arrowsMinimize from "@tabler/icons/outline/arrows-minimize.svg?raw"
 import arrowsMaximize from "@tabler/icons/outline/arrows-maximize.svg?raw"
 import baseline from "@tabler/icons/outline/baseline.svg?raw"
@@ -551,7 +552,7 @@ const optionIcons: Record<string, Record<string, string>> = {
   "stroke-linecap": {butt: capStraight, round: capRounded, square: capProjecting},
   "stroke-linejoin": {miter: joinStraight, round: joinRound, bevel: joinBevel},
   "text-wrap": {wrap: textWrap, nowrap: textWrapDisabled, balance: textWrapBalance},
-  "text-transform": {none: letterCase, uppercase: letterCaseUpper, lowercase: letterCaseLower, capitalize: letterCase, "full-width": arrowsMaximize, "full-size-kana": textSize},
+  "text-transform": {none: minus, uppercase: letterCaseUpper, lowercase: letterCaseLower, capitalize: letterCase},
   "vertical-align": {baseline, middle: alignBoxCenterMiddle, top: alignBoxTopCenter, bottom: alignBoxBottomCenter,
     sub: subscript, super: superscript, "text-top": alignBoxTopCenter, "text-bottom": alignBoxBottomCenter},
   "table-layout": {auto: table, fixed: layoutGrid},
