@@ -87,6 +87,7 @@ export class DomEditorToolbox extends EditingControls {
     collapsed: {type: Boolean, reflect: true},
     selectionPath: {attribute: false},
     documentSelected: {type: Boolean, attribute: "document-selected"},
+    documentThemeStyles: {attribute: false},
     elementSelected: {type: Boolean, attribute: false},
     documentHead: {attribute: false},
     documentHeadAttributeEditorId: {state: true},
@@ -812,6 +813,7 @@ export class DomEditorToolbox extends EditingControls {
   collapsed = false
   selectionPath: SelectionPathItem[] = []
   documentSelected = false
+  documentThemeStyles: Record<string, unknown> = {}
   elementSelected = false
   documentHead: DocumentHeadState = emptyDocumentHeadState()
   private documentHeadAttributeEditorId = ""
@@ -956,9 +958,11 @@ export class DomEditorToolbox extends EditingControls {
         ?inert=${disabled} aria-disabled=${disabled ? "true" : "false"}
         style=${disabled ? "opacity: 0.5" : ""}>
         <button type="button" class="style-reset" slot="heading-action" title="Reset styles" aria-label="Reset styles"
-          ?disabled=${disabled || !(this.elementStyle.hasInlineStyles ?? Object.keys(this.elementStyle.inline).length > 0)}
+          ?disabled=${disabled || (documentTarget
+            ? !documentThemeProperties.some(name => this.elementStyle.inline[name] || this.documentThemeStyles[name])
+            : !(this.elementStyle.hasInlineStyles ?? Object.keys(this.elementStyle.inline).length > 0))}
           @click=${() => {
-            this.dispatchEvent(new CustomEvent("element-style-reset", {bubbles: true, composed: true}))
+            this.dispatchEvent(new CustomEvent("element-style-reset", {detail: documentTarget ? {theme: true} : null, bubbles: true, composed: true}))
           }}>${ribbonIcon("Restore")}Reset</button>
         ${documentTarget ? html`<document-theme-presets slot="heading-control" heading .state=${this.elementStyle}></document-theme-presets>
           <document-theme-options .state=${this.elementStyle}></document-theme-options>` : html`<element-style-editor mode="compact" orientation="vertical" show-presets .propertyNames=${[]} .state=${this.elementStyle}></element-style-editor>`}

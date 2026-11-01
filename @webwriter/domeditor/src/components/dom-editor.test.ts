@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import {emptyVersionHistoryState} from "../editor-bridge"
+import {documentThemeProperties} from "../document-theme-options"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import {nothing} from "lit"
 import {DomEditor} from "./dom-editor"
@@ -8188,6 +8189,16 @@ describe("DomEditor.execute()", () => {
     const styles = {"background-color": {value: "red", priority: ""}}
     picker.dispatchEvent(new CustomEvent("document-theme-apply", {detail: {styles}, bubbles: true, composed: true}))
     expect(execute).toHaveBeenCalledWith({type: "setDocumentThemeStyles", styles})
+  })
+
+  it("resets document themes through the Standard preset action", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockResolvedValue(true)
+    const toolbox = editor.shadowRoot!.querySelector<any>("dom-editor-toolbox")!
+    toolbox.dispatchEvent(new CustomEvent("element-style-reset", {detail: {theme: true}, bubbles: true, composed: true}))
+    const action = execute.mock.calls[0][0]
+    expect(action.type).toBe("setDocumentThemeStyles")
+    expect((action as any).styles).toEqual(Object.fromEntries(documentThemeProperties.map(name => [name, null])))
   })
 
   it.each(["focus", "pointer", "isolated focus", "isolated pointer"])("closes the Layouts theme picker on editor %s", async mode => {

@@ -1,5 +1,6 @@
 import {readCaptionEnumeration} from "../caption-enumeration"
 import {attributionAttributes} from "../attribution.js"
+import {documentThemeProperties} from "../document-theme-options"
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import "happy-dom"
@@ -4736,6 +4737,31 @@ describe("setStyle()", () => {
     }
     finally {
       document.body.className = bodyClass
+      if(rootStyle === null) document.documentElement.removeAttribute("style")
+      else document.documentElement.setAttribute("style", rootStyle)
+      if(bodyStyle === null) document.body.removeAttribute("style")
+      else document.body.setAttribute("style", bodyStyle)
+    }
+  })
+
+  it("restores Standard by clearing theme overrides on both roots while preserving other styles", () => {
+    const rootStyle = document.documentElement.getAttribute("style")
+    const bodyStyle = document.body.getAttribute("style")
+    try {
+      document.documentElement.style.setProperty("--ww-theme-accent-1", "#112233")
+      document.documentElement.style.setProperty("--ww-text-color", "red")
+      document.documentElement.style.setProperty("--other", "keep")
+      document.body.style.setProperty("--ww-text-color", "blue")
+      document.body.style.backgroundColor = "red"
+      document.body.style.setProperty("--other", "keep")
+      editor.features.manipulation.actions.setDocumentThemeStyles({type: "setDocumentThemeStyles",
+        styles: Object.fromEntries(documentThemeProperties.map(name => [name, null]))})
+      for(const root of [document.documentElement, document.body]) {
+        expect(documentThemeProperties.every(name => !root.style.getPropertyValue(name))).toBe(true)
+        expect(root.style.getPropertyValue("--other")).toBe("keep")
+      }
+    }
+    finally {
       if(rootStyle === null) document.documentElement.removeAttribute("style")
       else document.documentElement.setAttribute("style", rootStyle)
       if(bodyStyle === null) document.body.removeAttribute("style")

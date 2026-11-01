@@ -1375,15 +1375,18 @@ it("enables Style Reset for any inline style and requests a complete reset", asy
   expect(changes).toEqual([null])
   toolbox.documentSelected = true
   await toolbox.updateComplete
-  expect(reset().disabled).toBe(false)
+  expect(reset().disabled).toBe(true)
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {...toolbox.elementStyle.inline, "background-color": {value: "red", priority: ""}}}
   await toolbox.updateComplete
   reset().click()
-  expect(changes).toHaveLength(2)
+  expect(changes).toEqual([null, {theme: true}])
   toolbox.elementStyle = {...toolbox.elementStyle, inline: {}}
   await toolbox.updateComplete
   expect(reset().disabled).toBe(true)
   toolbox.elementStyle = {...toolbox.elementStyle, hasInlineStyles: true}
+  await toolbox.updateComplete
+  expect(reset().disabled).toBe(true)
+  toolbox.documentThemeStyles = {"--ww-theme-accent-1": {value: "#123456", priority: ""}}
   await toolbox.updateComplete
   expect(reset().disabled).toBe(false)
 })

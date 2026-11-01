@@ -7127,6 +7127,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleElementStyleReset = (event: Event) => {
+    if((event as CustomEvent<{theme?: boolean}>).detail?.theme) {
+      const styles = Object.fromEntries(documentThemeProperties.map(name => [name, null]))
+      void this.execute({type: "setDocumentThemeStyles", styles}).then(() => this.refreshElementStyleState())
+      return
+    }
     const topLevel = event.composedPath().includes(this.renderRoot.querySelector("dom-editor-toolbox")!)
       && this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")?.activeTool === "Edit"
     void this.execute({type: "resetStyle", ...(topLevel ? {topLevel: true} : {})})
@@ -8306,6 +8311,7 @@ export class DomEditor extends LitElement {
         .selectionPath=${this.selectionPath}
         .elementSelected=${this.nodeSelection}
         .documentSelected=${this.documentRootSelected}
+        .documentThemeStyles=${this.documentThemeStyles}
         .documentLayout=${this.documentLayout}
         .documentLayoutError=${this.documentLayoutError}
         .documentHead=${this.documentHead}
