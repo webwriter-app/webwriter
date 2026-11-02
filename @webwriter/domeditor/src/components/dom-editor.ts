@@ -3400,7 +3400,9 @@ export class DomEditor extends LitElement {
     const toolbox = this.renderRoot.querySelector("dom-editor-toolbox")?.shadowRoot
     const selectors = ["", 'ribbon-drawer[label="Marks"]', 'ribbon-drawer[label="Elements"]', 'ribbon-drawer[label="Packages"]']
     const tools = ["Edit", "AI", "Review", "Distribute"]
-    const anchor = step === 8
+    const anchor = step === 9
+      ? ribbon?.querySelector<HTMLElement>(".preview-button")
+      : step === 8
       ? this.renderRoot.querySelector<HTMLElement>(".document-layout-cards")
         ?? toolbox?.querySelector<HTMLElement>('button[data-tool="Edit"]')
       : step >= 4

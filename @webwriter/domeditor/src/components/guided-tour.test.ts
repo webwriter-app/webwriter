@@ -39,7 +39,7 @@ it("walks forwards and backwards, then finishes without changing the document or
   back().click()
   await tour.updateComplete
   expect(root.textContent).toContain("Content")
-  for(const title of ["Formatting", "Elements", "Widgets", "Edit", "Ask AI", "Review", "Distribute", "Layouts"]) {
+  for(const title of ["Formatting", "Elements", "Widgets", "Edit", "Ask AI", "Review", "Distribute", "Layouts", "Play"]) {
     next(); await tour.updateComplete
     expect(root.querySelector("h2")!.textContent).toBe(title)
     expect(root.querySelector(".demo")!.children.length).toBeGreaterThan(0)
@@ -70,14 +70,16 @@ it("walks forwards and backwards, then finishes without changing the document or
         expect(active.querySelector(".mock-tab-close")).not.toBeNull()
       }
     }
-    if(drawers.length) {
+    if(drawers.length && title !== "Play") {
       const expanded = ({Formatting: "Marks", Elements: "Elements", Widgets: "Packages"} as Record<string, string>)[title]
       expect(drawers.filter(drawer => !drawer.hasAttribute("collapsed")).map(drawer => drawer.getAttribute("label")))
         .toEqual(expanded ? [expanded] : [])
     }
   }
-  expect(root.querySelector(".progress")!.getAttribute("aria-label")).toBe("Step 9 of 9")
-  expect(root.textContent).toContain("Make any kind of content.")
+  expect(root.querySelector(".progress")!.getAttribute("aria-label")).toBe("Step 10 of 10")
+  expect(root.textContent).toContain("Share your content and see live results.")
+  expect(root.querySelector('.play-demo ribbon-drawer[label="Learners"]')).not.toBeNull()
+  expect(root.querySelector(".play-answer")!.textContent).toContain("Alex: 4")
   expect(root.querySelector(".next")!.textContent).toContain("Done")
   next()
   expect(dismiss).toHaveBeenCalledOnce()
