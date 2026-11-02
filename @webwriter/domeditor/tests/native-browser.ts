@@ -59,6 +59,7 @@ import {checkLayoutGrid} from "./layout-grid"
 import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
 import {checkSavedDocumentChecker} from "./saved-document-checker"
+import {checkLiveSessionRecovery} from "./live-session-recovery"
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -77,6 +78,7 @@ let fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
 
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
+await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
 await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
 await check("list editing splits and indents selected items", checkListEditing)
@@ -344,6 +346,95 @@ await check("bundled document themes always render light colors", async () => {
     }
   }
   finally { frame.remove() }
+})
+
+await check("standalone live learners exchange private peer activity and feedback", async () => {
+  const {LiveSession} = await import("../src/live-session")
+  const {createLiveHostIdentity} = await import("../src/live-peer")
+  const serverUrl = new URL(location.href).searchParams.get("liveServer")!
+  const identity = await createLiveHostIdentity()
+  const id = `private-${crypto.randomUUID()}`
+  const signaling: string[] = []
+  const send = WebSocket.prototype.send
+  WebSocket.prototype.send = function(data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+    if(this.url.endsWith("/live-signaling")) signaling.push(String(data))
+    return send.call(this, data)
+  }
+  const host = new LiveSession({id, role: "host", serverUrl, baseHTML: "<p>Lesson</p>", validateDocument: (_before, after) => !after.includes("forbidden"), peer: {hostPublicKey: identity.publicKey, hostPrivateKey: identity.privateKey, secret: identity.secret}})
+  const wait = async (condition: () => boolean, description: string) => {
+    const deadline = performance.now() + 15000
+    while(!condition() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 30))
+    assert(condition(), description)
+  }
+  let ada: InstanceType<typeof LiveSession> | undefined, lin: InstanceType<typeof LiveSession> | undefined
+  try {
+    await wait(() => host.status === "connected", "host signaling did not connect")
+    ada = new LiveSession({id, role: "learner", serverUrl, peer: {hostPublicKey: identity.publicKey, secret: identity.secret}, learner: {id: "ada", name: "Ada", color: "red"}})
+    lin = new LiveSession({id, role: "learner", serverUrl, peer: {hostPublicKey: identity.publicKey, secret: identity.secret}, learner: {id: "lin", name: "Lin", color: "blue"}})
+    await wait(() => ada!.baseHTML === "<p>Lesson</p>" && lin!.baseHTML === "<p>Lesson</p>" && host.learners.filter(x => x.connected).length === 2, "private peers did not connect")
+    ada.publish({kind: "document", html: "<p>Ada secret</p>"})
+    lin.publish({kind: "document", html: "<p>Lin secret</p>"})
+    await wait(() => host.steps.length === 2, "host did not receive both learner updates")
+    assert(!JSON.stringify(ada.steps).includes("Lin secret") && !JSON.stringify(lin.steps).includes("Ada secret"), "learner data leaked to another learner")
+    lin.publish({kind: "document", html: "<p>forbidden</p>"})
+    await new Promise(resolve => setTimeout(resolve, 500))
+    assert(!host.steps.some(step => step.html?.includes("forbidden")), "host accepted a forbidden learner change")
+    assert(host.sendFeedback("ada", "Private feedback") !== null, "host feedback was not sent")
+    await wait(() => ada!.feedback.length === 1, "Ada did not receive feedback")
+    assert(lin.feedback.length === 0, "private feedback leaked to another learner")
+    assert(signaling.length > 0 && !JSON.stringify(signaling).includes("Ada secret") && !JSON.stringify(signaling).includes("Lin secret")
+      && !JSON.stringify(signaling).includes("Private feedback") && !JSON.stringify(signaling).includes("<p>Lesson</p>"), "session data appeared in signaling")
+    const uninvited = new LiveSession({id, role: "learner", serverUrl, peer: {hostPublicKey: identity.publicKey, secret: "z".repeat(32)}, learner: {id: "uninvited", name: "Uninvited", color: "red"}})
+    try {
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      assert(!uninvited.baseHTML && !host.learners.some(item => item.id === "uninvited"), "a peer without the invitation secret joined")
+    }
+    finally { uninvited.destroy() }
+    ada.destroy()
+    await wait(() => !host.learners.find(item => item.id === "ada")?.connected, "host did not observe the learner disconnect")
+    const storageKey = `webwriter-live-peer-key:${id}:ada`
+    const savedKey = sessionStorage.getItem(storageKey)
+    assert(savedKey, "learner reconnect key was not retained")
+    sessionStorage.removeItem(storageKey)
+    const impostor = new LiveSession({id, role: "learner", serverUrl, peer: {hostPublicKey: identity.publicKey, secret: identity.secret}, learner: {id: "ada", name: "Ada", color: "red"}})
+    let impostorConnected = false
+    const unsubscribeImpostor = impostor.onChange(() => { if(impostor.status === "connected") impostorConnected = true })
+    try {
+      await wait(() => impostorConnected, "impostor did not reach the host")
+      await wait(() => impostor.status !== "connected", "host did not reject the impersonating key")
+      assert(impostor.feedback.length === 0 && !host.learners.find(item => item.id === "ada")?.connected, "a different peer key impersonated the learner")
+    }
+    finally { unsubscribeImpostor(); impostor.destroy(); sessionStorage.setItem(storageKey, savedKey!) }
+    ada = new LiveSession({id, role: "learner", serverUrl, peer: {hostPublicKey: identity.publicKey, secret: identity.secret}, learner: {id: "ada", name: "Ada", color: "red"}})
+    await wait(() => ada!.feedback.length === 1 && host.learners.find(item => item.id === "ada")?.connected === true, "learner did not reconnect and recover private feedback")
+    host.stop()
+    await wait(() => ada!.status === "stopped" && lin!.status === "stopped", "learners did not receive the host's stop message")
+  }
+  finally { ada?.destroy(); lin?.destroy(); host.destroy(); WebSocket.prototype.send = send }
+})
+
+await check("standalone live learners join through a peer invitation", async () => {
+  const {LiveSession} = await import("../src/live-session")
+  const {createLiveHostIdentity} = await import("../src/live-peer")
+  const serverUrl = new URL(location.href).searchParams.get("liveServer")!
+  const identity = await createLiveHostIdentity()
+  const id = `private-${crypto.randomUUID()}`
+  const host = new LiveSession({id, role: "host", serverUrl, baseHTML: "<!doctype html><html><head><title>Peer lesson</title></head><body><p>Peer lesson</p></body></html>", peer: {hostPublicKey: identity.publicKey, hostPrivateKey: identity.privateKey, secret: identity.secret}})
+  let learner: Window | null = null
+  try {
+    const wait = async (condition: () => boolean, message: string) => {
+      const deadline = performance.now() + 15000
+      while(!condition() && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 30))
+      assert(condition(), message)
+    }
+    await wait(() => host.status === "connected", "host signaling did not connect")
+    const url = new URL(`/live/?liveSession=${id}&liveServer=${encodeURIComponent(serverUrl)}`, `http://localhost:${location.port}`)
+    url.hash = new URLSearchParams({liveKey: identity.publicKey, liveSecret: identity.secret}).toString()
+    learner = window.open(url, "peer-learner-check")
+    assert(learner, "peer learner window did not open")
+    await wait(() => host.learners.some(item => item.connected) && host.steps.some(step => step.htmlCheckpoint), "learner did not join and publish a checkpoint")
+  }
+  finally { learner?.close(); host.destroy() }
 })
 
 for(const large of [false, true]) await check(large

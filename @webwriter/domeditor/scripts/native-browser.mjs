@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "interrupted live sessions recover committed data locally",
   "canvas and slide movement follows the dot grid and alignment guides",
   "converted list items support repeated Backspace without clicking",
   "list editing splits and indents selected items",
@@ -47,6 +48,8 @@ const expectedChecks = [
   "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
+  "standalone live learners exchange private peer activity and feedback",
+  "standalone live learners join through a peer invitation",
   "standalone live learners receive large initial documents over HTTP and synchronize activity",
   "live learners render host widgets with shared dependencies and a fresh preview policy",
   "live learners initialize bundled local widgets without host resources",
