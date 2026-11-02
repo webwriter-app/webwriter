@@ -839,6 +839,32 @@ describe("mark ribbon controls", () => {
       .getAttribute("aria-expanded")).toBe("true")
   })
 
+  it("toggles span marks when their option row is clicked", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    const changed = vi.fn()
+    ribbon.addEventListener("ribbon-combobox-change", changed)
+    ribbon.canMark = true
+    await ribbon.updateComplete
+    await drawer.updateComplete
+
+    const span = drawer.querySelector<RibbonButton>(".mark-span")!
+    span.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await span.updateComplete
+    const option = span.shadowRoot!.querySelector<HTMLElement>('.mark-dropdown-option')!
+    option.querySelector<HTMLElement>('.mark-dropdown-option-name')!.click()
+    expect(changed).toHaveBeenCalledTimes(1)
+    expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: {name: "mark-types", value: "sup", values: ["sup"]},
+    }))
+    await ribbon.updateComplete
+    await span.updateComplete
+    option.click()
+    expect(changed).toHaveBeenCalledTimes(2)
+    expect(changed).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: {name: "mark-types", value: "", values: []},
+    }))
+  })
+
   it("hides removed marks and ruby controls even when that markup is selected", async () => {
     const {ribbon, drawer} = await mountRibbon()
     const changed = vi.fn()
