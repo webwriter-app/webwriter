@@ -51,11 +51,14 @@
     /* Default elements fill their column; authored sizes still take precedence.
      * Inline widgets retain their own display; these sizes do not blockify them. */
     :is(&, & > main, & > article, & > section) > * {
-      box-sizing: border-box;
       inline-size: 100%;
       min-inline-size: 0;
       max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
       margin-inline: auto;
+    }
+
+    :is(&, & > main, & > article, & > section) > :not(hr) {
+      box-sizing: border-box;
     }
 
     /* Native media defaults to inline display, where auto margins cannot

@@ -58,7 +58,10 @@ export const insertionMenuItems: InsertionMenuItem[] = [
 /** Returns valid empty-element markup using the browser's HTML serializer. */
 export const emptyElementHTML = (tag: string) => {
   const element = document.createElement(tag)
-  if(tag === "hr") element.style.backgroundColor = "currentColor"
+  if(tag === "hr") {
+    element.style.backgroundColor = "currentColor"
+    element.style.boxSizing = "content-box"
+  }
   return element.outerHTML
 }
 

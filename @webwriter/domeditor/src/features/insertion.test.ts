@@ -298,7 +298,9 @@ describe("insertion menu", () => {
     const menu = editor.features.insertion.menu
     await menu.updateComplete
     menu.shadowRoot!.querySelector<HTMLButtonElement>(".item")!.click()
-    expect(document.querySelector("hr")).not.toBeNull()
+    const divider = document.querySelector("hr")!
+    expect(divider.style.backgroundColor).toBe("currentcolor")
+    expect(divider.style.boxSizing).toBe("content-box")
   })
 
   it.each(["Glossary"])("does not offer %s insertion", async name => {
