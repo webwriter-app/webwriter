@@ -7,6 +7,7 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "full width resizing clears the float column",
   "interrupted live sessions recover committed data locally",
   "canvas and slide movement follows the dot grid and alignment guides",
   "converted list items support repeated Backspace without clicking",

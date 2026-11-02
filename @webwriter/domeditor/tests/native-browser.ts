@@ -11669,6 +11669,89 @@ await check("rotated figure captions flow upright and their transformation frame
   }
 })
 
+await check("full width resizing clears the float column", async () => {
+  for(const side of ["left", "right"] as const) for(const wrapper of [false, true]) {
+    const frame = document.createElement("iframe")
+    frame.style.cssText = "position:fixed;inset:0;width:1440px;height:900px;border:0;max-width:none"
+    const content = `<aside id="first" class="ww-float-${side}" style="width:220px;height:160px">Float</aside><div id="wide" style="height:80px">Wide block</div><aside id="second" class="ww-float-${side}" style="width:220px;height:100px">Next float</aside><div id="aligned" style="height:20px;max-width:200px">Aligned block</div><p id="after">After</p>`
+    frame.srcdoc = `<!doctype html><body>${wrapper ? `<main>${content}</main>` : content}<script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    document.body.append(frame)
+    try {
+      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(view.editor && !view.editorError, "wide resize fixture did not initialize")
+      const editor = view.editor!, doc = frame.contentDocument!, theme = doc.createElement("style")
+      theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
+      const target = doc.querySelector<HTMLElement>("#wide")!, float = doc.querySelector<HTMLElement>("#first")!
+      await layoutFrame(); await layoutFrame()
+      const aligned = doc.querySelector<HTMLElement>("#aligned")!, parent = aligned.parentElement!
+      const alignedBox = aligned.getBoundingClientRect(), parentBox = parent.getBoundingClientRect(), parentStyle = view.getComputedStyle(parent)
+      const start = parentBox.left + parseFloat(parentStyle.borderLeftWidth) + parseFloat(parentStyle.paddingLeft)
+      const end = parentBox.right - parseFloat(parentStyle.borderRightWidth) - parseFloat(parentStyle.paddingRight)
+      assert(Math.abs(side === "right" ? alignedBox.left - start : alignedBox.right - end) < 1, `main content is not aligned opposite the ${side} float`)
+      assert(editor.features.manipulation.getStyleState([], aligned, false).target?.alignment === (side === "right" ? "left" : "right"), "placement controls do not reflect the default alignment")
+      const originalFloat = float.getBoundingClientRect(), originalBody = doc.body.style.cssText
+      editor.features.selection.captureElement(target); await layoutFrame()
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const transform = editor.features.transformation
+      const handle = transform.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-down-${side === "left" ? "left" : "right"}`)!
+      assert(!handle.hidden, `wide resize handle unavailable: ${side}, wrapper=${wrapper}, visible=${Array.from(transform.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"), item => item.id).join(",")}`)
+      const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+      const beginResize = () => { handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true}); handle.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, composed:true, button:0, clientX:x, clientY:y})) }
+      beginResize(); transform.handleScaleDrag(new MouseEvent("mousemove", {buttons:1, clientX:x + (side === "left" ? -240 : 240), clientY:y}))
+      const parentComputed = view.getComputedStyle(target.parentElement!)
+      assert(target.classList.contains("ww-full-width"), `resizing past the column did not enable full width: side=${side} wrapper=${wrapper} selected=${transform.target === target} can=${editor.features.layout.canSetFullWidth(target)} float=${editor.features.manipulation.floatColumnSide()} target=${target.getBoundingClientRect().width} parent=${target.parentElement!.getBoundingClientRect().width} parentStyle=${parentComputed.display}/${parentComputed.overflowX}/${parentComputed.overflowY}/${parentComputed.float}/${parentComputed.contain} style=${target.style.cssText}`)
+      await layoutFrame()
+      const wide = target.getBoundingClientRect(), floatBox = float.getBoundingClientRect()
+      assert(wide.width > 720 && wide.top >= floatBox.bottom - 1, `wide block overlaps its preceding ${side} float`)
+      assert(doc.querySelector("#second")!.getBoundingClientRect().top >= wide.bottom - 1, "following float overlaps the wide block")
+      assert(Math.abs(floatBox.width - originalFloat.width) < 1 && doc.body.style.cssText === originalBody, "wide resize changed the float or global layout")
+      transform.handleScaleDrag(new MouseEvent("mousemove", {buttons:1, clientX:x + (side === "left" ? 10 : -10), clientY:y}))
+      assert(!target.classList.contains("ww-full-width"), "shrinking into the main column retained wide placement")
+      transform.handleScaleDrag(new MouseEvent("mousemove", {buttons:1, clientX:x + (side === "left" ? -240 : 240), clientY:y}))
+      assert(target.classList.contains("ww-full-width"), "resizing across the column again did not restore wide placement")
+      doc.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape", bubbles:true})); await layoutFrame()
+      assert(!target.classList.contains("ww-full-width") && !target.style.getPropertyValue("--ww-full-width-size"), "cancel retained wide placement")
+      editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+      const before = editor.toHTML(true)
+      beginResize(); transform.handleScaleDrag(new MouseEvent("mousemove", {buttons:1, clientX:x + (side === "left" ? -240 : 240), clientY:y})); transform.handleScaleEnd()
+      await layoutFrame(); editor.doc.syncFromDOM()
+      const after = editor.toHTML(true)
+      editor.doc.undo(); assert(editor.toHTML(true) === before, "undo did not restore the narrow block")
+      editor.doc.redo(); assert(editor.toHTML(true) === after, "redo did not restore wide placement")
+      const restored = doc.querySelector<HTMLElement>("#wide")!
+      const saved = document.createElement("iframe"); saved.style.cssText = frame.style.cssText; saved.setAttribute("sandbox", "allow-same-origin")
+      const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
+      saved.srcdoc = editor.toHTML(); document.body.append(saved)
+      try {
+        await loaded; await layoutFrame()
+        const savedDoc = saved.contentDocument!, savedWide = savedDoc.querySelector<HTMLElement>("#wide")!
+        assert(savedWide.classList.contains("ww-full-width") && Math.abs(savedWide.getBoundingClientRect().width - restored.getBoundingClientRect().width) < 1, "saved output lost wide placement")
+        assert(savedWide.getBoundingClientRect().top >= savedDoc.querySelector("#first")!.getBoundingClientRect().bottom - 1, "saved wide block overlaps its float")
+        for(const viewport of [1000, 720, 719, 360]) {
+          frame.style.width = `${viewport}px`; saved.style.width = `${viewport}px`; await layoutFrame()
+          const current = restored.getBoundingClientRect(), body = doc.body.getBoundingClientRect()
+          const gutter = Math.min(32, Math.max(16, viewport * .02))
+          assert(current.left >= body.left + gutter - 1 && current.right <= body.right - gutter + 1, `wide block overflows the page at ${viewport}px`)
+          assert(Math.abs(savedWide.getBoundingClientRect().width - current.width) < 1, `saved wide block differs at ${viewport}px`)
+        }
+      }
+      finally { saved.remove() }
+      editor.features.selection.captureElement(restored); await layoutFrame()
+      const mobileHandle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+      assert(!mobileHandle.hidden, "stacked wide block has no resize handle")
+      const mobileBox = mobileHandle.getBoundingClientRect(), mx = mobileBox.left + mobileBox.width / 2, my = mobileBox.top + mobileBox.height / 2
+      const mobileWidth = restored.getBoundingClientRect().width
+      mobileHandle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true})
+      mobileHandle.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, composed:true, button:0, clientX:mx, clientY:my}))
+      transform.handleScaleDrag(new MouseEvent("mousemove", {buttons:1, clientX:mx - 30, clientY:my}))
+      assert(restored.classList.contains("ww-full-width") && restored.getBoundingClientRect().width < mobileWidth - 20, "wide block did not resize in the stacked layout")
+      doc.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape", bubbles:true}))
+    }
+    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+  }
+})
+
 const failed = checks.filter(item => item.error)
 document.querySelector("#status")!.textContent = `${checks.length - failed.length} passed, ${failed.length} failed`
 document.querySelector("#report")!.textContent = JSON.stringify(checks, null, 2)

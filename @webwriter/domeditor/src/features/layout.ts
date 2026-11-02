@@ -46,6 +46,28 @@ export class LayoutFeature extends EditorFeature {
   refresh() { this.figures?.refresh(); this.syncColumnWidth() }
   getState() { return null }
 
+  /** Wide placement is limited to blocks in the document's main flow. */
+  canSetFullWidth(target: Element) {
+    const parent = target.parentElement
+    if(!target.isConnected || this.editor.isEditingLocked || !this.editor.allows("style", target) || this.editor.features.canvas.active || this.editor.features.slides.active
+      || document.body.classList.contains("ww-board") || !(target instanceof HTMLElement || target instanceof SVGSVGElement)
+      || !(parent === document.body || parent?.parentElement === document.body && parent.matches("main, article, section"))) return false
+    if(target.querySelector('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]')) return false
+    if(parent !== document.body) {
+      const parentStyle = getComputedStyle(parent!)
+      if(!["block", "flow-root"].includes(parentStyle.display) || (parentStyle.overflowX || parentStyle.overflow || "visible") !== "visible"
+        || (parentStyle.overflowY || parentStyle.overflow || "visible") !== "visible" || parentStyle.float && parentStyle.float !== "none"
+        || /(?:paint|strict|content)/.test(parentStyle.contain)) return false
+      if((parentStyle.display === "flow-root" || /layout/.test(parentStyle.contain))
+        && Array.from(document.body.querySelectorAll('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+          .some(element => !parent!.contains(element))) return false
+    }
+    const style = getComputedStyle(target)
+    return floatSideFromStyles(style.float, target.style, target.classList) === "none"
+      && !["inline", "inline-block", "contents", "none"].includes(style.display)
+      && !["absolute", "fixed"].includes(style.position)
+  }
+
   private scheduleColumnWidth() {
     if(this.columnFrame !== null) return
     this.columnFrame = requestAnimationFrame(() => {
@@ -216,6 +238,21 @@ export class LayoutFeature extends EditorFeature {
   }
 
   actions = {
+    setFullWidth: ({enabled, topLevel}: {type: "setFullWidth", enabled: boolean, topLevel?: boolean}) => {
+      const manipulation = this.editor.features.manipulation
+      const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+      if(!target || !target.isConnected || !document.body.contains(target) || this.editor.isEditingLocked
+        || !this.editor.allows("style", target) || typeof enabled !== "boolean" || enabled && !this.canSetFullWidth(target)) return false
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        target.classList.toggle("ww-full-width", enabled)
+        const style = (target as HTMLElement | SVGSVGElement).style
+        if(style.getPropertyValue("--ww-full-width-size")) style.removeProperty("--ww-full-width-size")
+        if(!target.classList.length) target.removeAttribute("class")
+      }
+      finally { end() }
+      return true
+    },
     setFloatSticky: ({enabled, topLevel}: {type: "setFloatSticky", enabled: boolean, topLevel?: boolean}) => {
       const manipulation = this.editor.features.manipulation
       const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget

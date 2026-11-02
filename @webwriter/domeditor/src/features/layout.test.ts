@@ -22,6 +22,45 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
+it("sets full width on eligible main-flow blocks and preserves authored content", () => {
+  const target = document.querySelector<HTMLElement>("custom-card")!
+  target.style.cssText = "display:block;max-width:200px;color:red"
+  target.innerHTML = '<span>Keep</span><!--keep-->'
+  editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+  editor.features.selection.captureElement(target)
+  expect(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true})).toBe(true)
+  expect(target.classList.contains("ww-full-width")).toBe(true)
+  expect(target.style.maxWidth).toBe("200px")
+  expect(target.innerHTML).toBe('<span>Keep</span><!--keep-->')
+  expect(editor.features.manipulation.getStyleState([], target, false).target).toMatchObject({fullWidth: true, canFullWidth: true})
+  editor.doc.syncFromDOM()
+  editor.doc.undo()
+  expect(target.classList.contains("ww-full-width")).toBe(false)
+  editor.doc.redo()
+  expect(target.classList.contains("ww-full-width")).toBe(true)
+  editor.features.selection.captureElement(target)
+  expect(setFloat("far-right")).toBe(true)
+  expect(target.classList.contains("ww-full-width")).toBe(false)
+  expect(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true})).toBe(false)
+})
+
+it("does not apply full width inside arbitrary containers", () => {
+  document.body.innerHTML = '<div><p>Nested</p></div>'
+  const target = document.querySelector("p")!
+  editor.features.selection.captureElement(target)
+  expect(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true})).toBe(false)
+  expect(target.classList.contains("ww-full-width")).toBe(false)
+})
+
+it("rejects wide placement when the containing section clips its content", () => {
+  const section = document.querySelector("section")!
+  section.style.overflow = "hidden"
+  const target = section.querySelector("p")!
+  editor.features.selection.captureElement(target)
+  expect(editor.features.layout.actions.setFullWidth({type: "setFullWidth", enabled: true})).toBe(false)
+  expect(target.classList.contains("ww-full-width")).toBe(false)
+})
+
 it("tracks the widest explicitly sized side item and clears derived widths with the column", () => {
   document.body.innerHTML = '<aside class="ww-float-right">First</aside><aside class="ww-float-right">Second</aside><p>Text</p>'
   const [first, second] = Array.from(document.body.querySelectorAll("aside"))

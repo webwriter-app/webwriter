@@ -1666,6 +1666,25 @@ it("places Pin beside the Placement heading and enables it only for floats", asy
   expect(toolbox.shadowRoot!.querySelector('button[aria-label="Keep in view"]')).toBeNull()
 })
 
+it("shows and dispatches the full width placement", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", canFullWidth: true, fullWidth: false},
+    inline: {}, computed: {float: "none"}, context: {display: "block", parentDisplay: "block"}}
+  const actions = vi.fn(); toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".float-full-width input")!
+  expect(input.disabled).toBe(false)
+  input.click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFullWidth", enabled: true})
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, fullWidth: true, canFullWidth: false}}
+  await toolbox.updateComplete
+  expect(input.checked).toBe(true)
+  expect(input.disabled).toBe(false)
+  input.click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFullWidth", enabled: false})
+})
+
 it("reflects an existing table caption's top placement", async () => {
   const toolbox = await mountToolbox()
   toolbox.selectTool("Edit")

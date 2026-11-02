@@ -69,6 +69,16 @@
       max-inline-size: none;
     }
 
+    /* A wide block shares the page with the float lane, after earlier floats. */
+    :is(&, & > main, & > article, & > section) > .ww-full-width:not(.ww-float-left):not(.ww-float-right) {
+      --ww-wide-available: calc(100% + var(--ww-left-lane) + var(--ww-right-lane));
+      inline-size: min(var(--ww-wide-available), var(--ww-full-width-size, var(--ww-wide-available))) !important;
+      max-inline-size: var(--ww-full-width-size, none) !important;
+      clear: both;
+      margin-left: calc(0px - min(var(--ww-left-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
+      margin-right: calc(0px - min(var(--ww-right-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
+    }
+
     p:not([is]) {
       display: flow-root;
       min-inline-size: min(300px, 100%);
@@ -191,6 +201,27 @@
       margin-right: auto !important;
     }
     body .ww-float-sticky { position: static !important; }
+  }
+
+  @container (width >= 720px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
+        --ww-alignment-left: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
+        --ww-alignment-right: 0px;
+        :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+          margin-left: auto;
+          margin-right: 0;
+        }
+      }
+      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
+        --ww-alignment-left: 0px;
+        --ww-alignment-right: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
+        :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+          margin-left: 0;
+          margin-right: auto;
+        }
+      }
+    }
   }
 
   /* Keep table section rows distinct across themes while allowing document

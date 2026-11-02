@@ -426,6 +426,8 @@ export type ElementStyleState = {
     documentRoot?: true
     float?: "none" | "far-left" | "far-right"
     floatSticky?: boolean
+    fullWidth?: boolean
+    canFullWidth?: boolean
     alignment?: "left" | "center" | "right"
     canMoveUp?: boolean
     canMoveDown?: boolean

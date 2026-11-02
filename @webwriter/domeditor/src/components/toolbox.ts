@@ -197,8 +197,8 @@ export class DomEditorToolbox extends EditingControls {
     .float-placement-label > .field-label {justify-content: flex-start}
     .float-placement-label .field-label .field-clear {margin-left: 0; min-height: 0}
     .caption-label-row {display: flex; align-items: center; justify-content: space-between; gap: .35rem; margin-top: .4rem}
-    :is(.caption-top, .float-pin) {display: inline-flex; align-items: center; gap: .2rem; font: inherit; color: inherit; white-space: nowrap}
-    :is(.caption-top, .float-pin) input {width: .7rem; height: .7rem; margin: 0}
+    :is(.caption-top, .float-pin, .float-full-width) {display: inline-flex; align-items: center; gap: .2rem; font: inherit; color: inherit; white-space: nowrap}
+    :is(.caption-top, .float-pin, .float-full-width) input {width: .7rem; height: .7rem; margin: 0}
     .attribution-field {display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: .35rem; align-items: center; margin-top: .4rem}
     .attribution-field > button {min-width: 0; min-height: 1.7rem; background: #f7f7f7; border-color: #c5ccd5; font: .68rem/1.2 system-ui, sans-serif}
     .float-button-group {display: flex; width: 100%; gap: 0}
@@ -1523,6 +1523,11 @@ export class DomEditorToolbox extends EditingControls {
         <div class="layout-action-controls float-action-controls">
           ${this.documentLayout.mode === "document" ? html`
           <span class="float-placement-label caption-label-row">Placement
+            <label class="float-full-width"><input type="checkbox" .checked=${Boolean(target?.fullWidth)}
+              ?disabled=${!target?.canFullWidth && !target?.fullWidth || this.historyState.preview !== null || this.htmlPending}
+              @change=${(event: Event) => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setFullWidth", enabled: (event.currentTarget as HTMLInputElement).checked}, bubbles: true, composed: true,
+              }))}>Full width</label>
             <label class="float-pin"><input type="checkbox" .checked=${canPin && Boolean(target?.floatSticky)}
               ?disabled=${!canPin || this.historyState.preview !== null || this.htmlPending}
               @change=${(event: Event) => this.dispatchEvent(new CustomEvent("layout-action", {
