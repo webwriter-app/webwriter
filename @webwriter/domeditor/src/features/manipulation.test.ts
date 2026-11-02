@@ -708,6 +708,35 @@ describe("insertable element placement and previews", () => {
   const hover = (hovered = true) => editor.features.manipulation.actions.hoverInsertion({type: "hoverInsertion", hovered})
   const insert = (html: string) => editor.features.manipulation.actions.insert({type: "insert", html})
 
+  it.each(["td", "th"])("replaces cell content with a ribbon image in %s and supports undo", tag => {
+    document.body.innerHTML = `<table><tbody><tr><${tag} id="target"><p>Old text</p></${tag}><td>Keep</td></tr></tbody></table>`
+    const cell = document.querySelector(`#target`)!
+    $.move(cell.querySelector("p")!.firstChild!, 2)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    expect(cell.children).toHaveLength(1)
+    expect(cell.firstElementChild?.localName).toBe("picture")
+    expect(cell.textContent).not.toContain("Old text")
+    expect(document.querySelectorAll("td, th")[1].textContent).toBe("Keep")
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("does not add elements to an irregular cell or insert multiple elements", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p>One</p><p>Two</p></td></tr></tbody></table>'
+    const cell = document.querySelector("td")!
+    $.move(cell.firstElementChild!.firstChild!, 1)
+    insert('<video></video>')
+    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p><p>Two</p>')
+    cell.innerHTML = '<p>One</p>'
+    $.move(cell.firstElementChild!.firstChild!, 1)
+    insert('<video></video><aside>Two</aside>')
+    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p>')
+  })
+
   it.each(['class="ww-float-left"', 'style="float: right"', 'class="responsive"', 'class="hidden-float" style="float: left"'])('inherits full width past a float (%s)', float => {
     document.body.innerHTML = `<style>.responsive { float: left } .hidden-float { float: none !important }</style><p class="ww-full-width" style="--ww-full-width-size: 900px">Before</p><aside class="ww-float-right">Other float</aside><aside ${float}>Float</aside><p><br></p>`
     const paragraph = document.body.lastElementChild!
