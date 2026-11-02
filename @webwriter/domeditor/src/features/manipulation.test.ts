@@ -696,6 +696,44 @@ describe("insertable element placement and previews", () => {
   const hover = (hovered = true) => editor.features.manipulation.actions.hoverInsertion({type: "hoverInsertion", hovered})
   const insert = (html: string) => editor.features.manipulation.actions.insert({type: "insert", html})
 
+  it.each(['class="ww-float-left"', 'style="float: right"', 'class="responsive"', 'class="hidden-float" style="float: left"'])('inherits full width past a float (%s)', float => {
+    document.body.innerHTML = `<style>.responsive { float: left } .hidden-float { float: none !important }</style><p class="ww-full-width" style="--ww-full-width-size: 900px">Before</p><aside class="ww-float-right">Other float</aside><aside ${float}>Float</aside><p><br></p>`
+    const paragraph = document.body.lastElementChild!
+    $.move(paragraph)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "table"})
+    const table = document.querySelector("table")!
+    expect(table).toHaveClass("ww-full-width")
+    expect(table.style.getPropertyValue("--ww-full-width-size")).toBe("900px")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(document.querySelector("table")).toHaveClass("ww-full-width")
+    expect(document.querySelector("table")!.style.getPropertyValue("--ww-full-width-size")).toBe("900px")
+  })
+
+  it("uses the nearest non-floated sibling and preserves explicit inserted layout", () => {
+    document.body.innerHTML = '<p class="ww-full-width">Wide</p><p>Normal</p><aside class="ww-float-right">Float</aside><p><br></p>'
+    $.move(document.body.lastElementChild!)
+    insert('<section class="ww-full-width" style="--ww-full-width-size: 700px">New</section>')
+    const section = document.querySelector("section")!
+    expect(section).toHaveClass("ww-full-width")
+    expect(section.style.getPropertyValue("--ww-full-width-size")).toBe("700px")
+    $.move(document.body, document.body.childNodes.length)
+    insert('<video></video>')
+    expect(document.querySelector("video")).toHaveClass("ww-full-width")
+  })
+
+  it("does not inherit width from an earlier wide block past a normal block", () => {
+    document.body.innerHTML = '<p class="ww-full-width">Wide</p><p>Normal</p><aside class="ww-float-right">Float</aside><p><br></p>'
+    $.move(document.body.lastElementChild!)
+    insert('<section>New</section>')
+    expect(document.querySelector("section")).not.toHaveClass("ww-full-width")
+  })
+
   it.each(["p", "table", "section", "custom-widget"])("previews the caret and inserts %s in the content column", tag => {
     document.body.innerHTML = '<p>ab<b>cd</b></p><p>Neighbor</p>'
     const paragraph = document.querySelector("p")!, neighbor = paragraph.nextElementSibling!

@@ -239,6 +239,7 @@ export class ManipulationFeature extends EditorFeature {
   private insertionHovered = false
   private insertionPreviewSource: Element | undefined
   private commandPlacement = false
+  private inheritingInsertionLayout = false
   private ribbonDropInsertion = false
   private insertionPreviewObserver: MutationObserver | null = null
   private insertionPreviewResizeObserver: ResizeObserver | null = null
@@ -3167,9 +3168,36 @@ export class ManipulationFeature extends EditorFeature {
     return true
   }
 
+  private inheritInsertionLayout<T>(nodes: Node[], insert: () => T): T {
+    if(this.inheritingInsertionLayout || this.editor.features.canvas.active || this.editor.features.slides.active) return insert()
+    const elements = nodes.filter(isElement)
+    const end = this.editor.doc.beginUndoGroup()
+    this.inheritingInsertionLayout = true
+    try {
+      const result = insert()
+      for(const element of elements) {
+        if(!element.isConnected || !this.editor.features.layout.canSetFullWidth(element)
+          || element.classList.contains("ww-full-width") || this.inlineStyleOf(element)?.getPropertyValue("--ww-full-width-size")) continue
+        let previous = element.previousElementSibling
+        while(previous && floatSideFromStyles(getComputedStyle(previous).float,
+          this.inlineStyleOf(previous) ?? {getPropertyValue: () => ""}, previous.classList) !== "none") previous = previous.previousElementSibling
+        if(!previous?.classList.contains("ww-full-width")) continue
+        element.classList.add("ww-full-width")
+        const source = this.inlineStyleOf(previous), target = this.inlineStyleOf(element)
+        const size = source?.getPropertyValue("--ww-full-width-size")
+        if(size && target) target.setProperty("--ww-full-width-size", size, source!.getPropertyPriority("--ww-full-width-size"))
+      }
+      return result
+    }
+    finally { this.inheritingInsertionLayout = false; end() }
+  }
+
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
-  private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false) {
+  private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false): void | boolean {
+    if(commandInsertion && !this.inheritingInsertionLayout) {
+      return this.inheritInsertionLayout(Array.from(fragment.childNodes), () => this.insertClipboardFragment(fragment, commandInsertion))
+    }
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(!this.allowsCaptionInsertion(Array.from(fragment.childNodes))) return false
     if(commandInsertion) {
@@ -4118,6 +4146,10 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
+    if(node && !node.isConnected && !this.inheritingInsertionLayout) {
+      const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
+      return this.inheritInsertionLayout(nodes, () => this.insert(node, splitDepth, strict, commandInsertion))
+    }
     if(node && !this.allowsCaptionInsertion(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])) return false
     if(isElement(node) && !node.parentNode) {
       const entry = this.editor.schema.get(node)
