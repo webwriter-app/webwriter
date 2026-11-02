@@ -19,6 +19,7 @@
       input, select, textarea { width: 100%; min-width: 0; }
       textarea { min-height: 9rem; resize: vertical; }
       button { cursor: pointer; }
+      button:disabled { opacity: .5; cursor: default; }
       button.primary { border-color: #2563eb; color: white; background: #2563eb; }
       button.danger { border-color: #fecaca; color: #b91c1c; }
       .row, .actions { display: flex; gap: .5rem; }
@@ -28,6 +29,11 @@
       article span { flex: 1 1 10rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       article small { color: #68758a; }
       .status { min-height: 1.25rem; margin-top: .75rem; color: #526078; font-size: .8rem; }
+      [hidden] { display: none !important; }
+      #scenario-panel { grid-column: 1 / -1; }
+      #scenario-panel p { color: #465167; }
+      #scenario-participants select { width: auto; }
+      .scenario-actions { display: flex; align-items: end; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
       @media (max-width: 48rem) { main { grid-template-columns: 1fr; } header { align-items: flex-start; flex-direction: column; } }
     </style>
   </head>
@@ -37,6 +43,7 @@
       <nav class="actions" aria-label="Development"><a href="/gallery/">Widgets</a><a href="/docs/">Widget documentation</a><a href="/editor/">Open WebWriter</a></nav>
     </header>
     <main>
+      <!-- scenario-panel -->
       <section>
         <h2>Documents</h2>
         <div id="documents" class="list"></div>

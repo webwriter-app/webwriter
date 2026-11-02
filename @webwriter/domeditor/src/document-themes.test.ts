@@ -71,7 +71,7 @@ describe("document themes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain('html:has(> body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"])) {\n    background-color:')
       expect(theme.source).toContain('body:not([class~="ww-canvas"]):not([class~="ww-slides"]):not([class~="ww-board"]) {\n    background: transparent;')
-      expect(theme.source).toContain('padding-inline-start: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane) + var(--ww-leading-gutter-balance, 0px));')
+      expect(theme.source).toContain('padding-left: calc(var(--ww-page-gutter, 1rem) + var(--ww-left-lane) + var(--ww-leading-gutter-balance, 0px));')
     }
   })
   it("reserves a bottom gutter for document actions in editing and saved themes", () => {
@@ -82,16 +82,16 @@ describe("document themes", () => {
       expect(source).toBe(theme.source)
     }
   })
-  it("includes symmetric side-lane geometry in every saved and editing theme", () => {
+  it("includes adaptive side-lane geometry in every saved and editing theme", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain("container-type: inline-size;")
       expect(theme.source).toContain("--ww-float-width: max(0px,")
       expect(theme.source).toContain("--ww-float-gap: var(--ww-page-gutter, 1rem);")
       expect(theme.source).toContain("margin-block: 0 calc(var(--ww-page-gutter, 1rem) + var(--ww-float-attribution-before, 0px) + var(--ww-attribution-after));")
       expect(theme.source).toContain("--ww-lane: 0px;")
-      expect(theme.source).toContain("padding-inline: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane));")
+      expect(theme.source).toContain("--ww-left-lane: 0px;")
       expect(theme.source).toContain("@container (width >= 1200px)")
-      expect(theme.source).toContain("@container (600px <= width < 1200px)")
+      expect(theme.source).toContain("@container (720px <= width < 1200px)")
       expect(theme.source).toContain("float: right !important;")
       expect(theme.source).toContain("--ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
       expect(theme.source).toContain(":has(:is(.ww-float-left, .ww-float-right,")
@@ -100,7 +100,7 @@ describe("document themes", () => {
       expect(theme.source).toContain("clear: right;")
       expect(editingDocumentThemeSource(theme)).toBe(theme.source)
       expect(theme.source).toMatch(/p:not\(\[is\]\)\s*\{\s*display: flow-root;\s*min-inline-size: min\(300px, 100%\);/)
-      expect(theme.source).toContain("@container (width < 600px)")
+      expect(theme.source).toContain("@container (width < 720px)")
       expect(theme.source).toContain("float: none !important;")
       expect(theme.source).toContain("margin-left: auto !important;")
       expect(theme.source).toContain("margin-right: auto !important;")
@@ -140,7 +140,7 @@ describe("document themes", () => {
     expect(source).toContain("--ww-page-max: 2160px;")
     expect(source).toContain("--ww-prose-max: 45rem;")
     expect(source).toContain("--ww-page-gutter: clamp(1rem, 2vw, 2rem);")
-    expect(source).toContain("max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem));")
+    expect(source).toContain("max-inline-size: var(--ww-body-max, calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem)));")
     expect(source).toContain("max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));")
     expect(source).toContain("> :is(main, article, section) {\n      padding-inline: 0;\n      max-inline-size: none;")
     expect(source).toContain("inline-size: auto;")
@@ -175,7 +175,7 @@ describe("document themes", () => {
     expect(landmarks).not.toMatch(/display:\s*(?:grid|flex)|grid-|column-count/)
     expect(source).toContain("clear: left;")
     expect(source).toContain("clear: right;")
-    expect(source).toContain("--ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
+    expect(source).toContain("--ww-left-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
     expect(source).toContain("@container (width >= 1200px)")
     expect(source).not.toContain("ww-column-")
     expect(source).not.toContain("@media (width > 60rem)")
@@ -198,7 +198,7 @@ describe("document themes", () => {
     expect(source.match(/!important/g)!.length).toBeGreaterThanOrEqual(10)
     expect(source).toContain("--pico-font-size: 100%")
     expect(source).not.toMatch(/@media \(min-width: \d+px\)\s*\{\s*:root,\s*:host\s*\{\s*--pico-font-size:/)
-    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-(?:column-(?:group|left|middle|right|three)|float-(?:left|right|none))/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
+    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-(?:column-(?:group|left|middle|right|three)|float-(?:left|right|none|sticky)|full-width)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
   })
 
   it("gives native disclosure and dialog elements complete base styles", () => {

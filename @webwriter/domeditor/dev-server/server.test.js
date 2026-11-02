@@ -13,6 +13,7 @@ import WebSocketPackage from "ws"
 import {createDevServer} from "./server.mjs"
 import {LiveSession} from "../src/live-session"
 import {encodeLiveSessionFeedback} from "../src/live-session-permissions.js"
+import {IncrementalPreviewRecorder} from "../src/live-session-incremental"
 import {defaultGroupingRules, distributionGroupingRevision, groupingTarget} from "../src/widget-grouping.js"
 import {distributionTarget, emptyDistributionConfig, encodeDistributionConfig} from "../src/distribution.js"
 
@@ -1310,6 +1311,15 @@ describe("development server", () => {
       await vi.waitFor(() => expect(learner.synced).toBe(true))
       learnerDoc.getArray("live-session-steps").push([{id: "large-doc-step", time: Date.now(), kind: "pointer", learner: "ada", pointer: {x: 0.25, y: 0.5}}])
       await vi.waitFor(() => expect(hostDoc.getArray("live-session-steps").length).toBe(1))
+      const recorder = new IncrementalPreviewRecorder("<p>Initial</p>")
+      try {
+        const encode = bytes => Buffer.from(bytes).toString("base64")
+        learnerDoc.getArray("live-session-steps").push([{id: "checkpoint", time: Date.now(), kind: "document", learner: "ada", htmlCheckpoint: encode(recorder.checkpoint())}])
+        await vi.waitFor(() => expect(hostDoc.getArray("live-session-steps").length).toBe(2))
+        learnerDoc.getArray("live-session-steps").push([{id: "update", time: Date.now(), kind: "document", learner: "ada", htmlUpdate: encode(recorder.capture("<p>Changed</p>"))}])
+        await vi.waitFor(() => expect(hostDoc.getArray("live-session-steps").length).toBe(3))
+      }
+      finally { recorder.destroy() }
       expect(hostDoc.getMap("live-session-meta").get("baseHTML")).toBeUndefined()
       expect(hostDoc.getMap("live-session-meta").get("previewDependencies")).toBeUndefined()
       const serverMeta = getYDoc(room).getMap("live-session-meta")
@@ -1321,6 +1331,36 @@ describe("development server", () => {
       host.destroy()
       learnerDoc.destroy()
       hostDoc.destroy()
+    }
+  })
+
+  it("routes signaling only to the intended peer without creating a shared document", async () => {
+    const endpoint = `${baseUrl.replace(/^http/, "ws")}/live-signaling`
+    const room = "signal-room-1234567890123456", peer = "learner-peer-12345678901234"
+    const receive = socket => new Promise(resolve => socket.once("message", data => resolve(JSON.parse(data.toString()))))
+    const host = await openWebSocket(endpoint)
+    let learner
+    try {
+      const hostReady = receive(host)
+      host.send(JSON.stringify({type: "host", room}))
+      expect(await hostReady).toEqual({type: "ready"})
+      learner = await openWebSocket(endpoint)
+      const joined = receive(host), learnerReady = receive(learner)
+      learner.send(JSON.stringify({type: "join", room, peer, key: "a".repeat(87)}))
+      expect(await learnerReady).toEqual({type: "ready"})
+      expect(await joined).toEqual({type: "join", peer, key: "a".repeat(87)})
+      const relayed = receive(host)
+      learner.send(JSON.stringify({type: "signal", data: "encrypted_only"}))
+      expect(await relayed).toEqual({type: "signal", peer, data: "encrypted_only"})
+      expect(docs.has(room)).toBe(false)
+      expect(docs.has(`live-session-${room}`)).toBe(false)
+      const closed = new Promise(resolve => learner.once("close", resolve))
+      learner.send(JSON.stringify({type: "document", html: "learner private data"}))
+      await closed
+    }
+    finally {
+      if(learner?.readyState === 1) await closeWebSocket(learner)
+      if(host.readyState === 1) await closeWebSocket(host)
     }
   })
 

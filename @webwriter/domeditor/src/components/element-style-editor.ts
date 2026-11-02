@@ -3,7 +3,7 @@ import {tokenize} from "@csstools/css-tokenizer"
 import {ribbonIcon, ribbonOptionIcon} from "../ribbon-icons"
 import {choiceGroupStyles} from "./choice-group.styles"
 import {editorInteractionStyles} from "./editing-controls.styles"
-import {colorHex, themeColorColumns as borderColorColumns, themeColorCSS} from "../css-color"
+import {boxStylePresets, colorHex, themeColorColumns as borderColorColumns, themeColorCSS} from "../css-color"
 import {mediaSourceButtonStyles} from "./media-source.styles"
 import {mediaCropInsets} from "../media"
 import {dropdownChevronStyles} from "./dropdown-chevron.styles"
@@ -72,16 +72,6 @@ const simpleDimension = (value: string, units: readonly string[]) => {
 }
 
 
-const boxStylePresets = [
-  {name: "White", background: borderColorColumns[0][0], border: borderColorColumns[1][0]},
-  {name: "Slate", background: borderColorColumns[3][1], border: borderColorColumns[3][0]},
-  {name: "Blue", background: borderColorColumns[4][1], border: borderColorColumns[4][0]},
-  {name: "Green", background: borderColorColumns[9][1], border: borderColorColumns[9][0]},
-  {name: "Orange", background: borderColorColumns[5][1], border: borderColorColumns[5][0]},
-  {name: "Yellow", background: borderColorColumns[7][1], border: borderColorColumns[7][0]},
-  {name: "Red", background: borderColorColumns[6][1], border: borderColorColumns[6][0]},
-  {name: "Purple", background: borderColorColumns[8][1], border: borderColorColumns[8][0]},
-] as const
 
 const sectionGroups = (definitions: readonly ElementStylePropertyDefinition[]) => {
   const groups = new Map<string, ElementStylePropertyDefinition[]>()

@@ -2,6 +2,7 @@
 import {emptyVersionHistoryState} from "../editor-bridge"
 import {documentThemeProperties} from "../document-theme-options"
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
+import {webcrypto} from "node:crypto"
 import {nothing} from "lit"
 import {DomEditor} from "./dom-editor"
 import {excludedMarkNames} from "../marks"
@@ -45,12 +46,40 @@ vi.mock("../package-dependencies", async importOriginal => ({
   ...await importOriginal<typeof import("../package-dependencies")>(),
   resolvePackageDependencies: vi.fn(async(packages: WebWriterPackage[]) => ({entries: packages.flatMap(pkg => pkg.scripts), map: {}})),
 }))
+vi.mock("../live-session-recovery", () => ({
+  LiveSessionRecovery: class { async finish() {} },
+  listRecoveredSessions: vi.fn(async () => []),
+  readRecoveredSession: vi.fn(async () => { throw new Error("No recovered session") }),
+  deleteRecoveredSession: vi.fn(async () => {}),
+}))
 import {LocalPackageWorkerClient} from "../local-package-worker-client"
 import {LiveSession} from "../live-session"
+import {IncrementalPreviewRecorder} from "../live-session-incremental"
+import {createLiveSessionReplayFile, readLiveSessionReplayFile} from "../live-session-replay"
+import {LiveSessionReplayClient} from "../live-session-replay-client"
+import * as liveRecovery from "../live-session-recovery"
+import {createReplayWorkerHandler, type ReplayWorkerRequest, type ReplayWorkerResponse} from "../live-session-replay-worker"
 import type {LiveSessionOverlay} from "./live-session-overlay"
 import type {LiveSessionControls} from "./live-session-controls"
 import {APP_SETTINGS_STORAGE_KEY, defaultAppSettings, loadAppSettings, loadDocumentSettings} from "../app-settings"
 import * as recentDocumentStorage from "../recent-documents"
+
+class ReplayTestWorker {
+  onmessage: ((event: {data: ReplayWorkerResponse}) => void) | null = null
+  onerror: ((event: Event) => void) | null = null
+  onmessageerror: (() => void) | null = null
+  private readonly handler = createReplayWorkerHandler()
+  private queue = Promise.resolve()
+  private stopped = false
+  postMessage(request: ReplayWorkerRequest) {
+    this.queue = this.queue.then(async () => {
+      if(this.stopped) return
+      const response = await this.handler.handle(request)
+      if(!this.stopped) this.onmessage?.({data: response})
+    })
+  }
+  terminate() { this.stopped = true; this.handler.close() }
+}
 
 const configureCloudStorage = (host: any) => {
   host.settings = {...host.settings, cloudServicesConfigured: true, activeCloudServiceId: "test-cloud",
@@ -2527,6 +2556,49 @@ describe("DomEditor ribbon drag relay", () => {
     await editor.updateComplete
     return data
   }
+
+  it("activates only a quick drop on the original ribbon drag source", async () => {
+    const {editor} = await mountEditor()
+    const source = document.createElement("button")
+    source.draggable = true
+    const child = document.createElement("span")
+    source.append(child)
+    const other = document.createElement("button")
+    editor.shadowRoot!.append(source, other)
+    const clicked = vi.fn()
+    source.addEventListener("click", clicked)
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "element:p")
+    const now = vi.spyOn(performance, "now").mockReturnValue(1000)
+    const start = () => source.dispatchEvent(dragEvent("dragstart", data))
+
+    start()
+    const over = dragEvent("dragover", data)
+    child.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const otherDrop = dragEvent("drop", data)
+    other.dispatchEvent(otherDrop)
+    expect(otherDrop.defaultPrevented).toBe(false)
+    expect(clicked).not.toHaveBeenCalled()
+    now.mockReturnValue(1249)
+    const drop = dragEvent("drop", data)
+    child.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(clicked).toHaveBeenCalledTimes(1)
+    source.dispatchEvent(dragEvent("dragend", data))
+    child.dispatchEvent(dragEvent("drop", data))
+    expect(clicked).toHaveBeenCalledTimes(1)
+
+    now.mockReturnValue(2000)
+    start()
+    now.mockReturnValue(2250)
+    const lateDrop = dragEvent("drop", data)
+    source.dispatchEvent(lateDrop)
+    expect(lateDrop.defaultPrevented).toBe(false)
+    expect(clicked).toHaveBeenCalledTimes(1)
+    source.dispatchEvent(dragEvent("dragend", data))
+    now.mockRestore()
+  })
 
   it("relays shape keyboard payloads into the graphic frame", async () => {
     const {graphicShapeDragType} = await import("../graphic")
@@ -7577,6 +7649,585 @@ describe("DomEditor.execute()", () => {
     finally {learner.destroy(); host.disposeLiveSession()}
   })
 
+  it("retains a concluded session until its replay is saved, including after leaving preview", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const learner = new LiveSession({id: session.id, role: "learner", learner: {id: "ada", name: "Ada", color: "red"}})
+    learner.publish({kind: "pointer", pointer: {x: 0.1, y: 0.2}})
+    const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+    await editor.updateComplete
+    const exiting = host.exitPreview()
+    await vi.waitFor(() => expect(ribbon.shadowRoot!.querySelector<HTMLDialogElement>("#live-session-stop-dialog")!.open).toBe(true))
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>("#live-session-stop-dialog .primary")!.click()
+    await exiting
+    await editor.updateComplete
+    await ribbon.updateComplete
+    expect(host.completedLiveReplays).toHaveLength(1)
+    expect(host.completedLiveReplays[0].steps).toEqual([expect.objectContaining({learner: "ada", kind: "pointer"})])
+    await host.enterPreview()
+    await editor.updateComplete; await ribbon.updateComplete
+    expect(ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.reader-replay-save')!.disabled).toBe(false)
+    const picker = vi.fn().mockRejectedValueOnce(new DOMException("Cancelled", "AbortError"))
+    vi.stubGlobal("showSaveFilePicker", picker)
+    ribbon.shadowRoot!.querySelector<HTMLButtonElement>('.reader-replay-save')!.click()
+    await vi.waitFor(() => expect(picker).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(host.savingLiveReplay).toBe(false))
+    expect(host.completedLiveReplays).toHaveLength(1)
+    const report = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    const abort = vi.fn().mockResolvedValue(undefined)
+    picker.mockResolvedValueOnce({name: "lesson.wwreplay", createWritable: async () => ({write: vi.fn().mockRejectedValue(new Error("Disk full")), close: vi.fn(), abort})})
+    await host.saveLiveReplay()
+    expect(report).toHaveBeenCalledWith(expect.objectContaining({message: "Disk full"}))
+    expect(abort).toHaveBeenCalledOnce()
+    expect(host.completedLiveReplays).toHaveLength(1)
+    const write = vi.fn(), close = vi.fn()
+    picker.mockResolvedValueOnce({name: "lesson.wwreplay", createWritable: async () => ({write, close})})
+    await host.saveLiveReplay()
+    expect(picker.mock.calls[2][0].suggestedName).toMatch(/\.wwreplay$/)
+    const saved = await readLiveSessionReplayFile(new Blob(write.mock.calls.map(call => call[0])))
+    expect(saved).toMatchObject({format: "webwriter-live-replay", steps: [expect.objectContaining({learner: "ada"})]})
+    expect(close).toHaveBeenCalledOnce()
+    expect(host.completedLiveReplays).toHaveLength(0)
+    learner.destroy(); editor.remove()
+  })
+
+  it("saves a running host session as a snapshot without stopping it or deleting its recovery", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor(), host = editor as any
+    await host.enterPreview()
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    const session = host.liveSession as LiveSession
+    const learner = new LiveSession({id: session.id, role: "learner", learner: {id: "ada", name: "Ada", color: "red"}})
+    const write = vi.fn(), close = vi.fn()
+    const deleteCount = vi.mocked(liveRecovery.deleteRecoveredSession).mock.calls.length
+    vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({name: "snapshot.wwreplay", createWritable: async () => ({write, close})}))
+    try {
+      learner.publish({kind: "pointer", pointer: {x: .1, y: .2}})
+      await editor.updateComplete
+      const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+      await ribbon.updateComplete
+      const button = ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".reader-replay-save")!
+      expect(button.disabled).toBe(false)
+      button.click()
+      await vi.waitFor(() => expect(close).toHaveBeenCalledOnce())
+      const replay = await readLiveSessionReplayFile(new Blob(write.mock.calls.map(call => call[0])))
+      expect(replay.steps).toEqual([expect.objectContaining({learner: "ada", kind: "pointer"})])
+      expect(session.status).not.toBe("stopped")
+      expect(host.liveSession).toBe(session)
+      expect(host.completedLiveReplays).toHaveLength(0)
+      expect(liveRecovery.deleteRecoveredSession).toHaveBeenCalledTimes(deleteCount)
+      learner.publish({kind: "pointer", pointer: {x: .2, y: .3}})
+      expect(session.steps).toHaveLength(2)
+    }
+    finally { learner.destroy(); editor.remove() }
+  })
+
+  it("copies an opened replay incrementally when no unsaved session is waiting", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor(), host = editor as any
+    const replay = {format: "webwriter-live-replay" as const, startedAt: 1, endedAt: 2, baseHTML: "<p>Start</p>", learners: [], steps: [], feedback: []}
+    const source = await createLiveSessionReplayFile(replay), write = vi.fn(), close = vi.fn()
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => source}]))
+    const savePicker = vi.fn().mockResolvedValue({name: "copy.wwreplay", createWritable: async () => ({write, close})})
+    vi.stubGlobal("showSaveFilePicker", savePicker)
+    try {
+      await host.openLiveReplay()
+      await host.saveLiveReplay()
+      expect(close).toHaveBeenCalledOnce()
+      expect(await readLiveSessionReplayFile(new Blob(write.mock.calls.map(call => call[0])))).toEqual(replay)
+      expect(host.replayActive).toBe(true)
+      const abort = vi.fn().mockResolvedValue(undefined), failedClose = vi.fn()
+      savePicker.mockResolvedValueOnce({name: "failed.wwreplay", createWritable: async () => ({
+        write: vi.fn().mockRejectedValue(new Error("Disk full")), close: failedClose, abort,
+      })})
+      const report = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+      await host.saveLiveReplay()
+      expect(abort).toHaveBeenCalledOnce()
+      expect(failedClose).not.toHaveBeenCalled()
+      expect(report).toHaveBeenCalledWith(expect.objectContaining({message: "Disk full"}))
+      expect(host.replayActive).toBe(true)
+    }
+    finally { editor.remove() }
+  })
+
+  it("downloads replay data when the browser has no file picker", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const replay = {format: "webwriter-live-replay", startedAt: 1, endedAt: 2,
+      baseHTML: "<p>Start</p>", learners: [], steps: [], feedback: []}
+    host.completedLiveReplays = [replay, {...replay, startedAt: 3, endedAt: 4}]
+    vi.stubGlobal("showSaveFilePicker", undefined)
+    const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:replay")
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    await host.saveLiveReplay()
+    const data = await readLiveSessionReplayFile(create.mock.calls[0][0] as Blob)
+    expect(data.format).toBe("webwriter-live-replay")
+    expect((click.mock.instances[0] as HTMLAnchorElement).download).toMatch(/\.wwreplay$/)
+    expect(host.completedLiveReplays).toHaveLength(1)
+    await host.saveLiveReplay()
+    expect(host.completedLiveReplays).toHaveLength(0)
+    editor.remove()
+  })
+
+  it("restores recovered recordings and deletes only the recording whose notification is closed", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const records = [
+      {id: "one", title: "Lesson", startedAt: 1, updatedAt: 2, finished: false, sequence: 1},
+      {id: "two", title: "Next", startedAt: 3, updatedAt: 4, finished: true, sequence: 1},
+    ]
+    const replay = {format: "webwriter-live-replay" as const, startedAt: 1, endedAt: 2, baseHTML: "<p>Start</p>", learners: [], steps: [], feedback: []}
+    vi.mocked(liveRecovery.listRecoveredSessions).mockImplementation(async () => [...records])
+    vi.mocked(liveRecovery.readRecoveredSession).mockResolvedValue(replay)
+    vi.mocked(liveRecovery.deleteRecoveredSession).mockImplementation(async id => { const index = records.findIndex(record => record.id === id); if(index >= 0) records.splice(index, 1) })
+    const {editor} = await mountEditor(), host = editor as any
+    try {
+      await vi.waitFor(() => expect(host.recoveredLiveReplays).toHaveLength(2))
+      await editor.updateComplete
+      const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+      await ribbon.updateComplete
+      expect(ribbon.shadowRoot!.querySelector(".preview-recovery-alert")?.textContent).toBe("!")
+      expect(editor.shadowRoot!.querySelector(".replay-recovery-notice")).toBeNull()
+      await host.enterPreview()
+      await editor.updateComplete; await ribbon.updateComplete
+      expect(ribbon.shadowRoot!.querySelector(".recovery-popover")?.textContent).toContain("Lesson")
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".recovery-restore")!.click()
+      await vi.waitFor(() => expect(host.replayActive).toBe(true))
+      await vi.waitFor(() => expect(host.recoveringLiveReplay).toBe(false))
+      expect(host.restoredRecoveryId).toBe("one")
+      expect(records).toHaveLength(2)
+      await editor.updateComplete; await ribbon.updateComplete
+      expect(ribbon.shadowRoot!.querySelector(".recovery-popover")?.textContent).toContain("Recording restored")
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".recovery-close")!.click()
+      await vi.waitFor(() => expect(records).toHaveLength(1))
+      await vi.waitFor(() => expect(host.deletingRecoveredReplay).toBe(false))
+      expect(host.replayActive).toBe(true)
+      expect(records[0].id).toBe("two")
+      expect(host.recoveredLiveReplays[0].id).toBe("two")
+      await editor.updateComplete; await ribbon.updateComplete
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".recovery-close")!.click()
+      await vi.waitFor(() => expect(records).toHaveLength(0))
+      await vi.waitFor(() => expect(host.recoveredLiveReplays).toHaveLength(0))
+      await vi.waitFor(() => expect(host.deletingRecoveredReplay).toBe(false))
+      await editor.updateComplete; await ribbon.updateComplete
+      expect(ribbon.shadowRoot!.querySelector(".preview-recovery-alert")).toBeNull()
+      expect(ribbon.shadowRoot!.querySelector(".recovery-popover")).toBeNull()
+    }
+    finally {
+      vi.mocked(liveRecovery.listRecoveredSessions).mockImplementation(async () => [])
+      editor.remove()
+    }
+  })
+
+  it("does not expose host recovery controls when opening a learner link", async () => {
+    const record = {id: "one", title: "Lesson", startedAt: 1, updatedAt: 2, finished: true, sequence: 1}
+    vi.mocked(liveRecovery.listRecoveredSessions).mockResolvedValue([record])
+    const {editor} = await mountEditor(), host = editor as any
+    try {
+      await vi.waitFor(() => expect(host.recoveredLiveReplays).toHaveLength(1))
+      vi.spyOn(host, "liveSessionIdFromURL").mockReturnValue("learner-session")
+      await host.refreshRecoveredLiveReplays()
+      await editor.updateComplete
+      expect(host.recoveredLiveReplays).toHaveLength(0)
+      expect(editor.shadowRoot!.querySelector(".replay-recovery-notice")).toBeNull()
+    }
+    finally { vi.mocked(liveRecovery.listRecoveredSessions).mockResolvedValue([]); editor.remove() }
+  })
+
+  it("keeps the recovery notice when restore or deletion fails", async () => {
+    const record = {id: "broken", title: "Lesson", startedAt: 1, updatedAt: 2, finished: false, sequence: 1}
+    vi.mocked(liveRecovery.listRecoveredSessions).mockResolvedValue([record])
+    vi.mocked(liveRecovery.readRecoveredSession).mockRejectedValue(new Error("Recovery is incomplete"))
+    vi.mocked(liveRecovery.deleteRecoveredSession).mockRejectedValue(new Error("Storage unavailable"))
+    const {editor} = await mountEditor(), host = editor as any
+    try {
+      await vi.waitFor(() => expect(host.recoveredLiveReplays).toHaveLength(1))
+      await host.enterPreview()
+      await editor.updateComplete
+      const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+      await ribbon.updateComplete
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".recovery-restore")!.click()
+      await vi.waitFor(() => expect(host.fileError).toContain("Recovery is incomplete"))
+      expect(host.recoveredLiveReplays).toHaveLength(1)
+      await vi.waitFor(() => expect(host.recoveringLiveReplay).toBe(false))
+      await editor.updateComplete; await ribbon.updateComplete
+      ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".recovery-close")!.click()
+      await vi.waitFor(() => expect(host.fileError).toContain("Storage unavailable"))
+      expect(host.recoveredLiveReplays).toHaveLength(1)
+      expect(ribbon.shadowRoot!.querySelector(".recovery-popover")).not.toBeNull()
+    }
+    finally {
+      vi.mocked(liveRecovery.listRecoveredSessions).mockResolvedValue([])
+      vi.mocked(liveRecovery.readRecoveredSession).mockImplementation(async () => { throw new Error("No recovered session") })
+      vi.mocked(liveRecovery.deleteRecoveredSession).mockImplementation(async () => {})
+      editor.remove()
+    }
+  })
+
+  it("reports a local recovery failure during a host session", async () => {
+    let fail!: (error: Error) => void
+    vi.spyOn(liveRecovery, "LiveSessionRecovery").mockImplementation(function(_session, _started, _title, onError) {
+      fail = onError
+      return {finish: async () => {}} as unknown as liveRecovery.LiveSessionRecovery
+    })
+    const {editor} = await mountEditor(), host = editor as any
+    try {
+      const session = new LiveSession({id: "recovery-error-test", role: "host", baseHTML: "<p>Start</p>"})
+      host.resetLivePlayback()
+      host.connectLiveSession(session, "host")
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector(".replay-recovery-notice")).toBeNull()
+      fail(new Error("Disk full"))
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector(".replay-recovery-notice")!.textContent).toContain("Local recovery is unavailable")
+      expect(host.fileError).toContain("Disk full")
+    }
+    finally { editor.remove() }
+  })
+
+  it("sends host activity to an LRS only after the host explicitly starts delivery", async () => {
+    const {editor} = await mountEditor(), host = editor as any
+    vi.stubGlobal("crypto", webcrypto)
+    const fetcher = vi.fn(async () => new Response("[]", {status: 200}))
+    vi.stubGlobal("fetch", fetcher)
+    try {
+      const session = new LiveSession({id: "lrs-host-test", role: "host", baseHTML: "<p>Start</p>"})
+      host.resetLivePlayback()
+      host.connectLiveSession(session, "host")
+      session.publish({learner: "ada", kind: "widget"})
+      await Promise.resolve()
+      expect(fetcher).not.toHaveBeenCalled()
+      const start = new CustomEvent("start-live-lrs", {cancelable: true, detail: {endpoint: "https://school.example/xapi/", username: "key", password: "secret"}})
+      host.startLiveLrs(start)
+      expect(start.defaultPrevented).toBe(false)
+      session.publish({learner: "ada", kind: "widget"})
+      await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
+      await vi.waitFor(() => expect(host.lrsStatus?.queued).toBe(0))
+      expect(JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toHaveLength(1)
+      host.stopLiveLrs()
+      session.publish({learner: "ada", kind: "widget"})
+      await Promise.resolve()
+      expect(fetcher).toHaveBeenCalledOnce()
+    }
+    finally { editor.remove(); vi.unstubAllGlobals() }
+  })
+
+  it("sends an opened replay to the LRS only after explicit configuration", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    vi.stubGlobal("crypto", webcrypto)
+    const {editor} = await mountEditor(), host = editor as any
+    const replay = {format: "webwriter-live-replay" as const, sessionId: "saved", startedAt: 1, endedAt: 3, baseHTML: "<p>Start</p>",
+      learners: [{id: "ada", name: "Ada", color: "red", firstSeen: 1, lastSeen: 3, connected: false}], feedback: [],
+      steps: [{id: "one", learner: "ada", time: 2, kind: "widget" as const}]}
+    const replayFile = await createLiveSessionReplayFile(replay)
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => replayFile}]))
+    const fetcher = vi.fn(async () => new Response(null, {status: 204}))
+    vi.stubGlobal("fetch", fetcher)
+    try {
+      await host.openLiveReplay()
+      expect(host.replayActive).toBe(true)
+      expect(fetcher).not.toHaveBeenCalled()
+      const event = new CustomEvent("start-replay-lrs", {cancelable: true, detail: {endpoint: "https://school.example/xapi", username: "key", password: "secret"}})
+      host.startReplayLrs(event)
+      expect(event.defaultPrevented).toBe(false)
+      await vi.waitFor(() => expect(host.replayLrsStatus).toMatchObject({state: "done", confirmed: 1}))
+      expect(fetcher).toHaveBeenCalledOnce()
+      expect((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].method).toBe("PUT")
+      expect(host.replayActive).toBe(true)
+    }
+    finally { editor.remove(); vi.unstubAllGlobals() }
+  })
+
+  it("opens and seeks a replay without executing dependencies from the file", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const authored = host.editorDocument?.documentElement.outerHTML
+    const recorder = new IncrementalPreviewRecorder("<p>First</p>")
+    const encode = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
+    const replay = {format: "webwriter-live-replay", startedAt: 1000, endedAt: 5000,
+      baseHTML: "<p>Original</p>", previewDependencies: {packages: [{scripts: ["https://untrusted.example/evil.js"]}], importMap: null},
+      learners: [{id: "ada", name: "Ada", color: "red", firstSeen: 1000, lastSeen: 5000, connected: false}],
+      steps: [{id: "one", time: 2000, learner: "ada", kind: "document", htmlCheckpoint: encode(recorder.checkpoint())},
+        {id: "two", time: 3000, learner: "ada", kind: "document", htmlUpdate: encode(recorder.capture("<p>Edited</p>")!), scroll: {top: 120, left: 4}}],
+      feedback: [{id: "feedback", participant: "ada", time: 2500, text: "Good work"}]}
+    const replayFile = await createLiveSessionReplayFile(replay as any)
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => replayFile}]))
+    try {
+      await host.enterPreview()
+      const openRibbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+      await editor.updateComplete
+      await openRibbon.updateComplete
+      openRibbon.shadowRoot!.querySelector<HTMLButtonElement>('.reader-replay-open')!.click()
+      await vi.waitFor(() => expect(host.replayActive).toBe(true))
+      expect(host.replayActive).toBe(true)
+      expect(host.replaySelectedLearner).toBe("ada")
+      expect(host.liveSession).toBeNull()
+      expect(host.liveStreamDuration).toBe(4)
+      expect(host.liveStreamPlaying).toBe(false)
+      expect(host.previewDocumentHTML).not.toContain("untrusted.example")
+      await editor.updateComplete
+      const ribbon = editor.shadowRoot!.querySelector<AppRibbon>("app-ribbon")!
+      await ribbon.updateComplete
+      expect(ribbon.shadowRoot!.querySelector('input[aria-label="Share"]')).toBeNull()
+      ribbon.dispatchEvent(new CustomEvent("live-learner-toggle", {detail: {id: "ada", enabled: false}, bubbles: true, composed: true}))
+      expect(host.liveLearners[0].enabled).toBe(false)
+      ribbon.dispatchEvent(new CustomEvent("live-learner-toggle", {detail: {id: "ada", enabled: true}, bubbles: true, composed: true}))
+      ribbon.dispatchEvent(new CustomEvent("replay-learner-select", {detail: {id: "ada"}, bubbles: true, composed: true}))
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      expect(host.liveStatesAtStep.get("ada").html).toBe("<p>First</p>")
+      expect(host.previewDocumentHTML).toContain("First")
+      expect(host.liveFeedback).toEqual([])
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 1.5}}))
+      expect(host.liveStatesAtStep.get("ada").html).toBe("<p>First</p>")
+      expect(host.liveFeedback).toEqual([expect.objectContaining({text: "Good work"})])
+      const post = vi.spyOn(host, "postToPreview").mockImplementation(() => {})
+      host.previewOpaque = true
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 2}}))
+      expect(host.liveStatesAtStep.get("ada").html).toBe("<p>Edited</p>")
+      expect(host.previewDocumentHTML).toContain("Edited")
+      expect(host.liveFeedback).toEqual([expect.objectContaining({text: "Good work"})])
+      expect(post).toHaveBeenCalledWith({type: "preview-frame-scroll", top: 120, left: 4})
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      expect(host.liveStatesAtStep.get("ada").html).toBe("<p>First</p>")
+      expect(host.liveFeedback).toEqual([])
+      vi.useFakeTimers()
+      host.livePlaybackLastTick = Date.now()
+      host.playLiveSession()
+      await vi.advanceTimersByTimeAsync(600)
+      expect(host.liveFeedback).toEqual([expect.objectContaining({text: "Good work"})])
+      await vi.advanceTimersByTimeAsync(3400)
+      expect(host.liveStreamTime).toBe(4)
+      expect(host.liveStreamDuration).toBe(4)
+      expect(host.liveStreamPlaying).toBe(false)
+      await host.exitPreview(false)
+      expect(host.replayActive).toBe(false)
+      expect(host.completedLiveReplays).toHaveLength(0)
+      expect(host.editorDocument?.documentElement.outerHTML).toBe(authored)
+    }
+    finally { vi.useRealTimers(); recorder.destroy(); editor.remove() }
+  })
+
+  it("rejects a malformed replay without changing the open document", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const report = vi.spyOn(host, "reportFileError").mockImplementation(() => {})
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => new File(['{"version":99}'], "bad.wwreplay")}]))
+    await host.openLiveReplay()
+    expect(report).toHaveBeenCalledOnce()
+    expect(host.previewActive).toBe(false)
+    expect(host.liveSessionActive).toBe(false)
+    editor.remove()
+  })
+
+  it("preserves preview on cancellation and replaces an open replay only after validation", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor(), host = editor as any
+    const replay = {format: "webwriter-live-replay" as const, startedAt: 1, endedAt: 2, baseHTML: "<p>First replay</p>", learners: [], steps: [], feedback: []}
+    const first = await createLiveSessionReplayFile(replay)
+    const second = await createLiveSessionReplayFile({...replay, baseHTML: "<p>Second replay</p>"})
+    const picker = vi.fn().mockRejectedValueOnce(new DOMException("Cancelled", "AbortError"))
+      .mockResolvedValueOnce([{getFile: async () => first}])
+      .mockResolvedValueOnce([{getFile: async () => new Blob(["bad"])}])
+      .mockResolvedValueOnce([{getFile: async () => second}])
+    vi.stubGlobal("showOpenFilePicker", picker)
+    try {
+      await host.enterPreview()
+      const source = host.previewDocumentHTML, selection = {marker: "preview bookmark"}
+      host.previewSelection = selection
+      await host.openLiveReplay()
+      expect(host.previewActive).toBe(true)
+      expect(host.previewDocumentHTML).toBe(source)
+      await host.openLiveReplay()
+      expect(host.previewDocumentHTML).toContain("First replay")
+      expect(host.previewSelection).toBe(selection)
+      const reader = host.replayReader, close = vi.spyOn(reader, "close")
+      await host.openLiveReplay()
+      expect(host.replayReader).toBe(reader)
+      expect(host.previewDocumentHTML).toContain("First replay")
+      expect(close).not.toHaveBeenCalled()
+      await host.openLiveReplay()
+      expect(close).toHaveBeenCalledOnce()
+      expect(host.previewDocumentHTML).toContain("Second replay")
+      expect(host.previewSelection).toBe(selection)
+      await host.exitPreview(false)
+    }
+    finally { editor.remove() }
+  })
+
+  it("does not open a replay if preview is closed while the picker is pending", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor(), host = editor as any
+    const replay = {format: "webwriter-live-replay" as const, startedAt: 1, endedAt: 2, baseHTML: "<p>Replay</p>", learners: [], steps: [], feedback: []}
+    const file = await createLiveSessionReplayFile(replay)
+    let resolvePicker!: (handles: unknown[]) => void
+    vi.stubGlobal("showOpenFilePicker", vi.fn(() => new Promise(resolve => { resolvePicker = resolve })))
+    try {
+      await host.enterPreview()
+      host.replaySizeWarning = true
+      const opening = host.openLiveReplay()
+      await host.exitPreview(false)
+      resolvePicker([{getFile: async () => file}])
+      await opening
+      expect(host.previewActive).toBe(false)
+      expect(host.replayActive).toBe(false)
+      expect(host.replaySizeWarning).toBe(false)
+    }
+    finally { editor.remove() }
+  })
+
+  it.each([[256 * 1024 * 1024, false], [256 * 1024 * 1024 + 1, true]])("warns without blocking replay playback for a file of %s bytes", async (size, warning) => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const replay = {format: "webwriter-live-replay" as const, startedAt: 1, endedAt: 2, baseHTML: "<p>Start</p>", learners: [], steps: [], feedback: []}
+    vi.spyOn(LiveSessionReplayClient.prototype, "open").mockResolvedValue(replay)
+    vi.spyOn(LiveSessionReplayClient.prototype, "seek").mockResolvedValue({index: -1, stepCount: 0, revision: 1, states: []})
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => ({size})}]))
+    await host.openLiveReplay()
+    await editor.updateComplete
+    expect(host.replayActive).toBe(true)
+    expect(Boolean(editor.shadowRoot!.querySelector(".replay-size-warning"))).toBe(warning)
+    if(warning) {
+      expect(editor.shadowRoot!.querySelector(".replay-size-warning")!.textContent).toContain("256 MiB")
+      editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Dismiss replay size warning"]')!.click()
+      await editor.updateComplete
+      expect(editor.shadowRoot!.querySelector(".replay-size-warning")).toBeNull()
+    }
+    await host.exitPreview(false)
+    expect(host.replaySizeWarning).toBe(false)
+    editor.remove()
+  })
+
+  it("clears the size warning if the replay cannot be opened", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    vi.spyOn(LiveSessionReplayClient.prototype, "open").mockRejectedValue(new Error("Invalid replay"))
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => ({size: 256 * 1024 * 1024 + 1})}]))
+    await host.openLiveReplay()
+    await editor.updateComplete
+    expect(host.replayActive).toBe(false)
+    expect(editor.shadowRoot!.querySelector(".replay-size-warning")).toBeNull()
+    editor.remove()
+  })
+
+  it("terminates replay processing if the editor is disconnected while opening", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const terminate = vi.spyOn(ReplayTestWorker.prototype, "terminate")
+    vi.spyOn(ReplayTestWorker.prototype, "postMessage").mockImplementation(() => {})
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => new Blob()}]))
+    const opening = host.openLiveReplay()
+    await vi.waitFor(() => expect(host.replayOpeningWorker).not.toBeNull())
+    editor.remove()
+    await opening
+    expect(terminate).toHaveBeenCalledOnce()
+    expect(host.replayActive).toBe(false)
+  })
+
+  it("retains the recording if the editor disconnects during replay export", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    host.completedLiveReplays = [{format: "webwriter-live-replay", startedAt: 1, endedAt: 2, baseHTML: "<p>Start</p>", learners: [], steps: [], feedback: []}]
+    const terminate = vi.spyOn(ReplayTestWorker.prototype, "terminate")
+    vi.spyOn(ReplayTestWorker.prototype, "postMessage").mockImplementation(() => {})
+    vi.stubGlobal("showSaveFilePicker", vi.fn().mockResolvedValue({}))
+    const saving = host.saveLiveReplay()
+    await vi.waitFor(() => expect(host.replaySavingWorker).not.toBeNull())
+    editor.remove()
+    await saving
+    expect(terminate).toHaveBeenCalledOnce()
+    expect(host.completedLiveReplays).toHaveLength(1)
+  })
+
+  it("restores replay checkpoints when seeking between chunks", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const replay = {format: "webwriter-live-replay" as const, startedAt: 1000, endedAt: 90000, baseHTML: "<p>Start</p>",
+      learners: [{id: "ada", name: "Ada", color: "red", firstSeen: 1000, lastSeen: 90000, connected: false}],
+      steps: [2000, 34000, 66000].map((time, index) => ({id: String(index), time, learner: "ada", kind: "pointer" as const, pointer: {x: index / 10, y: 0}})), feedback: []}
+    const file = await createLiveSessionReplayFile(replay)
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => file}]))
+    try {
+      await host.openLiveReplay()
+      expect(host.liveSteps).toHaveLength(0)
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      expect(host.liveSteps).toHaveLength(0)
+      expect(host.liveStatesAtStep.get("ada").pointer.x).toBe(0)
+      const read = host.replayReader.seek.bind(host.replayReader)
+      let release!: () => void
+      const delayed = new Promise<void>(resolve => { release = resolve })
+      vi.spyOn(host.replayReader, "seek").mockImplementation(async (time: number, revision: number) => {
+        if(time === 66000) await delayed
+        return read(time, revision)
+      })
+      const later = host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 65}}))
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 33}}))
+      release(); await later
+      expect(host.liveStatesAtStep.get("ada").pointer.x).toBe(0.1)
+      expect(host.liveStreamTime).toBe(33)
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 33}}))
+      expect(host.liveSteps).toHaveLength(0)
+      expect(host.liveStatesAtStep.get("ada").pointer.x).toBe(0.1)
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      expect(host.liveSteps).toHaveLength(0)
+      expect(host.liveStatesAtStep.get("ada").pointer.x).toBe(0)
+    }
+    finally { await host.exitPreview(false); editor.remove() }
+  })
+
+  it("restores learner documents, widget state and feedback when jumping to a later checkpoint", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const recorder = new IncrementalPreviewRecorder("<p>First</p>")
+    const encode = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
+    const replay = {format: "webwriter-live-replay" as const, startedAt: 0, endedAt: 90000, baseHTML: "<p>Start</p>",
+      learners: [{id: "ada", name: "Ada", color: "red", firstSeen: 0, lastSeen: 90000, connected: false}],
+      steps: [
+        {id: "a", learner: "ada", time: 1000, kind: "document" as const, htmlCheckpoint: encode(recorder.checkpoint())},
+        {id: "b", learner: "ada", time: 32000, kind: "document" as const, htmlUpdate: encode(recorder.capture("<p>Second</p>")!), widgets: [{id: "quiz", state: {answer: 3}}], scroll: {top: 120}},
+        {id: "c", learner: "ada", time: 64000, kind: "document" as const, htmlUpdate: encode(recorder.capture("<p>Third</p>")!)},
+      ], feedback: [{id: "feedback", participant: "ada", time: 30000, text: "Good"}]}
+    vi.stubGlobal("showOpenFilePicker", vi.fn().mockResolvedValue([{getFile: async () => createLiveSessionReplayFile(replay)}]))
+    try {
+      await host.openLiveReplay()
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 64}}))
+      expect(host.liveSteps).toHaveLength(0)
+      expect(host.liveStreamStep).toBe(1)
+      expect(host.liveStatesAtStep.get("ada")).toMatchObject({html: "<p>Third</p>", widgets: [{id: "quiz", state: {answer: 3}}], scroll: {top: 120}})
+      expect(host.liveFeedback).toEqual([expect.objectContaining({text: "Good"})])
+      await host.seekLiveSession(new CustomEvent("live-session-seek", {detail: {time: 1}}))
+      expect(host.liveStatesAtStep.get("ada").html).toBe("<p>First</p>")
+      expect(host.liveFeedback).toEqual([])
+    }
+    finally { await host.exitPreview(false); recorder.destroy(); editor.remove() }
+  })
+
+  it("opens a replay through a file input when the browser has no file picker", async () => {
+    vi.stubGlobal("Worker", ReplayTestWorker)
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const replay = {format: "webwriter-live-replay", startedAt: 1, endedAt: 2,
+      baseHTML: "<p>Original</p>", learners: [], steps: [], feedback: []}
+    vi.stubGlobal("showOpenFilePicker", undefined)
+    const input = vi.spyOn(host, "pickFileInput").mockResolvedValue(await createLiveSessionReplayFile(replay as any))
+    await host.openLiveReplay()
+    expect(input).toHaveBeenCalledWith(".wwreplay")
+    expect(host.replayActive).toBe(true)
+    await host.exitPreview(false)
+    editor.remove()
+  })
+
   it("does not apply a pending stop confirmation to a replacement live session", async () => {
     const {editor} = await mountEditor()
     const host = editor as any
@@ -7646,7 +8297,7 @@ describe("DomEditor.execute()", () => {
     finally { learner.destroy(); host.disposeLiveSession() }
   })
 
-  it("publishes one complete participant document over HTTP before exposing its share link", async () => {
+  it("keeps the participant document on the host and creates a peer invitation", async () => {
     vi.stubGlobal("WebSocket", class {send() {} close() {}})
     vi.spyOn(offlineBundler, "bundleOfflineModules").mockResolvedValue({js: 'customElements.define("webwriter-demo", class extends HTMLElement {})', css: "webwriter-demo {display:block}"})
     const {editor, iframe} = await mountEditor()
@@ -7654,26 +8305,18 @@ describe("DomEditor.execute()", () => {
     host.installedPackages = [{...demoPackage, scripts: [`${location.origin}${LOCAL_PACKAGE_ROUTE_PREFIX}fixture/widget.js`], styles: []}]
     iframe.contentDocument!.body.innerHTML = '<webwriter-demo></webwriter-demo>'
     await host.enterPreview()
-    let finish!: (value: {url: string}) => void
-    const publishLiveSession = vi.fn().mockReturnValue(new Promise(resolve => {finish = resolve}))
+    const publishLiveSession = vi.fn()
     host.backendSession = {kind: "webwriter-dev-server", collaborationUrl: "ws://localhost:1234", user: {id: "host", name: "Host"}}
     host.backendClient = {apiBaseUrl: "http://localhost:1234/api", publishLiveSession}
-    const starting = host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
-    await vi.waitFor(() => expect(publishLiveSession).toHaveBeenCalledOnce())
-    expect(host.liveSessionLink).toBe("")
-    expect(host.liveSession).toBeNull()
-    const [id, token, key, html] = publishLiveSession.mock.calls[0]
-    expect(key).toMatch(/^[A-Za-z0-9_-]{24,256}$/)
-    expect(html).toContain("data:text/javascript")
-    expect(html).toContain("data:text/css")
-    expect(html).not.toContain(LOCAL_PACKAGE_ROUTE_PREFIX)
-    expect(new DOMParser().parseFromString(html, "text/html").querySelector("base")?.href).toBe("http://127.0.0.1:1234/")
-    finish({url: `http://127.0.0.1:1234/live/?liveSession=${id}&liveToken=${token}&liveServer=ws%3A%2F%2Flocalhost%3A1234`})
-    await starting
+    await host.toggleLiveSession(new CustomEvent("live-session-toggle", {detail: {enabled: true}}))
+    expect(publishLiveSession).not.toHaveBeenCalled()
     const session = host.liveSession as LiveSession
-    expect(session.doc.getMap("live-session-meta").has("baseHTML")).toBe(false)
-    expect(session.doc.getMap("live-session-meta").has("previewDependencies")).toBe(false)
-    expect(host.liveSessionLink).toContain(`/live/?liveSession=${id}`)
+    expect(session.baseHTML).toBeTruthy()
+    expect(session.previewDependencies?.packages[0].scripts[0]).toMatch(/^data:text\/javascript/)
+    const link = new URL(host.liveSessionLink)
+    expect(link.searchParams.get("liveSession")).toBe(session.id)
+    expect(link.searchParams.has("liveToken")).toBe(false)
+    expect(new URLSearchParams(link.hash.slice(1)).get("liveKey")).toMatch(/^[A-Za-z0-9_-]{87}$/)
     host.disposeLiveSession()
   })
 
@@ -7797,6 +8440,25 @@ describe("DomEditor.execute()", () => {
       expect(host.liveStatesAtStep.get("learner-ada")?.cursor).toEqual({x: 0.4, y: 0.6})
     }
     finally { editor.remove(); vi.useRealTimers() }
+  })
+
+  it("reconstructs incremental learner documents while seeking backwards and forwards", async () => {
+    const {editor} = await mountEditor()
+    const host = editor as any
+    const recorder = new IncrementalPreviewRecorder("<p>Start</p>")
+    const encode = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes))
+    try {
+      const checkpoint = encode(recorder.checkpoint())
+      const update = encode(recorder.capture("<p>Edited 😀</p>")!)
+      host.liveSteps = [
+        {id: "one", learner: "ada", time: 1, kind: "document", htmlCheckpoint: checkpoint},
+        {id: "two", learner: "ada", time: 2, kind: "document", htmlUpdate: update},
+      ]
+      expect(host.statesAtLiveStep(2).get("ada").html).toBe("<p>Edited 😀</p>")
+      expect(host.statesAtLiveStep(1).get("ada").html).toBe("<p>Start</p>")
+      expect(host.statesAtLiveStep(2).get("ada").html).toBe("<p>Edited 😀</p>")
+    }
+    finally { recorder.destroy(); editor.remove() }
   })
 
   it("keeps every learner in the live drawer and filters their combined visualization", async () => {

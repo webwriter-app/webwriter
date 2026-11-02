@@ -35,13 +35,15 @@
 
   body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
     --ww-lane: 0px;
+    --ww-left-lane: 0px;
+    --ww-right-lane: 0px;
     display: flow-root;
     box-sizing: border-box;
     inline-size: auto;
-    max-inline-size: calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem));
+    max-inline-size: var(--ww-body-max, calc(var(--ww-page-max, 2160px) + 2 * var(--ww-page-gutter, 1rem)));
     margin-inline: auto;
-    padding-inline: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane));
-    padding-inline-start: calc(var(--ww-page-gutter, 1rem) + var(--ww-lane) + var(--ww-leading-gutter-balance, 0px));
+    padding-left: calc(var(--ww-page-gutter, 1rem) + var(--ww-left-lane) + var(--ww-leading-gutter-balance, 0px));
+    padding-right: calc(var(--ww-page-gutter, 1rem) + var(--ww-right-lane));
     /* Leave room below authored content for the reader's 28px action row,
      * its 20px bottom inset, and a 20px gap above it. */
     padding-block-end: max(68px, var(--ww-page-gutter, 1rem));
@@ -67,6 +69,16 @@
       max-inline-size: none;
     }
 
+    /* A wide block shares the page with the float lane, after earlier floats. */
+    :is(&, & > main, & > article, & > section) > .ww-full-width:not(.ww-float-left):not(.ww-float-right) {
+      --ww-wide-available: calc(100% + var(--ww-left-lane) + var(--ww-right-lane));
+      inline-size: min(var(--ww-wide-available), var(--ww-full-width-size, var(--ww-wide-available))) !important;
+      max-inline-size: var(--ww-full-width-size, none) !important;
+      clear: both;
+      margin-left: calc(0px - min(var(--ww-left-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
+      margin-right: calc(0px - min(var(--ww-right-lane), max(0px, calc(var(--ww-full-width-size, var(--ww-wide-available)) - 100%)))) !important;
+    }
+
     p:not([is]) {
       display: flow-root;
       min-inline-size: min(300px, 100%);
@@ -82,12 +94,18 @@
     .ww-float-right { float: right !important; }
     .ww-float-none { float: none !important; }
 
+    .ww-float-sticky:is(.ww-float-left, .ww-float-right) {
+      position: sticky;
+      top: var(--ww-page-gutter, 1rem);
+      z-index: 2147483647;
+    }
+
     :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
       /* A bounded border box fits its lane. Old floats use the theme width. */
       box-sizing: border-box !important;
       inline-size: var(--ww-float-size, var(--ww-float-width)) !important;
       min-inline-size: 0 !important;
-      max-inline-size: min(100%, var(--ww-float-width));
+      max-inline-size: max(var(--ww-float-width), var(--ww-float-size, 0px));
       --ww-attribution-after: 0px;
       margin-block: 0 calc(var(--ww-page-gutter, 1rem) + var(--ww-float-attribution-before, 0px) + var(--ww-attribution-after));
     }
@@ -101,37 +119,62 @@
 
   @container (width >= 1200px) {
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
-      /* The reservation covers the whole body, including wide landmarks. */
+      /* One occupied side forms one column, even for older documents with
+       * opposite authored float directions. Left wins in that legacy case. */
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
+        --ww-left-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+      }
+      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
+        --ww-right-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+      }
       &:has(:is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
-        --ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+        --ww-body-max: calc(var(--ww-prose-max, 45rem) + var(--ww-float-width) + var(--ww-float-gap) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
+        --ww-float-width: max(
+          min(var(--ww-two-column-default-width, var(--ww-prose-max, 45rem)), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2))),
+          var(--ww-two-column-explicit-width, 0px));
       }
 
-      :is(.ww-float-left, [style*="float: left"], [style*="float:left"]) {
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        float: left !important;
+        clear: left;
+        margin-left: calc(0px - var(--ww-left-lane)) !important;
+        margin-right: calc(var(--ww-left-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+      }
+
+      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        float: right !important;
+        clear: right;
+        margin-right: calc(0px - var(--ww-right-lane)) !important;
+        margin-left: calc(var(--ww-right-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+      }
+    }
+  }
+
+  @container (720px <= width < 1200px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      --ww-float-width: max(min(var(--ww-two-column-default-width, var(--ww-prose-max, 45rem)), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2))), var(--ww-two-column-explicit-width, 0px));
+
+      &:has(:is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
+        --ww-body-max: calc(var(--ww-prose-max, 45rem) + var(--ww-float-width) + var(--ww-float-gap) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
+        --ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+      }
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
+        --ww-responsive-float: left;
+        --ww-left-lane: var(--ww-lane);
+      }
+      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
+        --ww-responsive-float: right;
+        --ww-right-lane: var(--ww-lane);
+      }
+
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        float: left !important;
         clear: left;
         margin-left: calc(0px - var(--ww-lane)) !important;
         margin-right: calc(var(--ww-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
       }
 
-      :is(.ww-float-right, [style*="float: right"], [style*="float:right"]) {
-        clear: right;
-        margin-right: calc(0px - var(--ww-lane)) !important;
-        margin-left: calc(var(--ww-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
-      }
-    }
-  }
-
-  @container (600px <= width < 1200px) {
-    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
-      --ww-float-width: min(16rem, max(0px, calc(var(--ww-page-width) - 300px - var(--ww-float-gap))));
-      --ww-responsive-float: right;
-      padding-left: var(--ww-page-gutter, 1rem);
-      padding-inline-start: calc(var(--ww-page-gutter, 1rem) + var(--ww-leading-gutter-balance, 0px));
-
-      &:has(:is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
-        --ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
-      }
-
-      :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
         float: right !important;
         clear: right;
         margin-right: calc(0px - var(--ww-lane)) !important;
@@ -140,7 +183,7 @@
     }
   }
 
-  @container (width < 600px) {
+  @container (width < 720px) {
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
       --ww-float-width: 100%;
       --ww-responsive-float: none;
@@ -153,8 +196,31 @@
     ) {
       display: flow-root;
       float: none !important;
+      max-inline-size: 100%;
       margin-left: auto !important;
       margin-right: auto !important;
+    }
+    body .ww-float-sticky { position: static !important; }
+  }
+
+  @container (width >= 720px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
+        --ww-alignment-left: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
+        --ww-alignment-right: 0px;
+        :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+          margin-left: auto;
+          margin-right: 0;
+        }
+      }
+      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
+        --ww-alignment-left: 0px;
+        --ww-alignment-right: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
+        :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+          margin-left: 0;
+          margin-right: auto;
+        }
+      }
     }
   }
 

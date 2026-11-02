@@ -234,6 +234,21 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".feedback-messages script")).toBeNull()
   })
 
+  it("shows recorded feedback without sending controls during replay", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.preview = true
+    toolbox.feedbackReplay = true
+    toolbox.feedbackRole = "host"
+    toolbox.feedbackParticipants = [{id: "ada", name: "Ada", connected: false}]
+    toolbox.feedbackMessages = [{id: "one", participant: "ada", time: 1000, text: "Good work"}]
+    await toolbox.updateComplete
+    toolbox.selectTool("Feedback")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector("form")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".feedback-messages")!.textContent).toContain("Good work")
+    expect(toolbox.shadowRoot!.querySelector(".feedback-messages")!.textContent).toContain("Ada")
+  })
+
   it("offers a document proofreading toggle even when the checker is loading or failed", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")
@@ -1615,6 +1630,59 @@ it("defaults caption choices to below and switches their icons with the Top chec
   await toolbox.updateComplete
   expect(top.checked).toBe(false)
   expect(top.disabled).toBe(true)
+})
+
+it("places Pin beside the Placement heading and enables it only for floats", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", float: "none"},
+    inline: {}, computed: {float: "none"}, context: {display: "block", parentDisplay: "block"}}
+  const actions = vi.fn()
+  toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const heading = toolbox.shadowRoot!.querySelector('.float-button-group[aria-label="Placement"]')!.previousElementSibling!
+  const pin = () => heading.querySelector<HTMLInputElement>('.float-pin input')!
+  expect(heading.textContent).toContain("Placement")
+  expect(pin().closest("label")!.textContent).toBe("Pin")
+  expect(getComputedStyle(heading).justifyContent).toBe("space-between")
+  expect(pin().disabled).toBe(true)
+  expect(pin().checked).toBe(false)
+
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "far-left"}}
+  await toolbox.updateComplete
+  expect(pin().disabled).toBe(false)
+  pin().click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFloatSticky", enabled: true})
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, floatSticky: true}}
+  await toolbox.updateComplete
+  expect(pin().checked).toBe(true)
+  pin().click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFloatSticky", enabled: false})
+
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "none", floatSticky: true}}
+  await toolbox.updateComplete
+  expect(pin().checked).toBe(false)
+  expect(pin().disabled).toBe(true)
+  expect(toolbox.shadowRoot!.querySelector('button[aria-label="Keep in view"]')).toBeNull()
+})
+
+it("shows and dispatches the full width placement", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", canFullWidth: true, fullWidth: false},
+    inline: {}, computed: {float: "none"}, context: {display: "block", parentDisplay: "block"}}
+  const actions = vi.fn(); toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const input = toolbox.shadowRoot!.querySelector<HTMLInputElement>(".float-full-width input")!
+  expect(input.disabled).toBe(false)
+  input.click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFullWidth", enabled: true})
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, fullWidth: true, canFullWidth: false}}
+  await toolbox.updateComplete
+  expect(input.checked).toBe(true)
+  expect(input.disabled).toBe(false)
+  input.click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFullWidth", enabled: false})
 })
 
 it("reflects an existing table caption's top placement", async () => {

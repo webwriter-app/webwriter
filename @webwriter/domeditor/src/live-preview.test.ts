@@ -4,6 +4,7 @@ import {applyPreviewWidgetSnapshot, cleanPreviewEditorArtifacts, LivePreview, pr
 import {WidgetDataBindings} from "./widget-data"
 import * as Y from "yjs"
 import {previewFrameHTML} from "./frame-document"
+import {applyPreviewUpdate} from "./live-session-permissions.js"
 
 const previews: LivePreview[] = []
 afterEach(() => {
@@ -26,6 +27,21 @@ const mount = () => {
 }
 
 describe("live preview lifecycle", () => {
+  it("records only explicit, well-formed widget analytics events", () => {
+    const {frame, owner, preview} = mount()
+    const publish = vi.fn()
+    preview.observeLearner(frame, owner, publish)
+    const host = owner.querySelector("demo-widget")!
+    const detail = {profile: "https://example.org/profile/v1", verb: {id: "https://example.org/verb/used"},
+      contextExtensions: {"https://example.org/ext/mode": "practice"}}
+    host.dispatchEvent(new CustomEvent("webwriter-xapi", {bubbles: true, composed: true, detail}))
+    expect(publish).toHaveBeenCalledWith({kind: "widget", analytics: {...detail, widget: {tag: "demo-widget", path: [0]}}})
+    publish.mockClear()
+    host.dispatchEvent(new CustomEvent("webwriter-xapi", {bubbles: true, detail: {...detail, profile: "invalid"}}))
+    owner.body.dispatchEvent(new CustomEvent("webwriter-xapi", {bubbles: true, detail}))
+    expect(publish).not.toHaveBeenCalled()
+  })
+
   it("publishes authored changes without resending the initial widget runtime", async () => {
     const {frame, owner, preview} = mount()
     const script = `data:text/javascript,${"x".repeat(100_000)}`
@@ -46,14 +62,17 @@ describe("live preview lifecycle", () => {
     await new Promise<void>(resolve => queueMicrotask(resolve))
     const documents = publish.mock.calls.map(([step]) => step).filter(step => step.kind === "document")
     expect(documents.length).toBeGreaterThan(1)
+    const recording = new Y.Doc()
     for(const step of documents) {
-      expect(step.html).not.toContain("data:text/javascript")
-      expect(step.html).not.toContain("data:text/css")
-      expect(step.html).not.toContain("◆")
-      expect(step.html).toContain(".authored {color: red}")
-      expect(step.html).toContain("<!--keep-->")
-      expect(step.html).toContain('{"answer":1}')
+      const html = applyPreviewUpdate(recording, step.htmlCheckpoint ?? step.htmlUpdate)
+      expect(html).not.toContain("data:text/javascript")
+      expect(html).not.toContain("data:text/css")
+      expect(html).not.toContain("◆")
+      expect(html).toContain(".authored {color: red}")
+      expect(html).toContain("<!--keep-->")
+      expect(html).toContain('{"answer":1}')
     }
+    recording.destroy()
     expect(owner.head.querySelector("script[src]")!.getAttribute("src")).toBe(script)
     expect(owner.querySelector("demo-widget")!.getAttribute("answer")).toBe("2")
   })
@@ -96,6 +115,16 @@ describe("live preview lifecycle", () => {
     preview.observeLearner(frame, owner, vi.fn())
     owner.body.prepend(owner.createElement("p"))
     expect(preview.captureWidgetStates(owner)[0]?.path).toEqual([0])
+  })
+
+  it("captures widget HTML without editor markers while retaining authored content", () => {
+    const {owner, preview} = mount()
+    const widget = owner.querySelector("demo-widget")!
+    widget.className = "authored ◆selected"
+    widget.innerHTML = '<!--keep--><svg><path d="M0 0"></path></svg>'
+    const snapshot = preview.captureWidgetStates(owner)[0]
+    expect(snapshot.html).toBe('<demo-widget class="authored"><!--keep--><svg><path d="M0 0"></path></svg></demo-widget>')
+    expect(widget.classList.contains("◆selected")).toBe(true)
   })
 
   it("replaces host listeners and releases snapshots when disconnected", () => {

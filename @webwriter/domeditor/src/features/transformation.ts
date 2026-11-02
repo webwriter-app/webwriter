@@ -49,6 +49,8 @@ type Gesture = {
   crop?: {target: HTMLImageElement | HTMLVideoElement, parent: Element | null, width: number, height: number, matrix: DOMMatrix, insets: number[], edges: number[], sourceStyle: CSSStyleDeclaration}
   endUndoGroup: () => void
   group?: {members: GroupMember[], transform: DOMMatrix}
+  fullWidth?: {initial: boolean, written: boolean, threshold: number | null}
+  resizeCentered?: boolean
 }
 
 /** Selection-owned spatial controls in the shadow appendix.
@@ -1063,6 +1065,15 @@ export class TransformationFeature extends EditorFeature {
       captured: this.editor.features.selection.captureSelectedElement === target,
       endUndoGroup,
     }
+    if(mode === "scale") this.#gesture.resizeCentered = !this.#isFreeformItem(target) && this.#resizeAlignment(target) === "center"
+    if(mode === "scale" && this.editor.features.layout.canSetFullWidth(target)
+      && (target.classList.contains("ww-full-width") || document.documentElement.clientWidth >= 720 && this.editor.features.manipulation.floatColumnSide())) {
+      const parent = target.parentElement!, parentStyle = getComputedStyle(parent)
+      const threshold = parent.getBoundingClientRect().width - (parseFloat(parentStyle.borderLeftWidth) || 0)
+        - (parseFloat(parentStyle.borderRightWidth) || 0) - (parseFloat(parentStyle.paddingLeft) || 0) - (parseFloat(parentStyle.paddingRight) || 0)
+      const inColumns = document.documentElement.clientWidth >= 720 && this.editor.features.manipulation.floatColumnSide()
+      if(threshold > 0) this.#gesture.fullWidth = {initial: target.classList.contains("ww-full-width"), written: target.classList.contains("ww-full-width"), threshold: inColumns ? threshold : null}
+    }
     this.#suppressClick = null
     if(mode === "crop") {
       document.body.classList.add(`◆transform-cropping-${handle.dataset.cropDirection}`)
@@ -1130,6 +1141,7 @@ export class TransformationFeature extends EditorFeature {
         : this.editor.features.media.cropTargetFor(gesture.target) !== gesture.image.target) || gesture.image.parent !== gesture.image.target.parentElement
         || [...gesture.image.written].some(([key, last]) => gesture.image!.target.style.getPropertyValue(key) !== last.value
           || gesture.image!.target.style.getPropertyPriority(key) !== last.priority))
+      || gesture.fullWidth && gesture.target.classList.contains("ww-full-width") !== gesture.fullWidth.written
       || this.editor.isEditingLocked || gesture.target !== this.target || gesture.parent !== gesture.target.parentElement
       || [...gesture.written].some(([key, last]) => gesture.target.style.getPropertyValue(key) !== last.value
         || gesture.target.style.getPropertyPriority(key) !== last.priority)) {
@@ -1367,7 +1379,7 @@ export class TransformationFeature extends EditorFeature {
     const y = text ? 0 : direction.includes("up") ? -1 : direction.includes("down") ? 1 : 0
     document.body.classList.add(`◆transform-scaling-${x && y ? x === y ? "nwse" : "nesw" : x ? "ew" : "ns"}`)
     const symmetric = modifierKeyDown(event)
-    const centered = !this.#isFreeformItem(target) && this.#resizeAlignment(target) === "center"
+    const centered = gesture.resizeCentered ?? false
     const round = this.getRoundingFunc(event)
     let dw = x ? Math.max(1 - gesture.width, round(x * delta.x * (symmetric || centered ? 2 : 1))) : 0
     let dh = y ? Math.max(1 - gesture.height, round(y * delta.y * (symmetric ? 2 : 1))) : 0
@@ -1419,8 +1431,14 @@ export class TransformationFeature extends EditorFeature {
       else if(boardLayoutRole(target) === "card" && y) this.#write("height", `${Math.max(1, gesture.cssHeight + dh)}px`)
       if(x) {
         const width = Math.max(0, gesture.cssWidth + dw)
+        if(gesture.fullWidth) {
+          const full = gesture.fullWidth.threshold === null ? gesture.fullWidth.initial : width > gesture.fullWidth.threshold + .5
+          target.classList.toggle("ww-full-width", full)
+          gesture.fullWidth.written = full
+          this.#write("--ww-full-width-size", full ? `${width}px` : "")
+        }
         if(floatSideFromStyles(style.float, target.style, target.classList) !== "none") {
-          this.#write("--ww-float-size", `min(100%, var(--ww-float-width), ${width}px)`)
+          this.#write("--ww-float-size", `${width}px`)
         }
         this.#write("max-width", `${width}px`)
       }
@@ -1560,6 +1578,10 @@ export class TransformationFeature extends EditorFeature {
     const valid = gesture.group ? this.#validGroupSelection() : gesture.target === this.target && gesture.parent === gesture.target.parentElement
     const target = gesture.target
     if(cancel || !valid) {
+      if(gesture.fullWidth && target.classList.contains("ww-full-width") === gesture.fullWidth.written) {
+        target.classList.toggle("ww-full-width", gesture.fullWidth.initial)
+        if(!target.classList.length) target.removeAttribute("class")
+      }
       if(gesture.canvas && target.getAttribute("viewBox") === gesture.canvas.written) this.#writeCanvasViewBox(gesture.canvas.initial)
       // Revert only properties still owned by this gesture. Concurrent changes
       // to other properties, or to these same properties, remain authoritative.

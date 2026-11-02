@@ -10,6 +10,7 @@ import * as Y from "yjs"
 import * as decoding from "lib0/decoding"
 import {acceptLearnerUpdate, encodeLiveSessionFeedback, liveSessionFeedbackMessage, readLiveSessionFeedback} from "../src/live-session-permissions.js"
 import {createDistributionValidator} from "./distribution.mjs"
+import {installLiveSignaling} from "./live-signaling.mjs"
 import {distributionGroupingRevision, formWidgetGroups, groupingTarget, validateGroupingRules} from "../src/widget-grouping.js"
 import {decodeDistributionConfig, distributionTarget} from "../src/distribution.js"
 import {fetchGitPackage, gitPackageSource, gitPackageMimeType} from "./git-packages.mjs"
@@ -552,6 +553,8 @@ export async function createDevServer(options = {}) {
     }
   }
   const websocketServer = new WebSocketServer({noServer: true, maxPayload: maximumWebSocketPayload})
+  const liveSignalingServer = new WebSocketServer({noServer: true, maxPayload: 65536})
+  installLiveSignaling(liveSignalingServer)
   websocketServer.on("connection", (socket, request) => {
     // A stale browser connection can produce a malformed frame after wake.
     // Handle it so ws does not turn the expected disconnect into a process error.
@@ -694,7 +697,7 @@ export async function createDevServer(options = {}) {
       return
     }
 
-    const isLiveDocument = (path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")
+    const isLiveDocument = (path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession") && url.searchParams.has("liveToken")
     if(privateTesting) {
       const isEditorHost = request.headers.host.toLowerCase() === new URL(editorOrigin).host
       if(isEditorHost !== isLiveDocument) return apiError(response, 403, "Live documents require the editor origin; APIs and administration require the application origin")
@@ -738,7 +741,7 @@ export async function createDevServer(options = {}) {
         documentURL.search = new URLSearchParams({liveSession: id, liveToken: token, liveServer: origin.replace(/^http/, "ws")}).toString()
         return json(response, 201, {url: documentURL.href})
       }
-      if((path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession")) {
+      if((path === "/live/" || path === "/live/index.html") && url.searchParams.has("liveSession") && url.searchParams.has("liveToken")) {
         if(request.method !== "GET" && request.method !== "HEAD") return apiError(response, 405, "Live documents are read-only")
         const session = liveSessionTokens.get(`live-session-${url.searchParams.get("liveSession")}`)
         const html = session?.token === url.searchParams.get("liveToken") ? session.html : undefined
@@ -1163,7 +1166,8 @@ export async function createDevServer(options = {}) {
 
       if(path === "/admin" || path === "/admin/") {
         const template = await readFile(join(serverDirectory, "admin.html"), "utf8")
-        const content = Buffer.from(privateTesting ? template.replace("Localhost only · no authentication", "Private testing · shared identity · no authentication") : template)
+        const admin = privateTesting ? template.replace("Localhost only · no authentication", "Private testing · shared identity · no authentication") : template
+        const content = Buffer.from(useVite ? admin.replace("<!-- scenario-panel -->", '<section id="scenario-panel"></section><script type="module" src="/dev-server/scenarios.ts"></script>') : admin)
         response.writeHead(200, {"Content-Type": "text/html; charset=utf-8", "Content-Length": content.length})
         response.end(content)
         return
@@ -1216,6 +1220,10 @@ export async function createDevServer(options = {}) {
     }
     const requestUrl = new URL(request.url || "/", appOrigin ?? requestOrigin(request))
     const room = requestUrl.pathname.replace(/^\/+/, "")
+    if(room === "live-signaling") {
+      liveSignalingServer.handleUpgrade(request, socket, head, webSocket => liveSignalingServer.emit("connection", webSocket, request))
+      return
+    }
     let liveSession
     let learnerKey
     if(requestUrl.searchParams.has("share")) {
@@ -1320,6 +1328,8 @@ export async function createDevServer(options = {}) {
       gitSnapshots.clear()
       for(const session of liveSessionTokens.values()) clearTimeout(session.timer)
       for(const client of websocketServer.clients) client.terminate()
+      for(const client of liveSignalingServer.clients) client.terminate()
+      await new Promise(resolveClose => liveSignalingServer.close(() => resolveClose()))
       await new Promise(resolveClose => websocketServer.close(() => resolveClose()))
       liveSessionTokens.clear()
       await new Promise((resolveClose, reject) => server.close(error => error ? reject(error) : resolveClose()))

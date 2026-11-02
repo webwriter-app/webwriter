@@ -9,6 +9,7 @@ export class LiveSessionControls extends LitElement {
     currentTime: {type: Number, attribute: "current-time"},
     duration: {type: Number},
     live: {type: Boolean, reflect: true},
+    replay: {type: Boolean, reflect: true},
   }
 
   static styles = css`
@@ -210,6 +211,7 @@ export class LiveSessionControls extends LitElement {
   currentTime = 0
   duration = 0
   live = false
+  replay = false
 
   // Freeze the displayed interval while paused. Incoming activity still updates
   // the lag, but cannot slide the playhead backwards or change a drag's scale.
@@ -218,7 +220,7 @@ export class LiveSessionControls extends LitElement {
   protected willUpdate(changed: PropertyValues<this>) {
     const duration = this.normalizedDuration()
     if(this.timelineDuration === undefined && duration === 0 && !this.playing) return
-    if(this.timelineDuration === undefined || this.playing || changed.has("playing") || changed.has("live")
+    if(this.timelineDuration === undefined || this.playing || changed.has("playing") || changed.has("live") || changed.has("replay")
       || duration < this.timelineDuration || this.normalizedTime() > this.timelineDuration) {
       this.timelineDuration = duration
     }
@@ -264,8 +266,8 @@ export class LiveSessionControls extends LitElement {
     const time = this.normalizedTime()
     const behind = duration - time
     const following = this.playing && time >= duration
-    const status = !this.playing ? "Paused" : !following ? "Replaying" : this.live ? "Watching live" : "Preview"
-    const returnLabel = this.live ? "Return to live" : "Jump to latest"
+    const status = this.replay ? this.playing ? "Replaying" : "Replay paused" : !this.playing ? "Paused" : !following ? "Replaying" : this.live ? "Watching live" : "Preview"
+    const returnLabel = this.replay ? "Jump to end" : this.live ? "Return to live" : "Jump to latest"
     const timelineDuration = this.timelineDuration ?? duration
     const frozen = timelineDuration < duration
     // A fixed range avoids native step rounding as the live duration grows.
@@ -295,13 +297,13 @@ export class LiveSessionControls extends LitElement {
             aria-valuetext=${`${this.formatTime(time)} of ${this.formatTime(timelineDuration)}${frozen ? ` shown; latest ${this.formatTime(duration)}` : ""}`}
             @input=${this.seek}
           />
-          <span class="endpoint" title=${frozen ? "Timeline end when paused" : "Latest available activity"}>${frozen ? this.formatTime(timelineDuration) : "Now"}</span>
+          <span class="endpoint" title=${frozen ? "Timeline end when paused" : "Latest available activity"}>${frozen || this.replay ? this.formatTime(timelineDuration) : "Now"}</span>
         </div>
-        <span class="lag">${behind > 0 ? `${this.formatTime(Math.ceil(behind))} behind` : ""}</span>
-        <button class="return" type="button" ?disabled=${following}
+        <span class="lag">${behind > 0 ? `${this.formatTime(Math.ceil(behind))} ${this.replay ? "remaining" : "behind"}` : ""}</span>
+        <button class="return" type="button" ?disabled=${this.replay ? time >= duration : following}
           @click=${() => this.dispatch("live-session-return-to-live")}
         >${returnLabel}</button>
-        <span class="description" id="timeline-description">Blue shows viewed time; grey shows later available activity. The timeline scale stays fixed while paused. ${returnLabel} jumps to the newest activity and resumes playback.</span>
+        <span class="description" id="timeline-description">Blue shows viewed time; grey shows later available activity. The timeline scale stays fixed while paused. ${returnLabel} jumps to the newest activity${this.replay ? "." : " and resumes playback."}</span>
       </div>
     `
   }

@@ -233,6 +233,9 @@ describe("mark ribbon controls", () => {
     expect(action.label).toBe("Collaboration")
     expect(Array.from(action.querySelectorAll(".presence-user"), user => user.textContent)).toEqual(["AL", "LC"])
     expect(getComputedStyle(action.querySelectorAll<HTMLElement>(".presence-user")[1]!).marginLeft).toBe("-14.4px")
+    const actions = action.parentElement!
+    expect(getComputedStyle(actions).minWidth).toBe("69.6px")
+    expect(getComputedStyle(actions).width).toBe("73.6px")
   })
 
   it("closes the other menu when opening File or Share without pointer events", async () => {
@@ -350,7 +353,7 @@ describe("mark ribbon controls", () => {
 
     expect(getComputedStyle(tabs).overflow).toBe("clip")
     expect(getComputedStyle(actions).flexShrink).toBe("1")
-    expect(getComputedStyle(actions).minWidth).toBe("48px")
+    expect(getComputedStyle(actions).minWidth).toBe("69.6px")
     expect(getComputedStyle(actions).justifyContent).toBe("space-between")
     expect(getComputedStyle(actions).gap).toBe(".2rem")
     for(const button of buttons) {

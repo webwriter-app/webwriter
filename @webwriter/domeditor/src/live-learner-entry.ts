@@ -6,12 +6,16 @@ export function startLiveLearner() {
     const parameters = new URL(location.href).searchParams
     const id = parameters.get("liveSession") ?? ""
     const token = parameters.get("liveToken") ?? ""
+    const fragment = new URLSearchParams(new URL(location.href).hash.slice(1))
+    const hostPublicKey = fragment.get("liveKey") ?? ""
+    const secret = fragment.get("liveSecret") ?? ""
     const serverUrl = new URL(parameters.get("liveServer") ?? "")
     if(!["ws:", "wss:"].includes(serverUrl.protocol) || serverUrl.username || serverUrl.password) {
       throw new Error("This learner link has an invalid collaboration server")
     }
-    if(!/^[A-Za-z0-9_-]{24,256}$/.test(token)) throw new Error("This learner link is missing its access token")
-    const session = new LiveSession({id, role: "learner", serverUrl: serverUrl.href, token,
+    if(hostPublicKey ? !/^[A-Za-z0-9_-]{87}$/.test(hostPublicKey) || !/^[A-Za-z0-9_-]{32}$/.test(secret) : !/^[A-Za-z0-9_-]{24,256}$/.test(token)) throw new Error("This learner link is missing its host identity")
+    const session = new LiveSession({id, role: "learner", serverUrl: serverUrl.href,
+      ...(hostPublicKey ? {peer: {hostPublicKey, secret}} : {token}),
       learner: liveSessionLearnerIdentity(id)})
     return connectLiveLearner(session, document, {rendered: Boolean(document.getElementById("webwriter-live-learner"))})
   }

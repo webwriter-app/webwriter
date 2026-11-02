@@ -1,4 +1,14 @@
 import type {DistributionSelection} from "../features/distribution"
+import * as Y from "yjs"
+import {applyPreviewUpdate} from "../live-session-permissions.js"
+import {createBrowserDistributionValidator} from "../distribution-snapshot"
+import {captureLiveSessionReplay, captureLiveSessionSnapshot, type LiveSessionReplay} from "../live-session-replay"
+import {cleanLiveSessionDocument} from "../live-session-replay"
+import {LiveSessionLrs, createLrsConnection, type LrsConfiguration, type LrsStatus} from "../live-session-lrs"
+import type {ReplayLrsProgress} from "../live-session-replay-lrs"
+import {LiveSessionReplayClient} from "../live-session-replay-client"
+import {isCssColor} from "../css-color"
+import {LiveSessionRecovery, listRecoveredSessions, readRecoveredSession, deleteRecoveredSession, type RecoveredSession} from "../live-session-recovery"
 import type {DistributionConfig, DistributionItem} from "../distribution.js"
 import {emptyDistributionConfig} from "../distribution.js"
 import type {DistributionInsertDrop} from "./distribution-controls"
@@ -163,7 +173,8 @@ import {bundleLocalPreviewPackages, editorFrameHTML, previewFrameHTML} from "../
 import {isPackageImportMap, loadDocumentPackages, packageImportMapId, packageModuleEntries, resolvePackageDependencies} from "../package-dependencies"
 import type {IImportMap} from "@jspm/import-map"
 import {applyPreviewWidgetSnapshot, LivePreview, previewElementAtPath, previewElementPath, previewWidgetElements} from "../live-preview"
-import {editorFrameOrigin, pairedLoopbackOrigin} from "../frame-origins"
+import {editorFrameOrigin} from "../frame-origins"
+import {createLiveHostIdentity} from "../live-peer"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "../frame-local-packages"
 import {getSectionOption, isSectionElement, isSectionName, type SectionName} from "../sections"
 import {userInitials} from "../user-identity"
@@ -212,7 +223,6 @@ import {
 } from "../document-head"
 import {
   LiveSession,
-  liveSessionHostKey,
   liveSessionLearnerIdentity,
   type LiveSessionChange,
   type LiveSessionFeedback,
@@ -223,7 +233,6 @@ import {
 import {liveLearnerURL} from "../page-routing"
 import editorEntryUrl from "virtual:app-entry/editor-entry"
 import previewEntryUrl from "virtual:app-entry/preview-entry"
-import liveLearnerEntryUrl from "virtual:app-entry/live-learner-entry"
 import type {
   LiveSessionLearner as OverlayLearner,
   LiveSessionWidget as OverlayWidget,
@@ -423,6 +432,21 @@ export class DomEditor extends LitElement {
     liveSessionActive: {attribute: false, state: true},
     liveSessionRole: {attribute: false, state: true},
     liveSessionLink: {attribute: false, state: true},
+    completedLiveReplays: {attribute: false, state: true},
+    savingLiveReplay: {attribute: false, state: true},
+    replayActive: {attribute: false, state: true},
+    lrsStatus: {attribute: false, state: true},
+    lrsError: {attribute: false, state: true},
+    replayLrsStatus: {attribute: false, state: true},
+    exportingReplayDataset: {attribute: false, state: true},
+    replaySizeWarning: {attribute: false, state: true},
+    recoveredLiveReplays: {attribute: false, state: true},
+    recoveringLiveReplay: {attribute: false, state: true},
+    deletingRecoveredReplay: {attribute: false, state: true},
+    restoredRecoveryId: {attribute: false, state: true},
+    liveRecoveryFailed: {attribute: false, state: true},
+    replaySelectedLearner: {attribute: false, state: true},
+    replayPackageNote: {attribute: false, state: true},
     liveLearners: {attribute: false, state: true},
     liveSteps: {attribute: false, state: true},
     liveFeedback: {attribute: false, state: true},
@@ -668,6 +692,7 @@ export class DomEditor extends LitElement {
   private previewFramePending = false
   /** Data of the ribbon drag in progress, relayed to the editor frame. */
   private ribbonDrag: Record<string, string> | null = null
+  private ribbonDragSource: {button: HTMLButtonElement, started: number} | null = null
   private frameTouchPointer: number | null = null
   private previewDocumentHTML: string | null = null
   private previewFrameRevision = 0
@@ -682,6 +707,39 @@ export class DomEditor extends LitElement {
   private liveSessionActive = false
   private liveSessionRole: "host" | "learner" | "" = ""
   private liveSessionLink = ""
+  private completedLiveReplays: LiveSessionReplay[] = []
+  private replayActive = false
+  private liveLrs: LiveSessionLrs | null = null
+  private lrsStatus: LrsStatus | null = null
+  private lrsError = ""
+  private replayLrsStatus: ReplayLrsProgress | {state: "done" | "error" | "stopped", confirmed: number, message?: string} | null = null
+  private replayLrsWorker: LiveSessionReplayClient | null = null
+  private replaySizeWarning = false
+  private recoveredLiveReplays: RecoveredSession[] = []
+  private recoveringLiveReplay = false
+  private deletingRecoveredReplay = false
+  private restoredRecoveryId = ""
+  private recoveryRestoreWorker: LiveSessionReplayClient | null = null
+  private liveRecovery: LiveSessionRecovery | null = null
+  private liveRecoveryFailed = false
+  private readonly completedRecoveryIds = new Map<LiveSessionReplay, string>()
+  private readonly recoveryFinishing = new Map<string, Promise<void>>()
+  private recoveryRefreshTimer: ReturnType<typeof setInterval> | undefined
+  private recoveryRefreshGeneration = 0
+  private replaySelectedLearner = ""
+  private replayPackageNote = false
+  private replayBaseHTML = ""
+  private replayRenderedHTML = ""
+  private replayFeedback: LiveSessionFeedback[] = []
+  private replayReader: LiveSessionReplayClient | null = null
+  private replaySourceFile: Blob | null = null
+  private replayXapiWorker: LiveSessionReplayClient | null = null
+  private exportingReplayDataset = false
+  private replayOpeningWorker: LiveSessionReplayClient | null = null
+  private replaySavingWorker: LiveSessionReplayClient | null = null
+  private replayRevision = -1
+  private replayLoadGeneration = 0
+  private savingLiveReplay = false
   private liveSession: LiveSession | null = null
   private liveSessionUnsubscribe: (() => void) | null = null
   private liveLearners: LiveLearnerRibbonItem[] = []
@@ -699,6 +757,7 @@ export class DomEditor extends LitElement {
   private liveLearnerVisibility = new Map<string, boolean>()
   private liveStatesAtStep = new Map<string, LiveSessionLearnerState>()
   private liveStateCache = new Map<string, LiveSessionLearnerState>()
+  private livePreviewDocuments = new Map<string, Y.Doc>()
   private liveStateCacheStep = 0
   private liveSelectedWidgetLearners = new Map<string, string>()
   private liveThumbnailWidgets = new Set<string>()
@@ -777,6 +836,15 @@ export class DomEditor extends LitElement {
     .size-warning button {order: 1; flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
     .size-warning button:hover {background: rgb(101 85 43 / 10%)}
     .size-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    .replay-size-warning {display: flex; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #e4d7a9; background: #fff2cc; color: #65552b; font: .75rem/1.3 system-ui, sans-serif}
+    .replay-size-warning span {flex: 1; min-width: 0}
+    .replay-size-warning button {flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: .25rem; background: transparent; color: inherit; font: 1.2rem/1 system-ui; cursor: pointer}
+    .replay-size-warning button:hover {background: rgb(101 85 43 / 10%)}
+    .replay-size-warning button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
+    .replay-recovery-notice {display: flex; align-items: center; gap: .5rem; padding: .35rem .65rem; border-bottom: 1px solid #c5d4e4; background: #edf5fc; color: #28475e; font: .75rem/1.3 system-ui, sans-serif}
+    .replay-recovery-notice span {flex: 1; min-width: 0; overflow-wrap: anywhere}
+    .replay-recovery-notice button {flex: 0 0 auto; padding: .2rem .45rem; border: 1px solid #9eb4c5; border-radius: .25rem; background: white; color: inherit; font: inherit; cursor: pointer}
+    .replay-recovery-notice button:focus-visible {outline: 2px solid currentColor; outline-offset: 1px}
     @media (width < 300px), (height < 300px) {
       .size-warning {display: flex}
     }
@@ -1318,6 +1386,14 @@ export class DomEditor extends LitElement {
     this.liveSessionRole = role
     this.liveSessionLink = link
     this.liveSessionActive = true
+    if(role === "host") {
+      try {
+        this.liveRecoveryFailed = false
+        this.liveRecovery = new LiveSessionRecovery(session, this.liveStreamStartedAt, this.fileName,
+          error => { if(this.liveSession === session) this.liveRecoveryFailed = true; this.reportFileError(new Error(`Could not save local session recovery: ${error.message}`)) })
+      }
+      catch(error) { this.liveRecoveryFailed = true; this.reportFileError(error) }
+    }
     this.liveSessionUnsubscribe = session.onChange(this.syncLiveSession)
     this.syncLiveSession(session)
   }
@@ -1331,6 +1407,7 @@ export class DomEditor extends LitElement {
       if(delta.deleteCount > 0 || delta.index !== steps.length) appendOnly = false
       steps.splice(delta.index, delta.deleteCount, ...delta.steps)
     })
+    if(this.liveSessionRole === "host" && change) this.liveLrs?.add(change.stepDeltas.flatMap(delta => delta.steps))
     if(!appendOnly) this.resetLiveStateCache()
     this.liveSteps = steps
     this.liveFeedback = session.feedback
@@ -1399,6 +1476,14 @@ export class DomEditor extends LitElement {
 
   private advanceLiveClock() {
     const now = Date.now()
+    if(this.replayActive) {
+      if(this.liveStreamPlaying) {
+        this.liveStreamTime = Math.min(this.liveStreamDuration, this.liveStreamTime + Math.max(0, now - this.livePlaybackLastTick) / 1000)
+        if(this.liveStreamTime >= this.liveStreamDuration) this.liveStreamPlaying = false
+      }
+      this.livePlaybackLastTick = now
+      return
+    }
     const following = this.liveStreamTime >= this.liveStreamDuration
     this.liveStreamDuration = Math.max(this.liveStreamDuration, (now - this.liveStreamStartedAt) / 1000)
     if(this.liveStreamPlaying) {
@@ -1418,19 +1503,30 @@ export class DomEditor extends LitElement {
   }
 
   private scheduleLivePlayback() {
-    if(this.livePlaybackTimer !== undefined || !this.previewActive) return
-    this.livePlaybackTimer = setTimeout(() => {
+    if(this.livePlaybackTimer !== undefined || !this.previewActive || this.replayActive && !this.liveStreamPlaying) return
+    this.livePlaybackTimer = setTimeout(async () => {
       this.livePlaybackTimer = undefined
       this.advanceLiveClock()
+      if(this.replayActive) {
+        if(!await this.loadReplayTime() || !this.replayActive) return
+        this.livePlaybackLastTick = Date.now()
+        this.scheduleLivePlayback()
+        return
+      }
       const previousStep = this.liveStreamStep
       this.updateLiveStep()
-      if(previousStep !== this.liveStreamStep) this.updateLiveVisualization()
+      if(previousStep !== this.liveStreamStep || this.replayActive) this.updateLiveVisualization()
       this.scheduleLivePlayback()
     }, 100)
   }
 
-  private playLiveSession = () => {
+  private playLiveSession = async () => {
     this.advanceLiveClock()
+    if(this.replayActive && this.liveStreamTime >= this.liveStreamDuration) {
+      this.liveStreamTime = 0
+      if(!await this.loadReplayTime()) return
+      this.livePlaybackLastTick = Date.now()
+    }
     this.liveStreamPlaying = true
     this.scheduleLivePlayback()
   }
@@ -1438,12 +1534,14 @@ export class DomEditor extends LitElement {
   private pauseLiveSession = () => {
     this.advanceLiveClock()
     this.liveStreamPlaying = false
+    if(this.replayActive) this.replayLoadGeneration++
   }
 
   private returnToLiveSession = () => {
     this.advanceLiveClock()
     this.liveStreamTime = this.liveStreamDuration
-    this.liveStreamPlaying = true
+    this.liveStreamPlaying = !this.replayActive
+    if(this.replayActive) { void this.loadReplayTime(); return }
     this.updateLiveStep()
     this.updateLiveVisualization()
     this.scheduleLivePlayback()
@@ -1454,11 +1552,37 @@ export class DomEditor extends LitElement {
     if(typeof time !== "number" || !Number.isFinite(time)) return
     this.pauseLiveSession()
     this.liveStreamTime = Math.max(0, Math.min(this.liveStreamDuration, time))
+    if(this.replayActive) return this.loadReplayTime()
     this.updateLiveStep()
     this.updateLiveVisualization()
   }
 
+  private async loadReplayTime() {
+    const reader = this.replayReader
+    if(!reader) return false
+    const generation = ++this.replayLoadGeneration
+    try {
+      const result = await reader.seek(this.liveStreamTime >= this.liveStreamDuration ? Infinity : this.liveStreamStartedAt + this.liveStreamTime * 1000, this.replayRevision)
+      if(reader !== this.replayReader) return false
+      if(generation !== this.replayLoadGeneration) return false
+      this.replayRevision = result.revision
+      if(result.states) this.liveStatesAtStep = new Map(result.states.map(state => [state.learner, state]))
+      this.liveStreamStep = result.stepCount
+      this.updateLiveVisualization()
+      return true
+    }
+    catch(error) {
+      if(reader !== this.replayReader || generation !== this.replayLoadGeneration) return false
+      this.liveStreamPlaying = false
+      this.clearLivePlaybackTimer()
+      this.reportFileError(error)
+      return false
+    }
+  }
+
   private resetLiveStateCache() {
+    this.livePreviewDocuments.forEach(doc => doc.destroy())
+    this.livePreviewDocuments.clear()
     this.liveStateCache = new Map()
     this.liveStateCacheStep = 0
   }
@@ -1468,11 +1592,31 @@ export class DomEditor extends LitElement {
     for(const step of this.liveSteps.slice(this.liveStateCacheStep, stepCount)) {
       if(!step.learner) continue
       const previous = this.liveStateCache.get(step.learner)
+      let html = step.html
+      try {
+        if(step.html !== undefined || step.htmlCheckpoint !== undefined) {
+          this.livePreviewDocuments.get(step.learner)?.destroy()
+          this.livePreviewDocuments.delete(step.learner)
+        }
+        if(step.htmlCheckpoint !== undefined) {
+          const doc = new Y.Doc()
+          this.livePreviewDocuments.set(step.learner, doc)
+          html = applyPreviewUpdate(doc, step.htmlCheckpoint)
+        }
+        if(step.htmlUpdate !== undefined) {
+          const doc = this.livePreviewDocuments.get(step.learner)
+          if(doc) html = applyPreviewUpdate(doc, step.htmlUpdate)
+        }
+      }
+      catch {
+        this.livePreviewDocuments.get(step.learner)?.destroy()
+        this.livePreviewDocuments.delete(step.learner)
+      }
       this.liveStateCache.set(step.learner, {
         ...(previous ?? {learner: step.learner}),
         learner: step.learner,
         time: step.time,
-        ...(step.html !== undefined ? {html: step.html} : {}),
+        ...(html !== undefined ? {html} : {}),
         ...(step.cursor !== undefined ? {cursor: {...step.cursor}} : {}),
         ...(step.pointer !== undefined ? {pointer: {...step.pointer}} : {}),
         ...(step.click !== undefined ? {click: {...step.click}, clickStep: step.id} : {}),
@@ -1486,7 +1630,20 @@ export class DomEditor extends LitElement {
   }
 
   private updateLiveVisualization() {
-    this.liveStatesAtStep = this.statesAtLiveStep(this.liveStreamStep)
+    if(this.replayActive) {
+      const time = this.liveStreamStartedAt + this.liveStreamTime * 1000
+      this.liveFeedback = this.replayFeedback.filter(message => message.time <= time)
+    }
+    if(!this.replayActive) this.liveStatesAtStep = this.statesAtLiveStep(this.liveStreamStep)
+    if(this.replayActive) {
+      const html = this.replaySelectedLearner ? this.liveStatesAtStep.get(this.replaySelectedLearner)?.html ?? this.replayBaseHTML : this.replayBaseHTML
+      if(html !== this.replayRenderedHTML) {
+        this.replayRenderedHTML = html
+        this.previewDocumentHTML = this.preparePreviewDocument(new DOMParser().parseFromString(html, "text/html"))
+        this.previewFrameRevision++
+      }
+      this.applyReplayScroll()
+    }
     this.liveOverlayLearners = this.liveLearners.flatMap<OverlayLearner>(learner => {
       if(!learner.enabled) return []
       const state = this.liveStatesAtStep.get(learner.id)
@@ -1858,6 +2015,16 @@ export class DomEditor extends LitElement {
       this.updateLiveWidgetAffordances()
       this.syncLiveAggregates()
     })
+    this.applyReplayScroll()
+  }
+
+  private applyReplayScroll() {
+    if(!this.replayActive || !this.replaySelectedLearner) return
+    const scroll = this.liveStatesAtStep.get(this.replaySelectedLearner)?.scroll
+    const top = scroll?.top ?? 0, left = scroll?.left ?? 0
+    if(!Number.isFinite(top) || !Number.isFinite(left)) return
+    if(this.previewOpaque) this.postToPreview({type: "preview-frame-scroll", top, left})
+    else this.renderRoot.querySelector<HTMLIFrameElement>("iframe.preview-frame")?.contentWindow?.scrollTo({top, left, behavior: "instant"})
   }
 
   private postToPreview(message: object) {
@@ -1878,12 +2045,13 @@ export class DomEditor extends LitElement {
   private handlePreviewMessage(event: MessageEvent) {
     if(!this.isPreviewMessage(event)) return false
     if(event.data?.type === "preview-frame-save") {
-      void this.downloadDocument()
+      if(!this.replayActive) void this.downloadDocument()
       return true
     }
     if(event.data?.type === "preview-frame-ready") {
       this.previewOpaque = true
       this.configurePreviewFrame()
+      this.applyReplayScroll()
       return true
     }
     if(event.data?.type === "preview-frame-step") {
@@ -2653,9 +2821,12 @@ export class DomEditor extends LitElement {
       return
     }
     const identity = this.learnerIdentity(sessionId)
-    const token = new URL(location.href).searchParams.get(liveSessionTokenParameter) ?? ""
-    if(this.backendSession?.collaborationUrl && !/^[A-Za-z0-9_-]{24,256}$/.test(token)) {
-      this.reportFileError(new Error("This live-session link is missing its access token"))
+    const url = new URL(location.href)
+    const token = url.searchParams.get(liveSessionTokenParameter) ?? ""
+    const fragment = new URLSearchParams(url.hash.slice(1))
+    const hostPublicKey = fragment.get("liveKey") ?? "", secret = fragment.get("liveSecret") ?? ""
+    if(hostPublicKey ? !/^[A-Za-z0-9_-]{87}$/.test(hostPublicKey) || !/^[A-Za-z0-9_-]{32}$/.test(secret) : !/^[A-Za-z0-9_-]{24,256}$/.test(token)) {
+      this.reportFileError(new Error("This live-session link is missing its host identity"))
       return
     }
     const session = new LiveSession({
@@ -2663,7 +2834,7 @@ export class DomEditor extends LitElement {
       role: "learner",
       learner: identity,
       ...(this.backendSession?.collaborationUrl ? {serverUrl: this.backendSession.collaborationUrl} : {}),
-      ...(token ? {token} : {}),
+      ...(hostPublicKey ? {peer: {hostPublicKey, secret}} : {token}),
     })
     this.liveStreamPlaying = true
     this.liveStreamStep = 0
@@ -2676,6 +2847,13 @@ export class DomEditor extends LitElement {
   }
 
   private disposeLiveSession() {
+    this.recoveryRestoreWorker?.close()
+    this.recoveryRestoreWorker = null
+    this.restoredRecoveryId = ""
+    this.renderRoot.querySelector<AppRibbon>("app-ribbon")?.closeLrsDialog()
+    this.stopLiveLrs()
+    this.stopReplayLrs()
+    this.replayLrsStatus = null
     this.livePreviewSource = null
     this.livePreview.disconnect()
     this.clearLivePlaybackTimer()
@@ -2683,11 +2861,46 @@ export class DomEditor extends LitElement {
     this.liveSessionUnsubscribe = null
     const session = this.liveSession
     this.liveSession = null
+    const recovery = this.liveRecovery
+    this.liveRecovery = null
     if(session) {
-      if(this.liveSessionRole === "host") session.stop()
+      if(this.liveSessionRole === "host") {
+        session.stop()
+        try {
+          const replay = captureLiveSessionReplay(session, this.liveStreamStartedAt, Math.max(this.liveStreamStartedAt, Date.now()), this.fileName)
+          if(recovery) this.completedRecoveryIds.set(replay, session.id)
+          this.completedLiveReplays = [...this.completedLiveReplays, replay]
+        }
+        catch(error) { this.reportFileError(error) }
+        if(recovery) {
+          const finishing = recovery.finish()
+          this.recoveryFinishing.set(session.id, finishing)
+          void finishing.finally(() => {
+            if(this.recoveryFinishing.get(session.id) === finishing) this.recoveryFinishing.delete(session.id)
+            if(this.isConnected) void this.refreshRecoveredLiveReplays()
+          })
+        }
+      }
       session.destroy()
     }
     this.liveSessionActive = false
+    this.liveRecoveryFailed = false
+    this.replayActive = false
+    this.replaySizeWarning = false
+    this.replayReader?.close()
+    this.replayReader = null
+    this.replaySourceFile = null
+    this.replayXapiWorker?.close()
+    this.replayXapiWorker = null
+    this.replayOpeningWorker?.close()
+    this.replayOpeningWorker = null
+    this.replayRevision = -1
+    this.replayLoadGeneration++
+    this.replayFeedback = []
+    this.replaySelectedLearner = ""
+    this.replayPackageNote = false
+    this.replayBaseHTML = ""
+    this.replayRenderedHTML = ""
     this.liveSessionRole = ""
     this.liveSessionLink = ""
     this.liveLearners = []
@@ -2707,6 +2920,74 @@ export class DomEditor extends LitElement {
     this.liveThumbnailWidgets.clear()
     this.liveSelectedAggregates.clear()
     this.liveAggregateOptions.clear()
+  }
+
+  private startLiveLrs = (event: CustomEvent<LrsConfiguration>) => {
+    const session = this.liveSession
+    if(!session || session.role !== "host" || session.status === "stopped" || this.liveLrs || !session.baseHTML) {
+      event.preventDefault(); return
+    }
+    try {
+      const replay: LiveSessionReplay = {format: "webwriter-live-replay", sessionId: session.id,
+        startedAt: this.liveStreamStartedAt, endedAt: this.liveStreamStartedAt,
+        baseHTML: cleanLiveSessionDocument(session.baseHTML), learners: [], steps: [], feedback: []}
+      const delivery = new LiveSessionLrs(event.detail, replay, status => { this.lrsStatus = status })
+      delivery.markExisting(session.steps)
+      this.liveLrs = delivery
+      this.lrsError = ""
+    }
+    catch(error) {
+      this.lrsError = error instanceof Error ? error.message : "Invalid LRS configuration"
+      event.preventDefault()
+    }
+  }
+
+  private stopLiveLrs = () => {
+    const unsent = this.liveLrs?.stop() ?? 0
+    this.liveLrs = null; this.lrsStatus = null; this.lrsError = ""
+    if(unsent) this.reportFileError(new Error(`${unsent} LRS events were not confirmed. The session replay retains the activity.`))
+  }
+
+  private startReplayLrs = (event: CustomEvent<LrsConfiguration>) => {
+    const file = this.replaySourceFile
+    if(!file || !this.replayActive || this.replayLrsWorker) { event.preventDefault(); return }
+    try { createLrsConnection(event.detail) }
+    catch(error) {
+      this.lrsError = error instanceof Error ? error.message : "Invalid LRS configuration"
+      event.preventDefault(); return
+    }
+    this.lrsError = ""
+    let worker: LiveSessionReplayClient
+    try { worker = new LiveSessionReplayClient() }
+    catch(error) {
+      this.lrsError = error instanceof Error ? error.message : "Could not start replay delivery"
+      event.preventDefault(); return
+    }
+    this.replayLrsWorker = worker
+    this.replayLrsStatus = {state: "sending", confirmed: 0}
+    void (async () => {
+      try {
+        await worker.open(file)
+        const confirmed = await worker.sendLrs(event.detail, status => {
+          if(this.replayLrsWorker === worker) this.replayLrsStatus = status
+        })
+        if(this.replayLrsWorker === worker) this.replayLrsStatus = {state: "done", confirmed}
+      }
+      catch(error) {
+        if(this.replayLrsWorker === worker) this.replayLrsStatus = {state: "error", confirmed: this.replayLrsStatus?.confirmed ?? 0,
+          message: error instanceof Error ? error.message : "LRS delivery failed"}
+      }
+      finally { worker.close(); if(this.replayLrsWorker === worker) this.replayLrsWorker = null }
+    })()
+  }
+
+  private stopReplayLrs = () => {
+    const worker = this.replayLrsWorker
+    if(!worker) return
+    this.replayLrsWorker = null
+    worker.close()
+    this.replayLrsStatus = {state: "stopped", confirmed: this.replayLrsStatus?.confirmed ?? 0,
+      message: "Delivery stopped. Send the replay again to recover any unconfirmed statements."}
   }
 
   private async enterPreview() {
@@ -2786,7 +3067,7 @@ export class DomEditor extends LitElement {
 
   private toggleLiveSession = async (event: Event) => {
     const enabled = (event as CustomEvent<{enabled?: unknown}>).detail?.enabled
-    if(typeof enabled !== "boolean" || !this.previewActive || this.liveSessionRole === "learner" || enabled === this.liveSessionActive) return
+    if(typeof enabled !== "boolean" || !this.previewActive || this.replayActive || this.liveSessionRole === "learner" || enabled === this.liveSessionActive) return
     if(!enabled) {
       const session = this.liveSession
       if(session && session.status !== "stopped" && !await this.confirmLiveSessionStop(session)) return
@@ -2802,6 +3083,7 @@ export class DomEditor extends LitElement {
       const generation = this.previewGeneration
       const previewHTML = this.previewDocumentHTML ?? this.currentPreviewHTML()
       const previewSource = new DOMParser().parseFromString(previewHTML, "text/html")
+      const distribution = createBrowserDistributionValidator(previewHTML)
       let previewDependencies = {packages: this.installedPackages, importMap: this.packageImportMap}
       if(this.installedPackages.some(isLocalResourcePackage)) {
         previewDependencies = await bundleLocalPreviewPackages(previewSource,
@@ -2810,37 +3092,24 @@ export class DomEditor extends LitElement {
       }
       const sessionId = randomIdentifier("live")
       const serverUrl = this.backendSession?.collaborationUrl
-      const sessionToken = serverUrl ? randomIdentifier("live-token") : undefined
-      const hostKey = sessionToken ? liveSessionHostKey(sessionId, sessionToken) : undefined
+      const identity = serverUrl ? await createLiveHostIdentity() : undefined
+      if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
       let link = ""
-      if(serverUrl && sessionToken) {
-        if(!this.backendClient) throw new Error("Connect to a server to share a live document")
-        const backendOrigin = new URL(this.backendClient.apiBaseUrl).origin
-        const documentOrigin = this.backendSession?.kind === "webwriter-dev-server"
-          ? pairedLoopbackOrigin(new URL(backendOrigin)) ?? editorFrameOrigin()
-          : backendOrigin === location.origin ? editorFrameOrigin() : backendOrigin
-        const html = previewFrameHTML(previewSource, {
-          bridgeNonce: "", hostOrigin: location.origin, frameOrigin: documentOrigin,
-          entryURL: "", learnerEntryURL: new URL(liveLearnerEntryUrl, editorFrameOrigin()).href,
-          standalone: true, executeScripts: import.meta.env.MODE !== "test", ...previewDependencies,
-        })
-        const published = await this.backendClient.publishLiveSession(sessionId, sessionToken, hostKey!, html)
-        if(!this.isConnected || !this.previewActive || generation !== this.previewGeneration) return
-        const url = new URL(published.url)
-        if(url.origin === location.origin) {
-          const frame = new URL(editorFrameOrigin())
-          url.protocol = frame.protocol
-          url.host = frame.host
-        }
+      if(serverUrl && identity) {
+        const source = new URL(location.href)
+        source.searchParams.set(liveSessionParameter, sessionId)
+        source.searchParams.delete(liveSessionTokenParameter)
+        const url = liveLearnerURL(source, editorFrameOrigin(), import.meta.env.BASE_URL, serverUrl)
+        url.hash = new URLSearchParams({liveKey: identity.publicKey, liveSecret: identity.secret}).toString()
         link = url.href
       }
       const session = new LiveSession({
         id: sessionId,
         role: "host",
-        ...(!serverUrl ? {baseHTML: this.preparePreviewDocument(previewSource, previewDependencies), previewDependencies} : {}),
+        ...(distribution.configured ? {validateDocument: distribution.validate} : {}),
+        baseHTML: this.preparePreviewDocument(previewSource, previewDependencies), previewDependencies,
         ...(serverUrl ? {serverUrl} : {}),
-        token: sessionToken,
-        hostKey,
+        ...(identity ? {peer: {hostPublicKey: identity.publicKey, hostPrivateKey: identity.privateKey, secret: identity.secret}} : {}),
       })
       this.resetLivePlayback()
       this.connectLiveSession(session, "host", link)
@@ -3132,7 +3401,9 @@ export class DomEditor extends LitElement {
     const toolbox = this.renderRoot.querySelector("dom-editor-toolbox")?.shadowRoot
     const selectors = ["", 'ribbon-drawer[label="Marks"]', 'ribbon-drawer[label="Elements"]', 'ribbon-drawer[label="Packages"]']
     const tools = ["Edit", "AI", "Review", "Distribute"]
-    const anchor = step === 8
+    const anchor = step === 9
+      ? ribbon?.querySelector<HTMLElement>(".preview-button")
+      : step === 8
       ? this.renderRoot.querySelector<HTMLElement>(".document-layout-cards")
         ?? toolbox?.querySelector<HTMLElement>('button[data-tool="Edit"]')
       : step >= 4
@@ -3250,6 +3521,234 @@ export class DomEditor extends LitElement {
 
   private isPickerCancellation(error: unknown) {
     return error instanceof DOMException && error.name === "AbortError"
+  }
+
+  private openLiveReplay = async (_event?: Event, suppliedFile?: Blob) => {
+    if(this.previewTransition || this.liveSessionStarting || this.liveSessionActive && !this.replayActive || this.fileOperationActive) return
+    const wasPreview = this.previewActive
+    const generation = this.previewGeneration
+    const previousReader = this.replayReader
+    const previousSizeWarning = this.replaySizeWarning
+    const canContinue = () => this.isConnected && !this.previewTransition && !this.liveSessionStarting && this.previewActive === wasPreview && this.previewGeneration === generation
+      && (!this.liveSessionActive || this.replayActive && this.replayReader === previousReader)
+    let opened = false
+    this.fileOperationActive = true
+    try {
+      let file = suppliedFile
+      if(!file) {
+        const picker = this.filePickerWindow().showOpenFilePicker
+        const handles = picker ? await picker.call(window, {types: [{description: "WebWriter live replay", accept: {"application/octet-stream": [".wwreplay"]}}]}) : null
+        file = handles ? await handles[0]?.getFile() : await this.pickFileInput(".wwreplay") ?? undefined
+      }
+      if(!file || !canContinue()) return
+      this.replaySizeWarning = file.size > 256 * 1024 * 1024
+      const reader = new LiveSessionReplayClient()
+      this.replayOpeningWorker = reader
+      const replay = await reader.open(file)
+      if(!replay.learners.every(learner => isCssColor(learner.color))) throw new TypeError("Invalid replay participant")
+      const initialState = await reader.seek(replay.startedAt === replay.endedAt ? Infinity : replay.startedAt, -1)
+      if(!canContinue()) return
+      this.fileError = ""
+      // Replay files are untrusted. Never execute package scripts supplied by
+      // the file; use only the packages already installed in this editor.
+      const source = new DOMParser().parseFromString(replay.baseHTML, "text/html")
+      const preview = this.preparePreviewDocument(source)
+      if(wasPreview) {
+        // Keep the existing preview bookmark and the new reader while the old
+        // preview or replay is torn down.
+        const sizeWarning = this.replaySizeWarning
+        this.replayOpeningWorker = null
+        this.disposeLiveSession()
+        this.replayOpeningWorker = reader
+        this.replaySizeWarning = sizeWarning
+      }
+      else {
+        this.saveEditorSelection()
+        this.previewSelection = this.savedEditorSelection
+        this.savedEditorSelection = null
+      }
+      this.previewGeneration++
+      this.previewDocumentHTML = preview
+      this.previewFrameRevision++
+      this.previewFramePending = false
+      this.previewActive = true
+      this.liveSessionActive = true
+      this.replayActive = true
+      this.replayReader = reader
+      this.replaySourceFile = file
+      this.replayOpeningWorker = null
+      opened = true
+      this.replayRevision = initialState.revision
+      this.replayBaseHTML = replay.baseHTML
+      this.replayRenderedHTML = replay.baseHTML
+      this.replaySelectedLearner = replay.learners[0]?.id ?? ""
+      this.replayPackageNote = Array.isArray(replay.previewDependencies?.packages) && replay.previewDependencies.packages.length > 0
+      this.liveSessionRole = "host"
+      this.liveSessionLink = ""
+      this.liveSteps = []
+      this.liveStatesAtStep = new Map((initialState.states ?? []).map(state => [state.learner, state]))
+      this.replayFeedback = replay.feedback
+      this.liveLearnerVisibility.clear()
+      replay.learners.forEach(learner => this.liveLearnerVisibility.set(learner.id, true))
+      this.liveLearners = replay.learners.map(learner => this.liveLearnerRibbonItem({...learner, connected: false}))
+      this.resetLiveStateCache()
+      this.liveStreamStartedAt = replay.startedAt
+      this.livePlaybackLastTick = Date.now()
+      this.liveStreamDuration = (replay.endedAt - replay.startedAt) / 1000
+      this.liveStreamTime = 0
+      this.liveStreamPlaying = false
+      this.liveStreamStep = initialState.stepCount
+      this.updateLiveVisualization()
+    }
+    catch(error) { this.reportFileError(error) }
+    finally {
+      this.replayOpeningWorker?.close()
+      this.replayOpeningWorker = null
+      if(!opened) this.replaySizeWarning = canContinue() ? previousSizeWarning : false
+      this.fileOperationActive = false
+    }
+    return opened
+  }
+
+  private exportReplayXapi = async () => {
+    const file = this.replaySourceFile
+    if(!file || !this.replayActive || this.exportingReplayDataset) return
+    this.exportingReplayDataset = true
+    let worker: LiveSessionReplayClient | null = null
+    try {
+      const name = `${(this.fileName || "session").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-")}.xapi.jsonl`
+      const picker = this.filePickerWindow().showSaveFilePicker
+      const handle = picker ? await picker.call(window, {suggestedName: name, types: [{description: "xAPI statements (JSON Lines)", accept: {"application/x-ndjson": [".jsonl"]}}]}) : null
+      if(!this.isConnected || file !== this.replaySourceFile) return
+      worker = new LiveSessionReplayClient()
+      this.replayXapiWorker = worker
+      await worker.open(file)
+      const blob = await worker.exportXapi(handle ?? undefined)
+      if(!handle && blob && this.isConnected && file === this.replaySourceFile) {
+        const url = URL.createObjectURL(blob), link = document.createElement("a")
+        link.href = url; link.download = name; link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 0)
+      }
+    }
+    catch(error) { if(this.isConnected && file === this.replaySourceFile) this.reportFileError(error) }
+    finally {
+      worker?.close()
+      if(this.replayXapiWorker === worker) this.replayXapiWorker = null
+      this.exportingReplayDataset = false
+    }
+  }
+
+  private saveLiveReplay = async (_event?: Event, recoveredOnly = false) => {
+    const running = !recoveredOnly && !this.replayActive && this.liveSessionRole === "host" && this.liveSession?.status !== "stopped" ? this.liveSession : null
+    const pendingReplay = recoveredOnly || running ? undefined : this.completedLiveReplays[0]
+    const recovered = running || pendingReplay ? undefined : this.recoveredLiveReplays[0]
+    const openedReplay = !recoveredOnly && !running && !pendingReplay && !recovered && this.replayActive ? this.replaySourceFile : null
+    if(!running && !pendingReplay && !recovered && !openedReplay || this.savingLiveReplay) return
+    this.savingLiveReplay = true
+    try {
+      const snapshot = running ? captureLiveSessionSnapshot(running, this.liveStreamStartedAt, Math.max(this.liveStreamStartedAt, Date.now()), this.fileName) : undefined
+      const baseName = (snapshot?.title || pendingReplay?.title || recovered?.title || this.fileName || "session").replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-")
+      const startedAt = snapshot?.startedAt ?? pendingReplay?.startedAt ?? recovered?.startedAt ?? this.liveStreamStartedAt
+      const name = `${baseName}-${new Date(startedAt).toISOString().replaceAll(":", "-")}.wwreplay`
+      const picker = this.filePickerWindow().showSaveFilePicker
+      const handle = picker ? await picker.call(window, {suggestedName: name, types: [{description: "WebWriter live replay", accept: {"application/octet-stream": [".wwreplay"]}}]}) : null
+      if(!this.isConnected) return
+      if(openedReplay) {
+        if(handle) {
+          const writable = await handle.createWritable()
+          try {
+            for(let offset = 0; offset < openedReplay.size; offset += 4 * 1024 * 1024) {
+              if(!this.isConnected) throw new DOMException("Replay save stopped", "AbortError")
+              await writable.write(openedReplay.slice(offset, offset + 4 * 1024 * 1024))
+            }
+            if(!this.isConnected) throw new DOMException("Replay save stopped", "AbortError")
+            await writable.close()
+          }
+          catch(error) { await (writable as typeof writable & {abort?: () => Promise<void>}).abort?.().catch(() => {}); throw error }
+        }
+        else {
+          const url = URL.createObjectURL(openedReplay), link = document.createElement("a")
+          link.href = url; link.download = name; link.click()
+          setTimeout(() => URL.revokeObjectURL(url), 0)
+        }
+        return
+      }
+      const replay = snapshot ?? pendingReplay ?? await readRecoveredSession(recovered!)
+      if(!this.isConnected) return
+      const worker = new LiveSessionReplayClient()
+      this.replaySavingWorker = worker
+      const blob = await worker.save(replay, handle ?? undefined)
+      worker.close()
+      this.replaySavingWorker = null
+      if(!handle && !blob) throw new Error("Could not create the replay file")
+      if(!handle && blob) {
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = url; link.download = name; link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 0)
+      }
+      const recoveryId = snapshot ? undefined : recovered?.id ?? this.completedRecoveryIds.get(replay)
+      this.completedLiveReplays = this.completedLiveReplays.filter(item => item !== replay)
+      this.completedRecoveryIds.delete(replay)
+      if(recoveryId && handle) {
+        await this.recoveryFinishing.get(recoveryId)
+        try { await deleteRecoveredSession(recoveryId) }
+        catch(error) { this.reportFileError(error) }
+      }
+      await this.refreshRecoveredLiveReplays()
+    }
+    catch(error) { this.reportFileError(error) }
+    finally {
+      this.replaySavingWorker?.close()
+      this.replaySavingWorker = null
+      this.savingLiveReplay = false
+    }
+  }
+
+  private async refreshRecoveredLiveReplays() {
+    const generation = ++this.recoveryRefreshGeneration
+    if(this.liveSessionRole === "learner" || this.liveSessionIdFromURL()) { this.recoveredLiveReplays = []; return }
+    try {
+      const records = await listRecoveredSessions()
+      if(!this.isConnected || generation !== this.recoveryRefreshGeneration) return
+      const current = new Set(this.completedRecoveryIds.values())
+      if(this.liveSession) current.add(this.liveSession.id)
+      this.recoveredLiveReplays = records.filter(record => !current.has(record.id))
+    }
+    catch { /* Recovery storage is optional until a live session is recorded. */ }
+  }
+
+  private restoreRecoveredLiveReplay = async (event: CustomEvent<{id: string}>) => {
+    const record = this.recoveredLiveReplays.find(item => item.id === event.detail?.id)
+    if(!record || !this.previewActive || this.liveSessionActive && !this.replayActive || this.recoveringLiveReplay || this.deletingRecoveredReplay || this.savingLiveReplay) return
+    const generation = this.previewGeneration
+    this.recoveringLiveReplay = true
+    let worker: LiveSessionReplayClient | null = null
+    try {
+      const replay = await readRecoveredSession(record)
+      if(!this.isConnected || !this.previewActive || this.previewGeneration !== generation) return
+      worker = new LiveSessionReplayClient()
+      this.recoveryRestoreWorker = worker
+      const file = await worker.save(replay)
+      worker.close(); this.recoveryRestoreWorker = null
+      if(!file || !this.isConnected || !this.previewActive || this.previewGeneration !== generation) return
+      if(await this.openLiveReplay(undefined, file)) this.restoredRecoveryId = record.id
+    }
+    catch(error) { if(this.isConnected && this.previewGeneration === generation) this.reportFileError(error) }
+    finally {
+      worker?.close()
+      if(this.recoveryRestoreWorker === worker) this.recoveryRestoreWorker = null
+      this.recoveringLiveReplay = false
+    }
+  }
+
+  private deleteRecoveredLiveReplay = async (event: CustomEvent<{id: string}>) => {
+    const record = this.recoveredLiveReplays.find(item => item.id === event.detail?.id)
+    if(!record || this.savingLiveReplay || this.recoveringLiveReplay || this.deletingRecoveredReplay) return
+    this.deletingRecoveredReplay = true
+    try { await deleteRecoveredSession(record.id); await this.refreshRecoveredLiveReplays() }
+    catch(error) { this.reportFileError(error) }
+    finally { this.deletingRecoveredReplay = false }
   }
 
   private reportFileError(error: unknown) {
@@ -6055,8 +6554,8 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}>).detail
-    if(!action || !["setFloat", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky" | "setFullWidth", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}>).detail
+    if(!action || !["setFloat", "setFloatSticky", "setFullWidth", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
     const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping"
@@ -6981,6 +7480,8 @@ export class DomEditor extends LitElement {
             ? {alignment: value.target.alignment} : {}),
           ...(typeof value.target.canMoveUp === "boolean" ? {canMoveUp: value.target.canMoveUp} : {}),
           ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
+          ...(typeof value.target.fullWidth === "boolean" ? {fullWidth: value.target.fullWidth} : {}),
+          ...(typeof value.target.canFullWidth === "boolean" ? {canFullWidth: value.target.canFullWidth} : {}),
           ...(isRecord(value.target.placement) && typeof value.target.placement.canMoveUp === "boolean" && typeof value.target.placement.canMoveDown === "boolean"
             ? {placement: {canMoveUp: value.target.placement.canMoveUp, canMoveDown: value.target.placement.canMoveDown}} : {}),
           ...(grouping && typeof grouping.grouped === "boolean" && typeof grouping.canCreate === "boolean"
@@ -7179,11 +7680,26 @@ export class DomEditor extends LitElement {
     if(event.defaultPrevented || !data
       || !Array.from(data.types).some(type => type === elementDragType || type === ribbonInsertionDragType || type === graphicShapeDragType)) return
     this.ribbonDrag = Object.fromEntries(Array.from(data.types).map(type => [type, data.getData(type)]))
+    const button = event.composedPath().find(target => target instanceof HTMLButtonElement && target.draggable)
+    this.ribbonDragSource = button instanceof HTMLButtonElement ? {button, started: performance.now()} : null
   }
 
   private handleRibbonDragEnd = () => {
     if(this.ribbonDrag) this.postFrameControl("drag", {event: "dragleave", x: 0, y: 0, data: this.ribbonDrag} satisfies HostDragDetail)
     this.ribbonDrag = null
+    this.ribbonDragSource = null
+  }
+
+  private handleRibbonSourceDrop = (event: DragEvent) => {
+    const source = this.ribbonDragSource
+    if(!source || !source.button.isConnected || source.button.disabled
+      || performance.now() - source.started >= 250 || !event.composedPath().includes(source.button)) return
+    event.preventDefault()
+    if(event.type === "drop") {
+      event.stopPropagation()
+      this.handleRibbonDragEnd()
+      source.button.click()
+    }
   }
 
   /** The browser does not deliver a ribbon drag to the cross-site editor
@@ -7758,6 +8274,8 @@ export class DomEditor extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
+    void this.refreshRecoveredLiveReplays()
+    this.recoveryRefreshTimer = setInterval(() => void this.refreshRecoveredLiveReplays(), 10000)
     this.layoutResizeObserver = new ResizeObserver(entries => {
       const entry = entries.find(entry => entry.target === this)
       if(entry) this.narrowLayout = entry.contentRect.width < 600
@@ -7774,6 +8292,8 @@ export class DomEditor extends LitElement {
     window.addEventListener("focus", this.handleHostWindowFocus)
     this.addEventListener("dragstart", this.handleRibbonDragStart)
     this.addEventListener("dragend", this.handleRibbonDragEnd)
+    this.addEventListener("dragover", this.handleRibbonSourceDrop)
+    this.addEventListener("drop", this.handleRibbonSourceDrop)
     this.addEventListener("contextmenu", this.handleUIContextMenu, true)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     document.addEventListener("keyup", this.handleHostShapeKey, true)
@@ -7823,6 +8343,11 @@ export class DomEditor extends LitElement {
   }
 
   disconnectedCallback() {
+    if(this.recoveryRefreshTimer !== undefined) clearInterval(this.recoveryRefreshTimer)
+    this.recoveryRefreshTimer = undefined
+    this.recoveryRefreshGeneration++
+    this.replaySavingWorker?.close()
+    this.replaySavingWorker = null
     this.layoutResizeObserver?.disconnect()
     this.layoutResizeObserver = null
     this.clearHTMLSourceRanges()
@@ -7854,8 +8379,11 @@ export class DomEditor extends LitElement {
     window.removeEventListener("focus", this.handleHostWindowFocus)
     this.removeEventListener("dragstart", this.handleRibbonDragStart)
     this.removeEventListener("dragend", this.handleRibbonDragEnd)
+    this.removeEventListener("dragover", this.handleRibbonSourceDrop)
+    this.removeEventListener("drop", this.handleRibbonSourceDrop)
     this.removeEventListener("contextmenu", this.handleUIContextMenu, true)
     this.ribbonDrag = null
+    this.ribbonDragSource = null
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     document.removeEventListener("keyup", this.handleHostShapeKey, true)
     this.localPackageManager.disconnect()
@@ -8100,6 +8628,13 @@ export class DomEditor extends LitElement {
             <button type="button" aria-label="Dismiss size warning" title="Dismiss" @click=${() => {this.sizeWarningDismissed = true}}>×</button>
             <span>WebWriter may not work correctly at this size.</span>
           </div>`}
+          ${this.replaySizeWarning ? html`<div class="replay-size-warning" role="status">
+            <span>This replay is larger than 256 MiB. Playback may be slow on this device.</span>
+            <button type="button" aria-label="Dismiss replay size warning" title="Dismiss" @click=${() => {this.replaySizeWarning = false}}>×</button>
+          </div>` : nothing}
+          ${this.liveSessionActive && this.liveSessionRole === "host" && !this.replayActive && this.liveRecoveryFailed ? html`<div class="replay-recovery-notice" role="status">
+            <span>Local recovery is unavailable; session activity is not currently being saved for recovery.</span>
+          </div>` : nothing}
         <app-ribbon
           ${bindEditingUI(this.editingUIProperties, this.editingUIListeners)}
           ?inert=${this.htmlPending}
@@ -8130,6 +8665,19 @@ export class DomEditor extends LitElement {
           .liveSessionActive=${this.liveSessionActive}
           .liveSessionRole=${this.liveSessionRole}
           .liveSessionLink=${this.liveSessionLink}
+          .completedLiveReplayCount=${this.completedLiveReplays.length + this.recoveredLiveReplays.length}
+          .recoveredReplay=${this.recoveredLiveReplays[0] ?? null}
+          .recoveredReplayCount=${this.recoveredLiveReplays.length}
+          .recoveryBusy=${this.recoveringLiveReplay || this.deletingRecoveredReplay || this.savingLiveReplay}
+          .restoredRecoveryId=${this.restoredRecoveryId}
+          .savingLiveReplay=${this.savingLiveReplay}
+          .replayActive=${this.replayActive}
+          .lrsStatus=${this.lrsStatus}
+          .lrsError=${this.lrsError}
+          .replayLrsStatus=${this.replayLrsStatus}
+          .exportingReplayDataset=${this.exportingReplayDataset}
+          .replaySelectedLearner=${this.replaySelectedLearner}
+          .replayPackageNote=${this.replayPackageNote}
           .liveLearners=${this.liveLearners}
           .settings=${this.settings}
           .editingSnippetId=${this.editingSnippetId}
@@ -8141,6 +8689,23 @@ export class DomEditor extends LitElement {
           .aiEditReviewHandler=${this.handleAIEditReview}
           @ribbon-preview-exit=${this.handleRibbonPreviewExit}
           @live-session-toggle=${this.toggleLiveSession}
+          @save-live-replay=${this.saveLiveReplay}
+          @restore-recovered-replay=${this.restoreRecoveredLiveReplay}
+          @discard-recovered-replay=${this.deleteRecoveredLiveReplay}
+          @open-live-replay=${this.openLiveReplay}
+          @start-live-lrs=${this.startLiveLrs}
+          @stop-live-lrs=${this.stopLiveLrs}
+          @retry-live-lrs=${() => this.liveLrs?.retry()}
+          @start-replay-lrs=${this.startReplayLrs}
+          @stop-replay-lrs=${this.stopReplayLrs}
+          @reset-replay-lrs=${() => {this.replayLrsStatus = null; this.lrsError = ""}}
+          @export-replay-xapi=${this.exportReplayXapi}
+          @replay-learner-select=${(event: CustomEvent<{id?: unknown}>) => {
+            const id = event.detail?.id
+            if(!this.replayActive || typeof id !== "string" || id && !this.liveLearners.some(learner => learner.id === id)) return
+            this.replaySelectedLearner = id
+            this.updateLiveVisualization()
+          }}
           @live-learner-toggle=${this.handleLiveLearnerToggle}
           @file-name-change=${this.handleFileNameChange}
           @backend-login-request=${this.loginToBackend}
@@ -8158,7 +8723,8 @@ export class DomEditor extends LitElement {
             .playing=${this.liveStreamPlaying}
             .currentTime=${this.liveStreamTime}
             .duration=${this.liveStreamDuration}
-            .live=${this.liveSessionActive}
+            .live=${this.liveSessionActive && !this.replayActive}
+            .replay=${this.replayActive}
             @live-session-play=${this.playLiveSession}
             @live-session-pause=${this.pauseLiveSession}
             @live-session-seek=${this.seekLiveSession}
@@ -8214,7 +8780,7 @@ export class DomEditor extends LitElement {
           <iframe
             class="preview-frame"
             allow="fullscreen; clipboard-write"
-            title=${this.liveSessionActive ? "Live document preview" : "Document preview"}
+            title=${this.replayActive ? "Session replay" : this.liveSessionActive ? "Live document preview" : "Document preview"}
             sandbox="allow-scripts allow-same-origin allow-modals allow-popups allow-popups-to-escape-sandbox"
             referrerpolicy="no-referrer"
             src=${import.meta.env.MODE === "test" ? nothing : this.frameShellURL("preview", this.previewFrameRevision)}
@@ -8296,7 +8862,8 @@ export class DomEditor extends LitElement {
       <dom-editor-toolbox
         .collapsed=${this.narrowLayout && this.bottomPanelOpen}
         .preview=${this.previewActive}
-        .feedbackActive=${this.liveSessionActive}
+        .feedbackActive=${this.liveSessionActive && !this.replayActive}
+        .feedbackReplay=${this.replayActive}
         .feedbackRole=${this.liveSessionRole}
         .feedbackParticipants=${this.liveLearners}
         .feedbackMessages=${this.liveFeedback}

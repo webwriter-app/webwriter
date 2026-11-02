@@ -31,7 +31,7 @@ RUN apt-get update \
 WORKDIR /app/@webwriter/domeditor
 COPY --from=runtime-dependencies /app/@webwriter/domeditor/node_modules/ ./node_modules/
 COPY @webwriter/domeditor/package.json ./
-COPY @webwriter/domeditor/dev-server/server.mjs @webwriter/domeditor/dev-server/git-packages.mjs @webwriter/domeditor/dev-server/admin.html ./dev-server/
+COPY @webwriter/domeditor/dev-server/server.mjs @webwriter/domeditor/dev-server/git-packages.mjs @webwriter/domeditor/dev-server/live-signaling.mjs @webwriter/domeditor/dev-server/admin.html ./dev-server/
 COPY @webwriter/domeditor/src/live-session-permissions.js @webwriter/domeditor/src/widget-grouping.js @webwriter/domeditor/src/example-documents.json ./src/
 COPY @webwriter/domeditor/examples/subjects/ ./examples/subjects/
 RUN node -e "import('./dev-server/server.mjs')"

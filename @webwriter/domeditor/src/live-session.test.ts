@@ -137,11 +137,11 @@ describe("LiveSession", () => {
       expect.objectContaining({learner: "lin", pointer: {x: 0.25, y: 0.5}}),
     ]))
     expect(host.steps.some(step => step.learner === "mallory")).toBe(false)
-    expect(second.steps.map(step => step.id)).toEqual(expect.arrayContaining(host.steps.map(step => step.id)))
+    expect(second.steps.every(step => step.learner === "lin")).toBe(true)
     const next = first.publish({kind: "pointer", pointer: {x: 0.5, y: 0.75}})
     expect(host.steps.map(step => step.id)).toEqual(expect.arrayContaining([next.id]))
     expect(new Set(host.steps.map(step => step.id)).size).toBe(host.steps.length)
-    expect(second.steps.map(step => step.id)).toContain(next.id)
+    expect(second.steps.map(step => step.id)).not.toContain(next.id)
     expect(new Set(second.steps.map(step => step.id)).size).toBe(second.steps.length)
   })
 
@@ -158,6 +158,15 @@ describe("LiveSession", () => {
     expect(host.states).toEqual([expect.objectContaining({
       learner: "ada", time: next.time, html: "<p>Initial</p>", pointer: {x: 0.4, y: 0.6},
     })])
+  })
+
+  it("enforces host document validation for in-process learners", () => {
+    const validateDocument = vi.fn((_before: string | undefined, after: string) => !after.includes("forbidden"))
+    const host = create({id: "host-validation", role: "host", validateDocument})
+    const learner = create({id: "host-validation", role: "learner", learner: {id: "ada", name: "Ada", color: "#f00"}})
+    learner.publish({kind: "document", html: "<p>forbidden</p>"})
+    expect(validateDocument).toHaveBeenCalled()
+    expect(host.steps).toEqual([])
   })
 
   it("stores base HTML, durable steps, and the latest learner state", () => {

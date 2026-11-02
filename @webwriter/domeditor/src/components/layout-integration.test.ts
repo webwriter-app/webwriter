@@ -346,14 +346,20 @@ describe("layout host and toolbox integration", () => {
     const controls = drawer.querySelector(".float-action-controls")!
     expect(controls.previousElementSibling?.matches("element-style-editor[show-presets]")).toBe(true)
     expect(controls.nextElementSibling?.getAttribute("slot")).toBe("more")
-    expect(controls.querySelector(".float-button-group")!.previousElementSibling?.textContent).toBe("Placement")
+    expect(controls.querySelector(".float-button-group")!.previousElementSibling?.textContent).toContain("Placement")
     const actions: unknown[] = []
     toolbox.addEventListener("layout-action", (event: Event) => actions.push((event as CustomEvent).detail))
     vi.spyOn(editor, "execute").mockResolvedValue(true)
     controls.querySelector<HTMLButtonElement>('button[aria-label="No float, align center"]')!.click()
-    expect(actions).toEqual([{type: "setFloat", side: "none", alignment: "center"}])
+    const pin = controls.querySelector<HTMLInputElement>('.float-pin input')!
+    expect(pin.checked).toBe(false)
+    expect(pin.disabled).toBe(false)
+    pin.click()
+    expect(actions).toEqual([{type: "setFloat", side: "none", alignment: "center"}, {type: "setFloatSticky", enabled: true}])
     toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "none"}}
     await toolbox.updateComplete
+    expect(controls.querySelector<HTMLInputElement>('.float-pin input')!.disabled).toBe(true)
+    expect(controls.querySelector<HTMLInputElement>('.float-pin input')!.checked).toBe(false)
     for(const label of ["Move down", "Move up"]) {
       const button = controls.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!
       expect(button.disabled).toBe(false)

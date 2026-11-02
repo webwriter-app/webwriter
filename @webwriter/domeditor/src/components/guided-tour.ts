@@ -22,6 +22,7 @@ const steps = [
   {title: "Review", text: "Find language/accessibility issues and make comments."},
   {title: "Distribute", text: "Decide how readers can use your content."},
   {title: "Layouts", text: "Make any kind of content."},
+  {title: "Play", text: "Share your content and see live results."},
 ]
 
 /** Host UI only: the tour never touches the authored document or selection. */
@@ -149,6 +150,31 @@ export class GuidedTour extends LitElement {
     .distribution-pane { overflow: hidden; }
     .distribution-before { animation: before-change 5s infinite; }
     .distribution-after { display: none; animation: after-change 5s infinite; }
+    .play-demo { position: relative; height: 100%; background: #f2f2f2; }
+    .play-topbar { display: flex; justify-content: flex-end; align-items: center; height: 1.15rem; padding-right: .3rem; border-bottom: 1px solid #d8dee6; background: #fff; }
+    .play-preview { display: grid; place-items: center; width: 1.2rem; height: 1rem; border: 1px solid transparent; border-radius: .2rem; color: #5e6977; animation: play-preview 8s infinite; }
+    .play-preview svg, .play-share-icon svg, .play-qr svg { width: .85rem; height: .85rem; }
+    .play-ribbon { height: 3.65rem; overflow: hidden; animation: play-open 8s steps(1, end) infinite; }
+    .play-ribbon .ribbon-scale { width: 200%; }
+    .play-sharing { display: flex; align-items: center; gap: .35rem; color: #334155; font-size: .66rem; white-space: nowrap; }
+    .play-share-icon, .play-qr { display: inline-flex; align-items: center; }
+    .play-switch { position: relative; width: 1.8rem; height: 1rem; border-radius: 1rem; background: #c6ced8; animation: play-switch 8s infinite; }
+    .play-switch::after { position: absolute; top: .12rem; left: .12rem; width: .76rem; height: .76rem; border-radius: 50%; background: white; content: ""; animation: play-knob 8s infinite; }
+    .play-link { flex: 1; min-width: 0; overflow: hidden; padding: .2rem .3rem; border: 1px solid #c8d2df; border-radius: .25rem; background: white; color: #526b86; text-overflow: ellipsis; animation: play-link 8s infinite; }
+    .play-learners { display: flex; align-items: center; padding: .15rem .25rem; }
+    .play-learner { display: flex; align-items: center; gap: .35rem; width: 9rem; padding: .2rem .4rem; border: 1px solid #cbd5e1; border-radius: .35rem; background: white; color: #334155; font-size: .66rem; animation: play-learner 8s infinite; }
+    .play-avatar { display: grid; place-items: center; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: #3977c7; color: white; font-size: .55rem; }
+    .play-connected { width: .42rem; height: .42rem; margin-left: auto; border-radius: 50%; background: #22c55e; }
+    .play-document { position: absolute; inset: 5.2rem .6rem .45rem; padding: .4rem .6rem; border: 1px solid #e0e4e9; background: white; }
+    .play-question { font-weight: 600; }
+    .play-answer { margin-top: .2rem; color: #526b86; animation: play-answer 8s infinite; }
+    @keyframes play-preview { 0%, 10%, 100% { background: transparent; border-color: transparent; } 15%, 90% { background: #f2f2f2; border-color: #d8dee6; } }
+    @keyframes play-open { 0%, 12%, 100% { visibility: hidden; } 13%, 99% { visibility: visible; } }
+    @keyframes play-switch { 0%, 35%, 100% { background: #c6ced8; } 40%, 95% { background: #3977c7; } }
+    @keyframes play-knob { 0%, 35%, 100% { transform: translateX(0); } 40%, 95% { transform: translateX(.8rem); } }
+    @keyframes play-link { 0%, 39%, 100% { opacity: .4; } 40%, 95% { opacity: 1; } }
+    @keyframes play-learner { 0%, 57%, 100% { opacity: 0; } 63%, 95% { opacity: 1; } }
+    @keyframes play-answer { 0%, 72%, 100% { opacity: 0; } 78%, 95% { opacity: 1; } }
     .layouts-demo { padding: 1.2rem .4rem .4rem; background: #f2f2f2; }
     .layouts-label { margin-bottom: .3rem; font-weight: 650; }
     .layouts-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: .3rem; height: 5.6rem; pointer-events: none; }
@@ -182,6 +208,9 @@ export class GuidedTour extends LitElement {
     @media (prefers-reduced-motion: reduce) {
       .demo * { animation: none !important; }
       .typing { width: 13ch; }
+      .play-ribbon { visibility: visible; }
+      .play-switch { background: #3977c7; }
+      .play-switch::after { animation: none; transform: translateX(.8rem); }
       .package-other { visibility: hidden; }
       .package-search-stage .search-query { visibility: visible; }
     }
@@ -342,7 +371,15 @@ export class GuidedTour extends LitElement {
       case 5: return html`<div class="toolbox-demo">${tabs}<div class="mock-document ai-document"><p class="ai-heading">My heading</p></div><div class="mock-pane ai-pane"><div class="pane-title">${ribbonIcon("AI")} Ask AI</div><div class="ai-review"><span>Accept</span><span>Reject</span></div><div class="ai-prompt">Make this a heading</div></div></div>`
       case 6: return html`<div class="toolbox-demo">${tabs}<div class="mock-document ai-document"><p><span class="issue-text">A sentance</span></p></div><div class="mock-pane review-pane"><div class="pane-title">${ribbonIcon("Comments")} Comments</div><div class="review-comment">Add a comment…</div><div class="pane-title">${ribbonIcon("Spelling")} Issues</div><div class="review-issue">sentence</div></div></div>`
       case 7: return html`<div class="toolbox-demo">${tabs}<div class="mock-document ai-document"><p>Reader content</p></div><div class="mock-pane distribution-pane"><div class="pane-title">${ribbonIcon("Document")} Document permissions</div><div class="distribution-scale" inert>${[[], ["edit"]].map((permissions, index) => html`<div class=${index ? "distribution-after" : "distribution-before"}><distribution-controls general hide-heading .state=${{target: "document", local: {version: 1, target: "document", scope: "individual", permissions, add: [], items: []}, effective: null, inheritedFrom: null}}></distribution-controls></div>`)}</div></div></div>`
-      default: return html`${tabs}<div class="layouts-demo"><div class="layouts-label">Layouts</div><div class="layouts-cards" inert>${documentLayoutModes.map(mode => renderDocumentLayoutCard(mode, {mode: "document", canConvert: true, zoom: 100}, false, () => {}))}</div></div>`
+      case 8: return html`${tabs}<div class="layouts-demo"><div class="layouts-label">Layouts</div><div class="layouts-cards" inert>${documentLayoutModes.map(mode => renderDocumentLayoutCard(mode, {mode: "document", canConvert: true, zoom: 100}, false, () => {}))}</div></div>`
+      default: return html`<div class="play-demo">
+        <div class="play-topbar"><span class="play-preview">${ribbonIcon("Preview")}</span></div>
+        <div class="play-ribbon"><div class="ribbon-scale" inert><ribbon-drawer label="Learners" icon="Plus" layout="learners">
+          <div class="play-sharing"><span class="play-share-icon">${ribbonIcon("Share")}</span><span class="play-switch"></span><span>Share</span><span class="play-link">webwriter.app/join/…</span><span class="play-qr">${ribbonIcon("QR")}</span></div>
+          <div class="play-learners"><div class="play-learner"><span class="play-avatar">A</span>Alex<span class="play-connected"></span></div></div>
+        </ribbon-drawer><ribbon-drawer label="Sharing" icon="Share" layout="sharing-preview"><ribbon-button label="Download" action="Download"></ribbon-button><ribbon-button label="Print" action="Print"></ribbon-button></ribbon-drawer></div></div>
+        <div class="play-document"><div class="play-question">What is 2 + 2?</div><div class="play-answer">Alex: 4</div></div>
+      </div>`
     }
   }
 

@@ -7,6 +7,8 @@ import {join} from "node:path"
 import {createServer} from "vite"
 
 const expectedChecks = [
+  "full width resizing clears the float column",
+  "interrupted live sessions recover committed data locally",
   "canvas and slide movement follows the dot grid and alignment guides",
   "converted list items support repeated Backspace without clicking",
   "list editing splits and indents selected items",
@@ -47,6 +49,8 @@ const expectedChecks = [
   "legacy widget options use document gutters and sit beside freeform widgets",
   "bundled document themes always render light colors",
   "standalone live learners open the document without editor controls or an iframe",
+  "standalone live learners exchange private peer activity and feedback",
+  "standalone live learners join through a peer invitation",
   "standalone live learners receive large initial documents over HTTP and synchronize activity",
   "live learners render host widgets with shared dependencies and a fresh preview policy",
   "live learners initialize bundled local widgets without host resources",
@@ -113,7 +117,8 @@ const expectedChecks = [
   "audio insertion retains element selection at the document start",
   "float previews match projected media bounds",
   "lane media fills available width and resizes with native handles",
-  "wide widgets remain centered between symmetric float lanes",
+  "wide widgets follow adaptive float lanes",
+  "two-column side width follows its widest element",
   "far floats adapt to column margins and survive standalone export",
   "wrapped attribution keeps two text columns and moves contact to the opposite side",
   "Harper checks English in a worker without authored DOM artifacts",
@@ -137,6 +142,7 @@ const expectedChecks = [
   "SVG embedded images retain selection while entering their source",
   "ribbon elements are rejected over captured graphics with native content and cleanup",
   "empty document gutters prefer floats throughout the viewport",
+  "outer document margins accept floats beside existing columns",
   "empty graphics drag through their full capture outline into floats",
   "native MathML editing preserves inline rendering and argument hit targets",
   "typed formula brackets stretch to their own content and stay paired under scripts",
