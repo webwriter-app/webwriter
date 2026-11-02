@@ -692,6 +692,7 @@ export class DomEditor extends LitElement {
   private previewFramePending = false
   /** Data of the ribbon drag in progress, relayed to the editor frame. */
   private ribbonDrag: Record<string, string> | null = null
+  private ribbonDragSource: {button: HTMLButtonElement, started: number} | null = null
   private frameTouchPointer: number | null = null
   private previewDocumentHTML: string | null = null
   private previewFrameRevision = 0
@@ -7679,11 +7680,26 @@ export class DomEditor extends LitElement {
     if(event.defaultPrevented || !data
       || !Array.from(data.types).some(type => type === elementDragType || type === ribbonInsertionDragType || type === graphicShapeDragType)) return
     this.ribbonDrag = Object.fromEntries(Array.from(data.types).map(type => [type, data.getData(type)]))
+    const button = event.composedPath().find(target => target instanceof HTMLButtonElement && target.draggable)
+    this.ribbonDragSource = button instanceof HTMLButtonElement ? {button, started: performance.now()} : null
   }
 
   private handleRibbonDragEnd = () => {
     if(this.ribbonDrag) this.postFrameControl("drag", {event: "dragleave", x: 0, y: 0, data: this.ribbonDrag} satisfies HostDragDetail)
     this.ribbonDrag = null
+    this.ribbonDragSource = null
+  }
+
+  private handleRibbonSourceDrop = (event: DragEvent) => {
+    const source = this.ribbonDragSource
+    if(!source || !source.button.isConnected || source.button.disabled
+      || performance.now() - source.started >= 250 || !event.composedPath().includes(source.button)) return
+    event.preventDefault()
+    if(event.type === "drop") {
+      event.stopPropagation()
+      this.handleRibbonDragEnd()
+      source.button.click()
+    }
   }
 
   /** The browser does not deliver a ribbon drag to the cross-site editor
@@ -8276,6 +8292,8 @@ export class DomEditor extends LitElement {
     window.addEventListener("focus", this.handleHostWindowFocus)
     this.addEventListener("dragstart", this.handleRibbonDragStart)
     this.addEventListener("dragend", this.handleRibbonDragEnd)
+    this.addEventListener("dragover", this.handleRibbonSourceDrop)
+    this.addEventListener("drop", this.handleRibbonSourceDrop)
     this.addEventListener("contextmenu", this.handleUIContextMenu, true)
     document.addEventListener("keydown", this.handleConfiguredShortcut, true)
     document.addEventListener("keyup", this.handleHostShapeKey, true)
@@ -8361,8 +8379,11 @@ export class DomEditor extends LitElement {
     window.removeEventListener("focus", this.handleHostWindowFocus)
     this.removeEventListener("dragstart", this.handleRibbonDragStart)
     this.removeEventListener("dragend", this.handleRibbonDragEnd)
+    this.removeEventListener("dragover", this.handleRibbonSourceDrop)
+    this.removeEventListener("drop", this.handleRibbonSourceDrop)
     this.removeEventListener("contextmenu", this.handleUIContextMenu, true)
     this.ribbonDrag = null
+    this.ribbonDragSource = null
     document.removeEventListener("keydown", this.handleConfiguredShortcut, true)
     document.removeEventListener("keyup", this.handleHostShapeKey, true)
     this.localPackageManager.disconnect()

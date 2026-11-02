@@ -2557,6 +2557,49 @@ describe("DomEditor ribbon drag relay", () => {
     return data
   }
 
+  it("activates only a quick drop on the original ribbon drag source", async () => {
+    const {editor} = await mountEditor()
+    const source = document.createElement("button")
+    source.draggable = true
+    const child = document.createElement("span")
+    source.append(child)
+    const other = document.createElement("button")
+    editor.shadowRoot!.append(source, other)
+    const clicked = vi.fn()
+    source.addEventListener("click", clicked)
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "element:p")
+    const now = vi.spyOn(performance, "now").mockReturnValue(1000)
+    const start = () => source.dispatchEvent(dragEvent("dragstart", data))
+
+    start()
+    const over = dragEvent("dragover", data)
+    child.dispatchEvent(over)
+    expect(over.defaultPrevented).toBe(true)
+    const otherDrop = dragEvent("drop", data)
+    other.dispatchEvent(otherDrop)
+    expect(otherDrop.defaultPrevented).toBe(false)
+    expect(clicked).not.toHaveBeenCalled()
+    now.mockReturnValue(1249)
+    const drop = dragEvent("drop", data)
+    child.dispatchEvent(drop)
+    expect(drop.defaultPrevented).toBe(true)
+    expect(clicked).toHaveBeenCalledTimes(1)
+    source.dispatchEvent(dragEvent("dragend", data))
+    child.dispatchEvent(dragEvent("drop", data))
+    expect(clicked).toHaveBeenCalledTimes(1)
+
+    now.mockReturnValue(2000)
+    start()
+    now.mockReturnValue(2250)
+    const lateDrop = dragEvent("drop", data)
+    source.dispatchEvent(lateDrop)
+    expect(lateDrop.defaultPrevented).toBe(false)
+    expect(clicked).toHaveBeenCalledTimes(1)
+    source.dispatchEvent(dragEvent("dragend", data))
+    now.mockRestore()
+  })
+
   it("relays shape keyboard payloads into the graphic frame", async () => {
     const {graphicShapeDragType} = await import("../graphic")
     const {editor, iframe} = await mountEditor()
