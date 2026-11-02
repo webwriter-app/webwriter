@@ -127,6 +127,10 @@ describe("mark ribbon controls", () => {
     ]
     await ribbon.updateComplete
     await quickButtons[1].updateComplete
+    const shareRow = quickButtons[1].shadowRoot!.querySelector<HTMLElement>(".button-row")!
+    const shareMenu = quickButtons[1].shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
+    vi.spyOn(shareRow, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 100, 40))
+    vi.spyOn(shareMenu, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 49, 100, 100))
     quickButtons[1].shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.click()
     await quickButtons[1].updateComplete
     expect(quickButtons[1].shadowRoot!.querySelector(".submenu-trigger")).toBeNull()
@@ -135,7 +139,7 @@ describe("mark ribbon controls", () => {
     const quickShareMenu = quickButtons[1].shadowRoot!.querySelector<RibbonMenu>("ribbon-menu")!
     await quickShareMenu.updateComplete
     expect(quickShareMenu.hidden).toBe(false)
-    const shareRow = quickButtons[1].shadowRoot!.querySelector<HTMLElement>(".button-row")!
+    await vi.waitFor(() => expect(shareRow.getAttribute("data-connected")).toBe("below"))
     expect(shareRow.getAttribute("data-connected")).toBe("below")
     expect(getComputedStyle(shareRow).height).toBe("40px")
     expect(getComputedStyle(shareRow).backgroundColor).toBe("#ffffff")
@@ -418,6 +422,7 @@ describe("mark ribbon controls", () => {
     document.body.append(ribbon)
     await ribbon.updateComplete
     expect(ribbon.initialLayout).toEqual({expanded: true, height: "140px", transition: "none"})
+    await vi.waitFor(() => expect(ribbon.hasAttribute("transitions-ready")).toBe(true))
     ribbon.shadowRoot!.querySelector<HTMLButtonElement>(".brand")!.click()
     await ribbon.updateComplete
     expect(ribbon.expanded).toBe(false)
@@ -429,6 +434,7 @@ describe("mark ribbon controls", () => {
     const {ribbon} = await mountRibbon()
     const fileTab = ribbon.shadowRoot!.querySelector<RibbonTab>('ribbon-tab[label="File"]')!
 
+    await vi.waitFor(() => expect(ribbon.hasAttribute("transitions-ready")).toBe(true))
     expect(getComputedStyle(ribbon).transition).toContain("height")
     expect(getComputedStyle(ribbon).transition).toContain("max-height")
     expect(getComputedStyle(ribbon).height).toBe("140px")
@@ -710,6 +716,8 @@ describe("mark ribbon controls", () => {
       expect(menu.customContent).toBe(true)
       expect(button.shadowRoot!.querySelector(".button-dropdown")).toBeNull()
 
+      vi.spyOn(row, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 100, 40))
+      vi.spyOn(menu, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 49, 100, 100))
       trigger.click()
       await button.updateComplete
       expect(menu.hidden).toBe(false)
@@ -720,6 +728,8 @@ describe("mark ribbon controls", () => {
       expect(getComputedStyle(row).boxShadow).toBe("none")
     }
 
+    vi.spyOn(headingRow, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 100, 40))
+    vi.spyOn(headingMenu, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 49, 100, 100))
     headingTrigger.click()
     await heading.updateComplete
     expect(headingMenu.hidden).toBe(false)

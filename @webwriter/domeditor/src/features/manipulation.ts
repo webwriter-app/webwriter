@@ -3208,7 +3208,12 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private inheritInsertionLayout<T>(nodes: Node[], insert: () => T): T {
-    if(this.inheritingInsertionLayout || this.editor.features.canvas.active || this.editor.features.slides.active) return insert()
+    if(this.inheritingInsertionLayout) return insert()
+    if(this.editor.features.canvas.active || this.editor.features.slides.active) {
+      this.inheritingInsertionLayout = true
+      try { return insert() }
+      finally { this.inheritingInsertionLayout = false }
+    }
     const elements = nodes.filter(isElement)
     const end = this.editor.doc.beginUndoGroup()
     this.inheritingInsertionLayout = true
@@ -4186,7 +4191,8 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
-    if(node && !node.isConnected && !this.inheritingInsertionLayout) {
+    if(node && !node.isConnected && !this.inheritingInsertionLayout
+      && !this.editor.features.canvas.active && !this.editor.features.slides.active) {
       const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
       return this.inheritInsertionLayout(nodes, () => this.insert(node, splitDepth, strict, commandInsertion))
     }

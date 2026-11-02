@@ -2502,7 +2502,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true,
     }))
 
-    expectBodyToBe("<details open=\"\"><summary>Heading</summary><p>a</p><p>b</p></details>")
+    expectBodyToBe("<details><summary>Heading</summary><p>a</p><p>b</p></details>")
   })
   it("validates a block split without cloning unrelated document siblings", () => {
     document.body.innerHTML = `<section><p>ab</p><p>tail</p></section><aside>${"<span>unrelated</span>".repeat(100)}</aside>`

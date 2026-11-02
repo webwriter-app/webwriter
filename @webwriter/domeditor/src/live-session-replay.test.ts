@@ -216,7 +216,7 @@ describe("live replay capture", () => {
       expect(window.steps.map(step => step.id)).toEqual(["c"])
       const restored = restoreReplayCheckpoint(window.checkpoint)
       expect(restored.states.get("ada")).toMatchObject({html: "<p>Second</p>", pointer: {x: .5, y: .6}, clickStep: "b", widgets: [{id: "quiz", state: {answer: 3}}]})
-      expect(applyPreviewUpdate(restored.documents.get("ada"), window.steps[0].htmlUpdate)).toBe("<p>Third</p>")
+      expect(applyPreviewUpdate(restored.documents.get("ada")!, window.steps[0].htmlUpdate!)).toBe("<p>Third</p>")
       restored.documents.forEach(doc => doc.destroy())
       reader.close()
 

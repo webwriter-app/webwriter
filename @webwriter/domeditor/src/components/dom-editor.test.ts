@@ -1080,8 +1080,9 @@ describe("DomEditor iframe setup", () => {
     expect(getComputedStyle(iframe).pointerEvents).not.toBe("none")
     window.dispatchEvent(new Event("blur"))
     await Promise.resolve()
+    cancel.mockClear()
     editor.remove()
-    expect(cancel).toHaveBeenCalledTimes(2)
+    expect(cancel).toHaveBeenCalledWith(42)
     expect(iframe.classList.contains("window-inactive")).toBe(false)
   })
 
@@ -8166,7 +8167,8 @@ describe("DomEditor.execute()", () => {
       const read = host.replayReader.seek.bind(host.replayReader)
       let release!: () => void
       const delayed = new Promise<void>(resolve => { release = resolve })
-      vi.spyOn(host.replayReader, "seek").mockImplementation(async (time: number, revision: number) => {
+      vi.spyOn(host.replayReader, "seek").mockImplementation(async (...args: unknown[]) => {
+        const [time, revision] = args as [number, number]
         if(time === 66000) await delayed
         return read(time, revision)
       })
@@ -8867,7 +8869,7 @@ describe("DomEditor.execute()", () => {
     const {editor, iframe, editorWindow} = await mountEditor()
     const picker = editor.shadowRoot!.querySelector<any>(".document-layouts-main-heading document-theme-presets")!
     await picker.updateComplete
-    picker.shadowRoot!.querySelector<HTMLButtonElement>(".trigger")!.click()
+    ;(picker.shadowRoot!.querySelector(".trigger") as HTMLButtonElement).click()
     await picker.updateComplete
     expect(picker.hasAttribute("open")).toBe(true)
     if(mode.startsWith("isolated")) {

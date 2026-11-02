@@ -213,13 +213,15 @@ describe("media ribbon drawer", () => {
   ] as const)("renders the selected %s options in a dedicated %s toolbox", async (type, label) => {
     const toolbox = new DomEditorToolbox()
     toolbox.media = {type, attributes: {}}
+    toolbox.elementSelected = true
+    toolbox.elementAttributes = {path: [0], localName: type, namespaceURI: "http://www.w3.org/1999/xhtml", name: label, attributes: {}}
     toolbox.activeTool = "Edit"
     toolbox.activeMenu = "Edit"
     document.body.append(toolbox)
     await toolbox.updateComplete
     expect(toolbox.shadowRoot!.querySelector('[data-tool="Edit"] .toolbox-tab-label')?.textContent).toBe(label)
     expect(toolbox.shadowRoot!.querySelector(`ribbon-drawer[label="${label}"]`)).not.toBeNull()
-    const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-toolbox-controls")!
+    const controls = toolbox.shadowRoot!.querySelector<HTMLElement>(".media-alternative-text")!
     expect(getComputedStyle(controls).flexDirection).toBe("column")
     expect(Array.from(controls.querySelectorAll("input, select, style-combobox"))
       .every(control => control.getAttribute("type") === "checkbox" || getComputedStyle(control).width === "100%"))
@@ -761,7 +763,7 @@ describe("primary media Source control", () => {
 
 
 describe("primary media alternative text", () => {
-  it.each(["picture", "img"] as const)("keeps %s alternative text primary and Language in advanced options", async type => {
+  it.each(["picture", "img"] as const)("keeps %s alternative text primary and Language in the heading", async type => {
     const toolbox = new DomEditorToolbox()
     toolbox.activeTool = "Edit"
     toolbox.media = {type, attributes: {alt: "Description"}}
@@ -771,9 +773,8 @@ describe("primary media alternative text", () => {
     const drawer = toolbox.shadowRoot!.querySelector(`ribbon-drawer[data-specialized="${type}"]`)!
     const alt = drawer.querySelector<HTMLInputElement>('input[aria-label="Image: Alternative text"]')!
     const attributes = drawer.querySelector("element-attribute-editor")!
-    expect(alt.compareDocumentPosition(attributes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(alt.closest('[slot="more"]')).toBeNull()
-    expect(attributes.closest('[slot="more"]')).not.toBeNull()
+    expect(attributes.getAttribute("slot")).toBe("heading-action")
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)("edits %s alternative text in primary options", async type => {

@@ -1278,6 +1278,17 @@ describe("DOM MathML editing", () => {
     expect(clean()).toBe("<hr>")
   })
 
+  it.each(mathStructureOptions)("replaces a selected element with $title and places the caret in its first argument", option => {
+    document.body.innerHTML = "<opaque-widget>fallback</opaque-widget>"
+    editor.features.selection.selectElement(document.querySelector("opaque-widget")!)
+    expect(editor.features.math.actions.insertMath({type: "insertMath", structure: option.command.slice("structure:".length)})).toBe(true)
+    const math = document.querySelector("math")!
+    expect(math.contains(document.getSelection()!.anchorNode)).toBe(true)
+    expect(document.getSelection()!.anchorNode?.textContent).toBe("")
+    expect(command("text:x")).toBe(true)
+    expect(math.querySelector("mi")?.textContent).toBe("x")
+  })
+
   it.each(["element", "capture"] as const)("undoes and redoes a prefilled formula replacing a %s selection", selection => {
     document.body.innerHTML = "<p>before</p><opaque-widget>fallback</opaque-widget><p>after</p>"
     const original = clean()

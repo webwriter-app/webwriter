@@ -127,7 +127,7 @@ describe("layout host and toolbox integration", () => {
     expect(toolbox.shadowRoot!.querySelector<HTMLButtonElement>('button[data-tool="Edit"]')!.getAttribute("aria-label"))
       .toBe("Edit")
 
-    sendSelection(editor, editorWindow, {table: tableState})
+    sendSelection(editor, editorWindow, {table: tableState, nodeSelected: true, path: [{path: [], name: "Document"}, {path: [0], name: "Table"}]})
     toolbox = await settle(editor)
     expect((editor as any).layoutSelection).toBeNull()
     expect(toolbox.layout).toBeNull()
@@ -138,7 +138,7 @@ describe("layout host and toolbox integration", () => {
     expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[data-specialized="table"]')).not.toBeNull()
   })
 
-  it("opens Edit only for the local inserted selection", async () => {
+  it("keeps Edit closed for an inserted selection", async () => {
     const {editor, editorWindow} = await mountEditor()
     let toolbox = await settle(editor)
     sendSelection(editor, editorWindow, {layout: layoutState("grid")})
@@ -147,7 +147,7 @@ describe("layout host and toolbox integration", () => {
 
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("grid")})
     toolbox = await settle(editor)
-    expect(toolbox.activeTool).toBe("Edit")
+    expect(toolbox.activeTool).toBeNull()
 
     toolbox.selectTool(null)
     sendSelection(editor, editorWindow, {layout: layoutState("grid")})
@@ -168,6 +168,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     toolbox.elementStyle = {
       ...styleState("flex"),
       inline: {"margin-right": {value: "var(--ww-float-outset)", priority: ""}},
@@ -230,6 +232,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     toolbox.elementStyle = {
       ...styleState("flex"),
       inline: {
@@ -259,6 +263,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     const state: ElementStyleState = {...styleState("flex"), target: {...styleState("flex").target!, float}}
     vi.spyOn(editor, "execute").mockResolvedValue(state)
     for(const [canMoveUp, canMoveDown] of [[false, true], [true, true], [true, false], [false, false], [undefined, undefined]]) {
@@ -279,6 +285,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     vi.spyOn(editor, "execute").mockResolvedValue({...styleState("flex"), target: {...styleState("flex").target!, float: "none", alignment}})
     await (editor as any).refreshElementStyleState()
     await settle(editor)
@@ -298,6 +306,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true), documentLayout: {mode, canConvert: true, zoom: 100}})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     const state = {...styleState("flex"), target: {...styleState("flex").target!, placement: {canMoveUp: true, canMoveDown: true}}}
     const execute = vi.spyOn(editor, "execute").mockResolvedValue(state)
     await (editor as any).refreshElementStyleState()
@@ -339,6 +349,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     toolbox.elementStyle = {...styleState("flex"), target: {...styleState("flex").target!, float: "far-left"}}
     await toolbox.updateComplete
     const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"]')!
@@ -375,6 +387,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     toolbox.elementStyle = {
       ...styleState("flex"),
       target: {...styleState("flex").target!, float: "far-left"},
@@ -391,6 +405,8 @@ describe("layout host and toolbox integration", () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
     const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
     const state: ElementStyleState = {
       ...styleState("flex"),
       target: {...styleState("flex").target!, float: "far-right"},
