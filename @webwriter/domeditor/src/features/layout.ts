@@ -1,5 +1,5 @@
 import {EditorFeature} from "."
-import type {FloatSide} from "../element-styles"
+import {floatSideFromStyles, type FloatSide} from "../element-styles"
 import {$} from "../utility"
 import {createFigureLayout} from "../figure-layout.js"
 import {createLayoutPrint} from "../document-layout-print.js"
@@ -12,21 +12,79 @@ type PlacementItem = {element: HTMLElement | SVGSVGElement, z: number, order: nu
 export class LayoutFeature extends EditorFeature {
   private figures: ReturnType<typeof createFigureLayout> | null = null
   private print: ReturnType<typeof createLayoutPrint> | null = null
+  private columnMutationObserver: MutationObserver | null = null
+  private columnResizeObserver: ResizeObserver | null = null
+  private columnFloats = new Set<Element>()
+  private columnFrame: number | null = null
   enable() {
     if(this.isEnabled) return
     super.enable()
     this.figures = createFigureLayout(document)
     this.print = createLayoutPrint(document)
+    this.columnMutationObserver = new MutationObserver(() => this.syncColumnWidth())
+    this.columnMutationObserver.observe(document.body, {subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class", "width"]})
+    if(typeof ResizeObserver !== "undefined") {
+      this.columnResizeObserver = new ResizeObserver(() => this.scheduleColumnWidth())
+      this.columnResizeObserver.observe(document.documentElement)
+    }
+    this.syncColumnWidth()
   }
   disable() {
+    if(this.columnFrame !== null) cancelAnimationFrame(this.columnFrame)
+    this.columnFrame = null
+    this.columnMutationObserver?.disconnect()
+    this.columnMutationObserver = null
+    this.columnResizeObserver?.disconnect()
+    this.columnResizeObserver = null
+    this.columnFloats.clear()
     this.figures?.destroy()
     this.figures = null
     this.print?.destroy()
     this.print = null
     super.disable()
   }
-  refresh() { this.figures?.refresh() }
+  refresh() { this.figures?.refresh(); this.syncColumnWidth() }
   getState() { return null }
+
+  private scheduleColumnWidth() {
+    if(this.columnFrame !== null) return
+    this.columnFrame = requestAnimationFrame(() => {
+      this.columnFrame = null
+      if(this.isEnabled) this.syncColumnWidth()
+    })
+  }
+
+  /** The authored width tokens follow the widest current float. They remain in
+   * saved HTML, where the theme can still adapt them to the reader's viewport. */
+  private syncColumnWidth() {
+    const body = document.body
+    if(!body || !this.isEnabled) return
+    const candidates = Array.from(body.querySelectorAll<HTMLElement | SVGElement>(
+      '.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
+      .filter(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) !== "none")
+    const next = new Set<Element>(candidates)
+    for(const element of this.columnFloats) if(!next.has(element)) this.columnResizeObserver?.unobserve(element)
+    for(const element of candidates) if(!this.columnFloats.has(element)) this.columnResizeObserver?.observe(element)
+    this.columnFloats = next
+    const set = (name: string, value: string | null) => {
+      if(value === null) {
+        if(body.style.getPropertyValue(name)) body.style.removeProperty(name)
+      }
+      else if(body.style.getPropertyValue(name) !== value) body.style.setProperty(name, value)
+    }
+    if(!candidates.length) {
+      set("--ww-two-column-default-width", null)
+      set("--ww-two-column-explicit-width", null)
+    }
+    else if(document.documentElement.clientWidth >= 720) {
+      const explicit = candidates.filter(element => ["--ww-float-size", "inline-size", "width", "max-inline-size", "max-width"]
+        .some(name => element.style.getPropertyValue(name) && element.style.getPropertyValue(name) !== "var(--ww-float-width)"))
+      const width = Math.max(0, ...explicit.map(element => element.getBoundingClientRect().width))
+      set("--ww-two-column-default-width", explicit.length === candidates.length ? "0px" : null)
+      set("--ww-two-column-explicit-width", width ? `${Math.round(width * 100) / 100}px` : null)
+    }
+    if(!body.style.length) body.removeAttribute("style")
+  }
 
   private placement(target: Element) {
     const parent = target.parentElement
@@ -158,10 +216,45 @@ export class LayoutFeature extends EditorFeature {
   }
 
   actions = {
+    setFloatSticky: ({enabled, topLevel}: {type: "setFloatSticky", enabled: boolean, topLevel?: boolean}) => {
+      const manipulation = this.editor.features.manipulation
+      const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
+      if(!target || this.editor.isEditingLocked || this.editor.features.canvas.active || this.editor.features.slides.active
+        || typeof enabled !== "boolean") return false
+      const style = (target as HTMLElement).style ?? getComputedStyle(target)
+      const authoredSide = floatSideFromStyles(getComputedStyle(target).float, style, target.classList)
+      if(authoredSide === "none") return false
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        if(enabled && !target.matches(".ww-float-left, .ww-float-right")
+          && !manipulation.setFloat(target, authoredSide)) return false
+        if(enabled) for(const element of document.body.querySelectorAll(".ww-float-sticky")) {
+          element.classList.remove("ww-float-sticky")
+          if(!element.classList.length) element.removeAttribute("class")
+        }
+        target.classList.toggle("ww-float-sticky", enabled)
+      }
+      finally { end() }
+      return true
+    },
     setFloat: ({side, alignment, topLevel}: {type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right", topLevel?: boolean}) => {
       const manipulation = this.editor.features.manipulation
       const target = topLevel ? manipulation.topLevelStyleTarget : manipulation.styleTarget
-      return target ? manipulation.setFloat(target, side, alignment) : false
+      if(!target) return false
+      const end = this.editor.doc.beginUndoGroup()
+      try {
+        if(!manipulation.setFloat(target, side, alignment)) return false
+        if(side === "none") return true
+        const desired = side === "left" || side === "far-left" ? "far-left" : "far-right"
+        for(const element of document.body.querySelectorAll<HTMLElement | SVGSVGElement>(
+          '.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]')) {
+          if(element === target || manipulation.floatContainer(element) !== element) continue
+          const current = floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList)
+          if(current !== "none" && current !== desired) manipulation.setFloat(element, desired)
+        }
+        return true
+      }
+      finally { end() }
     },
     moveFloat: ({direction, topLevel}: {type: "moveFloat", direction: "up" | "down", topLevel?: boolean}) => this.moveFloat(direction, topLevel),
     movePlacement: ({direction, topLevel}: {type: "movePlacement", direction: PlacementDirection, topLevel?: boolean}) => this.movePlacement(direction, topLevel),

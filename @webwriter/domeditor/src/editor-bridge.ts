@@ -425,6 +425,7 @@ export type ElementStyleState = {
   target: {
     documentRoot?: true
     float?: "none" | "far-left" | "far-right"
+    floatSticky?: boolean
     alignment?: "left" | "center" | "right"
     canMoveUp?: boolean
     canMoveDown?: boolean

@@ -22,6 +22,88 @@ afterEach(() => { editor.destroy(); floatStylesheet.remove(); vi.restoreAllMocks
 
 const setFloat = (side: "far-left" | "none" | "far-right" | "left" | "right") => editor.features.layout.actions.setFloat({type: "setFloat", side})
 
+it("tracks the widest explicitly sized side item and clears derived widths with the column", () => {
+  document.body.innerHTML = '<aside class="ww-float-right">First</aside><aside class="ww-float-right">Second</aside><p>Text</p>'
+  const [first, second] = Array.from(document.body.querySelectorAll("aside"))
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+  vi.spyOn(first, "getBoundingClientRect").mockImplementation(() => ({width: 400} as DOMRect))
+  vi.spyOn(second, "getBoundingClientRect").mockImplementation(() => ({width: 800} as DOMRect))
+  first.style.setProperty("--ww-float-size", "400px")
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-two-column-default-width")).toBe("")
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("400px")
+  second.style.setProperty("--ww-float-size", "800px")
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-two-column-default-width")).toBe("0px")
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("800px")
+  expect(editor.toHTML()).toContain("--ww-two-column-explicit-width: 800px")
+  second.remove()
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("400px")
+  first.classList.remove("ww-float-right")
+  editor.features.layout.refresh()
+  expect(document.body.getAttribute("style")).toBeNull()
+})
+
+it("keeps one authored sticky float in the column and preserves it through undo", () => {
+  document.body.innerHTML = '<aside class="ww-float-left">First</aside><aside class="ww-float-left">Second</aside><aside class="ww-float-right">Right</aside>'
+  const [first, second, right] = Array.from(document.body.children)
+  editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+  for(const element of [first, right, second]) {
+    editor.features.selection.captureElement(element)
+    expect(editor.features.layout.actions.setFloatSticky({type: "setFloatSticky", enabled: true})).toBe(true)
+  }
+  expect(first.classList.contains("ww-float-sticky")).toBe(false)
+  expect(second.classList.contains("ww-float-sticky")).toBe(true)
+  expect(right.classList.contains("ww-float-sticky")).toBe(false)
+  editor.doc.syncFromDOM()
+  expect(editor.toHTML(true)).toContain("ww-float-sticky")
+  editor.doc.undo()
+  expect(first.classList.contains("ww-float-sticky")).toBe(false)
+  expect(second.classList.contains("ww-float-sticky")).toBe(false)
+  expect(right.classList.contains("ww-float-sticky")).toBe(true)
+  editor.doc.redo()
+  expect(second.classList.contains("ww-float-sticky")).toBe(true)
+  expect(editor.features.manipulation.setFloat(second, "none")).toBe(true)
+  expect(second.classList.contains("ww-float-sticky")).toBe(false)
+})
+
+it("flips every authored float when the toolbox changes the column direction", () => {
+  document.body.innerHTML = '<aside class="ww-float-left ww-float-sticky" style="width: 120px">First<!--keep--></aside><custom-card style="float:right;width:80px;color:red">Second</custom-card><p>Target</p>'
+  const [first, second, target] = Array.from(document.body.children) as HTMLElement[]
+  editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+  editor.features.selection.captureElement(target)
+  expect(setFloat("far-right")).toBe(true)
+  expect([first, second, target].every(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) === "far-right")).toBe(true)
+  expect(first.classList.contains("ww-float-sticky")).toBe(true)
+  expect(first.innerHTML).toBe("First<!--keep-->")
+  expect(second.style.width).toBe("80px")
+  expect(second.style.color).toBe("red")
+  editor.doc.syncFromDOM()
+  const right = editor.toHTML(true)
+  editor.doc.undo()
+  expect(first.classList.contains("ww-float-left")).toBe(true)
+  expect(second.style.float).toBe("right")
+  expect(target.classList.contains("ww-float-right")).toBe(false)
+  editor.doc.redo()
+  expect(editor.toHTML(true)).toBe(right)
+  expect(setFloat("far-left")).toBe(true)
+  expect([first, second, target].every(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) === "far-left")).toBe(true)
+})
+
+it("pins an existing inline float and clears the pin when its float is removed", () => {
+  document.body.innerHTML = '<aside style="float:left" data-authored="keep"><custom-card></custom-card></aside><p>Text</p>'
+  const aside = document.querySelector("aside")!
+  editor.features.selection.captureElement(aside)
+  expect(editor.features.layout.actions.setFloatSticky({type: "setFloatSticky", enabled: true})).toBe(true)
+  expect(aside.classList.contains("ww-float-left")).toBe(true)
+  expect(aside.classList.contains("ww-float-sticky")).toBe(true)
+  expect(aside.getAttribute("data-authored")).toBe("keep")
+  expect(aside.querySelector("custom-card")).not.toBeNull()
+  expect(setFloat("none")).toBe(true)
+  expect(aside.classList.contains("ww-float-sticky")).toBe(false)
+})
+
 describe.each(["canvas", "slides"] as const)("%s stacking placement", mode => {
   function seed() {
     document.body.className = `ww-${mode}`
@@ -678,7 +760,7 @@ describe("document floats", () => {
   })
 
   it("does not expose former column, flex or grid commands or selection controls", () => {
-    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFloat", "moveFloat", "movePlacement"])
+    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFloatSticky", "setFloat", "moveFloat", "movePlacement"])
     document.querySelector<HTMLElement>("section")!.style.display = "grid"
     $.selectElement(document.querySelector("section")!)
     editor.features.layout.refresh()

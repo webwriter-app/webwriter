@@ -1632,6 +1632,40 @@ it("defaults caption choices to below and switches their icons with the Top chec
   expect(top.disabled).toBe(true)
 })
 
+it("places Pin beside the Placement heading and enables it only for floats", async () => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", float: "none"},
+    inline: {}, computed: {float: "none"}, context: {display: "block", parentDisplay: "block"}}
+  const actions = vi.fn()
+  toolbox.addEventListener("layout-action", actions)
+  await toolbox.updateComplete
+  const heading = toolbox.shadowRoot!.querySelector('.float-button-group[aria-label="Placement"]')!.previousElementSibling!
+  const pin = () => heading.querySelector<HTMLInputElement>('.float-pin input')!
+  expect(heading.textContent).toContain("Placement")
+  expect(pin().closest("label")!.textContent).toBe("Pin")
+  expect(getComputedStyle(heading).justifyContent).toBe("space-between")
+  expect(pin().disabled).toBe(true)
+  expect(pin().checked).toBe(false)
+
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "far-left"}}
+  await toolbox.updateComplete
+  expect(pin().disabled).toBe(false)
+  pin().click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFloatSticky", enabled: true})
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, floatSticky: true}}
+  await toolbox.updateComplete
+  expect(pin().checked).toBe(true)
+  pin().click()
+  expect(actions.mock.calls.at(-1)![0].detail).toEqual({type: "setFloatSticky", enabled: false})
+
+  toolbox.elementStyle = {...toolbox.elementStyle, target: {...toolbox.elementStyle.target!, float: "none", floatSticky: true}}
+  await toolbox.updateComplete
+  expect(pin().checked).toBe(false)
+  expect(pin().disabled).toBe(true)
+  expect(toolbox.shadowRoot!.querySelector('button[aria-label="Keep in view"]')).toBeNull()
+})
+
 it("reflects an existing table caption's top placement", async () => {
   const toolbox = await mountToolbox()
   toolbox.selectTool("Edit")

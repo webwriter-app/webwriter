@@ -6553,8 +6553,8 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}>).detail
-    if(!action || !["setFloat", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}>).detail
+    if(!action || !["setFloat", "setFloatSticky", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
     const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping"

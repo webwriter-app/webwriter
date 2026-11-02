@@ -1537,7 +1537,7 @@ describe("column insertion", () => {
     editor.features.manipulation.setFloat(target, "far-right")
     expect(target.style.width).toBe("80px")
     expect(target.style.maxWidth).toBe("120px")
-    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 80px)")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("80px")
     expect(target.style.getPropertyValue("--ww-float-outset")).toBe("")
     editor.features.manipulation.setFloat(target, "none")
     expect(target.style.width).toBe("80px")
@@ -1555,12 +1555,12 @@ describe("column insertion", () => {
     const manipulation = editor.features.manipulation
     manipulation.setFloat(target, "far-left")
     manipulation.setElementStyles(target, {width: "180px", "margin-top": "12px"})
-    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 180px)")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("180px")
     expect(target.style.marginTop).toBe("12px")
     manipulation.setElementStyles(target, {"inline-size": "120px"})
-    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 120px)")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("120px")
     manipulation.setElementStyles(target, {"inline-size": null, width: null})
-    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), var(--ww-float-width))")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("")
     manipulation.setFloat(target, "none")
     expect(target.style.getPropertyValue("--ww-float-size")).toBe("")
   })
@@ -6370,6 +6370,48 @@ describe("unified content transfer", () => {
       expect(editor.toHTML(true)).toBe(floated)
     }
     finally { Reflect.deleteProperty(document.documentElement, "clientWidth") }
+  })
+
+  it.each([[5, "left"], [1395, "right"]] as const)("floats a dragged paragraph in the %s outer margin even when the caret resolves to another paragraph", (x, side) => {
+    document.body.innerHTML = '<p id="source">Source</p><p id="anchor">Anchor</p>'
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    const source = document.querySelector<HTMLElement>("#source")!, anchor = document.querySelector<HTMLElement>("#anchor")!
+    vi.spyOn(source, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 30))
+    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 100, 720, 30))
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: anchor.firstChild!, offset: 2})
+    const {data} = beginDrag(source)
+    const point = {clientX: x, clientY: 690}
+    document.documentElement.dispatchEvent(transferEvent("dragover", data, point))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+    document.documentElement.dispatchEvent(transferEvent("drop", data, point))
+    expect(source.classList.contains(`ww-float-${side}`)).toBe(true)
+    expect(source.nextElementSibling).toBe(anchor)
+    expect(source.textContent).toBe("Source")
+    expect(anchor.textContent).toBe("Anchor")
+  })
+
+  it.each(["left", "right"] as const)("offers only the existing %s float column for drag placement", side => {
+    document.body.innerHTML = `<aside class="ww-float-${side}">Existing</aside><p>Anchor</p><video style="width:80px;height:60px"></video>`
+    document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
+    vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
+    const anchor = document.querySelector("p")!, source = document.querySelector("video")!
+    vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 30))
+    vi.spyOn($, "pointFromCoords").mockReturnValue({node: anchor.firstChild!, offset: 2})
+    const blockedX = side === "left" ? 1395 : 5, allowedX = side === "left" ? 5 : 1395
+    const blocked = beginDrag(source).data
+    const blockedOver = transferEvent("dragover", blocked, {clientX: blockedX, clientY: 690})
+    document.documentElement.dispatchEvent(blockedOver)
+    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
+    expect(blocked.dropEffect).toBe("none")
+    document.documentElement.dispatchEvent(transferEvent("drop", blocked, {clientX: blockedX, clientY: 690}))
+    expect(source.parentElement).toBe(document.body)
+    expect(source.classList.contains("ww-float-left") || source.classList.contains("ww-float-right")).toBe(false)
+    const allowed = beginDrag(source).data
+    document.documentElement.dispatchEvent(transferEvent("dragover", allowed, {clientX: allowedX, clientY: 690}))
+    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
+    document.documentElement.dispatchEvent(transferEvent("drop", allowed, {clientX: allowedX, clientY: 690}))
+    expect(source.classList.contains(`ww-float-${side}`)).toBe(true)
   })
 
   it("chooses the nearest live gutter anchor without remeasuring or floating content-column gaps", () => {

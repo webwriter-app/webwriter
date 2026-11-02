@@ -300,7 +300,7 @@ await check("legacy widget options use document gutters and sit beside freeform 
             await layoutFrame()
             ;({host, options} = bounds())
             const side = view.getComputedStyle(widget).float
-            assert(side === (width < 600 ? "none" : width < 1200 ? "right" : placement.side), `${context}: unexpected responsive float for ${JSON.stringify(placement)}`)
+            assert(side === (width < 720 ? "none" : width < 1200 ? "right" : placement.side), `${context}: unexpected responsive float for ${JSON.stringify(placement)}`)
             if(side === "left") assert(options.left > host.right + 1, `${context}: left-floated options did not open to the right`)
             else if(side === "right") assert(options.right < host.left - 1, `${context}: right-floated options did not open to the left`)
             else assert(view.getComputedStyle(part).position === "static", `${context}: in-flow options did not retain the narrow layout`)
@@ -8939,7 +8939,7 @@ await check("float previews match projected media bounds", async () => {
         await layoutFrame()
         assert(source.classList.contains(side === "left" ? "ww-float-left" : "ww-float-right") && !source.style.float, `native drop did not apply ${side} as a class at ${width}: ${source.outerHTML}; body=${doc.body.innerHTML}`)
         matches(preview, source.getBoundingClientRect(), `${side} moved video at ${width}px (float=${view.getComputedStyle(source).float}, margins=${view.getComputedStyle(source).marginLeft},${view.getComputedStyle(source).marginRight}, padding=${view.getComputedStyle(doc.body).paddingLeft},${view.getComputedStyle(doc.body).paddingRight})`)
-        editor.features.manipulation.setElementStyles(source, {"--ww-float-size":"min(100%, var(--ww-float-width), 180px)", "max-width":"180px"})
+        editor.features.manipulation.setElementStyles(source, {"--ww-float-size":"180px", "max-width":"180px"})
         await layoutFrame()
         editor.features.manipulation.showFloatDropPreview(target, side, "transformation", source)
         const resizedPreview = previewRect()
@@ -9031,28 +9031,32 @@ await check("lane media fills available width and resizes with native handles", 
         frame.style.width = `${viewport}px`
         await layoutFrame()
         const body = doc.body.getBoundingClientRect(), bodyStyle = view.getComputedStyle(doc.body)
-        const pageWidth = body.width - 2 * Math.min(32, Math.max(16, viewport * .02))
-        const expectedWidth = viewport < 600 ? body.width - parseFloat(bodyStyle.paddingLeft) - parseFloat(bodyStyle.paddingRight)
-          : viewport < 1200 ? Math.min(256, pageWidth - 300 - Math.min(32, Math.max(16, viewport * .02))) : 688
+        const gutter = Math.min(32, Math.max(16, viewport * .02))
+        const expectedWidth = viewport < 720 ? body.width - parseFloat(bodyStyle.paddingLeft) - parseFloat(bodyStyle.paddingRight)
+          : parseFloat(bodyStyle.paddingRight) - 2 * gutter
         assert(Math.abs(target.getBoundingClientRect().width - expectedWidth) < 1, `${target.localName} did not fill its column at ${viewport}px`)
       }
       editor.features.selection.selectElement(target)
       await layoutFrame()
       const transform = editor.features.transformation
       const resize = async (delta: number, cancel = false) => {
-        const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+        const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-left")!
+        assert(transform.target === target && !handle.hidden, `resize handle unavailable for ${target.localName}: target=${transform.target?.localName}, hidden=${handle.hidden}`)
         const box = handle.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
         handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true})
         handle.dispatchEvent(new MouseEvent("mousedown", {bubbles:true, composed:true, button:0, clientX:x, clientY:y}))
-        transform.handleScaleDrag(new MouseEvent("mousemove", {buttons:1, clientX:x + delta, clientY:y}))
+        transform.handleScaleDrag(new MouseEvent("mousemove", {buttons:1, clientX:x - delta, clientY:y}))
         if(cancel) doc.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape", bubbles:true}))
         else transform.handleScaleEnd()
         await layoutFrame()
       }
+      const startingWidth = target.getBoundingClientRect().width
       await resize(-180)
-      assert(Math.abs(target.getBoundingClientRect().width - 508) < 1, `${target.localName} did not shrink through its resize handle`)
+      assert(Math.abs(target.getBoundingClientRect().width - (startingWidth - 180)) < 1, `${target.localName} did not shrink through its resize handle: ${startingWidth} -> ${target.getBoundingClientRect().width}, ${target.style.cssText}`)
       await resize(100)
-      assert(Math.abs(target.getBoundingClientRect().width - 608) < 1, `${target.localName} did not grow through its resize handle`)
+      assert(Math.abs(target.getBoundingClientRect().width - (startingWidth - 80)) < 1, `${target.localName} did not grow through its resize handle`)
+      await resize(400)
+      assert(Math.abs(target.getBoundingClientRect().width - (startingWidth + 320)) < 1, `${target.localName} could not grow beyond its initial column`)
       editor.features.manipulation.setElementStyles(target, {width:"140px", "max-width":null})
       await layoutFrame()
       await resize(180)
@@ -9078,10 +9082,10 @@ await check("lane media fills available width and resizes with native handles", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("wide widgets remain centered between symmetric float lanes", async () => {
+await check("wide widgets follow adaptive float lanes", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:900px;border:0;max-width:none"
-  frame.srcdoc = '<!doctype html><body><aside id="left" style="width:80px;height:100px">Left</aside><aside id="right" style="width:120px;height:100px">Right</aside><native-wide-widget id="default"></native-wide-widget><native-wide-widget id="wide" style="--ww-widget-max:none"></native-wide-widget><main><native-wide-widget id="nested" style="--ww-widget-max:none"></native-wide-widget></main><p>Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  frame.srcdoc = '<!doctype html><body><div id="left" style="width:80px;height:100px">Left</div><div id="right" style="width:120px;height:100px">Right</div><native-wide-widget id="default"></native-wide-widget><native-wide-widget id="wide" style="--ww-widget-max:none"></native-wide-widget><main><native-wide-widget id="nested" style="--ww-widget-max:none"></native-wide-widget></main><p>Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
   document.body.append(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -9101,21 +9105,27 @@ await check("wide widgets remain centered between symmetric float lanes", async 
       const start = body.left + parseFloat(style.paddingLeft), end = body.right - parseFloat(style.paddingRight)
       const width = end - start, center = (start + end) / 2
       const proseWidth = 45 * parseFloat(document.defaultView!.getComputedStyle(document.documentElement).fontSize)
-      const singleLane = lanes && document.documentElement.clientWidth < 1200
-      if(!singleLane) {
-        assert(Math.abs(parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) < 1, "float lanes are asymmetric")
+      const leftOccupied = document.querySelector("#left")!.classList.contains("ww-float-left")
+      const physicalSide = leftOccupied ? "left" : "right"
+      if(!lanes) {
+        assert(Math.abs(parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - (parseFloat(style.getPropertyValue("--ww-leading-gutter-balance")) || 0)) < 1, "float lanes are asymmetric")
         const root = document.documentElement.getBoundingClientRect()
-        assert(Math.abs(center - (root.left + root.right) / 2) < 1, `reserved column shifted away from the page center: ${JSON.stringify({center, rootRect: root.toJSON(), windowWidth: document.defaultView!.innerWidth, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight})}`)
+        assert(Math.abs(center - document.defaultView!.innerWidth / 2) < 1, `reserved column shifted away from the page center: ${JSON.stringify({center, rootRect: root.toJSON(), windowWidth: document.defaultView!.innerWidth, paddingLeft: style.paddingLeft, paddingRight: style.paddingRight})}`)
       }
       else {
-        assert(parseFloat(style.paddingRight) > parseFloat(style.paddingLeft) && width >= 300 - 1, "single right lane did not preserve readable text")
+        assert((physicalSide === "left" ? parseFloat(style.paddingLeft) > parseFloat(style.paddingRight)
+          : parseFloat(style.paddingRight) > parseFloat(style.paddingLeft)) && width >= 300 - 1,
+          `single ${physicalSide} lane did not preserve readable text: ${JSON.stringify({paddingLeft:style.paddingLeft,paddingRight:style.paddingRight,width,viewport:document.defaultView!.innerWidth})}`)
         const left = document.querySelector<HTMLElement>("#left")!, right = document.querySelector<HTMLElement>("#right")!
-        assert(document.defaultView!.getComputedStyle(left).float === "right" && document.defaultView!.getComputedStyle(right).float === "right", "both floats did not use the right lane")
-        assert(left.getBoundingClientRect().left >= end && right.getBoundingClientRect().left >= end, "a float intruded into the text column")
-        assert(right.getBoundingClientRect().top >= left.getBoundingClientRect().bottom, "opposing floats overlapped in the shared lane")
+        for(const element of [left, right].filter(element => element.matches(".ww-float-left, .ww-float-right"))) {
+          assert(document.defaultView!.getComputedStyle(element).float === physicalSide, "floats split into opposing columns")
+          assert(physicalSide === "left" ? element.getBoundingClientRect().right <= start : element.getBoundingClientRect().left >= end,
+            "a float intruded into the text column")
+        }
+        if(left.matches(".ww-float-left, .ww-float-right") && right.matches(".ww-float-left, .ww-float-right"))
+          assert(right.getBoundingClientRect().top >= left.getBoundingClientRect().bottom, "floats overlapped in the side column")
       }
-      assert((parseFloat(style.paddingRight) > 32) === lanes, "lane reservation did not follow float state")
-      if(lanes && !singleLane) assert(Math.abs(width - proseWidth) < 1, "side lanes squeezed the center column")
+      if(lanes) assert(width <= proseWidth + 1, `side lane expanded the center column: ${width}`)
       for(const id of ["default", "wide", "nested"]) {
         const box = document.querySelector<HTMLElement>(`#${id}`)!.getBoundingClientRect()
         const expectedWidth = id === "default" ? Math.min(proseWidth, width) : width
@@ -9132,7 +9142,8 @@ await check("wide widgets remain centered between symmetric float lanes", async 
       verify(doc, sides.length > 0)
       for(const element of sides) {
         const box = element.getBoundingClientRect(), body = doc.body.getBoundingClientRect(), style = view.getComputedStyle(doc.body)
-        assert(element === left ? box.right <= body.left + parseFloat(style.paddingLeft) - 16 : box.left >= body.right - parseFloat(style.paddingRight) + 16, "float intruded into the widget area")
+        const physicalLeft = sides.includes(left)
+        assert(physicalLeft ? box.right <= body.left + parseFloat(style.paddingLeft) - 16 : box.left >= body.right - parseFloat(style.paddingRight) + 16, "float intruded into the widget area")
       }
     }
     editor.features.manipulation.setElementStyles(left, {"max-width": "40px"})
@@ -9146,12 +9157,19 @@ await check("wide widgets remain centered between symmetric float lanes", async 
     verify(doc, true)
     assert(Math.abs(left.getBoundingClientRect().width - 100) < 1 && Math.abs(right.getBoundingClientRect().width - 140) < 1, "manual width controls did not resize floats")
     assert(Array.from(doc.body.childNodes).every((node, index) => node === nodes[index]), "lane reservation changed authored structure")
+    for(const element of [left, right]) {
+      element.style.removeProperty("width")
+      element.style.removeProperty("max-width")
+      element.style.removeProperty("inline-size")
+      element.style.removeProperty("--ww-float-size")
+    }
     for(const bundledTheme of documentThemes) {
       theme.textContent = bundledTheme.source
-      for(const width of [1400, 1200, 1000, 930, 900, 750, 630, 590, 360]) {
+      for(const width of [1500, 1499, 1400, 1215, 1200, 1000, 930, 900, 750, 630, 590, 360]) {
         frame.style.width = `${width}px`
         await layoutFrame()
-        verify(doc, doc.documentElement.clientWidth >= 600)
+        verify(doc, doc.documentElement.clientWidth >= 720)
+        if(width >= 1215) assert(right.getBoundingClientRect().width >= 319, `side widget shrank below 320px near the split: ${width}px`)
       }
     }
     theme.textContent = defaultDocumentTheme.source
@@ -9161,6 +9179,21 @@ await check("wide widgets remain centered between symmetric float lanes", async 
     frame.style.width = "2400px"
     await layoutFrame()
     verify(doc, true)
+    editor.features.manipulation.setFloat(right, "none")
+    await layoutFrame()
+    const proseMaximum = 45 * parseFloat(view.getComputedStyle(doc.documentElement).fontSize)
+    assert(left.getBoundingClientRect().width <= proseMaximum + 1, "single side column exceeded the main column maximum")
+    editor.features.manipulation.setFloat(right, "far-right")
+    await layoutFrame()
+    right.classList.add("ww-float-sticky")
+    doc.body.style.minHeight = "2000px"
+    view.scrollTo(0, 400)
+    await layoutFrame()
+    assert(view.getComputedStyle(right).position === "sticky", "selected lane item did not become sticky")
+    assert(right.getBoundingClientRect().top >= 0 && right.getBoundingClientRect().top < 40, "selected lane item did not stay in view")
+    assert(Number(view.getComputedStyle(right).zIndex) > (Number(view.getComputedStyle(left).zIndex) || 0), "sticky item did not stack in front")
+    view.scrollTo(0, 0)
+    doc.body.style.removeProperty("min-height")
     const saved = document.createElement("iframe")
     saved.style.cssText = frame.style.cssText
     saved.setAttribute("sandbox", "allow-same-origin")
@@ -9174,14 +9207,107 @@ await check("wide widgets remain centered between symmetric float lanes", async 
         widget.attachShadow({mode:"open"}).innerHTML = '<style>:host {display:block;width:100%;max-width:720px;height:60px}</style>Widget'
       }
       verify(saved.contentDocument!, true)
+      assert(saved.contentDocument!.defaultView!.getComputedStyle(saved.contentDocument!.querySelector("#right")!).position === "sticky", "standalone export lost sticky lane placement")
       saved.style.width = "750px"
       await layoutFrame()
       verify(saved.contentDocument!, true)
       saved.style.width = "360px"
       await layoutFrame()
       verify(saved.contentDocument!, false)
+      assert(saved.contentDocument!.defaultView!.getComputedStyle(saved.contentDocument!.querySelector("#right")!).position === "static", "sticky side item stayed fixed in the vertical layout")
     }
     finally { saved.remove() }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("two-column side width follows its widest element", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1800px;height:900px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><aside id="first">First</aside><aside id="second">Second</aside><p id="main">Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "two-column fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const first = doc.querySelector<HTMLElement>("#first")!, second = doc.querySelector<HTMLElement>("#second")!
+    editor.features.manipulation.setFloat(first, "far-right")
+    editor.features.manipulation.setFloat(second, "far-right")
+    const mainWidth = 45 * parseFloat(view.getComputedStyle(doc.documentElement).fontSize)
+    let widthAt1200 = 0
+    for(const viewport of [1000, 1200, 1215, 1800]) {
+      frame.style.width = `${viewport}px`
+      await layoutFrame()
+      const renderedMain = doc.querySelector<HTMLElement>("#main")!.getBoundingClientRect().width
+      const renderedSide = first.getBoundingClientRect().width
+      assert(Math.abs(renderedSide - renderedMain) < 1, `default columns differ at ${viewport}px: ${renderedMain}, ${renderedSide}`)
+      if(viewport === 1200) widthAt1200 = renderedSide
+      if(viewport === 1215) assert(Math.abs(renderedSide - widthAt1200) < 15, "side column jumps near 1215px")
+    }
+    let sideInset: number | null = null
+    const verify = (column: number, widths: [number, number]) => {
+      const style = view.getComputedStyle(doc.body), main = doc.querySelector<HTMLElement>("#main")!.getBoundingClientRect()
+      const firstRect = first.getBoundingClientRect(), secondRect = second.getBoundingClientRect()
+      assert(Math.abs(main.width - mainWidth) < 1, `main column changed width: ${main.width}`)
+      assert(Math.abs(firstRect.width - widths[0]) < 1 && Math.abs(secondRect.width - widths[1]) < 1,
+        `side items have incorrect widths: ${firstRect.width}, ${secondRect.width}`)
+      assert(firstRect.left >= main.right + 15 && secondRect.left >= main.right + 15, "side items overlap the main column")
+      const inset = parseFloat(style.paddingRight) - column
+      if(sideInset === null) sideInset = inset
+      else assert(Math.abs(inset - sideInset) < 1, `side column reservation did not follow ${column}px: ${style.paddingRight}`)
+    }
+    await layoutFrame()
+    verify(mainWidth, [mainWidth, mainWidth])
+    first.style.setProperty("--ww-float-size", "450px")
+    await layoutFrame()
+    verify(mainWidth, [450, mainWidth])
+    second.style.setProperty("--ww-float-size", "600px")
+    await layoutFrame()
+    verify(600, [450, 600])
+    second.style.setProperty("--ww-float-size", "400px")
+    await layoutFrame()
+    verify(450, [450, 400])
+    first.style.setProperty("--ww-float-size", "800px")
+    await layoutFrame()
+    verify(800, [800, 400])
+    second.style.setProperty("--ww-float-size", "950px")
+    await layoutFrame()
+    verify(950, [800, 950])
+    assert(doc.body.style.getPropertyValue("--ww-two-column-explicit-width") === "950px", "widest side width was not saved")
+    const saved = doc.createElement("iframe")
+    saved.style.cssText = frame.style.cssText
+    saved.setAttribute("sandbox", "allow-same-origin")
+    const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
+    saved.srcdoc = editor.toHTML()
+    document.body.append(saved)
+    try {
+      await loaded
+      const savedBody = saved.contentDocument!.body
+      assert(savedBody.style.getPropertyValue("--ww-two-column-explicit-width") === "950px", "saved column lost its width")
+      assert(Math.abs(savedBody.querySelector<HTMLElement>("#second")!.getBoundingClientRect().width - 950) < 1,
+        "saved side item lost its width")
+    }
+    finally { saved.remove() }
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    second.style.setProperty("--ww-float-size", "700px")
+    await layoutFrame()
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    await layoutFrame()
+    assert(second.style.getPropertyValue("--ww-float-size") === "950px"
+      && doc.body.style.getPropertyValue("--ww-two-column-explicit-width") === "950px", "undo did not restore the widest side item and its column")
+    second.remove()
+    await layoutFrame()
+    assert(doc.body.style.getPropertyValue("--ww-two-column-explicit-width") === "800px", "removing the widest item did not narrow the column")
+    editor.features.manipulation.setFloat(first, "none")
+    await layoutFrame()
+    assert(!doc.body.style.getPropertyValue("--ww-two-column-explicit-width") && !doc.body.style.getPropertyValue("--ww-two-column-default-width"),
+      "column width tokens remained after removing the float")
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
@@ -9239,6 +9365,107 @@ await check("empty document gutters prefer floats throughout the viewport", asyn
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("outer document margins accept floats beside existing columns", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1800px;height:800px;max-width:none;border:0"
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><aside id="existing">Existing side item</aside><p id="anchor">Reading content</p></body>'
+  document.body.append(frame)
+  try {
+    const view = frame.contentWindow as Window & {editor?: DOMEditor}
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "outer-margin fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, events = view as unknown as typeof globalThis
+    editor.schema.extendWidgets([{tagName: "native-gutter-widget"}])
+    for(const width of [700, 1000, 1400, 1800]) for(const existingSide of ["left", "right"] as const) for(const dropSide of ["left", "right"] as const) {
+      frame.style.width = `${width}px`
+      const existing = doc.querySelector<HTMLElement>("#existing")!
+      editor.features.manipulation.setFloat(existing, existingSide === "left" ? "far-left" : "far-right")
+      const widget = doc.createElement("native-gutter-widget")
+      widget.style.cssText = "display:block;width:120px;height:60px"
+      widget.innerHTML = "<!--keep--><span>Widget</span>"
+      doc.body.append(widget)
+      await layoutFrame()
+      editor.features.selection.selectElement(widget)
+      const dataTransfer = new events.DataTransfer()
+      editor.appendix.querySelector('[part~="node-drag-surface"]')!.dispatchEvent(new events.DragEvent("dragstart", {dataTransfer, bubbles:true, composed:true, cancelable:true}))
+      const x = dropSide === "left" ? 5 : width - 5
+      const init = {dataTransfer, clientX:x, clientY:400, bubbles:true, composed:true, cancelable:true}
+      doc.documentElement.dispatchEvent(new events.DragEvent("dragover", init))
+      const preview = editor.appendix.querySelector("#◆float-drop-preview")
+      if(dropSide !== existingSide) {
+        assert(!preview && dataTransfer.dropEffect === "none", `${width}px, existing ${existingSide}: opposite margin remained available`)
+        doc.documentElement.dispatchEvent(new events.DragEvent("drop", init))
+        assert(!widget.classList.contains("ww-float-left") && !widget.classList.contains("ww-float-right"), "opposite margin floated the widget")
+        widget.remove()
+        editor.features.manipulation.clearFloatDropTargets()
+        continue
+      }
+      assert(preview?.getAttribute("part")?.includes(`float-drop-preview-${dropSide}`), `${width}px, existing ${existingSide}, drop ${dropSide}: outer margin did not preview the float`)
+      doc.documentElement.dispatchEvent(new events.DragEvent("drop", init))
+      await layoutFrame()
+      assert(widget.classList.contains(`ww-float-${dropSide}`), `${width}px, existing ${existingSide}, drop ${dropSide}: outer margin did not place the float`)
+      assert(widget.innerHTML === "<!--keep--><span>Widget</span>", "margin drop rebuilt the widget")
+      widget.remove()
+      editor.features.manipulation.clearFloatDropTargets()
+    }
+    for(const width of [1000, 1800]) for(const side of ["left", "right"] as const) {
+      frame.style.width = `${width}px`
+      editor.features.manipulation.setFloat(doc.querySelector("#existing")!, side === "left" ? "far-left" : "far-right")
+      const source = doc.createElement("p")
+      source.textContent = "Dragged paragraph"
+      doc.querySelector("#anchor")!.before(source)
+      await layoutFrame()
+      editor.features.selection.selectElement(source)
+      const dataTransfer = new events.DataTransfer()
+      editor.appendix.querySelector('[part~="node-drag-surface"]')!.dispatchEvent(new events.DragEvent("dragstart", {dataTransfer, bubbles:true, composed:true, cancelable:true}))
+      const init = {dataTransfer, clientX:side === "left" ? 5 : width - 5, clientY:400, bubbles:true, composed:true, cancelable:true}
+      doc.documentElement.dispatchEvent(new events.DragEvent("dragover", init))
+      assert(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")?.includes(`float-drop-preview-${side}`),
+        `${width}px ${side}: paragraph had no outer-margin float preview`)
+      doc.documentElement.dispatchEvent(new events.DragEvent("drop", init))
+      assert(source.classList.contains(`ww-float-${side}`) && source.textContent === "Dragged paragraph", `${width}px ${side}: paragraph did not float intact`)
+      source.remove()
+      editor.features.manipulation.clearFloatDropTargets()
+    }
+    const existing = doc.querySelector<HTMLElement>("#existing")!, peer = doc.createElement("aside")
+    peer.textContent = "Second floated item"
+    existing.after(peer)
+    editor.features.manipulation.setFloat(existing, "far-right")
+    editor.features.manipulation.setFloat(peer, "far-right")
+    existing.classList.add("ww-float-sticky")
+    editor.features.selection.selectElement(existing)
+    assert(editor.features.layout.actions.setFloat({type:"setFloat", side:"far-left"}), "toolbox placement could not flip the column left")
+    assert(existing.classList.contains("ww-float-sticky") && peer.textContent === "Second floated item", "column flip lost pin or content")
+    for(const width of [1000, 1400, 1800]) {
+      frame.style.width = `${width}px`
+      await layoutFrame()
+      const style = view.getComputedStyle(doc.body), main = doc.querySelector("#anchor")!.getBoundingClientRect()
+      assert([existing, peer].every(element => element.classList.contains("ww-float-left") && view.getComputedStyle(element).float === "left"
+        && element.getBoundingClientRect().right <= main.left), `${width}px: toolbox left placement split or misplaced the column`)
+      assert(parseFloat(style.paddingLeft) > parseFloat(style.paddingRight), `${width}px: left column reserved the wrong side`)
+    }
+    assert(editor.features.layout.actions.setFloat({type:"setFloat", side:"far-right"}), "toolbox placement could not flip the column right")
+    await layoutFrame()
+    const main = doc.querySelector("#anchor")!.getBoundingClientRect()
+    assert([existing, peer].every(element => element.classList.contains("ww-float-right") && view.getComputedStyle(element).float === "right"
+      && element.getBoundingClientRect().left >= main.right), "toolbox right placement split or misplaced the column")
+    assert(editor.toHTML(true).includes("Second floated item"), "column flip lost authored HTML")
+    const ribbon = new events.DataTransfer()
+    ribbon.setData("application/x-webwriter-element-tag", "video")
+    const blocked = {dataTransfer:ribbon, clientX:5, clientY:400, bubbles:true, composed:true, cancelable:true}
+    doc.documentElement.dispatchEvent(new events.DragEvent("dragover", blocked))
+    assert(!editor.appendix.querySelector("#◆float-drop-preview") && ribbon.dropEffect === "none", "ribbon offered the unavailable left column")
+    doc.documentElement.dispatchEvent(new events.DragEvent("drop", blocked))
+    assert(!doc.querySelector("video"), "ribbon inserted into the unavailable left margin")
+    const allowed = {...blocked, clientX:1795}
+    doc.documentElement.dispatchEvent(new events.DragEvent("dragover", allowed))
+    assert(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")?.includes("float-drop-preview-right"), "ribbon did not offer the active right column")
+    doc.documentElement.dispatchEvent(new events.DragEvent("drop", allowed))
+    assert(doc.querySelector("video")?.classList.contains("ww-float-right"), "ribbon did not enter the active right column")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("empty graphics drag through their full capture outline into floats", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;max-width:none;border:0"
@@ -9281,7 +9508,7 @@ await check("empty graphics drag through their full capture outline into floats"
       handle.dispatchEvent(new events.DragEvent("dragend", {dataTransfer:data, bubbles:true, composed:true}))
       await layoutFrame()
       assert(graphic.classList.contains(`ww-float-${side}`), `${width} ${edge} ${side}: empty graphic did not retain the pointer's float side`)
-      assert(view.getComputedStyle(graphic).float === (width < 600 ? "none" : side), `${width} ${edge} ${side}: empty graphic did not use the responsive float layout`)
+      assert(view.getComputedStyle(graphic).float === (width < 720 ? "none" : side), `${width} ${edge} ${side}: empty graphic did not use the responsive float layout`)
       assert(view.getComputedStyle(graphic).position === "static" && !graphic.style.left && !graphic.style.top, "empty graphic used spatial positioning")
       assert(graphic.children.length === 0 && graphic.getAttribute("viewBox") === "0 0 1600 900", "drag changed the drawing area")
       assert(!editor.features.manipulation.draggedElement && !editor.appendix.querySelector("#◆float-drop-preview"), "empty graphic drag left stale state")

@@ -1420,7 +1420,7 @@ export class TransformationFeature extends EditorFeature {
       if(x) {
         const width = Math.max(0, gesture.cssWidth + dw)
         if(floatSideFromStyles(style.float, target.style, target.classList) !== "none") {
-          this.#write("--ww-float-size", `min(100%, var(--ww-float-width), ${width}px)`)
+          this.#write("--ww-float-size", `${width}px`)
         }
         this.#write("max-width", `${width}px`)
       }
