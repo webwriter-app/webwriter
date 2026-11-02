@@ -118,8 +118,9 @@ export const aiChatStyles = css`
       position: fixed;
       inset: auto;
       top: 44px;
-      right: 7rem;
+      right: clamp(.5rem, calc(100vw - min(600px, calc(100vw - 1rem)) - .5rem), 7rem);
       width: min(600px, calc(100vw - 1rem));
+      max-width: calc(100vw - 1rem);
       margin: 0;
       padding: 0;
       border: 1px solid #c8d2df;
@@ -137,7 +138,16 @@ export const aiChatStyles = css`
     .ai-bar-reply-close {position: absolute; z-index: 1; top: .3rem; right: .3rem; display: grid; place-items: center; width: 1.3rem; height: 1.3rem; padding: 0; border: 0; border-radius: 50%; background: rgb(242 242 242 / 80%); color: #526b86; font: inherit; cursor: pointer;}
     .ai-bar-reply-close:focus-visible {outline: 2px solid #3977c7;}
     @supports (top: anchor(bottom)) {
-      .ai-bar-reply {position-anchor: --ai-reply-bar; left: anchor(left); right: auto; top: calc(anchor(bottom) + 12px); width: anchor-size(width);}
+      .ai-bar-reply {
+        --ai-reply-width: clamp(min(18rem, calc(100vw - 1rem)), anchor-size(width), min(600px, calc(100vw - 1rem)));
+        position-anchor: --ai-reply-bar;
+        left: clamp(.5rem, anchor(left), calc(100vw - var(--ai-reply-width) - .5rem));
+        right: auto;
+        top: calc(anchor(bottom) + 12px);
+        width: var(--ai-reply-width);
+      }
+      .ai-bar-reply::before, .ai-bar-reply::after {position: fixed; position-anchor: --ai-reply-bar; top: calc(anchor(bottom) - 2px); left: calc(anchor(left) + 4px);}
+      .ai-bar-reply::after {top: anchor(bottom); left: calc(anchor(left) + 5px);}
     }
 
     @container (max-width: 124px) {

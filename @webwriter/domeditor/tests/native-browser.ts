@@ -1131,15 +1131,20 @@ await check("Closed AI bar shows status and anchored reply speech bubbles", asyn
       const reply = bubble.getBoundingClientRect()
       const input = bar.getBoundingClientRect()
       const origin = icon.getBoundingClientRect()
-      assert(Math.abs(reply.left - input.left) < 1 && Math.abs(reply.width - input.width) < 1,
-        `reply does not share the AI bar's position and width: ${JSON.stringify({reply: reply.toJSON(), input: input.toJSON()})}`)
+      const expectedWidth = Math.min(600, innerWidth - 16, Math.max(288, input.width))
+      const expectedLeft = Math.max(8, Math.min(input.left, innerWidth - expectedWidth - 8))
+      assert(Math.abs(reply.left - expectedLeft) < 1 && Math.abs(reply.width - expectedWidth) < 1,
+        `reply does not fit beside the AI bar: ${JSON.stringify({reply: reply.toJSON(), input: input.toJSON()})}`)
       const spike = getComputedStyle(bubble, "::before")
-      const spikeX = reply.left + parseFloat(getComputedStyle(bubble).borderLeftWidth) + parseFloat(spike.left) + parseFloat(spike.borderLeftWidth)
+      const spikeX = parseFloat(spike.left) + parseFloat(spike.borderLeftWidth)
       assert(Math.abs(spikeX - (origin.left + origin.width / 2)) <= 1.5, "speech-bubble spike does not point to the AI icon")
       assert(reply.top > input.bottom, "speech bubble overlaps the AI bar")
     }
     checkGeometry()
     ribbon.style.width = "calc(100% - 100px)"
+    await layoutFrame()
+    checkGeometry()
+    ribbon.style.width = "400px"
     await layoutFrame()
     checkGeometry()
     bubble.querySelector<HTMLButtonElement>(".ai-bar-reply-close")!.click()
