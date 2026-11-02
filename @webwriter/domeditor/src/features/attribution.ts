@@ -17,7 +17,8 @@ export class AttributionFeature extends EditorFeature {
   }
 
   private canAttribute(element: Element) {
-    return isBoardCard(element) || isBoardColumn(element) || element.parentElement === this.root(element)
+    return !element.matches("hr, h1, h2, h3, h4, h5, h6")
+      && (isBoardCard(element) || isBoardColumn(element) || element.parentElement === this.root(element))
   }
 
   activeListeners: DocumentListenerMap = {

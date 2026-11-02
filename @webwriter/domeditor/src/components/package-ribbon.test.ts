@@ -1102,8 +1102,8 @@ describe("package ribbon controls", () => {
     await Promise.resolve()
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
-    expect(details.style.left).toBe("122px")
-    expect(details.style.top).toBe("72px")
+    expect(details.getAttribute("part")).toMatch(/anchor-control-/)
+    expect(button.className).toMatch(/◆anchor-target-/)
     expect(details.textContent).toContain("By Ada, Grace")
     expect(details.textContent).toContain("Primary education")
     expect(details.textContent).toContain("Natural sciences, mathematics and statistics")
@@ -1224,7 +1224,7 @@ describe("package ribbon controls", () => {
     finally {vi.useRealTimers()}
   })
 
-  it("opens package details to the right when there is no room on the left", async () => {
+  it("anchors package details with a placement fallback", async () => {
     const ribbon = new AppRibbon()
     ribbon.activeMenu = "Start"
     const pkg = packageFixture("right")
@@ -1246,10 +1246,11 @@ describe("package ribbon controls", () => {
     await Promise.resolve()
 
     const details = button.shadowRoot!.querySelector<HTMLElement>(".details")!
-    expect(Number.parseFloat(details.style.left)).toBeGreaterThanOrEqual(142)
+    expect(details.getAttribute("part")).toMatch(/anchor-control-/)
+    expect(button.className).toMatch(/◆anchor-target-/)
   })
 
-  it("keeps package details inside a narrow viewport on both axes", async () => {
+  it("configures package details to fit narrow viewports", async () => {
     const previousWidth = window.innerWidth
     const previousHeight = window.innerHeight
     Object.defineProperty(window, "innerWidth", {value: 320, configurable: true})
@@ -1281,12 +1282,12 @@ describe("package ribbon controls", () => {
       await Promise.resolve()
       await button.updateComplete
 
-      const left = Number.parseFloat(details.style.left)
-      const top = Number.parseFloat(details.style.top)
-      expect(left).toBeGreaterThanOrEqual(8)
-      expect(left + 272).toBeLessThanOrEqual(312)
-      expect(top).toBeGreaterThanOrEqual(8)
-      expect(top + 100).toBeLessThanOrEqual(292)
+      expect(details.getAttribute("part")).toMatch(/anchor-control-/)
+      const state = (document as any)[Symbol.for("webwriter.anchor-positioning")]
+      const css = Array.from(state.sheets.values(), (entry: any) => entry.source as string).join("\n")
+      expect(css).toContain("position-try-fallbacks")
+      expect(css).toContain("max-width:calc(100vw - 16px)")
+      expect(css).toContain("max-height:calc(100dvh - 16px)")
     }
     finally {
       Object.defineProperty(window, "innerWidth", {value: previousWidth, configurable: true})

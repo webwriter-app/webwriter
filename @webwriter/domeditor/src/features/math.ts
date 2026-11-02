@@ -495,7 +495,7 @@ export class MathFeature extends EditorFeature {
     return true
   }
 
-  create(structure?: string) {
+  create(structure?: string, onTarget?: (target: Element) => void) {
     if(structure !== undefined && !mathStructureOptions.some(option => option.command === `structure:${structure}`)) return null
     const math = mathElement("math", mathElement("mrow"))
     math.setAttribute("display", "block")
@@ -503,7 +503,7 @@ export class MathFeature extends EditorFeature {
       const range = document.createRange()
       range.selectNodeContents(math.firstChild!)
       range.collapse(true)
-      this.insertStructure(range, structure, false)
+      this.insertStructure(range, structure, false, false, onTarget)
     }
     return math
   }
@@ -515,11 +515,11 @@ export class MathFeature extends EditorFeature {
       document.body.focus({preventScroll: true})
       if(!document.body.contains(selected)) return false
       this.editor.features.selection.selectElement(selected)
-      const math = this.create()!
+      let target: Element | undefined
+      const math = this.create(structure, element => target = element)!
       this.editor.features.manipulation.insert(math)
       if(!math.isConnected) return false
-      $.move(math.firstChild!, 0)
-      if(structure) this.insertStructure(document.getSelection()!.getRangeAt(0).cloneRange(), structure)
+      $.move(target ?? math.firstChild!, 0)
       this.changed(true)
       return true
     }
@@ -810,7 +810,7 @@ export class MathFeature extends EditorFeature {
     }
   }
 
-  private insertStructure(range: Range, name: string, select = true, replace = false): boolean {
+  private insertStructure(range: Range, name: string, select = true, replace = false, onTarget?: (target: Element) => void): boolean {
     const extra = ["sqrt", "cbrt", "coprod", "norm", "floor", "ceil", "angle", "cancel", "bcancel", "xcancel", "box", "overbrace", "underbrace", "overbracket", "underbracket", "overparen", "underparen", "text"]
     if(!mathStructureOptions.some(option => option.command === `structure:${name}`) && !extra.includes(name)) return false
     if(replace && !this.removeRange(range)) return false
@@ -890,6 +890,7 @@ export class MathFeature extends EditorFeature {
     else node = mathElement(name === "int" ? "msubsup" : "munderover", mathElement("mo", operators[name]), first, second)
     parent.insertBefore(node, operand[0]?.parentNode === parent ? operand[0] : parent.childNodes[offset] ?? null)
     first.append(...operand)
+    onTarget?.(target)
     if(select) {
       if(name === "text") $.move(node.firstChild ?? node, node.firstChild instanceof Text ? node.firstChild.length : 0)
       else if(name === "square" && operand.length) $.move(...after(node))

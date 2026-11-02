@@ -628,7 +628,7 @@ export class BoardFeature extends EditorFeature {
       const resizeHandle = overlay.querySelector<HTMLElement>('[data-transform-mode="scale"]')
       if(resizeHandle) resizeHandle.hidden = !this.editor.allows("style", target)
     }
-    if(changed) this.editor.features.attribution.refresh()
+    if(changed && !this.editor.options.reader) this.editor.features.attribution.refresh()
   }
 
   refresh() {
@@ -721,7 +721,7 @@ export class BoardFeature extends EditorFeature {
     this.anchors.destroy(); this.measuredTransforms = false
     for(const overlay of this.transformOverlays.values()) overlay.remove()
     this.transformOverlays.clear()
-    this.editor.features.attribution.refresh()
+    if(!this.editor.options.reader) this.editor.features.attribution.refresh()
     // Cloned board nodes can retain a marker after their anchor binding ends.
     for(const element of document.body.querySelectorAll<HTMLElement>(".ww-board-column, .ww-board-card")) {
       for(const name of Array.from(element.classList)) if(name.startsWith("◆anchor-target-")) element.classList.remove(name)

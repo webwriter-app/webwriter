@@ -471,6 +471,8 @@ describe.each(["img", "picture"])("%s stretching", tag => {
     editor.doc.stopCapturing()
     const original = editor.toHTML(true)
     const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+    // Exercise resize geometry for directions hidden by the current document UI.
+    handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 200}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 300 + dx, clientY: 200 + dy, shiftKey: true, altKey: true}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
@@ -2696,10 +2698,13 @@ describe("transform controls and geometry", () => {
       else selectNode(target)
       const initialPosition = target.style.position
       const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+      // Exercise resize geometry for directions hidden by the current document UI.
+      handle.hidden = false
       const dx = direction.includes("left") ? 20 : direction.includes("right") ? -20 : 0
       const dy = direction.includes("up") ? 10 : direction.includes("down") ? -10 : 0
 
       for(const modifiers of [{}, {ctrlKey: true}, {metaKey: true}, {shiftKey: true}, {altKey: true}]) {
+        handle.hidden = false
         handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
         document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy, ...modifiers}))
         expect(target.style.position).toBe(initialPosition)
@@ -2736,6 +2741,8 @@ describe("transform controls and geometry", () => {
       if(captured) captureNode(target)
       else selectNode(target)
       const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${edge}-${edge}`)!
+      // Exercise resize geometry for directions hidden by the current document UI.
+      handle.hidden = false
 
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: x, clientY: y}))
       document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: x + dx, clientY: y + dy}))
@@ -2771,6 +2778,8 @@ describe("transform controls and geometry", () => {
     mockRect(target)
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right-right")!
+    // Exercise resize geometry for directions hidden by the current document UI.
+    handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 115}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 213, clientY: 115, ...modifiers}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
@@ -2789,6 +2798,8 @@ describe("transform controls and geometry", () => {
     mockRect(target)
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right-right")!
+    // Exercise resize geometry for directions hidden by the current document UI.
+    handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 115}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 220, clientY: 115}))
     expect(target.style.maxWidth).toBe("120px")
@@ -2812,6 +2823,8 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     const resize = (edge: string, dx: number, dy: number) => {
       const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${edge}-${edge}`)!
+      // Exercise resize geometry for directions hidden by the current document UI.
+      handle.hidden = false
       handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
       document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 200 + dx, clientY: 150 + dy}))
       document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
@@ -2874,19 +2887,22 @@ describe("transform controls and geometry", () => {
     editor.doc.syncFromDOM()
     const initial = target.getAttribute("style")
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right-right")!
+    // Exercise resize geometry for directions hidden by the current document UI.
+    handle.hidden = false
     const drag = () => {
+      handle.hidden = false
       handle.dispatchEvent(pointer("pointerdown", {pointerId:3, clientX:200, clientY:125}))
       document.dispatchEvent(pointer("pointermove", {pointerId:3, clientX:240, clientY:125}))
     }
     drag()
-    expect(target.style.getPropertyValue("--ww-float-size")).toBe("min(100%, var(--ww-float-width), 140px)")
+    expect(target.style.getPropertyValue("--ww-float-size")).toBe("140px")
     document.dispatchEvent(pointer("pointercancel", {pointerId:3}))
     expect(target.getAttribute("style")).toBe(initial)
     drag()
     document.dispatchEvent(pointer("pointerup", {pointerId:3}))
     await mutationsDelivered()
     const resized = target.getAttribute("style")
-    expect(resized).toContain("--ww-float-size: min(100%, var(--ww-float-width), 140px)")
+    expect(resized).toContain("--ww-float-size: 140px")
     editor.doc.undo()
     await mutationsDelivered()
     expect(document.querySelector("aside")!.getAttribute("style")).toBe(initial)
@@ -2921,6 +2937,8 @@ describe("transform controls and geometry", () => {
     mockRect(target)
     selectNode(target)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-right-right")!
+    // Exercise resize geometry for directions hidden by the current document UI.
+    handle.hidden = false
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 150}))
     document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
@@ -3398,8 +3416,10 @@ describe("SVG canvas cropping", () => {
   }
   function start(direction = "down-right") {
     if(!direction.includes("-")) direction = `${direction}-${direction}`
-    feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
-      .dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
+    const handle = feature.overlay.querySelector<HTMLElement>(`#◆transform-overlay-scale-${direction}`)!
+    // Exercise the geometry for directions hidden in document layout.
+    handle.hidden = false
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 150}))
   }
   function drag(options: PointerEventInit = {}) {
     document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 180, clientY: 140, ...options}))

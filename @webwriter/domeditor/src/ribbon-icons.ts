@@ -387,6 +387,7 @@ const icons: Record<string, string> = {
   Lists: list,
   Spacing: lineHeight,
   Paragraph: pilcrow,
+  Divider: minus,
   "Preformatted Text": code,
   Code: code,
   "Heading 1": h1,

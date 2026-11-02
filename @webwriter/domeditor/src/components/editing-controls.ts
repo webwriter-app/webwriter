@@ -501,6 +501,12 @@ export abstract class EditingControls extends LitElement {
         class="mark-dropdown-option"
         role="option"
         aria-selected=${active}
+        @click=${(event: MouseEvent) => {
+          const target = event.target as Element
+          if(target.closest("input, select, button, textarea, a")) return
+          const input = (event.currentTarget as HTMLElement).querySelector<HTMLInputElement>('input[type="checkbox"]')
+          input?.click()
+        }}
       >
         <input
           type="checkbox"

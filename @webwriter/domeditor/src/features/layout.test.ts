@@ -799,7 +799,7 @@ describe("document floats", () => {
   })
 
   it("does not expose former column, flex or grid commands or selection controls", () => {
-    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFloatSticky", "setFloat", "moveFloat", "movePlacement"])
+    expect(Object.keys(editor.features.layout.actions)).toEqual(["setFullWidth", "setFloatSticky", "setFloat", "moveFloat", "movePlacement"])
     document.querySelector<HTMLElement>("section")!.style.display = "grid"
     $.selectElement(document.querySelector("section")!)
     editor.features.layout.refresh()

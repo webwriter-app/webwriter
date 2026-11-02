@@ -672,6 +672,7 @@ describe("table cell selection", () => {
       point = {...point, offset: 4}
       first.dispatchEvent(new PointerEvent("pointermove", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
       document.dispatchEvent(new Event("selectionchange"))
+      document.dispatchEvent(new PointerEvent("pointerup", {clientX: 50, clientY: 15, bubbles: true, cancelable: true}))
       expect(window.getSelection()?.toString()).toBe("lph")
       expect(states.length).toBeGreaterThan(0)
       expect(states).toEqual(states.map(() => ({collapsed: false, table: true, cells: false})))
@@ -1398,7 +1399,8 @@ describe("table gap controls", () => {
       expect(transform.d).toBeCloseTo(a)
       expect(parseFloat(button.style.getPropertyValue("--gap-length"))).toBeCloseTo(index < 3 ? 88 : 208)
     })
-    expect(table.outerHTML).toBe(authored)
+    expect(table.outerHTML.replace(/ class="◆anchor-target-\d+"/, "")).toBe(authored)
+    expect(editor.toHTML(true)).not.toContain("◆")
     expect(editor.toHTML(true)).not.toContain("table-gaps")
     expect(editor.doc.body.toString()).not.toContain("table-gaps")
   })

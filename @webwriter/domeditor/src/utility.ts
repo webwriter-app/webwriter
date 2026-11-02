@@ -501,7 +501,7 @@ export class EditingSelection {
 
   /** Finds gaps from a widget's authored child boxes without querying native
    * caret hit testing, which may cross its flattened slot boundaries. */
-  static widgetGapFromCoords(x: number, y: number, pointerTarget: EventTarget | null | undefined, schema?: Schema): {node: Node, offset: number, overrideNative: boolean} | undefined {
+  static widgetGapFromCoords(x: number, y: number, pointerTarget: EventTarget | null | undefined, schema?: Schema, fromSlotPadding = false): {node: Node, offset: number, overrideNative: boolean} | undefined {
     if(pointerTarget instanceof Element && pointerTarget.getRootNode() instanceof ShadowRoot
       && (pointerTarget.getRootNode() as ShadowRoot).host !== document.body) {
       // A widget can render padding around a slot outside the authored page.
@@ -514,7 +514,7 @@ export class EditingSelection {
         .map(page => ({page, rect: page.getBoundingClientRect()}))
         .filter(({rect}) => rect.height > 0 && x >= rect.left && x <= rect.right && (y < rect.top || y > rect.bottom))
         .sort((a, b) => Math.min(Math.abs(y - a.rect.top), Math.abs(y - a.rect.bottom)) - Math.min(Math.abs(y - b.rect.top), Math.abs(y - b.rect.bottom)))
-      if(pages[0]) return this.widgetGapFromCoords(x, y, pages[0].page, schema)
+      if(pages[0]) return this.widgetGapFromCoords(x, y, pages[0].page, schema, true)
       return
     }
     const point = (node: Node, offset: number) => {
@@ -530,7 +530,7 @@ export class EditingSelection {
     while(widget && !isContentfulWidget(widget, schema)) widget = widget.parentElement
     if(widget && !atomicEditingContainer(pointerTarget as Node, schema)) {
       const widgetRect = widget.getBoundingClientRect()
-      if(isContentfulWidget(widget.parentElement, schema) && widgetRect.height > 0
+      if(!fromSlotPadding && isContentfulWidget(widget.parentElement, schema) && widgetRect.height > 0
         && (y < widgetRect.top || y > widgetRect.bottom)) {
         return gap(widget, y < widgetRect.top ? "before" : "after")
       }

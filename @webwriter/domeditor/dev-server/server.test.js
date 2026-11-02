@@ -417,7 +417,7 @@ describe("development server", () => {
       // turn into an application API just by omitting that header.
       expect((await rawRequest(path, {...init, headers: {...init.headers, Host: content.host}})).status).toBe(403)
     }
-    const redirect = await fetch(`${baseUrl}/live/?liveSession=missing`, {redirect: "manual"})
+    const redirect = await fetch(`${baseUrl}/live/?liveSession=missing&liveToken=missing`, {redirect: "manual"})
     expect(redirect.status).toBe(307)
     expect(new URL(redirect.headers.get("Location")).origin).toBe(content.origin)
     expect(upstreamFetch).not.toHaveBeenCalled()

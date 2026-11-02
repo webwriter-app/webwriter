@@ -666,12 +666,13 @@ describe("canvas document layout", () => {
     expect(document.documentElement.classList.contains("◆canvas-active")).toBe(true)
     expect(document.head.querySelector(`style`)).not.toBeNull()
 
+    const canvasSheet = (editor.features.canvas as any).stylesheet as CSSStyleSheet
     editor.features.canvas.disable()
 
     expect(document.body.classList.contains(canvasClass)).toBe(true)
     expect(editor.appendix.querySelector('[part="canvas-controls"]')).toBeNull()
     expect(document.documentElement.classList.contains("◆canvas-active")).toBe(false)
-    expect(editor.appendix.adoptedStyleSheets.some(sheet => Array.from(sheet.cssRules).some(rule => rule.cssText.includes(".◆canvas-controls")))).toBe(false)
+    expect(editor.appendix.adoptedStyleSheets).not.toContain(canvasSheet)
     expect(Array.from(document.head.querySelectorAll("style")).some(style => style.textContent === canvasStyles)).toBe(true)
   })
 

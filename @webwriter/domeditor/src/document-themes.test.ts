@@ -44,6 +44,12 @@ describe("document themes", () => {
     }
   })
 
+  it("preserves divider box sizing so themed lines have a painted content area", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain(":is(&, & > main, & > article, & > section) > :not(hr) {\n      box-sizing: border-box;")
+    }
+  })
+
   it("uses only light colors regardless of system preferences or theme attributes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toContain("color-scheme: only light;")

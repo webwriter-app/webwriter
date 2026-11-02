@@ -29,7 +29,7 @@ import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStyle
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {authoredDetailsOpen, isHTMLDetailsElement} from "../editor-artifacts"
-import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../insertion"
+import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
   elementAttributeState,
@@ -501,6 +501,11 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   ribbonElement(tag: string): Element {
+    if(tag === "hr") {
+      const template = document.createElement("template")
+      template.innerHTML = emptyElementHTML(tag)
+      return template.content.firstElementChild!
+    }
     if(tag === "table") return createTable(2, 2)
     if(tag === "ul" || tag === "ol") {
       const list = document.createElement(tag)
@@ -1134,6 +1139,39 @@ export class ManipulationFeature extends EditorFeature {
     }
   }
 
+  /** A command inserts one element into a cell by replacing its current content. */
+  private replaceCellInsertion(node: Node) {
+    const selected = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    const selection = document.getSelection()
+    if(!selection?.rangeCount) return false
+    const range = selection.getRangeAt(0)
+    if(!selected && (atomicEditingContainer(range.startContainer, this.editor.schema)
+      || atomicEditingContainer(range.endContainer, this.editor.schema))) return false
+    const cell = cellForNode(selected ?? range.startContainer)
+    if(!cell || !cell.isConnected || !getDocumentRoot().contains(cell)
+      || atomicEditingContainer(cell, this.editor.schema)) return false
+    if(!selected && cellForNode(range.endContainer) !== cell) return false
+    const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
+    const elements = nodes.filter(isElement)
+    if(!elements.length) return false
+    // Do not discard an existing irregular cell or insert multiple elements.
+    if(cell.children.length > 1 || elements.length !== 1
+      || nodes.some(child => child instanceof Text && child.data.trim())
+      || nodes.some(child => cell.contains(child) || child.contains(cell))) return true
+    const replacement = elements[0]
+    const retained = Array.from(cell.childNodes).filter(child => child.nodeType === Node.COMMENT_NODE)
+    if(!this.editor.schema.isContentValid(cell, [...retained, ...nodes])) return true
+    this.withNormalization(() => {
+      const content = Array.from(cell.childNodes).filter(child => child.nodeType !== Node.COMMENT_NODE)
+      for(const child of nodes) cell.insertBefore(child, content[0] ?? null)
+      content.forEach(child => child.remove())
+      if(this.insertedWidget(replacement)) this.editor.features.selection.captureElement(replacement)
+      else $.selectElement(replacement)
+    })
+    this.editor.postSelectionPath(true)
+    return true
+  }
+
   /** Element insertion replaces a selected host or an empty paragraph. */
   private replaceInsertionElement(node: Node) {
     const target = this.insertionReplacement()
@@ -1742,6 +1780,7 @@ export class ManipulationFeature extends EditorFeature {
 
   private createRibbonElement(tag: string) {
     if(!this.allowsCaptionInsertion([this.ribbonElement(tag)])) return
+    if(this.commandPlacement && this.replaceCellInsertion(this.ribbonElement(tag))) return
     if(this.convertInsertion(tag)) return
     if(tag === "table") this.editor.features.table.actions.insertTable({type: "insertTable", rows: 2, columns: 2})
     else if(tag === "details" && this.commandPlacement) {
@@ -1926,7 +1965,7 @@ export class ManipulationFeature extends EditorFeature {
       ? this.editor.features.slides.containingSlide(target) : getDocumentRoot()
     if(!root || target === root || !root.contains(target)) return null
     while(target.parentElement && target.parentElement !== root) target = target.parentElement
-    if(target.matches("caption, figcaption")) return null
+    if(target.matches("caption, figcaption, hr, h1, h2, h3, h4, h5, h6")) return null
     return target.parentElement === root && !slideLayoutRole(target) ? target : null
   }
 
@@ -3169,7 +3208,12 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   private inheritInsertionLayout<T>(nodes: Node[], insert: () => T): T {
-    if(this.inheritingInsertionLayout || this.editor.features.canvas.active || this.editor.features.slides.active) return insert()
+    if(this.inheritingInsertionLayout) return insert()
+    if(this.editor.features.canvas.active || this.editor.features.slides.active) {
+      this.inheritingInsertionLayout = true
+      try { return insert() }
+      finally { this.inheritingInsertionLayout = false }
+    }
     const elements = nodes.filter(isElement)
     const end = this.editor.doc.beginUndoGroup()
     this.inheritingInsertionLayout = true
@@ -3202,6 +3246,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.allowsCaptionInsertion(Array.from(fragment.childNodes))) return false
     if(commandInsertion) {
       this.hoverInsertion(false)
+      if(this.replaceCellInsertion(fragment)) return
       if(this.replaceInsertionElement(fragment)) return
       this.moveCommandInsertionOutsideFloat()
     }
@@ -4146,7 +4191,8 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
-    if(node && !node.isConnected && !this.inheritingInsertionLayout) {
+    if(node && !node.isConnected && !this.inheritingInsertionLayout
+      && !this.editor.features.canvas.active && !this.editor.features.slides.active) {
       const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
       return this.inheritInsertionLayout(nodes, () => this.insert(node, splitDepth, strict, commandInsertion))
     }
@@ -4167,6 +4213,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!node && this.editor.features.board.active && this.editor.features.board.editingScope($.anchor)?.matches("h2")) return this.editor.features.board.addCard()
     if(node) {
       this.hoverInsertion(false)
+      if(commandInsertion && this.replaceCellInsertion(node)) return
       if(this.replaceInsertionElement(node)) return
       if(commandInsertion) this.moveCommandInsertionOutsideFloat()
       this.selectCapturedElementForInsertion()

@@ -6,6 +6,7 @@ import "./float-info"
 import type {FloatInfo} from "./float-info"
 import {css, html, nothing, type TemplateResult} from "lit"
 import {guard} from "lit/directives/guard.js"
+import {live} from "lit/directives/live.js"
 import {unsafeSVG} from "lit/directives/unsafe-svg.js"
 import {repeat} from "lit/directives/repeat.js"
 import {aiChatStyles} from "./ai-chat.styles"
@@ -1523,12 +1524,12 @@ export class DomEditorToolbox extends EditingControls {
         <div class="layout-action-controls float-action-controls">
           ${this.documentLayout.mode === "document" ? html`
           <span class="float-placement-label caption-label-row">Placement
-            <label class="float-full-width"><input type="checkbox" .checked=${Boolean(target?.fullWidth)}
+            <label class="float-full-width"><input type="checkbox" .checked=${live(Boolean(target?.fullWidth))}
               ?disabled=${!target?.canFullWidth && !target?.fullWidth || this.historyState.preview !== null || this.htmlPending}
               @change=${(event: Event) => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setFullWidth", enabled: (event.currentTarget as HTMLInputElement).checked}, bubbles: true, composed: true,
               }))}>Full width</label>
-            <label class="float-pin"><input type="checkbox" .checked=${canPin && Boolean(target?.floatSticky)}
+            <label class="float-pin"><input type="checkbox" .checked=${live(canPin && Boolean(target?.floatSticky))}
               ?disabled=${!canPin || this.historyState.preview !== null || this.htmlPending}
               @change=${(event: Event) => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setFloatSticky", enabled: (event.currentTarget as HTMLInputElement).checked}, bubbles: true, composed: true,
@@ -1593,7 +1594,7 @@ export class DomEditorToolbox extends EditingControls {
                 detail: {type: "setBoardGrouping", mode}, bubbles: true, composed: true,
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>` : nothing}
-          <span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
+          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? html`<span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
             () => this.dispatchEvent(new CustomEvent("layout-action", {
               detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
             })), undefined, this.historyState.preview !== null || this.htmlPending)}
@@ -1619,8 +1620,8 @@ export class DomEditorToolbox extends EditingControls {
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setCaption", position: captionPlacement, alignment}, bubbles: true, composed: true,
               }))}>${this.captionIcon(captionPlacement, alignment)}</button>`)}
-          </div>
-          ${this.renderAttributionField()}
+          </div>` : nothing}
+          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? this.renderAttributionField() : nothing}
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
     `

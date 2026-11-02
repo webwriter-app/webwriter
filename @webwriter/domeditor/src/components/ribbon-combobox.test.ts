@@ -3,7 +3,43 @@ import {afterEach, expect, it, vi} from "vitest"
 import {RibbonCombobox} from "./ribbon-combobox"
 import {colorPaletteStyles} from "./color-palette"
 
-afterEach(() => document.body.replaceChildren())
+afterEach(() => {
+  document.body.replaceChildren()
+  localStorage.removeItem("webwriter_recent_custom_colors_v1")
+})
+
+it("keeps the ten most recently used custom colors across palettes", async () => {
+  const combo = new RibbonCombobox()
+  combo.variant = "color"
+  document.body.append(combo)
+  await combo.updateComplete
+  const trigger = combo.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!
+  for(let i = 0; i < 11; i++) {
+    trigger.click()
+    await combo.updateComplete
+    const input = combo.shadowRoot!.querySelector<HTMLInputElement>('input[type="color"]')!
+    input.value = `#${i.toString(16).padStart(6, "0")}`
+    input.dispatchEvent(new Event("change", {bubbles: true}))
+    await combo.updateComplete
+  }
+  const other = new RibbonCombobox()
+  other.variant = "color"
+  document.body.append(other)
+  await other.updateComplete
+  other.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+  await other.updateComplete
+  const row = other.shadowRoot!.querySelector<HTMLElement>(".color-recent")!
+  expect(row.nextElementSibling?.classList.contains("palette-custom")).toBe(true)
+  expect([...row.querySelectorAll("button")].map(button => button.title)).toEqual(
+    Array.from({length: 10}, (_, index) => `#${(10 - index).toString(16).padStart(6, "0")}`),
+  )
+  row.querySelectorAll<HTMLButtonElement>("button")[5].click()
+  await other.updateComplete
+  other.shadowRoot!.querySelector<HTMLButtonElement>(".combobox")!.click()
+  await other.updateComplete
+  expect(other.shadowRoot!.querySelector<HTMLButtonElement>(".color-recent button")!.title).toBe("#000005")
+  expect(other.shadowRoot!.querySelectorAll(".color-recent button")).toHaveLength(10)
+})
 
 it.each(["color", "background-color"])("does not select black for default or transparent %s values", async name => {
   const combo = new RibbonCombobox()

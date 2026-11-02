@@ -271,7 +271,19 @@ describe("captions", () => {
   const setCaption = (position: "none" | "above" | "below") =>
     editor.features.manipulation.actions.setCaption({type: "setCaption", position})
 
-  it.each(["p", "h2"])("preserves a resized %s through caption wrapping, removal and undo", tag => {
+  it.each(["hr", "h1", "h2", "h3", "h4", "h5", "h6"])("does not convert %s to a figure", tag => {
+    document.body.innerHTML = tag === "hr" ? '<hr title="keep">' : `<${tag} title="keep">Heading</${tag}>`
+    const target = document.body.firstElementChild!
+    const original = target.outerHTML
+    $.selectElement(target)
+    expect(editor.features.manipulation.getCaptionPosition()).toBeNull()
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    expect(editor.features.manipulation.cycleCaption()).toBe(false)
+    expect(document.body.firstElementChild).toBe(target)
+    expect(target.outerHTML.replace(/ class="◆[^"]*"/, "")).toBe(original)
+  })
+
+  it.each(["p"])("preserves a resized %s through caption wrapping, removal and undo", tag => {
     document.body.innerHTML = `<${tag} title="keep" style="width: 80%; max-width: 240px !important; height: auto; color: red">Text <em>with formatting</em><!--keep--><unfamiliar-inline>content</unfamiliar-inline></${tag}><p>Other</p>`
     const target = document.body.firstElementChild as HTMLElement
     const children = Array.from(target.childNodes)
@@ -695,6 +707,35 @@ describe("migrated insertion selection", () => {
 describe("insertable element placement and previews", () => {
   const hover = (hovered = true) => editor.features.manipulation.actions.hoverInsertion({type: "hoverInsertion", hovered})
   const insert = (html: string) => editor.features.manipulation.actions.insert({type: "insert", html})
+
+  it.each(["td", "th"])("replaces cell content with a ribbon image in %s and supports undo", tag => {
+    document.body.innerHTML = `<table><tbody><tr><${tag} id="target"><p>Old text</p></${tag}><td>Keep</td></tr></tbody></table>`
+    const cell = document.querySelector(`#target`)!
+    $.move(cell.querySelector("p")!.firstChild!, 2)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "picture"})
+    expect(cell.children).toHaveLength(1)
+    expect(cell.firstElementChild?.localName).toBe("picture")
+    expect(cell.textContent).not.toContain("Old text")
+    expect(document.querySelectorAll("td, th")[1].textContent).toBe("Keep")
+    editor.doc.syncFromDOM()
+    const after = editor.toHTML(true)
+    editor.doc.undo(); expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo(); expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("does not add elements to an irregular cell or insert multiple elements", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p>One</p><p>Two</p></td></tr></tbody></table>'
+    const cell = document.querySelector("td")!
+    $.move(cell.firstElementChild!.firstChild!, 1)
+    insert('<video></video>')
+    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p><p>Two</p>')
+    cell.innerHTML = '<p>One</p>'
+    $.move(cell.firstElementChild!.firstChild!, 1)
+    insert('<video></video><aside>Two</aside>')
+    expect(cloneWithoutEditorMarkers(cell, true).innerHTML).toBe('<p>One</p>')
+  })
 
   it.each(['class="ww-float-left"', 'style="float: right"', 'class="responsive"', 'class="hidden-float" style="float: left"'])('inherits full width past a float (%s)', float => {
     document.body.innerHTML = `<style>.responsive { float: left } .hidden-float { float: none !important }</style><p class="ww-full-width" style="--ww-full-width-size: 900px">Before</p><aside class="ww-float-right">Other float</aside><aside ${float}>Float</aside><p><br></p>`
@@ -2461,7 +2502,7 @@ describe("insert()", () => { // deletes selection => selection = caret/gap
       key: "Enter", ctrlKey: true, metaKey: true, bubbles: true, cancelable: true,
     }))
 
-    expectBodyToBe("<details open=\"\"><summary>Heading</summary><p>a</p><p>b</p></details>")
+    expectBodyToBe("<details><summary>Heading</summary><p>a</p><p>b</p></details>")
   })
   it("validates a block split without cloning unrelated document siblings", () => {
     document.body.innerHTML = `<section><p>ab</p><p>tail</p></section><aside>${"<span>unrelated</span>".repeat(100)}</aside>`

@@ -51,7 +51,7 @@ const presentations: Record<string, ElementPresentation> = {
   span: {name: "Text", icon: "Text"},
   br: {name: "Line Break", icon: "Paragraph"},
   wbr: {name: "Word Break", icon: "Paragraph"},
-  hr: {name: "Divider", icon: "Section"},
+  hr: {name: "Divider", icon: "Divider"},
   code: {name: "Code", icon: "Preformatted Text"},
   kbd: {name: "Keyboard Input", icon: "Input"},
   samp: {name: "Sample Text", icon: "Preformatted Text"},

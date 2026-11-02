@@ -3,6 +3,25 @@ import {colorHex, isCssColor, safeCssColor, themeColorColumns, themeColorCSS} fr
 import {ribbonIcon} from "../ribbon-icons"
 
 const standardColors = ["c00000", "ff0000", "ffc000", "ffff00", "92d050", "00b050", "00b0f0", "0070c0", "002060", "7030a0"]
+const recentColorsKey = "webwriter_recent_custom_colors_v1"
+let recentColors: string[] = []
+let storageAvailable = true
+
+function readRecentColors() {
+  if(!storageAvailable) return recentColors
+  try {
+    const stored: unknown = JSON.parse(globalThis.localStorage?.getItem(recentColorsKey) ?? "null")
+    if(Array.isArray(stored)) recentColors = [...new Set(stored.filter((color): color is string => typeof color === "string" && /^#[0-9a-f]{6}$/.test(color)))].slice(0, 10)
+    else if(stored === null) recentColors = []
+  } catch { storageAvailable = false }
+  return recentColors
+}
+
+function rememberColor(color: string) {
+  recentColors = [color, ...readRecentColors().filter(recent => recent !== color)].slice(0, 10)
+  try { globalThis.localStorage?.setItem(recentColorsKey, JSON.stringify(recentColors)) }
+  catch { storageAvailable = false }
+}
 
 export const colorPaletteStyles = css`
     .border-color-palette {
@@ -21,7 +40,7 @@ export const colorPaletteStyles = css`
     .border-color-palette .color-swatch:hover,
     .border-color-palette .color-swatch:focus-visible,
     .border-color-palette .color-swatch[aria-pressed="true"] { outline: 2px solid #8eb6df; outline-offset: -2px; }
-    .color-standard, .color-suggested { border-top: 1px solid #d8dee6; margin-top: 0.4rem; padding-top: 0.4rem; }
+    .color-standard, .color-suggested, .color-recent { border-top: 1px solid #d8dee6; margin-top: 0.4rem; padding-top: 0.4rem; }
     .palette-action {
       display: flex; align-items: center; gap: 0.4rem; width: 100%; padding: 0.35rem;
       background: transparent; border: 0; text-align: left; cursor: pointer;
@@ -42,9 +61,13 @@ export const colorPaletteStyles = css`
 /** Shared palette contents; the containing control owns popup placement and dismissal. */
 export function renderColorPalette(label: string, value: string, choose: (event: Event, value: string) => void, {automaticValue = "", disabled = false, persistent = false, swatches = [] as readonly string[], paletteHost}: {automaticValue?: string, disabled?: boolean, persistent?: boolean, swatches?: readonly string[], paletteHost?: Element} = {}) {
   const selected = colorHex(value, "")
-  const swatch = (hex: string) => html`<button type="button" class="color-swatch" ?disabled=${disabled}
+  const swatch = (hex: string, recent = false) => html`<button type="button" class="color-swatch" ?disabled=${disabled}
     style=${`background:#${hex}`} aria-label=${`Color #${hex}`} title=${`#${hex}`}
-    aria-pressed=${selected === `#${hex}`} @click=${(event: Event) => choose(event, `#${hex}`)}></button>`
+    aria-pressed=${selected === `#${hex}`} @click=${(event: Event) => {
+      if(disabled) return
+      if(recent) rememberColor(`#${hex}`)
+      choose(event, `#${hex}`)
+    }}></button>`
   const themedSwatch = (hex: string, column: number, row: number) => {
     const variable = `--ww-editor-color-${column}-${row}`
     const current = colorHex(paletteHost ? getComputedStyle(paletteHost).getPropertyValue(variable) : "", `#${hex}`)
@@ -63,7 +86,8 @@ export function renderColorPalette(label: string, value: string, choose: (event:
     ${swatches.some(isCssColor) ? html`<div class="color-grid color-suggested">${swatches.filter(isCssColor).map(color => html`<button type="button" class="color-swatch" ?disabled=${disabled}
       style=${`background:${safeCssColor(color)}`} aria-label=${`Color ${color}`} title=${color}
       aria-pressed=${value.trim().toLowerCase() === color.trim().toLowerCase()} @click=${(event: Event) => choose(event, color)}></button>`)}</div>` : ""}
-    <div class="color-grid color-standard">${standardColors.map(swatch)}</div>
+    <div class="color-grid color-standard">${standardColors.map(color => swatch(color))}</div>
+    ${readRecentColors().length ? html`<div class="color-grid color-recent" role="group" aria-label="Recent custom colors">${readRecentColors().map(color => swatch(color.slice(1), true))}</div>` : ""}
     <div class="palette-custom">
       <button type="button" class="palette-action" ?disabled=${disabled} aria-label="Custom" @click=${(event: Event) => {
         const control = (event.currentTarget as HTMLElement).parentElement!
@@ -75,7 +99,12 @@ export function renderColorPalette(label: string, value: string, choose: (event:
         else input.click()
       }}>${ribbonIcon("Theme")}Custom…</button>
       <input type="color" ?disabled=${disabled} tabindex="-1" ?data-ribbon-input-persistent=${persistent} aria-label=${`Custom ${label.toLowerCase()}`} .value=${selected || "#000000"}
-        @change=${(event: Event) => choose(event, (event.currentTarget as HTMLInputElement).value)}>
+        @change=${(event: Event) => {
+          if(disabled) return
+          const color = (event.currentTarget as HTMLInputElement).value
+          rememberColor(color)
+          choose(event, color)
+        }}>
     </div>
   `
 }

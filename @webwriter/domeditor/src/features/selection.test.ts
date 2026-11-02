@@ -1026,7 +1026,7 @@ describe("revealing selections inside details", () => {
     expect(other.open).toBe(false)
     expect(inner.querySelector("p")).toBe(paragraph)
     editor.doc.syncFromDOM()
-    expect(outer.innerHTML.replaceAll(' open=""', "").replace(/ class="[^"]*"/g, "")).toBe(`${original}<p></p>`)
+    expect(outer.innerHTML.replaceAll(' open=""', "").replace(/ class="[^"]*"/g, "")).toBe(original)
     expect(editor.toHTML(true)).not.toContain("◆")
   })
 
@@ -5221,10 +5221,10 @@ describe("selection invariants", () => {
       document.dispatchEvent(new Event("selectionchange"))
       expect(feature.isInDragSelection).toBe(true)
       const toolboxMessages = () => post.mock.calls.filter(([message]) => [selectionChangeEvent,
-        "dom-editor-mark-state-change", "dom-editor-comment-state-change"].includes(message.type))
+        "dom-editor-mark-state-change", "dom-editor-comment-state-change"].includes((message as {type: string}).type))
       expect(toolboxMessages()).toHaveLength(0)
       pointer(target, "pointerup", 80, 30)
-      const update = toolboxMessages().find(([message]) => message.type === selectionChangeEvent)?.[0]
+      const update = toolboxMessages().find(([message]) => (message as {type: string}).type === selectionChangeEvent)?.[0]
       expect(update).toBeDefined()
       expect(document.getSelection()!.toString()).toBe("ello w")
     },
@@ -6319,7 +6319,8 @@ describe("disclosure gap navigation", () => {
     press("ArrowRight")
     expect($.detailsGap?.element).toBe(inner)
     press("ArrowRight")
-    expect($.anchor).toBe(outer.querySelector(":scope > p"))
+    expect($.detailsGap?.element).toBe(outer)
+    expect($.detailsGap?.placement).toBe("after")
   })
 
   it("keeps the caret in an outer document gap when there is nowhere farther to move", () => {
