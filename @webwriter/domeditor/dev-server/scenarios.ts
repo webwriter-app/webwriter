@@ -1,5 +1,6 @@
 import {SharedDOMDoc} from "../src/domdoc"
 import {LiveSession} from "../src/live-session"
+import {boxStylePresets} from "../src/css-color"
 
 const html = `<!doctype html><html><head><title>Planning a community garden</title></head><body>
 <h1>Planning a community garden</h1>
@@ -18,8 +19,11 @@ const colors = ["#2563eb", "#db2777", "#059669", "#d97706", "#7c3aed", "#0891b2"
 type Kind = "collaboration" | "classroom"
 type Action = "random" | "insert" | "delete" | "format" | "pointer" | "click" | "scroll"
 type Identity = {id: string, name: string, color: string}
-type Participant = {identity: Identity, peer?: SharedDOMDoc, learner?: LiveSession, disconnected: boolean}
-const choose = <T>(items: T[]) => items[Math.floor(Math.random() * items.length)]
+type Participant = {
+  identity: Identity, peer?: SharedDOMDoc, learner?: LiveSession, disconnected: boolean
+  running: boolean, hasRun: boolean, interval: number, timer?: ReturnType<typeof setTimeout>
+}
+const choose = <T>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)]
 
 async function request(path: string, init?: RequestInit) {
   const response = await fetch(path, {headers: {"Content-Type": "application/json"}, ...init})
@@ -37,11 +41,14 @@ export function parseInvitation(value: string, origin = location.origin) {
   expected.protocol = expected.protocol === "https:" ? "wss:" : "ws:"
   const id = url.searchParams.get("liveSession") ?? ""
   const token = url.searchParams.get("liveToken") ?? ""
+  const hostPublicKey = new URLSearchParams(url.hash.slice(1)).get("liveKey") ?? ""
+  const secret = new URLSearchParams(url.hash.slice(1)).get("liveSecret") ?? ""
   if(server.origin !== expected.origin || server.username || server.password || server.pathname !== "/" || server.search || server.hash
-    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) || !/^[A-Za-z0-9_-]{24,256}$/.test(token)) {
+    || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id)
+    || (hostPublicKey ? !/^[A-Za-z0-9_-]{87}$/.test(hostPublicKey) || !/^[A-Za-z0-9_-]{32}$/.test(secret) : !/^[A-Za-z0-9_-]{24,256}$/.test(token))) {
     throw new Error("Use a live-session invitation from this development server.")
   }
-  return {id, token, serverUrl: server.origin}
+  return {id, ...(hostPublicKey ? {peer: {hostPublicKey, secret}} : {token}), serverUrl: server.origin}
 }
 
 export class ScenarioRunner {
@@ -70,10 +77,10 @@ export class ScenarioRunner {
     if(this.participants.length >= 20) throw new Error("A scenario can have at most 20 participants.")
     const index = this.nextId
     const identity = {id: `scenario-${crypto.randomUUID()}`, name: index < names.length ? names[index] : `Participant ${index + 1}`, color: colors[index % colors.length]}
-    const participant: Participant = {identity, disconnected: true}
+    const participant: Participant = {identity, disconnected: true, running: false, hasRun: false, interval: 3000}
     if(this.kind === "classroom") {
       const parsed = parseInvitation(invitation)
-      if(this.invitation && (parsed.id !== this.invitation.id || parsed.token !== this.invitation.token)) throw new Error("Reset before connecting participants to a different session.")
+      if(this.invitation && (parsed.id !== this.invitation.id || parsed.token !== this.invitation.token || parsed.peer?.hostPublicKey !== this.invitation.peer?.hostPublicKey || parsed.peer?.secret !== this.invitation.peer?.secret)) throw new Error("Reset before connecting participants to a different session.")
       this.invitation = parsed
     }
     await this.connect(participant)
@@ -121,6 +128,7 @@ export class ScenarioRunner {
 
   disconnect(participant: Participant) {
     if(!this.participants.includes(participant) || participant.disconnected) return
+    this.pause(participant)
     if(participant.peer) participant.peer.disconnectCollaboration()
     if(participant.learner) { participant.learner.destroy(); participant.learner = undefined }
     participant.disconnected = true
@@ -133,6 +141,7 @@ export class ScenarioRunner {
 
   remove(participant: Participant) {
     if(!this.participants.includes(participant)) return
+    this.pause(participant)
     participant.peer?.destroy(); participant.learner?.destroy()
     this.participants = this.participants.filter(item => item !== participant)
   }
@@ -143,18 +152,7 @@ export class ScenarioRunner {
       if(participant.peer.connectionStatus !== "connected") throw new Error("The participant is not connected yet.")
       const kind = action === "random" ? choose(["insert", "delete", "format"] as const) : action
       if(kind !== "insert" && kind !== "delete" && kind !== "format") throw new Error("Choose an editing action.")
-      const walker = document.createTreeWalker(participant.peer.root, NodeFilter.SHOW_TEXT)
-      const nodes: Text[] = []
-      while(walker.nextNode()) {
-        const node = walker.currentNode as Text
-        // Only edit ordinary paragraph text; leave widgets and unfamiliar content intact.
-        if(node.data.trim() && node.parentElement?.closest("p") && !node.parentElement.closest('[contenteditable="false"]')) {
-          let parent = node.parentElement
-          let custom = false
-          while(parent && parent !== participant.peer.root) { if(parent.localName.includes("-")) custom = true; parent = parent.parentElement }
-          if(!custom) nodes.push(node)
-        }
-      }
+      const nodes = this.editableText(participant.peer.root)
       if(!nodes.length) throw new Error("No editable paragraph text is available. Add a paragraph or reset the scenario.")
       const node = choose(nodes)
       const start = Math.floor(Math.random() * node.length)
@@ -180,8 +178,135 @@ export class ScenarioRunner {
     return `${participant.identity.name}: ${kind} activity published.`
   }
 
+  private editableText(root: HTMLElement) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    const nodes: Text[] = []
+    while(walker.nextNode()) {
+      const node = walker.currentNode as Text
+      if(!node.data.trim() || !node.parentElement?.closest("p") || node.parentElement.closest('[contenteditable="false"]')) continue
+      let parent: Element | null = node.parentElement
+      let custom = false
+      while(parent && parent !== root) { if(parent.localName.includes("-")) custom = true; parent = parent.parentElement }
+      if(!custom) nodes.push(node)
+    }
+    return nodes
+  }
+
+  private editableBlocks(root: HTMLElement) {
+    return Array.from(root.querySelectorAll<HTMLElement>("p, table")).filter(element => {
+      if(element.closest('[contenteditable="false"]')) return false
+      let parent: Element | null = element
+      while(parent && parent !== root) { if(parent.localName.includes("-")) return false; parent = parent.parentElement }
+      return parent === root && !!element.parentNode
+    })
+  }
+
+  setSpeed(participant: Participant, interval: number) {
+    if(!this.participants.includes(participant) || !Number.isFinite(interval) || interval < 1000 || interval > 10000) throw new Error("Choose an interval between 1 and 10 seconds.")
+    participant.interval = interval
+  }
+
+  resume(participant: Participant, onError: (error: Error) => void = () => {}) {
+    const peer = participant.peer
+    if(!this.participants.includes(participant) || participant.disconnected || !peer || peer.connectionStatus !== "connected") throw new Error("Choose a connected collaborator.")
+    if(participant.running) return
+    participant.running = true; participant.hasRun = true
+    const cycle = () => {
+      if(!participant.running) return
+      try {
+        if(participant.disconnected || peer.connectionStatus !== "connected") throw new Error(`${participant.identity.name} is no longer connected; continuous editing paused.`)
+        const nodes = this.editableText(peer.root)
+        const blocks = this.editableBlocks(peer.root)
+        const words = nodes.flatMap(node => Array.from(node.data.matchAll(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu), match => ({node, start: match.index, text: match[0]})))
+        const paragraphs = blocks.filter(element => element.localName === "p")
+        const kinds = [
+          ...(nodes.length ? ["insert", "delete", "format"] as const : []),
+          ...(words.length ? ["word"] as const : []),
+          ...(paragraphs.length ? ["sentence"] as const : []),
+          ...(blocks.length ? ["style"] as const : []),
+        ]
+        if(!kinds.length) throw new Error("No editable paragraph or table is available; continuous editing paused.")
+        const kind = choose(kinds)
+        let anchor: ReturnType<SharedDOMDoc["relativePositionFromDOMPoint"]>, focus: typeof anchor
+        let apply: () => boolean
+        if(kind === "style") {
+          const block = choose(blocks), parent = block.parentNode!
+          const index = Array.prototype.indexOf.call(parent.childNodes, block)
+          anchor = peer.relativePositionFromDOMPoint(parent, index)
+          focus = peer.relativePositionFromDOMPoint(parent, index + 1)
+          const originalStyle = block.getAttribute("style")
+          const preset = choose(boxStylePresets)
+          apply = () => {
+            const from = anchor && peer.domPointFromRelativePosition(anchor), to = focus && peer.domPointFromRelativePosition(focus)
+            if(!from || !to || from.node !== to.node || to.offset !== from.offset + 1 || from.node.childNodes.item(from.offset) !== block
+              || !this.editableBlocks(peer.root).includes(block) || block.getAttribute("style") !== originalStyle) return false
+            const styles = {"background-color": `#${preset.background}`, "border-width": "1px", "border-style": "solid", "border-color": `#${preset.border}`,
+              padding: "8px", color: "#2f3742", "border-radius": "4px", "box-shadow": "none"}
+            for(const [property, value] of Object.entries(styles)) block.style.setProperty(property, value, block.style.getPropertyPriority(property))
+            return true
+          }
+        } else if(kind === "sentence") {
+          const block = choose(paragraphs), original = block.textContent
+          anchor = peer.relativePositionFromDOMPoint(block, block.childNodes.length); focus = anchor
+          const sentence = choose(["Everyone can contribute an idea.", "We will review the plan together.", "There is more to explore."])
+          apply = () => {
+            const point = anchor && peer.domPointFromRelativePosition(anchor)
+            if(!point || point.node !== block || point.offset !== block.childNodes.length || block.textContent !== original || !this.editableBlocks(peer.root).includes(block)) return false
+            block.append(`${block.textContent?.trim() ? " " : ""}${sentence}`)
+            return true
+          }
+        } else {
+          const word = kind === "word" ? choose(words) : null
+          const node = word?.node ?? choose(nodes), start = word?.start ?? Math.floor(Math.random() * node.length)
+          const end = word ? start + word.text.length : Math.min(node.length, start + 3)
+          anchor = peer.relativePositionFromDOMPoint(node, start); focus = peer.relativePositionFromDOMPoint(node, end)
+          const selected = node.data.slice(start, end)
+          apply = () => {
+            const from = anchor && peer.domPointFromRelativePosition(anchor), to = focus && peer.domPointFromRelativePosition(focus)
+            if(!from || !to || from.node !== to.node || !(from.node instanceof Text) || !this.editableText(peer.root).includes(from.node)
+              || to.offset <= from.offset || from.node.data.slice(from.offset, to.offset) !== selected) return false
+            const text = from.node
+            if(kind === "word" || kind === "insert") text.replaceData(from.offset, to.offset - from.offset, choose(["together", "garden", "ideas", "plants"]))
+            else if(kind === "delete") text.deleteData(from.offset, to.offset - from.offset)
+            else {
+              const range = text.ownerDocument.createRange()
+              range.setStart(text, from.offset); range.setEnd(text, to.offset)
+              range.surroundContents(text.ownerDocument.createElement("strong"))
+            }
+            return true
+          }
+        }
+        if(!anchor || !focus) throw new Error("Could not select the content; continuous editing paused.")
+        peer.awareness.setLocalStateField("selection", {anchor, focus})
+        participant.timer = setTimeout(() => {
+          participant.timer = undefined
+          if(!participant.running) return
+          try {
+            if(participant.disconnected || peer.connectionStatus !== "connected") throw new Error(`${participant.identity.name} is no longer connected; continuous editing paused.`)
+            // Recheck the shared selection and the target before changing it.
+            if(apply()) peer.syncFromDOM()
+            peer.clearSelection()
+            participant.timer = setTimeout(cycle, Math.max(250, participant.interval / 2))
+          } catch(error) { fail(error) }
+        }, Math.max(250, participant.interval / 2))
+      } catch(error) { fail(error) }
+    }
+    const fail = (error: unknown) => {
+      this.pause(participant)
+      onError(error instanceof Error ? error : new Error(String(error)))
+    }
+    cycle()
+  }
+
+  pause(participant: Participant) {
+    participant.running = false
+    if(participant.timer !== undefined) clearTimeout(participant.timer)
+    participant.timer = undefined
+    participant.peer?.clearSelection()
+  }
+
   disposeParticipants() {
-    this.participants.forEach(participant => { participant.peer?.destroy(); participant.learner?.destroy() })
+    this.participants.forEach(participant => { this.pause(participant); participant.peer?.destroy(); participant.learner?.destroy() })
     this.participants = []
   }
 
@@ -238,7 +363,7 @@ if(container) {
       const row = document.createElement("article")
       const label = document.createElement("span")
       const connected = !participant.disconnected && (participant.peer ? participant.peer.connectionStatus === "connected" : participant.learner?.status === "connected")
-      label.textContent = `${participant.identity.name} · ${participant.disconnected ? "disconnected" : connected ? "connected" : "connecting"}`
+      label.textContent = `${participant.identity.name} · ${participant.disconnected ? "disconnected" : connected ? "connected" : "connecting"}${participant.running ? " · editing" : ""}`
       const button = (text: string, callback: () => Promise<void>) => {
         const element = document.createElement("button")
         element.type = "button"; element.textContent = text; element.disabled = working
@@ -246,12 +371,31 @@ if(container) {
         element.addEventListener("click", () => void perform(callback))
         return element
       }
-      row.append(label, button("Run action", async () => { message.textContent = runner.act(participant, action.value as Action) }),
-        button(participant.disconnected ? "Reconnect" : "Disconnect", async () => {
-          if(participant.disconnected) { await runner.reconnect(participant); message.textContent = `${participant.identity.name} reconnected.` }
-          else { runner.disconnect(participant); message.textContent = `${participant.identity.name} disconnected.` }
-        }), button("Remove", async () => { runner.remove(participant); message.textContent = `${participant.identity.name} removed.` }))
-      ;(row.querySelector("button") as HTMLButtonElement).disabled = working || !connected
+      const manual = button("Run action", async () => { message.textContent = runner.act(participant, action.value as Action) })
+      manual.disabled = working || !connected
+      row.append(label, manual)
+      if(participant.peer) {
+        const speed = document.createElement("select")
+        speed.setAttribute("aria-label", `Editing interval for ${participant.identity.name}`)
+        for(const [value, name] of [["1000", "Every 1 second"], ["3000", "Every 3 seconds"], ["6000", "Every 6 seconds"], ["10000", "Every 10 seconds"]]) speed.add(new Option(name, value))
+        speed.value = String(participant.interval); speed.disabled = working
+        speed.addEventListener("change", () => runner.setSpeed(participant, Number(speed.value)))
+        const continuous = button(participant.running ? "Pause" : "Resume", async () => {
+          if(participant.running) { runner.pause(participant); message.textContent = `${participant.identity.name} paused.` }
+          else {
+            runner.resume(participant, error => { message.textContent = error.message; update() })
+            if(participant.running) message.textContent = `${participant.identity.name} is editing continuously.`
+          }
+        })
+        continuous.textContent = participant.running ? "Pause" : participant.hasRun ? "Resume" : "Start editing"
+        continuous.setAttribute("aria-label", `${participant.running ? "Pause" : participant.hasRun ? "Resume continuous editing for" : "Start continuous editing for"} ${participant.identity.name}`)
+        continuous.disabled = working || !connected
+        row.append(speed, continuous)
+      }
+      row.append(button(participant.disconnected ? "Reconnect" : "Disconnect", async () => {
+        if(participant.disconnected) { await runner.reconnect(participant); message.textContent = `${participant.identity.name} reconnected. Start editing to resume.` }
+        else { runner.disconnect(participant); message.textContent = `${participant.identity.name} disconnected.` }
+      }), button("Remove", async () => { runner.remove(participant); message.textContent = `${participant.identity.name} removed.` }))
       list.append(row)
     }
   }

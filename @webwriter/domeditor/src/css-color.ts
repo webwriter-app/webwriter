@@ -12,6 +12,18 @@ export const themeColorColumns = [
   ["70ad47", "e2efda", "c6e0b4", "a9d18e", "548235", "375623"],
 ] as const
 
+export const boxStylePresets = [
+  {name: "White", background: themeColorColumns[0][0], border: themeColorColumns[1][0]},
+  {name: "Slate", background: themeColorColumns[3][1], border: themeColorColumns[3][0]},
+  {name: "Blue", background: themeColorColumns[4][1], border: themeColorColumns[4][0]},
+  {name: "Green", background: themeColorColumns[9][1], border: themeColorColumns[9][0]},
+  {name: "Orange", background: themeColorColumns[5][1], border: themeColorColumns[5][0]},
+  {name: "Yellow", background: themeColorColumns[7][1], border: themeColorColumns[7][0]},
+  {name: "Red", background: themeColorColumns[6][1], border: themeColorColumns[6][0]},
+  {name: "Purple", background: themeColorColumns[8][1], border: themeColorColumns[8][0]},
+] as const
+
+
 /** Seven document accents follow the three neutral palette columns. */
 export const defaultThemeAccents = themeColorColumns.slice(3).map(column => `#${column[0]}`)
 export const themeAccentProperties = defaultThemeAccents.map((_, index) => `--ww-theme-accent-${index + 1}`)
