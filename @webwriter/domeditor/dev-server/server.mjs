@@ -1163,7 +1163,8 @@ export async function createDevServer(options = {}) {
 
       if(path === "/admin" || path === "/admin/") {
         const template = await readFile(join(serverDirectory, "admin.html"), "utf8")
-        const content = Buffer.from(privateTesting ? template.replace("Localhost only · no authentication", "Private testing · shared identity · no authentication") : template)
+        const admin = privateTesting ? template.replace("Localhost only · no authentication", "Private testing · shared identity · no authentication") : template
+        const content = Buffer.from(useVite ? admin.replace("<!-- scenario-panel -->", '<section id="scenario-panel"></section><script type="module" src="/dev-server/scenarios.ts"></script>') : admin)
         response.writeHead(200, {"Content-Type": "text/html; charset=utf-8", "Content-Length": content.length})
         response.end(content)
         return

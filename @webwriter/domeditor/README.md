@@ -222,3 +222,9 @@ use `editor.toHTML(false, true, "current")` or
 `editor.serializeHTML(false, "current")`. Scoped data edits participate in
 undo/redo; scoped persistence survives normal editor snapshots/iframe replacement
 through the server or local storage. No additional dependencies are required.
+
+### Manual collaboration scenarios
+
+With `npm start`, open **Local dev** and choose a scenario under **Test scenarios**. Start it to open its disposable document in a new tab. Add participants in the dashboard, then disconnect, reconnect, remove, or trigger actions for each participant. Concurrent editing can insert, delete, or bold randomly chosen paragraph text. For the live classroom, start a live session in the document preview and paste its learner invitation into the dashboard; participants can send pointer, click, and scroll activity. Choose an action or run a random one for a randomly selected participant. You can interact with the editor or host controls at any time.
+
+Keep the dashboard open while testing. **Reset scenario** disconnects the participants, removes the old document, and opens a fresh copy. **End and remove document** closes the scenario and deletes its document; close the old editor tab and stop its host live session separately. If the dashboard is reloaded, it offers to remove the interrupted scenario document. The launcher is available only on the local development server, not in private-testing mode.
