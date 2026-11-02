@@ -373,7 +373,7 @@ export class AppRibbon extends EditingControls {
       align-self: flex-start;
       height: 41px;
       /* Prefer a 100px filename and roomy actions, leaving room for the AI bar. */
-      min-width: calc(100px + 1.7rem + 4.1rem);
+      min-width: calc(100px + 1.7rem + 4.6rem);
       /* Extend the file tab toward the brand without moving its filename. */
       margin-left: -0.5rem;
       overflow: clip;
@@ -398,9 +398,9 @@ export class AppRibbon extends EditingControls {
     .file-quick-actions {
       box-sizing: border-box;
       display: flex;
-      flex: 0 1 4.1rem;
-      width: 4.1rem;
-      min-width: 3rem;
+      flex: 0 1 4.6rem;
+      width: 4.6rem;
+      min-width: 4.35rem;
       align-items: center;
       align-self: flex-start;
       justify-content: space-between;
