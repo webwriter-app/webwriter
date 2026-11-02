@@ -43,6 +43,15 @@ afterEach(() => {
 })
 
 describe("element attribution editing", () => {
+  it.each(["hr", "h1", "h2", "h3", "h4", "h5", "h6"])("does not offer attribution for %s", tag => {
+    document.body.innerHTML = tag === "hr" ? "<hr>" : `<${tag}>Heading</${tag}>`
+    editor = new DOMEditor()
+    const element = document.body.firstElementChild!
+    bounds(element); select(element)
+    expect(editor.features.attribution.actions.openAttribution({type: "openAttribution"})).toBe(false)
+    expect(button().hidden || button().closest<HTMLElement>(".bridge")!.hidden).toBe(true)
+    expect(element.hasAttribute(attributionAttributes.type)).toBe(false)
+  })
   it("defaults to attribution and saves the selected type through undo, redo and reopening", async () => {
     const element = start()
     const child = element.firstChild

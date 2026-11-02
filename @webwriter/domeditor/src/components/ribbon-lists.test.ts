@@ -90,10 +90,10 @@ describe("list ribbon drawer", () => {
     expect(button("Elements", "Form")).toBeNull()
     expect(button("Elements", "HTML")).toBeNull()
     expect(button("Elements", "Script")).toBeNull()
-    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6"])
+    expect(submenuTags(button("Elements", "Heading"))).toEqual(["h2", "h3", "h4", "h5", "h6", "hr"])
     expect(insertionMenuItems.find(item => item.tag === "hgroup")).toBeUndefined()
     expect(submenuTags(button("Elements", "Details"))).toEqual([])
-    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot", "dialog", "hgroup", "hr", "dl", ...formElementTypes])
+    expect(deliberatelyUnsupportedInsertionTags).toEqual(["canvas", "template", "slot", "dialog", "hgroup", "dl", ...formElementTypes])
     expect(insertionMenuItems.filter(item => (
       item.tag && (deliberatelyUnsupportedInsertionTags as readonly string[]).includes(item.tag)
     ))).toEqual([])

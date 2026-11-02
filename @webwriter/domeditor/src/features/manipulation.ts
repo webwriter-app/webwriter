@@ -29,7 +29,7 @@ import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStyle
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {authoredDetailsOpen, isHTMLDetailsElement} from "../editor-artifacts"
-import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction} from "../insertion"
+import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
   elementAttributeState,
@@ -501,6 +501,11 @@ export class ManipulationFeature extends EditorFeature {
   }
 
   ribbonElement(tag: string): Element {
+    if(tag === "hr") {
+      const template = document.createElement("template")
+      template.innerHTML = emptyElementHTML(tag)
+      return template.content.firstElementChild!
+    }
     if(tag === "table") return createTable(2, 2)
     if(tag === "ul" || tag === "ol") {
       const list = document.createElement(tag)
@@ -1926,7 +1931,7 @@ export class ManipulationFeature extends EditorFeature {
       ? this.editor.features.slides.containingSlide(target) : getDocumentRoot()
     if(!root || target === root || !root.contains(target)) return null
     while(target.parentElement && target.parentElement !== root) target = target.parentElement
-    if(target.matches("caption, figcaption")) return null
+    if(target.matches("caption, figcaption, hr, h1, h2, h3, h4, h5, h6")) return null
     return target.parentElement === root && !slideLayoutRole(target) ? target : null
   }
 

@@ -1580,6 +1580,15 @@ describe("widget sharing toolbox", () => {
   })
 })
 
+it.each(["hr", "h1", "h2", "h3", "h4", "h5", "h6"])("hides caption controls for %s", async localName => {
+  const toolbox = await mountToolbox()
+  toolbox.selectTool("Edit")
+  toolbox.elementStyle = {target: {localName, namespaceURI: "http://www.w3.org/1999/xhtml"}, inline: {}, computed: {}, context: {display: "block", parentDisplay: "block"}}
+  await toolbox.updateComplete
+  expect(toolbox.shadowRoot!.querySelector('.caption-button-group')).toBeNull()
+  expect(toolbox.shadowRoot!.querySelector('[aria-label="Edit attribution"]')).toBeNull()
+})
+
 it("defaults caption choices to below and switches their icons with the Top checkbox", async () => {
   const toolbox = await mountToolbox()
   toolbox.selectTool("Edit")

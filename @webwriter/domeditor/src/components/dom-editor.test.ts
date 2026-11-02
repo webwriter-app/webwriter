@@ -10749,7 +10749,8 @@ describe("DomEditor.execute()", () => {
 
     expect(execute).toHaveBeenLastCalledWith({type: "insertElement", tag: "h3"})
 
-    expect(submenu.shadowRoot!.querySelector('button[title="Divider"]')).toBeNull()
+    submenu.shadowRoot!.querySelector<HTMLButtonElement>('button[title="Divider"]')!.click()
+    expect(execute).toHaveBeenLastCalledWith({type: "insertElement", tag: "hr"})
   })
 
   it("applies or changes a section type without form insertion", async () => {

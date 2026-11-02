@@ -33,9 +33,9 @@ const insertionMenuItem = (
   return {section, tag, name: name ?? presentation.name, icon: presentation.icon}
 }
 
-export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6"] as const
+export const headingInsertionTags = ["h2", "h3", "h4", "h5", "h6", "hr"] as const
 export const sectionInsertionTags = sectionNames.filter(tag => tag !== "section")
-export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", "dialog", "hgroup", "hr", "dl", ...formElementTypes] as const
+export const deliberatelyUnsupportedInsertionTags = ["canvas", "template", "slot", "dialog", "hgroup", "dl", ...formElementTypes] as const
 
 export const insertionMenuItems: InsertionMenuItem[] = [
   insertionMenuItem("Text", "p"),
@@ -56,7 +56,11 @@ export const insertionMenuItems: InsertionMenuItem[] = [
 ]
 
 /** Returns valid empty-element markup using the browser's HTML serializer. */
-export const emptyElementHTML = (tag: string) => document.createElement(tag).outerHTML
+export const emptyElementHTML = (tag: string) => {
+  const element = document.createElement(tag)
+  if(tag === "hr") element.style.backgroundColor = "currentColor"
+  return element.outerHTML
+}
 
 export const elementDragType = "application/x-webwriter-element-tag"
 export const ribbonInsertionDragType = "application/x-webwriter-ribbon-insertion"

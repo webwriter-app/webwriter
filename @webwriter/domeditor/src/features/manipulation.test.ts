@@ -271,7 +271,19 @@ describe("captions", () => {
   const setCaption = (position: "none" | "above" | "below") =>
     editor.features.manipulation.actions.setCaption({type: "setCaption", position})
 
-  it.each(["p", "h2"])("preserves a resized %s through caption wrapping, removal and undo", tag => {
+  it.each(["hr", "h1", "h2", "h3", "h4", "h5", "h6"])("does not convert %s to a figure", tag => {
+    document.body.innerHTML = tag === "hr" ? '<hr title="keep">' : `<${tag} title="keep">Heading</${tag}>`
+    const target = document.body.firstElementChild!
+    const original = target.outerHTML
+    $.selectElement(target)
+    expect(editor.features.manipulation.getCaptionPosition()).toBeNull()
+    expect(editor.features.manipulation.setCaption("below")).toBe(false)
+    expect(editor.features.manipulation.cycleCaption()).toBe(false)
+    expect(document.body.firstElementChild).toBe(target)
+    expect(target.outerHTML.replace(/ class="◆[^"]*"/, "")).toBe(original)
+  })
+
+  it.each(["p"])("preserves a resized %s through caption wrapping, removal and undo", tag => {
     document.body.innerHTML = `<${tag} title="keep" style="width: 80%; max-width: 240px !important; height: auto; color: red">Text <em>with formatting</em><!--keep--><unfamiliar-inline>content</unfamiliar-inline></${tag}><p>Other</p>`
     const target = document.body.firstElementChild as HTMLElement
     const children = Array.from(target.childNodes)

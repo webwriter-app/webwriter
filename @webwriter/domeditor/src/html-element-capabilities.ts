@@ -153,7 +153,7 @@ export const htmlElementCapabilities = {
   head: full("head", "none", "Dedicated metadata editor manages children and ordering.", {structuralEditing: true}),
   header: full("manipulation", "menu", "Semantic section insertion and conversion.", {structuralEditing: true}),
   hgroup: full("manipulation", "none", "Existing heading groups remain editable; incoming heading-group wrappers are stripped.", {structuralEditing: true, intentionallyRestricted: true}),
-  hr: full("manipulation", "none", "Existing thematic breaks are preserved; direct insertion is deliberately unsupported.", {contentEditing: false, intentionallyRestricted: true}),
+  hr: full("manipulation", "menu", "Thematic break insertion and selection.", {contentEditing: false}),
   html: full("document", "none", "Document attributes and serialization are supported.", {structuralEditing: true}),
   i: full("mark", "contextual", "Italic mark with semantic alias preservation."),
   iframe: partial("media", "menu", "Website controls cover safe attributes; SRCdoc remains blocked.", {contentEditing: false, intentionallyRestricted: true}),

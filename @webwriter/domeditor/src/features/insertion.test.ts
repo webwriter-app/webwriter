@@ -290,7 +290,18 @@ describe("insertion menu", () => {
     postSelectionPath.mockRestore()
   })
 
-  it.each(["Divider", "Glossary"])("does not offer %s insertion", async name => {
+  it("inserts a divider from the insertion menu", async () => {
+    document.body.innerHTML = "<p></p>"
+    $.move(document.querySelector("p")!)
+    typeCommand()
+    typeText("Divider")
+    const menu = editor.features.insertion.menu
+    await menu.updateComplete
+    menu.shadowRoot!.querySelector<HTMLButtonElement>(".item")!.click()
+    expect(document.querySelector("hr")).not.toBeNull()
+  })
+
+  it.each(["Glossary"])("does not offer %s insertion", async name => {
     document.body.innerHTML = "<p></p>"
     $.move(document.querySelector("p")!)
     typeCommand()

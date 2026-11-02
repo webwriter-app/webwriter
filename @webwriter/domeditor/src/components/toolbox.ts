@@ -1593,7 +1593,7 @@ export class DomEditorToolbox extends EditingControls {
                 detail: {type: "setBoardGrouping", mode}, bubbles: true, composed: true,
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>` : nothing}
-          <span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
+          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? html`<span class="float-placement-label caption-label-row">${this.renderFieldLabel("Caption", captionPosition !== "none",
             () => this.dispatchEvent(new CustomEvent("layout-action", {
               detail: {type: "setCaption", position: "none"}, bubbles: true, composed: true,
             })), undefined, this.historyState.preview !== null || this.htmlPending)}
@@ -1619,8 +1619,8 @@ export class DomEditorToolbox extends EditingControls {
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "setCaption", position: captionPlacement, alignment}, bubbles: true, composed: true,
               }))}>${this.captionIcon(captionPlacement, alignment)}</button>`)}
-          </div>
-          ${this.renderAttributionField()}
+          </div>` : nothing}
+          ${!["hr", "h1", "h2", "h3", "h4", "h5", "h6"].includes(target?.localName ?? "") ? this.renderAttributionField() : nothing}
           ${this.layoutError ? html`<p class="document-layout-error" role="alert">${this.layoutError}</p>` : ""}
         </div>
     `
