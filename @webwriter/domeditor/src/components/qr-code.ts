@@ -17,7 +17,7 @@ type QRCodeInstance = {
 
 type QRCodeConstructor = {
   new (element: HTMLElement, options: QRCodeOptions): QRCodeInstance
-  CorrectLevel: {H: number}
+  CorrectLevel: {H: number, M: number}
 }
 
 let qrcodeConstructor: QRCodeConstructor | undefined
@@ -122,23 +122,17 @@ export class QRCodeElement extends LitElement {
     const QRCode = getQRCodeConstructor()
     const PNGQRCode = getPNGQRCodeConstructor()
     const darkBlue = "#1e4f87"
-    new PNGQRCode(exportContainer, {
-      text: this.value,
-      width: defaultExportSize,
-      height: defaultExportSize,
-      colorDark: darkBlue,
-      colorLight: "transparent",
-      correctLevel: PNGQRCode.CorrectLevel.H,
-    })
-    new QRCode(container, {
-      text: this.value,
-      width: renderSize,
-      height: renderSize,
-      colorDark: darkBlue,
-      colorLight: "transparent",
-      correctLevel: QRCode.CorrectLevel.H,
-      useSVG: true,
-    })
+    const draw = (Constructor: QRCodeConstructor, target: HTMLElement, width: number, useSVG = false) => {
+      const options = {text: this.value, width, height: width, colorDark: darkBlue, colorLight: "transparent", useSVG}
+      try { new Constructor(target, {...options, correctLevel: Constructor.CorrectLevel.H}) }
+      catch {
+        // Some longer byte-mode values overflow qrcodejs's H-level block table.
+        target.replaceChildren()
+        new Constructor(target, {...options, correctLevel: Constructor.CorrectLevel.M})
+      }
+    }
+    draw(PNGQRCode, exportContainer, defaultExportSize)
+    draw(QRCode, container, renderSize, true)
   }
 
   toDataURL(): string | null {

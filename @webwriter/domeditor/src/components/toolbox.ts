@@ -75,6 +75,7 @@ export class DomEditorToolbox extends EditingControls {
     shapePaint: {attribute: false},
     preview: {type: Boolean, reflect: true},
     feedbackActive: {type: Boolean},
+    feedbackReplay: {type: Boolean},
     feedbackRole: {type: String},
     feedbackParticipants: {attribute: false},
     feedbackMessages: {attribute: false},
@@ -112,6 +113,7 @@ export class DomEditorToolbox extends EditingControls {
 
   preview = false
   feedbackActive = false
+  feedbackReplay = false
   feedbackRole: "host" | "learner" | "" = ""
   feedbackParticipants: Pick<LiveSessionLearner, "id" | "name" | "connected">[] = []
   feedbackMessages: LiveSessionFeedback[] = []
@@ -1740,7 +1742,7 @@ export class DomEditorToolbox extends EditingControls {
     const canSend = this.feedbackActive && this.feedbackRole === "host"
       && connected.some(participant => participant.id === this.feedbackParticipant) && Boolean(this.feedbackDraft.trim())
     return html`<section class="feedback-content" aria-label="Session feedback">
-      ${this.feedbackRole === "learner" ? nothing : html`
+      ${this.feedbackRole === "learner" || this.feedbackReplay ? nothing : html`
         ${!this.feedbackActive ? html`<p>Start sharing to give feedback to participants.</p>` : !connected.length ? html`<p>Waiting for participants</p>` : nothing}
         <form @submit=${(event: SubmitEvent) => {
           event.preventDefault()

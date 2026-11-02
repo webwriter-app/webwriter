@@ -12,6 +12,18 @@ async function mountControls() {
 }
 
 describe("live session controls", () => {
+  it("labels a saved replay with a fixed end instead of a live edge", async () => {
+    const controls = await mountControls()
+    Object.assign(controls, {replay: true, playing: false, currentTime: 2, duration: 5})
+    await controls.updateComplete
+    expect(controls.shadowRoot!.querySelector(".status")?.textContent).toBe("Replay paused")
+    expect(controls.shadowRoot!.querySelector(".endpoint")?.textContent).toBe("00:05")
+    expect(controls.shadowRoot!.querySelector(".lag")?.textContent).toBe("00:03 remaining")
+    expect(controls.shadowRoot!.querySelector(".return")?.textContent).toBe("Jump to end")
+    controls.playing = true
+    await controls.updateComplete
+    expect(controls.shadowRoot!.querySelector(".status")?.textContent).toBe("Replaying")
+  })
   it("renders a time scrubber, viewing position, and Preview without a stop button", async () => {
     const controls = await mountControls()
     controls.playing = true

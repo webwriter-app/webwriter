@@ -49,6 +49,9 @@ if(nonce && hostOrigin && window.parent !== window) {
       }
     }
     else if(event.data.type === "preview-frame-print") window.print()
+    else if(event.data.type === "preview-frame-scroll" && Number.isFinite(event.data.top) && Number.isFinite(event.data.left)) {
+      window.scrollTo({top: event.data.top, left: event.data.left, behavior: "instant"})
+    }
     else if(event.data.type === "preview-frame-apply" && event.data.snapshot) applyState(event.data.snapshot)
     else if(event.data.type === "preview-frame-aggregate" && Array.isArray(event.data.widgets)) {
       post({type: "preview-frame-aggregate-options", widgets: preview.showAggregates(document, event.data.widgets)})

@@ -234,6 +234,21 @@ describe("toolbox", () => {
     expect(toolbox.shadowRoot!.querySelector(".feedback-messages script")).toBeNull()
   })
 
+  it("shows recorded feedback without sending controls during replay", async () => {
+    const toolbox = await mountToolbox()
+    toolbox.preview = true
+    toolbox.feedbackReplay = true
+    toolbox.feedbackRole = "host"
+    toolbox.feedbackParticipants = [{id: "ada", name: "Ada", connected: false}]
+    toolbox.feedbackMessages = [{id: "one", participant: "ada", time: 1000, text: "Good work"}]
+    await toolbox.updateComplete
+    toolbox.selectTool("Feedback")
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector("form")).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".feedback-messages")!.textContent).toContain("Good work")
+    expect(toolbox.shadowRoot!.querySelector(".feedback-messages")!.textContent).toContain("Ada")
+  })
+
   it("offers a document proofreading toggle even when the checker is loading or failed", async () => {
     const toolbox = await mountToolbox()
     toolbox.selectTool("Review")

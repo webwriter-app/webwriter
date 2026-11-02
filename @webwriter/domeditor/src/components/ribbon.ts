@@ -6,6 +6,9 @@ import {styleMap} from "lit/directives/style-map.js"
 import {aiChatStyles} from "./ai-chat.styles"
 import {sharingLinkStyles, switchInputStyles} from "./dropdown-content.styles"
 import {documentDialogStyles} from "./document-dialog.styles"
+import type {LrsStatus} from "../live-session-lrs"
+import type {ReplayLrsProgress} from "../live-session-replay-lrs"
+import type {RecoveredSession} from "../live-session-recovery"
 import {version} from "../../package.json"
 import {
   requestsReadOnlyAI,
@@ -154,6 +157,19 @@ export class AppRibbon extends EditingControls {
     liveSessionActive: {type: Boolean, attribute: "live-session-active"},
     liveSessionRole: {type: String, attribute: "live-session-role"},
     liveSessionLink: {type: String, attribute: "live-session-link"},
+    completedLiveReplayCount: {type: Number, attribute: false},
+    recoveredReplay: {attribute: false},
+    recoveredReplayCount: {type: Number, attribute: false},
+    recoveryBusy: {type: Boolean, attribute: false},
+    restoredRecoveryId: {type: String, attribute: false},
+    savingLiveReplay: {type: Boolean, attribute: false},
+    replayActive: {type: Boolean, attribute: false},
+    lrsStatus: {attribute: false},
+    lrsError: {type: String, attribute: false},
+    replayLrsStatus: {attribute: false},
+    exportingReplayDataset: {type: Boolean, attribute: false},
+    replaySelectedLearner: {type: String, attribute: false},
+    replayPackageNote: {type: Boolean, attribute: false},
     liveLearners: {attribute: false},
     aiChatOpen: {type: Boolean, attribute: false},
     aiToolboxTarget: {attribute: false},
@@ -678,6 +694,20 @@ export class AppRibbon extends EditingControls {
       box-shadow: none;
     }
 
+    .preview-button {position: relative}
+    .preview-recovery-alert {position: absolute; top: 1px; right: 1px; display: grid; place-items: center; width: .8rem; height: .8rem; border: 1px solid white; border-radius: 50%; background: #3977c7; color: white; font: bold .6rem/1 system-ui, sans-serif}
+    .recovery-popover {box-sizing: border-box; position: fixed; inset: auto; margin: 0; width: min(21rem, calc(100vw - 1rem)); max-width: none; padding: .7rem .8rem; border: 1px solid #a9cce8; border-radius: .45rem; background: #edf5fc; color: #263f55; box-shadow: 0 4px 16px rgb(31 52 72 / 20%); font: .75rem/1.4 system-ui, sans-serif; overflow: visible}
+    .recovery-popover[data-fallback] {display: block; z-index: 10000}
+    .recovery-popover::before {content: ""; position: absolute; top: -6px; left: calc(var(--recovery-arrow-x, 90%) - 6px); width: 10px; height: 10px; transform: rotate(45deg); border-top: 1px solid #a9cce8; border-left: 1px solid #a9cce8; background: #edf5fc}
+    .recovery-popover-header {display: flex; align-items: start; justify-content: space-between; gap: .5rem}
+    .recovery-popover-header strong {min-width: 0; overflow-wrap: anywhere}
+    .recovery-popover p {margin: .35rem 0 .55rem}
+    .recovery-popover button {font: inherit; cursor: pointer}
+    .recovery-close {flex: 0 0 auto; border: 0; background: transparent; color: inherit; font-size: 1.05rem !important; line-height: 1; padding: 0 .2rem}
+    .recovery-restore {padding: .3rem .55rem; border: 1px solid #3977c7; border-radius: .3rem; background: #3977c7; color: white}
+    .recovery-popover button:disabled {opacity: .55; cursor: default}
+    .recovery-popover button:focus-visible {outline: 2px solid #3977c7; outline-offset: 2px}
+
     .preview-button[active]::after {
       box-sizing: border-box;
       position: absolute;
@@ -735,11 +765,14 @@ export class AppRibbon extends EditingControls {
       cursor: pointer;
     }
 
-    .live-session-switch span {
+    .live-session-switch-label {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    .live-session-share-icon {display: inline-flex; flex: 0 0 auto}
+    .live-session-share-icon svg {display: block; width: 1rem; height: 1rem}
 
     .live-session-switch:hover {
       color: var(--ribbon-control-color, #1e4f87);
@@ -767,6 +800,24 @@ export class AppRibbon extends EditingControls {
       min-width: 0;
     }
 
+    .reader-replay-open, .reader-replay-save, .reader-xapi-export {display: inline-flex; flex: 0 0 auto; align-items: center; gap: .3rem; height: 1.75rem; margin-left: auto; padding: 0 .45rem; border: 1px solid transparent; border-radius: .35rem; background: transparent; color: var(--ribbon-control-color, #334155); font: .7rem system-ui, sans-serif; white-space: nowrap; cursor: pointer}
+    .reader-replay-open:hover:not(:disabled), .reader-replay-save:hover:not(:disabled), .reader-xapi-export:hover:not(:disabled) {border-color: #c8d2df; background: #e8f1fa}
+    .reader-replay-open:focus-visible, .reader-replay-save:focus-visible, .reader-xapi-export:focus-visible {outline: 2px solid #3977c7; outline-offset: -1px}
+    .reader-replay-open:disabled, .reader-replay-save:disabled, .reader-xapi-export:disabled {opacity: .55; cursor: default}
+    .reader-lrs {display: inline-flex; flex: 0 0 auto; align-items: center; gap: .3rem; height: 1.75rem; margin-left: auto; padding: 0 .45rem; border: 1px solid transparent; border-radius: .35rem; background: transparent; color: var(--ribbon-control-color, #334155); font: .7rem system-ui, sans-serif; cursor: pointer; white-space: nowrap}
+    .reader-lrs:hover:not(:disabled) {border-color: #c8d2df; background: #e8f1fa}
+    .reader-lrs:focus-visible {outline: 2px solid #3977c7; outline-offset: -1px}
+    .reader-lrs:disabled {opacity: .55; cursor: default}
+    .reader-lrs[data-error] {color: #9f321c}
+    .reader-lrs[data-active]::after {content: ""; width: .35rem; height: .35rem; border-radius: 50%; background: #24814c}
+    .reader-lrs[data-error]::after {background: #b54a31}
+    .reader-xapi-export + .reader-lrs, .reader-lrs + .reader-replay-save, .reader-replay-save + .reader-replay-open {margin-left: 0}
+    .lrs-form {display: grid; gap: .8rem}
+    .lrs-form label {display: grid; gap: .25rem}
+    .lrs-form input {box-sizing: border-box; width: 100%; padding: .45rem; font: inherit}
+    .lrs-error {color: #9f321c}
+    .reader-replay-open svg, .reader-replay-save svg, .reader-xapi-export svg, .reader-lrs svg {display: block; width: 1rem; height: 1rem}
+
     .reader-sharing-bar .sharing-link-input {
       text-overflow: ellipsis;
       border-color: var(--reader-link-border-color, #c8d2df);
@@ -787,7 +838,16 @@ export class AppRibbon extends EditingControls {
       min-height: 0;
     }
 
+    .replay-document-select {display: flex; align-items: center; gap: .35rem; padding: .2rem .25rem; font: .7rem system-ui, sans-serif;}
+    .replay-document-select select {min-width: 0; max-width: 12rem; font: inherit;}
+    .replay-package-note {overflow: hidden; padding: .15rem .25rem; color: #4d5968; font: .65rem system-ui, sans-serif; text-overflow: ellipsis; white-space: nowrap;}
+
+    @container reader-sharing (max-width: 36rem) {
+      .reader-lrs span, .reader-replay-save span, .reader-replay-open span, .reader-xapi-export span {display: none}
+    }
+
     @container reader-sharing (max-width: 20rem) {
+      .live-session-switch-label {display: none}
       .reader-sharing-bar .session-share > .sharing-link-field {
         display: none;
       }
@@ -799,6 +859,14 @@ export class AppRibbon extends EditingControls {
       .reader-link-popup {
         display: block;
       }
+    }
+
+    @container reader-sharing (max-width: 13rem) {
+      .reader-sharing-bar {gap: 0}
+      .live-session-switch {flex: 0 0 auto; gap: .05rem; padding-inline-end: 0}
+      .live-session-switch input {--switch-width: 1.55rem; --switch-travel: .48rem}
+      .live-session-share-icon svg {width: .875rem; height: .875rem}
+      .reader-lrs, .reader-replay-save, .reader-replay-open, .reader-xapi-export {padding-inline: .1rem}
     }
 
     .learner-avatar {
@@ -1109,6 +1177,19 @@ export class AppRibbon extends EditingControls {
   private readerSharingCopyPending = false
 
   liveSessionLink = ""
+  completedLiveReplayCount = 0
+  recoveredReplay: RecoveredSession | null = null
+  recoveredReplayCount = 0
+  recoveryBusy = false
+  restoredRecoveryId = ""
+  savingLiveReplay = false
+  replayActive = false
+  lrsStatus: LrsStatus | null = null
+  lrsError = ""
+  replayLrsStatus: ReplayLrsProgress | {state: "done" | "error" | "stopped", confirmed: number, message?: string} | null = null
+  exportingReplayDataset = false
+  replaySelectedLearner = ""
+  replayPackageNote = false
 
   liveLearners: LiveLearnerRibbonItem[] = []
 
@@ -1200,6 +1281,23 @@ export class AppRibbon extends EditingControls {
   private readonly handleWindowResize = () => {
     this.updateHeightConstraint()
     this.scheduleResponsiveLayout()
+    this.positionRecoveryNotice()
+  }
+
+  private readonly positionRecoveryNotice = () => {
+    const notice = this.renderRoot.querySelector<HTMLElement>(".recovery-popover")
+    const anchor = this.renderRoot.querySelector<HTMLButtonElement>(".reader-replay-open")
+    if(!notice || !anchor || !this.previewActive || !this.expanded) return
+    if(typeof notice.showPopover === "function") {
+      try { if(!notice.matches(":popover-open")) notice.showPopover() }
+      catch { notice.setAttribute("data-fallback", "") }
+    }
+    else notice.setAttribute("data-fallback", "")
+    const target = anchor.getBoundingClientRect(), width = notice.getBoundingClientRect().width
+    const left = Math.max(8, Math.min(target.right - width, window.innerWidth - width - 8))
+    notice.style.left = `${left}px`
+    notice.style.top = `${target.bottom + 9}px`
+    notice.style.setProperty("--recovery-arrow-x", `${Math.max(10, Math.min(width - 10, target.left + target.width / 2 - left))}px`)
   }
 
   private readonly handleAIProviderChange = () => {
@@ -1266,6 +1364,7 @@ export class AppRibbon extends EditingControls {
     document.addEventListener("pointerdown", this.handleDocumentPointerDown)
     document.addEventListener("keydown", this.handleDocumentKeydown, true)
     window.addEventListener("resize", this.handleWindowResize)
+    window.addEventListener("scroll", this.positionRecoveryNotice, true)
     this.updateHeightConstraint()
   }
 
@@ -1286,6 +1385,7 @@ export class AppRibbon extends EditingControls {
     document.removeEventListener("pointerdown", this.handleDocumentPointerDown)
     document.removeEventListener("keydown", this.handleDocumentKeydown, true)
     window.removeEventListener("resize", this.handleWindowResize)
+    window.removeEventListener("scroll", this.positionRecoveryNotice, true)
     super.disconnectedCallback()
   }
 
@@ -1299,7 +1399,7 @@ export class AppRibbon extends EditingControls {
     })
     const content = this.renderRoot.querySelector<HTMLElement>(".ribbon-content")
     if(content && typeof ResizeObserver !== "undefined") {
-      this.ribbonContentObserver = new ResizeObserver(() => this.scheduleResponsiveLayout())
+      this.ribbonContentObserver = new ResizeObserver(() => { this.scheduleResponsiveLayout(); this.positionRecoveryNotice() })
       this.ribbonContentObserver.observe(content)
     }
     this.scheduleResponsiveLayout()
@@ -2077,6 +2177,7 @@ export class AppRibbon extends EditingControls {
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
+    this.positionRecoveryNotice()
     if(this.readerSharingCopyPending && this.liveSessionActive && this.liveSessionLink) {
       this.readerSharingCopyPending = false
       void this.copyReaderSharing(this.liveSessionLink)
@@ -2546,6 +2647,12 @@ export class AppRibbon extends EditingControls {
     return this.confirmWithDialog("link-sharing-dialog")
   }
 
+  closeLrsDialog() {
+    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")
+    dialog?.querySelector<HTMLFormElement>("form")?.reset()
+    if(dialog?.open) dialog.close()
+  }
+
   async confirmLiveSessionStop(): Promise<boolean> {
     return this.confirmWithDialog("live-session-stop-dialog")
   }
@@ -2677,8 +2784,80 @@ export class AppRibbon extends EditingControls {
     void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLButtonElement>(`#settings-tab-${this.settingsTab.toLowerCase()}`)?.focus())
   }
 
+  private renderRecoveryNotice() {
+    const record = this.recoveredReplay
+    if(!this.previewActive || !this.expanded || !record) return nothing
+    return html`
+        <aside class="recovery-popover" popover="manual" role="status" aria-label="Recovered session recording"
+          @keydown=${(event: KeyboardEvent) => {
+            if(event.key === "Escape" && !this.recoveryBusy) {
+              event.preventDefault(); event.stopPropagation()
+              this.dispatchEvent(new CustomEvent("discard-recovered-replay", {detail: {id: record.id}, bubbles: true, composed: true}))
+            }
+          }}>
+          <div class="recovery-popover-header"><strong>Recovered recording</strong>
+            <button class="recovery-close" type="button" aria-label="Close notification and delete recovered recording" title="Delete recovered recording"
+              ?disabled=${this.recoveryBusy}
+              @click=${() => this.dispatchEvent(new CustomEvent("discard-recovered-replay", {detail: {id: record.id}, bubbles: true, composed: true}))}>×</button>
+          </div>
+          <p>${record.title || "Untitled session"} · ${new Date(record.startedAt).toLocaleString()}
+            ${this.recoveredReplayCount > 1 ? ` · ${this.recoveredReplayCount - 1} more available` : ""}<br>
+            ${this.restoredRecoveryId === record.id ? "Recording restored. " : ""}Closing deletes this recording from this device.</p>
+          <button class="recovery-restore" type="button"
+            ?disabled=${this.recoveryBusy || this.restoredRecoveryId === record.id || this.liveSessionActive && !this.replayActive || record.locked}
+            title=${this.liveSessionActive && !this.replayActive ? "Stop the live session to restore a recording" : record.locked ? "This session is still active" : "Restore recording"}
+            @click=${() => this.dispatchEvent(new CustomEvent("restore-recovered-replay", {detail: {id: record.id}, bubbles: true, composed: true}))}>
+            ${this.recoveryBusy ? "Working…" : this.restoredRecoveryId === record.id ? "Restored" : "Restore"}
+          </button>
+        </aside>`
+  }
+
   private renderDocumentDialogs() {
     return html`
+      ${this.renderRecoveryNotice()}
+      <dialog id="lrs-dialog" class="document-dialog confirmation-dialog" aria-labelledby="lrs-dialog-title"
+        @close=${(event: Event) => (event.currentTarget as HTMLDialogElement).querySelector<HTMLFormElement>("form")?.reset()}>
+        <header><h2 id="lrs-dialog-title">Connect analytics store</h2>
+          <button class="dialog-close" type="button" aria-label="Close analytics store" @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.close()}>${ribbonIcon("Reject")}</button>
+        </header>
+        ${this.replayActive && this.replayLrsStatus ? html`
+          <p role="status">${this.replayLrsStatus.message || (this.replayLrsStatus.state === "done"
+            ? `Delivery complete: ${this.replayLrsStatus.confirmed} statements confirmed.`
+            : `Sending replay: at least ${this.replayLrsStatus.confirmed} statements confirmed.`)}
+            ${this.replayLrsStatus.message && this.replayLrsStatus.confirmed ? `At least ${this.replayLrsStatus.confirmed} statements confirmed.` : ""}</p>
+          <footer><button type="button" @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.close()}>Close</button>
+            ${["sending", "retrying"].includes(this.replayLrsStatus.state) ? html`<button type="button"
+              @click=${() => this.dispatchEvent(new CustomEvent("stop-replay-lrs", {bubbles: true, composed: true}))}>Stop delivery</button>`
+              : html`<button type="button" @click=${() => this.dispatchEvent(new CustomEvent("reset-replay-lrs", {bubbles: true, composed: true}))}>Send again</button>`}
+          </footer>
+        ` : this.lrsStatus && !this.replayActive ? html`
+          <p role="status">${this.lrsStatus.message || (this.lrsStatus.state === "sending" ? "Sending activity to the LRS." : "Live delivery is active.")}
+            ${this.lrsStatus.queued ? `${this.lrsStatus.queued} events awaiting confirmation.` : ""}</p>
+          <footer>
+            <button type="button" @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.close()}>Close</button>
+            ${this.lrsStatus.canRetry ? html`<button type="button" @click=${() => this.dispatchEvent(new CustomEvent("retry-live-lrs", {bubbles: true, composed: true}))}>Retry</button>` : nothing}
+            <button type="button" @click=${() => {this.dispatchEvent(new CustomEvent("stop-live-lrs", {bubbles: true, composed: true})); this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.close()}}>Stop delivery</button>
+          </footer>
+        ` : html`
+          <p>${this.replayActive ? "Send all recorded session activity directly to this LRS. Resending uses the same statement IDs."
+            : "Send future session activity directly to this LRS. Earlier activity stays in the replay."}
+            Statements include pseudonymous participant IDs and any custom widget event data. Credentials are kept in memory only.</p>
+          <form class="lrs-form" @submit=${(event: Event) => {
+            event.preventDefault()
+            const form = event.currentTarget as HTMLFormElement, data = new FormData(form)
+            const accepted = this.dispatchEvent(new CustomEvent(this.replayActive ? "start-replay-lrs" : "start-live-lrs", {bubbles: true, composed: true, cancelable: true,
+              detail: {endpoint: String(data.get("endpoint") ?? ""), username: String(data.get("username") ?? ""), password: String(data.get("password") ?? "")}}))
+            if(accepted) { form.reset(); if(!this.replayActive) this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.close() }
+          }}>
+            <label>LRS base URL<input name="endpoint" type="url" required placeholder="https://lrs.example/xapi/" autocomplete="off"></label>
+            <label>Key<input name="username" required autocomplete="off"></label>
+            <label>Secret<input name="password" type="password" required autocomplete="off"></label>
+            ${this.lrsError ? html`<p class="lrs-error" role="alert">${this.lrsError}</p>` : nothing}
+            <footer><button type="button" @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.close()}>Cancel</button>
+              <button class="primary" type="submit">Start delivery</button></footer>
+          </form>
+        `}
+      </dialog>
       <dialog id="link-sharing-dialog" class="document-dialog confirmation-dialog" aria-labelledby="link-sharing-dialog-title" aria-describedby="link-sharing-dialog-description"
         @cancel=${(event: Event) => { event.preventDefault(); this.finishConfirmation("link-sharing-dialog", false) }}
         @close=${(event: Event) => { if(!(event.currentTarget as HTMLDialogElement).open) this.finishConfirmation("link-sharing-dialog", false) }}>
@@ -2978,19 +3157,58 @@ export class AppRibbon extends EditingControls {
   private renderLearnersDrawer() {
     return html`
       <ribbon-drawer label="Learners" icon="Plus" layout="learners">
-        <div class="reader-sharing-bar" role="group" aria-label="Reader sharing">
+        <div class="reader-sharing-bar" role="group" aria-label="Session controls">
+          ${this.replayActive ? nothing : html`
           <label class="live-session-switch">
+            <span class="live-session-share-icon" aria-hidden="true">${ribbonIcon("Share")}</span>
             <input type="checkbox" role="switch" aria-label="Share"
               .checked=${this.liveSessionActive} @change=${this.handleLiveSessionToggle} />
-            <span>Share</span>
+            <span class="live-session-switch-label">Share</span>
           </label>
           ${this.renderSharingButton()}
           <ribbon-button class="reader-link-popup" label="Reader sharing link" icon="Link" compact
             dropdown-on-click .dropdown=${html`<div class="sharing-dropdown">${this.renderReaderLinkField(this.liveSessionLink)}</div>`}
             keep-drawer-open dropdown-no-scroll ?disabled=${!this.liveSessionActive || !this.liveSessionLink}></ribbon-button>
+          `}
+          ${this.replayActive ? html`<button class="reader-xapi-export" type="button" aria-label="Export xAPI" aria-busy=${this.exportingReplayDataset ? "true" : "false"}
+            title=${this.exportingReplayDataset ? "Exporting xAPI statements" : "Export xAPI statements"}
+            ?disabled=${this.exportingReplayDataset}
+            @click=${() => this.dispatchEvent(new CustomEvent("export-replay-xapi", {bubbles: true, composed: true}))}>
+            ${ribbonIcon("Save as")}<span>${this.exportingReplayDataset ? "Exporting…" : "Export xAPI"}</span>
+          </button>` : nothing}
+          <button class="reader-lrs" type="button" aria-label="Connect analytics store"
+            ?disabled=${!this.replayActive && (!this.liveSessionActive || this.liveSessionRole !== "host")}
+            ?data-error=${this.replayActive ? this.replayLrsStatus?.state === "error" : this.lrsStatus?.state === "error"}
+            ?data-active=${this.replayActive ? ["sending", "retrying", "error"].includes(this.replayLrsStatus?.state ?? "") : Boolean(this.lrsStatus)}
+            aria-description=${(this.replayActive ? this.replayLrsStatus?.state === "error" : this.lrsStatus?.state === "error") ? "Delivery needs attention" : (this.lrsStatus || this.replayLrsStatus?.state === "sending") ? "Delivery active" : nothing}
+            title=${(this.replayActive ? this.replayLrsStatus?.message : this.lrsStatus?.message) || (this.lrsStatus || this.replayLrsStatus?.state === "sending" ? "Connect analytics store: delivery active" : "Connect analytics store")}
+            @click=${() => this.renderRoot.querySelector<HTMLDialogElement>("#lrs-dialog")?.showModal()}>
+            ${ribbonIcon("MarkData")}<span>Connect analytics store</span>
+          </button>
+          <button class="reader-replay-save" type="button" aria-label="Save replay" aria-busy=${this.savingLiveReplay ? "true" : "false"}
+            title=${this.savingLiveReplay ? "Saving replay" : this.liveSessionActive && this.liveSessionRole === "host" && !this.replayActive ? "Save replay of the session so far" : "Save replay"}
+            ?disabled=${this.savingLiveReplay || !(this.replayActive || this.completedLiveReplayCount || this.liveSessionActive && this.liveSessionRole === "host")}
+            @click=${() => this.dispatchEvent(new CustomEvent("save-live-replay", {bubbles: true, composed: true}))}>
+            ${ribbonIcon("FileDownload")}<span>${this.savingLiveReplay ? "Saving…" : "Save replay"}</span>
+          </button>
+          <button class="reader-replay-open" type="button" aria-label="Open replay" title="Open replay"
+            ?disabled=${this.liveSessionActive && !this.replayActive}
+            @click=${() => this.dispatchEvent(new CustomEvent("open-live-replay", {bubbles: true, composed: true}))}>
+            ${ribbonIcon("Open")}<span>Open replay</span>
+          </button>
         </div>
         <div class="reader-learners">
-          ${this.liveSessionActive && !this.liveLearners.length ? html`
+          ${this.replayActive ? html`<label class="replay-document-select">Document
+            <select aria-label="Replay participant document" .value=${this.replaySelectedLearner}
+              @change=${(event: Event) => this.dispatchEvent(new CustomEvent("replay-learner-select", {
+                detail: {id: (event.currentTarget as HTMLSelectElement).value}, bubbles: true, composed: true,
+              }))}>
+              <option value="">Original</option>
+              ${this.liveLearners.map(learner => html`<option value=${learner.id}>${learner.name}</option>`)}
+            </select>
+          </label>` : nothing}
+          ${this.replayActive && this.replayPackageNote ? html`<span class="replay-package-note" title="Widgets use installed packages and may look different.">Widgets use installed packages and may look different.</span>` : nothing}
+          ${this.liveSessionActive && !this.replayActive && !this.liveLearners.length ? html`
             <div class="learners-summary" role="status">Waiting for participants</div>
           ` : nothing}
           <div class="learner-list" role="group" aria-label="Session learners">
@@ -3000,8 +3218,8 @@ export class AppRibbon extends EditingControls {
                 type="button"
                 data-learner-id=${learner.id}
                 aria-pressed=${learner.enabled}
-                aria-label=${`${learner.name}, ${learner.connected ? "connected" : "disconnected"}`}
-                title=${learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}
+                aria-label=${this.replayActive ? `${learner.name}, recorded participant` : `${learner.name}, ${learner.connected ? "connected" : "disconnected"}`}
+                title=${this.replayActive ? learner.name : learner.connected ? `${learner.name} is connected` : `${learner.name} was connected`}
                 @click=${() => this.dispatchEvent(new CustomEvent("live-learner-toggle", {
                   detail: {id: learner.id, enabled: !learner.enabled},
                   bubbles: true,
@@ -3010,7 +3228,7 @@ export class AppRibbon extends EditingControls {
               >
                 <span class="learner-avatar" style=${styleMap({"--learner-color": safeCssColor(learner.color)})} aria-hidden="true">${learner.initials}</span>
                 <span class="learner-toggle-name">${learner.name}</span>
-                <span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>
+                ${this.replayActive ? nothing : html`<span class="learner-connection" ?data-connected=${learner.connected} aria-hidden="true"></span>`}
               </button>
             `)}
           </div>
@@ -3020,6 +3238,7 @@ export class AppRibbon extends EditingControls {
   }
 
   protected renderDrawers() {
+    if(this.previewActive && this.replayActive) return [this.renderLearnersDrawer()]
     if(this.previewActive && this.liveSessionRole !== "learner") {
       return [this.renderLearnersDrawer(), html`
         <ribbon-drawer label="Sharing" icon="Share" layout="sharing-preview">
@@ -3499,10 +3718,12 @@ export class AppRibbon extends EditingControls {
               aria-label=${this.previewActive ? "Exit preview" : "Preview"}
               title=${this.previewActive ? "Exit preview" : "Preview"}
               aria-pressed=${this.previewActive}
+              aria-description=${this.recoveredReplay ? "A recovered session recording is available" : nothing}
               ?disabled=${aiReviewPending || historyPreviewPending}
               @click=${() => this.handleTopButtonClick("Preview")}
             >
               <span class="preview-icon" aria-hidden="true">${ribbonIcon("Preview")}</span>
+              ${this.recoveredReplay ? html`<span class="preview-recovery-alert" aria-hidden="true">!</span>` : nothing}
             </button>
           </div>
         </div>
@@ -3525,7 +3746,7 @@ export class AppRibbon extends EditingControls {
           id="ribbon-content"
           class="ribbon-content"
           role="tabpanel"
-          aria-label=${this.previewActive && this.liveSessionActive ? "Live session" : this.activeMenu}
+          aria-label=${this.replayActive ? "Session replay" : this.previewActive && this.liveSessionActive ? "Live session" : this.activeMenu}
           ?hidden=${!this.expanded}
           ?inert=${aiReviewPending || historyPreviewPending && this.activeMenu !== "History"}
         >
