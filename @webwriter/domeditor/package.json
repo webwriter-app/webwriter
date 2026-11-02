@@ -6,7 +6,7 @@
   "type": "module",
   "private": true,
   "author": "Frederic Salmen <frederic@fsalmen.de>",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "start": "node dev-server/server.mjs",
     "start:private": "node dev-server/server.mjs --private-testing",
