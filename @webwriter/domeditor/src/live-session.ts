@@ -3,6 +3,7 @@ import {Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessS
 import {WebsocketProvider} from "y-websocket"
 import {acceptLearnerUpdate, encodeLiveSessionFeedback, liveSessionFeedbackMessage, readLiveSessionFeedback} from "./live-session-permissions.js"
 import {isCssColor} from "./css-color"
+import {LivePeerTransport, encodeLiveBytes, decodeLiveBytes} from "./live-peer"
 import type {IImportMap} from "@jspm/import-map"
 import type {WebWriterPackage} from "./packages"
 import type {WidgetDataSnapshot} from "./widget-aggregate"
@@ -46,6 +47,15 @@ export type LiveSessionWidgetState = {
   data?: WidgetDataSnapshot
 }
 
+/** An explicitly emitted package event; ordinary widget changes carry no semantics. */
+export type LiveSessionWidgetEvent = {
+  profile: string
+  verb: {id: string, display?: Record<string, string>}
+  contextExtensions?: Record<string, unknown>
+  resultExtensions?: Record<string, unknown>
+  widget: {tag: string, path: number[]}
+}
+
 export type LiveSessionStep = {
   id: string
   time: number
@@ -57,7 +67,10 @@ export type LiveSessionStep = {
   scroll?: LiveSessionScroll
   regions?: LiveSessionRegion[]
   html?: string
+  htmlCheckpoint?: string
+  htmlUpdate?: string
   widgets?: LiveSessionWidgetState[]
+  analytics?: LiveSessionWidgetEvent
 }
 
 export type LiveSessionStepInput = Omit<LiveSessionStep, "id" | "time" | "learner"> & {learner?: string}
@@ -91,13 +104,15 @@ type LiveSessionOptions = {
   role: LiveSessionRole
   baseHTML?: string
   previewDependencies?: LiveSessionPreviewDependencies
-  /** WebSocket collaboration endpoint. Cross-tab live sessions require this endpoint. */
+  /** WebSocket endpoint for signaling, or for explicit legacy server sessions. */
   serverUrl?: string
   /** Capability shared only through the host's learner link. */
   token?: string
   /** Reuse the HTTP publisher's host capability even when storage is unavailable. */
   hostKey?: string
   learner?: Pick<LiveSessionLearner, "id" | "name" | "color">
+  validateDocument?: (before: string | undefined, after: string) => boolean
+  peer?: {hostPublicKey: string, hostPrivateKey?: CryptoKey, secret: string}
 }
 
 type AwarenessState = {
@@ -168,8 +183,8 @@ export const liveSessionHostKey = (id: string, token: string) => connectionKey(i
 /**
  * Durable session timeline and learner registry. The Y.Doc owned here is a
  * session log, not a second representation of the authored editor DOM.
- * Without `serverUrl`, instances coordinate only in the same JavaScript realm;
- * sharing across tabs requires the server-backed WebSocket transport.
+ * Peer sessions use the server only for signaling. Without `serverUrl`,
+ * instances coordinate only in the same JavaScript realm.
  */
 export class LiveSession {
   readonly id: string
@@ -186,8 +201,16 @@ export class LiveSession {
   readonly #listeners = new Set<LiveSessionChangeListener>()
   readonly #clientLearners = new Map<number, string>()
   readonly #provider?: WebsocketProvider
+  readonly #peer?: LivePeerTransport
+  readonly #peerLearners = new Map<string, string>()
+  readonly #peerKeys = new Map<string, string>()
+  readonly #learnerKeys = new Map<string, string>()
+  #peerConnection?: string
+  #peerBaseHTML?: string
+  #peerDependencies?: LiveSessionPreviewDependencies
   readonly #learner?: Pick<LiveSessionLearner, "id" | "name" | "color">
   readonly #token?: string
+  readonly #validateDocument?: (before: string | undefined, after: string) => boolean
   readonly #pendingStepDeltas: LiveSessionStepDelta[] = []
   #status: LiveSessionStatus
   #destroyed = false
@@ -200,13 +223,18 @@ export class LiveSession {
     if(options.token !== undefined && !/^[A-Za-z0-9_-]{24,256}$/.test(options.token)) {
       throw new TypeError("A live session token is invalid")
     }
-    if(options.serverUrl && !options.token) {
+    if(options.serverUrl && !options.token && !options.peer) {
       throw new TypeError("A server-backed live session requires a bearer token")
     }
     if(options.hostKey !== undefined && !/^[A-Za-z0-9_-]{24,256}$/.test(options.hostKey)) {
       throw new TypeError("A live session host key is invalid")
     }
+    if(options.peer && (!options.serverUrl || !/^[A-Za-z0-9_-]{87}$/.test(options.peer.hostPublicKey)
+      || !/^[A-Za-z0-9_-]{32}$/.test(options.peer.secret) || this.role === "host" && !options.peer.hostPrivateKey)) {
+      throw new TypeError("Invalid peer host identity")
+    }
     this.#token = options.token
+    this.#validateDocument = options.validateDocument
     this.#status = options.serverUrl ? "connecting" : "connected"
     this.doc = new Y.Doc()
     this.awareness = new Awareness(this.doc as any)
@@ -215,10 +243,10 @@ export class LiveSession {
     this.#stepArray = this.doc.getArray(STEPS)
     this.#stateMap = this.doc.getMap(STATES)
 
-    if(!options.serverUrl && this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
+    if((!options.serverUrl || options.peer) && this.role === "host" && options.baseHTML !== undefined && this.#meta.get("baseHTML") === undefined) {
       this.#meta.set("baseHTML", options.baseHTML)
     }
-    if(!options.serverUrl && this.role === "host" && options.previewDependencies !== undefined) {
+    if((!options.serverUrl || options.peer) && this.role === "host" && options.previewDependencies !== undefined) {
       this.#meta.set("previewDependencies", clone(options.previewDependencies))
     }
     if(this.role === "host" && this.#meta.get("status") === undefined) {
@@ -245,7 +273,32 @@ export class LiveSession {
     this.#meta.observe(this.#handleCollectionChange)
     this.awareness.on("change", this.#handleAwarenessChange)
 
-    if(options.serverUrl) {
+    if(options.serverUrl && options.peer) {
+      this.#peer = new LivePeerTransport({
+        room: this.id, signaling: options.serverUrl, role: this.role, ...options.peer,
+        learnerKeyId: this.#learner?.id,
+        onStatus: connected => { if(!this.#destroyed && this.#status !== "stopped") { this.#status = connected ? "connected" : "connecting"; this.#notify() } },
+        onOpen: (peer, key) => {
+          this.#peerKeys.set(peer, key)
+          if(this.role === "learner") this.#peerConnection = peer
+          if(this.role === "host") this.#peer?.send(peer, {type: "welcome", html: this.baseHTML, dependencies: this.previewDependencies})
+          else this.#peer?.send(peer, {type: "hello", learner: this.#learner, update: encodeLiveBytes(Y.encodeStateAsUpdate(this.doc))})
+        },
+        onMessage: (peer, message) => this.#receivePeerMessage(peer, message),
+        onClose: peer => {
+          this.#peerKeys.delete(peer)
+          if(this.#peerConnection === peer) this.#peerConnection = undefined
+          const learner = this.#peerLearners.get(peer)
+          this.#peerLearners.delete(peer)
+          if(learner && ![...this.#peerLearners.values()].includes(learner)) {
+            const current = this.#learnerMap.get(learner)
+            if(current) this.#learnerMap.set(learner, {...current, connected: false, lastSeen: Date.now()})
+          }
+          if(this.role === "learner" && !this.#destroyed && this.#status !== "stopped") { this.#status = "connecting"; this.#notify() }
+        },
+      })
+    }
+    else if(options.serverUrl) {
       this.#provider = new WebsocketProvider(options.serverUrl, `live-session-${this.id}`, this.doc as any, {
         awareness: this.awareness,
         disableBc: true,
@@ -275,31 +328,24 @@ export class LiveSession {
       const peers = transportSessions.get(this.id) ?? new Set<LiveSession>()
       const compatiblePeers = [...peers].filter(peer => peer.#token === this.#token)
       const host = compatiblePeers.find(peer => peer.role === "host")
-      const source = host ?? compatiblePeers[0]
-      const sourceStateVector = source ? Y.encodeStateVector(source.doc) : new Uint8Array()
       if(host) host.#sendSync(this)
-      else if(this.role === "host") compatiblePeers.forEach(peer => peer.#sendLearnerHistory(this))
+      else if(this.role === "host") compatiblePeers.forEach(peer => { peer.#sendLearnerHistory(this); this.#sendSync(peer) })
       peers.add(this)
       transportSessions.set(this.id, peers)
-      const joiningUpdate = source
-        ? Y.encodeStateAsUpdate(this.doc, sourceStateVector)
-        : Y.encodeStateAsUpdate(this.doc)
-      // A first host bootstraps from several independent learner histories.
-      // Send the resulting full session to every learner, since none of them
-      // necessarily has the other learners' original Yjs structs.
-      this.#broadcastUpdate(this.role === "host" && !host
-        ? Y.encodeStateAsUpdate(this.doc)
-        : joiningUpdate)
+      if(this.role === "learner") this.#broadcastUpdate(Y.encodeStateAsUpdate(this.doc))
+      else compatiblePeers.forEach(peer => peer.#broadcastAwareness())
       this.#broadcastAwareness([this.awareness.clientID])
     }
   }
 
   get baseHTML() {
+    if(this.#peerBaseHTML !== undefined) return this.#peerBaseHTML
     const html = this.#meta.get("baseHTML")
     return typeof html === "string" ? html : undefined
   }
 
   get previewDependencies() {
+    if(this.#peerDependencies !== undefined) return clone(this.#peerDependencies)
     return clone(this.#meta.get("previewDependencies") as LiveSessionPreviewDependencies | undefined)
   }
 
@@ -332,7 +378,11 @@ export class LiveSession {
       || !this.learners.some(learner => learner.id === participant && learner.connected)
       || typeof text !== "string" || !text.trim() || text.length > 4000) return null
     const message = {id: identifier("feedback"), participant, text: text.trim(), time: Date.now()}
-    if(this.#provider) {
+    if(this.#peer) {
+      const peer = [...this.#peerLearners].find(([, learner]) => learner === participant)?.[0]
+      if(!peer || !this.#peer.send(peer, {type: "feedback", message})) return null
+    }
+    else if(this.#provider) {
       if(!this.#provider.wsconnected || !this.#provider.ws) return null
       try { this.#provider.ws.send(encodeLiveSessionFeedback(message)) }
       catch { return null }
@@ -351,6 +401,43 @@ export class LiveSession {
       || this.role !== "host" && message.participant !== this.#learner?.id) return
     this.#feedbackMessages.set(message.id, clone(message))
     this.#queueNotify()
+  }
+
+  #receivePeerMessage(peer: string, value: unknown) {
+    if(this.#destroyed || this.#status === "stopped" || !value || typeof value !== "object") return
+    const message = value as any
+    if(this.role === "learner") {
+      if(message.type === "welcome" && typeof message.html === "string") {
+        this.#peerBaseHTML = message.html
+        this.#peerDependencies = message.dependencies
+        this.#queueNotify()
+      }
+      else if(message.type === "feedback" && message.message?.participant === this.#learner?.id
+        && typeof message.message.id === "string" && typeof message.message.text === "string" && Number.isFinite(message.message.time)) this.#receiveFeedback(message.message)
+      else if(message.type === "stop") this.stop()
+      return
+    }
+    if(message.type === "hello" && isLearnerIdentity(message.learner)) {
+      const key = this.#peerKeys.get(peer)
+      const previousKey = this.#learnerKeys.get(message.learner.id)
+      if(this.#peerLearners.has(peer) || !key || previousKey && key !== previousKey || [...this.#peerLearners.values()].includes(message.learner.id)) {
+        this.#peer?.disconnect(peer)
+        return
+      }
+      this.#learnerKeys.set(message.learner.id, key)
+      this.#peerLearners.set(peer, message.learner.id)
+      this.#upsertLearner(message.learner, true)
+      for(const feedback of this.#feedbackMessages.values()) {
+        if(feedback.participant === message.learner.id) this.#peer?.send(peer, {type: "feedback", message: feedback})
+      }
+    }
+    const learner = this.#peerLearners.get(peer)
+    if(!learner || !["hello", "update"].includes(message.type) || typeof message.update !== "string" || message.update.length > 12 * 1024 * 1024) return
+    try {
+      const update = decodeLiveBytes(message.update)
+      if(acceptLearnerUpdate(this.doc, update, learner, this.#validateDocument)) this.#applyUpdate(update)
+    }
+    catch { /* Ignore malformed or unauthorized learner updates. */ }
   }
 
   get status() {
@@ -387,6 +474,7 @@ export class LiveSession {
           ...(step.regions !== undefined ? {regions: clone(step.regions)} : {}),
           ...(step.widgets !== undefined ? {widgets: clone(step.widgets)} : {}),
         }
+        if(step.htmlCheckpoint !== undefined) delete state.html
         this.#stateMap.set(learner, state)
       }
     })
@@ -409,6 +497,13 @@ export class LiveSession {
     })
     removeAwarenessStates(this.awareness, [this.awareness.clientID], "live-session-stop")
     this.#status = "stopped"
+    if(!this.#provider && !this.#peer && this.role === "host") {
+      for(const peer of transportSessions.get(this.id) ?? []) {
+        if(peer !== this && peer.#token === this.#token && peer.role === "learner") peer.stop()
+      }
+    }
+    if(this.#peer && this.role === "host") for(const peer of this.#peerLearners.keys()) this.#peer.send(peer, {type: "stop"})
+    this.#peer?.destroy(this.role === "host")
     this.#provider?.destroy()
     const peers = transportSessions.get(this.id)
     peers?.delete(this)
@@ -492,23 +587,25 @@ export class LiveSession {
   }
 
   #broadcastUpdate(update: Uint8Array) {
+    if(this.#peer) {
+      if(this.role === "learner" && this.#peerConnection) this.#peer.send(this.#peerConnection, {type: "update", update: encodeLiveBytes(update)})
+      return
+    }
     const peers = [...(transportSessions.get(this.id) ?? [])].filter(peer => peer.#token === this.#token)
     const host = peers.find(peer => peer.role === "host")
     // Learners cannot authorize one another. Keep their local changes so they
     // can be validated when a host reconnects, but never relay them hostless.
-    if(this.role === "learner" && (!host || !acceptLearnerUpdate(host.doc, update, this.#learner!.id))) return
-    peers.forEach(peer => {
-      if(peer !== this) peer.#applyUpdate(update)
-    })
+    if(this.role === "learner" && (!host || !acceptLearnerUpdate(host.doc, update, this.#learner!.id, host.#validateDocument))) return
+    if(this.role === "learner" && host && host !== this) host.#applyUpdate(update)
   }
 
   #sendSync(target: LiveSession) {
-    target.#applyUpdate(Y.encodeStateAsUpdate(this.doc))
+    target.#peerBaseHTML = this.baseHTML
+    target.#peerDependencies = this.previewDependencies
     for(const message of this.#feedbackMessages.values()) {
       if(target.role === "host" || message.participant === target.#learner?.id) target.#receiveFeedback(message)
     }
-    const awareness = encodeAwarenessUpdate(this.awareness, [...this.awareness.getStates().keys()])
-    target.#applyAwareness(awareness)
+    target.#queueNotify()
   }
 
   #sendLearnerHistory(target: LiveSession) {
@@ -518,7 +615,7 @@ export class LiveSession {
       // map/array values under a fresh client ID would break later deltas,
       // whose causal clocks refer to these structs.
       const update = Y.encodeStateAsUpdate(this.doc, Y.encodeStateVector(target.doc))
-      if(acceptLearnerUpdate(target.doc, update, this.#learner.id)) {
+      if(acceptLearnerUpdate(target.doc, update, this.#learner.id, target.#validateDocument)) {
         target.#applyUpdate(update)
         for(const message of this.#feedbackMessages.values()) target.#receiveFeedback(message)
       }
@@ -541,9 +638,10 @@ export class LiveSession {
   }
 
   #broadcastAwareness(clientIds = [...this.awareness.getStates().keys()]) {
+    if(this.#peer) return
     const update = encodeAwarenessUpdate(this.awareness, clientIds)
     transportSessions.get(this.id)?.forEach(peer => {
-      if(peer !== this && peer.#token === this.#token) peer.#applyAwareness(update)
+      if(peer !== this && peer.#token === this.#token && this.role === "learner" && peer.role === "host") peer.#applyAwareness(update)
     })
   }
 

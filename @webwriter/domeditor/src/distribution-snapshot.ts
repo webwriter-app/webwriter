@@ -1,4 +1,6 @@
 import type {DistributionNode} from "./distribution-validation.js"
+import {validateDistributionChange} from "./distribution-validation.js"
+import {readDistributionConfigs} from "./distribution-dom"
 
 /** Stable, artifact-free validation projection; never stored as an editor model. */
 export function distributionSnapshot(node: Node): DistributionNode | null {
@@ -26,4 +28,20 @@ export function distributionFragment(html: string, root: Document): Distribution
   const template = root.createElement("template")
   template.innerHTML = html
   return Array.from(template.content.childNodes).flatMap(node => { const value = distributionSnapshot(node); return value ? [value] : [] })
+}
+
+/** Validate learner snapshots against policies taken only from the host's document. */
+export function createBrowserDistributionValidator(baseHTML: string) {
+  const parser = new DOMParser()
+  const base = parser.parseFromString(baseHTML, "text/html")
+  const configs = readDistributionConfigs(base)
+  const snapshot = (html: string) => distributionSnapshot(parser.parseFromString(html, "text/html").documentElement)!
+  return {
+    configured: configs.length > 0,
+    validate(beforeHTML: string | undefined, afterHTML: string) {
+      if(typeof afterHTML !== "string" || afterHTML.length > 8 * 1024 * 1024) return false
+      return validateDistributionChange(snapshot(beforeHTML ?? baseHTML), snapshot(afterHTML), configs,
+        html => distributionFragment(html, base))
+    },
+  }
 }

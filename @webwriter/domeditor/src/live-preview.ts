@@ -7,6 +7,8 @@ import type {LiveWidgetAggregateInput, WidgetDataSnapshot} from "./widget-aggreg
 import {WidgetAggregateViews} from "./widget-aggregate-view"
 import {effectiveDistribution} from "./distribution-dom"
 import {encodeDistributionConfig} from "./distribution.js"
+import {IncrementalPreviewRecorder} from "./live-session-incremental"
+import {validLiveSessionWidgetEvent} from "./live-session-permissions.js"
 
 type PublishPreviewStep = (step: Parameters<LiveSession["publish"]>[0]) => void
 const clampUnit = (value: number) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0))
@@ -71,6 +73,7 @@ export class LivePreview {
   private generation = 0
   private data = new WeakMap<Element, {signature: string; snapshot: WidgetDataSnapshot}>()
   private aggregateViews?: WidgetAggregateViews
+  private recorder?: IncrementalPreviewRecorder
 
   showAggregates(previewDocument: Document, inputs: LiveWidgetAggregateInput[]) {
     this.aggregateViews ??= new WidgetAggregateViews(previewDocument)
@@ -160,7 +163,9 @@ export class LivePreview {
       const path = this.widgetPaths.get(widget) ?? previewElementPath(widget, previewDocument)
       if(path && !this.widgetPaths.has(widget)) this.widgetPaths.set(widget, path)
       const data = this.captureWidgetData(widget)
-      return path ? [{...(widget.id ? {id: widget.id} : {}), path, html: widget.outerHTML,
+      const snapshot = widget.cloneNode(true) as Element
+      clearEditorArtifacts(snapshot)
+      return path ? [{...(widget.id ? {id: widget.id} : {}), path, html: snapshot.outerHTML,
         ...(data ? {data} : {state: this.captureWidgetPublicState(widget)})}] : []
     })
   }
@@ -226,6 +231,8 @@ export class LivePreview {
     this.data = new WeakMap()
     this.aggregateViews?.destroy()
     this.aggregateViews = undefined
+    this.recorder?.destroy()
+    this.recorder = undefined
   }
 
   observeLearner(frame: Pick<HTMLIFrameElement, "contentWindow">, previewDocument: Document, publish: PublishPreviewStep) {
@@ -235,6 +242,12 @@ export class LivePreview {
     const body = previewDocument.body
     if(!view || !body) return
     this.seedWidgetPaths(previewDocument)
+    this.recorder = new IncrementalPreviewRecorder(this.previewHTML(previewDocument))
+    const encodeUpdate = (update: Uint8Array) => {
+      let binary = ""
+      for(let offset = 0; offset < update.length; offset += 8192) binary += String.fromCharCode(...update.subarray(offset, offset + 8192))
+      return btoa(binary)
+    }
 
     const listen = (
       target: EventTarget,
@@ -305,6 +318,22 @@ export class LivePreview {
       kind: "widget",
       widgets: this.captureWidgetStates(previewDocument),
     })
+    const widgetAnalytics = (event: Event) => {
+      const host = event.composedPath().find((node): node is Element =>
+        Boolean(node && (node as Node).nodeType === 1 && (node as Element).ownerDocument === previewDocument
+          && body.contains(node as Node) && (node as Element).localName.includes("-")))
+      const path = host && previewElementPath(host, previewDocument)
+      if(!host || !path) return
+      try {
+        const detail = JSON.parse(JSON.stringify((event as CustomEvent).detail))
+        const analytics = {profile: detail.profile, verb: detail.verb,
+          ...(detail.contextExtensions !== undefined ? {contextExtensions: detail.contextExtensions} : {}),
+          ...(detail.resultExtensions !== undefined ? {resultExtensions: detail.resultExtensions} : {}),
+          widget: {tag: host.localName, path}}
+        if(validLiveSessionWidgetEvent(analytics)) publish({kind: "widget", analytics})
+      }
+      catch { /* Malformed package events are ignored. */ }
+    }
 
     let dataQueued = false
     const dataChanged = (event: Event) => {
@@ -340,6 +369,7 @@ export class LivePreview {
     listen(previewDocument, "scroll", scroll, {capture: true, passive: true})
     listen(view, "scroll", scroll, {passive: true})
     listen(previewDocument, "input", widget, true)
+    listen(previewDocument, "webwriter-xapi", widgetAnalytics, true)
     listen(previewDocument, "change", widget, true)
     this.cleanup.push(() => {
       if(pointerTimer !== undefined) clearTimeout(pointerTimer)
@@ -358,9 +388,10 @@ export class LivePreview {
         this.documentUpdateQueued = false
         const pending = this.pendingMutations.splice(0)
         if(!pending.length) return
+        const update = this.recorder?.capture(this.previewHTML(previewDocument))
         publish({
           kind: "document",
-          html: this.previewHTML(previewDocument),
+          ...(update ? {htmlUpdate: encodeUpdate(update)} : {}),
           regions: this.mutationRegions(pending, previewDocument),
           widgets: this.captureWidgetStates(previewDocument),
           scroll: this.previewScrollState(previewDocument),
@@ -376,7 +407,7 @@ export class LivePreview {
     })
     publish({
       kind: "document",
-      html: this.previewHTML(previewDocument),
+      htmlCheckpoint: encodeUpdate(this.recorder.checkpoint()),
       regions: [],
       widgets: this.captureWidgetStates(previewDocument),
       scroll: this.previewScrollState(previewDocument),

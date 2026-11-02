@@ -4,6 +4,8 @@ import {LiveSession} from "./live-session"
 import {connectLiveLearner} from "./live-learner"
 import {bunnyFontStylesheet} from "./fonts"
 import {fontCSSDataURL} from "./local-fonts"
+import * as Y from "yjs"
+import {applyPreviewUpdate} from "./live-session-permissions.js"
 
 vi.mock("./frame-origins", () => ({editorHostOrigin: () => "https://app.test"}))
 
@@ -111,7 +113,14 @@ describe("connectLiveLearner", () => {
       button.textContent = "Updated by learner"
       await new Promise<void>(resolve => queueMicrotask(resolve))
       await new Promise<void>(resolve => queueMicrotask(resolve))
-      expect(host.steps.some(step => step.kind === "document" && step.html?.includes("Updated by learner"))).toBe(true)
+      const recording = new Y.Doc()
+      let html = ""
+      for(const step of host.steps) {
+        if(step.htmlCheckpoint || step.htmlUpdate) html = applyPreviewUpdate(recording, (step.htmlCheckpoint ?? step.htmlUpdate)!)
+      }
+      expect(html).toContain("Updated by learner")
+      expect(host.steps.some(step => step.htmlUpdate)).toBe(true)
+      recording.destroy()
       host.publish({kind: "pointer", pointer: {x: 0.2, y: 0.3}})
       await new Promise<void>(resolve => queueMicrotask(resolve))
       expect(document.body).toBe(body)

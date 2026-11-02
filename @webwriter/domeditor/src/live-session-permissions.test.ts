@@ -2,6 +2,7 @@
 import * as Y from "yjs"
 import {describe, expect, it} from "vitest"
 import {acceptLearnerUpdate} from "./live-session-permissions.js"
+import {IncrementalPreviewRecorder} from "./live-session-incremental"
 
 const maps = (doc: Y.Doc) => ({
   meta: doc.getMap("live-session-meta"),
@@ -33,6 +34,19 @@ const updateFrom = (edit: (doc: Y.Doc) => void) => {
 }
 
 describe("acceptLearnerUpdate", () => {
+  it("accepts bounded package events and rejects malformed analytics at the peer boundary", () => {
+    const analytics = {profile: "https://example.org/profile/v1", verb: {id: "https://example.org/verb/used"}, widget: {tag: "demo-widget", path: [0]}}
+    const update = (event: unknown, kind = "widget") => updateFrom(doc => maps(doc).steps.push([{id: "custom", time: 2, learner: "ada", kind, analytics: event}]))
+    const good = update(analytics)
+    expect(acceptLearnerUpdate(good.target, good.update, "ada")).toBe(true)
+    for(const event of [{...analytics, profile: "javascript:alert(1)"}, {...analytics, contextExtensions: {"invalid": 1}},
+      {...analytics, resultExtensions: {"https://example.org/extension": "x".repeat(17000)}}]) {
+      const bad = update(event)
+      expect(acceptLearnerUpdate(bad.target, bad.update, "ada")).toBe(false)
+    }
+    const wrongKind = update(analytics, "click")
+    expect(acceptLearnerUpdate(wrongKind.target, wrongKind.update, "ada")).toBe(false)
+  })
   it.each([
     ["metadata", (doc: Y.Doc) => maps(doc).meta.set("baseHTML", "<p>owned</p>")],
     ["another learner", (doc: Y.Doc) => maps(doc).learners.set("grace", {...learner, id: "grace"})],
@@ -124,5 +138,45 @@ describe("acceptLearnerUpdate", () => {
   it("rejects malformed and oversized updates", () => {
     expect(acceptLearnerUpdate(baseDoc(), Uint8Array.of(1, 2, 3), "ada")).toBe(false)
     expect(acceptLearnerUpdate(baseDoc(), new Uint8Array(8 * 1024 * 1024 + 1), "ada")).toBe(false)
+  })
+
+  it("validates each incremental document state and rejects forbidden intermediate changes", () => {
+    const recorder = new IncrementalPreviewRecorder("<p>Hi</p>")
+    const encode = (value: Uint8Array) => btoa(String.fromCharCode(...value))
+    try {
+      const checkpoint = encode(recorder.checkpoint())
+      const forbidden = encode(recorder.capture("<script>bad</script>")!)
+      const restored = encode(recorder.capture("<p>Hi</p>")!)
+      const {target, update} = updateFrom(doc => maps(doc).steps.push([
+        {id: "checkpoint", time: 2, learner: "ada", kind: "document", htmlCheckpoint: checkpoint},
+        {id: "bad", time: 3, learner: "ada", kind: "document", htmlUpdate: forbidden},
+        {id: "restore", time: 4, learner: "ada", kind: "document", htmlUpdate: restored},
+      ]))
+      expect(acceptLearnerUpdate(target, update, "ada", (_before, after) => !after.includes("<script>"))).toBe(false)
+      expect(acceptLearnerUpdate(target, update, "ada", () => true)).toBe(true)
+      expect(maps(target).steps.length).toBe(1)
+    }
+    finally { recorder.destroy() }
+  })
+
+  it("rejects incremental changes without a checkpoint or with invalid data", () => {
+    for(const htmlUpdate of ["invalid", "AQID"]) {
+      const {target, update} = updateFrom(doc => maps(doc).steps.push([
+        {id: "bad", time: 2, learner: "ada", kind: "document", htmlUpdate},
+      ]))
+      expect(acceptLearnerUpdate(target, update, "ada")).toBe(false)
+    }
+  })
+
+  it("rejects an incremental checkpoint inserted before a learner's existing steps", () => {
+    const recorder = new IncrementalPreviewRecorder("<p>Hi</p>")
+    try {
+      const checkpoint = btoa(String.fromCharCode(...recorder.checkpoint()))
+      const {target, update} = updateFrom(doc => maps(doc).steps.insert(0, [
+        {id: "out-of-order", time: 0, learner: "ada", kind: "document", htmlCheckpoint: checkpoint},
+      ]))
+      expect(acceptLearnerUpdate(target, update, "ada")).toBe(false)
+    }
+    finally { recorder.destroy() }
   })
 })

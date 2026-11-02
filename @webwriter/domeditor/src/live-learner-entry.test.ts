@@ -49,6 +49,18 @@ describe("standalone live learner entry", () => {
     expect(mocks.connectLiveLearner).toHaveBeenCalledWith(expect.any(Object), document, {rendered: true})
   })
 
+  it("opens a peer invitation using its host key without a server token", async () => {
+    const hostPublicKey = "A".repeat(87)
+    const secret = "B".repeat(32)
+    locationState.href = `https://editor.test/live/?liveSession=lesson-1&liveServer=wss%3A%2F%2Fcollab.test#liveKey=${hostPublicKey}&liveSecret=${secret}`
+    const {startLiveLearner} = await import("./live-learner-entry")
+    startLiveLearner()
+    expect(mocks.LiveSession).toHaveBeenCalledWith(expect.objectContaining({
+      id: "lesson-1", serverUrl: "wss://collab.test/", peer: {hostPublicKey, secret},
+    }))
+    expect(mocks.connectLiveLearner).toHaveBeenCalledOnce()
+  })
+
   it.each([
     ["bad token", "liveSession=lesson&liveToken=short&liveServer=wss%3A%2F%2Fcollab.test"],
     ["bad protocol", "liveSession=lesson&liveToken=abcdefghijklmnopqrstuvwxyz123456&liveServer=https%3A%2F%2Fcollab.test"],

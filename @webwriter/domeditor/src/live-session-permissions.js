@@ -14,6 +14,41 @@ const mapNames = {
 
 const isRecord = value => Boolean(value) && typeof value === "object" && !Array.isArray(value)
 const isFiniteNumber = value => typeof value === "number" && Number.isFinite(value)
+
+const validIRI = value => {
+  if(typeof value !== "string" || value.length > 2048 || /[\s\u0000-\u001f]/u.test(value)) return false
+  try { return ["http:", "https:", "urn:"].includes(new URL(value).protocol) }
+  catch { return false }
+}
+/** Validate package-authored analytics both at the peer boundary and on replay. */
+export function validLiveSessionWidgetEvent(value) {
+  try {
+    if(!isRecord(value) || new TextEncoder().encode(JSON.stringify(value)).length > 16384
+      || !validIRI(value.profile) || !isRecord(value.verb) || !validIRI(value.verb.id)
+      || !Object.keys(value.verb).every(key => key === "id" || key === "display")
+      || !isRecord(value.widget) || typeof value.widget.tag !== "string" || !/^[a-z][a-z0-9._-]*-[a-z0-9._-]+$/.test(value.widget.tag)
+      || !Array.isArray(value.widget.path) || value.widget.path.length > 256
+      || !value.widget.path.every(n => Number.isSafeInteger(n) && n >= 0)) return false
+    if(value.verb.display !== undefined && (!isRecord(value.verb.display)
+      || !Object.entries(value.verb.display).every(([key, text]) => /^[a-zA-Z0-9-]{1,35}$/.test(key) && typeof text === "string" && text.length <= 500))) return false
+    for(const extensions of [value.contextExtensions, value.resultExtensions]) {
+      if(extensions !== undefined && (!isRecord(extensions) || !Object.keys(extensions).every(validIRI))) return false
+    }
+    const json = JSON.stringify(value)
+    return json !== undefined && JSON.stringify(JSON.parse(json)) === json
+  }
+  catch { return false }
+}
+
+/** Apply a single serialized preview update to an isolated playback document. */
+export function applyPreviewUpdate(doc, encoded) {
+  if(typeof encoded !== "string" || !encoded.length || encoded.length > MAX_UPDATE_SIZE * 2
+    || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) throw new TypeError("Invalid preview update")
+  const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0))
+  Y.applyUpdate(doc, bytes)
+  if(doc.store.pendingStructs || doc.store.pendingDs || [...doc.share.keys()].some(key => key !== "preview")) throw new TypeError("Incomplete preview update")
+  return doc.getText("preview").toString()
+}
 // y-websocket reserves message types 0–3. Feedback uses the authenticated
 // connection directly so it never enters the session's broadcast Y.Doc.
 export const liveSessionFeedbackMessage = 4
@@ -75,12 +110,17 @@ const validStep = (value, learnerId) => isRecord(value)
   && isFiniteNumber(value.time) && value.learner === learnerId
   && typeof value.kind === "string" && stepKinds.has(value.kind)
   && (value.html === undefined || typeof value.html === "string")
+  && (value.htmlCheckpoint === undefined || typeof value.htmlCheckpoint === "string")
+  && (value.htmlUpdate === undefined || typeof value.htmlUpdate === "string")
+  && (value.htmlCheckpoint === undefined && value.htmlUpdate === undefined
+    || value.kind === "document" && value.html === undefined && (value.htmlCheckpoint === undefined || value.htmlUpdate === undefined))
   && (value.cursor === undefined || validPoint(value.cursor))
   && (value.pointer === undefined || validPoint(value.pointer))
   && (value.click === undefined || validPoint(value.click))
   && (value.scroll === undefined || isRecord(value.scroll) && isFiniteNumber(value.scroll.top))
   && (value.regions === undefined || Array.isArray(value.regions))
   && (value.widgets === undefined || Array.isArray(value.widgets))
+  && (value.analytics === undefined || value.kind === "widget" && validLiveSessionWidgetEvent(value.analytics))
 
 /** Validate a learner-authored Yjs update without mutating the live document. */
 export function acceptLearnerUpdate(doc, update, learnerId, validateDocument) {
@@ -124,16 +164,45 @@ export function acceptLearnerUpdate(doc, update, learnerId, validateDocument) {
     if(validationDoc.store.pendingStructs || validationDoc.store.pendingDs) accepted = false
     if(accepted && changedLearner && (!learners.has(learnerId) || !validLearner(learners.get(learnerId), learnerId))) accepted = false
     if(accepted && changedState && (!states.has(learnerId) || !validState(states.get(learnerId), learnerId))) accepted = false
-    if(accepted && validateDocument) {
+    const knownStepIds = new Set(previousSteps.map(step => step?.id))
+    const addedSteps = steps.toArray().filter(step => !knownStepIds.has(step.id))
+    let insertedIncremental = false
+    for(const step of steps.toArray()) {
+      if(!knownStepIds.has(step.id) && (step.htmlCheckpoint !== undefined || step.htmlUpdate !== undefined)) insertedIncremental = true
+      if(insertedIncremental && knownStepIds.has(step.id) && step.learner === learnerId) accepted = false
+    }
+    if(accepted && (addedSteps.some(step => step.htmlCheckpoint !== undefined || step.htmlUpdate !== undefined
+      || validateDocument && step.html !== undefined) || validateDocument && changedState && states.get(learnerId)?.html !== undefined)) {
       let before = previousHTML
-      for(const step of steps.toArray().filter(step => !previousSteps.some(previous => previous.id === step.id))) {
-        if(step.html !== undefined) {
-          if(!validateDocument(before, step.html)) { accepted = false; break }
-          before = step.html
+      let preview
+      try {
+        // Rebuild only this learner's history; a reconnect may start a new checkpoint.
+        for(const step of previousSteps.filter(step => step.learner === learnerId)) {
+          if(step.html !== undefined) { before = step.html; preview?.destroy(); preview = undefined }
+          if(step.htmlCheckpoint !== undefined) { preview?.destroy(); preview = new Y.Doc(); before = applyPreviewUpdate(preview, step.htmlCheckpoint) }
+          if(step.htmlUpdate !== undefined) {
+            if(!preview) throw new TypeError("Missing preview checkpoint")
+            before = applyPreviewUpdate(preview, step.htmlUpdate)
+          }
+        }
+        for(const step of addedSteps) {
+          let after = step.html
+          if(step.htmlCheckpoint !== undefined) { preview?.destroy(); preview = new Y.Doc(); after = applyPreviewUpdate(preview, step.htmlCheckpoint) }
+          if(step.htmlUpdate !== undefined) {
+            if(!preview) throw new TypeError("Missing preview checkpoint")
+            after = applyPreviewUpdate(preview, step.htmlUpdate)
+          }
+          if(after !== undefined) {
+            if(validateDocument && !validateDocument(before, after)) { accepted = false; break }
+            before = after
+            if(step.html !== undefined) { preview?.destroy(); preview = undefined }
+          }
         }
       }
+      catch { accepted = false }
+      finally { preview?.destroy() }
       const finalHTML = states.get(learnerId)?.html
-      if(accepted && changedState && finalHTML !== undefined && !validateDocument(before, finalHTML)) accepted = false
+      if(accepted && validateDocument && changedState && finalHTML !== undefined && !validateDocument(before, finalHTML)) accepted = false
     }
     const previousIds = previousSteps.map(step => step?.id)
     const finalSteps = steps.toArray()
