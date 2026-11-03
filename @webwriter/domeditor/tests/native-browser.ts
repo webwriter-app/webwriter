@@ -2,6 +2,7 @@ import {captionEnumerationCSS, defaultCaptionEnumeration} from "../src/caption-e
 import {attributionAttributes} from "../src/attribution.js"
 import {graphicShapeSections} from "../src/graphic"
 import listMarkerStyleSource from "../src/document-list-markers.css?raw"
+import editorStyleSource from "../src/editor.css?raw"
 type Check = {name: string, error?: string}
 import {DOMEditor} from "../src/domeditor"
 import {Schema} from "../src/schema"
@@ -76,6 +77,52 @@ const check = async (name: string, run: () => void | Promise<void>) => {
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 let fixture = document.querySelector<HTMLElement>("#fixture")!
 const layoutFrame = async () => { await nextFrame(); await nextFrame() }
+
+await check("table pictures keep their size in editing and preview", async () => {
+  const frames: HTMLIFrameElement[] = []
+  const image = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="purple"/></svg>'
+  try {
+    for(const editing of [true, false]) {
+      const frame = document.createElement("iframe")
+      frame.style.cssText = "width:800px;height:400px"
+      frame.srcdoc = `<style>${defaultDocumentTheme.source}</style>${editing ? `<style>${editorStyleSource}</style>` : ""}
+        <table style="table-layout:fixed;width:600px"><tr>
+        <td><picture style="width:100%;max-width:80px;aspect-ratio:2 / 1"><img src='${image}' style="width:100%;height:100%"></picture></td>
+        <th><picture><img src='${image}'></picture></th>
+        <td><img src='${image}' style="width:80px"></td>
+        </tr><tr><td><picture style="width:20px"><img src='${image}' style="width:100%"></picture></td><td colspan="2">Cell text</td></tr></table>`
+      frames.push(frame)
+      fixture.append(frame)
+      await new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      await Promise.all(Array.from(frame.contentDocument!.images, img => img.decode()))
+    }
+    const dimensions = frames.map(frame => Array.from(frame.contentDocument!.images, img => {
+      const rect = img.getBoundingClientRect()
+      return [rect.width, rect.height]
+    }))
+    for(let i = 0; i < 3; i++) {
+      for(let axis = 0; axis < 2; axis++) assert(Math.abs(dimensions[0][i][axis] - dimensions[1][i][axis]) < 1,
+        `image ${i} differs in editing and preview: ${JSON.stringify(dimensions)}`)
+    }
+    assert(Math.abs(dimensions[1][0][0] - 80) < 1, "resized picture did not retain its maximum width")
+    assert(dimensions[0][3][0] >= 32 && dimensions[0][3][1] >= 32,
+      "small pictures lost their minimum editing dimensions")
+    assert(Math.abs(dimensions[1][3][0] - 20) < 1 && Math.abs(dimensions[1][3][1] - 10) < 1,
+      "editor minimum dimensions affected preview")
+    for(const selector of ["td", "th"]) {
+      const styles = frames.map(frame => frame.contentWindow!.getComputedStyle(frame.contentDocument!.querySelector(selector)!))
+      assert(styles[0].padding === styles[1].padding, `${selector} padding differs in editing and preview`)
+    }
+    const preview = frames[1].contentDocument!
+    const override = preview.createElement("style")
+    override.textContent = "th picture { display: inline-block; width: 45px; }"
+    preview.head.append(override)
+    const picture = preview.querySelector("th picture")!
+    assert(preview.defaultView!.getComputedStyle(picture).display === "inline-block" && Math.abs(picture.getBoundingClientRect().width - 45) < 1,
+      "authored picture styles did not override the theme")
+  }
+  finally { frames.forEach(frame => frame.remove()) }
+})
 
 await check("converted list items support repeated Backspace without clicking", checkListDeletion)
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)

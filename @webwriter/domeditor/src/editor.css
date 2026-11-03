@@ -105,14 +105,9 @@ body > :last-child:not(:where(.◆gap-after-selected)) {
   border-collapse: collapse;
 }
 
-/* HTML tables have no visible grid by default. Keep this presentation in the
- * editor stylesheet so it makes empty cells editable without altering the
- * authored table; zero-specificity selectors let document styles win. */
+/* Show cell boundaries without changing the table's reading-mode geometry. */
 :where(td, th) {
-  min-width: 2rem;
-  height: 1.5rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid #aeb8c4;
+  outline: 1px solid #aeb8c4;
 }
 
 /* Forms have little useful authoring presentation without a site stylesheet.

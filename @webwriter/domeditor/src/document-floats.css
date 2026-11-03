@@ -311,6 +311,13 @@
     }
   }
 
+  /* Pictures in cells need the same sizing box in editing and reading mode. */
+  :where(td, th) picture {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
   /* Keep table section rows distinct across themes while allowing document
    * styles outside this low-priority layer to override the defaults. */
   thead > tr > :is(th, td) {

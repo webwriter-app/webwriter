@@ -122,6 +122,12 @@ describe("document themes", () => {
       expect(source).toMatch(/@layer webwriter-theme\s*\{[\s\S]*tfoot > tr > :is\(th, td\)\s*\{\s*background-color: #f2f2f2;/)
     }
   })
+  it("shares table picture sizing with editing and standalone documents", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain(":where(td, th) picture {\n    display: block;\n    width: 100%;\n    height: auto;\n  }")
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+    }
+  })
   it("keeps editor-owned legacy options placement out of saved document themes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).not.toContain("::part(options)")
