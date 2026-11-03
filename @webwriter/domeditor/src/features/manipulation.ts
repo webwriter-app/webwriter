@@ -708,6 +708,20 @@ export class ManipulationFeature extends EditorFeature {
     this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
     if(event.target instanceof Node && source.contains(event.target)) return null
+    // Ribbon snippets should use a live text caret when the pointer is over
+    // authored text. Projected float lanes cover the whole page column, so
+    // their rectangles can otherwise steal a drop directly on visible text.
+    // Requiring an actual text range hit keeps native caret snapping from
+    // claiming blank gutters, where floating remains the intended behavior.
+    if((event as MouseEvent & {dataTransfer?: DataTransfer | null}).dataTransfer?.types.includes(ribbonInsertionDragType)) {
+      const root = getDocumentRoot(), point = this.dropPoint(event)
+      if(point?.node instanceof Text && point.node.data && root.contains(point.node)) {
+        const text = document.createRange()
+        text.selectNodeContents(point.node)
+        if(Array.from(text.getClientRects()).some(rect => event.clientX >= rect.left && event.clientX <= rect.right
+          && event.clientY >= rect.top && event.clientY <= rect.bottom)) return null
+      }
+    }
     if(source === this.nodeDrag?.element && source.matches("p, h1, h2, h3, h4, h5, h6")) {
       const point = this.dropPoint(event)
       // Caret hit testing can snap from an empty outer margin to nearby text.

@@ -6740,6 +6740,26 @@ describe("unified content transfer", () => {
     expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
   })
 
+  it("keeps ribbon snippet drops on visible text at the native caret and leaves blank space eligible for floats", () => {
+    document.body.innerHTML = '<p>before after</p><p>end</p>'
+    const textNode = document.querySelector("p")!.firstChild!
+    const source = document.createElement("div")
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "user-snippet:saved")
+    const hitText = vi.spyOn($, "pointFromCoords").mockReturnValue({node: textNode, offset: 7})
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(100, 40, 80, 18)] as unknown as DOMRectList)
+    const prepare = vi.spyOn(editor.features.manipulation, "prepareFloatDropTargets")
+
+    const overText = transferEvent("dragover", data, {clientX: 140, clientY: 49}) as MouseEvent
+    expect(editor.features.manipulation.floatDropTarget(overText, source)).toBeNull()
+    expect(prepare).not.toHaveBeenCalled()
+
+    const inBlankSpace = transferEvent("dragover", data, {clientX: 80, clientY: 49}) as MouseEvent
+    editor.features.manipulation.floatDropTarget(inBlankSpace, source)
+    expect(hitText).toHaveBeenCalledTimes(2)
+    expect(prepare).toHaveBeenCalledOnce()
+  })
+
   it.each([
     ["the dragged element", "source"],
     ["a descendant", "nested"],
