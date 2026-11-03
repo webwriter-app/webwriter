@@ -977,6 +977,8 @@ export class EditingSelection {
   static get isGapSelection() {
     const anchor = this.anchor
     if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
+    if(this.isEmpty && isElement(anchor) && anchor.localName === "p"
+      && Array.from(anchor.childNodes).every(node => isText(node) && !node.data.trim() || isElement(node) && node.localName === "br")) return false
     if(this.isEmpty && isElement(anchor) && anchor.localName === "span" && popupElementRole(anchor) === "popup") return false
     if(this.isEmpty && isElement(anchor) && anchor.localName === "p" && anchor.parentElement
       && popupElementRole(anchor.parentElement) === "content") {

@@ -3182,6 +3182,12 @@ export class ManipulationFeature extends EditorFeature {
   /** A single heading joins an existing text container as inline content.
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
+    for(const math of Array.from(fragment.querySelectorAll("math"))) {
+      if(math.namespaceURI !== MATH_NAMESPACE) continue
+      let ancestor = math.parentElement
+      while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
+      if(!ancestor) math.setAttribute("display", "inline")
+    }
     // Remap unambiguous copies of the built-in popup without changing
     // arbitrary authored IDs or references we cannot safely rewrite.
     for(const popup of fragment.querySelectorAll<HTMLElement>('[popover][id^="popup-"]')) {
@@ -3232,7 +3238,7 @@ export class ManipulationFeature extends EditorFeature {
         return toggle ? [{toggle, content}] : []
       })
     popupContents.forEach(({content}) => content.remove())
-    const result = this.insertClipboardFragment(fragment)
+    const result = this.insertClipboardFragment(fragment, false, true)
     if(result !== false) for(const {toggle, content} of popupContents) {
       if(!toggle.isConnected || document.getElementById(content.id)) continue
       const wrapper = toggle.closest(".ww-popup")
@@ -3326,10 +3332,10 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
-  private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false): void | boolean {
+  private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false, paste = false): void | boolean {
     if(this.nestedPopupAtSelection(Array.from(fragment.childNodes))) return false
     if(commandInsertion && !this.inheritingInsertionLayout) {
-      return this.inheritInsertionLayout(Array.from(fragment.childNodes), () => this.insertClipboardFragment(fragment, commandInsertion))
+      return this.inheritInsertionLayout(Array.from(fragment.childNodes), () => this.insertClipboardFragment(fragment, commandInsertion, paste))
     }
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(!this.allowsCaptionInsertion(Array.from(fragment.childNodes))) return false
@@ -3341,7 +3347,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     this.selectCapturedElementForInsertion()
     this.moveInsertionAfterLoneFloat(Array.from(fragment.childNodes))
-    for(const math of Array.from(fragment.querySelectorAll("math"))) {
+    for(const math of paste ? [] : Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
       let ancestor = math.parentElement
       while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
@@ -3361,7 +3367,7 @@ export class ManipulationFeature extends EditorFeature {
     const isInlineContent = nodes.every(node => this.isInlineClipboardNode(node))
     if(this.editor.features.slides.active && (!isInlineContent || nodes.some(node => node instanceof Element && !isMarkElement(node) && !node.matches("br,wbr"))) && !isSlide($.range.startContainer)) {
       fragment.replaceChildren(...nodes)
-      this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, commandInsertion))
+      this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, commandInsertion, paste))
       return
     }
     const widget = nodes.length === 1 ? this.insertedWidget(nodes[0]) : null
@@ -3370,7 +3376,19 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     if(isVirtualSelection && isInlineContent && !this.ensureTextBlock()) return
-    if(isVirtualSelection || isInlineContent) this.insertAtSelection(...nodes)
+    if(isVirtualSelection || isInlineContent) {
+      const anchor = $.anchor
+      const placeholder = paste && isInlineContent && $.isEmpty && anchor instanceof HTMLParagraphElement
+        && anchor.childNodes.length === 1 && anchor.firstChild instanceof HTMLBRElement
+        && Array.from(anchor.firstChild.attributes).every(attribute => attribute.name === "class" && !authoredClassValue(attribute.value))
+        ? anchor.firstChild : null
+      const end = placeholder ? this.editor.doc.beginUndoGroup() : null
+      try {
+        this.insertAtSelection(...nodes)
+        if(anchor && placeholder?.parentNode === anchor && nodes.some(node => anchor.contains(node))) placeholder.remove()
+      }
+      finally { end?.() }
+    }
     else this.insertBlocks(nodes)
     if(widget) {
       this.editor.features.selection.captureElement(widget)

@@ -781,6 +781,11 @@ describe("isGapSelection", () => {
     $.move(document.body.firstElementChild!, 0)
     expect($.isGapSelection).toBe(false)
   })
+  it.each([0, 1])("is false at offset %s in a paragraph with a placeholder break", offset => {
+    setBody("<p><br></p>")
+    $.move(document.body.firstElementChild!, offset)
+    expect($.isGapSelection).toBe(false)
+  })
 })
 
 describe("isElementSelection", () => {

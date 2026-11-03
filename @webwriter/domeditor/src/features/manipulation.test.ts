@@ -7308,10 +7308,102 @@ describe("unified content transfer", () => {
       else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
       parser.mockRestore()
       const math = document.querySelector("math")!
-      const remainsInline = inline && display !== "block"
+      const remainsInline = method === "paste" || inline && display !== "block"
       expect(math.getAttribute("display")).toBe(remainsInline ? "inline" : "block")
-      expect(math.parentElement).toBe(remainsInline ? document.querySelector("p") : document.body)
+      expect(math.parentElement?.localName).toBe(remainsInline ? "p" : "body")
     }
+  })
+
+  it.each(["paste", "beforeinput", "async"])("pastes a block formula inline in an empty document via %s", async method => {
+    document.body.replaceChildren()
+    $.move(document.body, 0)
+    const html = '<math display="block"><mi>x</mi></math>'
+    const parse = editor.parseHTMLFragment.bind(editor)
+    const parser = vi.spyOn(editor, "parseHTMLFragment").mockImplementation((...args) => {
+      const result = parse(...args)
+      for(const original of Array.from(result.fragment.querySelectorAll("math"))) {
+        const math = mathElement("math", mathElement("mi", "x"))
+        math.setAttribute("display", "block")
+        original.replaceWith(math)
+      }
+      return result
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", html)
+    if(method === "async") {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    else if(method === "beforeinput") document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true}))
+    else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    parser.mockRestore()
+    expectBodyToBe('<p><math display="inline"><mi>x</mi></math></p>')
+  })
+
+  it.each(["inline", "block", "missing"])("pastes an externally prepared %s formula without a slot wrapper", display => {
+    document.body.innerHTML = '<p>target</p>'
+    $.move(document.body, 1)
+    const prepare = editor.prepareHTMLFragment.bind(editor)
+    const spy = vi.spyOn(editor, "prepareHTMLFragment").mockImplementation((fragment, ...args) => {
+      for(const original of Array.from(fragment.querySelectorAll("math"))) {
+        const math = mathElement("math", mathElement("mrow", mathElement("mfrac", mathElement("mrow", mathElement("mn", "1")), mathElement("mrow", mathElement("mn", "2")))))
+        if(display !== "missing") math.setAttribute("display", display)
+        original.replaceWith(math)
+      }
+      return prepare(fragment, ...args)
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", display === "missing" ? '<math><mi>x</mi></math>' : `<p><br><math display="${display}"><mi>x</mi></math></p>`)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    spy.mockRestore()
+    expectBodyToBe(`<p>target</p><p>${display === "missing" ? "" : "<br>"}<math display="inline"><mrow><mfrac><mrow><mn>1</mn></mrow><mrow><mn>2</mn></mrow></mfrac></mrow></math></p>`)
+  })
+
+  it.each([0, 1].flatMap(offset => [false, true].map(marked => ({offset, marked}))))("pastes a formula at offset $offset in an empty paragraph (marked=$marked)", ({offset, marked}) => {
+    document.body.innerHTML = `<p>target</p><p><br${marked ? ' class="◆ ◆gap-before-selected"' : ""}></p>`
+    const paragraph = document.body.lastElementChild!
+    $.move(paragraph, offset)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const prepare = editor.prepareHTMLFragment.bind(editor)
+    const spy = vi.spyOn(editor, "prepareHTMLFragment").mockImplementation((fragment, ...args) => {
+      for(const original of Array.from(fragment.querySelectorAll("math"))) {
+        original.replaceWith(mathElement("math", mathElement("mrow", mathElement("mfrac", mathElement("mrow", mathElement("mn", "1")), mathElement("mrow", mathElement("mn", "2"))))))
+      }
+      return prepare(fragment, ...args)
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", '<math><mrow><mfrac><mrow><mn>1</mn></mrow><mrow><mn>2</mn></mrow></mfrac></mrow></math>')
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    spy.mockRestore()
+    expect(document.querySelector("slot")).toBeNull()
+    expect(paragraph.querySelector('math[display="inline"]')).not.toBeNull()
+    expect(paragraph.querySelector("br")).toBeNull()
+    expect(document.body.lastElementChild).toBe(paragraph)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe('<p>target</p><p><br></p>')
+    editor.doc.redo()
+    expect(document.querySelector("p:last-child br")).toBeNull()
+    expect(document.querySelector('p:last-child math[display="inline"]')).not.toBeNull()
+  })
+
+  it("preserves an authored line break when pasting a formula into nonempty text", () => {
+    document.body.innerHTML = '<p>before<br>after</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, 1)
+    const parse = editor.parseHTMLFragment.bind(editor)
+    const spy = vi.spyOn(editor, "parseHTMLFragment").mockImplementation((...args) => {
+      const result = parse(...args)
+      result.fragment.querySelector("math")?.replaceWith(mathElement("math", mathElement("mi", "x")))
+      return result
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", '<math><mi>x</mi></math>')
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    spy.mockRestore()
+    expect(paragraph.querySelector("br")).not.toBeNull()
+    expect(paragraph.querySelector('math[display="inline"]')).not.toBeNull()
   })
 
   it.each([false, true])("adapts internal formula moves and copies to their destination (copy=%s)", copy => {

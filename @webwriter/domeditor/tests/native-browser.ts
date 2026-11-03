@@ -27,6 +27,7 @@ import {checkHistorySelection} from "./history-selection"
 import {checkListClipboard} from "./list-clipboard"
 import {checkHeadingClipboard} from "./heading-clipboard"
 import {checkParagraphClipboard} from "./paragraph-clipboard"
+import {checkFormulaPaste} from "./formula-paste"
 import {checkListDeletion} from "./list-deletion"
 import {checkListEditing} from "./list-editing"
 import {checkSoftLineBreak} from "./soft-line-break"
@@ -128,6 +129,7 @@ await check("converted list items support repeated Backspace without clicking", 
 await check("interrupted live sessions recover committed data locally", checkLiveSessionRecovery)
 await check("heading clipboard preserves gap headings and joins existing text", checkHeadingClipboard)
 await check("paragraph clipboard preserves separate paragraphs at a text caret", checkParagraphClipboard)
+await check("formula paste avoids placeholder breaks", checkFormulaPaste)
 await check("list editing splits and indents selected items", checkListEditing)
 await check("soft breaks render a new line on the first press and accept native typing", checkSoftLineBreak)
 await check("multi-paragraph style presets stay within the selected siblings", checkParagraphStylePresets)
