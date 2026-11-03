@@ -7516,6 +7516,7 @@ export class DomEditor extends LitElement {
           ...(typeof value.target.canMoveUp === "boolean" ? {canMoveUp: value.target.canMoveUp} : {}),
           ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
           ...(typeof value.target.fullWidth === "boolean" ? {fullWidth: value.target.fullWidth} : {}),
+          ...(typeof value.target.floatSticky === "boolean" ? {floatSticky: value.target.floatSticky} : {}),
           ...(typeof value.target.canFullWidth === "boolean" ? {canFullWidth: value.target.canFullWidth} : {}),
           ...(isRecord(value.target.placement) && typeof value.target.placement.canMoveUp === "boolean" && typeof value.target.placement.canMoveDown === "boolean"
             ? {placement: {canMoveUp: value.target.placement.canMoveUp, canMoveDown: value.target.placement.canMoveDown}} : {}),

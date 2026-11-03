@@ -228,6 +228,24 @@ describe("layout host and toolbox integration", () => {
       .toEqual(actions.slice(-2).map(action => ({...action, topLevel: true})))
   })
 
+  it("preserves the editor float pin state through style normalization to the Pin checkbox", async () => {
+    const {editor, editorWindow} = await mountEditor()
+    sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
+    const toolbox = await settle(editor)
+    toolbox.selectTool("Edit")
+    await toolbox.updateComplete
+    const state: ElementStyleState = {
+      ...styleState("flex"),
+      target: {...styleState("flex").target!, float: "far-left", floatSticky: true},
+    }
+    vi.spyOn(editor, "execute").mockResolvedValue(state)
+
+    await (editor as any).refreshElementStyleState()
+    await settle(editor)
+
+    expect(toolbox.shadowRoot!.querySelector<HTMLInputElement>(".float-pin input")!.checked).toBe(true)
+  })
+
   it("keeps an inline float selection visible when a narrow style overrides it", async () => {
     const {editor, editorWindow} = await mountEditor()
     sendSelection(editor, editorWindow, {inserted: true, layout: layoutState("flex", true)})
