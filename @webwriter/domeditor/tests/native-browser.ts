@@ -62,6 +62,7 @@ import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
 import {checkSavedDocumentChecker} from "./saved-document-checker"
 import {checkLiveSessionRecovery} from "./live-session-recovery"
+import {checkRemoteWebsite} from "./iframe-policy"
 import {checkLegacyWidgetOptions} from "./legacy-widget-options"
 import {checkShapeRibbonGalleries} from "./shape-gallery"
 import {checkFileActions} from "./file-actions"
@@ -6095,23 +6096,25 @@ await check("bundled layouts render under the strict editor CSP without widgets"
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("remote websites retain their origin in editing, preview and exports", () => checkRemoteWebsite(assert, editor))
+
 await check("local HTML websites load as isolated blob and saved data frames", async () => {
-  const {editorFrameHTML} = await import("../src/frame-document")
+  const {editorFrameHTML, previewFrameHTML} = await import("../src/frame-document")
   const frame = document.createElement("iframe")
   const nonce = "local-website-csp-test"
   const token = crypto.randomUUID()
   const options = {bridgeNonce: nonce, revision: 0, language: "en", packages: [], hostOrigin: location.origin,
     entryURL: new URL("./native-browser-frame.ts", location.href).href, executeScripts: true}
-  const reports: {source: MessageEventSource | null, isolated: boolean, text: string}[] = []
+  const reports: {source: MessageEventSource | null, origin: string, isolated: boolean, text: string}[] = []
   const onMessage = (event: MessageEvent) => {
-    if(event.data?.token === token) reports.push({source: event.source, ...event.data})
+    if(event.data?.token === token) reports.push({source: event.source, origin: event.origin, ...event.data})
   }
   window.addEventListener("message", onMessage)
   const load = async (html: string) => {
     frame.contentWindow?.editor?.destroy()
     const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
     frame.srcdoc = editorFrameHTML(html, options)
-    if(!frame.isConnected) nativeRootEditor.addAppendix(frame)
+    if(!frame.isConnected) editor.addAppendix(frame)
     await loaded
     for(let count = 0; count < 200; count++) {
       const editor = frame.contentWindow?.editor
@@ -6124,26 +6127,39 @@ await check("local HTML websites load as isolated blob and saved data frames", a
     for(let attempt = 0; attempt < 200 && reports.length < count; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
     const report = reports[count - 1]
     assert(report?.source === frame.contentDocument?.querySelector("iframe")?.contentWindow, "local HTML did not load under the frame CSP")
-    assert(report.isolated && report.text.includes("Local lesson"), "local HTML lost its content or can access the editor")
+    assert(report.origin === "null" && report.isolated && report.text.includes("Local lesson"), `local HTML lost its content or can access the editor: ${JSON.stringify({origin: report.origin, isolated: report.isolated, text: report.text})}`)
   }
   try {
-    const editor = await load("<body><p>Before</p></body>")
-    editor.features.media.actions.insertMedia({type: "insertMedia", media: "iframe"})
+    const localEditor = await load("<body><p>Before</p></body>")
+    localEditor.features.media.actions.insertMedia({type: "insertMedia", media: "iframe"})
     // Sign only this diagnostic script so it can report from the opaque child
     // under the editing frame's inherited CSP without loosening script-src.
     const html = `<!doctype html><body><p style="color:rgb(24,100,48)">Local lesson</p><script nonce="${nonce}">let isolated = false; try { parent.document.body } catch { isolated = true }; top.postMessage({token:${JSON.stringify(token)}, isolated, text:document.body.innerText}, "*")</script></body>`
     const view = frame.contentWindow as Window & typeof globalThis
-    assert(editor.features.media.actions.setMediaFile({type: "setMediaFile", file: new view.File([html], "lesson.html", {type: "text/html"})}), "local file upload failed")
+    assert(localEditor.features.media.actions.setMediaFile({type: "setMediaFile", file: new view.File([html], "lesson.html", {type: "text/html"})}), "local file upload failed")
     assert(frame.contentDocument?.querySelector("iframe")?.getAttribute("src")?.startsWith("blob:"), "upload did not use a blob URL")
     await waitForWebsite(1)
-    const saved = await editor.serializeHTML()
+    const saved = await localEditor.serializeHTML()
     assert(new DOMParser().parseFromString(saved, "text/html").querySelector("iframe")?.getAttribute("src")?.startsWith("data:text/html;"), "save did not embed the local file")
     await load(saved)
     await waitForWebsite(2)
+    // Preview keeps the local document opaque, even though its inherited CSP
+    // blocks this diagnostic script's editor-only nonce.
+    const preview = previewFrameHTML(new DOMParser().parseFromString(saved, "text/html"), {...options,
+      importMap: null, frameOrigin: location.origin, entryURL: new URL("../src/preview-entry.ts", import.meta.url).href})
+    for(const html of [preview, saved]) {
+      frame.contentWindow?.editor?.destroy()
+      const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+      frame.srcdoc = html
+      await loaded
+      const local = frame.contentDocument!.querySelector("iframe")!
+      assert(local.getAttribute("sandbox") === "allow-scripts" && local.contentDocument === null, "preview or standalone export exposed local HTML's origin")
+    }
+    await waitForWebsite(3)
     // Also exercise the host-to-editor File transfer across the real origins.
     const appFrame = document.createElement("iframe")
     appFrame.src = "/editor/"
-    nativeRootEditor.addAppendix(appFrame)
+    editor.addAppendix(appFrame)
     try {
       let app: DomEditor | null = null
       for(let count = 0; count < 200; count++) {
@@ -6157,8 +6173,8 @@ await check("local HTML websites load as isolated blob and saved data frames", a
       await app!.execute({type: "insertMedia", media: "iframe"})
       const file = new File([html.replace(nonce, host.bridgeNonce)], "lesson.html", {type: "text/html"})
       assert(await app!.execute({type: "setMediaFile", file}), "host file upload failed")
-      for(let count = 0; count < 200 && reports.length < 3; count++) await new Promise(resolve => setTimeout(resolve, 25))
-      assert(reports[2]?.isolated && reports[2]?.text.includes("Local lesson"), "host-uploaded HTML did not load in its isolated frame")
+      for(let count = 0; count < 200 && reports.length < 4; count++) await new Promise(resolve => setTimeout(resolve, 25))
+      assert(reports[3]?.origin === "null" && reports[3]?.isolated && reports[3]?.text.includes("Local lesson"), "host-uploaded HTML did not load in its isolated frame")
     }
     finally { appFrame.remove() }
   }

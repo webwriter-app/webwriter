@@ -9,6 +9,7 @@ import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
 import {Schema} from "../schema"
 import {createImageMapPopoverController, imageMapHotspotBounds, platformEmbedURL} from "../media"
+import {previewFrameHTML} from "../frame-document"
 
 let editor: DOMEditor
 const fetchSettings = (window as unknown as TestWindow).happyDOM.settings.fetch
@@ -122,6 +123,60 @@ describe("media editing", () => {
     const result = document.querySelector(tag)!
     expect((tag === "picture" ? result.querySelector("img")! : result).getAttribute("src")).toBe(url)
     expect(result.getAttribute("title")).toBe("Lesson")
+  })
+  it.each(["placeholder", "attribute"])("keeps a remote website's origin through %s entry, preview, export and history", async method => {
+    document.body.innerHTML = '<section><!--keep--><iframe title="Lesson"></iframe></section>'
+    const frame = document.querySelector("iframe")!
+    $.selectElement(frame)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const src = "https://esri.github.io/dam-busters/"
+    if(method === "attribute") editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: src})
+    else {
+      const placeholder = editor.features.media.placeholder
+      placeholder.showFor(frame)
+      placeholder.root.querySelector<HTMLInputElement>(".url")!.value = src
+      placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    }
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    const preview = new DOMParser().parseFromString(previewFrameHTML(saved.cloneNode(true) as Document, {
+      bridgeNonce: "test", hostOrigin: location.origin, frameOrigin: "https://editor.example", packages: [],
+      importMap: null, entryURL: "https://editor.example/preview.js", executeScripts: false,
+    }), "text/html")
+    for(const root of [saved, preview]) {
+      expect(root.querySelector("iframe")?.getAttribute("src")).toBe(src)
+      expect(root.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+      expect(root.querySelector("section")?.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+      expect(root.body.innerHTML).not.toContain("◆")
+    }
+    const after = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("observes direct and collaboration iframe source changes and isolates local HTML", async () => {
+    document.body.innerHTML = '<custom-lesson><!--keep--><iframe title="Lesson" src="https://example.test/lesson"></iframe></custom-lesson>'
+    const frame = document.querySelector("iframe")!
+    await vi.waitFor(() => expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin"))
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+    // Locate by element name: comments are preserved and do not imply child order.
+    const sharedFrame = (sharedDOMBody(remote).get(0) as Y.XmlElement).toArray().find(node => node instanceof Y.XmlElement && node.nodeName === "iframe") as Y.XmlElement
+    sharedFrame.setAttribute("src", "data:text/html,%3Cp%3ELocal%3C/p%3E")
+    Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote))
+    await vi.waitFor(() => expect(frame.getAttribute("sandbox")).toBe("allow-scripts"))
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-top-navigation")
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(saved.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts")
+    await vi.waitFor(() => expect(frame.getAttribute("sandbox")).toBe("allow-scripts"))
+    expect(document.querySelector("iframe")).toBe(frame)
+    remote.destroy()
   })
 
   it.each(["url", "file"] as const)("retains image width on %s source changes and supports undo", mode => {
@@ -724,10 +779,10 @@ describe("media editing", () => {
     editor.features.manipulation.insertHTML('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html"></iframe>')
     const frame = document.querySelector("iframe")!
     expect(frame).not.toBeNull()
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
     expect(frame.getAttribute("src")).toBe("https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html")
     expect(frame.parentElement).toBe(document.body)
-    expect(editor.toHTML(true)).toContain('sandbox="allow-scripts"')
+    expect(editor.toHTML(true)).toContain('sandbox="allow-scripts allow-same-origin"')
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
@@ -2344,7 +2399,7 @@ describe("media editing", () => {
     expect(nativeActivation).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(iframe)
     expect(editor.features.selection.isCaptureSelection).toBe(true)
-    expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3" controls=""></audio>')
+    expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame" sandbox="allow-scripts"></iframe><audio src="sound.mp3" controls=""></audio>')
   })
 
   it("shields timed media controls but not widget-owned or nested media", async () => {
@@ -2408,7 +2463,7 @@ describe("media editing", () => {
       const placeholder = editor.features.media.placeholder
       expect(placeholder.target).toBe(frame)
       expect(placeholder.element).toHaveAttribute("data-open")
-      expect(editor.toHTML(true)).toBe(`<p>text</p>${html}`)
+      expect(editor.toHTML(true)).toBe(`<p>text</p>${html.replace('srcdoc=""', 'srcdoc="" sandbox="allow-scripts"')}`)
 
       editor.features.selection.actions.selectNode({type: "selectNode", path: [0]})
       document.dispatchEvent(new Event("selectionchange"))

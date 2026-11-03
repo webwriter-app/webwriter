@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Remote website fixture</title>
+<p>Remote lesson</p>
+<script>
+(async () => {
+  const report = {token: new URL(location.href).searchParams.get("token"), origin: location.origin}
+  try {
+    report.lesson = (await (await fetch("/data.json")).json()).lesson
+    localStorage.setItem("iframe-policy", "works")
+    report.storage = localStorage.getItem("iframe-policy")
+  }
+  catch(error) { report.error = String(error) }
+  try { parent.document.body; report.parentBlocked = false }
+  catch { report.parentBlocked = true }
+  try { top.document.body; report.topBlocked = false }
+  catch { report.topBlocked = true }
+  top.postMessage(report, "*")
+})()
+</script>

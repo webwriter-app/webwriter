@@ -1531,7 +1531,7 @@ describe("DomEditor iframe setup", () => {
     expect(html).toContain('contenteditable="false"')
     expect(html).toContain('spellcheck="true"')
     const preview = new DOMParser().parseFromString(html, "text/html")
-    expect(preview.querySelector("iframe")!.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(preview.querySelector("iframe")!.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
     expect(preview.querySelector('meta[http-equiv="Content-Security-Policy"]')).not.toBeNull()
   })
 

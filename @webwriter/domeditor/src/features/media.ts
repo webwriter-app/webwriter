@@ -4,7 +4,7 @@ import type {Schema} from "../schema"
 import {MediaCapture} from "../components/media-capture"
 import type {MediaSourceInfo} from "../components/media-source-info"
 import {mediaSourceButtonStyles} from "../components/media-source.styles"
-import {stripActiveContent} from "../active-content"
+import {applyIframeSandboxPolicy, stripActiveContent} from "../active-content"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
 import screenShare from "@tabler/icons/outline/screen-share.svg?raw"
 import playerRecord from "@tabler/icons/outline/player-record.svg?raw"
@@ -1492,6 +1492,7 @@ export class MediaFeature extends EditorFeature {
   enable() {
     if(this.isEnabled) return
     super.enable()
+    applyIframeSandboxPolicy(document.body, [this.editor.options.bridgeOrigin ?? ""])
     document.body.querySelectorAll("audio, video").forEach(media => {
       if(media instanceof HTMLMediaElement) media.pause()
     })
@@ -1499,8 +1500,13 @@ export class MediaFeature extends EditorFeature {
     if(FrameMutationObserver) {
       this.observer = new FrameMutationObserver(records => {
         for(const record of records) {
+          if(record.type === "attributes" && ["src", "srcdoc", "sandbox"].includes(record.attributeName ?? "")
+            && record.target instanceof Element && document.body.contains(record.target) && record.target.localName === "iframe") {
+            applyIframeSandboxPolicy(record.target, [this.editor.options.bridgeOrigin ?? ""])
+          }
           if(record.type === "attributes" && record.attributeName === "autoplay") this.suppressAutoplay(record.target)
           if(record.type === "childList") record.addedNodes.forEach(node => {
+            if(node instanceof Element && document.body.contains(node)) applyIframeSandboxPolicy(node, [this.editor.options.bridgeOrigin ?? ""])
             this.suppressAutoplay(node)
             if(node instanceof Element) node.querySelectorAll("audio, video").forEach(media => this.suppressAutoplay(media))
           })
@@ -1649,8 +1655,6 @@ export class MediaFeature extends EditorFeature {
     const source = this.editor.createMediaURL(file)
     this.rememberSource(element, source, file instanceof File ? file.name : "Media file", "file")
     this.editor.doc.stopCapturing()
-    // Local HTML stays isolated when saving replaces its blob URL with data.
-    if(element.matches("iframe")) element.setAttribute("sandbox", "allow-scripts")
     const changed = this.setSource(element, source, true, attribute)
     this.editor.doc.stopCapturing()
     return changed
@@ -1831,6 +1835,7 @@ export class MediaFeature extends EditorFeature {
       if(element.matches("picture, img") && (name === "src" || name === "srcset") && target.getAttribute(name) !== value) {
         this.clearImageHeight(element, target)
       }
+      if(element.matches("iframe") && name === "src") applyIframeSandboxPolicy(element, [this.editor.options.bridgeOrigin ?? ""], value)
       value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
       if(name === "muted") syncMutedProperty(target)
       this.refresh()
@@ -2515,6 +2520,7 @@ export class MediaFeature extends EditorFeature {
         }
       }
     }
+    if(element.matches("iframe")) applyIframeSandboxPolicy(element, [this.editor.options.bridgeOrigin ?? ""], source)
     target.setAttribute(attribute ?? mediaSourceAttribute(target), source)
     if(!attribute && element.matches("audio, video")) element.setAttribute("controls", "")
     if(!isGraphicImage(element)) {

@@ -1750,7 +1750,7 @@ describe("media constraints", () => {
     expect(frames).toHaveLength(2)
     expect(frames[0]).toHaveAttribute("src", "https://example.com/page")
     expect(frames[0]).toHaveAttribute("width", "640")
-    expect(frames[0]).toHaveAttribute("sandbox", "allow-scripts")
+    expect(frames[0]).toHaveAttribute("sandbox", "allow-scripts allow-same-origin")
     expect(fragment.querySelector("embed, object")).toBeNull()
     expect(fragment.querySelector("video")).toHaveAttribute("controls")
   })

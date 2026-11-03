@@ -2687,6 +2687,8 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
+    expect(target).toHaveAttribute("sandbox", "allow-scripts")
+    expect(editor.doc.body.toString()).toContain('sandbox="allow-scripts"')
     const original = editor.toHTML(true)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 420, clientY: 280}))

@@ -63,7 +63,7 @@ import {offlinePackageStyleAttribute, originalPackageEntriesAttribute, originalU
 import type {DocumentHeadState} from "./document-head"
 import {getSectionOption, isSectionElement} from "./sections"
 import {getDocumentRoot} from "./document-template"
-import {stripActiveContent} from "./active-content"
+import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {elementAttributeState} from "./element-attributes"
 import {parse as parseModule} from "es-module-lexer/js"
 import {tokenize as tokenizeCSS, TokenType} from "@csstools/css-tokenizer"
@@ -532,6 +532,7 @@ export class DOMEditor {
         this.features.attribution.normalize()
         this.features.list.ensureDetailsBodyContent()
         this.features.dialog.ensurePopupContent()
+        applyIframeSandboxPolicy(document.body, [this.#bridgeOrigin])
       }
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
@@ -1321,6 +1322,7 @@ export class DOMEditor {
     this.doc.widgetData.writeDefaults(root, data === "current")
     this.normalizeSerializedPopups(root)
     this.clearEditingArtifacts(root)
+    applyIframeSandboxPolicy(root, [this.#bridgeOrigin])
     return root
   }
 
@@ -1753,6 +1755,7 @@ export class DOMEditor {
     this.clearEditingArtifacts(fragment)
     const removedUnsafeItems = stripActiveContent(fragment, {
       allowIframes: true,
+      protectedIframeOrigins: [this.#bridgeOrigin],
       unwrapUnsupportedElements: repair,
       ...(transfer ? {removeAttribute: (attribute: Attr) => ["style", "class"].includes(attribute.name.toLowerCase())} : {}),
     })

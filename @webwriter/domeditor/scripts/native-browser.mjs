@@ -1,4 +1,6 @@
-import {spawn} from "node:child_process"
+import {execFileSync, spawn} from "node:child_process"
+import {createHash, createPublicKey} from "node:crypto"
+import {createServer as createHTTPSServer} from "node:https"
 import {existsSync} from "node:fs"
 import {mkdtemp, readFile, rm, writeFile} from "node:fs/promises"
 import {createServer as createNetServer} from "node:net"
@@ -204,6 +206,7 @@ const expectedChecks = [
   "New discards the previous canvas iframe and its document state",
   "uploaded videos survive installing and removing packages",
   "local HTML websites load as isolated blob and saved data frames",
+  "remote websites retain their origin in editing, preview and exports",
   "canvas and slide delete affordances follow rotation placement",
   "canvas and slide element selections keep Delete borderless",
   "canvas and slide copyright controls share freeform placement",
@@ -381,7 +384,31 @@ let browserClosed
 let hasClosed = false
 let timeout
 let liveServer
+let embedServer
 try {
+  let embedOrigin
+  let embedCertificatePin
+  if(!smoke && !mathVisual && !importMapMode && !performanceMode && !widgetStateMode && !widgetStorageMode && !widgetAggregationMode
+    && filteredChecks.includes("remote websites retain their origin in editing, preview and exports")) {
+    const keyFile = join(profile, "embed-key.pem"), certificateFile = join(profile, "embed-cert.pem")
+    execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", keyFile,
+      "-out", certificateFile, "-days", "1", "-subj", "/CN=127.0.0.1"], {stdio: "ignore"})
+    const key = await readFile(keyFile), cert = await readFile(certificateFile)
+    embedCertificatePin = createHash("sha256").update(createPublicKey(key).export({type: "spki", format: "der"})).digest("base64")
+    const html = await readFile(new URL("../tests/fixtures/remote-website.html", import.meta.url))
+    embedServer = createHTTPSServer({key, cert}, (request, response) => {
+      if(request.method !== "GET" || !["/", "/data.json"].includes(request.url?.split("?")[0])) {
+        response.writeHead(404).end()
+        return
+      }
+      const json = request.url === "/data.json"
+      // Deliberately omit CORS headers: opaque sandbox origins must fail this fetch.
+      response.setHeader("Content-Type", json ? "application/json" : "text/html; charset=utf-8")
+      response.end(json ? JSON.stringify({lesson: "Remote lesson"}) : html)
+    })
+    await new Promise((resolve, reject) => embedServer.once("error", reject).listen(0, "127.0.0.1", resolve))
+    embedOrigin = `https://127.0.0.1:${embedServer.address().port}`
+  }
   await vite.listen()
   let liveServerURL
   if(!smoke && !mathVisual && !importMapMode && !performanceMode && !widgetStateMode && !widgetStorageMode && !widgetAggregationMode
@@ -393,12 +420,14 @@ try {
     liveServerURL = address.url.replace(/^http/, "ws")
   }
   const errors = []
-  const url = `http://127.0.0.1:${port}/tests/${widgetAggregationMode ? "widget-aggregation" : widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}${liveServerURL ? `&liveServer=${encodeURIComponent(liveServerURL)}` : ""}`
+  const url = `http://127.0.0.1:${port}/tests/${widgetAggregationMode ? "widget-aggregation" : widgetStorageMode ? "widget-data-storage" : widgetStateMode ? "widget-state-benchmark" : performanceMode ? "performance" : smoke ? "browser-smoke" : mathVisual ? "math-visual" : importMapMode ? "import-map-browser" : "native-browser"}.html?run${widgetStateDiagnostics ? "&diagnostics" : ""}${checkFilter ? `&filter=${encodeURIComponent(checkFilter)}` : ""}${liveServerURL ? `&liveServer=${encodeURIComponent(liveServerURL)}` : ""}${embedOrigin ? `&embedOrigin=${encodeURIComponent(embedOrigin)}` : ""}`
   const command = browserName === "webkit" ? "xcrun" : browserName === "firefox" ? firefox : chrome
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
     // Exercise editor autoplay suppression even when Chrome permits playback.
     : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", "--autoplay-policy=no-user-gesture-required",
+      // Trust only this run's disposable fixture key in its isolated browser profile.
+      ...(embedCertificatePin ? [`--ignore-certificate-errors-spki-list=${embedCertificatePin}`] : []),
       ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
   browser = spawn(command, args, {
     stdio: ["ignore", "ignore", "pipe"],
@@ -457,5 +486,6 @@ finally {
   browser?.stderr.destroy()
   await vite.close()
   await liveServer?.close()
+  if(embedServer) await new Promise(resolve => embedServer.close(resolve))
   await rm(profile, {recursive: true, force: true, maxRetries: 4, retryDelay: 300})
 }
