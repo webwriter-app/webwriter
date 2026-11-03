@@ -2552,7 +2552,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!target) return []
     const root = this.editor.features.slides.active
       ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
-    if(target !== root || $.isDocumentSelection || $.range.collapsed) return [target]
+    if(target !== root || $.selectedElement === root || $.selectedElement === document.body || $.range.collapsed) return [target]
     const ranges = $.flowRanges.filter(range => root.contains(range.startContainer) && root.contains(range.endContainer))
     if(!ranges.length) return [target]
     // A range across siblings has the root as its common ancestor, but its

@@ -908,7 +908,7 @@ export class DomEditorToolbox extends EditingControls {
   }
 
   private get resettableStyles() {
-    const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
+    const documentTarget = this.documentSelected || !this.selectedElementTypes.length && (this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body")
     const properties = documentTarget ? documentThemeProperties : [
       "background-color", "color", "border-width", "border-style", "border-color", "padding",
       "width", "height", "margin", "border-radius", "opacity", "box-shadow", "filter",
@@ -950,7 +950,7 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderUniversalStyleDrawer() {
     const disabled = !this.elementStyle.target
-    const documentTarget = this.documentSelected || this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body"
+    const documentTarget = this.documentSelected || !this.selectedElementTypes.length && (this.elementStyle.target?.documentRoot || this.elementStyle.target?.localName === "body")
     const advancedProperties = ["background-color", "color", "border-width", "border-radius", "padding", "width", "height", "margin", "opacity", "box-shadow", "filter"]
     const setProperties = this.resettableStyles
     const advancedCount = advancedProperties.filter(name => name === "border-width"
@@ -1149,7 +1149,7 @@ export class DomEditorToolbox extends EditingControls {
       if(value) inline["object-view-box"] = {value, priority: probe.style.getPropertyPriority("object-view-box") === "important" ? "important" : ""}
       style = {...style, inline, computed: {...style.computed, "object-view-box": "none"}}
     }
-    if(!localName || localName === "body" || style.target?.documentRoot) return nothing
+    if(!localName || localName === "body" || !group && style.target?.documentRoot) return nothing
     const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
     if(!this.isElementDrawerVisible(localName, namespaceURI, attributes?.name)) return nothing
     const heading = namespaceURI === "http://www.w3.org/1999/xhtml" && /^h[1-6]$/.test(localName)

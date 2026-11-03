@@ -902,6 +902,22 @@ describe("breadcrumb positioning", () => {
     }
   })
 
+  it("posts element groups when a range covers all document content", () => {
+    document.body.innerHTML = '<p>one</p><!--keep--><p>two</p><demo-widget></demo-widget>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+      editor.features.selection.processSelection()
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      const detail = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+      expect(detail.selectedElementTypes?.map(group => [group.element.localName, group.count])).toEqual([["p", 2], ["demo-widget", 1]])
+      expect(detail.nodeSelected).not.toBe(true)
+    }
+    finally { editor.destroy(); postMessage.mockRestore(); document.body.replaceChildren() }
+  })
+
   it("omits figure wrappers from the breadcrumb while retaining captions, media, and outer sections", () => {
     document.body.className = ""
     document.body.innerHTML = '<section><figure><img src="image.png"><figcaption>Caption</figcaption></figure><figure></figure></section>'

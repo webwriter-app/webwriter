@@ -5267,6 +5267,19 @@ describe("setStyle()", () => {
     expect(document.body.childNodes[1]).toBeInstanceOf(Comment)
   })
 
+  it("styles selected document contents without styling the document itself", () => {
+    document.body.innerHTML = '<p style="color: red">one</p><!--keep--><section><p>two</p></section>'
+    const children = Array.from(document.body.children)
+    $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+    const manipulation = editor.features.manipulation
+    expect(manipulation.getSelectedElementTypes().map(group => group.element.localName)).toEqual(["p", "section"])
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("p")
+    manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: "4px"}})
+    expect(children.every(child => (child as HTMLElement).style.padding === "4px")).toBe(true)
+    expect(document.documentElement.style.padding).toBe("")
+    expect(children[1].querySelector("p")!.getAttribute("style")).toBeNull()
+  })
+
   it.each(["img", "demo-widget"])("keeps styling available for a capture-selected %s with a native top-level gap", tag => {
     document.body.innerHTML = `<${tag} style="opacity: 0.8"></${tag}><p>other</p>`
     const captured = document.body.firstElementChild!

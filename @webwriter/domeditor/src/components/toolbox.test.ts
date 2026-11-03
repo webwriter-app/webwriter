@@ -1734,6 +1734,9 @@ it("opens attribution below Caption and clears a configured caption with its lab
   toolbox.selectedElementTypes = [{element: {localName: "p", namespaceURI: "http://www.w3.org/1999/xhtml", path: null, name: "Paragraph", attributes: {}}, count: 2, style: toolbox.elementStyle, styleProperties: [], configuredWidgetOptions: []}]
   await toolbox.updateComplete
   expect(toolbox.shadowRoot!.querySelector('[aria-label="Edit attribution"]')).not.toBeNull()
+  expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"]')).not.toBeNull()
+  expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Theme"]')).toBeNull()
+  expect(toolbox.shadowRoot!.querySelector('[data-specialized="p"]')).not.toBeNull()
 })
 
 it("uses the current text target inside a table for specialized style controls", async () => {
