@@ -356,14 +356,14 @@ export class DomEditorBreadcrumb extends LitElement {
   private desiredBreadcrumbEntries() {
     const path = this.displayPath
     const entries: BreadcrumbEntry[] = []
-    for(const item of path) {
+    for(const [index, item] of path.entries()) {
       entries.push({
         key: `item:${this.pathKey(item.path)}`,
         kind: "item",
         item,
         state: "visible",
       })
-      if(this.itemHasChildren(item)) {
+      if(index < path.length - 1 || this.itemHasChildren(item)) {
         entries.push({
           key: `separator:${this.pathKey(item.path)}`,
           kind: "separator",
@@ -828,7 +828,9 @@ export class DomEditorBreadcrumb extends LitElement {
     if(entry.kind === "separator") {
       return html`
         <li class=${`breadcrumb-entry separator tree-toggle-separator ${transitionClass}`}>
-          ${this.renderTreeToggle(entry.item)}
+          ${this.itemHasChildren(entry.item)
+            ? this.renderTreeToggle(entry.item)
+            : html`<span class="separator-icon" aria-hidden="true">${ribbonIcon("ChevronRight")}</span>`}
         </li>
       `
     }

@@ -1970,6 +1970,7 @@ export class ElementStyleEditor extends LitElement {
   private renderStyleGallery() {
     const shadow = this.galleryPage % 2 === 1 ? "0 4px 8px #0003" : "none"
     const cellTarget = ["td", "th"].includes(this.state.target?.localName ?? "")
+    const popupPartTarget = Boolean(this.state.target?.popupRole)
     const saturated = this.galleryPage >= 2
     const columns = [1, 3, 4, 9, 5, 7, 6, 8]
     const palette = getComputedStyle(this)
@@ -1983,7 +1984,7 @@ export class ElementStyleEditor extends LitElement {
         @click=${() => this.galleryPage--}>${ribbonIcon("ChevronRight")}</button>
       <div class="style-gallery" role="group" aria-label=${`Style presets, page ${this.galleryPage + 1} of 4`}>
       ${presets.map((preset, index) => html`<button type="button" aria-label=${`${preset.name} style preset`}
-        title=${`${preset.name}: #${preset.background}${this.documentRootTarget ? "" : `, 1px solid #${preset.border}${cellTarget ? "" : ", 4px corners"}, 8px padding`}`}
+        title=${`${preset.name}: #${preset.background}${this.documentRootTarget ? "" : `, 1px solid #${preset.border}${cellTarget || popupPartTarget ? "" : ", 4px corners"}${popupPartTarget ? "" : ", 8px padding"}`}`}
         style=${`background:${index === 0 && !saturated ? `#${preset.background}` : themeColorCSS(columns[index], saturated ? 4 : 1)};border-color:${index === 0 && !saturated ? `#${preset.border}` : themeColorCSS(columns[index], saturated ? 5 : 0)};box-shadow:${shadow};color:${saturated ? "#fff" : "#2f3742"}`}
         @click=${(event: Event) => {
           const computed = getComputedStyle(event.currentTarget as Element)
@@ -1992,8 +1993,8 @@ export class ElementStyleEditor extends LitElement {
           const values: Record<string, string> = {"background-color": background}
           if(!this.documentRootTarget) Object.assign(values, {
             "border-width": "1px", "border-style": "solid", "border-color": border,
-            "padding": "8px", "color": saturated ? "#ffffff" : "#2f3742",
-            ...(!cellTarget ? {"border-radius": "4px", "box-shadow": shadow} : {}),
+            ...(!popupPartTarget ? {padding: "8px"} : {}), "color": saturated ? "#ffffff" : "#2f3742",
+            ...(!cellTarget ? {...(!popupPartTarget ? {"border-radius": "4px"} : {}), "box-shadow": shadow} : {}),
           })
           const styles = Object.fromEntries(Object.entries(values).map(([property, value]) => [property, {
             value, priority: this.declaration(property)?.priority ?? "",

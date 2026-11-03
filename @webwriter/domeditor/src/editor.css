@@ -373,6 +373,21 @@ body:has(:is(picture, img, audio, video, iframe, embed, object).◆element-captu
   background-color: var(--editor-selection-background, rgb(0 120 215 / 30%));
 }
 
+/* Theme buttons disable native text selection, and their blue fill hides the
+ * editor's blue range tint. Keep popup toggle text selectable and give its
+ * selected characters a distinct color in the editing view. */
+:where(body.◆popup-editing .ww-popup > button[popovertarget]),
+:where(body.◆popup-editing .ww-popup > button[popovertarget] *) {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+:where(body.◆popup-editing .ww-popup > button[popovertarget])::selection,
+:where(body.◆popup-editing .ww-popup > button[popovertarget] *)::selection {
+  background-color: #fbbf24;
+  color: #1f2937;
+}
+
 body::part(atomic-selection-overlay) {
   position: fixed;
   pointer-events: none;
@@ -1396,6 +1411,30 @@ details:empty {
   min-height: 1lh;
 }
 
+/* Keep popover content in the editing flow; preview uses the native popover. */
+body.◆popup-editing:not(.◆editing-locked) [popover].◆popup-visible:not(:popover-open) {
+  display: block !important;
+  position: static !important;
+  inset: auto !important;
+}
+
+body.◆popup-editing:not(.◆editing-locked) .ww-popup > [popover].◆popup-visible:not(:popover-open) {
+  position: absolute !important;
+  inset: auto auto auto 0 !important;
+  z-index: 10;
+}
+
+body.◆popup-editing:not(.◆editing-locked) .ww-popup-content[popover].◆popup-visible:not(:popover-open) {
+  display: flex !important;
+  flex-direction: column;
+  align-items: flex-start;
+  position: absolute !important;
+  inset: auto !important;
+  z-index: 10;
+}
+
+body.◆popup-editing .ww-popup:has(> [popover].◆popup-visible) { position: relative; }
+
 /* A closed authored dialog remains closed in the saved document. Its active
  * editing marker exposes the live element in ordinary flow without invoking
  * modal/top-layer behavior or adding a helper wrapper to authored content. */
@@ -1481,6 +1520,18 @@ details > summary:first-child + p:last-child:has(> br:only-child) > br {
   display: none;
 }
 
+:is(.ww-popup > [popover], .ww-popup-content[popover]) > p:only-child:is(:empty, :has(> br:only-child))::after {
+  content: var(--ww-placeholder, "Popup content");
+  color: darkgray;
+  pointer-events: none;
+  user-select: none;
+}
+
+:is(.ww-popup > [popover], .ww-popup-content[popover]) > p:only-child:has(> br:only-child) > br {
+  display: none;
+}
+
+
 /* Generated labels follow rather than precede the editable position, so an
  * empty DT/DD retains a native caret while either half of its pair is absent. */
 dl > dt:is(:empty, :has(br:only-child))::after,
@@ -1561,6 +1612,20 @@ body.◆empty-selected:is(:hover, .◆pointer-hovered, .◆element-hovered) {
 
 body.◆empty-selected.◆style-target-hovered {
   anchor-name: --body-anchor, --empty-selected, --hover-anchor;
+}
+
+/* Keep the speech-bubble pointer anchored while editor hover and selection
+ * overlays also use the popup content as their anchor. */
+body :is(.ww-popup > [popover], .ww-popup-content[popover]):is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
+  anchor-name: --ww-popup-bubble, --hover-anchor;
+}
+
+body :is(.ww-popup > [popover], .ww-popup-content[popover]).◆element-selected {
+  anchor-name: --ww-popup-bubble, --selection-anchor;
+}
+
+body :is(.ww-popup > [popover], .ww-popup-content[popover]).◆element-selected:is(:hover, .◆pointer-hovered, .◆element-hovered, .◆style-target-hovered) {
+  anchor-name: --ww-popup-bubble, --selection-anchor, --hover-anchor;
 }
 
 body::part(empty-document-caret) {
@@ -2642,6 +2707,24 @@ body:has(.◆math-caret-outside-left)::part(selection-caret-text) {
 body:has(.◆math-caret-outside-right)::part(selection-caret-text) {
   left: calc(anchor(right) + 1px);
 }
+
+/* Popup boundaries need a visible caret independent of the button's native caret. */
+:is(.◆popup-caret-inside-left, .◆popup-caret-inside-right, .◆popup-caret-outside-left, .◆popup-caret-outside-right) {
+  anchor-name: --popup-caret-anchor;
+}
+body.◆popup-boundary-caret,
+body.◆popup-boundary-caret * { caret-color: transparent !important; }
+body.◆popup-boundary-caret::part(selection-caret-text) {
+  position-anchor: --popup-caret-anchor;
+  top: var(--popup-caret-top, anchor(top));
+  height: var(--popup-caret-height, 1em);
+  width: 1px;
+  animation: var(--ww-ui-animation, blink 1s step-end infinite);
+}
+body:has(.◆popup-caret-inside-left)::part(selection-caret-text) { left: calc(anchor(left) + 2px); }
+body:has(.◆popup-caret-inside-right)::part(selection-caret-text) { left: calc(anchor(right) - 3px); }
+body:has(.◆popup-caret-outside-left)::part(selection-caret-text) { left: calc(anchor(left) - 2px); }
+body:has(.◆popup-caret-outside-right)::part(selection-caret-text) { left: calc(anchor(right) + 1px); }
 
 /* Empty arguments reserve hit targets; guides and measured carets live in
  * the appendix. Keep unfinished radicals' space even when focus moves away,

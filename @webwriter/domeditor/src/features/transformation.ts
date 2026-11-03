@@ -11,6 +11,7 @@ import {captionedFigureContent} from "../figure-layout.js"
 import {canvasGridSize, isCanvasStartingView} from "../canvas-viewer.js"
 import {createAnchorPositioner} from "../utility"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {popupElementRole} from "../element-names"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
@@ -426,6 +427,7 @@ export class TransformationFeature extends EditorFeature {
   #canTransform(element: Element): element is TransformElement {
     return (element instanceof HTMLElement || element instanceof SVGSVGElement
       || mathRoot(element) === element && element.getAttribute("display") === "block")
+      && !["toggle", "content"].includes(popupElementRole(element) ?? "")
       && element !== document.documentElement && element !== document.head
       && !isDocumentRoot(element) && getDocumentRoot().contains(element) && this.editor.allows("select", element)
   }
@@ -1391,6 +1393,8 @@ export class TransformationFeature extends EditorFeature {
     const crop = gesture.canvas && !event.altKey
     if(gesture.canvas) this.#writeCanvasViewBox(gesture.canvas.initial)
     const style = getComputedStyle(target)
+    const popup = target.closest("[popover]")
+    const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
     if(style.display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
     let actualDW = dw, actualDH = dh
     if(event.shiftKey && !crop && !text && !image) {
@@ -1404,7 +1408,7 @@ export class TransformationFeature extends EditorFeature {
       }
       if(image) {
         const width = Math.max(1, gesture.cssWidth + dw), height = Math.max(1, gesture.cssHeight + dh)
-        this.#write("width", "100%")
+        this.#write("width", insidePopup ? `${width}px` : "100%")
         this.#write("height", "auto")
         this.#write("aspect-ratio", `${width} / ${height}`)
         this.#write("max-width", `${width}px`)
@@ -1439,6 +1443,9 @@ export class TransformationFeature extends EditorFeature {
         }
         if(floatSideFromStyles(style.float, target.style, target.classList) !== "none") {
           this.#write("--ww-float-size", `${width}px`)
+        }
+        if(!image && !gesture.canvas && insidePopup) {
+          this.#write("width", `${width}px`)
         }
         this.#write("max-width", `${width}px`)
       }

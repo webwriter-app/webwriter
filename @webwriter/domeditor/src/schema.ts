@@ -2,6 +2,7 @@ import { baseSchema, baseSchemaMathML, baseSchemaSVG } from "./baseschema"
 import { $, cloneInert, getContainer, getIndexBefore, getInertDocument, isParagraphContent } from "./utility"
 import {isWidgetDataContainer} from "./active-content"
 import {normalizeTableStructure} from "./table"
+import {popupElementRole} from "./element-names"
 
 /** Defers to the parent's content rule ("transparent" content model, e.g. <a>, <ins>, <slot>), optionally restricted by an own selector. */
 export type ContentRuleTransparent = {
@@ -700,7 +701,8 @@ export class Schema {
 
   /** The content rule of the node's type. */
   private getContentRule(nodeOrKey: Node | string, clone=true) {
-    const rule = this.get(nodeOrKey).content
+    const rule = nodeOrKey instanceof Element && popupElementRole(nodeOrKey) === "content"
+      ? {group: "flow", min: 1, max: Infinity} : this.get(nodeOrKey).content
     return clone? structuredClone(rule): rule
   }
 

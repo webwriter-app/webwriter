@@ -54,7 +54,7 @@ import {
   type SerializedError,
   type VersionHistoryState,
 } from "./editor-bridge"
-import { getElementPresentation, isLineBreakElement } from "./element-names"
+import { getElementPresentation, isLineBreakElement, popupDisplayToggle, popupElementRole } from "./element-names"
 import type {EditorStateSnapshot} from "./editor-state"
 import editorStyleString from "./editor.css?raw"
 import listMarkerStyleString from "./document-list-markers.css?raw"
@@ -531,6 +531,7 @@ export class DOMEditor {
         this.features.widget.flushMutations(local)
         this.features.attribution.normalize()
         this.features.list.ensureDetailsBodyContent()
+        this.features.dialog.ensurePopupContent()
       }
       if(syncUrl) {
         const sessionId = syncUrl.searchParams.get("session") ?? syncUrl.pathname.split("/").filter(Boolean).at(-1)
@@ -684,6 +685,7 @@ export class DOMEditor {
   #ensureDocumentContent() {
     if(this.options.reader) return null
     this.features.list.ensureDetailsBodyContent()
+    this.features.dialog.ensurePopupContent()
     if(documentLayoutMode() === "slides") return this.features.slides.ensureContent()
     if(documentLayoutMode() === "board") return this.features.board.ensureContent()
     if(documentLayoutMode() === "canvas") return null
@@ -921,6 +923,13 @@ export class DOMEditor {
     }
     const dragged = this.features.manipulation.draggedElement
     if(dragged) return dragged
+    const anchorNode = document.getSelection()?.anchorNode
+    const anchorElement = anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement
+    const popupContent = anchorElement?.closest("[popover]")
+    if(!this.features.selection.selectedSectionElement && anchorElement && popupElementRole(anchorElement) === "popup"
+      && root.contains(anchorElement) && !$.isElementSelection && !this.features.selection.captureSelectedElement) return anchorElement
+    if(!this.features.selection.selectedSectionElement && popupContent && popupElementRole(popupContent) === "content"
+      && root.contains(popupContent) && !$.isElementSelection && !this.features.selection.captureSelectedElement) return anchorElement!
     const target = this.features.manipulation.styleTarget
     const selectedSection = this.features.selection.selectedSectionElement
     if(target !== document.body && target !== root && target !== selectedSection) return target
@@ -946,7 +955,9 @@ export class DOMEditor {
     if(!selected) return null
     const root = getDocumentRoot()
     if(selected === document.body || selected === root && root === document.body) return document.documentElement
-    return selected === root || root.contains(selected) ? selected : null
+    const attributeElement = selected === root || root.contains(selected) ? selected : null
+    return attributeElement && popupElementRole(attributeElement) === "popup"
+      ? popupDisplayToggle(attributeElement) ?? attributeElement : attributeElement
   }
 
   /** Sends the current element path to the host application through the bridge. */
@@ -959,9 +970,10 @@ export class DOMEditor {
     const focusedHost = focusedWidgetHost()
     const focusedWidget = isContentfulWidget(focusedHost, this.schema) ? null : focusedHost
     const selected = this.selectedElementForPath()
-    const element = selected === body
+    const rawElement = selected === body
       ? root
       : selected && (selected === root || root.contains(selected)) ? selected : root
+    const element = popupElementRole(rawElement) === "popup" ? popupDisplayToggle(rawElement) ?? rawElement : rawElement
     const elements: Element[] = []
     let current: Element | null = element
     while(current && current !== root) {
@@ -971,11 +983,24 @@ export class DOMEditor {
       current = current.parentElement
     }
     elements.unshift(root)
+    const content = element.closest("[popover]")
+    if(content && popupElementRole(content) === "content" && !content.closest(".ww-popup")) {
+      const toggle = popupDisplayToggle(content)
+      const index = elements.indexOf(content)
+      if(toggle && index > 0) {
+        const prefix: Element[] = []
+        for(let ancestor: Element | null = toggle; ancestor && ancestor !== root; ancestor = ancestor.parentElement) prefix.unshift(ancestor)
+        elements.splice(1, index - 1, ...prefix)
+      }
+    }
 
     const positions = new Map<Element, NonNullable<SelectionPathItem["position"]>>()
     const anchors = new Set<Element>()
     for(const currentElement of elements) {
       if(slideLayoutRole(currentElement)) continue
+      const popupRole = popupElementRole(currentElement)
+      if(popupRole === "content" && currentElement.classList.contains("◆popup-visible")
+        || popupRole === "popup" && Array.from(currentElement.children).some(child => child.classList.contains("◆popup-visible"))) continue
       const style = getComputedStyle(currentElement)
       const position = style.position
       if(position !== "absolute" && position !== "fixed" && position !== "relative" && position !== "sticky") continue
@@ -1032,11 +1057,21 @@ export class DOMEditor {
         return
       }
       const isTableInternal = currentElement.matches("caption, colgroup, col, thead, tbody, tfoot, tr, td, th")
-      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && isSectionElement(currentElement)) {
+      const popupRole = popupElementRole(currentElement)
+      if(popupRole === "popup" && popupDisplayToggle(currentElement)) return
+      if(popupRole === "content") {
+        const toggle = popupDisplayToggle(currentElement)
+        if(toggle && !path.some(item => item.path.join(".") === this.pathToElement(toggle).join("."))) {
+          path.push({path: this.pathToElement(toggle), ...getElementPresentation(toggle),
+            ...(pendingSections.length ? {sections: pendingSections} : {}), ...positioning(toggle)})
+          pendingSections = []
+        }
+      }
+      if(currentElement !== root && slideLayoutRole(currentElement) !== "slide" && !boardLayoutRole(currentElement) && !popupElementRole(currentElement) && isSectionElement(currentElement)) {
         pendingSections.push(sectionPathItem(currentElement))
         return
       }
-      if(currentElement !== root && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)
+      if(currentElement !== root && !popupElementRole(currentElement) && (isMarkElement(currentElement) || isLineBreakElement(currentElement) || isTableInternal)
         && !positions.has(currentElement) && !anchors.has(currentElement)) return
       path.push({
         path: this.pathToElement(currentElement),
@@ -1284,8 +1319,36 @@ export class DOMEditor {
     const root = document.cloneNode(true) as Document
     restoreWidgetGroupingClones(document, root)
     this.doc.widgetData.writeDefaults(root, data === "current")
+    this.normalizeSerializedPopups(root)
     this.clearEditingArtifacts(root)
     return root
+  }
+
+  /** Older built-in Popups kept a flow dialog inside an inline span. Move only
+   * those generated pairs in the detached clone so HTML parsing preserves them. */
+  private normalizeSerializedPopups(root: Document | DocumentFragment) {
+    for(const wrapper of root.querySelectorAll("span.ww-popup")) {
+      const toggles = Array.from(wrapper.children).filter(child => child.localName === "button" && child.hasAttribute("popovertarget"))
+      if(toggles.length !== 1) continue
+      const toggle = toggles[0] as HTMLElement
+      const id = toggle.getAttribute("popovertarget")
+      if(!id || !/^popup-[0-9a-f-]{36}$/i.test(id)) continue
+      const contents = Array.from(wrapper.children).filter(child => child.id === id && child.hasAttribute("popover"))
+      if(contents.length !== 1 || Array.from(root.querySelectorAll("[id]")).filter(child => child.id === id).length !== 1) continue
+      const content = contents[0]
+      const dialog = content.ownerDocument.createElement("div")
+      for(const attribute of Array.from(content.attributes)) dialog.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
+      dialog.classList.add("ww-popup-content")
+      if(!dialog.hasAttribute("role")) dialog.setAttribute("role", "dialog")
+      const anchor = `--${id}`
+      if(!toggle.style.getPropertyValue("anchor-name")) toggle.style.setProperty("anchor-name", anchor)
+      if(!dialog.style.getPropertyValue("position-anchor")) dialog.style.setProperty("position-anchor", anchor)
+      dialog.append(...Array.from(content.childNodes))
+      content.remove()
+      const block = wrapper.closest("p, h1, h2, h3, h4, h5, h6, pre")
+      const placement = block ?? wrapper
+      placement.after(dialog)
+    }
   }
 
   /** `runtimeAssets` adds the widget runtime a detached document needs; the
@@ -1641,6 +1704,16 @@ export class DOMEditor {
   /** Produces the two clipboard flavors from one cleaned selection clone so
    * native and programmatic copy cannot diverge or leak editing markers. */
   serializeClipboardFragment(fragment: DocumentFragment, innerText?: string) {
+    for(const toggle of fragment.querySelectorAll(".ww-popup button[popovertarget]")) {
+      const id = toggle.getAttribute("popovertarget")
+      const content = id && document.getElementById(id)
+      if(!content || popupElementRole(content) !== "content"
+        || Array.from(fragment.querySelectorAll("[id]")).some(element => element.id === id)) continue
+      let top: Node = toggle
+      while(top.parentNode && top.parentNode !== fragment) top = top.parentNode
+      if(top.parentNode === fragment) top.parentNode.insertBefore(content.cloneNode(true), top.nextSibling)
+    }
+    this.normalizeSerializedPopups(fragment)
     this.doc.widgetData.writeDefaults(fragment)
     this.schema.enforceMedia(fragment)
     this.clearEditingArtifacts(fragment)

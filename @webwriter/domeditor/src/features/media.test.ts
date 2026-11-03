@@ -48,6 +48,63 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each(["url", "file"] as const)("retains image width on %s source changes and supports undo", mode => {
+    document.body.innerHTML = '<section><picture style="width: 100%; height: auto; max-width: 300px; max-height: 200px; aspect-ratio: 3 / 2; float: left"><img width="300" height="200" style="width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: fill" alt="Photo" src="old.png"></picture></section>'
+    const picture = document.querySelector("picture")!, image = picture.querySelector("img")!
+    $.selectElement(picture)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    if(mode === "url") editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "new.png"})
+    else expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file: new File(["image"], "new.png", {type: "image/png"})})).toBe(true)
+    expect(picture.style.width).toBe("100%")
+    expect(picture.style.maxWidth).toBe("300px")
+    expect(picture.style.height).toBe("")
+    expect(picture.style.maxHeight).toBe("")
+    expect(picture.style.aspectRatio).toBe("")
+    expect(picture.style.float).toBe("left")
+    expect(image.style.width).toBe("100%")
+    expect(image.style.maxWidth).toBe("100%")
+    expect(image.style.height).toBe("")
+    expect(image.style.maxHeight).toBe("")
+    expect(image.style.objectFit).toBe("fill")
+    expect(image).toHaveAttribute("width", "300")
+    expect(image).not.toHaveAttribute("height")
+    expect(image).toHaveAttribute("alt", "Photo")
+    const after = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("picture")!.style.aspectRatio).toBe("3 / 2")
+    expect(document.querySelector("img")).toHaveAttribute("width", "300")
+    expect(document.querySelector("img")).toHaveAttribute("height", "200")
+    expect(document.querySelector("img")).toHaveAttribute("src", "old.png")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("leaves image size alone when the source is unchanged and preserves width when srcset changes", () => {
+    document.body.innerHTML = '<img src="old.png" style="width: 240px; aspect-ratio: 2 / 1">'
+    const image = document.querySelector("img")!
+    $.selectElement(image)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "old.png"})
+    expect(image.style.width).toBe("240px")
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "srcset", value: "new.png 2x"})
+    expect(image.style.width).toBe("240px")
+    expect(image.style.aspectRatio).toBe("")
+  })
+
+  it("retains the width of a resized empty picture when its placeholder receives a source", () => {
+    document.body.innerHTML = '<picture style="width: 100%; max-width: 300px; aspect-ratio: 3 / 2"><img style="width: 100%; height: 100%"></picture>'
+    const picture = document.querySelector("picture")!
+    const placeholder = editor.features.media.placeholder
+    placeholder.showFor(picture)
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.value = "https://example.test/image.png"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(picture.style.aspectRatio).toBe("")
+    expect(picture.style.maxWidth).toBe("300px")
+    expect(picture.querySelector("img")!.style.height).toBe("")
+    expect(picture.querySelector("img")).toHaveAttribute("src", "https://example.test/image.png")
+  })
+
   it("isolates an uploaded local website and preserves its bytes and undo history", async () => {
     document.body.innerHTML = '<section><!--keep--><iframe title="Lesson" sandbox="allow-scripts allow-same-origin"></iframe></section>'
     const frame = document.querySelector("iframe")!

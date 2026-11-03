@@ -1082,7 +1082,8 @@ export class DomEditorToolbox extends EditingControls {
     </div>`
   }
 
-  private isElementDrawerVisible(localName: string, namespaceURI: string | null | undefined) {
+  private isElementDrawerVisible(localName: string, namespaceURI: string | null | undefined, name?: string) {
+    if(namespaceURI === "http://www.w3.org/1999/xhtml" && ["Popup", "Popup Content"].includes(name ?? "")) return true
     return !(namespaceURI === "http://www.w3.org/1999/xhtml"
       && (canonicalMarkName(localName) !== null
         || ["li", "dt", "dd", "caption", "colgroup", "col", "thead", "tbody", "tfoot", "tr", "summary", "figure", "figcaption"].includes(localName))
@@ -1092,6 +1093,20 @@ export class DomEditorToolbox extends EditingControls {
 
   private renderSpecializedDrawer(group?: SelectedElementTypeState, listGroups?: SelectedElementTypeState[]) {
     const attributes = group?.element ?? this.elementAttributes
+    const popupPart = attributes && (attributes.name === "Popup" && attributes.localName === "button"
+      || attributes.name === "Popup Content") && attributes.path
+    if(popupPart) return html`<ribbon-drawer label=${attributes.name} icon="Popup" layout="popup"
+      .elementCount=${group?.count ?? 1} show-pane-icon selectable-heading data-specialized=${attributes.localName}
+      @drawer-heading-select=${() => this.dispatchEvent(new CustomEvent("toolbox-element-select", {
+        detail: {selectionTypes: [{localName: attributes.localName, namespaceURI: attributes.namespaceURI, path: attributes.path}]},
+        bubbles: true, composed: true,
+      }))}>
+      <button type="button" class="style-reset" slot="heading-action" title=${`Delete ${attributes.name}`}
+        aria-label=${`Delete ${attributes.name}`} @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+        @click=${() => this.dispatchEvent(new CustomEvent("popup-delete", {
+          detail: {path: attributes.path}, bubbles: true, composed: true,
+        }))}>${ribbonIcon("Delete")}Delete</button>
+    </ribbon-drawer>`
     let style = this.elementStyle
     const widgetOptions = group ? group.widget : this.widgetOptions
     const singleTarget = Boolean(group?.count === 1 && this.elementAttributes && attributes
@@ -1102,6 +1117,8 @@ export class DomEditorToolbox extends EditingControls {
           && JSON.stringify(attributes.path.slice(0, -1)) === JSON.stringify(this.elementAttributes.path)))
     const selectionType: ElementSelectionType | undefined = group ? {
       localName: group.element.localName, namespaceURI: group.element.namespaceURI,
+      ...(group.count === 1 && group.element.path && ["Popup", "Popup Content"].includes(group.element.name)
+        ? {path: group.element.path} : {}),
       ...(group.count === 1 && group.element.localName.includes("-") ? (group.element.attributes.id
         ? {id: group.element.attributes.id} : group.element.path ? {path: group.element.path} : {}) : {}),
     } : undefined
@@ -1134,7 +1151,7 @@ export class DomEditorToolbox extends EditingControls {
     }
     if(!localName || localName === "body" || style.target?.documentRoot) return nothing
     const namespaceURI = attributes?.namespaceURI ?? style.target?.namespaceURI
-    if(!this.isElementDrawerVisible(localName, namespaceURI)) return nothing
+    if(!this.isElementDrawerVisible(localName, namespaceURI, attributes?.name)) return nothing
     const heading = namespaceURI === "http://www.w3.org/1999/xhtml" && /^h[1-6]$/.test(localName)
     const details = namespaceURI === "http://www.w3.org/1999/xhtml" && localName === "details"
     const list = namespaceURI === "http://www.w3.org/1999/xhtml" && (localName === "ul" || localName === "ol")
@@ -1505,6 +1522,7 @@ export class DomEditorToolbox extends EditingControls {
   private renderElementLayoutControls() {
     const target = this.elementStyle.target
     if(this.activeTool !== "Edit" || this.documentSelected) return nothing
+    if(target?.popupRole) return nothing
     if(target?.documentRoot || target?.localName === "body") return this.selectedElementTypes.length
       ? html`<div class="layout-action-controls float-action-controls">${this.renderAttributionField()}</div>` : nothing
     if(["td", "th"].includes(target?.localName ?? "")) return nothing
@@ -1796,6 +1814,9 @@ export class DomEditorToolbox extends EditingControls {
     const distributionPresentation = distributionElement ?? {name: "element", icon: "Section", iconUrl: undefined}
     const distributionIcon = distributionPresentation.icon ?? (this.elementAttributes ? getElementPresentation(this.elementAttributes.localName).icon : "Section")
     const distributionSelected = this.elementSelected && Boolean(this.distribution)
+    const popupPartSelected = this.elementSelected && Boolean(this.elementAttributes
+      && (this.elementAttributes.name === "Popup" && this.elementAttributes.localName === "button"
+        || this.elementAttributes.name === "Popup Content"))
     return html`
       <div
         class="toolbox"
@@ -1913,7 +1934,7 @@ export class DomEditorToolbox extends EditingControls {
               )}</div>
             ` : ""}
             ${this.activeTool === "Edit" ? this.renderUniversalStyleDrawer() : ""}
-            ${this.activeTool === "Edit" && !this.documentSelected ? this.renderWidgetSharing() : ""}
+            ${this.activeTool === "Edit" && !this.documentSelected && !popupPartSelected ? this.renderWidgetSharing() : ""}
             ${this.activeTool && this.activeTool !== "AI" && this.activeTool !== "Review" && this.activeTool !== "Distribute" ? this.renderDrawers() : ""}
             ${this.activeTool === "Edit" && !this.documentSelected ? this.renderShapeDrawer() : ""}
             <div class="ai-toolbox-content" ?hidden=${this.activeTool !== "AI"}></div>

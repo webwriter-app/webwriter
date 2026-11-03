@@ -1,4 +1,5 @@
 import {EditorFeature} from "."
+import {popupContentAncestor} from "../element-names"
 import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, focusEditorWindow, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
@@ -1291,6 +1292,13 @@ export class TableFeature extends EditorFeature {
   activeListeners = {
     click: (event: MouseEvent) => this.insertAtGap(event),
     pointerdown: (event: PointerEvent) => {
+      if(popupContentAncestor(event.target instanceof Node ? event.target : null)) {
+        this.pendingCell = null
+        this.pointerSelecting = false
+        this.setResizeHover(null)
+        this.clearCellSelection(false)
+        return
+      }
       if(this.gapControl(event)) {
         event.preventDefault()
         this.finishResize()

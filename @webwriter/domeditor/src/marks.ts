@@ -369,6 +369,8 @@ function normalizedMarkAttributes(element: Element) {
 /** Whether adjacent mark wrappers may be joined without changing meaning. */
 export function areEquivalentMarkElements(first: Element, second: Element) {
   if(!isMarkElement(first) || !isMarkElement(second) || first.localName !== second.localName) return false
+  // Each inline popup owns a separate toggle and content relationship.
+  if(first.classList.contains("ww-popup") || second.classList.contains("ww-popup")) return false
   // Adjacent ruby elements represent independent base/annotation sequences.
   if(first.localName === "ruby") return false
   const firstAttributes = normalizedMarkAttributes(first)

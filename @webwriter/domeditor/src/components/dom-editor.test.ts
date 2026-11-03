@@ -9,6 +9,7 @@ import {excludedMarkNames} from "../marks"
 import {AppRibbon} from "./ribbon"
 import {elementDragType, ribbonInsertionDragType} from "./insertion-menu"
 import type {DomEditorToolbox} from "./toolbox"
+import type {ElementStyleEditor} from "./element-style-editor"
 import type {ShapeKeyboard} from "./shape-keyboard"
 import type {MathKeyboard} from "./math-keyboard"
 import type {LinkKeyboard} from "./link-keyboard"
@@ -5675,6 +5676,29 @@ describe("DomEditor.execute()", () => {
     expect(execute.mock.calls.filter(([action]) => action.type === "getStyleState").length).toBeGreaterThanOrEqual(3)
   })
 
+  it("keeps the popup content Style target through the bridge and sends a scoped preset", async () => {
+    const {editor} = await mountEditor()
+    const execute = vi.spyOn(editor, "execute").mockImplementation(async action => {
+      if(action.type === "getStyleState") return {
+        target: {localName: "div", namespaceURI: "http://www.w3.org/1999/xhtml", popupRole: "content"},
+        inline: {}, computed: {}, context: {display: "flex", parentDisplay: "block"},
+      }
+    })
+    const toolbox = editor.shadowRoot!.querySelector<DomEditorToolbox>("dom-editor-toolbox")!
+    toolbox.selectTool(null); toolbox.selectTool("Edit")
+    await vi.waitFor(() => expect(toolbox.elementStyle.target?.popupRole).toBe("content"))
+    await toolbox.updateComplete
+    const styleEditor = toolbox.shadowRoot!.querySelector<ElementStyleEditor>('ribbon-drawer[label="Style"] element-style-editor[show-presets]')!
+    await styleEditor.updateComplete
+    styleEditor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Blue style preset"]')!.click()
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledWith({type: "setStyle", topLevel: true,
+      styles: expect.objectContaining({"background-color": expect.any(Object), "box-shadow": expect.any(Object)})}))
+    const command = execute.mock.calls.find(([action]) => action.type === "setStyle")![0]
+    if(command.type !== "setStyle") throw new Error("The preset did not set styles")
+    expect(Object.keys(command.styles)).not.toContain("padding")
+    expect(Object.keys(command.styles)).not.toContain("border-radius")
+  })
+
   it("retains board grouping state through the bridge and routes grouping commands from the style drawer", async () => {
     const {editor} = await mountEditor()
     const grouping = {grouped: false, canCreate: true, canUngroup: true, canJoinLeft: true, canJoinRight: false}
@@ -9494,6 +9518,34 @@ describe("DomEditor.execute()", () => {
     expect(breadcrumb.tree!.children[0].children.map(item => ({path: item.path, name: item.name}))).toEqual([{path: [0, 2], name: "Paragraph"}])
     expect(breadcrumb.shadowRoot!.querySelector("ribbon-menu#document-tree")).not.toBeNull()
     expect(Array.from(breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list .item-label"), item => item.textContent)).toEqual(["Document"])
+  })
+
+  it("shows the popup and its native parts in the document tree", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<div class="ww-popup"><button popovertarget="note">Open</button><!--keep--><div id="note" popover="auto"><p>Content</p></div></div>'
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children).toMatchObject([{name: "Popup", path: [0, 0], children: [
+      {name: "Popup Content", path: [0, 2], children: [{name: "Paragraph", path: [0, 2, 0]}]},
+    ]}])
+  })
+  it("places a linked dialog below its inline toggle in the document tree", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>'
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children[0].children).toMatchObject([{name: "Popup", path: [0, 0, 0], children: [
+      {name: "Popup Content", path: [1], children: [{name: "Paragraph", path: [1, 0]}]},
+    ]}])
+    expect(tree.children).toHaveLength(1)
+  })
+
+  it("keeps linked Popup Content beneath Popup when authored siblings have another order", async () => {
+    const {editor, iframe} = await mountEditor()
+    iframe.contentDocument!.body.innerHTML = '<p><span class="ww-popup"><span id="note" popover>Content</span><!--keep--><button popovertarget="note">Open</button><b>Other</b></span></p>'
+    const tree = (editor as unknown as {buildDocumentTree(): DocumentTreeItem}).buildDocumentTree()
+    expect(tree.children[0].children).toMatchObject([{name: "Popup", path: [0, 0, 2], children: [
+      {name: "Popup Content", path: [0, 0, 0]},
+    ]}])
+    expect(iframe.contentDocument!.body.querySelector(".ww-popup")!.childNodes).toHaveLength(4)
   })
 
   it("treats graphics as outline leaves while preserving surrounding authored paths", async () => {

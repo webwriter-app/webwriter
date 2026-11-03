@@ -1809,6 +1809,9 @@ export class MediaFeature extends EditorFeature {
         if(error) throw new TypeError(error)
       }
       const target = mediaSourceTarget(element)
+      if(element.matches("picture, img") && (name === "src" || name === "srcset") && target.getAttribute(name) !== value) {
+        this.clearImageHeight(element, target)
+      }
       value === null ? target.removeAttribute(name) : target.setAttribute(name, value)
       if(name === "muted") syncMutedProperty(target)
       this.refresh()
@@ -2446,10 +2449,20 @@ export class MediaFeature extends EditorFeature {
     this.editor.postSelectionPath()
   }
 
+  private clearImageHeight(element: Element, target: Element) {
+    for(const image of new Set([element, target])) {
+      if(!(image instanceof HTMLElement)) continue
+      image.removeAttribute("height")
+      for(const property of ["height", "max-height", "aspect-ratio"]) image.style.removeProperty(property)
+      if(!image.style.length) image.removeAttribute("style")
+    }
+  }
+
   private setSource(element: Element, source: string, replace = false, attribute?: "poster") {
     if(!element.isConnected || !document.body.contains(element) || !(element.matches(mediaSelector) || isGraphicImage(element))
       || (attribute && !element.matches("video")) || (!replace && !isEmptyMedia(element)) || sourceEditingBlocked(element, this.editor.schema)) return false
     const target = mediaSourceTarget(element)
+    if(!attribute && element.matches("picture, img") && target.getAttribute("src") !== source) this.clearImageHeight(element, target)
     if(isGraphicImage(element)) this.editor.doc.stopCapturing()
     if(replace && !attribute) {
       target.removeAttribute("srcset")

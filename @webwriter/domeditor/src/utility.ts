@@ -6,6 +6,7 @@ import {isMarkElement} from "./marks"
 import {mediaElementSelector} from "./media"
 import {formControlSelector, formInteractionSelector} from "./form"
 import {isSectionElement} from "./sections"
+import {popupContentForToggle, popupDisplayToggle, popupElementRole} from "./element-names"
 import {getDocumentRoot} from "./document-template"
 import {boardLayoutRole, documentLayoutMode, slideLayoutRole} from "./document-layout"
 import {SVG_NAMESPACE} from "./graphic"
@@ -18,6 +19,8 @@ export function isParagraphContent(node: Node): boolean {
   if(!isElement(node) || node.hasAttribute("is")) return false
   if(node.namespaceURI === MATH_NAMESPACE && node.localName === "math") return node.getAttribute("display") !== "block"
   if(node.namespaceURI === "http://www.w3.org/1999/xhtml" && node.matches("br,wbr,rt,rp")) return Array.from(node.childNodes).every(isParagraphContent)
+  if(node.localName === "span" && popupElementRole(node) === "popup") return node.childNodes.length === 1 && Array.from(node.childNodes).every(child =>
+    isElement(child) && child.matches("button[popovertarget]") && Array.from(child.childNodes).every(isParagraphContent))
   return isMarkElement(node) && Array.from(node.childNodes).every(isParagraphContent)
 }
 
@@ -132,7 +135,7 @@ export function isAtomicEditingElement(node: Node | null, schema?: Schema): node
     && (node.matches(mediaElementSelector)
       || node.localName === "hr"
       || node.namespaceURI === SVG_NAMESPACE && node.localName === "svg"
-      || node.matches(formControlSelector)
+      || node.matches(formControlSelector) && popupElementRole(node) !== "toggle"
       || (node.localName.includes("-") || node.hasAttribute("is")) && !isContentfulWidget(node, schema))
 }
 
@@ -159,6 +162,7 @@ export function figureSelectionTarget(element: Element): Element {
  * Read computed style each time: authored styles and remote edits are live. */
 export function isOutOfFlow(node: Node | null): boolean {
   if(!isElement(node)) return false
+  if(popupElementRole(node) === "content") return true
   const style = node.ownerDocument.defaultView?.getComputedStyle(node)
   return style?.position === "absolute" || style?.position === "fixed"
     || Boolean(style?.float && style.float !== "none")
@@ -585,6 +589,75 @@ export class EditingSelection {
       : offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
     const pointerElement = hit ?? (selectionRoot ? selectionRoot : pointerTarget instanceof Element ? pointerTarget
       : pointerTarget instanceof Node ? pointerTarget.parentElement : null)
+    // Empty document space can hit BODY even when the browser places its
+    // nearest native caret inside a Popup toggle. Use the nearest flow box to
+    // keep the paragraph gap distinct from that inline text position.
+    if(!selectionRoot && (!flowRoot || flowRoot === root)) {
+      const content = [pointerElement, caretElement].map(element => element?.closest("[popover]"))
+        .find(element => element && popupElementRole(element) === "content")
+      const contentRect = content?.getBoundingClientRect()
+      const inContent = contentRect && contentRect.width > 0 && contentRect.height > 0
+        && contentRect.left <= x && x <= contentRect.right && contentRect.top <= y && y <= contentRect.bottom
+      if(!inContent) {
+        const distance = (rect: DOMRect) => Math.hypot(
+          Math.max(rect.left - x, 0, x - rect.right), Math.max(rect.top - y, 0, y - rect.bottom),
+        )
+        const nearest = layoutChildren(root).sort((a, b) => distance(a.rect) - distance(b.rect))[0]
+        if(nearest?.node instanceof HTMLParagraphElement && nearest.node.querySelector("span.ww-popup")) {
+          const {node: paragraph, rect} = nearest
+          if(y < rect.top || y > rect.bottom) {
+            return {...gap(paragraph, y < rect.top ? "before" : "after"), overrideNative: true}
+          }
+        }
+      }
+    }
+    // A Popup's positioned content is a separate editing flow. In the
+    // paragraph flow, hit testing the bubble or empty line space must resolve
+    // to a text position beside the inline toggle, never inside the wrapper.
+    if(!selectionRoot) {
+      const linkedContent = [pointerElement, caretElement].map(element => element?.closest("[popover]"))
+        .find(element => element && popupElementRole(element) === "content")
+      const wrapper = [pointerElement, caretElement].map(element => element?.closest("span.ww-popup"))
+        .find(element => element && popupElementRole(element) === "popup")
+        ?? (linkedContent && popupDisplayToggle(linkedContent)?.closest("span.ww-popup"))
+      const toggle = wrapper && Array.from(wrapper.children).find(element => popupElementRole(element) === "toggle")
+      const content = toggle && popupContentForToggle(toggle)
+      const rect = toggle?.getBoundingClientRect()
+      if(wrapper && toggle && rect && rect.width > 0 && rect.height > 0 && (!flowRoot || flowRoot !== content)) {
+        const contentRect = content?.getBoundingClientRect()
+        const inContent = contentRect && contentRect.width > 0 && contentRect.height > 0
+          && contentRect.left <= x && x <= contentRect.right && contentRect.top <= y && y <= contentRect.bottom
+        const inToggle = rect.left <= x && x <= rect.right && rect.top <= y && y <= rect.bottom
+        if(!inContent || flowRoot) {
+          if(inToggle && offsetNode && toggle.contains(offsetNode)) return point(offsetNode, offset ?? 0)
+          if(inToggle && !flowRoot) {
+            const edge = x < rect.left + rect.width / 2 ? "start" : "end"
+            const text = edgeTextDescendant(toggle, edge)
+            return {node: text ?? toggle, offset: text && edge === "end" ? text.length : 0, overrideNative: true}
+          }
+          const paragraph = wrapper.closest("p")
+          const paragraphRect = paragraph?.getBoundingClientRect()
+          const inParagraph = paragraphRect && paragraphRect.width > 0 && paragraphRect.height > 0
+            && paragraphRect.left <= x && x <= paragraphRect.right && paragraphRect.top <= y && y <= paragraphRect.bottom
+          const onlyPopup = (node: Node): boolean => node === wrapper || node.nodeType === Node.COMMENT_NODE
+            || node instanceof Text && !node.data.trim()
+            || isElement(node) && node.contains(wrapper) && isMarkElement(node)
+              && !atomicEditingContainer(node, schema) && Array.from(node.childNodes).every(onlyPopup)
+          const after = getComputedStyle(toggle).direction === "rtl"
+            ? x < rect.left + rect.width / 2 : x >= rect.left + rect.width / 2
+          if(paragraph && paragraphRect && paragraphRect.height > 0 && !inContent
+            && (y < paragraphRect.top || y > paragraphRect.bottom)) {
+            return {...gap(paragraph, y < paragraphRect.top ? "before" : "after"), overrideNative: true}
+          }
+          if(inParagraph && paragraph && Array.from(paragraph.childNodes).every(onlyPopup)) {
+            return {node: paragraph, offset: after ? paragraph.childNodes.length : 0, overrideNative: true}
+          }
+          if(flowRoot || offsetNode && (wrapper.contains(offsetNode) || !inParagraph)) {
+            return {...gap(wrapper, after ? "after" : "before"), overrideNative: true}
+          }
+        }
+      }
+    }
     const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
     // A root containing only floats/positioned elements still has an editable
     // start. Native hit testing may return no caret, or a nearby floated caption.
@@ -729,7 +802,8 @@ export class EditingSelection {
     }
     const hitElement = offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
     const styledParagraph = hitElement?.closest("p")
-    if(styledParagraph?.style.length && root.contains(styledParagraph) && !isOutOfFlow(styledParagraph)) {
+    if(styledParagraph?.style.length && root.contains(styledParagraph) && !isOutOfFlow(styledParagraph)
+      && editingFlowRoot(styledParagraph) === flow) {
       const rect = styledParagraph.getBoundingClientRect()
       if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
         return gap(styledParagraph, y < rect.top ? "before" : "after")
@@ -793,7 +867,7 @@ export class EditingSelection {
     }
     let outerTable = hitElement?.closest("table") ?? null
     while(outerTable?.parentElement?.closest("table")) outerTable = outerTable.parentElement.closest("table")
-    if(outerTable) {
+    if(outerTable && popupElementRole(flow) !== "content") {
       const tableRect = outerTable.getBoundingClientRect()
       const hasTableBox = tableRect.right > tableRect.left || tableRect.bottom > tableRect.top
       if(hasTableBox && (y < tableRect.top || y > tableRect.bottom)) {
@@ -903,6 +977,12 @@ export class EditingSelection {
   static get isGapSelection() {
     const anchor = this.anchor
     if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
+    if(this.isEmpty && isElement(anchor) && anchor.localName === "span" && popupElementRole(anchor) === "popup") return false
+    if(this.isEmpty && isElement(anchor) && anchor.localName === "p" && anchor.parentElement
+      && popupElementRole(anchor.parentElement) === "content") {
+      const children = Array.from(anchor.childNodes).filter(node => isElement(node) || node instanceof Text && Boolean(node.data.trim()))
+      if(!children.length || children.length === 1 && isElement(children[0]) && children[0].localName === "br") return false
+    }
     if(mathRoot(anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
     if(this.listGap || this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
@@ -942,7 +1022,9 @@ export class EditingSelection {
         }
       }
     }
-    return (!isSectionElement(anchor) || inSlide || inBoardCard) && !isInsideTable && this.isEmpty && !this.isEmptySelection &&
+    const popupContentGap = popupElementRole(anchor) === "content"
+    return (!isSectionElement(anchor) || inSlide || inBoardCard || popupContentGap)
+      && (!isInsideTable || popupContentGap) && this.isEmpty && !this.isEmptySelection &&
       (!hasTextOrMarkChild
         || isRootBoundaryBeforeFirstElement)
   }
@@ -998,7 +1080,7 @@ export class EditingSelection {
     const selected = this.anchor.childNodes.item(index)
     if(inlineMathRoot(selected) || isElement(selected) && selected.matches("caption, figcaption, details > summary")) return false
     return isElement(selected) && (isOutOfFlow(selected) || selected === getDocumentRoot() || slideLayoutRole(selected) === "slide" || Boolean(boardLayoutRole(selected))
-      || selected.localName === "figure" || !isMarkElement(selected) && !isSectionElement(selected))
+      || selected.localName === "figure" || Boolean(popupElementRole(selected)) || !isMarkElement(selected) && !isSectionElement(selected))
   }
 
   /** Whether the selection consists only of text, line breaks and mark wrappers within one
@@ -1299,7 +1381,7 @@ export class EditingSelection {
     let fragment = this.cloneClipboardContents(range)
     const commonAncestor = this.range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
-    while(sharedMark && isMarkElement(sharedMark)) {
+    while(sharedMark && isMarkElement(sharedMark) && popupElementRole(sharedMark) !== "content") {
       const wrapper = cloneInert(sharedMark)
       wrapper.append(fragment)
       fragment = wrapper.ownerDocument.createDocumentFragment()
@@ -1395,6 +1477,7 @@ export class EditingSelection {
     while(node.parentElement && editingFlowRoot(node.parentElement) !== flow && node !== getDocumentRoot()) {
       node = editingFlowRoot(node.parentElement)
     }
+    if(popupElementRole(node) === "content") node = popupDisplayToggle(node)?.closest(".ww-popup") ?? node
     const parent = node.parentNode
     const point = flow.contains(node) && parent
       ? {node: parent, offset: Array.from(parent.childNodes).indexOf(node) + (forward ? 1 : 0)}
@@ -1996,6 +2079,7 @@ export function formControlForInteraction(event: Event) {
       ? interaction.control
       : null
   }
+  if(popupElementRole(interaction) === "toggle") return null
   return interaction.matches(formControlSelector)
     ? interaction as HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
     : null

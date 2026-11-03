@@ -184,6 +184,16 @@ describe("contentful widget boundaries", () => {
   })
 })
 
+describe("inline popup editing boundary", () => {
+  it("edits a linked popup toggle as text while ordinary buttons remain atomic", () => {
+    setBody('<p><span class="ww-popup"><button popovertarget="note">Toggle</button><span id="note" popover>Content</span></span><button>Ordinary</button></p>')
+    const [toggle, ordinary] = Array.from(document.querySelectorAll("button"))
+    expect(isAtomicEditingElement(toggle)).toBe(false)
+    expect(atomicEditingContainer(toggle.firstChild)).toBeNull()
+    expect(isAtomicEditingElement(ordinary)).toBe(true)
+  })
+})
+
 describe("selectRange()", () => {
   it("sets anchor and focus", () => {
     setBody("<p>hello world</p>")

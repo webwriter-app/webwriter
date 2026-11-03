@@ -34,6 +34,27 @@ function mockCaretPosition(node: Node, offset = 0) {
 }
 
 describe("table grid", () => {
+  it("keeps popup content pointer interactions separate from table cell selection", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Bubble words</p></div></td><td><p>Other</p></td></tr></tbody></table>'
+    const content = document.querySelector<HTMLElement>(".ww-popup-content")!
+    const text = content.querySelector("p")!.firstChild!
+    const restore = mockCaretPosition(text, 3)
+    try {
+      $.move(text, 3)
+      editor.features.dialog.refresh()
+      const down = new PointerEvent("pointerdown", {button: 0, pointerType: "mouse", pointerId: 12,
+        clientX: 20, clientY: 20, bubbles: true, cancelable: true})
+      content.querySelector("p")!.dispatchEvent(down)
+      cells()[1].dispatchEvent(new PointerEvent("pointermove", {buttons: 1, pointerId: 12,
+        clientX: 150, clientY: 20, bubbles: true, cancelable: true}))
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      expect(content).toHaveClass("◆popup-visible")
+      expect(content.contains($.anchor)).toBe(true)
+      document.dispatchEvent(new PointerEvent("pointerup", {pointerId: 12, bubbles: true}))
+    }
+    finally { restore() }
+  })
+
   it("maps captions, row groups, header cells, and merged cells without normalizing them", () => {
     document.body.innerHTML = `
       <table id="data">

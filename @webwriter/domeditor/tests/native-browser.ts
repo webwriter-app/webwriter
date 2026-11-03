@@ -2594,6 +2594,264 @@ await check("global directional shorthands preserve authored overrides in native
   finally {target.remove()}
 })
 
+await check("popup content drags stay inside the bubble", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  document.body.append(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup fixture did not initialize")
+    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+    doc.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">toggle</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>First line of popup content</p><p>Second line of popup content</p></div><p>Later</p>'
+    const content = doc.querySelector<HTMLElement>("[popover]")!, first = content.querySelector("p")!.firstChild!
+    selection.setPosition(first, 3)
+    editor.features.selection.processSelection()
+    editor.features.dialog.refresh()
+    await layoutFrame()
+    assert(content.classList.contains("◆popup-visible") && content.getBoundingClientRect().height > 0,
+      "popup did not open for its content selection")
+    const range = doc.createRange()
+    range.setStart(first, 3); range.collapse(true)
+    const start = range.getBoundingClientRect(), bubble = content.getBoundingClientRect()
+    const x = start.left + 1, y = start.top + start.height / 2
+    const hit = doc.elementFromPoint(x, y) ?? content
+    const down = new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 81, button: 0, buttons: 1, clientX: x, clientY: y})
+    hit.dispatchEvent(down)
+    assert(down.defaultPrevented, "popup drag left native mouse selection active")
+    const mouse = new view.MouseEvent("mousedown", {bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y})
+    hit.dispatchEvent(mouse)
+    assert(mouse.defaultPrevented, "popup drag left native mousedown selection active")
+    for(const [moveX, moveY] of [[bubble.right - 8, bubble.bottom - 8], [bubble.left - 80, bubble.top - 30],
+      [bubble.right + 80, bubble.bottom + 30], [bubble.left + 20, bubble.top + 12]]) {
+      doc.body.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 81, buttons: 1, clientX: moveX, clientY: moveY}))
+      doc.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame()
+      editor.features.dialog.refresh()
+      assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
+        "popup drag selected text outside its dialog")
+      assert(content.classList.contains("◆popup-visible"), "popup closed during its own drag")
+    }
+    doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 81}))
+    editor.features.dialog.refresh()
+    assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode)
+      && content.classList.contains("◆popup-visible"), "popup drag escaped or closed on release")
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
+await check("popup table content clicks keep the bubble open", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  document.body.append(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup table fixture did not initialize")
+    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+    doc.body.innerHTML = '<table><tbody><tr><td><p>Before <span class="ww-popup"><button popovertarget="note">Toggle</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Bubble words here</p></div></td><td><p>Other</p></td></tr></tbody></table>'
+    const content = doc.querySelector<HTMLElement>("[popover]")!, text = content.querySelector("p")!.firstChild!
+    selection.setPosition(text, 3)
+    editor.features.selection.processSelection()
+    editor.features.dialog.refresh()
+    await layoutFrame()
+    assert(content.classList.contains("◆popup-visible"), "popup did not open in the table cell")
+    const range = doc.createRange()
+    range.setStart(text, 3); range.collapse(true)
+    const rect = range.getBoundingClientRect(), bubble = content.getBoundingClientRect()
+    for(const [x, y] of [[rect.left + 1, rect.top + rect.height / 2], [bubble.right - 5, bubble.bottom - 5]]) {
+      const hit = doc.elementFromPoint(x, y)
+      if(!hit || !content.contains(hit)) throw new Error("popup content is not hittable inside the table")
+      hit.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 89,
+        button: 0, buttons: 1, clientX: x, clientY: y}))
+      hit.dispatchEvent(new view.MouseEvent("mousedown", {bubbles: true, cancelable: true, button: 0, buttons: 1, clientX: x, clientY: y}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 89,
+        button: 0, clientX: x, clientY: y}))
+      doc.dispatchEvent(new Event("selectionchange"))
+      await layoutFrame()
+      editor.features.dialog.refresh()
+      assert(content.contains(selection.anchorNode) && content.contains(selection.focusNode),
+        `clicking popup content in a table moved the selection out of the bubble: ${selection.anchorNode?.nodeName}@${selection.anchorOffset}, hit ${hit.localName}`)
+      assert(content.classList.contains("◆popup-visible"), "clicking popup content in a table closed the bubble")
+      assert(!editor.features.table.hasCellSelection, "clicking popup content selected the table cell")
+    }
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
+await check("popup table trailing gap accepts Enter", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  document.body.append(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor, KeyboardEvent: typeof KeyboardEvent}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup table gap fixture did not initialize")
+    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+    doc.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Last</p></div></td><td><p>Other</p></td></tr></tbody></table>'
+    const content = doc.querySelector<HTMLElement>("[popover]")!, last = content.querySelector("p")!
+    selection.setPosition(last.firstChild, last.textContent!.length)
+    editor.features.selection.processSelection()
+    editor.features.dialog.refresh()
+    doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
+    assert(selection.anchorNode === content && selection.anchorOffset === 1
+      && last.classList.contains("◆gap-after-selected") && doc.body.classList.contains("◆gap-caret-visible"),
+    "Arrow Down from the last popup paragraph in a table did not show its trailing gap")
+    const caret = editor.features.selection.gapCaret!.getBoundingClientRect()
+    const paragraph = last.getBoundingClientRect(), bubble = content.getBoundingClientRect()
+    assert(caret.top >= paragraph.bottom && caret.left >= bubble.left && caret.left <= bubble.right,
+      "the trailing popup gap caret is not below its paragraph inside the bubble")
+    doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    assert(content.querySelectorAll(":scope > p").length === 2
+      && content.lastElementChild?.textContent === "" && content.classList.contains("◆popup-visible"),
+    "Enter at the trailing popup gap in a table did not insert a paragraph")
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
+await check("popup toggle text selection contrasts with its button", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:300px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  document.body.append(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup selection fixture did not initialize")
+    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+    doc.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">Blue <strong>toggle</strong> text</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>'
+    const button = doc.querySelector(".ww-popup button")!, text = button.querySelector("strong")!.firstChild!
+    selection.setBaseAndExtent(text, 0, text, text.textContent!.length)
+    editor.features.selection.processSelection()
+    assert(selection.toString() === "toggle", "popup button text is not natively selectable")
+    const buttonStyle = view.getComputedStyle(button), selectionStyle = view.getComputedStyle(text.parentElement!, "::selection")
+    assert(buttonStyle.userSelect === "text" && selectionStyle.backgroundColor !== buttonStyle.backgroundColor
+      && selectionStyle.color !== buttonStyle.color, "popup toggle selection is not visible against its button")
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
+await check("popup parts receive scoped styles without changing their layout", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  document.body.append(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup style fixture did not initialize")
+    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+    doc.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Bubble text</p></div></td></tr></tbody></table>'
+    const button = doc.querySelector<HTMLElement>(".ww-popup button")!, bubble = doc.querySelector<HTMLElement>(".ww-popup-content")!
+    for(const [part, text] of [[button, button.firstChild!], [bubble, bubble.querySelector("p")!.firstChild!]] as const) {
+      selection.setPosition(text, 2)
+      editor.features.selection.processSelection()
+      editor.features.dialog.refresh()
+      const before = view.getComputedStyle(part)
+      const padding = before.padding, position = before.position, display = before.display
+      const state = editor.features.manipulation.actions.getStyleState({type: "getStyleState", topLevel: true})
+      assert(state.target?.popupRole === (part === button ? "toggle" : "content"), "Style targets the surrounding table cell")
+      editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {
+        "background-color": "rgb(250, 230, 160)", "border-color": "rgb(120, 50, 20)", "box-shadow": "0 4px 8px #0003",
+      }})
+      part.getAnimations().forEach(animation => animation.finish())
+      const after = view.getComputedStyle(part)
+      assert(after.backgroundColor === "rgb(250, 230, 160)" && after.borderColor === "rgb(120, 50, 20)"
+        && after.padding === padding && after.position === position && after.display === display,
+      `Styling ${part.localName} changed its layout or missed the part: ${JSON.stringify({background: after.backgroundColor,
+        border: after.borderColor, padding: [padding, after.padding], position: [position, after.position], display: [display, after.display],
+        inline: part.getAttribute("style")})}`)
+    }
+    const bubbleBorder = view.getComputedStyle(bubble).borderTopColor
+    assert(view.getComputedStyle(bubble, "::before").borderTopColor === bubbleBorder,
+      "the bubble connector does not match its styled border")
+    assert(!doc.querySelector("td")!.hasAttribute("style"), "popup styles were applied to the table cell")
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
+await check("popup content gaps support backward joins", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px!important;max-width:none;height:400px"
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
+  document.body.append(frame)
+  const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, KeyboardEvent: typeof KeyboardEvent}
+  try {
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "popup gap fixture did not initialize")
+    const doc = frame.contentDocument!, selection = view.getSelection()!, editor = view.editor!
+    doc.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p style="margin-bottom:24px">First</p><p>Second</p></div>'
+    const content = doc.querySelector<HTMLElement>("[popover]")!, first = content.querySelector("p")!, second = first.nextElementSibling!
+    selection.setPosition(first.firstChild, 2)
+    editor.features.selection.processSelection()
+    editor.features.dialog.refresh()
+    await layoutFrame()
+    const firstBox = first.getBoundingClientRect(), secondBox = second.getBoundingClientRect(), contentBox = content.getBoundingClientRect()
+    assert(secondBox.top > firstBox.bottom, "popup paragraphs have no clickable gap")
+    const x = firstBox.left + 12, y = (firstBox.bottom + secondBox.top) / 2
+    const clickGap = (atY: number) => {
+      const hit = doc.elementFromPoint(x, atY) ?? content
+      hit.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, cancelable: true, pointerType: "mouse", pointerId: 82, button: 0, clientX: x, clientY: atY}))
+      doc.body.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerType: "mouse", pointerId: 82, clientX: x, clientY: atY}))
+      editor.features.selection.processSelection()
+      editor.features.dialog.refresh()
+    }
+    for(const [atY, offset, marked, marker] of [
+      [(contentBox.top + firstBox.top) / 2, 0, first, "◆gap-before-selected"],
+      [(secondBox.bottom + contentBox.bottom) / 2, 2, second, "◆gap-after-selected"],
+    ] as const) {
+      clickGap(atY)
+      assert(selection.isCollapsed && selection.anchorNode === content && selection.anchorOffset === offset
+        && marked.classList.contains(marker), "click at a popup content edge missed its gap")
+      const caret = editor.features.selection.gapCaret!, box = caret.getBoundingClientRect()
+      const expected = marker === "◆gap-before-selected" ? marked.getBoundingClientRect().top
+        : marked.getBoundingClientRect().bottom + (parseFloat(view.getComputedStyle(caret).marginTop) || 0)
+      assert(Math.abs(box.top - expected) < 2 && contentBox.left <= box.left && box.left <= contentBox.right,
+        "popup gap caret is detached from its content")
+      assert(content.classList.contains("◆popup-visible"), "popup closed at a content edge")
+    }
+    selection.setPosition(content, 0)
+    editor.features.selection.processSelection()
+    doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true}))
+    assert(doc.querySelector("button")!.contains(selection.anchorNode), "Arrow Up from the top popup gap missed its toggle")
+    selection.setPosition(second.firstChild, second.textContent!.length)
+    editor.features.selection.processSelection()
+    doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
+    assert(selection.anchorNode === content && selection.anchorOffset === 2 && second.classList.contains("◆gap-after-selected")
+      && content.classList.contains("◆popup-visible"), "Arrow Down from the last popup element missed its trailing gap")
+    clickGap(y)
+    assert(selection.isCollapsed && selection.anchorNode === content && selection.anchorOffset === 1
+      && first.classList.contains("◆gap-after-selected"), "click between popup paragraphs missed the gap")
+    assert(content.classList.contains("◆popup-visible"), "popup closed at a content gap")
+    doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+    assert(content.querySelectorAll("p").length === 1 && content.querySelector("p")?.textContent === "FirstSecond",
+      "Backspace at the popup gap did not join its paragraphs")
+    content.replaceChildren(doc.createElement("p"), doc.createElement("p"))
+    content.children[0].textContent = "First"
+    content.children[1].textContent = "Second"
+    selection.setPosition(content.children[1].firstChild, 0)
+    editor.features.selection.processSelection()
+    doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+    assert(content.querySelectorAll("p").length === 1 && content.querySelector("p")?.textContent === "FirstSecond",
+      "Backspace at the start of a popup paragraph did not join backward")
+    for(const html of ["", "<br>"]) {
+      content.innerHTML = `<p>${html}</p>`
+      const only = content.querySelector("p")!
+      selection.setPosition(only, 0)
+      editor.features.selection.processSelection()
+      doc.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true}))
+      assert(content.querySelectorAll("p").length === 1 && only.isConnected && only.innerHTML === html
+        && selection.anchorNode === only && selection.anchorOffset === 0
+        && !doc.body.classList.contains("◆gap-caret-visible"),
+      "Backspace in the sole empty popup paragraph moved to a gap")
+    }
+  }
+  finally { view.editor?.destroy(); frame.remove() }
+})
+
 await check("gap carets track their authored boundary", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1200px!important;max-width:none;height:400px"

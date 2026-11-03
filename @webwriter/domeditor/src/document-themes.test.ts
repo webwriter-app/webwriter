@@ -204,7 +204,19 @@ describe("document themes", () => {
     expect(source.match(/!important/g)!.length).toBeGreaterThanOrEqual(10)
     expect(source).toContain("--pico-font-size: 100%")
     expect(source).not.toMatch(/@media \(min-width: \d+px\)\s*\{\s*:root,\s*:host\s*\{\s*--pico-font-size:/)
-    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-(?:column-(?:group|left|middle|right|three)|float-(?:left|right|none|sticky)|full-width)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
+    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-(?:column-(?:group|left|middle|right|three)|float-(?:left|right|none|sticky)|full-width|popup)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
+  })
+
+  it("positions and bounds popup bubbles in every bundled theme", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toMatch(/\.ww-popup > button\[popovertarget\]\s*\{[^}]*margin-block-end:\s*0;/)
+      expect(theme.source).toMatch(/\.ww-popup-content\[popover\]\)\s*\{[^}]*margin:\s*0\.15rem 0 0;/)
+      expect(theme.source).toMatch(/\.ww-popup-content\[popover\]\)\s*\{[^}]*position-area:\s*bottom span-right;/)
+      expect(theme.source).toContain("position-try-order: most-height;")
+      expect(theme.source).toContain("@position-try --ww-popup-fit-left")
+      expect(theme.source).toContain("max-block-size: calc(100% - 0.5rem);")
+      expect(theme.source).toContain("overflow: auto;")
+    }
   })
 
   it("gives native disclosure and dialog elements complete base styles", () => {

@@ -24,6 +24,7 @@ import {
 import {$, authoredClassValue, cloneWithoutEditorMarkers, modifierKeyDown, atomicEditingContainer, isAtomicEditingElement, isOutOfFlow, isParagraphContent, textOffsetIn, textPointAtOffset} from "../utility"
 import {SVG_NAMESPACE} from "../graphic"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {isSectionElement} from "../sections"
 import {collectReferences, parseReference} from "../document-viewer.js"
 import {isLinkEdit, normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
@@ -42,6 +43,7 @@ export type MarkState = {
   svgText?: boolean
   /** Marks found in the range, or effective for the next input at a caret. */
   marks: MarkName[]
+  popupActive?: boolean
   /** Marks a containing widget allows; absent when all marks are allowed. */
   allowedMarks?: MarkName[]
 }
@@ -423,6 +425,8 @@ export class MarkFeature extends EditorFeature {
   private storedStyles: StyleMarkValues | null = null
   /** Element-specific attributes to apply to the next typed mark at a caret. */
   private storedAttributes: MarkAttributeValues | null = null
+  /** Apply Popup to the next typed text at this caret. */
+  private storedPopup = false
   private storedSelection: StoredSelection | null = null
   private linkNodeIDs = new WeakMap<Node, string>()
   private editingLink = false
@@ -550,6 +554,8 @@ export class MarkFeature extends EditorFeature {
   }
 
   actions = {
+    insertPopup: ({}: {type: "insertPopup"}) => this.insertPopup(),
+    togglePopup: ({}: {type: "togglePopup"}) => this.togglePopup(),
     editLink: (edit: LinkEdit & {type: "editLink"}) => this.editLink(edit),
     addMark: ({mark}: {type: "addMark", mark: MarkName}) => this.addMark(mark),
     removeMark: ({mark}: {type: "removeMark", mark: MarkName}) => this.removeMark(mark),
@@ -639,27 +645,46 @@ export class MarkFeature extends EditorFeature {
    * or undefined when every mark is allowed. */
   allowedMarksAt(node: Node | null): MarkName[] | undefined {
     let element = node instanceof Element ? node : node?.parentElement ?? null
+    const toggle = element?.closest(".ww-popup button[popovertarget]")
+    const insidePopupToggle = !!toggle && popupElementRole(toggle) === "toggle"
     while(element && element !== document.body) {
       const marks = this.editor.schema.get(element)?.marks
-      if(marks) return markNames.filter(mark => marks.includes(mark))
+      if(marks) return markNames.filter(mark => marks.includes(mark) && (!insidePopupToggle || mark !== "a"))
       element = element.parentElement
     }
+    if(insidePopupToggle) return markNames.filter(mark => mark !== "a")
   }
 
   /** Whether a widget around the selection allows `mark` (`span` for styles). */
   private isMarkAllowed(mark: MarkName) {
+    if(mark === "a" && (this.storedPopup || this.selectionIntersectsPopupToggle())) return false
     const allowed = this.allowedMarksAt(document.getSelection()?.anchorNode ?? null)
     return !allowed || allowed.includes(mark)
+  }
+
+  private selectionIntersectsPopupToggle() {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || !selection.anchorNode) return false
+    const element = selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode.parentElement
+    const toggle = element?.closest(".ww-popup button[popovertarget]")
+    if(toggle && popupElementRole(toggle) === "toggle") return true
+    if(selection.isCollapsed) return false
+    const range = selection.getRangeAt(0)
+    return Array.from(document.body.querySelectorAll(".ww-popup button[popovertarget]"))
+      .some(candidate => popupElementRole(candidate) === "toggle" && range.intersectsNode(candidate))
   }
 
   /** Reads the current selection and its ancestors afresh on every call. */
   getState(): MarkState {
     const state = this.getUnrestrictedState()
+    if(this.storedPopup || this.selectedPopupToggle()) state.popupActive = true
     const allowed = this.svgContext() || this.editor.features.math.activeMath
       ? undefined
       : this.allowedMarksAt(document.getSelection()?.anchorNode ?? null)
-    if(!allowed) return state
-    return {...state, canMark: state.canMark && allowed.length > 0, allowedMarks: allowed}
+    const restricted = this.storedPopup || this.selectionIntersectsPopupToggle()
+      ? markNames.filter(mark => mark !== "a" && (!allowed || allowed.includes(mark))) : allowed
+    if(!restricted) return state
+    return {...state, canMark: state.canMark && restricted.length > 0, allowedMarks: restricted}
   }
 
   private getUnrestrictedState(): MarkState {
@@ -857,6 +882,111 @@ export class MarkFeature extends EditorFeature {
       .map(node => node instanceof Element || node instanceof Text ? node.textContent ?? "" : "")
       .join("")
     return {active: true, canCreate: false, base, annotations, fallbacks}
+  }
+
+  /** Popup Content is a separate editing flow and cannot contain another Popup. */
+  private selectionInPopupContent() {
+    const selection = document.getSelection()
+    return !!(popupContentAncestor($.selectedElement ?? null)
+      || popupContentAncestor(selection?.anchorNode ?? null)
+      || popupContentAncestor(selection?.focusNode ?? null))
+  }
+
+  /** Resolve a popup whose toggle or content holds the live selection. */
+  private selectedPopupToggle(): Element | null {
+    const selected = $.selectedElement
+    if(selected && popupElementRole(selected) === "toggle") return selected
+    if(selected && popupElementRole(selected) === "content") return popupDisplayToggle(selected)
+    const selection = document.getSelection()
+    if(!selection?.anchorNode || !selection.focusNode) return null
+    const toggleAt = (node: Node) => {
+      const element = node instanceof Element ? node : node.parentElement
+      const toggle = element?.closest(".ww-popup button[popovertarget]")
+      if(toggle && popupElementRole(toggle) === "toggle") return toggle
+      const content = element?.closest("[popover]")
+      return content && popupElementRole(content) === "content" ? popupDisplayToggle(content) : null
+    }
+    const anchor = toggleAt(selection.anchorNode)
+    return anchor && anchor === toggleAt(selection.focusNode) ? anchor : null
+  }
+
+  togglePopup(): boolean {
+    if(this.editor.isEditingLocked) return false
+    this.clearStoredMarksIfSelectionChanged()
+    const toggle = this.selectedPopupToggle()
+    if(!toggle) {
+      const caret = this.getCaret()
+      if(caret) {
+        if(!this.storedPopup && this.effectiveCaretMarks(caret).has("a")) return false
+        this.storedPopup = !this.storedPopup
+        this.storeSelection(caret.selection)
+        this.editor.postMarkState()
+        return true
+      }
+      return this.insertPopup()
+    }
+    const content = popupContentForToggle(toggle)
+    if(!content) return false
+    let block: Element | null = toggle.parentElement
+    while(block && block !== document.body && !this.editor.schema.isBlock(block)) block = block.parentElement
+    const start = block && textOffsetIn(block, toggle, 0)
+    const length = toggle.textContent?.length ?? 0
+    this.editor.features.selection.selectElement(content)
+    if($.selectedElement !== content) return false
+    this.editor.features.manipulation.delete()
+    if(toggle.isConnected || content.isConnected) return false
+    if(block?.isConnected && start !== null && start !== undefined && length) {
+      const [startNode, startOffset] = textPointAtOffset(block, start, undefined, "forward")
+      const [endNode, endOffset] = textPointAtOffset(block, start + length)
+      $.selectRange(startNode, startOffset, endNode, endOffset)
+    }
+    this.editor.postMarkState()
+    return true
+  }
+
+  /** Turn one live, contiguous phrasing selection into a native popup toggle. */
+  insertPopup(): boolean {
+    if(this.editor.isEditingLocked) return false
+    if(this.selectionInPopupContent()) return false
+    const context = this.getSelection()
+    if(!context || context.split || context.block.namespaceURI !== "http://www.w3.org/1999/xhtml") return false
+    for(const node of [context.range.startContainer, context.range.endContainer]) {
+      const element = node instanceof Element ? node : node.parentElement
+      if(!element?.isConnected || element.closest("a, button, input, select, textarea, [popover], .ww-popup, [contenteditable='false']")
+        || atomicEditingContainer(element, this.editor.schema)) return false
+    }
+    const fragment = context.range.cloneContents()
+    if(Array.from(fragment.querySelectorAll("*")).some(element =>
+      element.namespaceURI !== "http://www.w3.org/1999/xhtml" || element.localName.includes("-") || element.hasAttribute("is")
+      || element.matches("a, button, input, select, textarea, [popover], [contenteditable='false']")
+      || !this.editor.schema.isPhrasing(element))) return false
+    let id = `popup-${crypto.randomUUID()}`
+    while(document.getElementById(id)) id = `popup-${crypto.randomUUID()}`
+    const wrapper = document.createElement("span")
+    wrapper.className = "ww-popup"
+    const button = document.createElement("button")
+    button.type = "button"
+    button.setAttribute("popovertarget", id)
+    button.style.setProperty("anchor-name", `--${id}`)
+    const popup = document.createElement("div")
+    popup.className = "ww-popup-content"
+    popup.id = id
+    popup.setAttribute("role", "dialog")
+    popup.setAttribute("popover", "auto")
+    popup.style.setProperty("position-anchor", `--${id}`)
+    popup.append(document.createElement("p"))
+    const end = this.editor.doc.beginUndoGroup()
+    try {
+      button.append(context.range.extractContents())
+      wrapper.append(button)
+      context.range.insertNode(wrapper)
+      if(context.block.matches("td, th, caption")) context.block.append(popup)
+      else context.block.after(popup)
+      $.move(popup.firstChild!, 0)
+      this.editor.postMarkState()
+      return true
+    }
+    finally { end() }
   }
 
   /** Wraps the selected phrasing DOM as one ruby base and appends its first annotation. */
@@ -1509,6 +1639,7 @@ export class MarkFeature extends EditorFeature {
     this.storedMarks = null
     this.storedStyles = null
     this.storedAttributes = null
+    this.storedPopup = false
     this.storedSelection = null
   }
 
@@ -1532,12 +1663,13 @@ export class MarkFeature extends EditorFeature {
     if(this.editor.features.selection.isCaptureSelection) return
     this.clearStoredMarksIfSelectionChanged()
     if(event.defaultPrevented
-      || this.storedMarks === null && this.storedStyles === null && this.storedAttributes === null
+      || this.storedMarks === null && this.storedStyles === null && this.storedAttributes === null && !this.storedPopup
       || !["insertText", "insertReplacementText"].includes(event.inputType)
       || !event.data) return
 
     const caret = this.getCaret()
     if(!caret) return
+    const popupPending = this.storedPopup
     const desired = new Set(this.storedMarks ?? this.marksAt(caret.range.startContainer, caret.block))
     const desiredStyles = {...(this.storedStyles ?? this.stylesAt(caret.range.startContainer, caret.block))}
     const desiredAttributes = this.cloneAttributeValues(
@@ -1568,7 +1700,14 @@ export class MarkFeature extends EditorFeature {
       }
     }
 
-    document.getSelection()?.collapseToEnd()
+    if(popupPending && this.insertPopup()) {
+      const popup = this.selectedPopupToggle()
+      if(popup) {
+        const point = textPointAtOffset(popup, popup.textContent?.length ?? 0, [popup, popup.childNodes.length])
+        $.move(point[0], point[1])
+      }
+    }
+    else document.getSelection()?.collapseToEnd()
     this.clearStoredMarks()
     caret.block.dispatchEvent(new InputEvent("input", {
       bubbles: true,
@@ -1781,6 +1920,7 @@ export class MarkFeature extends EditorFeature {
 
   /** Style-only spans belong to the dedicated style controls, not the semantic Span group. */
   private semanticMarkName(element: Element) {
+    if(popupElementRole(element)) return null
     const mark = canonicalMarkName(element.localName)
     return mark === "span" && this.isStyleMarkSpan(element) ? null : mark
   }

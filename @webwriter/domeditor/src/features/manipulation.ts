@@ -29,6 +29,7 @@ import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStyle
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {authoredDetailsOpen, isHTMLDetailsElement} from "../editor-artifacts"
+import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
@@ -2507,6 +2508,8 @@ export class ManipulationFeature extends EditorFeature {
     const common = range.commonAncestorContainer
     if(common === document || common === document.documentElement || common === body) return root
     const container = getContainer(common)
+    const popupPart = container.closest("button[popovertarget], [popover]")
+    if(inAuthoredBody(popupPart) && ["toggle", "content"].includes(popupElementRole(popupPart) ?? "")) return popupPart
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
@@ -2517,6 +2520,7 @@ export class ManipulationFeature extends EditorFeature {
       ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
+    if(["toggle", "content"].includes(popupElementRole(target) ?? "")) return target
     // Table and cell selections keep their scope inside sections and templates.
     const cell = cellForNode(target)
     if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
@@ -2795,6 +2799,7 @@ export class ManipulationFeature extends EditorFeature {
     })
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        ...(["toggle", "content"].includes(popupElementRole(target) ?? "") ? {popupRole: popupElementRole(target) as "toggle" | "content"} : {}),
         placement: this.editor.features.layout.getPlacementState(target),
         grouping: this.editor.features.board.groupingState(target),
         canMoveUp: movable && target.previousElementSibling !== null,
@@ -2877,7 +2882,9 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Re-read containers and widget identities at command time. */
   selectedElementsOfType(type: ElementSelectionType) {
-    const elements = this.selectedEditingElements().filter(element => element.localName === type.localName && element.namespaceURI === type.namespaceURI
+    const selected = this.selectedEditingElements()
+    const elements = [...new Set([...selected, ...selected.map(element => popupDisplayToggle(element)).filter((element): element is Element => Boolean(element))])]
+      .filter(element => element.localName === type.localName && element.namespaceURI === type.namespaceURI
       && (type.id === undefined || element.id === type.id)
       && (type.path === undefined || JSON.stringify(pathFromNode(document.body, element)) === JSON.stringify(type.path)))
     // Ambiguous authored IDs must not turn an individual widget edit into a batch edit.
@@ -2886,9 +2893,19 @@ export class ManipulationFeature extends EditorFeature {
 
   getSelectedElementTypes(properties: string[] = []): SelectedElementTypeState[] {
     const groups = new Map<string, Element[]>()
-    for(const element of this.selectedEditingElements()) {
+    const presented = new Set<Element>()
+    for(const selected of this.selectedEditingElements()) {
+      const role = popupElementRole(selected)
+      const element = role === "popup" ? popupDisplayToggle(selected) ?? selected : selected
+      if(role === "content") {
+        const toggle = popupDisplayToggle(selected)
+        if(toggle) presented.add(toggle)
+      }
+      presented.add(element)
+    }
+    for(const element of presented) {
       const key = JSON.stringify([element.namespaceURI, element.localName,
-        ...(element.localName.includes("-") ? [pathFromNode(document.body, element)] : [])])
+        ...(element.localName.includes("-") || popupElementRole(element) ? [pathFromNode(document.body, element)] : [])])
       groups.set(key, [...(groups.get(key) ?? []), element])
     }
     return [...groups.values()].map(elements => {
@@ -3043,9 +3060,33 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Replaces the current selection with nodes and leaves the caret at the
    * end of the inserted content without splitting its containing block. */
+  private nestedPopupAtSelection(nodes: readonly Node[]) {
+    const selection = document.getSelection()
+    if(!popupContentAncestor($.selectedElement ?? null)
+      && !popupContentAncestor(selection?.anchorNode ?? null)
+      && !popupContentAncestor(selection?.focusNode ?? null)) return false
+    return nodes.some(node => (node instanceof Element || node instanceof DocumentFragment)
+      && (node instanceof Element && node.matches(".ww-popup, .ww-popup-content[popover]")
+        || !!node.querySelector(".ww-popup, .ww-popup-content[popover]")))
+  }
+
   private insertAtSelection(...nodes: Node[]) {
+    if(!this.editor.features.selection.normalizePopupSelection()) return
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
-    if(!nodes.length) return
+    if(!nodes.length || this.nestedPopupAtSelection(nodes)) return
+    const selection = document.getSelection()
+    const popupToggleAt = (node: Node | null) => {
+      const element = node instanceof Element ? node : node?.parentElement
+      const toggle = element?.closest(".ww-popup button[popovertarget]")
+      return toggle && popupElementRole(toggle) === "toggle" ? toggle : null
+    }
+    const toggle = popupToggleAt(selection?.anchorNode ?? null)
+    if(toggle && toggle === popupToggleAt(selection?.focusNode ?? null)) {
+      const fragment = document.createDocumentFragment()
+      fragment.append(...nodes)
+      for(const link of Array.from(fragment.querySelectorAll("a"))) link.replaceWith(...Array.from(link.childNodes))
+      nodes = Array.from(fragment.childNodes)
+    }
     return this.withNormalization(() => {
       $.replace(...nodes)
       this.moveAfterInsertedNode(nodes.at(-1)!)
@@ -3141,6 +3182,34 @@ export class ManipulationFeature extends EditorFeature {
   /** A single heading joins an existing text container as inline content.
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
+    // Remap unambiguous copies of the built-in popup without changing
+    // arbitrary authored IDs or references we cannot safely rewrite.
+    for(const popup of fragment.querySelectorAll<HTMLElement>('[popover][id^="popup-"]')) {
+      const id = popup.id
+      if(!/^popup-[0-9a-f-]{36}$/i.test(id) || !document.getElementById(id)) continue
+      const targets = Array.from(fragment.querySelectorAll<HTMLElement>("[id]")).filter(element => element.id === id)
+      const invokers = Array.from(fragment.querySelectorAll<HTMLElement>("[popovertarget]"))
+        .filter(element => element.getAttribute("popovertarget") === id)
+      if(targets.length !== 1 || !invokers.length) continue
+      const ambiguous = Array.from(fragment.querySelectorAll("*")).some(element =>
+        Array.from(element.attributes).some(attribute => attribute.value.includes(id)
+          && !(element === popup && attribute.name === "id")
+          && !(invokers.includes(element as HTMLElement) && attribute.name === "popovertarget")
+          && !(invokers.includes(element as HTMLElement) && attribute.name === "style"
+            && attribute.value.trim() === `anchor-name: --${id};`)
+          && !(element === popup && attribute.name === "style"
+            && attribute.value.trim() === `position-anchor: --${id};`))
+        || element.localName === "style" && element.textContent?.includes(id))
+      if(ambiguous) continue
+      let replacement = `popup-${crypto.randomUUID()}`
+      while(document.getElementById(replacement) || fragment.getElementById(replacement)) replacement = `popup-${crypto.randomUUID()}`
+      popup.id = replacement
+      if(popup.style.getPropertyValue("position-anchor").trim() === `--${id}`) popup.style.setProperty("position-anchor", `--${replacement}`)
+      invokers.forEach(invoker => invoker.setAttribute("popovertarget", replacement))
+      invokers.forEach(invoker => {
+        if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
+      })
+    }
     this.selectCapturedElementForInsertion()
     if(this.insertLayoutPaste(fragment)) return
     const container = $.anchorContainer
@@ -3153,7 +3222,26 @@ export class ManipulationFeature extends EditorFeature {
         heading.replaceWith(...heading.childNodes)
       }
     }
-    return this.insertClipboardFragment(fragment)
+    // A copied inline Popup carries its out-of-flow content as a sibling in
+    // clipboard HTML. Insert the inline run first, then restore each linked
+    // content element beside its live text block (or inside its table cell).
+    const popupContents = Array.from(fragment.children).filter(element => element.matches(".ww-popup-content[popover][id]"))
+      .flatMap(content => {
+        const toggle = Array.from(fragment.querySelectorAll<HTMLButtonElement>(".ww-popup button[popovertarget]"))
+          .find(candidate => candidate.getAttribute("popovertarget") === content.id)
+        return toggle ? [{toggle, content}] : []
+      })
+    popupContents.forEach(({content}) => content.remove())
+    const result = this.insertClipboardFragment(fragment)
+    if(result !== false) for(const {toggle, content} of popupContents) {
+      if(!toggle.isConnected || document.getElementById(content.id)) continue
+      const wrapper = toggle.closest(".ww-popup")
+      if(!wrapper) continue
+      const block = getContainer(wrapper)
+      if(block.matches("td, th, caption")) block.append(content)
+      else block.after(content)
+    }
+    return result
   }
 
   /** Duplicate whole layout items without replacing the selected original or
@@ -3239,6 +3327,7 @@ export class ManipulationFeature extends EditorFeature {
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
   private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false): void | boolean {
+    if(this.nestedPopupAtSelection(Array.from(fragment.childNodes))) return false
     if(commandInsertion && !this.inheritingInsertionLayout) {
       return this.inheritInsertionLayout(Array.from(fragment.childNodes), () => this.insertClipboardFragment(fragment, commandInsertion))
     }
@@ -3634,6 +3723,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Inserts a break only when it is valid at the current selection. */
   private insertBreak(type: "br" | "wbr", preserveContainer = false) {
+    if(!this.editor.features.selection.normalizePopupSelection()) return
     // Freeform carets between breaks stay in their existing text container.
     // An empty list still needs its first real item before it can hold a break.
     if(preserveContainer) this.editor.features.list.materializeVirtualItem()
@@ -3808,6 +3898,14 @@ export class ManipulationFeature extends EditorFeature {
     setSelectedElementStyles: ({selectionType, styles}: {
       type: "setSelectedElementStyles", selectionType: ElementSelectionType, styles: Record<string, ElementStyleMutation>,
     }) => this.setSelectedElementStyles(selectionType, styles),
+    deletePopupPart: ({path}: {type: "deletePopupPart", path: number[]}) => {
+      const part = nodeAtPath(document.body, path)
+      if(!isElement(part) || !["toggle", "content"].includes(popupElementRole(part) ?? "")) return false
+      this.editor.features.selection.selectElement(part)
+      if($.selectedElement !== part) return false
+      this.delete()
+      return true
+    },
     setElementAttribute: ({
       path,
       targetId,
@@ -4050,6 +4148,14 @@ export class ManipulationFeature extends EditorFeature {
           return
         }
       }
+      // Use the same outer boundary as caret painting and arrow navigation.
+      // Chromium may otherwise route an insertion into the adjacent button.
+      if($.isEmpty && !ev.isComposing && ["insertText", "insertReplacementText"].includes(ev.inputType)
+        && ev.data && this.editor.features.selection.isOutsidePopupBoundary()) {
+        ev.preventDefault()
+        this.insertAtSelection(document.createTextNode(ev.data))
+        return
+      }
       const selected = $.selectedElement
       if(ev.inputType.startsWith("delete") && (selected === getDocumentRoot() || selected === document.body)) {
         ev.preventDefault()
@@ -4136,12 +4242,13 @@ export class ManipulationFeature extends EditorFeature {
       const selected = $.selectedElement
       const fragment = $.copy()
       if(selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length
-        && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6"))) return
+        && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6, .ww-popup"))) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment)
       ev.clipboardData.setData("text/html", html)
       ev.clipboardData.setData("text/plain", text)
       $.delete()
+      this.editor.features.dialog.ensurePopupContent()
     },
     "keydown": ev => {
       const isAltGraph = ev.getModifierState("AltGraph")
@@ -4191,6 +4298,8 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
+    if(!this.editor.features.selection.normalizePopupSelection()) return false
+    if(node && this.nestedPopupAtSelection(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])) return false
     if(node && !node.isConnected && !this.inheritingInsertionLayout
       && !this.editor.features.canvas.active && !this.editor.features.slides.active) {
       const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
@@ -4306,11 +4415,34 @@ export class ManipulationFeature extends EditorFeature {
    * reverse. At the document boundaries, Backspace/Delete move the caret to
    * the end/start of the adjacent block. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character") {
+    if(!this.editor.features.selection.normalizePopupSelection()) return
     const whole = this.editor.features.selection.captureSelectedElement ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
     if(!this.editor.allowsSelection(whole ? "delete" : "edit")) return
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
     const selected = $.selectedElement
+    const popupRole = selected && popupElementRole(selected)
+    if(selected && (popupRole === "toggle" || popupRole === "content")) {
+      const wrapper = selected.closest(".ww-popup") ?? popupDisplayToggle(selected)?.closest(".ww-popup")
+      const toggle = popupRole === "toggle" ? selected : popupDisplayToggle(selected)
+      const content = toggle && popupContentForToggle(toggle)
+      if(wrapper && toggle && content) return this.withNormalization(() => {
+        const parent = wrapper.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(wrapper)
+        if(popupRole === "content") {
+          toggle.replaceWith(...Array.from(toggle.childNodes))
+          content.remove()
+          wrapper.replaceWith(...Array.from(wrapper.childNodes))
+        }
+        else if(wrapper.childNodes.length === 1 && wrapper.contains(toggle) && !wrapper.contains(content)
+          || wrapper.childNodes.length === 2 && wrapper.contains(toggle) && wrapper.contains(content)) {
+          wrapper.remove()
+          content.remove()
+        }
+        else {toggle.remove(); content.remove()}
+        $.move(parent, Math.min(index, parent.childNodes.length))
+      })
+    }
     if(selected && !slideLayoutRole(selected) && (this.editor.features.canvas.active && selected.parentElement === document.body
       || this.editor.features.slides.active && isSlide(selected.parentElement))) {
       return this.withNormalization(() => {
@@ -4324,6 +4456,14 @@ export class ManipulationFeature extends EditorFeature {
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")
       || direction && this.editor.features.board.atBoundary(direction)) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
+    if(direction === "backward" && $.isEmpty) {
+      const paragraph = this.insertionReplacement()
+      const content = paragraph?.parentElement
+      if(paragraph?.localName === "p" && paragraph.querySelectorAll("br").length <= 1
+        && content && popupElementRole(content) === "content"
+        && Array.from(content.childNodes).every(node => node === paragraph || node.nodeType === Node.COMMENT_NODE
+          || node instanceof Text && !node.data.trim())) return
+    }
     if(direction === "backward" && this.joinFirstDetailsParagraphIntoSummary()) return
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     const range = $.range
@@ -4348,7 +4488,12 @@ export class ManipulationFeature extends EditorFeature {
         && isCaretAtBoundary(block, "start")) return
       if($.isGapSelection && (direction === "backward" ? $.elementBefore : $.elementAfter)?.matches("details > summary")) return
     }
-    return this.withNormalization(() => {
+    const anchor = $.anchor
+    const deletesNeighborText = anchor instanceof Text && direction
+      && (direction === "backward" ? $.anchorOffset > 0 : $.anchorOffset < anchor.length)
+    const outsidePopup = deletesNeighborText && granularity === "character" && $.isEmpty
+      ? this.editor.features.selection.outsidePopupBoundary(direction) : null
+    const result = this.withNormalization(() => {
       if(summary && !summary.textContent && summary.contains($.range.endContainer)) {
         $.delete()
         $.move(summary)
@@ -4452,6 +4597,8 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     })
+    if(outsidePopup) this.editor.features.selection.selectOutsidePopupBoundary(outsidePopup.wrapper, outsidePopup.start)
+    return result
   }
 
   /** Backspace at the first Details paragraph joins its children into Summary,
@@ -4600,6 +4747,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     return this.withNormalization(() => {
       $.delete()
+      this.editor.features.dialog.ensurePopupContent()
       return true
     })
   }

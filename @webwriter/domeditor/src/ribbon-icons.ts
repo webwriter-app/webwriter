@@ -1,4 +1,5 @@
 import floatLeft from "@tabler/icons/outline/float-left.svg?raw"
+import messageCircle from "@tabler/icons/outline/message-circle.svg?raw"
 import circleSquare from "@tabler/icons/outline/circle-square.svg?raw"
 import floatNone from "@tabler/icons/outline/float-none.svg?raw"
 import floatRight from "@tabler/icons/outline/float-right.svg?raw"
@@ -413,6 +414,7 @@ const icons: Record<string, string> = {
   Glossary: listDetails,
   Menu: list,
   Details: circleChevronRight,
+  Popup: messageCircle,
   Table: table,
   TableLayout: layoutGrid,
   TableHeader: layoutNavbar,

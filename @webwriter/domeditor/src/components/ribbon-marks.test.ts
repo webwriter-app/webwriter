@@ -56,6 +56,28 @@ const primaryButtons = (drawer: RibbonDrawer) => Array.from(
 )
 
 describe("mark ribbon controls", () => {
+  it("offers Popup as a checked, shortcut-enabled option in the Link dropdown", async () => {
+    const {ribbon, drawer} = await mountRibbon()
+    ribbon.canMark = true
+    await ribbon.updateComplete
+    const link = drawer.querySelector<RibbonButton>(".mark-span")!
+    await link.updateComplete
+    link.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
+    await link.updateComplete
+    const events = vi.fn()
+    ribbon.addEventListener("ribbon-button-click", events)
+    const popup = link.shadowRoot!.querySelector<HTMLElement>(".mark-popup")!
+    expect(popup.textContent).toContain("Popup")
+    const checkbox = popup.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    expect(checkbox.checked).toBe(false)
+    expect(popup.querySelector(".mark-dropdown-shortcut")?.textContent).toBe(formatShortcut(ribbon.settings.shortcuts["text.popup"]))
+    checkbox.click()
+    expect(events.mock.calls.at(-1)![0].detail.label).toBe("toggle-popup")
+    ribbon.popupActive = true
+    await ribbon.updateComplete
+    await link.updateComplete
+    expect(link.shadowRoot!.querySelector<HTMLInputElement>(".mark-popup input")?.checked).toBe(true)
+  })
   it("renders the File tab as a rich document label and keeps file actions compact", async () => {
     const {ribbon} = await mountRibbon()
     const saveEvents: string[] = []
@@ -776,6 +798,7 @@ describe("mark ribbon controls", () => {
         "Subscript",
         "Code",
         "Keyboard Shortcut",
+        "Popup",
       ])
     expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-icon svg')).not.toBeNull()
     expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-name')?.textContent).toBe("Superscript")
@@ -810,8 +833,8 @@ describe("mark ribbon controls", () => {
     const more = drawer.querySelector<RibbonButton>(".mark-span")!
     await more.updateComplete
     const options = [...more.shadowRoot!.querySelectorAll<HTMLElement>(".mark-dropdown-option")]
-    expect(options).toHaveLength(4)
-    for(const [index, name] of ["sup", "sub", "code", "kbd"].entries()) {
+    expect(options).toHaveLength(5)
+    for(const [index, name] of ["sup", "sub", "code", "kbd", "popup"].entries()) {
       const shortcut = options[index].querySelector<HTMLElement>(".mark-dropdown-shortcut")
       const configured = ribbon.settings.shortcuts[`text.${name}`]
       expect(shortcut?.textContent ?? "").toBe(formatShortcut(configured))
@@ -899,7 +922,7 @@ describe("mark ribbon controls", () => {
     button.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await button.updateComplete
     const dropdown = button.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(4)
+    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(5)
     expect(dropdown.querySelector(".ruby-dropdown")).toBeNull()
     expect(dropdown.textContent).not.toContain("Annotation")
 
@@ -955,7 +978,7 @@ describe("mark ribbon controls", () => {
     more.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-trigger")!.click()
     await more.updateComplete
     const dropdown = more.shadowRoot!.querySelector<HTMLElement>(".button-dropdown-content")!
-    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(4)
+    expect(dropdown.querySelectorAll('[role="option"]')).toHaveLength(5)
     expect(dropdown.querySelector("input[aria-label=\"Select Link\"]")).toBeNull()
     expect(dropdown.querySelector("input, select")).not.toBeNull()
   })

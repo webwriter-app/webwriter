@@ -1,5 +1,89 @@
 /* Page geometry is shared by editing and standalone exports. */
 @layer webwriter-theme {
+  span.ww-popup { display: inline-block; line-height: inherit; }
+  span.ww-popup > button[popovertarget] {
+    display: inline-block;
+    font: inherit;
+    line-height: inherit;
+    padding: 0 0.25em;
+    border: 0;
+    vertical-align: baseline;
+  }
+  .ww-popup > button[popovertarget] {
+    margin-block-end: 0;
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]) {
+    anchor-name: --ww-popup-bubble;
+    container-type: anchored;
+    position-area: bottom span-right;
+    position-try-order: most-height;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline,
+      --ww-popup-fit-right, --ww-popup-fit-left, --ww-popup-fit-up-right, --ww-popup-fit-up-left;
+    inset: auto;
+    margin: 0.15rem 0 0;
+    box-sizing: border-box;
+    inline-size: max-content;
+    max-inline-size: calc(100vw - 1rem);
+    max-block-size: calc(100% - 0.5rem);
+    padding: 0.75rem 1rem;
+    border: 1px solid #94a3b8;
+    border-radius: 0.6rem;
+    background: white;
+    color: #1f2937;
+    box-shadow: 0 0.2rem 0.75rem rgb(0 0 0 / 15%);
+    overflow: auto;
+    overflow-wrap: anywhere;
+  }
+  @position-try --ww-popup-fit-right {
+    position-area: bottom span-right;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  @position-try --ww-popup-fit-left {
+    position-area: bottom span-left;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  @position-try --ww-popup-fit-up-right {
+    position-area: top span-right;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  @position-try --ww-popup-fit-up-left {
+    position-area: top span-left;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]):popover-open {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+    content: "";
+    position: fixed;
+    position-anchor: --ww-popup-bubble;
+    top: calc(anchor(top) - 0.4rem);
+    left: calc(anchor(left) + 1.25rem);
+    width: 0.7rem;
+    height: 0.7rem;
+    background: inherit;
+    border-top: inherit;
+    border-left: inherit;
+    transform: rotate(45deg);
+  }
+  @container anchored(fallback: flip-inline), anchored(fallback: flip-block flip-inline),
+    anchored(fallback: --ww-popup-fit-left), anchored(fallback: --ww-popup-fit-up-left) {
+    :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+      left: auto;
+      right: calc(anchor(right) + 1.25rem);
+    }
+  }
+  @container anchored(fallback: flip-block), anchored(fallback: flip-block flip-inline),
+    anchored(fallback: --ww-popup-fit-up-right), anchored(fallback: --ww-popup-fit-up-left) {
+    :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+      top: calc(anchor(bottom) - 0.4rem);
+      transform: rotate(225deg);
+    }
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]) > p:first-child { margin-block-start: 0; }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]) > p:last-child { margin-block-end: 0; }
   html {
     container-type: inline-size;
     --ww-page-width: min(var(--ww-page-max, 2160px), calc(100cqw - 2 * var(--ww-page-gutter, 1rem)));
@@ -50,7 +134,7 @@
 
     /* Default elements fill their column; authored sizes still take precedence.
      * Inline widgets retain their own display; these sizes do not blockify them. */
-    :is(&, & > main, & > article, & > section) > * {
+    :is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]) {
       inline-size: 100%;
       min-inline-size: 0;
       max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));

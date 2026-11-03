@@ -424,6 +424,7 @@ export function isBlockFormatTag(value: string): value is BlockFormatTag {
 export type ElementStyleState = {
   target: {
     documentRoot?: true
+    popupRole?: "toggle" | "content"
     float?: "none" | "far-left" | "far-right"
     floatSticky?: boolean
     fullWidth?: boolean
@@ -547,6 +548,7 @@ export type SelectionChangeMessage = {
 
 export type MarkStateChangeDetail = {
   link?: LinkSelectionState
+  popupActive?: boolean
   svgText?: boolean
   /** True while the live DOM selection is a markable text range or caret. */
   canMark: boolean
@@ -1017,7 +1019,8 @@ export function isMarkStateChangeMessage(value: unknown): value is MarkStateChan
     && typeof message.detail.canMark === "boolean"
     && Array.isArray(message.detail.marks)
     && message.detail.marks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark)
-  if(!validBase || message.detail!.svgText !== undefined && typeof message.detail!.svgText !== "boolean") return false
+  if(!validBase || message.detail!.svgText !== undefined && typeof message.detail!.svgText !== "boolean"
+    || message.detail!.popupActive !== undefined && typeof message.detail!.popupActive !== "boolean") return false
   const allowedMarks = message.detail!.allowedMarks
   if(allowedMarks !== undefined && !(Array.isArray(allowedMarks)
     && allowedMarks.every(mark => typeof mark === "string" && canonicalMarkName(mark) === mark))) return false
