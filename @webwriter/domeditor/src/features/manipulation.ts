@@ -4720,6 +4720,9 @@ export class ManipulationFeature extends EditorFeature {
   async cut() {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.cut()
+    if(this.editor.features.selection.captureSelectedElement && this.editor.features.graphic.selectedShapes.length
+      && !this.editor.features.graphic.textEditingRange) return this.editor.features.graphic.cut()
+    if(this.editor.features.selection.captureSelectedElement && this.editor.features.graphic.textEditingRange) return false
     if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     const selection = document.getSelection()
     if(!selection?.rangeCount || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return false

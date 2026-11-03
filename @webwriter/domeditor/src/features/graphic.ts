@@ -1290,13 +1290,13 @@ export class GraphicFeature extends EditorFeature {
     return true
   }
 
-  #shapeClipboardHTML() {
+  #shapeClipboardHTML(copyId = crypto.randomUUID()) {
     const graphic = this.#capturedGraphic()
     const selected = new Set(this.selectedShapes)
     if(!graphic || !this.#canInsertText(graphic) || this.textEditingRange || !selected.size) return null
     const svg = document.createElementNS(SVG_NAMESPACE, "svg")
     svg.setAttribute("data-webwriter-shapes", "1")
-    svg.setAttribute("data-webwriter-copy", crypto.randomUUID())
+    svg.setAttribute("data-webwriter-copy", copyId)
     for(const shape of graphicShapeRoots(graphic)) {
       if(selected.has(shape)) svg.append(clearEditorMarkerClasses(shape.cloneNode(true)))
     }
@@ -1308,6 +1308,31 @@ export class GraphicFeature extends EditorFeature {
     if(!html || typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     await navigator.clipboard.write([new ClipboardItem({"text/html": new Blob([html], {type: "text/html"})})])
     return true
+  }
+
+  async cut() {
+    const graphic = this.#capturedGraphic()
+    const shapes = this.selectedShapes
+    const id = crypto.randomUUID()
+    const html = this.#shapeClipboardHTML(id)
+    if(!graphic || !html || typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
+    await navigator.clipboard.write([new ClipboardItem({"text/html": new Blob([html], {type: "text/html"})})])
+    if(this.#capturedGraphic() !== graphic || !this.editor.features.slides.allowsSelection()
+      || !this.editor.features.board.allowsSelection() || this.#shapeClipboardHTML(id) !== html
+      || shapes.length !== this.selectedShapes.length || shapes.some(shape => !this.selectedShapes.includes(shape))) return false
+    this.#deleteShapes(graphic, shapes)
+    return true
+  }
+
+  #deleteShapes(graphic: SVGSVGElement, shapes: SVGGraphicsElement[]) {
+    const connectors = new Set(this.#captureAttachedConnectors(graphic, shapes).map(item => item.source))
+    this.editor.doc.stopCapturing()
+    connectors.forEach(connector => connector.remove())
+    shapes.forEach(shape => shape.remove())
+    this.editor.doc.stopCapturing()
+    this.#clearShapeSelection()
+    this.#refresh()
+    this.editor.postSelectionPath()
   }
 
   #pasteShapes(graphic: SVGSVGElement, html: string) {
@@ -1417,6 +1442,17 @@ export class GraphicFeature extends EditorFeature {
       event.clipboardData.setData("text/html", html)
       event.preventDefault()
       event.stopImmediatePropagation()
+    },
+    cut: event => {
+      if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || !event.clipboardData) return
+      const graphic = this.#capturedGraphic()
+      const shapes = this.selectedShapes
+      const html = this.#shapeClipboardHTML()
+      if(!graphic || !html) return
+      event.clipboardData.setData("text/html", html)
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#deleteShapes(graphic, shapes)
     },
     pointerdown: event => {
       this.#rememberInsertionPointer(event)
@@ -1713,16 +1749,7 @@ export class GraphicFeature extends EditorFeature {
       }
       if(event.key === "Delete" || event.key === "Backspace") {
         this.#claimKeyboardEvent(event)
-        if(shapes.length) {
-          const attached = this.#captureAttachedConnectors(graphic, shapes)
-          const connectors = new Set(attached.map(item => item.source))
-          this.editor.doc.stopCapturing()
-          connectors.forEach(connector => connector.remove())
-          shapes.forEach(shape => shape.remove())
-          this.editor.doc.stopCapturing()
-          this.#clearShapeSelection()
-          this.editor.postSelectionPath()
-        }
+        if(shapes.length) this.#deleteShapes(graphic, shapes)
         return
       }
       const step = event.shiftKey ? 50 : 1

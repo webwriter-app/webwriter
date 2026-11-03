@@ -77,6 +77,70 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it("cuts selected shapes to the clipboard and supports paste, undo, and redo", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "ellipse"})
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "a", ctrlKey: true, bubbles: true, cancelable: true}))
+    expect(editor.features.graphic.selectedShapes).toHaveLength(2)
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    const dispatch = (type: "cut" | "paste") => {
+      const event = new ClipboardEvent(type, {bubbles: true, cancelable: true})
+      Object.defineProperty(event, "clipboardData", {value: data})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    dispatch("cut")
+    expect(data.getData("text/html")).not.toContain("◆")
+    expect(graphicShapeRoots(graphic)).toHaveLength(0)
+    expect(editor.features.graphic.selectedShapes).toHaveLength(0)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphicShapeRoots(graphic)).toHaveLength(2)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphicShapeRoots(graphic)).toHaveLength(0)
+    dispatch("paste")
+    expect(graphicShapeRoots(graphic)).toHaveLength(2)
+    expect(editor.features.graphic.selectedShapes).toHaveLength(2)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["rejected", "changed", "replaced", "selection changed"])("does not delete shapes after a toolbar cut when clipboard write is %s", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!, shape = editor.features.graphic.selectedShape!
+    let finish!: () => void, reject!: (error: Error) => void
+    const write = vi.spyOn(navigator.clipboard, "write").mockImplementation(() => new Promise<void>((resolve, fail) => { finish = resolve; reject = fail }))
+    try {
+      const pending = editor.features.manipulation.actions.cut({type: "cut"})
+      if(outcome === "changed") shape.setAttribute("fill", "red")
+      if(outcome === "replaced") shape.replaceWith(shape.cloneNode(true))
+      if(outcome === "selection changed") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+      if(outcome === "rejected") {
+        reject(new Error("Clipboard denied"))
+        await expect(pending).rejects.toThrow("Clipboard denied")
+      }
+      else {
+        finish()
+        expect(await pending).toBe(false)
+      }
+      expect(graphicShapeRoots(graphic)).toHaveLength(1)
+    }
+    finally { write.mockRestore() }
+  })
+
+  it("cuts shapes through the toolbar after a successful clipboard write", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const write = vi.spyOn(navigator.clipboard, "write").mockResolvedValue()
+    try {
+      expect(await editor.features.manipulation.actions.cut({type: "cut"})).toBe(true)
+      expect(write).toHaveBeenCalledOnce()
+      expect(graphicShapeRoots(graphic)).toHaveLength(0)
+    }
+    finally { write.mockRestore() }
+  })
+
   it("copies selected shapes and pastes them as an undoable selection", async () => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
     const graphic = document.querySelector("svg")!
