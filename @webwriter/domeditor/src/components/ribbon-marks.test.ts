@@ -126,7 +126,7 @@ describe("mark ribbon controls", () => {
       [["sup"], false, "Superscript…", "mark:sup", 0],
       [["sub"], false, "Subscript…", "mark:sub", 0],
       [["code"], false, "Code…", "mark:code", 0],
-      [["kbd"], false, "Keyboard Shortcut…", "mark:kbd", 0],
+      [["kbd"], false, "Shortcut…", "mark:kbd", 0],
       [["sup", "sub"], false, "Superscript…", "mark:sup", 1],
       [["sup", "a"], false, "Superscript…", "mark:sup", 1],
       [[], true, "Popup…", "toggle-popup", 0],
@@ -864,7 +864,7 @@ describe("mark ribbon controls", () => {
         "Superscript",
         "Subscript",
         "Code",
-        "Keyboard Shortcut",
+        "Shortcut",
         "Popup",
       ])
     expect(dropdown.querySelector('[role="option"] .mark-dropdown-option-icon svg')).not.toBeNull()
