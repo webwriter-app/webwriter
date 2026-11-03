@@ -48,7 +48,7 @@ type FloatDropZone = {container: Element, parent: Element, side: "left" | "right
 type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number}
 
 type FloatPreviewMeasurements = {
-  geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, column?: {left: number, right: number}}>>>
+  geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, physicalSide: "left" | "right", column?: {left: number, right: number}}>>>
   clearance: Map<Element, Map<Element, {left: number, right: number}>>
 }
 
@@ -687,14 +687,11 @@ export class ManipulationFeature extends EditorFeature {
 
   floatSide(container: Element, x: number): "left" | "right" {
     if(this.floatDropHit?.container === container) return this.floatDropHit.side
-    const column = this.floatColumnSide()
-    if(column) return column
     const rect = container.getBoundingClientRect()
     return x < rect.left + rect.width / 2 ? "left" : "right"
   }
 
-  /** Read the authored DOM on each drop. Left wins only for legacy documents
-   * that already contain both directions; new placements keep one direction. */
+  /** Whether the document has a side column (used by resize controls). */
   floatColumnSide(): "left" | "right" | null {
     let right = false
     for(const element of getDocumentRoot().querySelectorAll<HTMLElement | SVGElement>(
@@ -705,16 +702,6 @@ export class ManipulationFeature extends EditorFeature {
       if(side === "far-right") right = true
     }
     return right ? "right" : null
-  }
-
-  private unavailableFloatMargin(event: MouseEvent) {
-    const side = this.floatColumnSide()
-    if(!side) return false
-    const body = getDocumentRoot(), rect = body.getBoundingClientRect(), style = getComputedStyle(body)
-    if(rect.width <= 0) return false
-    const left = rect.left + (parseFloat(style.paddingLeft) || 0)
-    const right = rect.right - (parseFloat(style.paddingRight) || 0)
-    return side === "right" ? event.clientX < left : event.clientX >= right
   }
 
   floatDropTarget(event: MouseEvent, source: Element, range?: Range) {
@@ -744,18 +731,17 @@ export class ManipulationFeature extends EditorFeature {
     if(this.floatDropTargets?.key !== key) this.prepareFloatDropTargets(source)
     const targets = this.floatDropTargets
     if(!targets) return null
-    const column = this.floatColumnSide()
     const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
     // Hover only checks stored rectangles. It never measures a template or
     // changes a measurement element's styles.
-    const hits = targets.zones.filter(zone => (!column || zone.side === column) && zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
+    const hits = targets.zones.filter(zone => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
       && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy)
     const preferred = (zone: FloatDropZone) => preview?.container === zone.container ? preview.side
       : event.clientX < zone.center + dx ? "left" : "right"
     hits.sort((a, b) => b.rect.top - a.rect.top || Number(b.side === preferred(b)) - Number(a.side === preferred(a)))
     // Empty space in a document gutter still expresses float placement. Use
     // the nearest existing anchor, even below the last preview footprint.
-    const gutters = targets.zones.filter(zone => (!column || zone.side === column) && zone.column && event.clientX >= 0 && event.clientY >= 0
+    const gutters = targets.zones.filter(zone => zone.column && event.clientX >= 0 && event.clientY >= 0
       && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx))
     gutters.sort((a, b) => Math.abs(a.rect.top + dy - event.clientY) - Math.abs(b.rect.top + dy - event.clientY)
       || b.rect.top - a.rect.top)
@@ -770,7 +756,7 @@ export class ManipulationFeature extends EditorFeature {
     // An explicitly shown insertion preview can also cover a projected area
     // whose anchor has no current layout box. It is a fallback, never a latch
     // that masks newer anchors while moving down the page.
-    if(preview && (!column || preview.side === column) && preview.container !== source && contains(preview.rect) && valid(preview.container)) {
+    if(preview && preview.container !== source && contains(preview.rect) && valid(preview.container)) {
       this.floatDropHit = preview
       return preview.container
     }
@@ -878,8 +864,6 @@ export class ManipulationFeature extends EditorFeature {
 
   placeFloat(element: Element, container: Element, side: "left" | "right" | "none", placement: "before" | "after" = "before") {
     if(this.editor.isEditingLocked || !container.isConnected || element !== container && this.floatContainer(container, element) !== container) return false
-    const column = this.floatColumnSide()
-    if(side !== "none" && column && column !== side) return false
     if(element !== container) container[placement](element)
     return this.setFloat(element, side)
   }
@@ -888,9 +872,8 @@ export class ManipulationFeature extends EditorFeature {
    * drags. Ownership prevents selection cleanup in one path from flickering a
    * preview currently maintained by the other. */
   showFloatDropPreview(container: Element, side: "left" | "right", owner: "transfer" | "transformation" | "insertion", source?: Element) {
-    const column = this.floatColumnSide()
     if(!container.isConnected || !container.parentElement || !getDocumentRoot().contains(container)
-      || this.editor.features.canvas.active || this.editor.features.slides.active || column && column !== side) {
+      || this.editor.features.canvas.active || this.editor.features.slides.active) {
       this.clearFloatDropPreview(owner)
       return
     }
@@ -914,10 +897,10 @@ export class ManipulationFeature extends EditorFeature {
   private floatPreviewRect(container: Element, side: "left" | "right", overlay: HTMLElement, source?: Element,
     measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}) {
     const rect = container.getBoundingClientRect(), parent = container.parentElement!
-    const physicalSide = this.floatColumnSide() ?? side
+    let physicalSide = side
     const singleLane = document.documentElement.clientWidth >= 720
     const cached = measurements.geometry.get(parent)?.[side]
-    if(cached) return new DOMRect(cached.rect.left, this.floatPreviewTop(container, physicalSide, source, cached.clears, measurements), cached.rect.width, cached.rect.height)
+    if(cached) return new DOMRect(cached.rect.left, this.floatPreviewTop(container, cached.physicalSide, source, cached.clears, measurements), cached.rect.width, cached.rect.height)
     const body = document.body.getBoundingClientRect(), bodyStyle = getComputedStyle(document.body)
     const parentRect = parent.getBoundingClientRect(), parentStyle = getComputedStyle(parent)
     const number = (value: string) => parseFloat(value) || 0
@@ -935,29 +918,59 @@ export class ManipulationFeature extends EditorFeature {
       const currentRight = pixels("var(--ww-right-lane, var(--ww-lane, 0px))", 0)
       let pageLeft = body.left + number(bodyStyle.paddingLeft) - currentLeft
       let pageRight = body.right - number(bodyStyle.paddingRight) + currentRight
-      const hasLeft = lanes && physicalSide === "left"
-      const hasRight = lanes && physicalSide === "right"
-      const defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2)))", 320)
+      let defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2)))", 320)
       const inline = (source as HTMLElement | undefined)?.style
       const authoredWidth = inline?.getPropertyValue("inline-size") || inline?.width
       const sourceMaximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth
       const sourceSize = inline?.getPropertyValue("--ww-float-size") || authoredWidth || sourceMaximum
-      const sourceWidth = sourceSize && sourceSize !== "auto" && sourceSize !== "none"
+      const sourceWidth = sourceSize && sourceSize !== "auto" && sourceSize !== "none" && (!sourceSize.includes("%") || sourceMaximum && !sourceMaximum.includes("%") && sourceMaximum !== "none")
         ? Math.min(pixels(sourceSize, source?.getBoundingClientRect().width || 0), sourceMaximum && sourceMaximum !== "none" ? pixels(sourceMaximum, Infinity) : Infinity) : 0
       const otherFloats = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
         .filter(element => element !== source)
-      const allExplicit = Boolean(sourceWidth) && otherFloats.every(element => ["--ww-float-size", "inline-size", "width", "max-inline-size", "max-width"]
-        .some(name => element.style.getPropertyValue(name)))
-      const laneWidth = lanes
-          ? Math.max(allExplicit ? 0 : defaultLaneWidth, pixels("var(--ww-two-column-explicit-width, 0px)", 0), sourceWidth)
-          : pixels("var(--ww-float-width)", 256)
-      const lane = laneWidth + gap
+      const sides = otherFloats.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))
+      let hasLeft = lanes && (side === "left" || sides.includes("far-left"))
+      let hasRight = lanes && (side === "right" || sides.includes("far-right"))
+      if(hasLeft && hasRight && document.documentElement.clientWidth >= 1400) {
+        defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 2 * var(--ww-float-gap)) / 3)))", 320)
+      }
+      const widthFor = (columnSide: "left" | "right") => {
+        const items = otherFloats.filter((_, index) => sides[index] === `far-${columnSide}`)
+        const implicit = items.some(element => !["--ww-float-size", "inline-size", "width", "max-inline-size", "max-width"]
+          .some(name => {
+            const value = element.style.getPropertyValue(name)
+            return value && !value.includes("%") && value !== "auto" && value !== "none" && value !== "var(--ww-float-width)"
+          })) || side === columnSide && !sourceWidth
+        return Math.max(implicit ? defaultLaneWidth : 0,
+          items.length ? pixels(`var(--ww-${columnSide}-column-explicit-width, 0px)`, 0) : 0,
+          side === columnSide ? sourceWidth : 0)
+      }
+      let leftWidth = hasLeft ? widthFor("left") : 0, rightWidth = hasRight ? widthFor("right") : 0
+      if(hasLeft && hasRight && document.documentElement.clientWidth < 1400) {
+        physicalSide = "right"
+        rightWidth = Math.max(leftWidth, rightWidth)
+        leftWidth = 0
+        hasLeft = false
+        hasRight = true
+      }
       if(lanes) {
         const gutter = number(bodyStyle.paddingRight) - currentRight
         const balance = pixels("var(--ww-leading-gutter-balance, 0px)", 0)
         const prose = pixels("var(--ww-prose-max, 45rem)", 720)
         const root = document.documentElement.getBoundingClientRect()
-        const projectedWidth = Math.min(root.width, prose + lane + balance + 2 * gutter)
+        if(hasLeft && hasRight) {
+          const budget = Math.max(0, root.width - 2 * gutter - balance - 300 - 2 * gap)
+          const leftIdeal = leftWidth, rightIdeal = rightWidth
+          leftWidth = Math.min(leftIdeal, budget - Math.min(rightIdeal, budget / 2))
+          rightWidth = Math.min(rightIdeal, budget - Math.min(leftIdeal, budget / 2))
+        }
+        else {
+          const limit = Math.max(0, root.width - 2 * gutter - balance - 300 - gap)
+          leftWidth = Math.min(leftWidth, limit)
+          rightWidth = Math.min(rightWidth, limit)
+        }
+        const centerWidth = hasLeft && hasRight
+          ? Math.min(prose, Math.max(defaultLaneWidth, 3 * defaultLaneWidth - leftWidth - rightWidth)) : prose
+        const projectedWidth = Math.min(root.width, centerWidth + leftWidth + rightWidth + gap * (Number(hasLeft) + Number(hasRight)) + balance + 2 * gutter)
         const projectedLeft = root.left + (root.width - projectedWidth) / 2
         pageLeft = projectedLeft + gutter + balance
         pageRight = projectedLeft + projectedWidth - gutter
@@ -966,7 +979,7 @@ export class ManipulationFeature extends EditorFeature {
       let right = parentRect.right - number(parentStyle.borderRightWidth) - number(parentStyle.paddingRight)
       let column: {left: number, right: number} | undefined
       if(themed && body.width > 0) {
-        const columnLeft = pageLeft + (hasLeft ? lane : 0), columnRight = pageRight - (hasRight ? lane : 0)
+        const columnLeft = pageLeft + (hasLeft ? leftWidth + gap : 0), columnRight = pageRight - (hasRight ? rightWidth + gap : 0)
         column = {left: columnLeft, right: columnRight}
         if(parent === document.body || parent.parentElement === document.body && parent.matches("main, article, section")) {
           left = columnLeft + number(parentStyle.paddingLeft) * Number(parent !== document.body)
@@ -980,6 +993,8 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(right <= left) { left = rect.left; right = rect.right }
       const available = Math.max(1, right - left)
+      const laneWidth = lanes ? physicalSide === "left" ? leftWidth : rightWidth : pixels("var(--ww-float-width)", 256)
+      const lane = laneWidth + gap
       overlay.style.width = `${available}px`
       probe.style.position = "static"
       const preferred = inline?.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width, 256px), ${authoredWidth && authoredWidth !== "auto" ? authoredWidth : "var(--ww-float-width, 256px)"})`
@@ -988,6 +1003,7 @@ export class ManipulationFeature extends EditorFeature {
       const maximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth || "none"
       probe.style.maxWidth = maximum
       width = probe.getBoundingClientRect().width || Math.min(width, number(maximum) || Infinity)
+      if(lanes) width = Math.min(width, laneWidth)
       let height = 0
       if(source?.isConnected) {
         const initial = source.getBoundingClientRect()
@@ -1022,7 +1038,7 @@ export class ManipulationFeature extends EditorFeature {
       // every possible anchor in a long document.
       if(parentRect.width) {
         const geometry = measurements.geometry.get(parent) ?? {}
-        geometry[side] = {rect: result, clears: lanes || !themed, column}
+        geometry[side] = {rect: result, clears: lanes || !themed, physicalSide, column}
         measurements.geometry.set(parent, geometry)
       }
       return result
@@ -1298,7 +1314,6 @@ export class ManipulationFeature extends EditorFeature {
       range.collapse(true)
       return range
     }
-    if(this.unavailableFloatMargin(event)) return null
     if(source && event.target instanceof Node && source.contains(event.target)) return null
     // Overlays such as the selected element's drag surface cover authored
     // content, which native hit testing would otherwise resolve to the appendix.

@@ -6850,27 +6850,21 @@ describe("unified content transfer", () => {
     expect(anchor.textContent).toBe("Anchor")
   })
 
-  it.each(["left", "right"] as const)("offers only the existing %s float column for drag placement", side => {
+  it.each(["left", "right"] as const)("offers both float columns when the existing float is on the %s", side => {
     document.body.innerHTML = `<aside class="ww-float-${side}">Existing</aside><p>Anchor</p><video style="width:80px;height:60px"></video>`
     document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
     const anchor = document.querySelector("p")!, source = document.querySelector("video")!
     vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 30))
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: anchor.firstChild!, offset: 2})
-    const blockedX = side === "left" ? 1395 : 5, allowedX = side === "left" ? 5 : 1395
-    const blocked = beginDrag(source).data
-    const blockedOver = transferEvent("dragover", blocked, {clientX: blockedX, clientY: 690})
-    document.documentElement.dispatchEvent(blockedOver)
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    expect(blocked.dropEffect).toBe("none")
-    document.documentElement.dispatchEvent(transferEvent("drop", blocked, {clientX: blockedX, clientY: 690}))
-    expect(source.parentElement).toBe(document.body)
-    expect(source.classList.contains("ww-float-left") || source.classList.contains("ww-float-right")).toBe(false)
-    const allowed = beginDrag(source).data
-    document.documentElement.dispatchEvent(transferEvent("dragover", allowed, {clientX: allowedX, clientY: 690}))
-    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
-    document.documentElement.dispatchEvent(transferEvent("drop", allowed, {clientX: allowedX, clientY: 690}))
-    expect(source.classList.contains(`ww-float-${side}`)).toBe(true)
+    for(const targetSide of ["left", "right"] as const) {
+      const data = beginDrag(source).data, point = {clientX: targetSide === "left" ? 5 : 1395, clientY: 690}
+      document.documentElement.dispatchEvent(transferEvent("dragover", data, point))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${targetSide}`)
+      document.documentElement.dispatchEvent(transferEvent("drop", data, point))
+      expect(source.classList.contains(`ww-float-${targetSide}`)).toBe(true)
+      expect(document.querySelector("aside")!.classList.contains(`ww-float-${side}`)).toBe(true)
+    }
   })
 
   it("chooses the nearest live gutter anchor without remeasuring or floating content-column gaps", () => {

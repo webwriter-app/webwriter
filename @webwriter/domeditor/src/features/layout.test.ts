@@ -84,6 +84,26 @@ it("tracks the widest explicitly sized side item and clears derived widths with 
   expect(document.body.getAttribute("style")).toBeNull()
 })
 
+it("tracks each side's width independently and clears only the removed lane", () => {
+  document.body.innerHTML = '<aside class="ww-float-left" style="width: 150px"></aside><aside class="ww-float-right" style="width: 350px"></aside><p>Text</p>'
+  const [left, right] = Array.from(document.body.querySelectorAll("aside"))
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+  vi.spyOn(left, "getBoundingClientRect").mockReturnValue({width: 150} as DOMRect)
+  vi.spyOn(right, "getBoundingClientRect").mockReturnValue({width: 350} as DOMRect)
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("150px")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("350px")
+  left.style.width = "100%"
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("0px")
+  expect(document.body.style.getPropertyValue("--ww-left-column-default-width")).toBe("var(--ww-prose-max, 45rem)")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("350px")
+  left.remove()
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("350px")
+})
+
 it("keeps one authored sticky float in the column and preserves it through undo", () => {
   document.body.innerHTML = '<aside class="ww-float-left">First</aside><aside class="ww-float-left">Second</aside><aside class="ww-float-right">Right</aside>'
   const [first, second, right] = Array.from(document.body.children)
@@ -107,13 +127,13 @@ it("keeps one authored sticky float in the column and preserves it through undo"
   expect(second.classList.contains("ww-float-sticky")).toBe(false)
 })
 
-it("flips every authored float when the toolbox changes the column direction", () => {
+it("changes only the selected float and preserves the other column through undo", () => {
   document.body.innerHTML = '<aside class="ww-float-left ww-float-sticky" style="width: 120px">First<!--keep--></aside><custom-card style="float:right;width:80px;color:red">Second</custom-card><p>Target</p>'
   const [first, second, target] = Array.from(document.body.children) as HTMLElement[]
   editor.doc.syncFromDOM(); editor.doc.stopCapturing()
   editor.features.selection.captureElement(target)
   expect(setFloat("far-right")).toBe(true)
-  expect([first, second, target].every(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) === "far-right")).toBe(true)
+  expect([first, second, target].map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))).toEqual(["far-left", "far-right", "far-right"])
   expect(first.classList.contains("ww-float-sticky")).toBe(true)
   expect(first.innerHTML).toBe("First<!--keep-->")
   expect(second.style.width).toBe("80px")
@@ -127,7 +147,7 @@ it("flips every authored float when the toolbox changes the column direction", (
   editor.doc.redo()
   expect(editor.toHTML(true)).toBe(right)
   expect(setFloat("far-left")).toBe(true)
-  expect([first, second, target].every(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) === "far-left")).toBe(true)
+  expect([first, second, target].map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))).toEqual(["far-left", "far-right", "far-left"])
 })
 
 it("pins an existing inline float and clears the pin when its float is removed", () => {
