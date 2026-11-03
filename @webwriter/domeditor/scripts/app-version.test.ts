@@ -78,7 +78,7 @@ describe('appVersionPlugin', () => {
             if (event.code === 'ERROR') {
               watcher.off('event', onEvent)
               reject(event.error)
-            } else if (event.code === 'BUNDLE_END') {
+            } else if (event.code === 'END') {
               watcher.off('event', onEvent)
               resolve()
             }

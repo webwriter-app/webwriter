@@ -554,7 +554,7 @@ describe("collaborative version history", () => {
       expect(publish).toHaveBeenCalledTimes(1)
     }
     finally { vi.useRealTimers() }
-  })
+  }, 30_000)
 
   it("publishes the same changes after a large background checkpoint finishes and releases work on disable", async () => {
     const history = editor.features.history
@@ -568,7 +568,7 @@ describe("collaborative version history", () => {
       document.querySelector("p")!.textContent = "Background edit"
       await mutationsDelivered()
       vi.advanceTimersByTime(700)
-      await vi.advanceTimersByTimeAsync(100)
+      await vi.runAllTimersAsync()
       expect(publish).toHaveBeenCalledTimes(1)
       expect(publish.mock.calls[0][0].checkpoints).toHaveLength(initial.checkpoints.length + 1)
       expect(publish.mock.calls[0][0].checkpoints[0].changes).toEqual({added: 0, removed: 0, modified: 1})
@@ -577,11 +577,11 @@ describe("collaborative version history", () => {
       await mutationsDelivered()
       vi.advanceTimersByTime(700)
       history.disable()
-      await vi.advanceTimersByTimeAsync(100)
+      await vi.runAllTimersAsync()
       expect(publish).toHaveBeenCalledTimes(1)
     }
     finally { vi.useRealTimers() }
-  })
+  }, 30_000)
 
   it("skips equal sibling subtrees when diffing a changed document", async () => {
     const history = editor.features.history

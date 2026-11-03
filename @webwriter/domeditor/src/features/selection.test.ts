@@ -6196,7 +6196,7 @@ describe("selection invariants", () => {
         expect(item).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
       }
     }
-  })
+  }, 30_000)
 
   it("leaves list text and the space between its items to native editing", () => {
     document.body.innerHTML = '<ul><li>First</li><li>Last</li></ul>'

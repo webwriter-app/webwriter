@@ -463,15 +463,19 @@ describe("development server", () => {
     try {
       baseUrl = await new Promise((resolve, reject) => {
         let output = ""
+        let stderr = ""
         const timer = setTimeout(() => reject(new Error("Development CLI did not start")), 5000)
         child.once("error", error => { clearTimeout(timer); reject(error) })
-        child.once("exit", code => { clearTimeout(timer); reject(new Error(`Development CLI exited before startup (${code})`)) })
+        child.once("exit", code => {
+          clearTimeout(timer)
+          reject(new Error(`Development CLI exited before startup (${code})${stderr ? `:\n${stderr}` : ""}`))
+        })
         child.stdout.on("data", chunk => {
           output += chunk.toString()
           const address = /development server: (http:\/\/127\.0\.0\.1:\d+)/.exec(output)
           if(address) { clearTimeout(timer); resolve(address[1]) }
         })
-        child.stderr.resume()
+        child.stderr.on("data", chunk => { stderr += chunk.toString() })
       })
       const relative = dataDirectory.slice(projectRoot.length)
       for(const path of [`/${relative}/providers.json`, `/${relative}/providers.json?raw`, `/@fs${dataDirectory}/providers.json?raw`]) {

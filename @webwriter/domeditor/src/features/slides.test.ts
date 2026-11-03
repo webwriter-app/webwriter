@@ -5,6 +5,7 @@ import {DOMEditor} from "../domeditor"
 import {sharedDOMBody} from "../domdoc"
 import {$, cloneWithoutEditorMarkers} from "../utility"
 import {slidesStyles} from "../document-layout"
+import {defaultDocumentTheme} from "../document-themes"
 import {selectionChangeEvent, type SelectionChangeDetail} from "../editor-bridge"
 import editorStyleString from "../editor.css?raw"
 
@@ -28,7 +29,7 @@ const seed = () => {
 beforeEach(() => { document.body.replaceChildren(); document.body.removeAttribute("class"); editor = new DOMEditor() })
 afterEach(() => {
   editor.destroy(); document.head.replaceChildren(...Array.from(head.childNodes, node => node.cloneNode(true)))
-  document.body.replaceChildren(); document.body.removeAttribute("class"); vi.restoreAllMocks()
+  document.body.replaceChildren(); document.body.removeAttribute("class"); document.body.style.removeProperty("background-color"); vi.restoreAllMocks()
 })
 
 describe("CSS-only Slides layout", () => {
@@ -320,20 +321,29 @@ describe("CSS-only Slides layout", () => {
     await settle()
   })
 
-  it("gives native details a white background in editing and saved slides layouts", () => {
-    document.body.innerHTML = '<details><summary>Closed</summary></details><article><details open><summary>Nested</summary><p>Content</p></details></article><details style="background-color: pink"><summary>Authored</summary></details><details is="custom-details"><summary>Widget</summary></details>'
+  it("inherits native details backgrounds in editing and saved slides layouts", () => {
+    document.body.style.backgroundColor = "rgb(240, 248, 255)"
+    document.body.innerHTML = '<details><summary>Closed</summary></details><article style="background-color: rgb(232, 240, 254)"><details open><summary>Nested</summary><p>Content</p></details></article><details style="background-color: pink"><summary>Authored</summary></details><details is="custom-details" style="background-color: rgb(255, 228, 225)"><summary>Widget</summary></details>'
     expect(convert("slides")).toBe(true)
     const [closed, nested, authored, widget] = document.querySelectorAll("details")
     const check = () => {
-      for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).toBe("white")
+      // Happy DOM does not resolve `inherit` inside the theme's @layer, so
+      // verify its exact rule alongside the concrete parent and author styles.
+      expect(defaultDocumentTheme.source).toContain("details:not([is]) { background-color: inherit; }")
+      expect(getComputedStyle(document.body).backgroundColor).toBe("rgb(240, 248, 255)")
+      expect(getComputedStyle(nested.parentElement!).backgroundColor).toBe("rgb(232, 240, 254)")
+      expect(closed.style.backgroundColor).toBe("")
+      expect(nested.style.backgroundColor).toBe("")
       expect(getComputedStyle(authored).backgroundColor).toBe("pink")
-      expect(getComputedStyle(widget).backgroundColor).not.toBe("white")
+      expect(getComputedStyle(widget).backgroundColor).toBe("rgb(255, 228, 225)")
     }
     check()
     editor.features.slides.disable()
     check()
     expect(convert("document")).toBe(true)
-    for(const details of [closed, nested]) expect(getComputedStyle(details).backgroundColor).not.toBe("white")
+    check()
+    expect(editor.toHTML(true)).toContain('style="background-color: pink;"')
+    expect(editor.toHTML(true)).toContain('is="custom-details" style="background-color: rgb(255, 228, 225);"')
   })
 
   it("keeps outer body, carousel and navigation gaps inside a slide", () => {
