@@ -973,3 +973,64 @@ it("allows a dev-server display name without exposing password or sign-in contro
   expect(loadAppSettings().cloudServices[0].username).toBe("Dev Ada")
   expect(loadAppSettings().activeCloudServiceId).toBe(service.id)
 })
+
+
+it("updates and saves the keyboard layout used for shortcut labels", async () => {
+  const panel = await mountPanel()
+  panel.tab = "Commands"
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  await panel.updateComplete
+  const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#keyboard-layout")!
+  select.value = "qwertz"
+  select.dispatchEvent(new Event("change", {bubbles: true}))
+  await panel.updateComplete
+  expect(loadAppSettings().keyboardLayout).toBe("qwertz")
+  const undo = panel.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Configure shortcut for Undo"]')!
+  expect(undo.textContent).toContain("Z")
+  expect(panel.settings.shortcuts["editor.undo"]).toBe(defaultAppSettings().shortcuts["editor.undo"])
+})
+
+
+it.each(["awerty", "querty", "dvorak", "colemak", "workman"] as const)("offers and saves %s", async layout => {
+  const panel = await mountPanel()
+  panel.tab = "Commands"
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  await panel.updateComplete
+  const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#keyboard-layout")!
+  select.value = layout
+  select.dispatchEvent(new Event("change", {bubbles: true}))
+  await panel.updateComplete
+  expect(select.value).toBe(layout)
+  expect(loadAppSettings().keyboardLayout).toBe(layout)
+})
+
+
+it("records a physical history key even when its code matches the default", async () => {
+  const settings = defaultAppSettings()
+  settings.keyboardLayout = "qwertz"
+  const panel = await mountPanel(settings)
+  const undo = panel.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Configure shortcut for Undo"]')!
+  undo.click()
+  await panel.updateComplete
+  const apple = settings.shortcuts["editor.undo"].startsWith("Meta+")
+  undo.dispatchEvent(new KeyboardEvent("keydown", {key: "y", code: "KeyZ", metaKey: apple, ctrlKey: !apple, bubbles: true, cancelable: true}))
+  await panel.updateComplete
+  expect(panel.settings.shortcuts["editor.undo"]).toBe(`Physical:${settings.shortcuts["editor.undo"]}`)
+  expect(undo.textContent).toContain("Y")
+})
+
+it("detects shortcut conflicts against the actual physical history key", async () => {
+  const settings = defaultAppSettings(false)
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux")
+  settings.keyboardLayout = "qwertz"
+  const panel = await mountPanel(settings)
+  const undo = panel.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Configure shortcut for Undo"]')!
+  undo.click()
+  await panel.updateComplete
+  undo.dispatchEvent(new KeyboardEvent("keydown", {key: "z", code: "KeyY", ctrlKey: true, bubbles: true, cancelable: true}))
+  await panel.updateComplete
+  expect(panel.settings.shortcuts["editor.undo"]).toBe("Ctrl+Y")
+  expect(panel.settings.shortcuts["editor.redo"]).toBe("Ctrl+Y")
+  expect(panel.shadowRoot!.querySelector(".status")?.textContent).not.toContain("swapped")
+  vi.restoreAllMocks()
+})

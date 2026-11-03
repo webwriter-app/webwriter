@@ -42,6 +42,15 @@ function targetElement(tag = "p") {
   return append(element)
 }
 
+it.each(["button", "[popover]"])("keeps a selected popup %s free of transform controls", selector => {
+  document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button><span id="note" popover>Content</span></span></p>'
+  const part = document.querySelector(selector)!
+  editor.features.selection.selectElement(part)
+  expect($.selectedElement).toBe(part)
+  expect(feature.target).toBeNull()
+  expect(feature.overlay).toHaveAttribute("visibility", "hidden")
+})
+
 /** Happy-dom has no layout. Keep the rect tied to authored offsets so the
  * movement/resize code still exercises its geometry calculations. */
 function mockRect(target: HTMLElement | SVGSVGElement | MathMLElement, values: {left?: number, top?: number, width?: number, height?: number} = {}) {
@@ -147,6 +156,22 @@ it("hides transforms for a zero-area widget host and recovers when its live box 
 
 describe("text container resizing", () => {
   describe("document layout", () => {
+    it("gives resized popup content an explicit width so its bubble can grow", () => {
+      document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button></span></p><div class="ww-popup-content" id="note" popover="auto"><p>Short</p></div>'
+      const target = document.querySelector<HTMLElement>(".ww-popup-content > p")!
+      mockRect(target)
+      captureNode(target)
+      const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+
+      handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 125}))
+      document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 125}))
+      document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+
+      expect(target.style.width).toBe("140px")
+      expect(target.style.maxWidth).toBe("140px")
+      expect(document.querySelector(".ww-popup-content")?.parentElement).toBe(document.body)
+    })
+
     it.each(["p", "h1", "h2", "h3", "h4", "h5", "h6"])("keeps the bottom-right handle horizontal for %s and lets height follow content", async tag => {
       const target = targetElement(tag)
       target.id = "text-container"
@@ -412,6 +437,22 @@ describe("block formula affordances", () => {
     feature.startTransform(inline.querySelector("mi")!)
     expect(feature.target).toBeNull()
   })
+})
+
+it("uses an explicit image width when resized inside popup content", () => {
+  document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Open</button></span></p><div class="ww-popup-content" id="note" popover="auto"><img alt="Image"></div>'
+  const target = document.querySelector<HTMLImageElement>(".ww-popup-content > img")!
+  Object.assign(target.style, {width: "100px", height: "50px"})
+  mockRect(target)
+  selectNode(target)
+  const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
+
+  handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 200, clientY: 125}))
+  document.dispatchEvent(pointer("pointermove", {pointerId: 3, clientX: 240, clientY: 125}))
+  document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+
+  expect(target.style.width).toBe("140px")
+  expect(target.style.maxWidth).toBe("140px")
 })
 
 describe.each(["img", "picture"])("%s stretching", tag => {
@@ -2646,6 +2687,8 @@ describe("transform controls and geometry", () => {
     selectNode(target)
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
+    expect(target).toHaveAttribute("sandbox", "allow-scripts")
+    expect(editor.doc.body.toString()).toContain('sandbox="allow-scripts"')
     const original = editor.toHTML(true)
     const handle = feature.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
     handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 420, clientY: 280}))

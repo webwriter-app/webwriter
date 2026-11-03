@@ -55,7 +55,6 @@ export class MathKeyboard extends LitElement {
       height: 280px;
       max-height: min(280px, calc(100dvh - 80px));
       margin-inline: auto;
-      opacity: 0.9;
       overflow-x: hidden;
       padding: 0.45rem 0.6rem max(0.45rem, env(safe-area-inset-bottom, 0px));
       color: #26313d;

@@ -46,14 +46,36 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("nested ribbon menus", () => {
-  it("lets shape galleries use the viewport height in button menus and submenus", async () => {
+  it.each(["shapes", "media"])("keeps a closed %s gallery menu hidden", async kind => {
+    const shapes = graphicShapeOptions.map(shape => ({label: shape.label, category: shape.category, path: shape.path}))
+    const menu = new RibbonMenu()
+    menu.variant = "button"
+    menu.hidden = true
+    menu.groups = [{label: "Options", buttons: kind === "shapes" ? shapes : [
+      {label: "Image"}, {label: "Graphic", submenu: shapes},
+    ]}]
+    document.body.append(menu)
+    await menu.updateComplete
+
+    expect(menu.gallery).toBe(true)
+    expect(getComputedStyle(menu).display).toBe("none")
+    menu.hidden = false
+    expect(getComputedStyle(menu).display).toBe("flex")
+    menu.hidden = true
+    expect(getComputedStyle(menu).display).toBe("none")
+  })
+
+  it("lets button galleries shrink to their anchor area while nested galleries use the viewport", async () => {
     const buttons=graphicShapeOptions.map(shape=>({label:shape.label,category:shape.category,path:shape.path}))
     const menu=new RibbonMenu()
     menu.groups=[{label:"Shapes",buttons}]
     document.body.append(menu)
     await menu.updateComplete
     const surface=menu.shadowRoot!.querySelector<HTMLElement>(".menu")!
-    expect(getComputedStyle(surface).maxHeight).toBe(`calc(${window.innerHeight}px - 16px)`)
+    expect(getComputedStyle(menu).display).toBe("flex")
+    expect(getComputedStyle(surface).maxHeight).toBe("none")
+    expect(getComputedStyle(surface).flexGrow).toBe("1")
+    expect(getComputedStyle(surface).minHeight).toBe("0")
     expect(getComputedStyle(surface).boxSizing).toBe("border-box")
     expect(getComputedStyle(surface).overflow).toBe("auto")
     menu.groups=[{label:"Elements",buttons:[{label:"Shapes",submenu:buttons}]}]

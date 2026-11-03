@@ -83,9 +83,9 @@ Exported documents include their theme CSS. If an existing document contains an 
 ## Float beside the reading measure
 
 The Float controls offer **Left**, **Right**, and **None**. A superscript arrow in the breadcrumb shows the authored float direction, including when responsive CSS stacks the element. Floats use
-native `float` and negative outer margins, without wrappers or classes. At
-viewport widths of 1200px and wider, a left or right float anywhere inside the
-body reserves an equal lane on each side of the body’s central reading measure.
+native `float`, placement classes, and negative outer margins without wrappers. At
+viewport widths of 1400px and wider, floats reserve lanes only on the sides
+they occupy, beside the body’s central reading measure.
 This keeps all body children aligned, including blocks before the float. Floated elements fill the lane by default; authored dimensions and manual resizing can make them narrower. The
 reservation is based on the configured lane width plus gap. Floats are bounded
 by the lane width and floats on the same side clear one another when their
@@ -97,20 +97,13 @@ Float drag previews cover the projected element box, including reading content t
 
 Float drop zones use the same projected boxes. Releasing over a preview keeps its side and insertion point, even outside the current content column or over text that will be displaced. Drops outside these boxes use ordinary flow placement. Projected drop rectangles are prepared when a document drag starts, or when a ribbon drag first enters the editor. Hover hit testing and previews reuse those rectangles. Document changes and resize schedule a refresh; window scrolling shifts the stored coordinates without remeasurement.
 
-From 600px to below 1200px, both float directions share a right lane and clear one another. The lane uses up to 16rem, leaving at least 300px for text. Below 600px, floats become centered blocks in a single column. Widening the viewport restores their authored left/right setting.
+From 720px to below 1400px, when both sides are occupied, floats share a right lane and clear one another. A single occupied side stays on that side. The lane leaves at least 300px for text. Below 720px, floats become centered blocks in a single column. Widening the viewport restores their authored left/right setting; the placement controls and breadcrumb explain temporary changes to the selected side.
 
 Paragraphs use `display: flow-root` and `min-inline-size: min(300px, 100%)`.
 They move below a float when the remaining space is less than 300px, and fit
 the full column when the column itself is narrower than 300px.
 
-The default desktop lanes divide the space remaining outside the prose column equally, allowing for the float gap. They shrink as the page narrows while the center keeps its configured prose width. Below 600px, floats stack and use a 16rem default width bounded by the available content width. Set `--ww-float-width` to choose a fixed desktop lane width instead:
-
-```css
-:root {
-  --ww-float-width: 16rem;
-  --ww-float-gap: 1rem;
-}
-```
+When both side lanes are present on a wide screen, the three columns have equal widths by default. The lanes adapt to explicit sizes and the space available around the prose column, including the float gap. Below 720px, floats stack within the available content width.
 
 The command stores the chosen size in an authored inline
 `--ww-float-size` property. It is calculated from the available width, theme lane

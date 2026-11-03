@@ -26,18 +26,54 @@ export function isWidgetDataContainer(node: Node | null): node is HTMLScriptElem
 }
 
 const unsafeElementSelector = "script, style, iframe, object, embed, base, meta[http-equiv='refresh'], link[rel='import'], link[rel~='stylesheet']"
-const youtubeEmbedHosts = new Set(["www.youtube.com", "www.youtube-nocookie.com"])
 
-/** YouTube's documented `/embed/VIDEO_ID` endpoint needs a non-opaque origin
- * for its player cache access. Keep this exception limited to the two exact
- * HTTPS hosts and the video embed path; all other frames stay opaque-origin. */
-function isYoutubeEmbedURL(url: URL) {
-  return url.protocol === "https:"
-    && youtubeEmbedHosts.has(url.hostname)
-    && !url.username
-    && !url.password
-    && !url.port
-    && /^\/embed\/[A-Za-z0-9_-]{11}$/.test(url.pathname)
+/** External websites need their real origin for fetch and storage. Local HTML
+ * and WebWriter's own origins must remain opaque. An authored sandbox can
+ * restrict the default further, but cannot grant additional capabilities. */
+export function applyIframeSandboxPolicy(root: ParentNode, protectedOrigins: readonly string[] = [], pendingSource?: string | null) {
+  const origins = new Set([location.origin, ...protectedOrigins]
+    .flatMap(value => {
+      try { return value ? [new URL(value).origin] : [] }
+      catch { return [] }
+    }))
+  const visit = (node: ParentNode) => {
+    const frames = Array.from(node.querySelectorAll("iframe"))
+    if(node.nodeType === Node.ELEMENT_NODE && (node as Element).localName === "iframe") frames.unshift(node as HTMLIFrameElement)
+    for(const frame of frames) {
+      if(frame.namespaceURI !== "http://www.w3.org/1999/xhtml") continue
+      // Source commands must set sandbox flags before navigation starts.
+      const source = frame === root && pendingSource !== undefined ? pendingSource : frame.getAttribute("src")
+      if(!source && !frame.hasAttribute("srcdoc")) continue
+      let external = false
+      try {
+        const url = new URL(source ?? "", frame.ownerDocument.baseURI)
+        external = !frame.hasAttribute("srcdoc") && url.protocol === "https:"
+          && !url.username && !url.password && !origins.has(url.origin)
+      }
+      catch { /* Invalid and local sources never receive a real origin. */ }
+      const allowed = external ? ["allow-scripts", "allow-same-origin"] : ["allow-scripts"]
+      const authored = frame.getAttribute("sandbox")
+      const tokens = authored === null ? allowed : authored.toLowerCase().split(/\s+/)
+      const sandbox = allowed.filter(token => tokens.includes(token)).join(" ")
+      if(authored !== sandbox) {
+        frame.setAttribute("sandbox", sandbox)
+        // Direct DOM and collaboration changes may already have started a
+        // navigation. Sandbox flags take effect on the next navigation only;
+        // restart it with the new flags. Observer-based normalization cannot
+        // guarantee isolation before the first navigation; commands must apply
+        // the policy synchronously before assigning a source.
+        if(pendingSource === undefined && frame.isConnected && frame.ownerDocument.defaultView) {
+          const attribute = frame.hasAttribute("srcdoc") ? "srcdoc" : "src"
+          const value = frame.getAttribute(attribute)
+          if(value !== null) frame.setAttribute(attribute, value)
+        }
+      }
+    }
+    node.querySelectorAll<HTMLTemplateElement>("template").forEach(template => {
+      if(template.content?.nodeType === Node.DOCUMENT_FRAGMENT_NODE) visit(template.content)
+    })
+  }
+  visit(root)
 }
 
 export type ActiveContentStripOptions = {
@@ -47,6 +83,8 @@ export type ActiveContentStripOptions = {
   allowIframes?: boolean
   /** Retain local blob and HTML data URL embeds in a script sandbox. */
   allowLocalIframes?: boolean
+  /** Application and content origins that must never receive a real origin. */
+  protectedIframeOrigins?: readonly string[]
   /** Strip dialog and heading-group wrappers from incoming content, retaining their children. */
   unwrapUnsupportedElements?: boolean
   removeAttribute?: (attribute: Attr) => boolean
@@ -79,8 +117,13 @@ export function stripActiveContent(root: ParentNode, options: ActiveContentStrip
           && (url.protocol === "blob:" || isLocalHTMLDataURL)
         const isRemote = options.allowIframes && url.protocol === "https:" && !url.username && !url.password
         if(isLocal || isRemote) {
-          element.setAttribute("sandbox", isYoutubeEmbedURL(url)
-            && isRemote ? "allow-scripts allow-same-origin" : "allow-scripts")
+          // srcdoc overrides src; discard incoming executable markup before
+          // choosing permissions for the retained URL.
+          if(element.hasAttribute("srcdoc")) {
+            element.removeAttribute("srcdoc")
+            removed++
+          }
+          applyIframeSandboxPolicy(element, options.protectedIframeOrigins)
           if(isLocal) localIframes.add(element)
           return
         }

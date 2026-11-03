@@ -113,9 +113,68 @@ const presentations: Record<string, ElementPresentation> = {
 
 const fallbackPresentation = {name: "Content", icon: "Section"}
 
+/** Identify the native parts of an authored Popup from their current DOM relationships. */
+export function popupElementRole(element: Element): "popup" | "toggle" | "content" | null {
+  if(element.namespaceURI !== "http://www.w3.org/1999/xhtml" || element.hasAttribute("is") || element.localName.includes("-")) return null
+  if((element.localName === "div" || element.localName === "span") && element.classList.contains("ww-popup")) return "popup"
+  const wrapper = element.parentElement?.closest(".ww-popup")
+  const inWrapper = wrapper && wrapper.namespaceURI === "http://www.w3.org/1999/xhtml" && !wrapper.hasAttribute("is")
+    && ["div", "span"].includes(wrapper.localName)
+  // A nested custom element owns its contents; do not reinterpret them as Popup parts.
+  for(let parent = element.parentElement; inWrapper && parent && parent !== wrapper; parent = parent.parentElement) {
+    if(parent.localName.includes("-") || parent.hasAttribute("is")) return null
+  }
+  if(element.hasAttribute("popover")) {
+    if(inWrapper) return "content"
+    if(!element.classList.contains("ww-popup-content") || !element.id) return null
+    const toggles = Array.from(element.ownerDocument.querySelectorAll(".ww-popup button[popovertarget]"))
+      .filter(toggle => popupContentForToggle(toggle) === element)
+    return toggles.length === 1 ? "content" : null
+  }
+  if(!inWrapper || element.localName !== "button") return null
+  return popupContentForToggle(element) ? "toggle" : null
+}
+
+/** Resolve the authored popover linked to a Popup button. */
+export function popupContentForToggle(toggle: Element): Element | null {
+  if(toggle.localName !== "button" || toggle.namespaceURI !== "http://www.w3.org/1999/xhtml") return null
+  const wrapper = toggle.closest(".ww-popup")
+  if(!wrapper || !["div", "span"].includes(wrapper.localName) || wrapper.hasAttribute("is")) return null
+  const target = toggle.getAttribute("popovertarget")
+  if(!target) return null
+  const nested = Array.from(wrapper.querySelectorAll("[popover][id]"))
+    .find(candidate => candidate.id === target && candidate.closest(".ww-popup") === wrapper)
+  if(nested) return nested
+  const external = wrapper.isConnected ? toggle.ownerDocument.getElementById(target) : null
+  return external?.classList.contains("ww-popup-content") && external.hasAttribute("popover") ? external : null
+}
+
+/** The authored Popup Content containing a live node, if any. */
+export function popupContentAncestor(node: Node | null): Element | null {
+  let element = node instanceof Element ? node : node?.parentElement ?? null
+  while(element) {
+    if(element.hasAttribute("popover") && popupElementRole(element) === "content") return element
+    element = element.parentElement
+  }
+  return null
+}
+
+/** The authored button represented as Popup for a wrapper or its linked content. */
+export function popupDisplayToggle(element: Element): Element | null {
+  const role = popupElementRole(element)
+  if(role !== "popup" && role !== "content") return null
+  const wrapper = role === "popup" ? element : element.closest(".ww-popup")
+  const toggles = Array.from((wrapper ?? element.ownerDocument).querySelectorAll(".ww-popup button[popovertarget], button[popovertarget]"))
+    .filter(candidate => popupElementRole(candidate) === "toggle"
+      && (role === "popup" ? candidate.closest(".ww-popup") === wrapper : popupContentForToggle(candidate) === element))
+  return toggles.length === 1 ? toggles[0] : null
+}
+
 /** Returns a user-facing name and icon key for an HTML element. */
 export function getElementPresentation(elementOrTagName: Element | string, packageItems: readonly PackageInsertionItem[] | undefined = globalThis.DOMEDITOR_PACKAGE_ITEMS): ElementPresentation {
   if(typeof elementOrTagName !== "string") {
+    const popupRole = popupElementRole(elementOrTagName)
+    if(popupRole) return {name: popupRole === "content" ? "Popup Content" : "Popup", icon: "Popup"}
     if(elementOrTagName.matches("h2:not([is])") && isBoardGroup(elementOrTagName.parentElement)) return {name: "Group Heading", icon: "Heading"}
     if(elementOrTagName.matches("h2:not([is])") && isBoardColumn(elementOrTagName.parentElement)) {
       return {name: "Column Heading", icon: "Heading"}

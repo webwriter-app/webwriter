@@ -96,12 +96,17 @@ describe("document themes", () => {
       expect(theme.source).toContain("margin-block: 0 calc(var(--ww-page-gutter, 1rem) + var(--ww-float-attribution-before, 0px) + var(--ww-attribution-after));")
       expect(theme.source).toContain("--ww-lane: 0px;")
       expect(theme.source).toContain("--ww-left-lane: 0px;")
-      expect(theme.source).toContain("@container (width >= 1200px)")
-      expect(theme.source).toContain("@container (720px <= width < 1200px)")
+      expect(theme.source).toContain("@container (width >= 720px)")
+      expect(theme.source).toContain("@container (width >= 1400px)")
+      expect(theme.source).toContain("@container (720px <= width < 1400px)")
+      expect(theme.source).toContain("--ww-responsive-float: right;")
       expect(theme.source).toContain("float: right !important;")
-      expect(theme.source).toContain("--ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
+      expect(theme.source).toContain("--ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));")
       expect(theme.source).toContain(":has(:is(.ww-float-left, .ww-float-right,")
       expect(theme.source).toContain("inline-size: var(--ww-float-size, var(--ww-float-width)) !important;")
+      expect(theme.source).toContain(":is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]) {\n      inline-size: 100%;\n      min-inline-size: 0;\n      margin-inline: auto;")
+      expect(theme.source).toContain(":where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]))")
+      expect(theme.source).toContain("max-inline-size: max(var(--ww-float-width), var(--ww-float-size, 0px));")
       expect(theme.source).toContain("clear: left;")
       expect(theme.source).toContain("clear: right;")
       expect(editingDocumentThemeSource(theme)).toBe(theme.source)
@@ -122,6 +127,12 @@ describe("document themes", () => {
       expect(source).toMatch(/@layer webwriter-theme\s*\{[\s\S]*tfoot > tr > :is\(th, td\)\s*\{\s*background-color: #f2f2f2;/)
     }
   })
+  it("shares table picture sizing with editing and standalone documents", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain(":where(td, th) picture {\n    display: block;\n    width: 100%;\n    height: auto;\n  }")
+      expect(editingDocumentThemeSource(theme)).toBe(theme.source)
+    }
+  })
   it("keeps editor-owned legacy options placement out of saved document themes", () => {
     for(const theme of documentThemes) {
       expect(theme.source).not.toContain("::part(options)")
@@ -137,6 +148,11 @@ describe("document themes", () => {
   it("gives native disclosure summaries a line-height minimum in every document layout", () => {
     for(const theme of documentThemes) {
       expect(theme.source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[\s\S]*?details:not\(\[is\]\) > summary\s*\{\s*min-block-size:\s*1lh;/)
+    }
+  })
+  it("defaults details backgrounds to their parent in every bundled theme", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain("details:not([is]) { background-color: inherit; }")
     }
   })
   it("shares a fluid page and widget sizing defaults with standalone documents", () => {
@@ -181,8 +197,8 @@ describe("document themes", () => {
     expect(landmarks).not.toMatch(/display:\s*(?:grid|flex)|grid-|column-count/)
     expect(source).toContain("clear: left;")
     expect(source).toContain("clear: right;")
-    expect(source).toContain("--ww-left-lane: calc(var(--ww-float-width) + var(--ww-float-gap));")
-    expect(source).toContain("@container (width >= 1200px)")
+    expect(source).toContain("--ww-left-lane: calc(var(--ww-left-column-width) + var(--ww-float-gap));")
+    expect(source).toContain("@container (width >= 720px)")
     expect(source).not.toContain("ww-column-")
     expect(source).not.toContain("@media (width > 60rem)")
   })
@@ -204,7 +220,19 @@ describe("document themes", () => {
     expect(source.match(/!important/g)!.length).toBeGreaterThanOrEqual(10)
     expect(source).toContain("--pico-font-size: 100%")
     expect(source).not.toMatch(/@media \(min-width: \d+px\)\s*\{\s*:root,\s*:host\s*\{\s*--pico-font-size:/)
-    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-(?:column-(?:group|left|middle|right|three)|float-(?:left|right|none|sticky)|full-width)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
+    expect(ruleHeaders(source).map(selector => selector.replaceAll(/\.ww-(?:column-(?:group|left|middle|right|three)|float-(?:left|right|none|sticky)|full-width|popup)/g, "")).filter(selector => /(^|[\s>+~,():])\.[_a-zA-Z]/.test(selector))).toEqual([])
+  })
+
+  it("positions and bounds popup bubbles in every bundled theme", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toMatch(/\.ww-popup > button\[popovertarget\]\s*\{[^}]*margin-block-end:\s*0;/)
+      expect(theme.source).toMatch(/\.ww-popup-content\[popover\]\)\s*\{[^}]*margin:\s*0\.15rem 0 0;/)
+      expect(theme.source).toMatch(/\.ww-popup-content\[popover\]\)\s*\{[^}]*position-area:\s*bottom span-right;/)
+      expect(theme.source).toContain("position-try-order: most-height;")
+      expect(theme.source).toContain("@position-try --ww-popup-fit-left")
+      expect(theme.source).toContain("max-block-size: calc(100% - 0.5rem);")
+      expect(theme.source).toContain("overflow: auto;")
+    }
   })
 
   it("gives native disclosure and dialog elements complete base styles", () => {

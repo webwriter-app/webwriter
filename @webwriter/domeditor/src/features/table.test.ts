@@ -34,6 +34,27 @@ function mockCaretPosition(node: Node, offset = 0) {
 }
 
 describe("table grid", () => {
+  it("keeps popup content pointer interactions separate from table cell selection", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Bubble words</p></div></td><td><p>Other</p></td></tr></tbody></table>'
+    const content = document.querySelector<HTMLElement>(".ww-popup-content")!
+    const text = content.querySelector("p")!.firstChild!
+    const restore = mockCaretPosition(text, 3)
+    try {
+      $.move(text, 3)
+      editor.features.dialog.refresh()
+      const down = new PointerEvent("pointerdown", {button: 0, pointerType: "mouse", pointerId: 12,
+        clientX: 20, clientY: 20, bubbles: true, cancelable: true})
+      content.querySelector("p")!.dispatchEvent(down)
+      cells()[1].dispatchEvent(new PointerEvent("pointermove", {buttons: 1, pointerId: 12,
+        clientX: 150, clientY: 20, bubbles: true, cancelable: true}))
+      expect(editor.features.table.hasCellSelection).toBe(false)
+      expect(content).toHaveClass("◆popup-visible")
+      expect(content.contains($.anchor)).toBe(true)
+      document.dispatchEvent(new PointerEvent("pointerup", {pointerId: 12, bubbles: true}))
+    }
+    finally { restore() }
+  })
+
   it("maps captions, row groups, header cells, and merged cells without normalizing them", () => {
     document.body.innerHTML = `
       <table id="data">
@@ -1091,6 +1112,66 @@ describe("table cell selection", () => {
 
     expect(buildTableMap(document.querySelector("table")!).rows).toHaveLength(2)
     expect(cells().map(cell => cell.textContent)).toEqual(["1", "2", "3", "4"])
+  })
+
+  it.each(["caret", "element"])("replaces the contents of a %s-targeted cell with pasted HTML and supports undo", kind => {
+    document.body.innerHTML = '<table><tbody><tr><th title="keep"><p>Old</p></th><td>Other</td></tr></tbody></table>'
+    const [cell, other] = cells()
+    if(kind === "caret") $.move(cell.querySelector("p")!.firstChild!, 1)
+    else $.selectElement(cell)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const data = new DataTransfer()
+    data.setData("text/html", "<p><strong>New</strong></p>")
+    data.setData("text/plain", "New")
+    const event = new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(cell.innerHTML).toBe("<p><b>New</b></p>")
+    expect(cell.getAttribute("title")).toBe("keep")
+    expect(other.textContent).toBe("Other")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(cells()[0].textContent).toBe("Old")
+    editor.doc.redo()
+    expect(cells()[0].textContent).toBe("New")
+  })
+
+  it("does not apply a delayed clipboard read after the caret moves within a cell", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Old</td></tr></tbody></table>"
+    const text = cells()[0].firstChild!
+    $.move(text, 0)
+    let resolve!: (items: ClipboardItem[]) => void
+    const read = navigator.clipboard.read
+    Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: () => new Promise<ClipboardItem[]>(done => { resolve = done })})
+    try {
+      const pasting = editor.features.manipulation.paste()
+      $.move(text, 1)
+      resolve([new ClipboardItem({"text/plain": new Blob(["New"], {type: "text/plain"})})])
+      expect(await pasting).toBe(false)
+      expect(cells()[0].textContent).toBe("Old")
+    }
+    finally { Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: read}) }
+  })
+
+  it("pastes a clipboard grid from a caret through the command", async () => {
+    document.body.innerHTML = "<table><tbody><tr><td>Old</td><td>Other</td></tr></tbody></table>"
+    $.move(cells()[0].firstChild!, 1)
+    const read = navigator.clipboard.read
+    Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: async () => [new ClipboardItem({"text/plain": new Blob(["One\tTwo"], {type: "text/plain"})})]})
+    try {
+      expect(await editor.features.manipulation.paste()).toBe(true)
+      expect(cells().map(cell => cell.textContent)).toEqual(["One", "Two"])
+    }
+    finally { Object.defineProperty(navigator.clipboard, "read", {configurable: true, value: read}) }
+  })
+
+  it("does not treat a widget or popup editing selection as a whole-cell paste target", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><custom-widget>Widget</custom-widget><div class="ww-popup-content" id="note" popover>Popup</div></td></tr></tbody></table>'
+    for(const element of [document.querySelector("custom-widget")!, document.querySelector(".ww-popup-content")!]) {
+      $.move(element.firstChild!, 1)
+      expect(editor.features.table.pasteTargetCell).toBeNull()
+    }
   })
 
   it("sanitizes and canonizes HTML pasted into a cell selection", () => {

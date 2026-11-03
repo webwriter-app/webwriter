@@ -708,6 +708,327 @@ describe("insertable element placement and previews", () => {
   const hover = (hovered = true) => editor.features.manipulation.actions.hoverInsertion({type: "hoverInsertion", hovered})
   const insert = (html: string) => editor.features.manipulation.actions.insert({type: "insert", html})
 
+  it.each(["toggle", "content"] as const)("deletes a selected popup %s as one undoable unit", part => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">Toggle</button><span id="note" popover>Content</span></span> after</p>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const deleted = editor.features.manipulation.actions.deletePopupPart({type: "deletePopupPart", path: [0, 1, part === "toggle" ? 0 : 1]})
+    expect(deleted).toBe(true)
+    expect(document.querySelector(".ww-popup")).toBeNull()
+    expect(document.querySelector("p")!.textContent).toBe(part === "content" ? "Before Toggle after" : "Before  after")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
+  it.each(["toggle", "content"] as const)("preserves unrelated authored popup siblings when deleting its %s", part => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button><!--keep--><span id="note" popover>Content</span><em>Other</em></span></p>'
+    const wrapper = document.querySelector(".ww-popup")!
+    editor.features.manipulation.actions.deletePopupPart({type: "deletePopupPart", path: [0, 0, part === "toggle" ? 0 : 2]})
+    expect(wrapper.isConnected).toBe(part === "toggle")
+    expect(document.querySelector("button, [popover]")).toBeNull()
+    expect(document.querySelector("p")?.textContent).toBe(part === "content" ? "ToggleOther" : "Other")
+    const host = part === "content" ? document.querySelector("p")! : wrapper
+    expect(host.childNodes[part === "content" ? 1 : 0].nodeType).toBe(Node.COMMENT_NODE)
+    expect(document.querySelector("em")?.textContent).toBe("Other")
+  })
+
+  it("keeps the toggle's marked text when deleting Popup Content", () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note"><b>Bold</b> text</button><span id="note" popover><p>Content</p></span></span> after</p>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    expect(editor.features.manipulation.actions.deletePopupPart({type: "deletePopupPart", path: [0, 1, 1]})).toBe(true)
+    expect(editor.toHTML(true)).toBe('<p>Before <b>Bold</b> text after</p>')
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
+  it.each([["before", "direct"], ["after", "direct"], ["before", "nested"], ["after", "nested"]] as const)("inserts typed text %s a popup-only paragraph boundary (%s) and supports undo", (side, structure) => {
+    const popup = '<span class="ww-popup"><button type="button" popovertarget="note">Toggle</button><span id="note" popover="auto">Content</span></span>'
+    document.body.innerHTML = `<p>${structure === "nested" ? `<em>${popup}</em>` : popup}</p>`
+    const paragraph = document.querySelector("p")!, outer = paragraph.firstElementChild!, button = outer.querySelector("button")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    $.move(paragraph, side === "before" ? 0 : paragraph.childNodes.length)
+    const event = new InputEvent("beforeinput", {inputType: "insertText", data: "X", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(button.textContent).toBe("Toggle")
+    expect(side === "before" ? outer.previousSibling?.textContent : outer.nextSibling?.textContent).toBe("X")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
+  it.each(["before", "after"] as const)("types %s a popup beside ordinary paragraph text", side => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">Toggle</button><span id="note" popover>Popup content</span></span> after</p>'
+    const paragraph = document.querySelector("p")!, wrapper = paragraph.querySelector(".ww-popup")!, toggle = wrapper.querySelector("button")!
+    const text = side === "before" ? paragraph.firstChild! : paragraph.lastChild!
+    $.move(text, side === "before" ? text.textContent!.length : 0)
+    const event = new InputEvent("beforeinput", {inputType: "insertText", data: "X", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(wrapper.childNodes).toHaveLength(2)
+    expect(toggle.textContent).toBe("Toggle")
+    expect(paragraph.textContent).toBe(side === "before" ? "Before XTogglePopup content after" : "Before TogglePopup contentX after")
+  })
+
+  it("joins popup content paragraphs backward from their gap and supports undo", () => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>First</p><p>Second</p></div>'
+    const content = document.querySelector<HTMLElement>("[popover]")!, first = content.firstElementChild!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    $.selectGap(first)
+    editor.features.manipulation.delete("backward")
+    expect(content.querySelectorAll("p")).toHaveLength(1)
+    expect(content.querySelector("p")?.textContent).toBe("FirstSecond")
+    expect(document.querySelector("button")?.textContent).toBe("Toggle")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+  })
+
+  it("inserts a paragraph at a gap within popup content", () => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>First</p><p>Second</p></div>'
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    $.selectGap(content.firstElementChild!)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(Array.from(content.children).map(element => element.textContent)).toEqual(["First", "", "Second"])
+    expect(Array.from(content.children).map(element => element.localName)).toEqual(["p", "p", "p"])
+    expect(document.querySelector("button")?.textContent).toBe("Toggle")
+  })
+
+  it.each(["toggle", "content"] as const)("styles the active popup %s inside a table, from text and element selections", part => {
+    document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div></td></tr></tbody></table>'
+    const target = document.querySelector(part === "toggle" ? ".ww-popup button" : ".ww-popup-content")!
+    const text = part === "toggle" ? target.firstChild! : target.querySelector("p")!.firstChild!
+    for(const elementSelected of [false, true]) {
+      elementSelected ? $.selectElement(target) : $.move(text, 2)
+      expect(editor.features.manipulation.styleTarget).toBe(target)
+      expect(editor.features.manipulation.topLevelStyleTarget).toBe(target)
+      expect(editor.features.manipulation.getStyleState().target?.popupRole).toBe(part)
+      editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": elementSelected ? "pink" : "gold"}})
+      expect((target as HTMLElement).style.backgroundColor).toBe(elementSelected ? "pink" : "gold")
+      expect(document.querySelector("td")?.getAttribute("style")).toBeNull()
+    }
+  })
+
+  it("targets a popup content nested in its wrapper without styling the wrapper", () => {
+    document.body.innerHTML = '<div class="ww-popup"><button popovertarget="note">Toggle</button><div id="note" popover="auto"><p>Content</p></div></div>'
+    const wrapper = document.querySelector(".ww-popup")!, content = document.querySelector<HTMLElement>("[popover]")!
+    $.move(content.querySelector("p")!.firstChild!, 2)
+    expect(editor.features.manipulation.topLevelStyleTarget).toBe(content)
+    editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"border-color": "red"}})
+    expect(content.style.borderColor).toBe("red")
+    expect(wrapper).not.toHaveAttribute("style")
+  })
+
+  it("treats the trailing popup content position in a table as a gap and inserts a paragraph", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Last</p></div></td></tr></tbody></table>'
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    $.selectGap(content.firstElementChild!)
+    expect($.isGapSelection).toBe(true)
+    editor.features.selection.processSelection()
+    expect(content.firstElementChild).toHaveClass("◆gap-after-selected")
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true, cancelable: true}))
+    expect(Array.from(content.children).map(element => element.localName)).toEqual(["p", "p"])
+    expect(Array.from(content.children).map(element => element.textContent)).toEqual(["Last", ""])
+    expect(document.querySelector("button")?.textContent).toBe("Toggle")
+  })
+
+  it.each(["", "<br>", "<b></b>"])("keeps the sole empty popup paragraph on Backspace (%s)", children => {
+    document.body.innerHTML = `<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><!--keep--><p>${children}</p></div>`
+    const content = document.querySelector<HTMLElement>("[popover]")!, paragraph = content.querySelector("p")!
+    $.move(paragraph, 0)
+    editor.features.selection.processSelection()
+    const before = editor.toHTML(true)
+    const event = new KeyboardEvent("keydown", {key: "Backspace", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(editor.toHTML(true)).toBe(before)
+    expect(paragraph.isConnected).toBe(true)
+    expect($.anchor).toBe(paragraph)
+    expect($.anchorOffset).toBe(0)
+    expect($.isGapSelection).toBe(false)
+  })
+
+  it.each([["backward", "a"], ["backward", "ab"], ["forward", "a"], ["forward", "ab"]] as const)(
+    "keeps deletion of %s neighboring popup text outside the toggle (%s)", (direction, text) => {
+      const popup = '<span class="ww-popup"><button popovertarget="note">Toggle</button></span>'
+      document.body.innerHTML = `<p>${direction === "backward" ? text : ""}${popup}${direction === "forward" ? text : ""}</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>`
+      const paragraph = document.querySelector("p")!, wrapper = paragraph.querySelector(".ww-popup")!
+      const neighbor = direction === "backward" ? paragraph.firstChild! : paragraph.lastChild!
+      $.move(neighbor, direction === "backward" ? text.length : 0)
+      vi.spyOn($, "extendBy").mockImplementation(() => $.extend(neighbor, direction === "backward" ? text.length - 1 : 1))
+      editor.features.manipulation.delete(direction)
+      expect(wrapper.isConnected).toBe(true)
+      expect(paragraph.textContent).toBe(direction === "backward" ? `${text.slice(0, -1)}Toggle` : `Toggle${text.slice(1)}`)
+      const remaining = direction === "backward" ? wrapper.previousSibling : wrapper.nextSibling
+      if(text.length === 1) {
+        expect($.anchor).toBe(paragraph)
+        expect($.anchorOffset).toBe(direction === "backward" ? 0 : 1)
+      }
+      else {
+        expect($.anchor).toBe(remaining)
+        expect($.anchorOffset).toBe(direction === "backward" ? 1 : 0)
+      }
+      expect(editor.toHTML(true)).not.toContain("◆")
+    },
+  )
+
+  it("moves a wrapper caret into toggle text before native typing", () => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button><span id="note" popover>Content</span></span></p>'
+    const wrapper = document.querySelector('.ww-popup')!, toggle = wrapper.querySelector('button')!
+    $.move(wrapper, 0)
+    const event = new InputEvent("beforeinput", {inputType: "insertText", data: "X", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
+    expect($.anchor).toBe(toggle.firstChild)
+    expect($.anchorOffset).toBe(0)
+    expect(wrapper.childNodes).toHaveLength(2)
+  })
+
+  it("inserts independent native popups and preserves their markup through undo and redo", () => {
+    document.body.innerHTML = '<p>first second</p>'
+    const text = document.querySelector('p')!.firstChild!
+    $.selectRange(text, 0, text, 5)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    editor.features.mark.actions.insertPopup({type: "insertPopup"})
+    const popup = document.querySelector<HTMLElement>("[popover]")!
+    const button = document.querySelector<HTMLButtonElement>("button[popovertarget]")!
+    expect(popup.getAttribute("popover")).toBe("auto")
+    expect(button.getAttribute("popovertarget")).toBe(popup.id)
+    expect(popup.querySelector(":scope > p")?.textContent).toBe("")
+    expect(button.textContent).toBe("first")
+    editor.doc.syncFromDOM()
+    const html = editor.toHTML(true)
+    expect(html).not.toContain("◆")
+    expect(html).not.toContain("Popup content")
+    editor.doc.undo()
+    expect(document.querySelector("[popover]")).toBeNull()
+    editor.doc.redo()
+    expect(new DOMParser().parseFromString(editor.toHTML(true), "text/html").body
+      .isEqualNode(new DOMParser().parseFromString(html, "text/html").body)).toBe(true)
+    const remainder = document.querySelector('p')!.lastChild!
+    $.selectRange(remainder, 1, remainder, 7)
+    editor.features.mark.actions.insertPopup({type: "insertPopup"})
+    const ids = Array.from(document.querySelectorAll<HTMLElement>("[popover]"), element => element.id)
+    expect(new Set(ids).size).toBe(2)
+  })
+
+  it("deletes a linked popup content while keeping the toggle text", () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note"><b>Toggle</b></button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>'
+    const content = document.querySelector(".ww-popup-content")!
+    editor.features.selection.selectElement(content)
+    editor.features.manipulation.delete()
+    expect(document.querySelector(".ww-popup-content, .ww-popup")).toBeNull()
+    expect(document.querySelector("p")?.innerHTML).toBe("Before <b>Toggle</b> after")
+  })
+
+  it("unwraps links pasted into a Popup toggle while preserving their text formatting", () => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Before after</button></span></p><div class="ww-popup-content" id="note" popover><p>Content</p></div>'
+    const toggle = document.querySelector(".ww-popup button")!
+    $.move(toggle.firstChild!, 7)
+    editor.features.manipulation.insertHTML('<a href="https://example.test"><em>linked</em></a>')
+
+    expect(toggle.querySelector("a")).toBeNull()
+    expect(toggle.querySelector("em")?.textContent).toBe("linked")
+    expect(toggle.textContent).toBe("Before linkedafter")
+
+    const content = document.querySelector(".ww-popup-content p")!
+    $.move(content, 0)
+    editor.features.manipulation.insertHTML('<a href="https://example.test">content link</a>')
+    expect(content.querySelector("a")?.textContent).toBe("content link")
+  })
+
+  it("rejects Popup markup inserted into Popup Content while allowing ordinary content", () => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Inside</p></div>'
+    const content = document.querySelector(".ww-popup-content p")!
+    $.move(content.firstChild!, 3)
+    const original = editor.toHTML(true)
+    editor.features.manipulation.insertHTML('<span class="ww-popup"><button popovertarget="nested">Nested</button></span><div class="ww-popup-content" id="nested" popover><p>Nested content</p></div>')
+    expect(editor.toHTML(true)).toBe(original)
+
+    const nested = document.createElement("span")
+    nested.className = "ww-popup"
+    nested.append(document.createElement("button"))
+    editor.features.manipulation.insert(nested)
+    expect(editor.toHTML(true)).toBe(original)
+
+    editor.features.manipulation.insertHTML("<em>ordinary</em>")
+    expect(content.querySelector("em")?.textContent).toBe("ordinary")
+    expect(document.querySelectorAll(".ww-popup")).toHaveLength(1)
+  })
+
+  it("assigns a fresh target to an unambiguous pasted popup copy", () => {
+    document.body.innerHTML = '<p>Text</p>'
+    const text = document.querySelector('p')!.firstChild!
+    $.selectRange(text, 0, text, 4)
+    editor.features.mark.actions.insertPopup({type: "insertPopup"})
+    const original = document.querySelector<HTMLElement>("[popover]")!
+    const wrapper = document.querySelector(".ww-popup")!
+    const data = new DataTransfer()
+    const fragment = document.createDocumentFragment()
+    fragment.append(wrapper.cloneNode(true))
+    data.setData("text/html", editor.serializeClipboardFragment(fragment).clipboardHTML)
+    const after = document.createElement("p")
+    after.textContent = "After"
+    document.body.append(after)
+    $.move(after.firstChild!, 5)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    const popups = Array.from(document.querySelectorAll<HTMLElement>("[popover]"))
+    expect(popups).toHaveLength(2)
+    expect(popups[1].id).not.toBe(original.id)
+    expect(document.querySelectorAll(`[popovertarget="${popups[1].id}"]`)).toHaveLength(1)
+  })
+
+  it("copies, cuts, and pastes an inline popup with its content", () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="popup-00000000-0000-4000-8000-000000000001">Toggle</button></span> after</p><div class="ww-popup-content" id="popup-00000000-0000-4000-8000-000000000001" role="dialog" popover="auto"><p>Bubble text</p></div>'
+    const wrapper = document.querySelector(".ww-popup")!
+    $.selectElement(wrapper)
+    const copied = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: copied, bubbles: true, cancelable: true}))
+    expect(copied.getData("text/html")).toContain("Bubble text")
+    expect(copied.getData("text/html")).toContain("ww-popup")
+
+    const cut = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("cut", {clipboardData: cut, bubbles: true, cancelable: true}))
+    expect(cut.getData("text/html")).toContain("Bubble text")
+    expect(document.querySelector(".ww-popup")).toBeNull()
+    editor.features.dialog.ensurePopupContent()
+    expect(document.querySelector(".ww-popup-content")).toBeNull()
+
+    const after = document.querySelector("p")!.lastChild!
+    $.move(after, 0)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: cut, bubbles: true, cancelable: true}))
+    expect(document.querySelector("p")?.textContent).toBe("Before Toggle after")
+    const pasted = document.querySelector(".ww-popup button[popovertarget]")!
+    const content = document.getElementById(pasted.getAttribute("popovertarget")!)
+    expect(content?.textContent).toBe("Bubble text")
+  })
+
+  it("pastes a copied popup into a table cell without moving its dialog outside the cell", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="popup-00000000-0000-4000-8000-000000000003">Toggle</button></span> after</p><div class="ww-popup-content" id="popup-00000000-0000-4000-8000-000000000003" popover><p>Bubble text</p></div></td><td><p>Other</p></td></tr></tbody></table>'
+    $.selectElement(document.querySelector(".ww-popup")!)
+    const data = new DataTransfer()
+    document.dispatchEvent(new ClipboardEvent("copy", {clipboardData: data, bubbles: true, cancelable: true}))
+    $.move(document.querySelector("td p")!.lastChild!, 0)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+
+    const toggles = Array.from(document.querySelectorAll("td:first-child .ww-popup button[popovertarget]"))
+    expect(toggles).toHaveLength(1)
+    expect(document.querySelector("td:first-child")?.textContent).not.toContain("after")
+    const copiedContent = document.getElementById(toggles[0].getAttribute("popovertarget")!)
+    expect(copiedContent?.textContent).toBe("Bubble text")
+    expect(copiedContent?.closest("td")).toBe(toggles[0].closest("td"))
+  })
+
   it.each(["td", "th"])("replaces cell content with a ribbon image in %s and supports undo", tag => {
     document.body.innerHTML = `<table><tbody><tr><${tag} id="target"><p>Old text</p></${tag}><td>Keep</td></tr></tbody></table>`
     const cell = document.querySelector(`#target`)!
@@ -3602,6 +3923,47 @@ describe("copy()", () => {
   })
 })
 describe("cut()", () => {
+  it.each(["p", "custom-widget"])("cuts a whole selected %s through the native clipboard event", tag => {
+    document.body.innerHTML = `<div><!--before--><${tag} title="authored">hello</${tag}><!--after--></div><p>outside</p>`
+    const target = document.querySelector(tag)!
+    editor.features.selection.selectElement(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const data = new DataTransfer()
+    const event = new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(data.getData("text/html")).toContain(`<${tag} title="authored">hello</${tag}>`)
+    expect(document.querySelector("div")!.innerHTML).toBe("<!--before--><!--after-->")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector(tag)?.getAttribute("title")).toBe("authored")
+    editor.doc.redo()
+    expect(document.querySelector(`${tag}[title="authored"]`)).toBeNull()
+  })
+
+  it.each(["native", "command"])("cuts a captured widget with a collapsed native selection via %s", async method => {
+    document.body.innerHTML = "<custom-widget>hello</custom-widget><p>outside</p>"
+    const widget = document.querySelector("custom-widget")!
+    editor.features.selection.captureElement(widget)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    if(method === "native") {
+      const data = new DataTransfer()
+      const event = new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(data.getData("text/html")).toContain("<custom-widget>hello</custom-widget>")
+    }
+    else {
+      expect(await editor.features.manipulation.cut()).toBe(true)
+      const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))!
+      expect(await (await item.getType("text/html")).text()).toContain("<custom-widget>hello</custom-widget>")
+    }
+    expect(widget.isConnected).toBe(false)
+    expect(document.querySelector("p")!.textContent).toBe("outside")
+  })
+
   it("fills the clipboard with correct HTML", async () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectElement(document.body.firstElementChild!)
@@ -4945,6 +5307,19 @@ describe("setStyle()", () => {
     expect(document.body.childNodes[1]).toBeInstanceOf(Comment)
   })
 
+  it("styles selected document contents without styling the document itself", () => {
+    document.body.innerHTML = '<p style="color: red">one</p><!--keep--><section><p>two</p></section>'
+    const children = Array.from(document.body.children)
+    $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+    const manipulation = editor.features.manipulation
+    expect(manipulation.getSelectedElementTypes().map(group => group.element.localName)).toEqual(["p", "section"])
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("p")
+    manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {padding: "4px"}})
+    expect(children.every(child => (child as HTMLElement).style.padding === "4px")).toBe(true)
+    expect(document.documentElement.style.padding).toBe("")
+    expect(children[1].querySelector("p")!.getAttribute("style")).toBeNull()
+  })
+
   it.each(["img", "demo-widget"])("keeps styling available for a capture-selected %s with a native top-level gap", tag => {
     document.body.innerHTML = `<${tag} style="opacity: 0.8"></${tag}><p>other</p>`
     const captured = document.body.firstElementChild!
@@ -5012,6 +5387,51 @@ describe("setStyle()", () => {
     editor.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {opacity: "0.5"}})
     expect(document.querySelector("article")).toHaveStyle({opacity: "0.5"})
     expect(previous).not.toHaveAttribute("style")
+  })
+
+  it.each(["caret", "range", "summary", "inline"])("styles the details containing a %s selection in its summary", mode => {
+    document.body.innerHTML = '<section><details open><summary title="keep">Hello <b>world</b></summary><!--keep--><p>Body</p><test-widget></test-widget></details><p>Outside</p></section>'
+    const details = document.querySelector("details")!, summary = details.querySelector("summary")!
+    const bold = summary.querySelector("b")!, body = details.querySelector("p")!, widget = details.querySelector("test-widget")!
+    if(mode === "caret") $.move(bold.firstChild!, 2)
+    else if(mode === "range") $.selectRange(summary.firstChild!, 2, bold.firstChild!, 3)
+    else $.selectElement(mode === "summary" ? summary : bold)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true), manipulation = editor.features.manipulation
+    expect(manipulation.styleTarget).toBe(details)
+    expect(manipulation.topLevelStyleTarget).toBe(details)
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("details")
+    manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+    expect(details).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+    expect(summary).not.toHaveAttribute("style")
+    expect(body).not.toHaveAttribute("style")
+    expect(widget).not.toHaveAttribute("style")
+    expect(document.querySelector("section")).not.toHaveAttribute("style")
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it("keeps styling the details body separately when the selection is outside its summary", () => {
+    document.body.innerHTML = '<details open><summary>Title</summary><p>Body</p></details>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    expect(editor.features.manipulation.styleTarget).toBe(paragraph)
+  })
+
+  it("uses the inner disclosure for a nested summary and preserves atomic widget selections", () => {
+    document.body.innerHTML = '<details open><summary>Outer</summary><details open><summary>Inner <inline-widget>Widget</inline-widget></summary></details></details>'
+    const disclosures = document.querySelectorAll("details"), widget = document.querySelector("inline-widget")!
+    $.move(disclosures[1].querySelector("summary")!.firstChild!, 2)
+    expect(editor.features.manipulation.styleTarget).toBe(disclosures[1])
+    expect(editor.features.manipulation.topLevelStyleTarget).toBe(disclosures[1])
+    $.selectElement(widget)
+    expect(editor.features.manipulation.styleTarget).toBe(widget)
   })
 
   it.each([false, true])("styles selected sibling paragraphs in the Edit toolbox (backwards: %s)", backwards => {
@@ -6320,6 +6740,26 @@ describe("unified content transfer", () => {
     expect(editor.features.manipulation.floatDropTarget(event, source)).toBeNull()
   })
 
+  it("keeps ribbon snippet drops on visible text at the native caret and leaves blank space eligible for floats", () => {
+    document.body.innerHTML = '<p>before after</p><p>end</p>'
+    const textNode = document.querySelector("p")!.firstChild!
+    const source = document.createElement("div")
+    const data = new DataTransfer()
+    data.setData(ribbonInsertionDragType, "user-snippet:saved")
+    const hitText = vi.spyOn($, "pointFromCoords").mockReturnValue({node: textNode, offset: 7})
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([new DOMRect(100, 40, 80, 18)] as unknown as DOMRectList)
+    const prepare = vi.spyOn(editor.features.manipulation, "prepareFloatDropTargets")
+
+    const overText = transferEvent("dragover", data, {clientX: 140, clientY: 49}) as MouseEvent
+    expect(editor.features.manipulation.floatDropTarget(overText, source)).toBeNull()
+    expect(prepare).not.toHaveBeenCalled()
+
+    const inBlankSpace = transferEvent("dragover", data, {clientX: 80, clientY: 49}) as MouseEvent
+    editor.features.manipulation.floatDropTarget(inBlankSpace, source)
+    expect(hitText).toHaveBeenCalledTimes(2)
+    expect(prepare).toHaveBeenCalledOnce()
+  })
+
   it.each([
     ["the dragged element", "source"],
     ["a descendant", "nested"],
@@ -6470,27 +6910,21 @@ describe("unified content transfer", () => {
     expect(anchor.textContent).toBe("Anchor")
   })
 
-  it.each(["left", "right"] as const)("offers only the existing %s float column for drag placement", side => {
+  it.each(["left", "right"] as const)("offers both float columns when the existing float is on the %s", side => {
     document.body.innerHTML = `<aside class="ww-float-${side}">Existing</aside><p>Anchor</p><video style="width:80px;height:60px"></video>`
     document.body.style.cssText = '--ww-float-width:280px;padding-left:340px;padding-right:340px'
     vi.spyOn(document.body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 1400, 700))
     const anchor = document.querySelector("p")!, source = document.querySelector("video")!
     vi.spyOn(anchor, "getBoundingClientRect").mockReturnValue(new DOMRect(340, 20, 720, 30))
     vi.spyOn($, "pointFromCoords").mockReturnValue({node: anchor.firstChild!, offset: 2})
-    const blockedX = side === "left" ? 1395 : 5, allowedX = side === "left" ? 5 : 1395
-    const blocked = beginDrag(source).data
-    const blockedOver = transferEvent("dragover", blocked, {clientX: blockedX, clientY: 690})
-    document.documentElement.dispatchEvent(blockedOver)
-    expect(editor.appendix.querySelector("#◆float-drop-preview")).toBeNull()
-    expect(blocked.dropEffect).toBe("none")
-    document.documentElement.dispatchEvent(transferEvent("drop", blocked, {clientX: blockedX, clientY: 690}))
-    expect(source.parentElement).toBe(document.body)
-    expect(source.classList.contains("ww-float-left") || source.classList.contains("ww-float-right")).toBe(false)
-    const allowed = beginDrag(source).data
-    document.documentElement.dispatchEvent(transferEvent("dragover", allowed, {clientX: allowedX, clientY: 690}))
-    expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${side}`)
-    document.documentElement.dispatchEvent(transferEvent("drop", allowed, {clientX: allowedX, clientY: 690}))
-    expect(source.classList.contains(`ww-float-${side}`)).toBe(true)
+    for(const targetSide of ["left", "right"] as const) {
+      const data = beginDrag(source).data, point = {clientX: targetSide === "left" ? 5 : 1395, clientY: 690}
+      document.documentElement.dispatchEvent(transferEvent("dragover", data, point))
+      expect(editor.appendix.querySelector("#◆float-drop-preview")?.getAttribute("part")).toContain(`float-drop-preview-${targetSide}`)
+      document.documentElement.dispatchEvent(transferEvent("drop", data, point))
+      expect(source.classList.contains(`ww-float-${targetSide}`)).toBe(true)
+      expect(document.querySelector("aside")!.classList.contains(`ww-float-${side}`)).toBe(true)
+    }
   })
 
   it("chooses the nearest live gutter anchor without remeasuring or floating content-column gaps", () => {
@@ -6973,10 +7407,102 @@ describe("unified content transfer", () => {
       else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, cancelable: true}))
       parser.mockRestore()
       const math = document.querySelector("math")!
-      const remainsInline = inline && display !== "block"
+      const remainsInline = method === "paste" || inline && display !== "block"
       expect(math.getAttribute("display")).toBe(remainsInline ? "inline" : "block")
-      expect(math.parentElement).toBe(remainsInline ? document.querySelector("p") : document.body)
+      expect(math.parentElement?.localName).toBe(remainsInline ? "p" : "body")
     }
+  })
+
+  it.each(["paste", "beforeinput", "async"])("pastes a block formula inline in an empty document via %s", async method => {
+    document.body.replaceChildren()
+    $.move(document.body, 0)
+    const html = '<math display="block"><mi>x</mi></math>'
+    const parse = editor.parseHTMLFragment.bind(editor)
+    const parser = vi.spyOn(editor, "parseHTMLFragment").mockImplementation((...args) => {
+      const result = parse(...args)
+      for(const original of Array.from(result.fragment.querySelectorAll("math"))) {
+        const math = mathElement("math", mathElement("mi", "x"))
+        math.setAttribute("display", "block")
+        original.replaceWith(math)
+      }
+      return result
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", html)
+    if(method === "async") {
+      await navigator.clipboard.write([new ClipboardItem({"text/html": html})])
+      await editor.features.manipulation.paste()
+    }
+    else if(method === "beforeinput") document.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertFromPaste", dataTransfer: data, bubbles: true, cancelable: true}))
+    else document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    parser.mockRestore()
+    expectBodyToBe('<p><math display="inline"><mi>x</mi></math></p>')
+  })
+
+  it.each(["inline", "block", "missing"])("pastes an externally prepared %s formula without a slot wrapper", display => {
+    document.body.innerHTML = '<p>target</p>'
+    $.move(document.body, 1)
+    const prepare = editor.prepareHTMLFragment.bind(editor)
+    const spy = vi.spyOn(editor, "prepareHTMLFragment").mockImplementation((fragment, ...args) => {
+      for(const original of Array.from(fragment.querySelectorAll("math"))) {
+        const math = mathElement("math", mathElement("mrow", mathElement("mfrac", mathElement("mrow", mathElement("mn", "1")), mathElement("mrow", mathElement("mn", "2")))))
+        if(display !== "missing") math.setAttribute("display", display)
+        original.replaceWith(math)
+      }
+      return prepare(fragment, ...args)
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", display === "missing" ? '<math><mi>x</mi></math>' : `<p><br><math display="${display}"><mi>x</mi></math></p>`)
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    spy.mockRestore()
+    expectBodyToBe(`<p>target</p><p>${display === "missing" ? "" : "<br>"}<math display="inline"><mrow><mfrac><mrow><mn>1</mn></mrow><mrow><mn>2</mn></mrow></mfrac></mrow></math></p>`)
+  })
+
+  it.each([0, 1].flatMap(offset => [false, true].map(marked => ({offset, marked}))))("pastes a formula at offset $offset in an empty paragraph (marked=$marked)", ({offset, marked}) => {
+    document.body.innerHTML = `<p>target</p><p><br${marked ? ' class="◆ ◆gap-before-selected"' : ""}></p>`
+    const paragraph = document.body.lastElementChild!
+    $.move(paragraph, offset)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const prepare = editor.prepareHTMLFragment.bind(editor)
+    const spy = vi.spyOn(editor, "prepareHTMLFragment").mockImplementation((fragment, ...args) => {
+      for(const original of Array.from(fragment.querySelectorAll("math"))) {
+        original.replaceWith(mathElement("math", mathElement("mrow", mathElement("mfrac", mathElement("mrow", mathElement("mn", "1")), mathElement("mrow", mathElement("mn", "2"))))))
+      }
+      return prepare(fragment, ...args)
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", '<math><mrow><mfrac><mrow><mn>1</mn></mrow><mrow><mn>2</mn></mrow></mfrac></mrow></math>')
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    spy.mockRestore()
+    expect(document.querySelector("slot")).toBeNull()
+    expect(paragraph.querySelector('math[display="inline"]')).not.toBeNull()
+    expect(paragraph.querySelector("br")).toBeNull()
+    expect(document.body.lastElementChild).toBe(paragraph)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expectBodyToBe('<p>target</p><p><br></p>')
+    editor.doc.redo()
+    expect(document.querySelector("p:last-child br")).toBeNull()
+    expect(document.querySelector('p:last-child math[display="inline"]')).not.toBeNull()
+  })
+
+  it("preserves an authored line break when pasting a formula into nonempty text", () => {
+    document.body.innerHTML = '<p>before<br>after</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, 1)
+    const parse = editor.parseHTMLFragment.bind(editor)
+    const spy = vi.spyOn(editor, "parseHTMLFragment").mockImplementation((...args) => {
+      const result = parse(...args)
+      result.fragment.querySelector("math")?.replaceWith(mathElement("math", mathElement("mi", "x")))
+      return result
+    })
+    const data = new DataTransfer()
+    data.setData("text/html", '<math><mi>x</mi></math>')
+    document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
+    spy.mockRestore()
+    expect(paragraph.querySelector("br")).not.toBeNull()
+    expect(paragraph.querySelector('math[display="inline"]')).not.toBeNull()
   })
 
   it.each([false, true])("adapts internal formula moves and copies to their destination (copy=%s)", copy => {

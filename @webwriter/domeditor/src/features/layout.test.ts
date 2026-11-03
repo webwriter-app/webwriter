@@ -61,27 +61,55 @@ it("rejects wide placement when the containing section clips its content", () =>
   expect(target.classList.contains("ww-full-width")).toBe(false)
 })
 
-it("tracks the widest explicitly sized side item and clears derived widths with the column", () => {
+it("tracks direct explicit size changes and clears derived widths with the column", async () => {
   document.body.innerHTML = '<aside class="ww-float-right">First</aside><aside class="ww-float-right">Second</aside><p>Text</p>'
   const [first, second] = Array.from(document.body.querySelectorAll("aside"))
   vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
-  vi.spyOn(first, "getBoundingClientRect").mockImplementation(() => ({width: 400} as DOMRect))
-  vi.spyOn(second, "getBoundingClientRect").mockImplementation(() => ({width: 800} as DOMRect))
+  const measuredWidth = (element: HTMLElement) => Number.parseFloat(element.style.getPropertyValue("--ww-float-size")) || 720
+  vi.spyOn(first, "getBoundingClientRect").mockImplementation(() => ({width: measuredWidth(first)} as DOMRect))
+  vi.spyOn(second, "getBoundingClientRect").mockImplementation(() => ({width: measuredWidth(second)} as DOMRect))
+  const observe = () => new Promise<void>(resolve => setTimeout(resolve, 0))
   first.style.setProperty("--ww-float-size", "400px")
-  editor.features.layout.refresh()
+  await observe()
   expect(document.body.style.getPropertyValue("--ww-two-column-default-width")).toBe("")
   expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("400px")
   second.style.setProperty("--ww-float-size", "800px")
-  editor.features.layout.refresh()
+  await observe()
   expect(document.body.style.getPropertyValue("--ww-two-column-default-width")).toBe("0px")
   expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("800px")
   expect(editor.toHTML()).toContain("--ww-two-column-explicit-width: 800px")
-  second.remove()
-  editor.features.layout.refresh()
+  second.style.setProperty("--ww-float-size", "300px")
+  await observe()
   expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("400px")
+  first.style.setProperty("--ww-float-size", "950px")
+  await observe()
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("950px")
+  second.remove()
+  await observe()
+  expect(document.body.style.getPropertyValue("--ww-two-column-explicit-width")).toBe("950px")
   first.classList.remove("ww-float-right")
-  editor.features.layout.refresh()
+  await observe()
   expect(document.body.getAttribute("style")).toBeNull()
+})
+
+it("tracks each side's width independently and clears only the removed lane", () => {
+  document.body.innerHTML = '<aside class="ww-float-left" style="width: 150px"></aside><aside class="ww-float-right" style="width: 350px"></aside><p>Text</p>'
+  const [left, right] = Array.from(document.body.querySelectorAll("aside"))
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(1800)
+  vi.spyOn(left, "getBoundingClientRect").mockReturnValue({width: 150} as DOMRect)
+  vi.spyOn(right, "getBoundingClientRect").mockReturnValue({width: 350} as DOMRect)
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("150px")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("350px")
+  left.style.width = "100%"
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("0px")
+  expect(document.body.style.getPropertyValue("--ww-left-column-default-width")).toBe("var(--ww-prose-max, 45rem)")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("350px")
+  left.remove()
+  editor.features.layout.refresh()
+  expect(document.body.style.getPropertyValue("--ww-left-column-explicit-width")).toBe("")
+  expect(document.body.style.getPropertyValue("--ww-right-column-explicit-width")).toBe("350px")
 })
 
 it("keeps one authored sticky float in the column and preserves it through undo", () => {
@@ -107,13 +135,13 @@ it("keeps one authored sticky float in the column and preserves it through undo"
   expect(second.classList.contains("ww-float-sticky")).toBe(false)
 })
 
-it("flips every authored float when the toolbox changes the column direction", () => {
+it("changes only the selected float and preserves the other column through undo", () => {
   document.body.innerHTML = '<aside class="ww-float-left ww-float-sticky" style="width: 120px">First<!--keep--></aside><custom-card style="float:right;width:80px;color:red">Second</custom-card><p>Target</p>'
   const [first, second, target] = Array.from(document.body.children) as HTMLElement[]
   editor.doc.syncFromDOM(); editor.doc.stopCapturing()
   editor.features.selection.captureElement(target)
   expect(setFloat("far-right")).toBe(true)
-  expect([first, second, target].every(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) === "far-right")).toBe(true)
+  expect([first, second, target].map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))).toEqual(["far-left", "far-right", "far-right"])
   expect(first.classList.contains("ww-float-sticky")).toBe(true)
   expect(first.innerHTML).toBe("First<!--keep-->")
   expect(second.style.width).toBe("80px")
@@ -127,7 +155,7 @@ it("flips every authored float when the toolbox changes the column direction", (
   editor.doc.redo()
   expect(editor.toHTML(true)).toBe(right)
   expect(setFloat("far-left")).toBe(true)
-  expect([first, second, target].every(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList) === "far-left")).toBe(true)
+  expect([first, second, target].map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))).toEqual(["far-left", "far-right", "far-left"])
 })
 
 it("pins an existing inline float and clears the pin when its float is removed", () => {

@@ -68,6 +68,7 @@ export const appCommands: readonly AppCommand[] = [
     icon: option.icon,
     action: `mark-detail:${option.name}`,
   })),
+  {id: "text.popup", section: "Text", label: "Popup", description: "Toggle a popup on the selected text", icon: "Popup", action: "toggle-popup", defaultShortcut: alternate("Y")},
   {id: "text.clear", section: "Text", label: "Clear formatting", description: "Remove text formatting", icon: "Clear", action: "removeMarks", defaultShortcut: alternate("Backspace")},
   {id: "text.increase", section: "Text", label: "Increase font size", description: "Increase the selected text size", icon: "IncreaseFontSize", action: "increaseFontSize", defaultShortcut: primary("Shift+>")},
   {id: "text.decrease", section: "Text", label: "Decrease font size", description: "Decrease the selected text size", icon: "DecreaseFontSize", action: "decreaseFontSize", defaultShortcut: primary("Shift+<")},
@@ -189,6 +190,7 @@ export type AppSettings = {
   proofreadingEnabledByDefault: boolean
   userSnippets: UserSnippet[]
   language: string
+  keyboardLayout: KeyboardLayoutPreference
   defaultLayout: DocumentLayoutMode
   updateDocumentLanguage: boolean
   disableAI: boolean
@@ -214,6 +216,7 @@ export function defaultAppSettings(applePlatform = isOnApple()): AppSettings {
     proofreadingEnabledByDefault: true,
     userSnippets: [],
     language,
+    keyboardLayout: "auto",
     defaultLayout: "document",
     updateDocumentLanguage: true,
     disableAI: false,
@@ -286,6 +289,8 @@ export function loadAppSettings(): AppSettings {
         Boolean(snippet && typeof snippet.id === "string" && snippet.id && typeof snippet.label === "string"
           && snippet.label && typeof snippet.html === "string" && snippet.html)) : [],
       language: typeof value.language === "string" && value.language ? value.language : defaults.language,
+      keyboardLayout: typeof value.keyboardLayout === "string" && keyboardLayoutPreferences.includes(value.keyboardLayout as KeyboardLayoutPreference)
+        ? value.keyboardLayout as KeyboardLayoutPreference : "auto",
       defaultLayout: value.defaultLayout === "canvas" || value.defaultLayout === "slides" || value.defaultLayout === "board"
         ? value.defaultLayout
         : value.defaultLayout === "document" ? "document"
@@ -356,20 +361,115 @@ export function shortcutMatchesEvent(shortcut: string, event: KeyboardEvent) {
   return Boolean(shortcut) && shortcutFromEvent(event) === shortcut
 }
 
-export function shortcutParts(shortcut: string, applePlatform = isOnApple()) {
+/** The standard history shortcuts follow the produced letter; custom bindings
+ * retain the physical-key semantics used by the shortcut recorder. */
+export function isDefaultHistoryShortcut(commandId: string, shortcut: string, applePlatform = isOnApple()) {
+  return (commandId === "editor.undo" || commandId === "editor.redo")
+    && shortcut === appCommands.find(command => command.id === commandId)?.defaultShortcut?.(applePlatform)
+}
+
+export function commandForShortcutEvent(shortcuts: Record<string, string>, event: KeyboardEvent, applePlatform = isOnApple()) {
+  const physical = shortcutFromEvent(event)
+  if(!physical) return undefined
+  // Explicit physical assignments take precedence if they overlap a standard binding.
+  const assigned = appCommands.find(command => shortcuts[command.id]?.replace(/^Physical:/, "") === physical
+    && !isDefaultHistoryShortcut(command.id, shortcuts[command.id], applePlatform))
+  if(assigned) return assigned
+  if(event.key.length !== 1) return undefined
+  const logical = [...physical.split("+").slice(0, -1), event.key.toUpperCase()].join("+")
+  return appCommands.find(command => isDefaultHistoryShortcut(command.id, shortcuts[command.id], applePlatform)
+    && shortcuts[command.id] === logical)
+}
+
+export const keyboardLayoutPreferences = ["auto", "qwerty", "qwertz", "azerty", "awerty", "querty", "dvorak", "colemak", "workman"] as const
+export type KeyboardLayoutPreference = typeof keyboardLayoutPreferences[number]
+export type ShortcutLayout = {get(code: string): string | undefined}
+
+/** The browser may not expose the layout map, or may deny access to it. */
+export async function getShortcutLayout(): Promise<ShortcutLayout | undefined> {
+  try {
+    const keyboard = (navigator as Navigator & {keyboard?: {getLayoutMap(): Promise<ShortcutLayout>}}).keyboard
+    return await keyboard?.getLayoutMap()
+  }
+  catch {
+    return undefined
+  }
+}
+
+const fallbackLayouts: Record<Exclude<KeyboardLayoutPreference, "auto">, ShortcutLayout> = {
+  // These maps use the unshifted characters at the physical US key positions.
+  qwerty: new Map(),
+  qwertz: new Map([["KeyY", "z"], ["KeyZ", "y"]]),
+  azerty: new Map([
+    ["KeyA", "q"], ["KeyQ", "a"], ["KeyW", "z"], ["KeyZ", "w"], ["KeyM", ","],
+    ["Digit1", "&"], ["Digit2", "é"], ["Digit3", '"'], ["Digit4", "'"], ["Digit5", "("],
+    ["Digit6", "-"], ["Digit7", "è"], ["Digit8", "_"], ["Digit9", "ç"], ["Digit0", "à"],
+  ]),
+  awerty: new Map([["KeyQ", "ä"], ["KeyX", "ü"], ["KeyC", "ç"], ["KeyV", "ý"]]),
+  querty: new Map([["KeyW", "ü"], ["KeyI", "İ"]]),
+  dvorak: new Map([
+    ["KeyQ", "'"], ["KeyW", ","], ["KeyE", "."], ["KeyR", "p"], ["KeyT", "y"],
+    ["KeyY", "f"], ["KeyU", "g"], ["KeyI", "c"], ["KeyO", "r"], ["KeyP", "l"],
+    ["KeyS", "o"], ["KeyD", "e"], ["KeyF", "u"], ["KeyG", "i"], ["KeyH", "d"],
+    ["KeyJ", "h"], ["KeyK", "t"], ["KeyL", "n"], ["KeyZ", ";"], ["KeyX", "q"],
+    ["KeyC", "j"], ["KeyV", "k"], ["KeyB", "x"], ["KeyN", "b"],
+  ]),
+  colemak: new Map([
+    ["KeyE", "f"], ["KeyR", "p"], ["KeyT", "g"], ["KeyY", "j"], ["KeyU", "l"],
+    ["KeyI", "u"], ["KeyO", "y"], ["KeyP", ";"], ["KeyS", "r"], ["KeyD", "s"],
+    ["KeyF", "t"], ["KeyG", "d"], ["KeyJ", "n"], ["KeyK", "e"], ["KeyL", "i"], ["KeyN", "k"],
+  ]),
+  workman: new Map([
+    ["KeyW", "d"], ["KeyE", "r"], ["KeyR", "w"], ["KeyT", "b"], ["KeyY", "j"],
+    ["KeyU", "f"], ["KeyI", "u"], ["KeyO", "p"], ["KeyP", ";"], ["KeyD", "h"],
+    ["KeyF", "t"], ["KeyH", "y"], ["KeyJ", "n"], ["KeyK", "e"], ["KeyL", "o"],
+    ["KeyC", "m"], ["KeyV", "c"], ["KeyB", "v"], ["KeyN", "k"], ["KeyM", "l"],
+  ]),
+}
+
+/** Language is only a fallback guess: document language is unrelated to the keyboard. */
+export function effectiveShortcutLayout(preference: KeyboardLayoutPreference | undefined, detected?: ShortcutLayout): ShortcutLayout {
+  if(preference && preference !== "auto") return fallbackLayouts[preference] ?? fallbackLayouts.qwerty
+  if(detected) return detected
+  const language = (globalThis.navigator?.languages?.[0] || globalThis.navigator?.language || "").toLowerCase().replace("_", "-")
+  if(language === "tk" || language.startsWith("tk-")) return fallbackLayouts.awerty
+  if((language === "az" || language.startsWith("az-")) && !language.includes("-cyrl")) return fallbackLayouts.querty
+  if(language.startsWith("de") || language === "fr-ch") return fallbackLayouts.qwertz
+  if(language.startsWith("fr") && !language.startsWith("fr-ca")) return fallbackLayouts.azerty
+  return fallbackLayouts.qwerty
+}
+
+/** Resolve a standard history binding to the physical position used by the recorder. */
+export function physicalShortcutForCommand(commandId: string, shortcut: string, layout: ShortcutLayout, applePlatform = isOnApple()) {
+  if(!isDefaultHistoryShortcut(commandId, shortcut, applePlatform)) return shortcut.replace(/^Physical:/, "")
+  const parts = shortcut.split("+")
+  const letter = parts.at(-1)!
+  const physical = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").find(key =>
+    (layout.get(`Key${key}`) ?? key).toUpperCase() === letter)
+  if(physical) parts[parts.length - 1] = physical
+  return parts.join("+")
+}
+
+function shortcutLabel(part: string, layout?: ShortcutLayout) {
+  const code = /^[A-Z]$/.test(part) ? `Key${part}` : /^[0-9]$/.test(part) ? `Digit${part}` : ""
+  return (code && layout?.get(code))?.toUpperCase() || part
+}
+
+export function shortcutParts(shortcut: string, applePlatform = isOnApple(), layout?: ShortcutLayout) {
   const labels: Record<string, string> = applePlatform
     ? {Meta: "⌘ Command", Ctrl: "⌃ Control", Alt: "⌥ Option", Shift: "⇧ Shift", Space: "Space"}
     : {Meta: "Meta", Ctrl: "Ctrl", Alt: "Alt", Shift: "⇧ Shift", Space: "Space"}
-  return shortcut.split("+").filter(Boolean).map(part => labels[part] ?? part)
+  return shortcut.replace(/^Physical:/, "").split("+").filter(Boolean).map(part => labels[part] ?? shortcutLabel(part, layout))
 }
 
-export function formatShortcut(shortcut: string, applePlatform = isOnApple()) {
+export function formatShortcut(shortcut: string, applePlatform = isOnApple(), layout?: ShortcutLayout) {
   if(!shortcut) return ""
+  shortcut = shortcut.replace(/^Physical:/, "")
   if(applePlatform) {
     const compact: Record<string, string> = {Meta: "⌘", Ctrl: "⌃", Alt: "⌥", Shift: "⇧"}
-    return shortcut.split("+").map(part => compact[part] ?? part).join("")
+    return shortcut.split("+").map(part => compact[part] ?? shortcutLabel(part, layout)).join("")
   }
-  return shortcut
+  return shortcut.split("+").map(part => shortcutLabel(part, layout)).join("+")
 }
 
 /** Combinations consumed by the current operating system or browser chrome

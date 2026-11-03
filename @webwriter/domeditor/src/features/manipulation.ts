@@ -29,6 +29,7 @@ import {alignmentFromStyles, floatSideFromStyles, type FloatSide, paragraphStyle
 import {isSectionElement, isSectionName, type SectionName} from "../sections"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {authoredDetailsOpen, isHTMLDetailsElement} from "../editor-artifacts"
+import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
 import {elementDragType, nodeDragType, insertionMenuItems, ribbonInsertionDragType, ribbonInsertionAction, ribbonElementInsertionAction, emptyElementHTML} from "../insertion"
 import {cellForNode, createTable, tableForNode} from "../table"
 import {
@@ -47,7 +48,7 @@ type FloatDropZone = {container: Element, parent: Element, side: "left" | "right
 type FloatDropTargets = {source: Element, key: Element | string, zones: FloatDropZone[], scrollX: number, scrollY: number, currentScrollX: number, currentScrollY: number}
 
 type FloatPreviewMeasurements = {
-  geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, column?: {left: number, right: number}}>>>
+  geometry: Map<Element, Partial<Record<"left" | "right", {rect: DOMRect, clears: boolean, physicalSide: "left" | "right", column?: {left: number, right: number}}>>>
   clearance: Map<Element, Map<Element, {left: number, right: number}>>
 }
 
@@ -686,14 +687,11 @@ export class ManipulationFeature extends EditorFeature {
 
   floatSide(container: Element, x: number): "left" | "right" {
     if(this.floatDropHit?.container === container) return this.floatDropHit.side
-    const column = this.floatColumnSide()
-    if(column) return column
     const rect = container.getBoundingClientRect()
     return x < rect.left + rect.width / 2 ? "left" : "right"
   }
 
-  /** Read the authored DOM on each drop. Left wins only for legacy documents
-   * that already contain both directions; new placements keep one direction. */
+  /** Whether the document has a side column (used by resize controls). */
   floatColumnSide(): "left" | "right" | null {
     let right = false
     for(const element of getDocumentRoot().querySelectorAll<HTMLElement | SVGElement>(
@@ -706,20 +704,24 @@ export class ManipulationFeature extends EditorFeature {
     return right ? "right" : null
   }
 
-  private unavailableFloatMargin(event: MouseEvent) {
-    const side = this.floatColumnSide()
-    if(!side) return false
-    const body = getDocumentRoot(), rect = body.getBoundingClientRect(), style = getComputedStyle(body)
-    if(rect.width <= 0) return false
-    const left = rect.left + (parseFloat(style.paddingLeft) || 0)
-    const right = rect.right - (parseFloat(style.paddingRight) || 0)
-    return side === "right" ? event.clientX < left : event.clientX >= right
-  }
-
   floatDropTarget(event: MouseEvent, source: Element, range?: Range) {
     this.floatDropHit = null
     if(this.editor.features.canvas.active || this.editor.features.slides.active || source.namespaceURI === MATH_NAMESPACE) return null
     if(event.target instanceof Node && source.contains(event.target)) return null
+    // Ribbon snippets should use a live text caret when the pointer is over
+    // authored text. Projected float lanes cover the whole page column, so
+    // their rectangles can otherwise steal a drop directly on visible text.
+    // Requiring an actual text range hit keeps native caret snapping from
+    // claiming blank gutters, where floating remains the intended behavior.
+    if((event as MouseEvent & {dataTransfer?: DataTransfer | null}).dataTransfer?.types.includes(ribbonInsertionDragType)) {
+      const root = getDocumentRoot(), point = this.dropPoint(event)
+      if(point?.node instanceof Text && point.node.data && root.contains(point.node)) {
+        const text = document.createRange()
+        text.selectNodeContents(point.node)
+        if(Array.from(text.getClientRects()).some(rect => event.clientX >= rect.left && event.clientX <= rect.right
+          && event.clientY >= rect.top && event.clientY <= rect.bottom)) return null
+      }
+    }
     if(source === this.nodeDrag?.element && source.matches("p, h1, h2, h3, h4, h5, h6")) {
       const point = this.dropPoint(event)
       // Caret hit testing can snap from an empty outer margin to nearby text.
@@ -743,18 +745,17 @@ export class ManipulationFeature extends EditorFeature {
     if(this.floatDropTargets?.key !== key) this.prepareFloatDropTargets(source)
     const targets = this.floatDropTargets
     if(!targets) return null
-    const column = this.floatColumnSide()
     const dx = targets.scrollX - targets.currentScrollX, dy = targets.scrollY - targets.currentScrollY
     // Hover only checks stored rectangles. It never measures a template or
     // changes a measurement element's styles.
-    const hits = targets.zones.filter(zone => (!column || zone.side === column) && zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
+    const hits = targets.zones.filter(zone => zone.container !== source && event.clientX >= zone.rect.left + dx && event.clientX < zone.rect.right + dx
       && event.clientY >= zone.rect.top + dy && event.clientY < zone.rect.bottom + dy)
     const preferred = (zone: FloatDropZone) => preview?.container === zone.container ? preview.side
       : event.clientX < zone.center + dx ? "left" : "right"
     hits.sort((a, b) => b.rect.top - a.rect.top || Number(b.side === preferred(b)) - Number(a.side === preferred(a)))
     // Empty space in a document gutter still expresses float placement. Use
     // the nearest existing anchor, even below the last preview footprint.
-    const gutters = targets.zones.filter(zone => (!column || zone.side === column) && zone.column && event.clientX >= 0 && event.clientY >= 0
+    const gutters = targets.zones.filter(zone => zone.column && event.clientX >= 0 && event.clientY >= 0
       && (zone.side === "left" ? event.clientX < zone.column.left + dx : event.clientX >= zone.column.right + dx))
     gutters.sort((a, b) => Math.abs(a.rect.top + dy - event.clientY) - Math.abs(b.rect.top + dy - event.clientY)
       || b.rect.top - a.rect.top)
@@ -769,7 +770,7 @@ export class ManipulationFeature extends EditorFeature {
     // An explicitly shown insertion preview can also cover a projected area
     // whose anchor has no current layout box. It is a fallback, never a latch
     // that masks newer anchors while moving down the page.
-    if(preview && (!column || preview.side === column) && preview.container !== source && contains(preview.rect) && valid(preview.container)) {
+    if(preview && preview.container !== source && contains(preview.rect) && valid(preview.container)) {
       this.floatDropHit = preview
       return preview.container
     }
@@ -877,8 +878,6 @@ export class ManipulationFeature extends EditorFeature {
 
   placeFloat(element: Element, container: Element, side: "left" | "right" | "none", placement: "before" | "after" = "before") {
     if(this.editor.isEditingLocked || !container.isConnected || element !== container && this.floatContainer(container, element) !== container) return false
-    const column = this.floatColumnSide()
-    if(side !== "none" && column && column !== side) return false
     if(element !== container) container[placement](element)
     return this.setFloat(element, side)
   }
@@ -887,9 +886,8 @@ export class ManipulationFeature extends EditorFeature {
    * drags. Ownership prevents selection cleanup in one path from flickering a
    * preview currently maintained by the other. */
   showFloatDropPreview(container: Element, side: "left" | "right", owner: "transfer" | "transformation" | "insertion", source?: Element) {
-    const column = this.floatColumnSide()
     if(!container.isConnected || !container.parentElement || !getDocumentRoot().contains(container)
-      || this.editor.features.canvas.active || this.editor.features.slides.active || column && column !== side) {
+      || this.editor.features.canvas.active || this.editor.features.slides.active) {
       this.clearFloatDropPreview(owner)
       return
     }
@@ -913,10 +911,10 @@ export class ManipulationFeature extends EditorFeature {
   private floatPreviewRect(container: Element, side: "left" | "right", overlay: HTMLElement, source?: Element,
     measurements: FloatPreviewMeasurements = {geometry: new Map(), clearance: new Map()}) {
     const rect = container.getBoundingClientRect(), parent = container.parentElement!
-    const physicalSide = this.floatColumnSide() ?? side
+    let physicalSide = side
     const singleLane = document.documentElement.clientWidth >= 720
     const cached = measurements.geometry.get(parent)?.[side]
-    if(cached) return new DOMRect(cached.rect.left, this.floatPreviewTop(container, physicalSide, source, cached.clears, measurements), cached.rect.width, cached.rect.height)
+    if(cached) return new DOMRect(cached.rect.left, this.floatPreviewTop(container, cached.physicalSide, source, cached.clears, measurements), cached.rect.width, cached.rect.height)
     const body = document.body.getBoundingClientRect(), bodyStyle = getComputedStyle(document.body)
     const parentRect = parent.getBoundingClientRect(), parentStyle = getComputedStyle(parent)
     const number = (value: string) => parseFloat(value) || 0
@@ -934,29 +932,59 @@ export class ManipulationFeature extends EditorFeature {
       const currentRight = pixels("var(--ww-right-lane, var(--ww-lane, 0px))", 0)
       let pageLeft = body.left + number(bodyStyle.paddingLeft) - currentLeft
       let pageRight = body.right - number(bodyStyle.paddingRight) + currentRight
-      const hasLeft = lanes && physicalSide === "left"
-      const hasRight = lanes && physicalSide === "right"
-      const defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2)))", 320)
+      let defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2)))", 320)
       const inline = (source as HTMLElement | undefined)?.style
       const authoredWidth = inline?.getPropertyValue("inline-size") || inline?.width
       const sourceMaximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth
       const sourceSize = inline?.getPropertyValue("--ww-float-size") || authoredWidth || sourceMaximum
-      const sourceWidth = sourceSize && sourceSize !== "auto" && sourceSize !== "none"
+      const sourceWidth = sourceSize && sourceSize !== "auto" && sourceSize !== "none" && (!sourceSize.includes("%") || sourceMaximum && !sourceMaximum.includes("%") && sourceMaximum !== "none")
         ? Math.min(pixels(sourceSize, source?.getBoundingClientRect().width || 0), sourceMaximum && sourceMaximum !== "none" ? pixels(sourceMaximum, Infinity) : Infinity) : 0
       const otherFloats = Array.from(document.body.querySelectorAll<HTMLElement>('.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]'))
         .filter(element => element !== source)
-      const allExplicit = Boolean(sourceWidth) && otherFloats.every(element => ["--ww-float-size", "inline-size", "width", "max-inline-size", "max-width"]
-        .some(name => element.style.getPropertyValue(name)))
-      const laneWidth = lanes
-          ? Math.max(allExplicit ? 0 : defaultLaneWidth, pixels("var(--ww-two-column-explicit-width, 0px)", 0), sourceWidth)
-          : pixels("var(--ww-float-width)", 256)
-      const lane = laneWidth + gap
+      const sides = otherFloats.map(element => floatSideFromStyles(getComputedStyle(element).float, element.style, element.classList))
+      let hasLeft = lanes && (side === "left" || sides.includes("far-left"))
+      let hasRight = lanes && (side === "right" || sides.includes("far-right"))
+      if(hasLeft && hasRight && document.documentElement.clientWidth >= 1400) {
+        defaultLaneWidth = pixels("min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 2 * var(--ww-float-gap)) / 3)))", 320)
+      }
+      const widthFor = (columnSide: "left" | "right") => {
+        const items = otherFloats.filter((_, index) => sides[index] === `far-${columnSide}`)
+        const implicit = items.some(element => !["--ww-float-size", "inline-size", "width", "max-inline-size", "max-width"]
+          .some(name => {
+            const value = element.style.getPropertyValue(name)
+            return value && !value.includes("%") && value !== "auto" && value !== "none" && value !== "var(--ww-float-width)"
+          })) || side === columnSide && !sourceWidth
+        return Math.max(implicit ? defaultLaneWidth : 0,
+          items.length ? pixels(`var(--ww-${columnSide}-column-explicit-width, 0px)`, 0) : 0,
+          side === columnSide ? sourceWidth : 0)
+      }
+      let leftWidth = hasLeft ? widthFor("left") : 0, rightWidth = hasRight ? widthFor("right") : 0
+      if(hasLeft && hasRight && document.documentElement.clientWidth < 1400) {
+        physicalSide = "right"
+        rightWidth = Math.max(leftWidth, rightWidth)
+        leftWidth = 0
+        hasLeft = false
+        hasRight = true
+      }
       if(lanes) {
         const gutter = number(bodyStyle.paddingRight) - currentRight
         const balance = pixels("var(--ww-leading-gutter-balance, 0px)", 0)
         const prose = pixels("var(--ww-prose-max, 45rem)", 720)
         const root = document.documentElement.getBoundingClientRect()
-        const projectedWidth = Math.min(root.width, prose + lane + balance + 2 * gutter)
+        if(hasLeft && hasRight) {
+          const budget = Math.max(0, root.width - 2 * gutter - balance - 300 - 2 * gap)
+          const leftIdeal = leftWidth, rightIdeal = rightWidth
+          leftWidth = Math.min(leftIdeal, budget - Math.min(rightIdeal, budget / 2))
+          rightWidth = Math.min(rightIdeal, budget - Math.min(leftIdeal, budget / 2))
+        }
+        else {
+          const limit = Math.max(0, root.width - 2 * gutter - balance - 300 - gap)
+          leftWidth = Math.min(leftWidth, limit)
+          rightWidth = Math.min(rightWidth, limit)
+        }
+        const centerWidth = hasLeft && hasRight
+          ? Math.min(prose, Math.max(defaultLaneWidth, 3 * defaultLaneWidth - leftWidth - rightWidth)) : prose
+        const projectedWidth = Math.min(root.width, centerWidth + leftWidth + rightWidth + gap * (Number(hasLeft) + Number(hasRight)) + balance + 2 * gutter)
         const projectedLeft = root.left + (root.width - projectedWidth) / 2
         pageLeft = projectedLeft + gutter + balance
         pageRight = projectedLeft + projectedWidth - gutter
@@ -965,7 +993,7 @@ export class ManipulationFeature extends EditorFeature {
       let right = parentRect.right - number(parentStyle.borderRightWidth) - number(parentStyle.paddingRight)
       let column: {left: number, right: number} | undefined
       if(themed && body.width > 0) {
-        const columnLeft = pageLeft + (hasLeft ? lane : 0), columnRight = pageRight - (hasRight ? lane : 0)
+        const columnLeft = pageLeft + (hasLeft ? leftWidth + gap : 0), columnRight = pageRight - (hasRight ? rightWidth + gap : 0)
         column = {left: columnLeft, right: columnRight}
         if(parent === document.body || parent.parentElement === document.body && parent.matches("main, article, section")) {
           left = columnLeft + number(parentStyle.paddingLeft) * Number(parent !== document.body)
@@ -979,6 +1007,8 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(right <= left) { left = rect.left; right = rect.right }
       const available = Math.max(1, right - left)
+      const laneWidth = lanes ? physicalSide === "left" ? leftWidth : rightWidth : pixels("var(--ww-float-width)", 256)
+      const lane = laneWidth + gap
       overlay.style.width = `${available}px`
       probe.style.position = "static"
       const preferred = inline?.getPropertyValue("--ww-float-size") || `min(100%, var(--ww-float-width, 256px), ${authoredWidth && authoredWidth !== "auto" ? authoredWidth : "var(--ww-float-width, 256px)"})`
@@ -987,6 +1017,7 @@ export class ManipulationFeature extends EditorFeature {
       const maximum = inline?.getPropertyValue("max-inline-size") || inline?.maxWidth || "none"
       probe.style.maxWidth = maximum
       width = probe.getBoundingClientRect().width || Math.min(width, number(maximum) || Infinity)
+      if(lanes) width = Math.min(width, laneWidth)
       let height = 0
       if(source?.isConnected) {
         const initial = source.getBoundingClientRect()
@@ -1021,7 +1052,7 @@ export class ManipulationFeature extends EditorFeature {
       // every possible anchor in a long document.
       if(parentRect.width) {
         const geometry = measurements.geometry.get(parent) ?? {}
-        geometry[side] = {rect: result, clears: lanes || !themed, column}
+        geometry[side] = {rect: result, clears: lanes || !themed, physicalSide, column}
         measurements.geometry.set(parent, geometry)
       }
       return result
@@ -1297,7 +1328,6 @@ export class ManipulationFeature extends EditorFeature {
       range.collapse(true)
       return range
     }
-    if(this.unavailableFloatMargin(event)) return null
     if(source && event.target instanceof Node && source.contains(event.target)) return null
     // Overlays such as the selected element's drag surface cover authored
     // content, which native hit testing would otherwise resolve to the appendix.
@@ -2495,7 +2525,11 @@ export class ManipulationFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return root
     const selectedElement = $.selectedElement
-    if(inAuthoredBody(selectedElement)) return figureSelectionTarget(selectedElement)
+    if(inAuthoredBody(selectedElement)) {
+      const summary = selectedElement.closest("details:not([is]) > summary")
+      if(summary && !atomicEditingContainer(selectedElement, this.editor.schema)) return summary.parentElement!
+      return figureSelectionTarget(selectedElement)
+    }
     const inBody = (node: Node) => node === body || body.contains(node)
     const range = selection.getRangeAt(0)
     if(!inBody(selection.anchorNode) || !inBody(selection.focusNode)) {
@@ -2507,6 +2541,10 @@ export class ManipulationFeature extends EditorFeature {
     const common = range.commonAncestorContainer
     if(common === document || common === document.documentElement || common === body) return root
     const container = getContainer(common)
+    const summary = container.closest("details:not([is]) > summary")
+    if(summary && !atomicEditingContainer(container, this.editor.schema)) return summary.parentElement!
+    const popupPart = container.closest("button[popovertarget], [popover]")
+    if(inAuthoredBody(popupPart) && ["toggle", "content"].includes(popupElementRole(popupPart) ?? "")) return popupPart
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
   }
 
@@ -2517,6 +2555,8 @@ export class ManipulationFeature extends EditorFeature {
       ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
+    if(["toggle", "content"].includes(popupElementRole(target) ?? "")) return target
+    if(target.matches("details:not([is])")) return target
     // Table and cell selections keep their scope inside sections and templates.
     const cell = cellForNode(target)
     if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
@@ -2548,7 +2588,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!target) return []
     const root = this.editor.features.slides.active
       ? this.editor.features.slides.containingSlide(this.styleTarget) ?? getDocumentRoot() : getDocumentRoot()
-    if(target !== root || $.isDocumentSelection || $.range.collapsed) return [target]
+    if(target !== root || $.selectedElement === root || $.selectedElement === document.body || $.range.collapsed) return [target]
     const ranges = $.flowRanges.filter(range => root.contains(range.startContainer) && root.contains(range.endContainer))
     if(!ranges.length) return [target]
     // A range across siblings has the root as its common ancestor, but its
@@ -2795,6 +2835,7 @@ export class ManipulationFeature extends EditorFeature {
     })
     return {
       target: {localName: target.localName, namespaceURI: target.namespaceURI,
+        ...(["toggle", "content"].includes(popupElementRole(target) ?? "") ? {popupRole: popupElementRole(target) as "toggle" | "content"} : {}),
         placement: this.editor.features.layout.getPlacementState(target),
         grouping: this.editor.features.board.groupingState(target),
         canMoveUp: movable && target.previousElementSibling !== null,
@@ -2877,7 +2918,9 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Re-read containers and widget identities at command time. */
   selectedElementsOfType(type: ElementSelectionType) {
-    const elements = this.selectedEditingElements().filter(element => element.localName === type.localName && element.namespaceURI === type.namespaceURI
+    const selected = this.selectedEditingElements()
+    const elements = [...new Set([...selected, ...selected.map(element => popupDisplayToggle(element)).filter((element): element is Element => Boolean(element))])]
+      .filter(element => element.localName === type.localName && element.namespaceURI === type.namespaceURI
       && (type.id === undefined || element.id === type.id)
       && (type.path === undefined || JSON.stringify(pathFromNode(document.body, element)) === JSON.stringify(type.path)))
     // Ambiguous authored IDs must not turn an individual widget edit into a batch edit.
@@ -2886,9 +2929,19 @@ export class ManipulationFeature extends EditorFeature {
 
   getSelectedElementTypes(properties: string[] = []): SelectedElementTypeState[] {
     const groups = new Map<string, Element[]>()
-    for(const element of this.selectedEditingElements()) {
+    const presented = new Set<Element>()
+    for(const selected of this.selectedEditingElements()) {
+      const role = popupElementRole(selected)
+      const element = role === "popup" ? popupDisplayToggle(selected) ?? selected : selected
+      if(role === "content") {
+        const toggle = popupDisplayToggle(selected)
+        if(toggle) presented.add(toggle)
+      }
+      presented.add(element)
+    }
+    for(const element of presented) {
       const key = JSON.stringify([element.namespaceURI, element.localName,
-        ...(element.localName.includes("-") ? [pathFromNode(document.body, element)] : [])])
+        ...(element.localName.includes("-") || popupElementRole(element) ? [pathFromNode(document.body, element)] : [])])
       groups.set(key, [...(groups.get(key) ?? []), element])
     }
     return [...groups.values()].map(elements => {
@@ -3043,9 +3096,33 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Replaces the current selection with nodes and leaves the caret at the
    * end of the inserted content without splitting its containing block. */
+  private nestedPopupAtSelection(nodes: readonly Node[]) {
+    const selection = document.getSelection()
+    if(!popupContentAncestor($.selectedElement ?? null)
+      && !popupContentAncestor(selection?.anchorNode ?? null)
+      && !popupContentAncestor(selection?.focusNode ?? null)) return false
+    return nodes.some(node => (node instanceof Element || node instanceof DocumentFragment)
+      && (node instanceof Element && node.matches(".ww-popup, .ww-popup-content[popover]")
+        || !!node.querySelector(".ww-popup, .ww-popup-content[popover]")))
+  }
+
   private insertAtSelection(...nodes: Node[]) {
+    if(!this.editor.features.selection.normalizePopupSelection()) return
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
-    if(!nodes.length) return
+    if(!nodes.length || this.nestedPopupAtSelection(nodes)) return
+    const selection = document.getSelection()
+    const popupToggleAt = (node: Node | null) => {
+      const element = node instanceof Element ? node : node?.parentElement
+      const toggle = element?.closest(".ww-popup button[popovertarget]")
+      return toggle && popupElementRole(toggle) === "toggle" ? toggle : null
+    }
+    const toggle = popupToggleAt(selection?.anchorNode ?? null)
+    if(toggle && toggle === popupToggleAt(selection?.focusNode ?? null)) {
+      const fragment = document.createDocumentFragment()
+      fragment.append(...nodes)
+      for(const link of Array.from(fragment.querySelectorAll("a"))) link.replaceWith(...Array.from(link.childNodes))
+      nodes = Array.from(fragment.childNodes)
+    }
     return this.withNormalization(() => {
       $.replace(...nodes)
       this.moveAfterInsertedNode(nodes.at(-1)!)
@@ -3141,6 +3218,40 @@ export class ManipulationFeature extends EditorFeature {
   /** A single heading joins an existing text container as inline content.
    * Gaps and whole-element replacements retain its authored heading level. */
   private insertPastedFragment(fragment: DocumentFragment) {
+    for(const math of Array.from(fragment.querySelectorAll("math"))) {
+      if(math.namespaceURI !== MATH_NAMESPACE) continue
+      let ancestor = math.parentElement
+      while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
+      if(!ancestor) math.setAttribute("display", "inline")
+    }
+    // Remap unambiguous copies of the built-in popup without changing
+    // arbitrary authored IDs or references we cannot safely rewrite.
+    for(const popup of fragment.querySelectorAll<HTMLElement>('[popover][id^="popup-"]')) {
+      const id = popup.id
+      if(!/^popup-[0-9a-f-]{36}$/i.test(id) || !document.getElementById(id)) continue
+      const targets = Array.from(fragment.querySelectorAll<HTMLElement>("[id]")).filter(element => element.id === id)
+      const invokers = Array.from(fragment.querySelectorAll<HTMLElement>("[popovertarget]"))
+        .filter(element => element.getAttribute("popovertarget") === id)
+      if(targets.length !== 1 || !invokers.length) continue
+      const ambiguous = Array.from(fragment.querySelectorAll("*")).some(element =>
+        Array.from(element.attributes).some(attribute => attribute.value.includes(id)
+          && !(element === popup && attribute.name === "id")
+          && !(invokers.includes(element as HTMLElement) && attribute.name === "popovertarget")
+          && !(invokers.includes(element as HTMLElement) && attribute.name === "style"
+            && attribute.value.trim() === `anchor-name: --${id};`)
+          && !(element === popup && attribute.name === "style"
+            && attribute.value.trim() === `position-anchor: --${id};`))
+        || element.localName === "style" && element.textContent?.includes(id))
+      if(ambiguous) continue
+      let replacement = `popup-${crypto.randomUUID()}`
+      while(document.getElementById(replacement) || fragment.getElementById(replacement)) replacement = `popup-${crypto.randomUUID()}`
+      popup.id = replacement
+      if(popup.style.getPropertyValue("position-anchor").trim() === `--${id}`) popup.style.setProperty("position-anchor", `--${replacement}`)
+      invokers.forEach(invoker => invoker.setAttribute("popovertarget", replacement))
+      invokers.forEach(invoker => {
+        if(invoker.style.getPropertyValue("anchor-name").trim() === `--${id}`) invoker.style.setProperty("anchor-name", `--${replacement}`)
+      })
+    }
     this.selectCapturedElementForInsertion()
     if(this.insertLayoutPaste(fragment)) return
     const container = $.anchorContainer
@@ -3153,7 +3264,26 @@ export class ManipulationFeature extends EditorFeature {
         heading.replaceWith(...heading.childNodes)
       }
     }
-    return this.insertClipboardFragment(fragment)
+    // A copied inline Popup carries its out-of-flow content as a sibling in
+    // clipboard HTML. Insert the inline run first, then restore each linked
+    // content element beside its live text block (or inside its table cell).
+    const popupContents = Array.from(fragment.children).filter(element => element.matches(".ww-popup-content[popover][id]"))
+      .flatMap(content => {
+        const toggle = Array.from(fragment.querySelectorAll<HTMLButtonElement>(".ww-popup button[popovertarget]"))
+          .find(candidate => candidate.getAttribute("popovertarget") === content.id)
+        return toggle ? [{toggle, content}] : []
+      })
+    popupContents.forEach(({content}) => content.remove())
+    const result = this.insertClipboardFragment(fragment, false, true)
+    if(result !== false) for(const {toggle, content} of popupContents) {
+      if(!toggle.isConnected || document.getElementById(content.id)) continue
+      const wrapper = toggle.closest(".ww-popup")
+      if(!wrapper) continue
+      const block = getContainer(wrapper)
+      if(block.matches("td, th, caption")) block.append(content)
+      else block.after(content)
+    }
+    return result
   }
 
   /** Duplicate whole layout items without replacing the selected original or
@@ -3238,9 +3368,10 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Inserts clipboard content at a virtual body/gap position. Inline-only
    * content is placed in a text block; block content remains at the gap. */
-  private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false): void | boolean {
+  private insertClipboardFragment(fragment: DocumentFragment, commandInsertion = false, paste = false): void | boolean {
+    if(this.nestedPopupAtSelection(Array.from(fragment.childNodes))) return false
     if(commandInsertion && !this.inheritingInsertionLayout) {
-      return this.inheritInsertionLayout(Array.from(fragment.childNodes), () => this.insertClipboardFragment(fragment, commandInsertion))
+      return this.inheritInsertionLayout(Array.from(fragment.childNodes), () => this.insertClipboardFragment(fragment, commandInsertion, paste))
     }
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if(!this.allowsCaptionInsertion(Array.from(fragment.childNodes))) return false
@@ -3252,7 +3383,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     this.selectCapturedElementForInsertion()
     this.moveInsertionAfterLoneFloat(Array.from(fragment.childNodes))
-    for(const math of Array.from(fragment.querySelectorAll("math"))) {
+    for(const math of paste ? [] : Array.from(fragment.querySelectorAll("math"))) {
       if(math.namespaceURI !== MATH_NAMESPACE) continue
       let ancestor = math.parentElement
       while(ancestor && !ancestor.localName.includes("-") && !ancestor.hasAttribute("is")) ancestor = ancestor.parentElement
@@ -3272,7 +3403,7 @@ export class ManipulationFeature extends EditorFeature {
     const isInlineContent = nodes.every(node => this.isInlineClipboardNode(node))
     if(this.editor.features.slides.active && (!isInlineContent || nodes.some(node => node instanceof Element && !isMarkElement(node) && !node.matches("br,wbr"))) && !isSlide($.range.startContainer)) {
       fragment.replaceChildren(...nodes)
-      this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, commandInsertion))
+      this.editor.features.canvas.insertCentered(() => this.insertClipboardFragment(fragment, commandInsertion, paste))
       return
     }
     const widget = nodes.length === 1 ? this.insertedWidget(nodes[0]) : null
@@ -3281,7 +3412,19 @@ export class ManipulationFeature extends EditorFeature {
       return
     }
     if(isVirtualSelection && isInlineContent && !this.ensureTextBlock()) return
-    if(isVirtualSelection || isInlineContent) this.insertAtSelection(...nodes)
+    if(isVirtualSelection || isInlineContent) {
+      const anchor = $.anchor
+      const placeholder = paste && isInlineContent && $.isEmpty && anchor instanceof HTMLParagraphElement
+        && anchor.childNodes.length === 1 && anchor.firstChild instanceof HTMLBRElement
+        && Array.from(anchor.firstChild.attributes).every(attribute => attribute.name === "class" && !authoredClassValue(attribute.value))
+        ? anchor.firstChild : null
+      const end = placeholder ? this.editor.doc.beginUndoGroup() : null
+      try {
+        this.insertAtSelection(...nodes)
+        if(anchor && placeholder?.parentNode === anchor && nodes.some(node => anchor.contains(node))) placeholder.remove()
+      }
+      finally { end?.() }
+    }
     else this.insertBlocks(nodes)
     if(widget) {
       this.editor.features.selection.captureElement(widget)
@@ -3634,6 +3777,7 @@ export class ManipulationFeature extends EditorFeature {
 
   /** Inserts a break only when it is valid at the current selection. */
   private insertBreak(type: "br" | "wbr", preserveContainer = false) {
+    if(!this.editor.features.selection.normalizePopupSelection()) return
     // Freeform carets between breaks stay in their existing text container.
     // An empty list still needs its first real item before it can hold a break.
     if(preserveContainer) this.editor.features.list.materializeVirtualItem()
@@ -3808,6 +3952,14 @@ export class ManipulationFeature extends EditorFeature {
     setSelectedElementStyles: ({selectionType, styles}: {
       type: "setSelectedElementStyles", selectionType: ElementSelectionType, styles: Record<string, ElementStyleMutation>,
     }) => this.setSelectedElementStyles(selectionType, styles),
+    deletePopupPart: ({path}: {type: "deletePopupPart", path: number[]}) => {
+      const part = nodeAtPath(document.body, path)
+      if(!isElement(part) || !["toggle", "content"].includes(popupElementRole(part) ?? "")) return false
+      this.editor.features.selection.selectElement(part)
+      if($.selectedElement !== part) return false
+      this.delete()
+      return true
+    },
     setElementAttribute: ({
       path,
       targetId,
@@ -4050,6 +4202,14 @@ export class ManipulationFeature extends EditorFeature {
           return
         }
       }
+      // Use the same outer boundary as caret painting and arrow navigation.
+      // Chromium may otherwise route an insertion into the adjacent button.
+      if($.isEmpty && !ev.isComposing && ["insertText", "insertReplacementText"].includes(ev.inputType)
+        && ev.data && this.editor.features.selection.isOutsidePopupBoundary()) {
+        ev.preventDefault()
+        this.insertAtSelection(document.createTextNode(ev.data))
+        return
+      }
       const selected = $.selectedElement
       if(ev.inputType.startsWith("delete") && (selected === getDocumentRoot() || selected === document.body)) {
         ev.preventDefault()
@@ -4109,6 +4269,8 @@ export class ManipulationFeature extends EditorFeature {
     },
     "paste": ev => {
       if(ev.defaultPrevented) return
+      this.editor.features.table.handlePaste(ev)
+      if(ev.defaultPrevented) return
       const html = ev.clipboardData?.getData("text/html")
       if(html && this.editor.features.migration.needsMigration(html)) {
         ev.preventDefault()
@@ -4132,16 +4294,21 @@ export class ManipulationFeature extends EditorFeature {
       ev.clipboardData.setData("text/plain", text)
     },
     "cut": ev => {
-      if(ev.defaultPrevented || !ev.clipboardData || $.isEmpty) return
+      if(ev.defaultPrevented || !ev.clipboardData) return
+      if(this.editor.features.selection.captureSelectedElement && (this.editor.features.graphic.selectedShapes.length
+        || this.editor.features.graphic.textEditingRange)) return
+      if(this.editor.features.selection.captureSelectedElement) this.selectCapturedElementForInsertion()
+      if($.isEmpty) return
       const selected = $.selectedElement
       const fragment = $.copy()
-      if(selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length
-        && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6"))) return
+      if(!selected && !$.isMultiElementSelection && !$.excludedFlowElements.length
+        && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6, .ww-popup"))) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment)
       ev.clipboardData.setData("text/html", html)
       ev.clipboardData.setData("text/plain", text)
       $.delete()
+      this.editor.features.dialog.ensurePopupContent()
     },
     "keydown": ev => {
       const isAltGraph = ev.getModifierState("AltGraph")
@@ -4191,6 +4358,8 @@ export class ManipulationFeature extends EditorFeature {
    * container as a clone. Headings continue as a new default node (<p>),
    * as do other inseperable containers when `strict` is set. */
   insert(node?: Node, splitDepth=0, strict=false, commandInsertion = this.commandPlacement): void | boolean {
+    if(!this.editor.features.selection.normalizePopupSelection()) return false
+    if(node && this.nestedPopupAtSelection(node instanceof DocumentFragment ? Array.from(node.childNodes) : [node])) return false
     if(node && !node.isConnected && !this.inheritingInsertionLayout
       && !this.editor.features.canvas.active && !this.editor.features.slides.active) {
       const nodes = node instanceof DocumentFragment ? Array.from(node.childNodes) : [node]
@@ -4306,11 +4475,34 @@ export class ManipulationFeature extends EditorFeature {
    * reverse. At the document boundaries, Backspace/Delete move the caret to
    * the end/start of the adjacent block. */
   delete(direction?: "forward" | "backward", granularity:Granularity="character") {
+    if(!this.editor.features.selection.normalizePopupSelection()) return
     const whole = this.editor.features.selection.captureSelectedElement ?? this.editor.features.selection.selectedSectionElement ?? $.selectedElement
     if(!this.editor.allowsSelection(whole ? "delete" : "edit")) return
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
     const selected = $.selectedElement
+    const popupRole = selected && popupElementRole(selected)
+    if(selected && (popupRole === "toggle" || popupRole === "content")) {
+      const wrapper = selected.closest(".ww-popup") ?? popupDisplayToggle(selected)?.closest(".ww-popup")
+      const toggle = popupRole === "toggle" ? selected : popupDisplayToggle(selected)
+      const content = toggle && popupContentForToggle(toggle)
+      if(wrapper && toggle && content) return this.withNormalization(() => {
+        const parent = wrapper.parentNode!
+        const index = Array.from(parent.childNodes).indexOf(wrapper)
+        if(popupRole === "content") {
+          toggle.replaceWith(...Array.from(toggle.childNodes))
+          content.remove()
+          wrapper.replaceWith(...Array.from(wrapper.childNodes))
+        }
+        else if(wrapper.childNodes.length === 1 && wrapper.contains(toggle) && !wrapper.contains(content)
+          || wrapper.childNodes.length === 2 && wrapper.contains(toggle) && wrapper.contains(content)) {
+          wrapper.remove()
+          content.remove()
+        }
+        else {toggle.remove(); content.remove()}
+        $.move(parent, Math.min(index, parent.childNodes.length))
+      })
+    }
     if(selected && !slideLayoutRole(selected) && (this.editor.features.canvas.active && selected.parentElement === document.body
       || this.editor.features.slides.active && isSlide(selected.parentElement))) {
       return this.withNormalization(() => {
@@ -4324,6 +4516,14 @@ export class ManipulationFeature extends EditorFeature {
     if(slide && direction && isCaretAtBoundary(slide, direction === "backward" ? "start" : "end")
       || direction && this.editor.features.board.atBoundary(direction)) return
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.deleteSelection()
+    if(direction === "backward" && $.isEmpty) {
+      const paragraph = this.insertionReplacement()
+      const content = paragraph?.parentElement
+      if(paragraph?.localName === "p" && paragraph.querySelectorAll("br").length <= 1
+        && content && popupElementRole(content) === "content"
+        && Array.from(content.childNodes).every(node => node === paragraph || node.nodeType === Node.COMMENT_NODE
+          || node instanceof Text && !node.data.trim())) return
+    }
     if(direction === "backward" && this.joinFirstDetailsParagraphIntoSummary()) return
     if(direction && this.editor.features.selection.selectAdjacentContentlessWidget(direction)) return
     const range = $.range
@@ -4348,7 +4548,12 @@ export class ManipulationFeature extends EditorFeature {
         && isCaretAtBoundary(block, "start")) return
       if($.isGapSelection && (direction === "backward" ? $.elementBefore : $.elementAfter)?.matches("details > summary")) return
     }
-    return this.withNormalization(() => {
+    const anchor = $.anchor
+    const deletesNeighborText = anchor instanceof Text && direction
+      && (direction === "backward" ? $.anchorOffset > 0 : $.anchorOffset < anchor.length)
+    const outsidePopup = deletesNeighborText && granularity === "character" && $.isEmpty
+      ? this.editor.features.selection.outsidePopupBoundary(direction) : null
+    const result = this.withNormalization(() => {
       if(summary && !summary.textContent && summary.contains($.range.endContainer)) {
         $.delete()
         $.move(summary)
@@ -4452,6 +4657,8 @@ export class ManipulationFeature extends EditorFeature {
         }
       }
     })
+    if(outsidePopup) this.editor.features.selection.selectOutsidePopupBoundary(outsidePopup.wrapper, outsidePopup.start)
+    return result
   }
 
   /** Backspace at the first Details paragraph joins its children into Summary,
@@ -4560,6 +4767,8 @@ export class ManipulationFeature extends EditorFeature {
    * so the action bridge can report them to its caller. */
   async copy() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.copy()
+    if(this.editor.features.selection.captureSelectedElement && this.editor.features.graphic.selectedShapes.length
+      && !this.editor.features.graphic.textEditingRange) return this.editor.features.graphic.copy()
     if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     const item = this.#fragmentToClipboardItem($.copy())
     await navigator.clipboard.write([item])
@@ -4571,7 +4780,11 @@ export class ManipulationFeature extends EditorFeature {
   async cut() {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.cut()
+    if(this.editor.features.selection.captureSelectedElement && this.editor.features.graphic.selectedShapes.length
+      && !this.editor.features.graphic.textEditingRange) return this.editor.features.graphic.cut()
+    if(this.editor.features.selection.captureSelectedElement && this.editor.features.graphic.textEditingRange) return false
     if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
+    if(this.editor.features.selection.captureSelectedElement) this.selectCapturedElementForInsertion()
     const selection = document.getSelection()
     if(!selection?.rangeCount || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return false
     const captured = {
@@ -4600,6 +4813,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     return this.withNormalization(() => {
       $.delete()
+      this.editor.features.dialog.ensurePopupContent()
       return true
     })
   }
@@ -4608,7 +4822,7 @@ export class ManipulationFeature extends EditorFeature {
    * Inline content at an empty document or gap is wrapped in a text block.
    * Missing capabilities return false; supported API failures reject. */
   async paste() {
-    if(this.editor.features.table.hasCellSelection) return this.editor.features.table.paste()
+    if(this.editor.features.table.pasteTargetCell) return this.editor.features.table.paste()
     if(this.editor.features.graphic.textInsertionGraphic) return this.editor.features.graphic.paste()
     if(!navigator.clipboard?.read) return false
     const fragment = await this.#clipboardToFragment()

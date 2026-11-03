@@ -45,6 +45,12 @@ function erase(surface: SVGSVGElement, points: [number, number][], pointerType =
 }
 
 describe("formula keyboard", () => {
+  it("renders its keyboard surface fully opaque", async () => {
+    const keyboard = await mountKeyboard()
+    expect(getComputedStyle(keyboard).opacity || "1").toBe("1")
+    expect(getComputedStyle(keyboard).backgroundColor).toBe("#f2f4f7")
+  })
+
   it("erases a stroke on right click, preserves unrelated ink, and recognizes what remains", async () => {
     recognition.recognize.mockResolvedValue('<math xmlns="http://www.w3.org/1998/Math/MathML"><mi>y</mi></math>')
     const keyboard = await mountKeyboard()
@@ -425,7 +431,6 @@ describe("formula keyboard", () => {
     expect(getComputedStyle(keyboard).maxHeight).toContain("280px")
     expect(MathKeyboard.styles.cssText).toContain("760px")
     expect(MathKeyboard.styles.cssText).toContain("overflow-x: hidden")
-    expect(MathKeyboard.styles.cssText).toContain("opacity: 0.9")
     expect(MathKeyboard.styles.cssText).toContain("height: 280px")
     expect(MathKeyboard.styles.cssText).toContain("box-shadow:")
     expect(MathKeyboard.styles.cssText).not.toContain("overflow-y: auto")

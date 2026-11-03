@@ -827,6 +827,7 @@ export class GraphicFeature extends EditorFeature {
   protected handlesCapturedElementInteractions = true
   #pendingImport: {pickerId?: string, apply: (file: File | null) => Promise<void>, cancel: () => void} | null = null
   #selectedShapes = new Set<SVGGraphicsElement>()
+  #shapePastes = new WeakMap<SVGSVGElement, {key: string, shapes: SVGGraphicsElement[]}>()
   #primaryShape: SVGGraphicsElement | null = null
   #interaction: Interaction | null = null
   #connector: ConnectorDrawInteraction | null = null
@@ -868,6 +869,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   disable() {
+    this.#shapePastes = new WeakMap()
     if(!this.isEnabled) return
     this.#insertionPointer = null
     this.#clearShapePreview()
@@ -1288,12 +1290,92 @@ export class GraphicFeature extends EditorFeature {
     return true
   }
 
+  #shapeClipboardHTML(copyId = crypto.randomUUID()) {
+    const graphic = this.#capturedGraphic()
+    const selected = new Set(this.selectedShapes)
+    if(!graphic || !this.#canInsertText(graphic) || this.textEditingRange || !selected.size) return null
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg")
+    svg.setAttribute("data-webwriter-shapes", "1")
+    svg.setAttribute("data-webwriter-copy", copyId)
+    for(const shape of graphicShapeRoots(graphic)) {
+      if(selected.has(shape)) svg.append(clearEditorMarkerClasses(shape.cloneNode(true)))
+    }
+    return svg.outerHTML
+  }
+
+  async copy() {
+    const html = this.#shapeClipboardHTML()
+    if(!html || typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
+    await navigator.clipboard.write([new ClipboardItem({"text/html": new Blob([html], {type: "text/html"})})])
+    return true
+  }
+
+  async cut() {
+    const graphic = this.#capturedGraphic()
+    const shapes = this.selectedShapes
+    const id = crypto.randomUUID()
+    const html = this.#shapeClipboardHTML(id)
+    if(!graphic || !html || typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
+    await navigator.clipboard.write([new ClipboardItem({"text/html": new Blob([html], {type: "text/html"})})])
+    if(this.#capturedGraphic() !== graphic || !this.editor.features.slides.allowsSelection()
+      || !this.editor.features.board.allowsSelection() || this.#shapeClipboardHTML(id) !== html
+      || shapes.length !== this.selectedShapes.length || shapes.some(shape => !this.selectedShapes.includes(shape))) return false
+    this.#deleteShapes(graphic, shapes)
+    return true
+  }
+
+  #deleteShapes(graphic: SVGSVGElement, shapes: SVGGraphicsElement[]) {
+    const connectors = new Set(this.#captureAttachedConnectors(graphic, shapes).map(item => item.source))
+    this.editor.doc.stopCapturing()
+    connectors.forEach(connector => connector.remove())
+    shapes.forEach(shape => shape.remove())
+    this.editor.doc.stopCapturing()
+    this.#clearShapeSelection()
+    this.#refresh()
+    this.editor.postSelectionPath()
+  }
+
+  #pasteShapes(graphic: SVGSVGElement, html: string) {
+    if(!html || !this.#canInsertText(graphic)) return false
+    const {fragment} = this.editor.parseHTMLFragment(html, true, false)
+    const svg = fragment.firstElementChild
+    if(fragment.children.length !== 1 || svg?.namespaceURI !== SVG_NAMESPACE || svg.localName !== "svg"
+      || svg.getAttribute("data-webwriter-shapes") !== "1") return false
+    const shapes = Array.from(svg.children)
+    if(!shapes.length || shapes.some(shape => !graphicShapeType(shape))) return false
+    const key = svg.getAttribute("data-webwriter-copy") ?? html
+    const previous = this.#shapePastes.get(graphic)
+    const last = previous?.key === key && previous.shapes.length === shapes.length
+      && previous.shapes.every(shape => shape.parentNode === graphic) ? previous.shapes : null
+    const previousBounds = last ? shapeBounds(last[0]) : null
+    this.editor.doc.stopCapturing()
+    for(const shape of shapes) {
+      clearEditorMarkerClasses(shape)
+      graphic.append(shape)
+    }
+    const bounds = shapeBounds(shapes[0])
+    const dx = 24 + (previousBounds ? previousBounds.x - bounds.x : 0)
+    const dy = 24 + (previousBounds ? previousBounds.y - bounds.y : 0)
+    shapes.forEach(shape => this.#moveShape(shape, dx, dy))
+    this.#shapePastes.set(graphic, {key, shapes: shapes as SVGGraphicsElement[]})
+    this.editor.features.selection.captureElement(graphic)
+    this.#setShapeSelection(shapes as SVGGraphicsElement[])
+    this.editor.doc.stopCapturing()
+    this.#refresh()
+    this.editor.postSelectionPath()
+    return true
+  }
+
   /** Routes the toolbar clipboard command to the live graphic or label. */
   async paste() {
     const graphic = this.textInsertionGraphic
     const label = this.#labelEditor
     if(!graphic || !navigator.clipboard?.read) return false
     const items = await navigator.clipboard.read()
+    const htmlItem = items.find(item => item.types.includes("text/html"))
+    const html = htmlItem ? await (await htmlItem.getType("text/html")).text() : ""
+    if(graphic !== this.textInsertionGraphic || label !== this.#labelEditor) return false
+    if(!label && this.#pasteShapes(graphic, html)) return true
     const item = items.find(item => item.types.includes("text/plain"))
     const value = item ? await (await item.getType("text/plain")).text() : ""
     if(graphic !== this.textInsertionGraphic || label !== this.#labelEditor || !value) return false
@@ -1353,6 +1435,25 @@ export class GraphicFeature extends EditorFeature {
 
   // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
+    copy: event => {
+      if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || !event.clipboardData) return
+      const html = this.#shapeClipboardHTML()
+      if(!html) return
+      event.clipboardData.setData("text/html", html)
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    },
+    cut: event => {
+      if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || !event.clipboardData) return
+      const graphic = this.#capturedGraphic()
+      const shapes = this.selectedShapes
+      const html = this.#shapeClipboardHTML()
+      if(!graphic || !html) return
+      event.clipboardData.setData("text/html", html)
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      this.#deleteShapes(graphic, shapes)
+    },
     pointerdown: event => {
       this.#rememberInsertionPointer(event)
       if(this.#placePreviewShape(event)) return
@@ -1400,6 +1501,12 @@ export class GraphicFeature extends EditorFeature {
     paste: event => {
       if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || this.textEditingRange) return
       const graphic = this.textInsertionGraphic
+      const html = event.clipboardData?.getData("text/html") ?? ""
+      if(graphic && this.#pasteShapes(graphic, html)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
       const value = event.clipboardData?.getData("text/plain")
       if(!graphic || !value) return
       event.preventDefault()
@@ -1642,16 +1749,7 @@ export class GraphicFeature extends EditorFeature {
       }
       if(event.key === "Delete" || event.key === "Backspace") {
         this.#claimKeyboardEvent(event)
-        if(shapes.length) {
-          const attached = this.#captureAttachedConnectors(graphic, shapes)
-          const connectors = new Set(attached.map(item => item.source))
-          this.editor.doc.stopCapturing()
-          connectors.forEach(connector => connector.remove())
-          shapes.forEach(shape => shape.remove())
-          this.editor.doc.stopCapturing()
-          this.#clearShapeSelection()
-          this.editor.postSelectionPath()
-        }
+        if(shapes.length) this.#deleteShapes(graphic, shapes)
         return
       }
       const step = event.shiftKey ? 50 : 1
@@ -3375,26 +3473,6 @@ export class GraphicFeature extends EditorFeature {
       height: `${rect.height}px`,
       transform: "",
     })
-    // Keep the SVG viewport at its untransformed size. A rotated bounding
-    // rectangle would enlarge the preview and lose the graphic's orientation.
-    try {
-      const ctm = graphic.getCTM?.()
-      if(ctm && graphic.clientWidth > 0 && graphic.clientHeight > 0) {
-        // getCTM omits the root's native pan/zoom, which the preview copies below.
-        const local = new DOMMatrix().translate(viewport.x, viewport.y).scale(viewport.scale).multiply(ctm)
-        const matrix = DOMMatrix.fromMatrix(this.#screenMatrix(graphic)).multiply(local.inverse())
-        if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
-          Object.assign(preview.style, {
-            left: `${fixedClientX(0)}px`, top: "0",
-            width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
-            transformOrigin: "0 0", transform: matrix.toString(),
-          })
-        }
-      }
-    }
-    catch {
-      // Detached/test SVGs may not expose an invertible viewport transform.
-    }
     try {
       preview.currentScale = viewport.scale
       const translate = preview.currentTranslate as unknown as {x: number, y: number}
@@ -3405,6 +3483,59 @@ export class GraphicFeature extends EditorFeature {
     }
     catch {
       // Preview navigation is a progressive enhancement in DOM shims.
+    }
+    const positionFromSource = () => {
+      const ctm = graphic.getCTM?.()
+      if(!ctm || !(graphic.clientWidth > 0 && graphic.clientHeight > 0)) return
+      // getCTM omits the root's native pan/zoom, which the preview copies above.
+      const local = new DOMMatrix().translate(viewport.x, viewport.y).scale(viewport.scale).multiply(ctm)
+      const matrix = DOMMatrix.fromMatrix(this.#screenMatrix(graphic)).multiply(local.inverse())
+      if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
+        Object.assign(preview.style, {
+          left: `${fixedClientX(0)}px`, top: "0",
+          width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
+          transformOrigin: "0 0", transform: matrix.toString(),
+        })
+      }
+    }
+    // Keep the SVG viewport at its untransformed size. A rotated bounding
+    // rectangle would enlarge the preview and lose the graphic's orientation.
+    try {
+      if(preview.isConnected && graphic.clientWidth > 0 && graphic.clientHeight > 0) {
+        Object.assign(preview.style, {
+          left: `${fixedClientX(0)}px`, top: "0",
+          width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
+          transformOrigin: "0 0", transformBox: "border-box",
+        })
+        const local = preview.getCTM?.(), screen = preview.getScreenCTM?.()
+        if(local && screen) {
+          // Derive the fixed appendix's live screen origin from the preview
+          // itself, then map its SVG viewport onto the source's current CTM.
+          const localInverse = DOMMatrix.fromMatrix(local).inverse()
+          const fixedToScreen = DOMMatrix.fromMatrix(screen).multiply(localInverse)
+          const target = DOMMatrix.fromMatrix(this.#screenMatrix(graphic))
+          const matrix = fixedToScreen.inverse()
+            .multiply(target)
+            .multiply(localInverse)
+          if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
+            preview.style.transform = matrix.toString()
+            const actual = preview.getScreenCTM?.()
+            if(actual) {
+              // Correct SVG root viewport-origin offsets in fixed CSS space.
+              const appendixFromScreen = fixedToScreen.inverse()
+              const dx = target.e - actual.e, dy = target.f - actual.f
+              matrix.e += (appendixFromScreen.a * dx + appendixFromScreen.c * dy) * viewport.scale
+              matrix.f += (appendixFromScreen.b * dx + appendixFromScreen.d * dy) * viewport.scale
+              preview.style.transform = matrix.toString()
+            }
+          }
+        }
+        else positionFromSource()
+      }
+      else positionFromSource()
+    }
+    catch {
+      // Detached/test SVGs may not expose an invertible viewport transform.
     }
     if(this.#presentedGraphic === graphic) this.#updateOverflowPresentation(graphic)
   }

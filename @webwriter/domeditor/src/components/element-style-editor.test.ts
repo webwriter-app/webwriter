@@ -1002,6 +1002,30 @@ it.each(["td", "th"])("keeps all %s presets limited to cell paint and padding", 
   expect(changes).toHaveLength(32)
 })
 
+it.each(["toggle", "content"] as const)("keeps all popup %s presets to colors, borders, and shadows", async popupRole => {
+  const editor = await mount([], {...state(), target: {localName: popupRole === "toggle" ? "button" : "div",
+    namespaceURI: "http://www.w3.org/1999/xhtml", popupRole}}, "compact")
+  editor.showPresets = true
+  await editor.updateComplete
+  const changes: {styles: Record<string, {value: string}>}[] = []
+  editor.addEventListener("element-style-change", event => changes.push((event as CustomEvent).detail))
+  for(let page = 0; page < 4; page++) {
+    for(const button of editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".style-gallery button")) {
+      button.click()
+      expect(Object.keys(changes.at(-1)!.styles).sort()).toEqual([
+        "background-color", "border-color", "border-style", "border-width", "box-shadow", "color",
+      ])
+      expect(button.title).not.toContain("padding")
+      expect(button.title).not.toContain("corners")
+    }
+    if(page < 3) {
+      editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Next style presets"]')!.click()
+      await editor.updateComplete
+    }
+  }
+  expect(changes).toHaveLength(32)
+})
+
 
 it("edits and clears corner rounding using pixels and presets", async () => {
   const editor = await mount([], state(), "compact")

@@ -21,14 +21,17 @@ const previewOptions = (changes: Partial<PreviewFrameOptions> = {}): PreviewFram
 const parse = (source: string) => new DOMParser().parseFromString(source, "text/html")
 
 describe("local live preview bundles", () => {
-  it("preserves the validated YouTube sandbox policy through repeated preview preparation", () => {
-    let source = parse('<iframe src="https://www.youtube.com/embed/aPweFhhXFvY" sandbox="allow-scripts" srcdoc="<script>bad()</script>"></iframe><iframe src="https://example.com/embed"></iframe>')
+  it("preserves source-based sandbox policies through editing and repeated preview preparation", () => {
+    let source = parse(editorFrameHTML('<section><!--keep--><iframe src="https://esri.github.io/dam-busters/"></iframe><iframe src="https://example.com/embed" sandbox="allow-scripts"></iframe><iframe src="https://app.example/private"></iframe><iframe src="https://editor.example/private"></iframe></section>', editorOptions()))
     for(let pass = 0; pass < 2; pass++) {
       const preview = parse(previewFrameHTML(source, previewOptions()))
       const frames = preview.querySelectorAll("iframe")
       expect(frames[0].getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
       expect(frames[0].hasAttribute("srcdoc")).toBe(false)
       expect(frames[1].getAttribute("sandbox")).toBe("allow-scripts")
+      expect(frames[2].getAttribute("sandbox")).toBe("allow-scripts")
+      expect(frames[3].getAttribute("sandbox")).toBe("allow-scripts")
+      expect(preview.querySelector("section")?.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
       source = preview
     }
   })
@@ -118,7 +121,8 @@ describe("isolated frame documents", () => {
   })
 
   it.each(["blob:https://editor.example/local", "data:text/html;base64,PHA+TG9jYWw8L3A+"])("preserves local websites through repeated preview preparation: %s", src => {
-    let source = parse(`<section><!--keep--><iframe title="Local" src="${src}" sandbox="allow-scripts allow-same-origin"></iframe></section>`)
+    let source = parse(editorFrameHTML(`<section><!--keep--><iframe title="Local" src="${src}" sandbox="allow-scripts allow-same-origin"></iframe></section>`, editorOptions()))
+    expect(source.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts")
     for(let pass = 0; pass < 2; pass++) {
       source = parse(previewFrameHTML(source, previewOptions()))
       expect(source.querySelector("iframe")?.getAttribute("src")).toBe(src)

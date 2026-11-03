@@ -29,6 +29,11 @@ afterEach(() => {
 })
 
 describe("layout printing", () => {
+  it("does not force white details backgrounds in spatial layouts", () => {
+    expect(canvasStyles).not.toMatch(/details[^{}]*\{[^}]*background-color:\s*white/)
+    expect(slidesStyles).not.toMatch(/details[^{}]*\{[^}]*background-color:\s*white/)
+  })
+
   it("fits canvas bounds at any camera zoom without changing authored content or the screen camera", () => {
     const slot = document.body.shadowRoot!.querySelector("slot")!
     slot.style.cssText = "transform:translate(120px,-80px) scale(2);width:1280px;height:720px"

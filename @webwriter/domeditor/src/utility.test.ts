@@ -184,6 +184,16 @@ describe("contentful widget boundaries", () => {
   })
 })
 
+describe("inline popup editing boundary", () => {
+  it("edits a linked popup toggle as text while ordinary buttons remain atomic", () => {
+    setBody('<p><span class="ww-popup"><button popovertarget="note">Toggle</button><span id="note" popover>Content</span></span><button>Ordinary</button></p>')
+    const [toggle, ordinary] = Array.from(document.querySelectorAll("button"))
+    expect(isAtomicEditingElement(toggle)).toBe(false)
+    expect(atomicEditingContainer(toggle.firstChild)).toBeNull()
+    expect(isAtomicEditingElement(ordinary)).toBe(true)
+  })
+})
+
 describe("selectRange()", () => {
   it("sets anchor and focus", () => {
     setBody("<p>hello world</p>")
@@ -769,6 +779,11 @@ describe("isGapSelection", () => {
   it("is false for a caret in an empty element", () => {
     setBody("<p></p>")
     $.move(document.body.firstElementChild!, 0)
+    expect($.isGapSelection).toBe(false)
+  })
+  it.each([0, 1])("is false at offset %s in a paragraph with a placeholder break", offset => {
+    setBody("<p><br></p>")
+    $.move(document.body.firstElementChild!, offset)
     expect($.isGapSelection).toBe(false)
   })
 })

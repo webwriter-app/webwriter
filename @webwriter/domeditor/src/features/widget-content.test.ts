@@ -68,6 +68,14 @@ describe("repeatable widget options", () => {
     expect($.widgetGapFromCoords(50, 50, item, editor.schema)).toMatchObject({node: parent, offset: 1})
   })
 
+  it("addresses the outer gaps of a top-level contentful widget", () => {
+    document.body.innerHTML = '<prompt-widget><p>Text</p></prompt-widget>'
+    const widget = document.querySelector("prompt-widget")!
+    widget.getBoundingClientRect = () => new DOMRect(0, 20, 100, 20)
+    expect($.widgetGapFromCoords(50, 10, widget, editor.schema)).toMatchObject({node: document.body, offset: 0})
+    expect($.widgetGapFromCoords(50, 50, widget, editor.schema)).toMatchObject({node: document.body, offset: 1})
+  })
+
   it.each(["abcd", "<p>abcd</p>"])("splits an option with the primary modifier: %s", content => {
     document.body.innerHTML = `<choice-widget><choice-item id="original">${content}</choice-item><choice-item>other</choice-item></choice-widget>`
     editor.features.widget.refresh()

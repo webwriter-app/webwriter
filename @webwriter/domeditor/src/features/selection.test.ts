@@ -42,6 +42,471 @@ function el(tag = "p", text = "") {
   return element
 }
 
+describe("inline popup selection", () => {
+  const mount = () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button type="button" popovertarget="note"><b>toggle</b></button><span id="note" popover="auto"><em>Popup text</em></span></span> after</p><p>Other</p>'
+    const wrapper = document.querySelector(".ww-popup")!, toggle = wrapper.querySelector("button")!, content = wrapper.querySelector("[popover]")!
+    return {wrapper, toggle, content, text: content.querySelector("em")!.firstChild!, before: document.querySelector("p")!.firstChild!, after: document.querySelector("p")!.lastChild!}
+  }
+
+  it.each(["button", "[popover]"])("node-selects %s through the breadcrumb path and modifier click", selector => {
+    const {toggle, content} = mount()
+    const part = selector === "button" ? toggle : content
+    const index = Array.from(part.parentNode!.childNodes).indexOf(part)
+    feature.actions.selectNode({type: "selectNode", path: [0, 1, index]})
+    expect($.selectedElement).toBe(part)
+    $.move(document.querySelector("p")!.firstChild!, 0)
+    part.querySelector("b, em")!.dispatchEvent(new MouseEvent("pointerdown", {bubbles: true, cancelable: true, ctrlKey: true}))
+    expect($.selectedElement).toBe(part)
+  })
+
+  it("anchors the node and capture outlines to a popup toggle with an authored anchor name", () => {
+    const {toggle} = mount()
+    toggle.style.setProperty("anchor-name", "--note")
+    for(const select of [() => feature.selectElement(toggle), () => feature.captureElement(toggle)]) {
+      select()
+      expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-anchored")
+      expect(toggle.className).toMatch(/◆anchor-target-\d+/)
+      expect(toggle.style.getPropertyValue("anchor-name")).toBe("--note")
+      expect(editor.features.transformation.target).toBeNull()
+      expect(editor.toHTML(true)).not.toContain("◆anchor-target-")
+    }
+  })
+
+  it.each(["toggle", "wrapper", "toggle text"])("moves Arrow Down from %s to the live popup content", target => {
+    const {wrapper, toggle, content, text} = mount()
+    if(target === "toggle text") $.move(toggle.querySelector("b")!.firstChild!, 2)
+    else if(target === "wrapper") { $.move(wrapper, 0); feature.processSelection() }
+    else $.selectElement(toggle)
+    const event = new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(0)
+    expect(content).toHaveClass("◆popup-visible")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("releases a captured popup toggle before entering its content", () => {
+    const {toggle, text} = mount()
+    feature.captureElement(toggle)
+    const event = new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
+    toggle.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(feature.captureSelectedElement).toBeNull()
+    expect($.anchor).toBe(text)
+  })
+
+  it("returns from the start of popup content to its toggle with Arrow Up", () => {
+    const {toggle, content, text} = mount()
+    $.move(text, 0)
+    editor.features.dialog.refresh()
+    const event = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(0)
+    expect(content).toHaveClass("◆popup-visible")
+  })
+
+  it.each(["before", "between", "after"] as const)("shows a structural %s gap inside popup content", placement => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>First</p><p>Second</p></div>'
+    const content = document.querySelector<HTMLElement>("[popover]")!
+    const [first, second] = Array.from(content.querySelectorAll("p"))
+    $.selectGap(placement === "after" ? second : first, placement === "before" ? "before" : "after")
+    feature.processSelection()
+    editor.features.dialog.refresh()
+    expect($.anchor).toBe(content)
+    expect($.isGapSelection).toBe(true)
+    expect(feature.selectionCaret?.getAttribute("part")).toContain("gap-caret")
+    expect(content).toHaveClass("◆popup-visible")
+    expect(placement === "after" ? second : first).toHaveClass(`◆gap-${placement === "before" ? "before" : "after"}-selected`)
+  })
+
+  it("returns from the top popup content gap to the toggle with Arrow Up", () => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>First</p><p>Second</p></div>'
+    const toggle = document.querySelector("button")!, content = document.querySelector<HTMLElement>("[popover]")!
+    content.prepend(document.createComment("keep"), document.createTextNode(" "))
+    $.move(toggle.firstChild!, 3)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
+    $.selectGap(content.firstElementChild!, "before")
+    feature.processSelection()
+    expect($.isGapSelection).toBe(true)
+    const up = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(up)
+    expect(up.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(toggle.firstChild)
+    expect($.anchorOffset).toBe(3)
+    expect(content).toHaveClass("◆popup-visible")
+  })
+
+  it.each(["caret", "node"] as const)("moves Arrow Down from the last popup content %s to its trailing gap", from => {
+    document.body.innerHTML = '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>First</p><p>Last</p></div>'
+    const content = document.querySelector<HTMLElement>("[popover]")!, last = content.lastElementChild!
+    content.append(document.createTextNode(" "), document.createComment("keep"))
+    if(from === "node") $.selectElement(last)
+    else $.move(last.firstChild!, last.textContent!.length)
+    feature.processSelection()
+    const down = new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
+    document.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(content)
+    expect($.anchorOffset).toBe(Array.from(content.childNodes).indexOf(last) + 1)
+    expect($.isGapSelection).toBe(true)
+    expect(last).toHaveClass("◆gap-after-selected")
+    expect(content).toHaveClass("◆popup-visible")
+  })
+
+  it("restores the toggle text offset after entering and leaving popup content", () => {
+    const {toggle, content, text} = mount()
+    const toggleText = toggle.querySelector("b")!.firstChild!
+    $.move(toggleText, 4)
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true}))
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(0)
+    const up = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(up)
+    expect(up.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(toggleText)
+    expect($.anchorOffset).toBe(4)
+    expect(content).toHaveClass("◆popup-visible")
+  })
+
+  it("node-selects an atomic first dialog element on Arrow Down", () => {
+    const {toggle, content} = mount()
+    content.innerHTML = "<test-widget></test-widget><p>Later</p>"
+    $.move(toggle.querySelector("b")!.firstChild!, 2)
+    const down = new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
+    document.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    expect($.selectedElement).toBe(content.firstElementChild)
+    const up = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(up)
+    expect(up.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it("returns from a selected first content element and a restored empty popup paragraph", () => {
+    const {toggle, content} = mount()
+    content.innerHTML = "<p>First</p><p>Second</p>"
+    $.selectElement(content.firstElementChild!)
+    let event = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(0)
+    content.replaceChildren()
+    editor.doc.syncFromDOM()
+    expect(content.innerHTML).toBe("<p></p>")
+    $.move(content.firstElementChild!, 0)
+    event = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(0)
+  })
+
+  it("leaves Arrow Up inside popup text and after earlier content to native navigation", () => {
+    const {content, text} = mount()
+    $.move(text, 2)
+    const middle = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    editor.features.dialog.captureListeners.keydown!(middle)
+    expect(middle.defaultPrevented).toBe(false)
+    content.prepend(document.createElement("test-widget"))
+    $.move(text, 0)
+    const afterWidget = new KeyboardEvent("keydown", {key: "ArrowUp", bubbles: true, cancelable: true})
+    editor.features.dialog.captureListeners.keydown!(afterWidget)
+    expect(afterWidget.defaultPrevented).toBe(false)
+  })
+
+  it("canonicalizes wrapper positions into toggle text positions", () => {
+    const {wrapper, toggle} = mount()
+    for(const offset of [0, 1]) {
+      $.move(wrapper, offset)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(false)
+      expect($.isTextSelection).toBe(true)
+      expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+      expect($.anchorOffset).toBe(offset ? 6 : 0)
+      expect(toggle).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
+    }
+    $.move(wrapper, 2)
+    feature.processSelection()
+    expect($.anchor).toBe(wrapper.parentNode)
+    expect($.anchorOffset).toBe(Array.from(wrapper.parentNode!.childNodes).indexOf(wrapper) + 1)
+  })
+
+  it.each([["ArrowLeft", 0], ["ArrowRight", 6]] as const)("moves %s from a selected toggle to its text edge", (key, side) => {
+    const {wrapper, toggle} = mount()
+    $.selectElement(toggle)
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(side)
+    expect($.isTextSelection).toBe(true)
+    expect($.isGapSelection).toBe(false)
+  })
+
+  it.each([["ArrowRight", 0, 0], ["ArrowLeft", 1, 6]] as const)("navigates between outer and inner popup text boundaries with %s", (key, outerOffset, innerOffset) => {
+    const {wrapper, toggle, before, after} = mount()
+    const parent = wrapper.parentNode!, index = Array.from(parent.childNodes).indexOf(wrapper)
+    const press = (key: string) => {
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect($.isGapSelection).toBe(false)
+      expect($.isTextSelection).toBe(true)
+    }
+    $.move(parent, index + outerOffset)
+    press(key)
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(innerOffset)
+    press(key === "ArrowRight" ? "ArrowLeft" : "ArrowRight")
+    const neighbor = outerOffset ? after : before
+    expect($.anchor).toBe(neighbor)
+    expect($.anchorOffset).toBe(outerOffset ? 0 : neighbor.textContent!.length)
+  })
+
+  it.each([["ArrowRight", "before", 0], ["ArrowLeft", "after", 6]] as const)("has one outside popup stop when entering from neighboring text with %s", (key, side, innerOffset) => {
+    const {wrapper, toggle, before, after} = mount()
+    const text = side === "before" ? before : after
+    const edge = side === "before" ? text.textContent!.length : 0
+    $.move(text, side === "before" ? edge - 1 : 1)
+    const press = () => {
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    press()
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(edge)
+    expect(wrapper).toHaveClass(side === "after" ? "◆popup-caret-outside-right" : "◆popup-caret-outside-left")
+    press()
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(innerOffset)
+    expect($.isTextSelection).toBe(true)
+    expect($.isGapSelection).toBe(false)
+  })
+
+  it.each([["ArrowRight", 0, 0], ["ArrowLeft", 1, 6]] as const)("keeps a paragraph boundary beside a popup with no neighboring text on %s", (key, outerOffset, innerOffset) => {
+    const {wrapper, toggle} = mount()
+    wrapper.parentNode!.replaceChildren(wrapper)
+    const parent = wrapper.parentNode!, index = Array.from(parent.childNodes).indexOf(wrapper)
+    $.move(parent, index + outerOffset)
+    const press = (key: string) => {
+      const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    press(key)
+    expect($.anchor).toBe(toggle.querySelector("b")!.firstChild)
+    expect($.anchorOffset).toBe(innerOffset)
+    press(key === "ArrowRight" ? "ArrowLeft" : "ArrowRight")
+    expect($.anchor).toBe(parent)
+    expect($.anchorOffset).toBe(index + outerOffset)
+  })
+
+  it.each([["ArrowUp", "before", 0], ["ArrowDown", "after", 1]] as const)("selects the paragraph gap %s an edge popup with %s", (key, placement, offset) => {
+    const popup = '<span class="ww-popup"><button popovertarget="note">toggle</button></span>'
+    document.body.innerHTML = `<p>${placement === "before" ? `${popup} after` : `Before ${popup}`}</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>`
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, placement === "before" ? 0 : paragraph.childNodes.length)
+    feature.processSelection()
+    expect($.isTextSelection).toBe(true)
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(offset)
+    expect($.isGapSelection).toBe(true)
+    expect(paragraph).toHaveClass(`◆gap-${placement}-selected`)
+  })
+
+  it("renders and cleans the four popup boundary carets in the shadow appendix", () => {
+    const {wrapper, toggle, after} = mount()
+    const parent = wrapper.parentNode!, index = Array.from(parent.childNodes).indexOf(wrapper)
+    ;(parent as HTMLElement).style.color = "rgb(37, 48, 59)"
+    ;(toggle as HTMLElement).style.color = "rgb(255, 255, 255)"
+    ;(toggle as HTMLElement).style.setProperty("anchor-name", "--popup-note")
+    vi.spyOn(wrapper, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 20, 80, 24))
+    const originalRect = Range.prototype.getBoundingClientRect
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockImplementation(function(this: Range) {
+      return toggle.contains(this.startContainer) ? new DOMRect(100, 23, 0, 19) : originalRect.call(this)
+    })
+    for(const [node, offset, marker] of [
+      [parent, index, "◆popup-caret-outside-left"], [toggle.querySelector("b")!.firstChild!, 0, "◆popup-caret-inside-left"],
+      [toggle.querySelector("b")!.firstChild!, 6, "◆popup-caret-inside-right"], [parent, index + 1, "◆popup-caret-outside-right"],
+    ] as const) {
+      $.move(node, offset)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(false)
+      expect(wrapper).toHaveClass(marker)
+      expect((toggle as HTMLElement).style.getPropertyValue("anchor-name")).toBe("--popup-note")
+      expect(document.body).toHaveClass("◆popup-boundary-caret")
+      expect(feature.selectionCaret?.getAttribute("part")).toContain("selection-caret-text")
+      expect(feature.selectionCaret?.style.getPropertyValue("--popup-caret-height")).toBe("19px")
+      expect(feature.selectionCaret?.style.getPropertyValue("--popup-caret-top")).toBe("calc(anchor(top) + 3px)")
+      expect(feature.selectionCaret?.style.color).toBe(marker.includes("inside") ? "rgb(255, 255, 255)" : "rgb(37, 48, 59)")
+      expect(editor.toHTML(true)).not.toContain("◆popup-caret")
+    }
+    $.move(after, 2)
+    feature.processSelection()
+    expect(document.body).not.toHaveClass("◆popup-boundary-caret")
+    expect(wrapper.className).not.toContain("◆popup-caret")
+    expect(feature.selectionCaret?.getAttribute("visibility")).toBe("hidden")
+    expect(feature.selectionCaret?.style.color).toBe("")
+    expect(feature.selectionCaret?.style.getPropertyValue("--popup-caret-top")).toBe("")
+    expect(feature.selectionCaret?.style.getPropertyValue("--popup-caret-height")).toBe("")
+  })
+
+  it("leaves modified arrows and unrelated or stale popup targets alone", () => {
+    const {toggle, content, before} = mount()
+    $.selectElement(toggle)
+    const shifted = new KeyboardEvent("keydown", {key: "ArrowDown", shiftKey: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(shifted)
+    expect(shifted.defaultPrevented).toBe(false)
+    $.move(before, 1)
+    const outside = new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
+    editor.features.dialog.captureListeners.keydown!(outside)
+    expect(outside.defaultPrevented).toBe(false)
+    $.selectElement(toggle)
+    content.remove()
+    const stale = new KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
+    editor.features.dialog.captureListeners.keydown!(stale)
+    expect(stale.defaultPrevented).toBe(false)
+  })
+
+  it("excludes popup content from a surrounding text selection and clipboard", () => {
+    const {content, before, after} = mount()
+    $.selectRange(before, 0, after, after.textContent!.length)
+    feature.processSelection()
+    expect($.excludedFlowElements).toContain(content)
+    expect($.slice.textContent).toBe("Before toggle after")
+    expect($.copy().textContent).toBe("Before toggle after")
+    expect(editor.toHTML(true)).not.toContain("◆flow-excluded")
+  })
+
+  it("clamps a document selection that reaches into the dialog after the entire inline popup", () => {
+    const {wrapper, content, text, before} = mount()
+    const parent = wrapper.parentNode!
+    $.selectRange(before, 0, text, 3)
+    feature.processSelection()
+    expect($.focus).toBe(parent)
+    expect($.focusOffset).toBe(Array.from(parent.childNodes).indexOf(wrapper) + 1)
+    expect(content.contains($.focus)).toBe(false)
+    expect($.copy().textContent).toBe("Before toggle")
+  })
+
+  it("keeps Select All within popup content without including the toggle or document", () => {
+    const {content, text} = mount()
+    $.move(text, 3)
+    const event = new KeyboardEvent("keydown", {key: "a", ctrlKey: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect($.anchor).toBe(content)
+    expect($.focus).toBe(content)
+    expect($.copy().textContent).toBe("Popup text")
+    expect($.copy().querySelector(".ww-popup")).toBeNull()
+    $.move(content, 0)
+    const selectedContent = new KeyboardEvent("keydown", {key: "a", ctrlKey: true, bubbles: true, cancelable: true})
+    document.dispatchEvent(selectedContent)
+    expect($.anchor).toBe(content)
+    expect($.focus).toBe(content)
+  })
+
+  it("selects words and the first paragraph on repeated clicks inside popup content", () => {
+    const {content, text} = mount()
+    $.move(text, 8)
+    expect($.anchor).toBe(text)
+    expect(text.parentElement!.closest("[popover]")).toBe(content)
+    const double = new MouseEvent("dblclick", {button: 0, detail: 2, bubbles: true, cancelable: true})
+    text.parentElement!.dispatchEvent(double)
+    expect(document.getSelection()!.toString()).toBe("text")
+    expect(content).toHaveClass("◆popup-visible")
+
+    $.move(text, 3)
+    const triple = new MouseEvent("click", {button: 0, detail: 3, bubbles: true, cancelable: true})
+    text.parentElement!.dispatchEvent(triple)
+    expect(document.getSelection()!.toString()).toBe("Popup text")
+    expect(content).toHaveClass("◆popup-visible")
+  })
+
+  it("selects a popup word on the second scoped pointer click", () => {
+    const {content, text} = mount()
+    const caret = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    const elements = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: text, offset: 8})})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [text.parentElement!, content]})
+    try {
+      $.move(text, 8)
+      for(let count = 0; count < 2; count++) {
+        text.parentElement!.dispatchEvent(new PointerEvent("pointerdown", {button: 0, pointerId: 7,
+          pointerType: "mouse", clientX: 20, clientY: 20, bubbles: true, cancelable: true}))
+        document.body.dispatchEvent(new PointerEvent("pointerup", {button: 0, pointerId: 7,
+          pointerType: "mouse", clientX: 20, clientY: 20, bubbles: true}))
+      }
+      expect(document.getSelection()!.toString()).toBe("text")
+      expect(content).toHaveClass("◆popup-visible")
+    }
+    finally {
+      if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      if(elements) Object.defineProperty(document, "elementsFromPoint", elements)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it("keeps repeated text selection inside a table cell popup", () => {
+    document.body.innerHTML = '<table><tbody><tr><td><p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Bubble words</p></div></td><td><p>Other</p></td></tr></tbody></table>'
+    const content = document.querySelector(".ww-popup-content")!
+    const text = content.querySelector("p")!.firstChild!
+    $.move(text, 9)
+    content.querySelector("p")!.dispatchEvent(new MouseEvent("dblclick", {button: 0, detail: 2, bubbles: true}))
+    expect(document.getSelection()!.toString()).toBe("words")
+    expect(content).toHaveClass("◆popup-visible")
+    $.move(text, 2)
+    content.querySelector("p")!.dispatchEvent(new MouseEvent("click", {button: 0, detail: 3, bubbles: true}))
+    expect(document.getSelection()!.toString()).toBe("Bubble words")
+    expect(content).toHaveClass("◆popup-visible")
+  })
+
+  it("classifies the popup content and wrapper as selectable nodes", () => {
+    const {wrapper, content} = mount()
+    $.selectElement(content)
+    expect($.isElementSelection).toBe(true)
+    feature.processSelection()
+    expect($.selectedElement).toBe(content)
+    $.selectElement(wrapper)
+    expect($.isElementSelection).toBe(true)
+  })
+
+  it("prevents insertion into a disconnected or incomplete popup wrapper", () => {
+    const {wrapper, content} = mount()
+    content.remove()
+    $.move(wrapper, 0)
+    const input = new InputEvent("beforeinput", {inputType: "insertText", data: "X", bubbles: true, cancelable: true})
+    document.dispatchEvent(input)
+    expect(input.defaultPrevented).toBe(true)
+    expect(wrapper.childNodes).toHaveLength(1)
+  })
+
+  it("rejects edits that would replace a popup part from outside its content", () => {
+    const {wrapper, toggle, before} = mount()
+    const edit = () => {
+      const event = new InputEvent("beforeinput", {inputType: "insertText", data: "X", bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      return event
+    }
+    $.selectElement(toggle)
+    expect(edit().defaultPrevented).toBe(true)
+    $.selectRange(before, 1, toggle.querySelector("b")!.firstChild!, 2)
+    expect(edit().defaultPrevented).toBe(true)
+    expect(wrapper.childNodes).toHaveLength(2)
+  })
+})
+
 describe("gap clicks inside widget pages", () => {
   const originalCaretPosition = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
   const originalElementsFromPoint = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
@@ -4521,6 +4986,26 @@ describe("document listeners", () => {
     expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
     expect(document.body).not.toHaveClass("◆gap-caret-visible")
   })
+  it("preserves a nested appendix control's own selection during presentation refreshes", () => {
+    const paragraph = el("p", "Authored text")
+    const control = document.createElement("div"), nested = document.createElement("div")
+    const editable = document.createElement("div")
+    editable.contentEditable = "true"
+    editable.textContent = "Search fonts"
+    control.attachShadow({mode: "open"}).append(nested)
+    nested.attachShadow({mode: "open"}).append(editable)
+    editor.addAppendix(control)
+    editable.focus()
+    const selection = document.getSelection()!
+    selection.setPosition(editable.firstChild!, 3)
+
+    feature.processSelection()
+
+    expect(selection.anchorNode).toBe(editable.firstChild)
+    expect(selection.anchorOffset).toBe(3)
+    expect(nested.shadowRoot!.activeElement).toBe(editable)
+    expect(editor.toHTML(true)).toBe(paragraph.outerHTML)
+  })
   it("does not reset a widget's shadow contenteditable selection during input", () => {
     const widget = document.createElement("editable-widget")
     const editable = document.createElement("div")
@@ -5207,6 +5692,171 @@ describe("selection invariants", () => {
     return paragraph
   }
 
+  it("allows a click in the open popup to place a caret in its own flow", () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">toggle</button><span id="note" popover>Popup text</span></span> after</p>'
+    const button = document.querySelector("button")!, content = document.querySelector<HTMLElement>("[popover]")!
+    const text = content.firstChild!
+    $.selectElement(button)
+    editor.features.dialog.refresh()
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 120, 35))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: text, offset: 3} as unknown as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [content]})
+    pointer(content, "pointerdown", 50, 75)
+    pointer(content, "pointerup", 50, 75)
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(3)
+    expect($.flowRoot).toBe(content)
+  })
+
+  it.each([["before", "nested"], ["after", "nested"], ["before", "external"], ["after", "external"]] as const)(
+    "confines a drag from popup content toward the document %s it (%s)", (direction, structure) => {
+    document.body.innerHTML = structure === "nested"
+      ? '<p>Before <span class="ww-popup"><button popovertarget="note">toggle</button><span id="note" popover></span></span> after</p>'
+      : '<p>Before <span class="ww-popup"><button popovertarget="note">toggle</button></span> after</p><div class="ww-popup-content" id="note" popover></div><p>Later</p>'
+    const paragraph = document.body.firstElementChild!, content = document.querySelector<HTMLElement>("[popover]")!
+    content.append(Object.assign(document.createElement("p"), {textContent: "First"}),
+      Object.assign(document.createElement("p"), {textContent: "Second"}))
+    const [first, second] = Array.from(content.querySelectorAll("p"))
+    const start = (direction === "before" ? second : first).firstChild!
+    const inside = (direction === "before" ? first : second).firstChild!
+    const outside = direction === "before" ? paragraph.firstChild!
+      : structure === "external" ? document.body.lastElementChild!.firstChild! : paragraph.lastChild!
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(20, 60, 130, 60))
+    vi.spyOn(first, "getBoundingClientRect").mockReturnValue(new DOMRect(25, 65, 120, 20))
+    vi.spyOn(second, "getBoundingClientRect").mockReturnValue(new DOMRect(25, 90, 120, 20))
+    vi.spyOn(document, "caretPositionFromPoint").mockImplementation((_x, y) => ({
+      offsetNode: y < 60 || y > 120 ? outside : y < 88 ? first.firstChild! : second.firstChild!, offset: 2,
+    }) as unknown as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true,
+      value: (_x: number, y: number) => y < 60 || y > 120 ? [paragraph] : [y < 88 ? first : second, content, paragraph]})
+    $.move(start, 2)
+    editor.features.dialog.refresh()
+    expect(content).toHaveClass("◆popup-visible")
+    const startY = direction === "before" ? 100 : 75
+    const insideY = direction === "before" ? 75 : 100
+    const outsideY = direction === "before" ? 25 : 150
+    const down = pointer(content, "pointerdown", 40, startY, {shiftKey: structure === "external"})
+    expect(down.defaultPrevented).toBe(true)
+    expect(pointer(content, "mousedown", 40, startY).defaultPrevented).toBe(true)
+    pointer(content, "pointermove", 70, insideY)
+    expect($.anchor).toBe(start)
+    expect($.focus).toBe(inside)
+    document.getSelection()!.setBaseAndExtent(start, 2, outside, 2)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect($.anchor).toBe(start)
+    expect($.focus).toBe(inside)
+    for(const y of [outsideY, startY, direction === "before" ? 150 : 25, insideY]) {
+      pointer(document.body, "pointermove", 70, y)
+      expect($.anchor).toBe(start)
+      expect(content.contains($.focus)).toBe(true)
+      editor.features.dialog.refresh()
+      expect(content).toHaveClass("◆popup-visible")
+    }
+    pointer(document.body, "pointerup", 70, outsideY)
+    editor.features.dialog.refresh()
+    expect(content.contains($.focus)).toBe(true)
+    expect(content).toHaveClass("◆popup-visible")
+  })
+
+  it.each([["before", 18, 0], ["after", 46, 1]] as const)("clicks the paragraph gap %s an external popup", (placement, y, offset) => {
+    const popup = '<span class="ww-popup"><button popovertarget="note">toggle</button></span>'
+    document.body.innerHTML = `<p>${placement === "before" ? `${popup} after` : `Before ${popup}`}</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>`
+    const paragraph = document.querySelector("p")!, toggle = document.querySelector("button")!, content = document.querySelector<HTMLElement>(".ww-popup-content")!
+    const popupText = content.querySelector("p")!.firstChild!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(80, 20, 240, 25))
+    vi.spyOn(toggle, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 22, 60, 20))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 48, 140, 40))
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: popupText, offset: 1} as unknown as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [content, paragraph]})
+    pointer(content, "pointerdown", 110, y)
+    pointer(content, "pointerup", 110, y)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(offset)
+    expect($.isGapSelection).toBe(true)
+    expect(paragraph).toHaveClass(`◆gap-${placement}-selected`)
+    if(placement === "after") {
+      pointer(content, "pointerdown", 110, 60)
+      pointer(content, "pointerup", 110, 60)
+      expect($.anchor).toBe(popupText)
+      expect($.flowRoot).toBe(content)
+    }
+  })
+
+  it.each(["neighbor text", "body"])("clicks the gap below a popup paragraph when native hit testing returns %s", nativeTarget => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">toggle</button></span></p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>'
+    const paragraph = document.querySelector("p")!, toggle = document.querySelector("button")!, content = document.querySelector<HTMLElement>(".ww-popup-content")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(80, 20, 240, 25))
+    vi.spyOn(toggle, "getBoundingClientRect").mockReturnValue(new DOMRect(140, 22, 60, 20))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(140, 48, 140, 40))
+    const node = nativeTarget === "body" ? document.body : paragraph.firstChild!
+    vi.spyOn(document, "caretPositionFromPoint").mockReturnValue({offsetNode: node, offset: nativeTarget === "body" ? 1 : 7, getClientRect: () => new DOMRect()} as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.body]})
+    $.move(toggle.firstChild!, 2)
+    editor.features.dialog.refresh()
+    pointer(document.body, "pointerdown", 500, 200)
+    pointer(document.body, "pointerup", 500, 200)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+    expect($.isGapSelection).toBe(true)
+    expect(paragraph).toHaveClass("◆gap-after-selected")
+    expect(content).not.toHaveClass("◆popup-visible")
+  })
+
+  it.each([["direct", "ltr"], ["nested", "ltr"], ["direct", "rtl"]] as const)("clicks before and after a popup-only paragraph (%s, %s)", (structure, direction) => {
+    const popup = '<span class="ww-popup"><button popovertarget="note">toggle</button><span id="note" popover>Popup text</span></span>'
+    document.body.innerHTML = `<p> <!-- keep -->${structure === "nested" ? `<em>${popup}</em>` : popup} </p><p>Other</p>`
+    const paragraph = document.querySelector("p")!, toggle = paragraph.querySelector("button")!, content = paragraph.querySelector<HTMLElement>("[popover]")!
+    paragraph.style.direction = direction
+    const toggleText = toggle.firstChild!, popupText = content.firstChild!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(80, 15, 240, 30))
+    vi.spyOn(toggle, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 20, 80, 20))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(100, 45, 120, 40))
+    vi.spyOn(document, "caretPositionFromPoint").mockImplementation(x => ({offsetNode: x < 100 ? toggleText : popupText, offset: 1}) as unknown as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [paragraph]})
+    const start = direction === "rtl" ? paragraph.childNodes.length : 0
+    const end = direction === "rtl" ? 0 : paragraph.childNodes.length
+    for(const [x, y, offset] of [[90, 30, start], [190, 30, end], [110, 17, start], [170, 43, end]] as const) {
+      const down = pointer(paragraph, "pointerdown", x, y)
+      pointer(paragraph, "pointerup", x, y)
+      expect(down.defaultPrevented).toBe(true)
+      expect($.anchor).toBe(paragraph)
+      expect($.anchorOffset).toBe(offset)
+      expect($.isTextSelection).toBe(true)
+      expect($.isGapSelection).toBe(false)
+      const left = x < 140
+      expect(toggle.closest(".ww-popup")).toHaveClass(`◆popup-caret-outside-${left ? "left" : "right"}`)
+      editor.features.dialog.refresh()
+      expect(content).not.toHaveClass("◆popup-visible")
+    }
+    $.selectElement(toggle)
+    editor.features.dialog.refresh()
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [content, paragraph]})
+    expect($.pointFromCoords(190, 55, content, editor.schema)?.node === popupText).toBe(true)
+    pointer(content, "pointerdown", 190, 55)
+    pointer(content, "pointerup", 190, 55)
+    expect($.anchor === popupText).toBe(true)
+    expect($.flowRoot).toBe(content)
+  })
+
+  it("keeps a drag started in document text out of an overlapping popup", () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">toggle</button><span id="note" popover>Popup text</span></span> after</p>'
+    const paragraph = document.querySelector("p")!, wrapper = document.querySelector<HTMLElement>(".ww-popup")!
+    const content = wrapper.querySelector<HTMLElement>("[popover]")!, before = paragraph.firstChild!, popupText = content.firstChild!
+    $.move(before, 1)
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 220, 25))
+    vi.spyOn(wrapper, "getBoundingClientRect").mockReturnValue(new DOMRect(60, 20, 65, 25))
+    vi.spyOn(content, "getBoundingClientRect").mockReturnValue(new DOMRect(60, 35, 130, 40))
+    vi.spyOn(Range.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 20, 55, 25))
+    vi.spyOn(document, "caretPositionFromPoint").mockImplementation(x => ({offsetNode: x < 40 ? before : popupText, offset: 1}) as unknown as CaretPosition)
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: (x: number) => x < 40 ? [paragraph] : [content, paragraph]})
+    pointer(paragraph, "pointerdown", 10, 30)
+    pointer(content, "pointermove", 100, 45)
+    expect($.anchor).toBe(before)
+    expect(content.contains($.focus)).toBe(false)
+    pointer(content, "pointerup", 100, 45)
+    expect(content.contains($.focus)).toBe(false)
+  })
+
   it.each(["<table><tbody><tr><td>hello world</td></tr></tbody></table>", "<p>hello world</p>"])(
     "holds toolbox selection updates until a drag finishes in %s", markup => {
       document.body.innerHTML = markup
@@ -5546,7 +6196,7 @@ describe("selection invariants", () => {
         expect(item).not.toHaveClass("◆gap-before-selected", "◆gap-after-selected")
       }
     }
-  })
+  }, 30_000)
 
   it("leaves list text and the space between its items to native editing", () => {
     document.body.innerHTML = '<ul><li>First</li><li>Last</li></ul>'
@@ -6114,6 +6764,124 @@ describe("selection invariants", () => {
     expect(feature.isInDragSelection).toBe(false)
     expect(feature.dragAnchor).toBeNull()
     expect(document.body).not.toHaveClass("◆selection-dragging")
+  })
+})
+
+describe("block and contentful widget gaps", () => {
+  const press = (key: string) => {
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    return event
+  }
+
+  it.each(["table", "content-widget", "blockquote", "h2"])("navigates above and below a %s", tag => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "flow*"}}])
+    const content = tag === "table" ? '<tbody><tr><td><b>First</b></td><td>Last</td></tr></tbody>' : '<b>First</b> Last'
+    document.body.innerHTML = `<section>Before<!--keep--><${tag}>${content}</${tag}><!--keep-->After</section>`
+    const element = document.querySelector(tag)!
+    if(tag === "content-widget") editor.features.widget.refresh()
+    const first = element.querySelector("b")!.firstChild!, last = tag === "table" ? element.querySelectorAll("td")[1].firstChild! : element.lastChild!
+    for(const [key, text, offset, placement] of [["ArrowUp", first, 0, "before"], ["ArrowDown", last, -1, "after"]] as const) {
+      $.move(text, offset)
+      expect(press(key).defaultPrevented).toBe(true)
+      expect($.anchor).toBe(element.parentNode)
+      expect($.isGapSelection).toBe(true)
+      expect(element).toHaveClass(`◆gap-${placement}-selected`)
+      expect(feature.selectionCaret?.getAttribute("part")).toContain("gap-caret")
+    }
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["before", "after"] as const)("resolves a mouse hit %s an uncaptioned table", placement => {
+    document.body.innerHTML = '<section>Before<!--keep--><table><tbody><tr><td>Cell</td></tr></tbody></table><!--keep-->After</section>'
+    const table = document.querySelector("table")!, text = table.querySelector("td")!.firstChild!
+    vi.spyOn(table, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 100, 200, 100))
+    const caret = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    const elements = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: text, offset: placement === "before" ? 0 : 4})})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.querySelector("section")!]})
+    try {
+      const point = $.pointFromCoords(50, placement === "before" ? 90 : 210, document.querySelector("section"), editor.schema)
+      expect(point).toMatchObject({node: table.parentNode, offset: placement === "before" ? 2 : 3, overrideNative: true})
+      $.selectRange(point!.node, point!.offset)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(true)
+      expect(table).toHaveClass(`◆gap-${placement}-selected`)
+    }
+    finally {
+      if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      if(elements) Object.defineProperty(document, "elementsFromPoint", elements)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it("types after a final table and supports undo and redo", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(table.querySelector("td")!.firstChild!, -1)
+    expect(press("ArrowDown").defaultPrevented).toBe(true)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+    document.body.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "After", bubbles: true, cancelable: true}))
+    expect(table.nextElementSibling?.textContent).toBe("After")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.body.textContent).toBe("Cell")
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(document.body.textContent).toBe("CellAfter")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("uses the final table boundary when native hit testing returns the preceding paragraph", () => {
+    document.body.innerHTML = '<p>Before</p><!--keep--><table><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const paragraph = document.querySelector("p")!, table = document.querySelector("table")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 200, 20))
+    vi.spyOn(table, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 80, 200, 100))
+    const caret = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    const elements = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: paragraph.firstChild, offset: 6})})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.body]})
+    try {
+      const point = $.pointFromCoords(50, 190, document.body, editor.schema)
+      expect(point).toMatchObject({node: document.body, offset: 3, overrideNative: true})
+      $.selectRange(point!.node, point!.offset)
+      feature.processSelection()
+      expect(table).toHaveClass("◆gap-after-selected")
+      expect($.isGapSelection).toBe(true)
+    }
+    finally {
+      if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      if(elements) Object.defineProperty(document, "elementsFromPoint", elements)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it("exposes a standard block gap beside bare text inside a contentful widget", () => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "flow*"}}])
+    document.body.innerHTML = '<content-widget>Before<blockquote><p>Inside</p></blockquote>After</content-widget>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("content-widget")!, block = widget.querySelector("blockquote")!
+    $.selectGap(block, "before")
+    feature.processSelection()
+    expect($.isGapSelection).toBe(true)
+    expect(block).toHaveClass("◆gap-before-selected")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("keeps a text caret beside an inline image in a paragraph", () => {
+    document.body.innerHTML = '<p>Before<img alt="inline">After</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, 1)
+    expect($.isGapSelection).toBe(false)
+    expect($.isTextSelection).toBe(true)
   })
 })
 

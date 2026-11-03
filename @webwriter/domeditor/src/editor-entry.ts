@@ -1,7 +1,7 @@
 import { DOMEditor } from "./domeditor"
 import {openFrameLinksInNewTabs} from "./frame-links"
 import {captureSnapshotTextNodeRuns, editorFrameControlMessage, isInitializeEditorMessage, replayHostDrag, replayHostPointer} from "./editor-bridge"
-import {appCommands, builtinShortcuts, shortcutFromEvent} from "./app-settings"
+import {builtinShortcuts, commandForShortcutEvent, shortcutFromEvent} from "./app-settings"
 import {isAppendixInteraction, isTextFieldInteraction, isWidgetShadowInteraction, pathFromNode} from "./utility"
 import {isAuthoredMutation} from "./editor-artifacts"
 import {serializeDoctype} from "./serialization-primitives"
@@ -152,7 +152,7 @@ const connectHost = (editor: DOMEditor, origin: string, nonce: string, settings:
       && editor.features.selection.captureSelectedElement?.localName === "svg") return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
-    const command = appCommands.find(candidate => shortcuts[candidate.id] === shortcut)
+    const command = commandForShortcutEvent(shortcuts, event)
     if(!command && !builtinShortcuts().has(shortcut)) return
     if(!shouldCaptureFrameShortcut(event, command?.action)) return
     event.preventDefault()

@@ -167,6 +167,12 @@ it("publishes template edits, owns only document shortcuts, and disconnects coll
     .filter(message => message.type === "editor-frame-shortcut")
   expect(shortcuts.map(message => message.action)).toEqual(["Undo"])
 
+  const germanUndo = new KeyboardEvent("keydown", {key: "z", code: "KeyY", ctrlKey: true,
+    bubbles: true, composed: true, cancelable: true})
+  document.querySelector("p")!.dispatchEvent(germanUndo)
+  expect(germanUndo.defaultPrevented).toBe(true)
+  expect(postMessage.mock.calls.filter(([message]) => message.type === "editor-frame-shortcut" && message.action === "Undo")).toHaveLength(2)
+
   const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
   const appendixControl = appendix.appendChild(document.createElement("input"))
   for(const target of [document.querySelector("p")!, document.querySelector("input")!, widgetRoot.firstChild!, appendixControl]) {

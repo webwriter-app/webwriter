@@ -17,6 +17,13 @@ const hasSelector = (stylesheet: CSSStyleSheet, selector: string) =>
 const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
+describe("popup text selection styling", () => {
+  it("keeps toggle text selectable with a text cursor and gives its selected text a distinct fill in the editor", () => {
+    expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\),\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)\s*\{[^}]*user-select:\s*text;[^}]*cursor:\s*text;/)
+    expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\)::selection,\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)::selection\s*\{[^}]*background-color:\s*#fbbf24;[^}]*color:\s*#1f2937;/)
+  })
+})
+
 describe("collaborative minimum flow content", () => {
   it("keeps one default paragraph when a remote deletion and its later repair arrive separately", async () => {
     document.body.innerHTML = "<p>Last paragraph</p>"
@@ -194,10 +201,11 @@ describe("DOMEditor stylesheets", () => {
     expect(tableRule?.style.boxSizing).toBe("border-box")
     expect(tableRule?.style.width).toBe("100%")
     expect(tableRule?.style.borderCollapse).toBe("collapse")
-    expect(cellRule?.style.border).toBe("1px solid #aeb8c4")
-    expect(cellRule?.style.minWidth).toBe("2rem")
-    expect(cellRule?.style.height).toBe("1.5rem")
-    expect(cellRule?.style.padding).toBe("0.35rem 0.5rem")
+    expect(cellRule?.style.outlineWidth).toBe("1px")
+    expect(cellRule?.style.outlineStyle).toBe("solid")
+    expect(cellRule?.style.padding).toBe("")
+    expect(cellRule?.style.minWidth).toBe("")
+    expect(cellRule?.style.height).toBe("")
     expect(editorStyleString).toMatch(/:where\(table:not\(:has\(td, th\)\)\)::after\s*\{[\s\S]*?display:\s*table-cell;[\s\S]*?height:\s*2\.2rem;[\s\S]*?border:\s*1px dashed #aeb8c4;[\s\S]*?content:\s*"";/)
   })
 
@@ -320,6 +328,9 @@ describe("DOMEditor stylesheets", () => {
     expect(editorStyleString).toMatch(/\.◆element-selected:is\(:hover, \.◆pointer-hovered, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
     expect(editorStyleString).toMatch(/\.◆element-selected\.◆style-target-hovered:not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--selection-anchor, --hover-anchor;/)
     expect(editorStyleString).toMatch(/\.◆empty-selected:is\(:hover, \.◆pointer-hovered, \.◆element-hovered\):not\(table \*\)\s*\{[\s\S]*?anchor-name:\s*--empty-selected, --hover-anchor;/)
+    expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --hover-anchor;")
+    expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor;")
+    expect(editorStyleString).toContain("anchor-name: --ww-popup-bubble, --selection-anchor, --hover-anchor;")
     expect(editorStyleString).toMatch(/body::part\(hover-caret\)\s*\{[\s\S]*?position:\s*fixed;[\s\S]*?position-anchor:\s*--hover-anchor;[\s\S]*?width:\s*anchor-size\(width\);[\s\S]*?outline:\s*1px dotted var\(--sl-color-gray-400, black\);[\s\S]*?outline-offset:\s*2px;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆style-target-hovered\)::part\(hover-caret\),\s*body\.◆style-target-hovered::part\(hover-caret\)\s*\{[\s\S]*?display:\s*block;/)
     expect(editorStyleString).toMatch(/body:has\(\.◆element-hovered\)::part\(hover-caret\)\s*\{[\s\S]*?outline:\s*2px dotted var\(--sl-color-primary-400\);/)
@@ -763,6 +774,104 @@ describe("widget shadow interactions", () => {
 })
 
 describe("breadcrumb positioning", () => {
+  it("shows Popup and its parts as selectable breadcrumb elements", () => {
+    document.body.innerHTML = '<div class="ww-popup"><button type="button" popovertarget="note">Open</button><!--keep--><div id="note" popover="auto"><p>Content</p></div></div><p>Outside</p>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    const detail = () => {
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      return postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+    }
+    try {
+      $.move(document.querySelector('[popover] p')!.firstChild!, 1)
+      const content = detail()
+      expect(content.path.map(item => item.name)).toEqual(["Document", "Popup", "Popup Content", "Paragraph"])
+      expect(content.path[1].path).toEqual([0, 0])
+      expect(content.selectedElementTypes?.map(group => group.element.name)).toEqual(["Popup", "Popup Content", "Paragraph"])
+      expect(content.selectedElementTypes?.[0].element.path).toEqual([0, 0])
+      editor.features.selection.actions.selectElementTypes({type: "selectElementTypes", selectionTypes: [
+        {localName: "button", namespaceURI: "http://www.w3.org/1999/xhtml", path: [0, 0]},
+      ]})
+      expect($.selectedElement).toBe(document.querySelector("button"))
+      $.move(document.querySelector('[popover] p')!.firstChild!, 1)
+      editor.features.selection.actions.selectElementTypes({type: "selectElementTypes", selectionTypes: [
+        {localName: "div", namespaceURI: "http://www.w3.org/1999/xhtml", path: [0, 2]},
+      ]})
+      expect(detail().element).toMatchObject({name: "Popup Content", path: [0, 2]})
+      $.selectElement(document.querySelector("button")!)
+      const toggle = detail()
+      expect(toggle.path.map(item => item.name)).toEqual(["Document", "Popup"])
+      expect(toggle.element).toMatchObject({name: "Popup", path: [0, 0]})
+      $.selectElement(document.querySelector('[popover]')!)
+      expect(detail().element).toMatchObject({name: "Popup Content", path: [0, 2]})
+      editor.features.selection.actions.selectNode({type: "selectNode", path: [0]})
+      expect(detail().element).toMatchObject({name: "Popup", path: [0, 0]})
+      document.querySelector("body > p")!.remove()
+      editor.features.selection.actions.selectNode({type: "selectNode", path: [0]})
+      expect(detail().element).toMatchObject({name: "Popup", path: [0, 0]})
+    }
+    finally {
+      editor.destroy()
+      postMessage.mockRestore()
+      document.body.replaceChildren()
+    }
+  })
+
+  it("shows inline Popup Content in the breadcrumb while editing its text", () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button type="button" popovertarget="note">Open</button><span id="note" popover="auto">Content</span></span> after</p>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      $.move(document.querySelector('[popover]')!.firstChild!, 2)
+      editor.postSelectionPath()
+      const detail = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+      expect(detail.path.map(item => item.name)).toEqual(["Document", "Paragraph", "Popup", "Popup Content"])
+      expect(detail.path[2].path).toEqual([0, 1, 0])
+      expect(detail.selectedElementTypes?.map(item => item.element.name)).toEqual(["Paragraph", "Popup", "Popup Content"])
+      expect(detail.selectedElementTypes?.[1].element.path).toEqual([0, 1, 0])
+      $.move(document.querySelector('.ww-popup')!, 0)
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      const boundary = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+      expect(boundary.path.map(item => item.name)).toEqual(["Document", "Paragraph", "Popup"])
+      editor.features.selection.actions.selectNode({type: "selectNode", path: [0, 1, 1]})
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      const selected = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+      expect(selected.element?.name).toBe("Popup Content")
+    }
+    finally { editor.destroy(); postMessage.mockRestore(); document.body.replaceChildren() }
+  })
+  it("shows externally linked Popup Content under the inline Popup in the breadcrumb", () => {
+    document.body.innerHTML = '<p>Before <span class="ww-popup"><button popovertarget="note">Open</button></span> after</p><div class="ww-popup-content" id="note" role="dialog" popover="auto"><p>Content</p></div>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      $.move(document.querySelector(".ww-popup-content p")!.firstChild!, 2)
+      editor.postSelectionPath()
+      const detail = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+      expect(detail.path.map(item => item.name)).toEqual(["Document", "Paragraph", "Popup", "Popup Content", "Paragraph"])
+    }
+    finally { editor.destroy(); postMessage.mockRestore(); document.body.replaceChildren() }
+  })
+  it("serializes an older inline popup with a flow paragraph as valid preview HTML", () => {
+    const id = "popup-11111111-1111-4111-8111-111111111111"
+    document.body.innerHTML = `<p>Before <span class="ww-popup"><button popovertarget="${id}">Open</button><span id="${id}" popover="auto"></span></span> after</p>`
+    const content = document.querySelector("[popover]")!
+    const paragraph = document.createElement("p")
+    paragraph.textContent = "Body"
+    content.append(paragraph)
+    const editor = new DOMEditor()
+    try {
+      const output = new DOMParser().parseFromString(editor.toHTML(), "text/html")
+      expect(output.querySelector("p > .ww-popup button")?.textContent).toBe("Open")
+      expect(output.querySelector(".ww-popup-content[popover] > p")?.textContent).toBe("Body")
+      expect(output.querySelector(".ww-popup-content")?.parentElement).toBe(output.body)
+      expect(document.querySelector(".ww-popup > [popover] > p")?.textContent).toBe("Body")
+    }
+    finally { editor.destroy(); document.body.replaceChildren() }
+  })
   it("posts DOM-derived type projections for an explicit spatial selection", () => {
     document.body.innerHTML = '<p title="shared" style="color: red; width: 10px">one</p><p title="shared" style="color: red; width: 20px">two</p><img alt="diagram"><p title="outside">outside</p>'
     const editor = new DOMEditor()
@@ -792,6 +901,22 @@ describe("breadcrumb positioning", () => {
       document.body.replaceChildren()
       document.body.className = ""
     }
+  })
+
+  it("posts element groups when a range covers all document content", () => {
+    document.body.innerHTML = '<p>one</p><!--keep--><p>two</p><demo-widget></demo-widget>'
+    const editor = new DOMEditor()
+    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => undefined)
+    try {
+      $.selectRange(document.body, 0, document.body, document.body.childNodes.length)
+      editor.features.selection.processSelection()
+      postMessage.mockClear()
+      editor.postSelectionPath()
+      const detail = postMessage.mock.calls.find(([message]) => message.type === selectionChangeEvent)![0].detail as SelectionChangeDetail
+      expect(detail.selectedElementTypes?.map(group => [group.element.localName, group.count])).toEqual([["p", 2], ["demo-widget", 1]])
+      expect(detail.nodeSelected).not.toBe(true)
+    }
+    finally { editor.destroy(); postMessage.mockRestore(); document.body.replaceChildren() }
   })
 
   it("omits figure wrappers from the breadcrumb while retaining captions, media, and outer sections", () => {

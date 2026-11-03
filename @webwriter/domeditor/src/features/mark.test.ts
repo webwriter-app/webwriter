@@ -27,6 +27,149 @@ function selectText(node: Text, start = 0, end = node.length) {
 const cleanHTML = () => editor.toHTML(true)
 
 describe("MarkFeature DOM state", () => {
+  it("wraps selected inline content in a popup while preserving surrounding markup", () => {
+    const paragraph = setContent('<p>Before <em>selected <b>words</b></em> after</p>')
+    const first = paragraph.querySelector("em")!.firstChild!, last = paragraph.querySelector("b")!.firstChild!
+    $.selectRange(first, 0, last, 5)
+    expect(feature.insertPopup()).toBe(true)
+    const wrapper = paragraph.querySelector("span.ww-popup")!, button = wrapper.querySelector("button")!, popup = paragraph.nextElementSibling!
+    expect(popup.matches("div.ww-popup-content[popover]")).toBe(true)
+    expect(button.innerHTML).toBe('selected <b>words</b>')
+    expect(button.getAttribute("popovertarget")).toBe(popup.id)
+    expect(popup.querySelector(":scope > p")?.textContent).toBe("")
+    expect(paragraph.textContent).toBe("Before selected words after")
+    expect($.anchor).toBe(popup.firstElementChild)
+    expect(cleanHTML()).not.toContain("◆")
+    expect(cleanHTML()).toContain("<p></p>")
+    expect(cleanHTML()).not.toContain("Popup content")
+    const parsed = new DOMParser().parseFromString(cleanHTML(), "text/html")
+    expect(parsed.querySelector(".ww-popup-content")?.firstElementChild?.localName).toBe("p")
+  })
+
+  it("toggles a popup off while retaining its toggle text and surrounding markup", () => {
+    const paragraph = setContent('<p>Before <em>selected</em> after</p>')
+    selectText(paragraph.querySelector("em")!.firstChild as Text)
+    expect(feature.togglePopup()).toBe(true)
+    const button = paragraph.querySelector(".ww-popup button")!
+    expect(feature.getState().popupActive).toBe(true)
+    $.move(button.firstChild!, 3)
+    expect(feature.togglePopup()).toBe(true)
+    expect(paragraph.textContent).toBe("Before selected after")
+    expect(paragraph.querySelector(".ww-popup")).toBeNull()
+    expect(document.querySelector(".ww-popup-content")).toBeNull()
+    expect(feature.getState().popupActive).toBeUndefined()
+  })
+
+  it("refuses links in Popup toggles while allowing them in Popup Content", () => {
+    const paragraph = setContent('<p>Before <span class="ww-popup"><button popovertarget="popup-link-test">Toggle</button></span> after</p><div class="ww-popup-content" id="popup-link-test" popover><p>Content</p></div>')
+    const toggleText = paragraph.querySelector("button")!.firstChild as Text
+    selectText(toggleText)
+    expect(feature.getState().allowedMarks).not.toContain("a")
+    expect(feature.addMark("a")).toBe(false)
+    expect(paragraph.querySelector("button a")).toBeNull()
+
+    $.move(toggleText, 3)
+    expect(feature.toggleMark("a")).toBe(false)
+    expect(feature.getState().marks).not.toContain("a")
+
+    const content = document.querySelector(".ww-popup-content p")!
+    selectText(content.firstChild as Text)
+    expect(feature.addMark("a")).toBe(true)
+    expect(content.querySelector("a")?.textContent).toBe("Content")
+  })
+
+  it("refuses a link selection crossing a Popup toggle", () => {
+    const paragraph = setContent('<p>Before <span class="ww-popup"><button popovertarget="popup-link-test">Toggle</button></span> after</p><div class="ww-popup-content" id="popup-link-test" popover><p></p></div>')
+    $.selectRange(paragraph.firstChild!, 0, paragraph.lastChild!, 6)
+    expect(feature.getState().allowedMarks).not.toContain("a")
+    expect(feature.addMark("a")).toBe(false)
+    expect(paragraph.querySelector("a")).toBeNull()
+
+    $.move(paragraph, 2)
+    expect(feature.toggleMark("a")).toBe(true)
+    expect(feature.getState().marks).toContain("a")
+  })
+
+  it.each([
+    '<p><span class="ww-popup"><button popovertarget="note">Toggle</button></span></p><div class="ww-popup-content" id="note" popover><p>Dialog text</p></div>',
+    '<p><span class="ww-popup"><button popovertarget="note">Toggle</button><span id="note" popover>Dialog text</span></span></p>',
+  ])("disallows a Popup inside Popup Content", html => {
+    setContent(html)
+    const content = document.querySelector("[popover]")!
+    const text = (content.querySelector("p")?.firstChild ?? content.firstChild) as Text
+    selectText(text)
+    expect(feature.insertPopup()).toBe(false)
+    $.move(text, 3)
+    expect(feature.insertPopup()).toBe(false)
+    expect(document.querySelectorAll(".ww-popup")).toHaveLength(1)
+    expect(document.querySelector(".ww-popup button")?.textContent).toBe("Toggle")
+  })
+
+  it("can add, remove, and add a popup again without reselecting its text", () => {
+    const paragraph = setContent("<p>Before selected after</p>")
+    const text = paragraph.firstChild as Text
+    selectText(text, 7, 15)
+
+    expect(feature.togglePopup()).toBe(true)
+    expect(paragraph.querySelector(".ww-popup button")?.textContent).toBe("selected")
+    expect(feature.togglePopup()).toBe(true)
+    expect(document.getSelection()?.toString()).toBe("selected")
+    expect(feature.togglePopup()).toBe(true)
+    expect(paragraph.querySelector(".ww-popup button")?.textContent).toBe("selected")
+  })
+
+  it("reselects nested toggle text when removing a popup inside a table cell", () => {
+    setContent("<table><tbody><tr><td>Before <em>selected</em> after</td></tr></tbody></table>")
+    const cell = document.querySelector("td")!
+    selectText(cell.querySelector("em")!.firstChild as Text)
+
+    expect(feature.togglePopup()).toBe(true)
+    expect(feature.togglePopup()).toBe(true)
+    expect(document.getSelection()?.toString()).toBe("selected")
+    expect(feature.togglePopup()).toBe(true)
+    expect(cell.querySelector(".ww-popup button")?.innerHTML).toBe("selected")
+    expect(cell.querySelector(".ww-popup-content[popover]")).not.toBeNull()
+  })
+
+  it.each(["td", "th"])("keeps popup content inside a %s instead of adding a table column", cellName => {
+    const table = setContent(`<table><tbody><tr><${cellName}>Selected</${cellName}><td>Other</td></tr><tr><td>Next</td><td>Cell</td></tr></tbody></table>`) as HTMLTableElement
+    const cell = table.rows[0].cells[0]
+    selectText(cell.firstChild as Text)
+
+    expect(feature.insertPopup()).toBe(true)
+    expect(cell.querySelector(".ww-popup-content[popover]")?.parentElement).toBe(cell)
+    expect(Array.from(table.rows[0].children, child => child.localName)).toEqual([cellName, "td"])
+    expect(table.rows[0].cells).toHaveLength(2)
+    expect(new DOMParser().parseFromString(cleanHTML(), "text/html").querySelector("tr")?.children).toHaveLength(2)
+  })
+
+  it("keeps popup content inside a table caption", () => {
+    const table = setContent("<table><caption>Selected</caption><tbody><tr><td>Cell</td></tr></tbody></table>") as HTMLTableElement
+    const caption = table.caption!
+    selectText(caption.firstChild as Text)
+
+    expect(feature.insertPopup()).toBe(true)
+    expect(caption.querySelector(".ww-popup-content[popover]")?.parentElement).toBe(caption)
+    expect(Array.from(table.children, child => child.localName)).toEqual(["caption", "tbody"])
+  })
+
+  it("leaves collapsed, multi-block, and widget-crossing selections unchanged", () => {
+    const paragraph = setContent('<p>First <test-widget>widget</test-widget> last</p><p>Other</p>')
+    const first = paragraph.firstChild!, last = paragraph.lastChild!, other = document.querySelectorAll("p")[1].firstChild!
+    for(const [start, startOffset, end, endOffset] of [[first, 1, first, 1], [first, 0, last, 5], [first, 0, other, 5]] as const) {
+      $.selectRange(start, startOffset, end, endOffset)
+      const before = cleanHTML()
+      expect(feature.insertPopup()).toBe(false)
+      expect(cleanHTML()).toBe(before)
+    }
+  })
+
+  it("keeps adjacent inline popups distinct during mark normalization", () => {
+    const paragraph = setContent('<p><span class="ww-popup"><button popovertarget="a">One</button><span id="a" popover>First</span></span><span class="ww-popup"><button popovertarget="b">Two</button><span id="b" popover>Second</span></span></p>')
+    normalizeEditingContent(paragraph)
+    expect(paragraph.querySelectorAll(":scope > .ww-popup")).toHaveLength(2)
+    expect(Array.from(paragraph.querySelectorAll("button"), button => button.getAttribute("popovertarget"))).toEqual(["a", "b"])
+  })
   it("ignores selection presentation mutations while refreshing authored formatting", async () => {
     const paragraph = setContent("<p>Text</p>")
     selectText(paragraph.firstChild as Text)
@@ -767,6 +910,64 @@ describe("MarkFeature stored marks", () => {
     return event
   }
 
+  it("stores Popup at an empty caret and wraps the next typed text", () => {
+    const paragraph = setContent("<p></p>")
+    $.move(paragraph, 0)
+
+    expect(feature.togglePopup()).toBe(true)
+    expect(feature.getState().popupActive).toBe(true)
+    expect(cleanHTML()).toBe("<p></p>")
+
+    const event = typeText(paragraph, "Hello")
+    const button = paragraph.querySelector(".ww-popup button")!
+    expect(event.defaultPrevented).toBe(true)
+    expect(button.textContent).toBe("Hello")
+    expect(document.querySelector(".ww-popup-content[popover]")).not.toBeNull()
+    expect(button.contains(document.getSelection()!.anchorNode)).toBe(true)
+    expect(document.getSelection()!.anchorOffset).toBe(5)
+    expect(feature.getState().popupActive).toBe(true)
+    expect(cleanHTML()).not.toContain("◆")
+  })
+
+  it("combines a pending Popup with another stored mark", () => {
+    const paragraph = setContent("<p></p>")
+    $.move(paragraph, 0)
+    expect(feature.toggleMark("b")).toBe(true)
+    expect(feature.togglePopup()).toBe(true)
+
+    expect(typeText(paragraph, "X").defaultPrevented).toBe(true)
+    expect(paragraph.querySelector("b .ww-popup button")?.textContent).toBe("X")
+    expect(paragraph.querySelector(".ww-popup button")?.contains(document.getSelection()!.anchorNode)).toBe(true)
+  })
+
+  it("clears a pending Popup when toggled off or when the selection moves", () => {
+    const paragraph = setContent("<p>Text</p>")
+    const text = paragraph.firstChild!
+    $.move(text, 1)
+    expect(feature.togglePopup()).toBe(true)
+    expect(feature.togglePopup()).toBe(true)
+    expect(feature.getState().popupActive).toBeUndefined()
+    expect(typeText(paragraph, "X").defaultPrevented).toBe(false)
+
+    expect(feature.togglePopup()).toBe(true)
+    $.move(text, 3)
+    document.dispatchEvent(new Event("selectionchange"))
+    expect(feature.getState().popupActive).toBeUndefined()
+    expect(typeText(paragraph, "Y").defaultPrevented).toBe(false)
+    expect(paragraph.querySelector(".ww-popup")).toBeNull()
+  })
+
+  it("keeps stored Link and Popup mutually exclusive", () => {
+    const paragraph = setContent("<p></p>")
+    $.move(paragraph, 0)
+    expect(feature.togglePopup()).toBe(true)
+    expect(feature.toggleMark("a")).toBe(false)
+    expect(feature.togglePopup()).toBe(true)
+    expect(feature.toggleMark("a")).toBe(true)
+    expect(feature.togglePopup()).toBe(false)
+    expect(feature.getState().popupActive).toBeUndefined()
+  })
+
   it("keeps an empty download filename when typing a new link", () => {
     const paragraph = setContent("<p></p>")
     $.move(paragraph, 0)
@@ -1205,6 +1406,16 @@ describe("link keyboard edits", () => {
 
 
 describe("automatic links in the edited text block", () => {
+  it("skips Popup toggle text while linking surrounding text", async () => {
+    const block = setContent('<p>before.test <span class="ww-popup"><button popovertarget="popup-autolink-test">inside.test</button></span> after.test</p><div class="ww-popup-content" id="popup-autolink-test" popover><p></p></div>')
+    const trailing = block.lastChild as Text
+    $.move(trailing, trailing.length)
+    block.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
+    await settle()
+    expect(block.querySelector("button a")).toBeNull()
+    expect(Array.from(block.querySelectorAll("a"), link => link.textContent)).toEqual(["before.test", "after.test"])
+  })
+
   it("preserves explicitly written HTTP links and their visible text", async () => {
     const block = setContent("<p>http://example.test/path</p>")
     $.move(block.firstChild!, block.textContent!.length)

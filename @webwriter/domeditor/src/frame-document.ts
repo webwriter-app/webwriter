@@ -1,5 +1,5 @@
 import type {IImportMap} from "@jspm/import-map"
-import {stripActiveContent} from "./active-content"
+import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {WEBWRITER_GENERATOR} from "./document-head"
 import {ensureDefaultDocumentTheme} from "./document-themes"
 import {frameImportMap, frameLocalPackageURL, framePackages} from "./frame-local-packages"
@@ -131,6 +131,7 @@ export function editorFrameHTML(documentHTML: string | null, options: EditorFram
 
   const parsed = new DOMParser().parseFromString(documentHTML, "text/html")
   restoreOriginalResourceURLs(parsed)
+  applyIframeSandboxPolicy(parsed, [options.hostOrigin, entryURL.origin])
   // The iframe receives its trusted resolution through load-widgets.
   parsed.getElementById(packageImportMapId)?.remove()
   // Saved exports carry the standalone adapter. Replace it with the nonce-bearing
@@ -179,7 +180,8 @@ export function previewFrameHTML(source: Document, options: PreviewFrameOptions)
 
   // Remove authored executable content before installing the trusted widget
   // and preview bridge scripts in the isolated frame.
-  stripActiveContent(source, {allowStyles: true, allowIframes: true, allowLocalIframes: true})
+  stripActiveContent(source, {allowStyles: true, allowIframes: true, allowLocalIframes: true,
+    protectedIframeOrigins: [options.hostOrigin, options.frameOrigin]})
 
   // Use the same dependency selection as saving, after stripping authored code.
   if(options.executeScripts) {

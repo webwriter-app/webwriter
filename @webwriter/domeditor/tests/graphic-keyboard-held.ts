@@ -2,6 +2,7 @@ import type {DOMEditor} from "../src/domeditor"
 import {ShapeKeyboard} from "../src/components/shape-keyboard"
 import {shapeKeyboardInputEvent, type ShapeKeyboardInput} from "../src/editor-bridge"
 import type {GraphicShapePaint, GraphicShapeType} from "../src/graphic"
+import {cloneWithoutEditorMarkers} from "../src/utility"
 
 function assert(condition: unknown, message: string): asserts condition { if(!condition) throw new Error(message) }
 
@@ -40,7 +41,8 @@ export async function checkGraphicKeyboardHeld() {
     editor.features.selection.captureElement(graphic)
     await layout()
     const originalComment = graphic.firstChild!, originalGroup = graphic.children[0], originalSibling = graphic.children[1]
-    const originalHTML = doc.body.innerHTML
+    const authoredHTML = () => cloneWithoutEditorMarkers(doc.body, true).innerHTML
+    const originalHTML = authoredHTML()
     const originalSerialized = editor.toHTML(true)
 
     // Mirror the host's same-origin iframe bridge for this native-browser fixture.
@@ -130,7 +132,7 @@ export async function checkGraphicKeyboardHeld() {
     await toggleModifiers()
     assert(keyboard.shadowRoot!.querySelector('.key[aria-pressed="true"]') === heldShape,
       "Shift or Caps Lock changed the held shape")
-    assert(doc.body.innerHTML === originalHTML, "holding the shape key mutated authored content")
+    assert(authoredHTML() === originalHTML, "holding the shape key mutated authored content")
     assert(editor.toHTML(true) === originalSerialized, "holding the shape key changed serialized content")
 
     const placements: SVGGraphicsElement[] = []
@@ -139,7 +141,7 @@ export async function checkGraphicKeyboardHeld() {
       await layout()
       for(const [xRatio, yRatio] of locations) {
         const point = cursorPoint(inspectOverflow ? .96 : xRatio, inspectOverflow ? .35 : yRatio)
-        const authoredHTML = doc.body.innerHTML
+        const authoredBeforeHover = authoredHTML()
         const serializedHTML = editor.toHTML(true)
         await pointerMove(point.x, point.y)
         const activePreview = preview()
@@ -188,7 +190,7 @@ export async function checkGraphicKeyboardHeld() {
           assert(nearest < 1, `${zoom}%: preview inside-flood corner ${index} missed the rendered graphic viewport by ${nearest}px`)
         }
         assertCentered(activePreview.firstElementChild, point, `${zoom}% preview`)
-        assert(doc.body.innerHTML === authoredHTML, "hovering the preview mutated authored content")
+        assert(authoredHTML() === authoredBeforeHover, "hovering the preview mutated authored content")
         assert(editor.toHTML(true) === serializedHTML, "hovering the preview changed serialized content")
         if(inspectHeld || inspectOverflow) {
           if(inspectOverflow) {

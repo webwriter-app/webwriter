@@ -24,27 +24,28 @@ export async function checkListDeletion() {
       selection.setBaseAndExtent(doc.body, 0, doc.body, 3)
       editor.features.list.toggleList(type)
       const list = doc.querySelector(type)!
-      const items = Array.from(list.children)
-      const text = items[2].querySelector("p")!.firstChild!
+      const initialItems = Array.from(list.children)
+      // Ordinary paragraphs are flattened onto the new list item during
+      // conversion, so continue from the text node in the live li structure.
+      const text = initialItems[2].firstChild!
       selection.collapse(text, text.textContent!.length)
-      for(let index = items.length - 1; index >= 0; index--) {
-        const item = items[index]
-        for(let length = item.textContent!.length; length > 0; length--) {
+      for(let index = initialItems.length - 1; index >= 0; index--) {
+        for(let length = list.children[index].textContent!.length; length > 0; length--) {
           // Selection.modify can first traverse the element boundary at the
           // preceding item's end before extending over its last character.
-          for(let attempt = 0; item.textContent!.length === length && attempt < 3; attempt++) {
+          for(let attempt = 0; list.children[index].textContent!.length === length && attempt < 3; attempt++) {
             await backspace()
-            assert(item.contains(selection.anchorNode), `${type}: text deletion escaped its item`)
+            assert(list.children[index].contains(selection.anchorNode), `${type}: text deletion escaped its item`)
           }
-          assert(item.textContent!.length === length - 1,
-            `${type}: item ${index}, length ${length}: repeated Backspace left ${item.outerHTML}; caret=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
+          assert(list.children[index].textContent!.length === length - 1,
+            `${type}: item ${index}, length ${length}: repeated Backspace left ${list.children[index].outerHTML}; caret=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
         }
+        const emptyItem = list.children[index]
+        assert(emptyItem.childNodes.length === 0 && selection.anchorNode === emptyItem,
+          `${type}: removing empty item content escaped the live item; caret=${selection.anchorNode?.nodeName}:${selection.anchorOffset}`)
         await backspace()
-        assert(item.childNodes.length === 0 && selection.anchorNode === item,
-          `${type}: removing the empty paragraph escaped its list item`)
-        await backspace()
-        assert(!item.isConnected && list.children.length === index, `${type}: Backspace did not remove the empty bullet`)
-        if(index) assert(selection.anchorNode === items[index - 1], `${type}: Backspace did not return to the preceding item`)
+        assert(!emptyItem.isConnected && list.children.length === index, `${type}: Backspace did not remove the empty bullet`)
+        if(index) assert(selection.anchorNode === list.children[index - 1], `${type}: Backspace did not return to the preceding item`)
       }
       await backspace()
       assert(!list.isConnected, `${type}: Backspace did not exit the empty list`)

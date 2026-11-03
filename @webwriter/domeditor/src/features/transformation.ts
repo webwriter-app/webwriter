@@ -11,6 +11,7 @@ import {captionedFigureContent} from "../figure-layout.js"
 import {canvasGridSize, isCanvasStartingView} from "../canvas-viewer.js"
 import {createAnchorPositioner} from "../utility"
 import {isAuthoredMutation} from "../editor-artifacts"
+import {popupElementRole} from "../element-names"
 
 type TransformElement = HTMLElement | SVGSVGElement | MathMLElement
 type Mode = "move" | "scale" | "rotate" | "anchor" | "crop"
@@ -426,6 +427,7 @@ export class TransformationFeature extends EditorFeature {
   #canTransform(element: Element): element is TransformElement {
     return (element instanceof HTMLElement || element instanceof SVGSVGElement
       || mathRoot(element) === element && element.getAttribute("display") === "block")
+      && !["toggle", "content"].includes(popupElementRole(element) ?? "")
       && element !== document.documentElement && element !== document.head
       && !isDocumentRoot(element) && getDocumentRoot().contains(element) && this.editor.allows("select", element)
   }
@@ -889,11 +891,14 @@ export class TransformationFeature extends EditorFeature {
     }
     const span = (y: number) => {
       let spans = [{left: 0, right: width}]
-      for(const box of floats.filter(box => box.top <= y && box.bottom >= y)) {
+      // Overlay geometry is rounded to CSS pixels; an edge that visually
+      // coincides with a float can differ by a fraction of a pixel.
+      for(const box of floats.filter(box => box.top <= y + 1 && box.bottom >= y - 1)) {
         spans = spans.flatMap(part => box.right <= part.left || box.left >= part.right ? [part]
           : [...(box.left > part.left ? [{left: part.left, right: box.left}] : []), ...(box.right < part.right ? [{left: box.right, right: part.right}] : [])])
       }
-      return spans.sort((a, b) => (b.right - b.left) - (a.right - a.left))[0] ?? {left: 0, right: 0}
+      const outside = Math.min(0, ...floats.filter(box => box.top <= y + 1 && box.bottom >= y - 1).map(box => box.left)) - 12
+      return spans.sort((a, b) => (b.right - b.left) - (a.right - a.left))[0] ?? {left: outside, right: outside}
     }
     const top = span(0), bottom = span(height)
     const bounds = {"top-left": top.left, "top-right": top.right, "bottom-left": bottom.left, "bottom-right": bottom.right,
@@ -1391,6 +1396,8 @@ export class TransformationFeature extends EditorFeature {
     const crop = gesture.canvas && !event.altKey
     if(gesture.canvas) this.#writeCanvasViewBox(gesture.canvas.initial)
     const style = getComputedStyle(target)
+    const popup = target.closest("[popover]")
+    const insidePopup = Boolean(popup && popup !== target && popupElementRole(popup) === "content")
     if(style.display === "inline" && target instanceof HTMLElement) this.#write("display", "inline-block")
     let actualDW = dw, actualDH = dh
     if(event.shiftKey && !crop && !text && !image) {
@@ -1404,7 +1411,7 @@ export class TransformationFeature extends EditorFeature {
       }
       if(image) {
         const width = Math.max(1, gesture.cssWidth + dw), height = Math.max(1, gesture.cssHeight + dh)
-        this.#write("width", "100%")
+        this.#write("width", insidePopup ? `${width}px` : "100%")
         this.#write("height", "auto")
         this.#write("aspect-ratio", `${width} / ${height}`)
         this.#write("max-width", `${width}px`)
@@ -1439,6 +1446,9 @@ export class TransformationFeature extends EditorFeature {
         }
         if(floatSideFromStyles(style.float, target.style, target.classList) !== "none") {
           this.#write("--ww-float-size", `${width}px`)
+        }
+        if(!image && !gesture.canvas && insidePopup) {
+          this.#write("width", `${width}px`)
         }
         this.#write("max-width", `${width}px`)
       }

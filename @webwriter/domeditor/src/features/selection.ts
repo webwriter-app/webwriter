@@ -1,8 +1,10 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {SVG_NAMESPACE, graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
+import {popupContentAncestor, popupContentForToggle, popupDisplayToggle, popupElementRole} from "../element-names"
+import {isMarkElement} from "../marks"
 import {boardLayoutRole, isSlide, slideLayoutRole} from "../document-layout"
 import {getDocumentRoot, isDocumentRoot} from "../document-template"
 import {inlineMathRoot, mathOutsidePoint, mathRoot} from "../math"
@@ -16,7 +18,8 @@ type SelectionKind = "none" | "capture" | "section" | "virtual" | "cell" | "gap"
 const selectionPresentationMarkers = ["◆gap-before-selected", "◆gap-after-selected", "◆element-selected",
   "◆element-capture-selected", "◆text-selected", "◆empty-selected", "◆caption-placeholder", "◆caption-editing",
   "◆gap-caret-visible", "◆touch-caret-visible", "◆node-selection-active", "◆atomic-range-selected", "◆flow-excluded",
-  "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right"]
+  "◆math-boundary-caret", "◆math-caret-inside-left", "◆math-caret-inside-right", "◆math-caret-outside-left", "◆math-caret-outside-right",
+  "◆popup-boundary-caret", "◆popup-caret-inside-left", "◆popup-caret-inside-right", "◆popup-caret-outside-left", "◆popup-caret-outside-right"]
 const selectionPresentationSelector = selectionPresentationMarkers.map(marker => `.${marker}`).join(",")
 
 function arrowDirection(key: string) {
@@ -70,6 +73,7 @@ export class SelectionFeature extends EditorFeature {
   #selectedSection: Element | null = null
   #atomicExtension: {range: Range, backwards: boolean} | null = null
   #drag: {anchor: Range, focus: Range, lastFocus: Range, scope: Element | null, x: number, y: number, nativeClick: boolean, moved: boolean, target: Element, pointerId?: number, pointerType: string} | null = null
+  #lastPopupPointerClick: {content: Element, x: number, y: number, time: number, count: number} | null = null
   #settingBoxSelection = false
   #boxDrag: {root: HTMLElement, x: number, y: number, pointerId?: number, pointerType: string, overlay: HTMLElement, elements: Element[], previews: Map<Element, HTMLElement>} | null = null
   #selectionMarkers = new Set<Element>()
@@ -408,6 +412,193 @@ export class SelectionFeature extends EditorFeature {
     return null
   }
 
+  /** A Popup wrapper is only a container for its two authored parts. Native
+   * editing sometimes places a caret between them; move it into the toggle
+   * or outside the wrapper before any command can insert there. */
+  normalizePopupSelection(): boolean {
+    const selection = document.getSelection()
+    if(!selection?.anchorNode) return true
+    if(!selection.isCollapsed) {
+      const range = selection.rangeCount === 1 ? selection.getRangeAt(0) : null
+      const child = range && range.startContainer === range.endContainer && range.endOffset === range.startOffset + 1
+        ? range.startContainer.childNodes.item(range.startOffset) : null
+      if(isElement(child) && ["toggle", "content"].includes(popupElementRole(child) ?? "")) return true
+      if(isElement(child) && popupElementRole(child) === "toggle") return false
+      const part = (node: Node) => {
+        const element = isElement(node) ? node : node.parentElement
+        const candidate = element?.closest("button[popovertarget], [popover]")
+        return candidate && ["toggle", "content"].includes(popupElementRole(candidate) ?? "") ? candidate : null
+      }
+      if(range) {
+        const start = part(range.startContainer), end = part(range.endContainer)
+        if(start || end) return start !== null && start === end
+      }
+      return true
+    }
+    const node = selection.anchorNode
+    const wrapper = (isElement(node) ? node : node.parentElement)?.closest("span.ww-popup")
+    if(!wrapper || popupElementRole(wrapper) !== "popup") return true
+    const toggle = Array.from(wrapper.children).find(element => popupElementRole(element) === "toggle")
+    const content = toggle && popupContentForToggle(toggle)
+    if(!toggle || !content) return false
+    if(toggle.contains(node) || content.contains(node)) return true
+    let position = selection.anchorOffset
+    if(node !== wrapper) {
+      const child = Array.from(wrapper.childNodes).findIndex(child => child === node || child.contains(node))
+      if(child < 0) return false
+      position = child + (node instanceof Text && selection.anchorOffset === node.length ? 1 : 0)
+    }
+    const toggleIndex = Array.from(wrapper.childNodes).indexOf(toggle)
+    const contentIndex = Array.from(wrapper.childNodes).indexOf(content)
+    if(position > Math.max(toggleIndex, contentIndex) && wrapper.parentNode) {
+      $.move(wrapper.parentNode, Array.from(wrapper.parentNode.childNodes).indexOf(wrapper) + 1)
+      return true
+    }
+    const end = position > toggleIndex
+    const point = textPointAtOffset(toggle, end ? toggle.textContent?.length ?? 0 : 0, [toggle, end ? toggle.childNodes.length : 0])
+    $.move(point[0], point[1])
+    return true
+  }
+
+  /** Resolve the four text positions at an inline Popup's toggle. */
+  #popupCaretBoundary(selection: Selection, node: Node | null = selection.focusNode, offset = selection.focusOffset): {wrapper: Element, toggle: Element, inside: boolean, start: boolean} | null {
+    if(!selection.isCollapsed || !node) return null
+    const toggle = (isElement(node) ? node : node.parentElement)?.closest("button[popovertarget]")
+    if(toggle && popupElementRole(toggle) === "toggle") {
+      const wrapper = toggle.closest("span.ww-popup")
+      const textOffset = textOffsetIn(toggle, node, offset)
+      if(!wrapper || textOffset === null) return null
+      if(textOffset === 0) return {wrapper, toggle, inside: true, start: true}
+      if(textOffset === (toggle.textContent?.length ?? 0)) return {wrapper, toggle, inside: true, start: false}
+      return null
+    }
+    let container: Node, position: number
+    if(node instanceof Text) {
+      if(offset !== 0 && offset !== node.length) return null
+      if(!node.parentNode) return null
+      container = node.parentNode
+      position = Array.from(container.childNodes).indexOf(node) + (offset === node.length ? 1 : 0)
+    }
+    else if(isElement(node)) { container = node; position = offset }
+    else return null
+    const edgePopup = (candidate: Node, direction: "start" | "end"): Element | null => {
+      if(!isElement(candidate)) return null
+      if(popupElementRole(candidate) === "popup" && candidate.localName === "span") return candidate
+      if(!isMarkElement(candidate) || Boolean(isAtomicEditingElement(candidate, this.editor.schema))) return null
+      const children = Array.from(candidate.childNodes)
+      if(direction === "end") children.reverse()
+      for(const child of children) {
+        if(child.nodeType === Node.COMMENT_NODE || child instanceof Text && !child.data.trim() || isOutOfFlow(child)) continue
+        return edgePopup(child, direction)
+      }
+      return null
+    }
+    const adjacent = (direction: "before" | "after") => {
+      const step = direction === "before" ? -1 : 1
+      for(let i = direction === "before" ? position - 1 : position; i >= 0 && i < container.childNodes.length; i += step) {
+        const candidate = container.childNodes.item(i)
+        if(candidate.nodeType === Node.COMMENT_NODE || candidate instanceof Text && !candidate.data.trim() || isOutOfFlow(candidate)) continue
+        return edgePopup(candidate, direction === "before" ? "end" : "start")
+      }
+      return null
+    }
+    const before = adjacent("before")
+    if(before) {
+      const toggle = Array.from(before.children).find(element => popupElementRole(element) === "toggle")
+      if(toggle) return {wrapper: before, toggle, inside: false, start: false}
+    }
+    const after = adjacent("after")
+    const nextToggle = after && Array.from(after.children).find(element => popupElementRole(element) === "toggle")
+    return after && nextToggle ? {wrapper: after, toggle: nextToggle, inside: false, start: true} : null
+  }
+
+  /** Browser typing at an outer inline boundary can otherwise land in the
+   * adjacent button even though the live Range remains in the paragraph. */
+  isOutsidePopupBoundary() {
+    return Boolean(this.outsidePopupBoundary())
+  }
+
+  outsidePopupBoundary(direction?: "backward" | "forward") {
+    const selection = document.getSelection()
+    const boundary = selection && this.#popupCaretBoundary(selection)
+    return boundary && !boundary.inside && (!direction || boundary.start === (direction === "backward"))
+      ? {wrapper: boundary.wrapper, start: boundary.start} : null
+  }
+
+  /** Use neighboring text as the outer caret when it exists, avoiding a
+   * second stop at the same painted position in the paragraph. */
+  #popupOutsidePoint(wrapper: Element, start: boolean): [Node, number] {
+    const parent = wrapper.parentNode!
+    const index = Array.from(parent.childNodes).indexOf(wrapper) + (start ? 0 : 1)
+    let sibling = start ? wrapper.previousSibling : wrapper.nextSibling
+    while(sibling && (sibling.nodeType === Node.COMMENT_NODE || sibling instanceof Text && !sibling.length)) {
+      sibling = start ? sibling.previousSibling : sibling.nextSibling
+    }
+    return sibling instanceof Text ? [sibling, start ? sibling.length : 0] : [parent, index]
+  }
+
+  selectOutsidePopupBoundary(wrapper: Element, start: boolean) {
+    if(!wrapper.isConnected || !wrapper.parentNode) return
+    const point = this.#popupOutsidePoint(wrapper, start)
+    $.move(point[0], point[1])
+    this.processSelection()
+  }
+
+  /** Cross only the toggle's two edges; the bubble is never a stop in the
+   * paragraph's horizontal navigation. */
+  #navigatePopupBoundary(direction: "backward" | "forward") {
+    const selection = document.getSelection()
+    const selected = selection && $.selectedElement
+    if(selected && popupElementRole(selected) === "toggle") {
+      const start = direction === "backward"
+      const point = textPointAtOffset(selected, start ? 0 : selected.textContent?.length ?? 0,
+        [selected, start ? 0 : selected.childNodes.length])
+      $.move(point[0], point[1])
+      this.processSelection()
+      return true
+    }
+    if(selection?.isCollapsed && selection.focusNode instanceof Text) {
+      const text = selection.focusNode
+      const edge = direction === "forward" ? text.length : 0
+      if(selection.focusOffset + (direction === "forward" ? 1 : -1) === edge) {
+        const approaching = this.#popupCaretBoundary(selection, text, edge)
+        if(approaching && !approaching.inside && approaching.start === (direction === "forward")) {
+          $.move(text, edge)
+          this.processSelection()
+          return true
+        }
+      }
+    }
+    const boundary = selection && this.#popupCaretBoundary(selection)
+    if(!boundary || !boundary.wrapper.parentNode) return false
+    const {wrapper, toggle, inside, start} = boundary
+    if(inside ? direction === "backward" ? !start : start
+      : direction === "backward" ? start : !start) return false
+    if(inside) {
+      const point = this.#popupOutsidePoint(wrapper, start)
+      $.move(point[0], point[1])
+    }
+    else {
+      const point = textPointAtOffset(toggle, start ? 0 : toggle.textContent?.length ?? 0,
+        [toggle, start ? 0 : toggle.childNodes.length])
+      $.move(point[0], point[1])
+    }
+    this.processSelection()
+    return true
+  }
+
+  /** Keep the outer block gap distinct from a Popup's inline text boundary. */
+  #navigatePopupParagraphGap(direction: "backward" | "forward") {
+    const selection = document.getSelection()
+    const boundary = selection && this.#popupCaretBoundary(selection)
+    if(!boundary || boundary.inside || boundary.start !== (direction === "backward")) return false
+    const paragraph = boundary.wrapper.closest("p")
+    if(!paragraph || !isCaretAtBoundary(paragraph, direction === "backward" ? "start" : "end")) return false
+    $.selectGap(paragraph, direction === "backward" ? "before" : "after")
+    this.processSelection()
+    return true
+  }
+
   /** Selects an adjacent atomic node, extends across it with a fixed anchor,
    * or collapses a node selection into the requested boundary. */
   #navigateAtomicSelection(direction: "backward" | "forward", vertical = false, extend = false) {
@@ -520,7 +711,7 @@ export class SelectionFeature extends EditorFeature {
 
   #navigateContainerGap(direction: "backward" | "forward", vertical: boolean) {
     const selected = $.selectedElement
-    if(selected?.matches("ul, ol, dl, menu, details")) {
+    if(selected && (selected.matches("ul, ol, dl, menu, details, table") || isContentfulWidget(selected, this.editor.schema))) {
       $.selectGap(selected, direction === "backward" ? "before" : "after")
       this.processSelection()
       return true
@@ -528,16 +719,15 @@ export class SelectionFeature extends EditorFeature {
     if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
     let widget = isElement($.anchor) ? $.anchor : $.anchor.parentElement
     while(widget && !isContentfulWidget(widget, this.editor.schema)) widget = widget.parentElement
-    if(widget && !this.editor.schema.get(widget).inseperable
-      && isContentfulWidget(widget.parentElement, this.editor.schema)
+    if(widget && (!this.editor.schema.get(widget).inseperable || !isContentfulWidget(widget.parentElement, this.editor.schema))
       && this.#atDisclosureEdge(widget, direction, vertical)) {
       $.selectGap(widget, direction === "backward" ? "before" : "after")
       this.processSelection()
       return true
     }
     const adjacent = this.#adjacentNavigationElement(direction)
-    if($.listGap || $.detailsGap) {
-      const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details")
+    if($.listGap || $.detailsGap || $.captionedGap?.element.matches("table") || $.blockGap && isContentfulWidget($.blockGap.element, this.editor.schema)) {
+      const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details, table")
       if(outer && (!outer.matches("details") || outer.hasAttribute("open")) && this.#atDisclosureEdge(outer, direction, false)) {
         $.selectGap(outer, direction === "backward" ? "before" : "after")
         this.processSelection()
@@ -550,7 +740,7 @@ export class SelectionFeature extends EditorFeature {
       else $.move(edge, direction === "forward" ? 0 : -1)
     }
     else {
-      const container = getContainer($.anchor).closest("ul, ol, dl, menu, details")
+      const container = getContainer($.anchor).closest("ul, ol, dl, menu, details, table")
       const scope = container?.matches("details:not([open])") ? container.querySelector(":scope > summary") : container
       if(container && scope && this.#atDisclosureEdge(scope, direction, vertical)) {
         $.selectGap(container, direction === "backward" ? "before" : "after")
@@ -559,10 +749,38 @@ export class SelectionFeature extends EditorFeature {
         const block = this.#selectionBlock()
         const neighbor = adjacent ?? (block && this.#atDisclosureEdge(block, direction, vertical)
           ? this.#adjacentNavigationElement(direction, true) : null)
-        if(!neighbor?.matches("ul, ol, dl, menu, details")) return false
+        if(!neighbor || !(neighbor.matches("ul, ol, dl, menu, details, table") || isContentfulWidget(neighbor, this.editor.schema))) return false
         $.selectGap(neighbor, direction === "forward" ? "before" : "after")
       }
     }
+    this.processSelection()
+    return true
+  }
+
+  /** Expose block edges to vertical navigation without manufacturing DOM
+   * nodes. The browser retains line navigation until the first or last line. */
+  #navigateBlockGap(direction: "backward" | "forward") {
+    if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
+    if($.isGapSelection) {
+      if(direction === "backward") return false
+      const adjacent = this.#adjacentNavigationElement(direction)
+      if(!adjacent || isAtomicEditingElement(adjacent, this.editor.schema)) return false
+      const edge = this.#disclosureEdge(adjacent, direction === "forward" ? "backward" : "forward")
+      if(!edge) return false
+      $.move(edge, direction === "forward" ? 0 : -1)
+      this.processSelection()
+      return true
+    }
+    let block = this.#selectionBlock()
+    if(!block) {
+      let element = isElement($.anchor) ? $.anchor : $.anchor.parentElement
+      while(element && element !== getDocumentRoot() && !isSectionElement(element)) element = element.parentElement
+      if(element !== getDocumentRoot()) block = element
+    }
+    if(!block || !block.parentElement || block.parentElement.matches("table, thead, tbody, tfoot, tr, colgroup")
+      || block.closest("ul, ol, dl, menu, details, figure")
+      || !this.#atDisclosureEdge(block, direction, true)) return false
+    $.selectGap(block, direction === "backward" ? "before" : "after")
     this.processSelection()
     return true
   }
@@ -680,6 +898,7 @@ export class SelectionFeature extends EditorFeature {
       while(foreign.parentElement && editingFlowRoot(foreign.parentElement) !== flow) {
         foreign = editingFlowRoot(foreign.parentElement)
       }
+      if(popupElementRole(foreign) === "content") foreign = popupDisplayToggle(foreign)?.closest(".ww-popup") ?? foreign
       const parent = foreign.parentNode!
       const index = Array.from(parent.childNodes).indexOf(foreign)
       selection.extend(parent, index + (backwards ? 0 : 1))
@@ -846,6 +1065,15 @@ export class SelectionFeature extends EditorFeature {
     }
     const dragging = this.isInDragSelection
     if(drag?.scope) this.#constrainSelectionToFlow()
+    if(event.type === "pointerup" && drag?.scope && popupElementRole(drag.scope) === "content" && !drag.moved
+      && document.getSelection()?.focusNode instanceof Text && drag.scope.contains(document.getSelection()!.focusNode)) {
+      const last = this.#lastPopupPointerClick
+      const count = last?.content === drag.scope && performance.now() - last.time < 600
+        && Math.abs(event.clientX - last.x) < 8 && Math.abs(event.clientY - last.y) < 8 ? last.count + 1 : 1
+      this.#lastPopupPointerClick = {content: drag.scope, x: event.clientX, y: event.clientY, time: performance.now(), count}
+      if(count >= 2) this.#selectPopupClickGranularity(event, count >= 3 ? "paragraph" : "word")
+    }
+    else if(event.type === "pointerup") this.#lastPopupPointerClick = null
     this.#endDrag()
     if(dragging) this.processSelection()
   }
@@ -856,7 +1084,10 @@ export class SelectionFeature extends EditorFeature {
       this.#endDrag()
       return
     }
-    const scope = this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
+    const flow = editingFlowRoot(selection.focusNode)
+    // A popup bubble is its own editing flow even in the document layout.
+    const popupScope = popupElementRole(flow) === "content" && flow.contains(selection.anchorNode) ? flow : null
+    const scope = popupScope ?? this.#layoutSelectionItem(selection.focusNode, selection.focusNode)
     if(scope && !scope.contains(selection.anchorNode)) selection.collapse(selection.focusNode, selection.focusOffset)
     const anchor = document.createRange()
     anchor.setStart(selection.anchorNode, selection.anchorOffset)
@@ -890,7 +1121,8 @@ export class SelectionFeature extends EditorFeature {
     // Live Ranges track inserts/removals at the saved endpoints. Revalidate
     // their current roots before using them after a concurrent DOM mutation.
     const root = drag.scope ?? getDocumentRoot()
-    if(!root.isConnected || drag.scope && this.#layoutSelectionItem(drag.scope, drag.scope) !== drag.scope
+    if(!root.isConnected || drag.scope && popupElementRole(drag.scope) !== "content"
+      && this.#layoutSelectionItem(drag.scope, drag.scope) !== drag.scope
       || !root.contains(drag.anchor.startContainer) || !root.contains(drag.focus.startContainer)) {
       this.#endDrag()
       this.processSelection()
@@ -999,18 +1231,59 @@ export class SelectionFeature extends EditorFeature {
   /** Native caret hit testing snaps blank space to nearby text. Require an
    * actual character box before allowing repeated word/paragraph selection. */
   #hitsText(event: MouseEvent) {
-    const point = document.caretPositionFromPoint?.(event.clientX, event.clientY)
-    if(!(point?.offsetNode instanceof Text) || !getDocumentRoot().contains(point.offsetNode)) return false
     const range = document.createRange()
-    for(const offset of [point.offset - 1, point.offset]) {
-      if(offset < 0 || offset >= point.offsetNode.length) continue
-      range.setStart(point.offsetNode, offset)
-      range.setEnd(point.offsetNode, offset + 1)
-      if(Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0
+    const hits = (text: Text, offset: number) => {
+      if(offset < 0 || offset >= text.length || !getDocumentRoot().contains(text)) return false
+      range.setStart(text, offset)
+      range.setEnd(text, offset + 1)
+      return Array.from(range.getClientRects()).some(rect => rect.width > 0 && rect.height > 0
         && event.clientX >= rect.left && event.clientX <= rect.right
-        && event.clientY >= rect.top && event.clientY <= rect.bottom)) return true
+        && event.clientY >= rect.top && event.clientY <= rect.bottom)
+    }
+    const point = document.caretPositionFromPoint?.(event.clientX, event.clientY)
+    if(point?.offsetNode instanceof Text && [point.offset - 1, point.offset].some(offset => hits(point.offsetNode as Text, offset))) return true
+    const nativeRange = document.caretRangeFromPoint?.(event.clientX, event.clientY)
+    if(nativeRange?.startContainer instanceof Text && [nativeRange.startOffset - 1, nativeRange.startOffset]
+      .some(offset => hits(nativeRange.startContainer as Text, offset))) return true
+    const target = event.target instanceof Element ? event.target : event.target instanceof Node ? event.target.parentElement : null
+    if(!target || !getDocumentRoot().contains(target)) return false
+    const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT)
+    for(let text = walker.nextNode(); text; text = walker.nextNode()) {
+      if(!(text instanceof Text)) continue
+      range.selectNodeContents(text)
+      if(!Array.from(range.getClientRects()).some(rect => event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom)) continue
+      for(let offset = 0; offset < text.length; offset++) if(hits(text, offset)) return true
     }
     return false
+  }
+
+  /** Pointer capture keeps bubble drags scoped, so repeated clicks cannot
+   * always use the browser's default word/paragraph selection. Apply the
+   * native selection granularity at the caret established by pointerdown. */
+  #selectPopupClickGranularity(event: MouseEvent, granularity: "word" | "paragraph") {
+    if(event.button !== 0) return
+    const selection = document.getSelection()
+    const content = popupContentAncestor(selection?.focusNode ?? null)
+    if(!selection?.focusNode || !content || !content.isConnected || !selection.isCollapsed && granularity === "word") return
+    if(granularity === "word") {
+      const text = selection.focusNode
+      if(!(text instanceof Text)) return
+      const offset = selection.focusOffset
+      const words = Array.from(new Intl.Segmenter(undefined, {granularity: "word"}).segment(text.data))
+        .filter(segment => segment.isWordLike)
+      const word = words.find(segment => segment.index <= offset && offset < segment.index + segment.segment.length)
+        ?? words.find(segment => segment.index >= offset) ?? words.at(-1)
+      if(!word) return
+      $.selectRange(text, word.index, text, word.index + word.segment.length)
+    }
+    else {
+      const block = getContainer(selection.focusNode)
+      if(!content.contains(block)) return
+      $.selectRange(block, 0, block, block.childNodes.length)
+    }
+    this.#constrainSelectionToFlow()
+    this.processSelection(false, {scrollIntoView: false})
   }
 
   #handlePointerDown(ev: PointerEvent, fromCanvasSlot = false) {
@@ -1094,12 +1367,17 @@ export class SelectionFeature extends EditorFeature {
     }
     const clickedItem = this.#layoutSelectionItem(canvasItem ?? (ev.target instanceof Node ? ev.target : null),
       canvasItem ?? (ev.target instanceof Node ? ev.target : null))
+    const popupFlow = editingFlowRoot(origin instanceof Node ? origin : null)
+    const popupDrag = popupElementRole(popupFlow) === "content"
     const extend = ev.shiftKey && (!clickedItem || clickedItem === this.#layoutSelectionItem($.anchor, $.anchor))
+      && (!popupDrag || popupFlow.contains($.anchor))
     this.isInDragSelection = true
     const point = $.selectCoords(ev.clientX, ev.clientY, extend, ev.target, this.editor.schema)
     const surfaceHit = fromCanvasSlot || Boolean(canvasItem && (ev.target === document.body || ev.target === document.documentElement))
+    // Native selection races the scoped pointer drag and can expose the body
+    // selection briefly, closing the bubble between pointer moves.
     const nativeClick = ev.pointerType !== "touch" && !surfaceHit && (!point || !$.isGapSelection && !point.overrideNative)
-      && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
+      && !popupDrag && !atomicEditingContainer(ev.target instanceof Node ? ev.target : null, this.editor.schema)
     if(!nativeClick) ev.preventDefault()
     this.#beginDrag(ev, nativeClick)
     this.processSelection(true)
@@ -1192,7 +1470,7 @@ export class SelectionFeature extends EditorFeature {
       // MOUSEDOWN carries the click count (POINTERDOWN does not). Release
       // editor capture before the native default starts word/paragraph
       // selection, so subsequent moves retain the browser's granularity.
-      if(drag.nativeClick && event.detail >= 2 && this.#hitsText(event)) {
+      if((drag.nativeClick || drag.scope && popupElementRole(drag.scope) === "content") && event.detail >= 2 && this.#hitsText(event)) {
         this.#endDrag()
         return
       }
@@ -1217,9 +1495,15 @@ export class SelectionFeature extends EditorFeature {
       })
     },
     selectstart: event => { if(this.#boxDrag || this.#drag && (!this.#drag.nativeClick || this.#drag.moved)) event.preventDefault() },
-    click: event => this.#handleModifierClick(event),
+    click: event => {
+      if(this.#handleModifierClick(event)) return
+      if(event.detail >= 3) this.#selectPopupClickGranularity(event, "paragraph")
+    },
     mouseup: event => { this.#handleModifierClick(event) },
-    dblclick: event => { this.#handleModifierClick(event) },
+    dblclick: event => {
+      if(this.#handleModifierClick(event)) return
+      this.#selectPopupClickGranularity(event, "word")
+    },
     focusin: event => {
       this.#invalidateFloatCandidates()
       const widget = widgetHostForShadowInteraction(event, this.editor.schema)
@@ -1240,6 +1524,12 @@ export class SelectionFeature extends EditorFeature {
     },
     keydown: event => {
       this.#handleKeyState(event)
+      if(!isAppendixInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
+        && ["toggle", "content"].includes(popupElementRole($.selectedElement ?? document.body) ?? "")
+        && (event.key === "Enter" || event.key.length === 1 && !modifierKeyDown(event))) event.preventDefault()
+      if(!isAppendixInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
+        && (event.key.length === 1 || ["Enter", "Backspace", "Delete"].includes(event.key))
+        && !this.normalizePopupSelection()) event.preventDefault()
       const isPrintable = event.key?.length === 1 && !event.metaKey && (!event.ctrlKey || event.getModifierState("AltGraph"))
       if(isPrintable || ["Enter", "Backspace", "Delete"].includes(event.key)) this.#preventCapturedDocumentInput(event)
       if(event.key === "Escape" && this.#boxDrag) {
@@ -1251,6 +1541,12 @@ export class SelectionFeature extends EditorFeature {
     },
     keyup: event => this.#handleKeyState(event),
     beforeinput: event => {
+      if(!isAppendixInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
+        && event.inputType.startsWith("insert")
+        && ["toggle", "content"].includes(popupElementRole($.selectedElement ?? document.body) ?? "")) event.preventDefault()
+      if(!isAppendixInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
+        && (event.inputType.startsWith("insert") || event.inputType.startsWith("delete"))
+        && !this.normalizePopupSelection()) event.preventDefault()
       if(event.inputType.startsWith("insert") || event.inputType.startsWith("delete")) this.#preventCapturedDocumentInput(event)
       this.#handleWidgetShadowInteraction(event)
     },
@@ -1385,6 +1681,9 @@ export class SelectionFeature extends EditorFeature {
   #modifierSelectionTarget(target: EventTarget | null) {
     if(!(target instanceof Node)) return null
     const origin = atomicEditingContainer(target, this.editor.schema) ?? (isElement(target) ? target : target.parentElement)
+    const popupPart = !atomicEditingContainer(target, this.editor.schema)
+      ? origin?.closest("button[popovertarget], [popover]") : null
+    if(popupPart && ["toggle", "content"].includes(popupElementRole(popupPart) ?? "")) return popupPart
     const figure = origin?.closest("figure")
     if(figure && !isDocumentRoot(figure)) return figure
     let targetElement = atomicEditingContainer(target, this.editor.schema) ?? getContainer(target)
@@ -1410,7 +1709,7 @@ export class SelectionFeature extends EditorFeature {
         .filter(element => this.editor.allows("select", element))
       if(!elements.length) return
       if(elements.length === 1) {
-        if(isSectionElement(elements[0])) this.selectSectionElement(elements[0])
+        if(isSectionElement(elements[0]) && !popupElementRole(elements[0])) this.selectSectionElement(elements[0])
         else this.selectElement(elements[0])
         return
       }
@@ -1483,7 +1782,8 @@ export class SelectionFeature extends EditorFeature {
 
   /** Resolves a BODY-relative child-node path to an element. */
   #elementAtPath(path: number[]) {
-    return getContainer(this.#rawElementAtPath(path))
+    const element = this.#rawElementAtPath(path)
+    return popupElementRole(element) ? element : getContainer(element)
   }
 
   #rawElementAtPath(path: number[]) {
@@ -1706,6 +2006,9 @@ export class SelectionFeature extends EditorFeature {
     caret.style.removeProperty("--gap-caret-inline-position")
     caret.style.removeProperty("--math-caret-top")
     caret.style.removeProperty("--math-caret-height")
+    caret.style.removeProperty("--popup-caret-top")
+    caret.style.removeProperty("--popup-caret-height")
+    caret.style.removeProperty("color")
     for(const property of ["width", "position-area", "position-anchor", "translate", "transform", "transform-origin"]) caret.style.removeProperty(property)
     ;["node", "capture", "gap", "text"].forEach(state => {
       if(caret.classList.contains(`◆selection-caret-${state}`)) caret.classList.remove(`◆selection-caret-${state}`)
@@ -1731,7 +2034,17 @@ export class SelectionFeature extends EditorFeature {
     setPart(caret, "selection-caret-hidden", false)
     if(state === "gap") setPart(caret, "gap-caret")
     caret.removeAttribute("visibility")
-    if(state === "node" || state === "capture") this.editor.features.transformation.updateInfo()
+    if(state === "node" || state === "capture") {
+      this.editor.features.transformation.updateInfo()
+      const selected = this.captureSelectedElement ?? this.selectedSectionElement ?? $.selectedElement
+      if(selected?.isConnected && !getComputedStyle(selected).getPropertyValue("anchor-name").split(",").some(name => name.trim() === "--selection-anchor")) {
+        const outlineTarget = this.captureSelectedElement ? figureSelectionTarget(selected) : selected
+        // Transformation.updateInfo positions a masked outline when native
+        // float boxes interrupt the selected element's border box. Keep that
+        // geometry instead of replacing it with an anchored rectangular box.
+        if(!this.floatExclusions(outlineTarget).length) this.anchorTransformCaret(selected)
+      }
+    }
     return caret
   }
 
@@ -2188,6 +2501,8 @@ export class SelectionFeature extends EditorFeature {
     }
     // Appendix inputs and SVG label ranges own their text selection. Clamping
     // them into BODY disrupts typing and clears the graphic's capture outline.
+    const selection = document.getSelection()
+    if(isAppendixInteraction() && selection?.anchorNode && !document.body.contains(selection.anchorNode)) return
     if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused
       || this.editor.features.graphic.textEditingRange) return
     // Shadow controls own capture and their native selection. Focus on a
@@ -2273,6 +2588,7 @@ export class SelectionFeature extends EditorFeature {
       this.#constrainSelectionToBody()
       this.#constrainSelectionToFlow()
       this.#constrainSelectionToAtomicContent()
+      this.normalizePopupSelection()
       sel = document.getSelection()
       const root = getDocumentRoot()
       const isInRoot = (node: Node | null) => node === root || Boolean(node && root.contains(node))
@@ -2310,9 +2626,11 @@ export class SelectionFeature extends EditorFeature {
     const presentationElement = selectedElement ?? (isElement(textElement) ? textElement : null)
     const retainedKind = kind === "text" || kind === "empty" ? kind : kind === "capture" ? "capture" : "node"
     const marker = kind === "text" ? "◆text-selected" : kind === "empty" ? "◆empty-selected" : "◆element-selected"
+    const hadPopupBoundaryCaret = document.body.classList.contains("◆popup-boundary-caret")
     const retained = presentationElement && this.#selectionMarkers.has(presentationElement)
       && presentationElement.isConnected && presentationElement.classList.contains(marker) ? presentationElement : null
     this.#clearSelections(retained, retained ? retainedKind : undefined)
+    if(hadPopupBoundaryCaret && (kind !== "text" || !sel?.isCollapsed)) this.#hideSelectionCaret()
     this.editor.features.widget.syncLegacyOptions(selectedElement ?? (sel?.rangeCount === 1 ? sel.getRangeAt(0).commonAncestorContainer : null))
     if(sel?.rangeCount && !sel.isCollapsed) {
       $.excludedFlowElements.forEach(element => this.#markSelection(element, "◆flow-excluded"))
@@ -2390,7 +2708,7 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const structuralGap = $.mathBoundary ?? $.listGap ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap ?? $.captionedGap
+        const structuralGap = $.mathBoundary ?? $.listGap ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap ?? $.captionedGap ?? $.blockGap
         const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
@@ -2438,12 +2756,30 @@ export class SelectionFeature extends EditorFeature {
       }
     }
     if(kind === "text" && sel.isCollapsed) {
+      const popup = this.#popupCaretBoundary(sel)
+      if(hadPopupBoundaryCaret && !popup) this.#hideSelectionCaret()
+      if(popup) {
+        const left = getComputedStyle(popup.toggle).direction === "rtl" ? !popup.start : popup.start
+        this.#markSelection(popup.wrapper, `◆popup-caret-${popup.inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
+        this.#markSelection(document.body, "◆popup-boundary-caret")
+        const caret = this.#showSelectionCaret("text")
+        const point = popup.inside ? [sel.focusNode, sel.focusOffset] as const
+          : textPointAtOffset(popup.toggle, popup.start ? 0 : popup.toggle.textContent?.length ?? 0,
+            [popup.toggle, popup.start ? 0 : popup.toggle.childNodes.length])
+        const textRect = caretRect(point[0], point[1])
+        const wrapperRect = popup.wrapper.getBoundingClientRect()
+        if(textRect.height > 0) {
+          caret.style.setProperty("--popup-caret-top", `calc(anchor(top) + ${textRect.top - wrapperRect.top}px)`)
+          caret.style.setProperty("--popup-caret-height", `${textRect.height}px`)
+        }
+        caret.style.color = getComputedStyle(popup.inside ? popup.toggle : popup.wrapper.parentElement ?? document.body).color
+      }
       const inside = inlineMathRoot(sel.focusNode)
       const boundary = $.mathBoundary
       const outside = boundary && inlineMathRoot(boundary.element)
       const formula = inside ?? outside
       const atInnerEdge = inside && sel.focusNode === inside && (sel.focusOffset === 0 || sel.focusOffset === inside.childNodes.length)
-      if(formula && (atInnerEdge && inside!.childNodes.length > 0 || outside)) {
+      if(!popup && formula && (atInnerEdge && inside!.childNodes.length > 0 || outside)) {
         const start = inside ? sel.focusOffset === 0 : boundary!.placement === "before"
         const left = getComputedStyle(formula).direction === "rtl" ? !start : start
         this.#markSelection(formula, `◆math-caret-${inside ? "inside" : "outside"}-${left ? "left" : "right"}`)
@@ -2461,7 +2797,7 @@ export class SelectionFeature extends EditorFeature {
     // while another app owns the drag.
     // Reuse the shared appendix caret at the collapsed selection's geometry.
     const touchCaret = this.#touchSelection && sel.isCollapsed && Boolean(document.activeElement?.contains(sel.focusNode))
-      && !document.body.classList.contains("◆math-boundary-caret")
+      && !document.body.classList.contains("◆math-boundary-caret") && !document.body.classList.contains("◆popup-boundary-caret")
     if((document.body.classList.contains("◆drop-selection-active") || touchCaret)
       && (kind === "text" || kind === "empty") && !$.isEmptyDocumentSelection) {
       if(touchCaret) this.#markSelection(document.body, "◆touch-caret-visible")
@@ -2539,14 +2875,18 @@ export class SelectionFeature extends EditorFeature {
       this.clearSelectedSection()
       if(ev.key.toLowerCase() === "a" && modifierKeyDown(ev)) {
         ev.preventDefault()
-        const root = this.editor.features.canvas.editingRoot ?? getDocumentRoot()
+        const flow = editingFlowRoot($.selectedElement ?? $.anchor)
+        const root = popupElementRole(flow) === "content" ? flow : this.editor.features.canvas.editingRoot ?? getDocumentRoot()
         $.selectRange(root, 0, root, root.childNodes.length)
         this.processSelection()
       }
       else if(direction && !ev.defaultPrevented && !ev.altKey && !modifierKeyDown(ev) && !ev.shiftKey
-        && (this.#navigateMathBoundary(direction)
+        && ((ev.key === "ArrowLeft" || ev.key === "ArrowRight") && this.#navigatePopupBoundary(direction)
+          || (ev.key === "ArrowUp" || ev.key === "ArrowDown") && this.#navigatePopupParagraphGap(direction)
+          || this.#navigateMathBoundary(direction)
           || this.#navigateContainerGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
+          || (ev.key === "ArrowUp" || ev.key === "ArrowDown") && this.#navigateBlockGap(direction)
           || ev.key === "ArrowUp" && this.#navigateTextFromGap())) {
         ev.preventDefault()
       }

@@ -42,6 +42,28 @@ describe("breadcrumb float indicators", () => {
   })
 })
 
+describe("breadcrumb path separators", () => {
+  it("shows chevrons along a popup path inside an opaque table tree item", async () => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    breadcrumb.path = [
+      {path: [], name: "Document"},
+      {path: [0], name: "Table"},
+      {path: [0, 0, 0, 0, 1], name: "Popup"},
+      {path: [0, 0, 0, 0, 1, 0], name: "Popup Content"},
+    ]
+    breadcrumb.tree = {path: [], name: "Document", children: [
+      {path: [0], name: "Table", children: []},
+    ]}
+    document.body.append(breadcrumb)
+    await breadcrumb.updateComplete
+    const separators = breadcrumb.shadowRoot!.querySelectorAll(".breadcrumb-list > .separator")
+    expect(separators).toHaveLength(3)
+    expect(Array.from(separators).every(separator => separator.querySelector(".separator-icon svg"))).toBe(true)
+    expect(separators[1].querySelector(".separator-trigger")).toBeNull()
+    expect(separators[2].querySelector(".separator-trigger")).toBeNull()
+  })
+})
+
 describe("image hotspot breadcrumb indicator", () => {
   it("places a hand click indicator beside the Image label", async () => {
     const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
@@ -69,7 +91,7 @@ describe("breadcrumb resize lifecycle", () => {
     const list = breadcrumb.shadowRoot!.querySelector<HTMLElement>(".breadcrumb-list")!
     const items = Array.from(list.querySelectorAll<HTMLElement>(".breadcrumb-entry:not(.separator)"))
     const separators = list.children.length - items.length
-    Object.defineProperty(list, "clientWidth", {configurable: true, value: items.length * 80 + separators * 15 - 75})
+    Object.defineProperty(list, "clientWidth", {configurable: true, value: items.length * 80 + separators * 15 - 60})
     const counts: number[] = []
     for(const entry of Array.from(list.children) as HTMLElement[]) {
       vi.spyOn(entry, "getBoundingClientRect").mockImplementation(() => {

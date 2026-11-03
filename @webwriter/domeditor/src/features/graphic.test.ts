@@ -77,6 +77,166 @@ beforeEach(() => {
 afterEach(() => editor.destroy())
 
 describe("graphic editing", () => {
+  it("cuts selected shapes to the clipboard and supports paste, undo, and redo", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "ellipse"})
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "a", ctrlKey: true, bubbles: true, cancelable: true}))
+    expect(editor.features.graphic.selectedShapes).toHaveLength(2)
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    const dispatch = (type: "cut" | "paste") => {
+      const event = new ClipboardEvent(type, {bubbles: true, cancelable: true})
+      Object.defineProperty(event, "clipboardData", {value: data})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    dispatch("cut")
+    expect(data.getData("text/html")).not.toContain("◆")
+    expect(graphicShapeRoots(graphic)).toHaveLength(0)
+    expect(editor.features.graphic.selectedShapes).toHaveLength(0)
+    await mutationsDelivered()
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphicShapeRoots(graphic)).toHaveLength(2)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphicShapeRoots(graphic)).toHaveLength(0)
+    dispatch("paste")
+    expect(graphicShapeRoots(graphic)).toHaveLength(2)
+    expect(editor.features.graphic.selectedShapes).toHaveLength(2)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["rejected", "changed", "replaced", "selection changed"])("does not delete shapes after a toolbar cut when clipboard write is %s", async outcome => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!, shape = editor.features.graphic.selectedShape!
+    let finish!: () => void, reject!: (error: Error) => void
+    const write = vi.spyOn(navigator.clipboard, "write").mockImplementation(() => new Promise<void>((resolve, fail) => { finish = resolve; reject = fail }))
+    try {
+      const pending = editor.features.manipulation.actions.cut({type: "cut"})
+      if(outcome === "changed") shape.setAttribute("fill", "red")
+      if(outcome === "replaced") shape.replaceWith(shape.cloneNode(true))
+      if(outcome === "selection changed") document.dispatchEvent(new KeyboardEvent("keydown", {key: "Escape", bubbles: true, cancelable: true}))
+      if(outcome === "rejected") {
+        reject(new Error("Clipboard denied"))
+        await expect(pending).rejects.toThrow("Clipboard denied")
+      }
+      else {
+        finish()
+        expect(await pending).toBe(false)
+      }
+      expect(graphicShapeRoots(graphic)).toHaveLength(1)
+    }
+    finally { write.mockRestore() }
+  })
+
+  it("cuts shapes through the toolbar after a successful clipboard write", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const write = vi.spyOn(navigator.clipboard, "write").mockResolvedValue()
+    try {
+      expect(await editor.features.manipulation.actions.cut({type: "cut"})).toBe(true)
+      expect(write).toHaveBeenCalledOnce()
+      expect(graphicShapeRoots(graphic)).toHaveLength(0)
+    }
+    finally { write.mockRestore() }
+  })
+
+  it("copies selected shapes and pastes them as an undoable selection", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const original = editor.features.graphic.selectedShape!
+    const originalX = Number(original.getAttribute("x"))
+    const originalY = Number(original.getAttribute("y"))
+    const outline = editor.appendix.querySelector<SVGPolygonElement>(".◆graphic-selection-outline")!
+    const originalOutline = outline.getAttribute("points")!.split(/[ ,]+/).map(Number)
+    await mutationsDelivered()
+    const data = new DataTransfer()
+    const copy = new ClipboardEvent("copy", {bubbles: true, cancelable: true})
+    Object.defineProperty(copy, "clipboardData", {value: data})
+    document.dispatchEvent(copy)
+    expect(copy.defaultPrevented).toBe(true)
+    expect(data.getData("text/html")).not.toContain("◆")
+    const paste = new ClipboardEvent("paste", {bubbles: true, cancelable: true})
+    Object.defineProperty(paste, "clipboardData", {value: data})
+    document.dispatchEvent(paste)
+    expect(paste.defaultPrevented).toBe(true)
+    const duplicate = editor.features.graphic.selectedShape!
+    expect(duplicate).not.toBe(original)
+    expect(Number(duplicate.getAttribute("x"))).toBeCloseTo(originalX + 24)
+    expect(Number(duplicate.getAttribute("y"))).toBeCloseTo(originalY + 24)
+    const pastedOutline = outline.getAttribute("points")!.split(/[ ,]+/).map(Number)
+    pastedOutline.forEach((value, index) => expect(value).toBeCloseTo(originalOutline[index] + 24))
+    expect(graphicShapeRoots(graphic)).toHaveLength(2)
+    await mutationsDelivered()
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.features.history.actions.undo({type: "undo"})
+    expect(graphicShapeRoots(graphic)).toHaveLength(1)
+    editor.features.history.actions.redo({type: "redo"})
+    expect(graphicShapeRoots(graphic)).toHaveLength(2)
+  })
+
+  it("offsets repeated pastes from the last live copy and resets for a new copy", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const graphic = document.querySelector("svg")!
+    const source = editor.features.graphic.selectedShape!
+    const x = Number(source.getAttribute("x")), y = Number(source.getAttribute("y"))
+    const data = new DataTransfer()
+    const dispatch = (type: "copy" | "paste") => {
+      const event = new ClipboardEvent(type, {bubbles: true, cancelable: true})
+      Object.defineProperty(event, "clipboardData", {value: data})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+    }
+    dispatch("copy")
+    for(const offset of [24, 48, 72]) {
+      dispatch("paste")
+      const shape = editor.features.graphic.selectedShape!
+      expect(Number(shape.getAttribute("x"))).toBeCloseTo(x + offset)
+      expect(Number(shape.getAttribute("y"))).toBeCloseTo(y + offset)
+    }
+    const last = editor.features.graphic.selectedShape!
+    last.setAttribute("x", String(x + 100))
+    last.setAttribute("y", String(y + 150))
+    dispatch("paste")
+    const moved = editor.features.graphic.selectedShape!
+    expect(Number(moved.getAttribute("x"))).toBeCloseTo(x + 124)
+    expect(Number(moved.getAttribute("y"))).toBeCloseTo(y + 174)
+    moved.remove()
+    dispatch("paste")
+    expect(Number(editor.features.graphic.selectedShape!.getAttribute("x"))).toBeCloseTo(x + 24)
+    dispatch("copy")
+    dispatch("paste")
+    expect(Number(editor.features.graphic.selectedShape!.getAttribute("x"))).toBeCloseTo(x + 48)
+    await mutationsDelivered()
+    expect(editor.toHTML(true)).not.toContain("data-webwriter-copy")
+    expect(editor.doc.body.toString()).not.toContain("data-webwriter-copy")
+    expect(graphicShapeRoots(graphic)).toHaveLength(6)
+  })
+
+  it("copies multiple selected shapes through the toolbar and pastes into another graphic", async () => {
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic", shape: "rectangle"})
+    const source = document.querySelector("svg")!
+    editor.features.graphic.actions.addGraphicShape({type: "addGraphicShape", shape: "ellipse"})
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "a", ctrlKey: true, bubbles: true, cancelable: true}))
+    expect(editor.features.graphic.selectedShapes).toHaveLength(2)
+    let items: ClipboardItem[] = []
+    vi.spyOn(navigator.clipboard, "write").mockImplementation(async value => { items = value })
+    vi.spyOn(navigator.clipboard, "read").mockImplementation(async () => items)
+    expect(await editor.features.manipulation.actions.copy({type: "copy"})).toBe(true)
+    editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
+    const target = Array.from(document.querySelectorAll("svg")).find(svg => svg !== source)!
+    expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
+    expect(graphicShapeRoots(target)).toHaveLength(2)
+    expect(editor.features.graphic.selectedShapes).toHaveLength(2)
+    const first = editor.features.graphic.selectedShapes
+    const firstRect = first.find(shape => shape.localName === "rect")!
+    const firstX = Number(firstRect.getAttribute("x"))
+    expect(await editor.features.manipulation.actions.paste({type: "paste"})).toBe(true)
+    expect(graphicShapeRoots(target)).toHaveLength(4)
+    const nextRect = editor.features.graphic.selectedShapes.find(shape => shape.localName === "rect")!
+    expect(Number(nextRect.getAttribute("x"))).toBeCloseTo(firstX + 24)
+  })
+
   it.each(["select", "draw", "lines", "curves"] as const)("claims and relays Tab navigation while a graphic is captured in %s mode", mode => {
     editor.features.graphic.actions.insertGraphic({type: "insertGraphic"})
     const graphic = document.querySelector("svg")!
@@ -3267,6 +3427,14 @@ describe("graphic editing", () => {
     }))
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
+    const previewLocal = viewport.multiply(local)
+    Object.defineProperties(preview, {
+      getCTM: {value: () => previewLocal},
+      getScreenCTM: {value: () => DOMMatrix.fromMatrix(
+        preview.style.transform ? new DOMMatrix(preview.style.transform) : new DOMMatrix(),
+      ).multiply(previewLocal)},
+    })
+    editor.features.graphic.refresh()
     expect(preview.querySelector("rect")).toHaveAttribute("transform", "rotate(90 800 450)")
     expect(preview.style.width).toBe("800px")
     expect(preview.style.height).toBe("450px")

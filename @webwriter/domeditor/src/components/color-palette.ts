@@ -52,7 +52,7 @@ export const colorPaletteStyles = css`
     .palette-automatic { border-bottom: 1px solid #d8dee6; margin-bottom: 0.4rem; }
     .palette-custom { position: relative; anchor-name: --color-option; border-top: 1px solid #d8dee6; margin-top: 0.4rem; }
     .palette-custom input[type="color"] {
-      position: fixed; position-anchor: --color-option; left: calc(anchor(--color-palette right) + 4px); top: calc(anchor(top) - 1px);
+      position: fixed; position-anchor: --color-option; left: calc(anchor(--color-palette right) + 4px); top: anchor(top);
       box-sizing: border-box; width: 1px; height: 1px; padding: 0; border: 0;
       opacity: 0; pointer-events: none;
     }

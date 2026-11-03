@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {describe, expect, it} from "vitest"
-import {stripActiveContent} from "./active-content"
+import {applyIframeSandboxPolicy, stripActiveContent} from "./active-content"
 import {sanitizePackageSnippet} from "./packages"
 
 describe("package embeds", () => {
@@ -16,16 +16,18 @@ describe("package embeds", () => {
     expect(template.innerHTML).toBe(`<${tag}><p>Keep</p></${tag}>`)
   })
 
-  it("retains PhET's remote iframe in a script sandbox", () => {
+  it("retains PhET's remote iframe with its real origin", () => {
     const html = sanitizePackageSnippet('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" title="Neuron"></iframe>')
-    expect(html).toBe('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" title="Neuron" sandbox="allow-scripts"></iframe>')
+    expect(html).toBe('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html" title="Neuron" sandbox="allow-scripts allow-same-origin"></iframe>')
   })
 
   it.each([
     "https://www.youtube.com/embed/dQw4w9WgXcQ",
     "https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=10",
-  ])("allows same-origin only for validated YouTube embeds: %s", src => {
-    expect(sanitizePackageSnippet(`<iframe src="${src}" sandbox="allow-scripts"></iframe>`))
+    "https://esri.github.io/dam-busters/",
+    "https://storymaps.arcgis.com/embed/view/example",
+  ])("preserves remote origins without provider exceptions: %s", src => {
+    expect(sanitizePackageSnippet(`<iframe src="${src}"></iframe>`))
       .toBe(`<iframe src="${src}" sandbox="allow-scripts allow-same-origin"></iframe>`)
   })
 
@@ -35,19 +37,19 @@ describe("package embeds", () => {
     "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
     "https://www.youtube.com/embed/not-a-video-id",
     "https://www.youtube.com:8443/embed/dQw4w9WgXcQ",
-  ])("keeps non-validated YouTube-like embeds opaque: %s", src => {
+  ])("applies the same policy to every remote HTTPS URL: %s", src => {
     expect(sanitizePackageSnippet(`<iframe src="${src}"></iframe>`))
-      .toBe(`<iframe src="${src}" sandbox="allow-scripts"></iframe>`)
+      .toBe(`<iframe src="${src}" sandbox="allow-scripts allow-same-origin"></iframe>`)
   })
 
-  it("rejects credentials and non-HTTPS URLs from the YouTube exception", () => {
+  it("rejects credentials and non-HTTPS URLs", () => {
     expect(sanitizePackageSnippet('<iframe src="https://user:pass@www.youtube.com/embed/dQw4w9WgXcQ"></iframe><iframe src="http://www.youtube.com/embed/dQw4w9WgXcQ"></iframe>'))
       .toBe("")
   })
 
   it("removes inline code and unrestricted sandbox permissions from remote embeds", () => {
     const html = sanitizePackageSnippet('<iframe src="https://example.com/lesson" srcdoc="<script>bad()</script>" onload="bad()" sandbox="allow-scripts allow-same-origin allow-top-navigation"></iframe>')
-    expect(html).toBe('<iframe src="https://example.com/lesson" sandbox="allow-scripts"></iframe>')
+    expect(html).toBe('<iframe src="https://example.com/lesson" sandbox="allow-scripts allow-same-origin"></iframe>')
   })
 
   it.each(["", "/same-origin", "javascript:alert(1)", "data:text/html,test", "about:blank", "https://user:password@example.com"])("removes unsafe iframe source %s", src => {
@@ -56,7 +58,36 @@ describe("package embeds", () => {
 
   it("applies embed isolation inside inert templates as well", () => {
     expect(sanitizePackageSnippet('<template><iframe src="https://example.com/lesson"></iframe></template>'))
-      .toBe('<template><iframe src="https://example.com/lesson" sandbox="allow-scripts"></iframe></template>')
+      .toBe('<template><iframe src="https://example.com/lesson" sandbox="allow-scripts allow-same-origin"></iframe></template>')
+  })
+
+  it.each(["", "allow-scripts", "allow-same-origin", "allow-scripts allow-popups"])("preserves stricter authored sandbox permissions: %s", sandbox => {
+    const html = sanitizePackageSnippet(`<iframe src="https://example.com/lesson" sandbox="${sandbox}"></iframe>`)
+    expect(html).toBe(`<iframe src="https://example.com/lesson" sandbox="${sandbox.toLowerCase().replace(" allow-popups", "")}"></iframe>`)
+  })
+
+  it("keeps application and content origins opaque, including in templates", () => {
+    const root = document.createElement("template")
+    root.innerHTML = '<iframe src="https://app.example/lesson" sandbox="allow-scripts allow-same-origin"></iframe><template><iframe src="https://editor.example/lesson"></iframe></template><iframe src="https://app.example.evil.test/lesson"></iframe>'
+    stripActiveContent(root.content, {allowIframes: true, protectedIframeOrigins: ["https://app.example", "https://editor.example"]})
+    expect(root.content.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(root.content.querySelector("template")?.content.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(root.content.querySelector("iframe:last-child")?.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+  })
+
+  it("applies policy to root frames and local HTML without replacing content or adding artifacts", () => {
+    const root = document.createElement("template")
+    root.innerHTML = '<custom-lesson><!--keep--><iframe title="Local" src="blob:https://example.com/id" sandbox="allow-scripts allow-same-origin"></iframe><template><iframe srcdoc="<p>Local</p>"></iframe></template></custom-lesson>'
+    const frame = root.content.querySelector("iframe")!
+    applyIframeSandboxPolicy(frame)
+    applyIframeSandboxPolicy(root.content)
+    expect(root.content.querySelector("iframe")).toBe(frame)
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(root.content.querySelector("custom-lesson")?.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+    const inline = root.content.querySelector("template")!.content.querySelector("iframe")!
+    expect(inline.getAttribute("srcdoc")).toBe("<p>Local</p>")
+    expect(inline.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(root.innerHTML).not.toContain("◆")
   })
 
   it("keeps the default active-content policy closed to frames", () => {
@@ -85,7 +116,7 @@ describe("package embeds", () => {
     fragment.innerHTML = '<iframe src="data:text/htmlx,not-html" title="bad"></iframe><iframe src="data:image/svg+xml,%3Csvg/%3E"></iframe><iframe src="javascript:alert(1)"></iframe><iframe src="data:text/html,%3Cp%3ESafe%3C/p%3E" srcdoc="<script>bad()</script>" onload="bad()" sandbox="allow-same-origin allow-top-navigation"></iframe><p href="data:text/html,unsafe" onclick="bad()">Keep</p>'
 
     stripActiveContent(fragment.content, {allowLocalIframes: true})
-    expect(fragment.innerHTML).toBe('<iframe src="data:text/html,%3Cp%3ESafe%3C/p%3E" sandbox="allow-scripts"></iframe><p>Keep</p>')
+    expect(fragment.innerHTML).toBe('<iframe src="data:text/html,%3Cp%3ESafe%3C/p%3E" sandbox=""></iframe><p>Keep</p>')
   })
 
   it("does not allow an unsandboxed root iframe to retain an unsafe data source", () => {

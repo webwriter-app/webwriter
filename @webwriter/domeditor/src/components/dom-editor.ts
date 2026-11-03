@@ -76,7 +76,7 @@ import {
   type WebWriterPackage,
   type WebWriterPackageExportType,
 } from "../packages"
-import { getElementPresentation, isLineBreakElement } from "../element-names"
+import { getElementPresentation, isLineBreakElement, popupContentForToggle, popupDisplayToggle, popupElementRole } from "../element-names"
 import {
   canonicalMarkName,
   emptyRubyState,
@@ -89,7 +89,7 @@ import {
   type RubyState,
   type StyleMarkValues,
 } from "../marks"
-import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, isTextFieldInteraction, getInertDocument} from "../utility"
+import {authoredClassValue, clearEditorArtifacts, clearInlinePlacement, isWidgetShadowInteraction, isTextFieldInteraction, getInertDocument, pathFromNode} from "../utility"
 import {
   imageMapAreaAttributeOptions,
   isImageMapHotspotShape,
@@ -241,6 +241,7 @@ import type {
 import {
   appCommands,
   builtinShortcuts,
+  commandForShortcutEvent,
   loadAppSettings,
   loadDocumentSettings,
   persistDocumentSettings,
@@ -362,6 +363,7 @@ export class DomEditor extends LitElement {
     layoutError: {attribute: false, state: true},
     selectedSectionPath: {attribute: false, state: true},
     marks: {attribute: false, state: true},
+    popupActive: {attribute: false, state: true},
     allowedMarks: {attribute: false, state: true},
     markStyles: {attribute: false, state: true},
     markAttributes: {attribute: false, state: true},
@@ -534,6 +536,7 @@ export class DomEditor extends LitElement {
   private svgText = false
   private marks: MarkName[] = []
   private allowedMarks: MarkName[] | null = null
+  private popupActive = false
   private markStyles: StyleMarkValues = {}
   private markAttributes: MarkAttributeValues = {}
   private ruby: RubyState = {...emptyRubyState}
@@ -1109,9 +1112,11 @@ export class DomEditor extends LitElement {
       background: #f2f2f2;
       color: #2f3742;
       font: 0.75rem/1.25 system-ui, sans-serif;
+      --document-layout-card-width: calc(10rem - 10px);
+      --document-layout-card-gap: 0.45rem;
     }
     .document-layouts-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; min-height: 1.45rem; }
-    .document-layouts-main-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; width: min(38.1rem, calc(100% - 21.45rem)); }
+    .document-layouts-main-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; width: min(calc(4 * var(--document-layout-card-width) + 3 * var(--document-layout-card-gap)), calc(100% - 21.45rem)); }
     .document-layouts-bar .recent-documents-title {width: min(20.45rem, calc(100% - 6rem)); margin-left: auto; box-sizing: border-box; padding-right: 1.5rem}
     .document-layouts-close { position: absolute; right: 0; border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
     .document-layouts-close:hover { background: #e2e5e9; }
@@ -1119,7 +1124,7 @@ export class DomEditor extends LitElement {
     .document-layouts-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
     .document-layouts-combined-title {display: none}
     .recent-documents-short-title {display: none}
-    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, calc(10rem - 10px))); gap: 0.45rem; }
+    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, var(--document-layout-card-width))); gap: var(--document-layout-card-gap); }
     .document-layouts-bar .layout-preset { min-height: 0; }
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}
@@ -3421,7 +3426,7 @@ export class DomEditor extends LitElement {
       && event.altKey && !event.ctrlKey && !event.metaKey) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
-    const command = appCommands.find(candidate => this.settings.shortcuts[candidate.id] === shortcut)
+    const command = commandForShortcutEvent(this.settings.shortcuts, event)
     if(!command && !builtinShortcuts().has(shortcut)) return
     // Printing belongs to the document regardless of which UI control has focus.
     if(command?.id !== "document.print") {
@@ -4848,6 +4853,10 @@ export class DomEditor extends LitElement {
         })
       }
       else this.focusEditor()
+      return
+    }
+    if(label === "toggle-popup") {
+      void this.execute({type: "togglePopup"}).finally(() => this.focusEditor())
       return
     }
     if(label === "Undo") {
@@ -7397,7 +7406,8 @@ export class DomEditor extends LitElement {
       }
       if(element.matches("table, math, svg")) return item
 
-      const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[]) => {
+      const appendChildren = (container: Element, containerPath: number[], inherited: SelectionPathSection[],
+        destination: DocumentTreeItem[] = item.children, popupItem?: DocumentTreeItem, popupToggle?: Element) => {
         Array.from(container.childNodes).forEach((child, index) => {
           if(child.nodeType !== Node.ELEMENT_NODE) return
           const childElement = child as Element
@@ -7408,30 +7418,54 @@ export class DomEditor extends LitElement {
             || childElement.matches("img") && childElement.closest("picture")
             || isLineBreakElement(childElement)) return
           const childPath = [...containerPath, index]
+          if(popupToggle && childElement === popupToggle) return
+          if(popupElementRole(childElement) === "content" && popupDisplayToggle(childElement)
+            && !popupItem) return
+          if(popupItem && popupToggle && popupElementRole(childElement) === "content"
+            && popupDisplayToggle(childElement) === popupToggle) {
+            popupItem.children.push(build(childElement, childPath, inherited))
+            return
+          }
+          if(popupElementRole(childElement) === "popup") {
+            const toggle = popupDisplayToggle(childElement)
+            if(toggle) {
+              const togglePath = pathFromNode(body, toggle)
+              if(!togglePath) return
+              const toggleItem = build(toggle, togglePath, inherited)
+              destination.push(toggleItem)
+              appendChildren(childElement, childPath, inherited, destination, toggleItem, toggle)
+              const content = popupContentForToggle(toggle)
+              if(content && !childElement.contains(content)) {
+                const contentPath = pathFromNode(body, content)
+                if(contentPath) toggleItem.children.push(build(content, contentPath, inherited))
+              }
+              return
+            }
+          }
           if(childElement.localName === "figure") {
-            const start = item.children.length
-            appendChildren(childElement, childPath, inherited)
+            const start = destination.length
+            appendChildren(childElement, childPath, inherited, destination)
             const contents = Array.from(childElement.children).filter(child => child.localName !== "figcaption")
             if(contents.length === 1) {
               const contentPath = [...childPath, Array.from(childElement.childNodes).indexOf(contents[0])]
-              const content = item.children.slice(start).find(item => item.path.join(".") === contentPath.join("."))
+              const content = destination.slice(start).find(item => item.path.join(".") === contentPath.join("."))
               if(content) content.path = childPath
             }
             return
           }
-          if(slideRole === "viewport" || isMarkElement(childElement)) {
-            appendChildren(childElement, childPath, inherited)
+          if(slideRole === "viewport" || isMarkElement(childElement) && !popupElementRole(childElement)) {
+            appendChildren(childElement, childPath, inherited, destination)
             return
           }
-          if(slideRole !== "slide" && !boardLayoutRole(childElement) && isSectionElement(childElement)) {
+          if(slideRole !== "slide" && !boardLayoutRole(childElement) && !popupElementRole(childElement) && isSectionElement(childElement)) {
             const currentSection = sectionItem(childElement, childPath)
             const nextSections = [...inherited, currentSection]
-            const childCount = item.children.length
-            appendChildren(childElement, childPath, nextSections)
-            if(item.children.length === childCount) addSections(item, [currentSection])
+            const childCount = destination.length
+            appendChildren(childElement, childPath, nextSections, destination)
+            if(destination.length === childCount) addSections(item, [currentSection])
             return
           }
-          item.children.push(build(childElement, childPath, inherited))
+          destination.push(build(childElement, childPath, inherited))
         })
       }
       appendChildren(element, path, [])
@@ -7474,6 +7508,7 @@ export class DomEditor extends LitElement {
         && typeof value.target.localName === "string"
         && (value.target.namespaceURI === null || typeof value.target.namespaceURI === "string")
         ? {localName: value.target.localName, namespaceURI: value.target.namespaceURI,
+          ...(value.target.popupRole === "toggle" || value.target.popupRole === "content" ? {popupRole: value.target.popupRole} : {}),
           ...(value.target.float === "none" || value.target.float === "far-left" || value.target.float === "far-right"
             ? {float: value.target.float} : {}),
           ...(value.target.alignment === "left" || value.target.alignment === "center" || value.target.alignment === "right"
@@ -7481,6 +7516,7 @@ export class DomEditor extends LitElement {
           ...(typeof value.target.canMoveUp === "boolean" ? {canMoveUp: value.target.canMoveUp} : {}),
           ...(typeof value.target.canMoveDown === "boolean" ? {canMoveDown: value.target.canMoveDown} : {}),
           ...(typeof value.target.fullWidth === "boolean" ? {fullWidth: value.target.fullWidth} : {}),
+          ...(typeof value.target.floatSticky === "boolean" ? {floatSticky: value.target.floatSticky} : {}),
           ...(typeof value.target.canFullWidth === "boolean" ? {canFullWidth: value.target.canFullWidth} : {}),
           ...(isRecord(value.target.placement) && typeof value.target.placement.canMoveUp === "boolean" && typeof value.target.placement.canMoveDown === "boolean"
             ? {placement: {canMoveUp: value.target.placement.canMoveUp, canMoveDown: value.target.placement.canMoveDown}} : {}),
@@ -7927,6 +7963,7 @@ export class DomEditor extends LitElement {
         this.elementAttributes = null
       }
       this.marks = [...event.data.detail.marks]
+      this.popupActive = event.data.detail.popupActive === true
       this.allowedMarks = event.data.detail.allowedMarks ? [...event.data.detail.allowedMarks] : null
       this.markStyles = {...(event.data.detail.styles ?? {})}
       this.markAttributes = Object.fromEntries(
@@ -7944,6 +7981,7 @@ export class DomEditor extends LitElement {
           svgText: this.svgText,
           canMark: this.canMark,
           marks: [...this.marks],
+          popupActive: this.popupActive,
           styles: {...this.markStyles},
           attributes: this.markAttributes,
           ruby: this.ruby,
@@ -8034,6 +8072,7 @@ export class DomEditor extends LitElement {
       if(!graphicText && (this.nodeSelection || this.sectionSelected || this.selectionGap || event.data.detail.table?.cellSelection)) {
         this.canMark = false
         this.marks = []
+        this.popupActive = false
         this.markStyles = {}
         this.markAttributes = {}
         this.linkSelection = null
@@ -8448,6 +8487,7 @@ export class DomEditor extends LitElement {
     this.layoutError = ""
     this.selectedSectionPath = null
     this.marks = []
+    this.popupActive = false
     this.markStyles = {}
     this.markAttributes = {}
     this.linkSelection = null
@@ -8525,6 +8565,7 @@ export class DomEditor extends LitElement {
       layout: this.layoutSelection,
       layoutError: this.layoutError,
       marks: this.marks,
+      popupActive: this.popupActive,
       allowedMarks: this.allowedMarks,
       markStyles: this.markStyles,
       markAttributes: this.markAttributes,
@@ -8900,6 +8941,9 @@ export class DomEditor extends LitElement {
         @breadcrumb-item-select=${this.handleBreadcrumbItemSelect}
         @toolbox-element-select=${(event: CustomEvent<{selectionTypes: import("../editor-bridge").ElementSelectionType[]}>) => {
           void this.execute({type: "selectElementTypes", selectionTypes: event.detail.selectionTypes}).finally(() => this.focusEditor())
+        }}
+        @popup-delete=${(event: CustomEvent<{path: number[]}>) => {
+          void this.execute({type: "deletePopupPart", path: [...event.detail.path]}).finally(() => this.focusEditor())
         }}
         @proofreading-action=${this.handleProofreadingAction}
         @document-layout-change=${this.handleDocumentLayoutChange}

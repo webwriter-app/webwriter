@@ -3,12 +3,13 @@ import type {DOMEditor} from "../src/domeditor"
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
 
 /** Exercise rendered grid coordinates and alignment through both layout cameras. */
-export async function checkLayoutGrid() {
+export async function checkLayoutGrid(host?: DOMEditor) {
   for(const mode of ["canvas", "slides"] as const) {
     const frame = document.createElement("iframe")
     frame.style.cssText = "width:900px;height:700px;border:0;display:block"
     frame.srcdoc = '<!doctype html><body><p>Move me</p><test-widget>Align here</test-widget><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-    document.body.append(frame)
+    if(host) host.addAppendix(frame)
+    else document.body.append(frame)
     const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
     const settle = async () => { for(let i = 0; i < 3; i++) await new Promise<void>(resolve => view.requestAnimationFrame(() => resolve())) }
     try {

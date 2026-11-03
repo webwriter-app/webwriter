@@ -8,7 +8,8 @@ import {sharedDOMBody} from "../domdoc"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
 import {Schema} from "../schema"
-import {createImageMapPopoverController, imageMapHotspotBounds} from "../media"
+import {createImageMapPopoverController, imageMapHotspotBounds, platformEmbedURL} from "../media"
+import {previewFrameHTML} from "../frame-document"
 
 let editor: DOMEditor
 const fetchSettings = (window as unknown as TestWindow).happyDOM.settings.fetch
@@ -48,6 +49,193 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each([
+    ["https://youtu.be/M7lc1UVf-VE?t=25", "https://www.youtube.com/embed/M7lc1UVf-VE?start=25"],
+    ["https://www.youtube.com/watch?v=M7lc1UVf-VE", "https://www.youtube.com/embed/M7lc1UVf-VE"],
+    ["https://vimeo.com/123456/abcdef", "https://player.vimeo.com/video/123456?h=abcdef"],
+    ["https://www.tiktok.com/@person/video/6718335390845095173", "https://www.tiktok.com/player/v1/6718335390845095173"],
+    ["https://www.instagram.com/p/ABC-123/", "https://www.instagram.com/p/ABC-123/embed/"],
+    ["https://archive.org/details/example", "https://archive.org/embed/example"],
+    ["https://miro.com/app/board/uXjVOD9zD_k=/", "https://miro.com/app/live-embed/uXjVOD9zD_k=/"],
+    ["https://www.mentimeter.com/app/presentation/abc123", "https://www.mentimeter.com/app/presentation/abc123/embed"],
+    ["https://www.figma.com/design/abc/example?node-id=1-2", "https://embed.figma.com/design/abc/example?node-id=1-2&embed-host=webwriter"],
+    ["https://x.com/person/status/12345", "https://platform.twitter.com/embed/Tweet.html?id=12345"],
+    ["https://www.pinterest.com/pin/12345/", "https://assets.pinterest.com/ext/embed.html?id=12345"],
+    ["https://www.flickr.com/photos/person/albums/12345/", "https://embedr.flickr.com/photosets/12345"],
+    ["https://www.facebook.com/person/posts/12345", "https://www.facebook.com/plugins/post.php?href=https%3A%2F%2Fwww.facebook.com%2Fperson%2Fposts%2F12345"],
+  ])("converts a supported share URL: %s", (input, output) => {
+    expect(platformEmbedURL(input)).toBe(output)
+  })
+
+  it.each(["https://youtube.com.evil.test/watch?v=M7lc1UVf-VE", "https://youtube.com/watch?v=bad", "https://flickr.com/photos/person/12345", "https://example.com/movie.mp4", "javascript:alert(1)"])("leaves unrecognized URLs alone: %s", input => {
+    expect(platformEmbedURL(input)).toBeNull()
+  })
+
+  it.each(["picture", "audio", "video", "iframe"])("converts a %s placeholder to a website while preserving surrounding DOM", async tag => {
+    document.body.innerHTML = `<section><!--keep--><${tag} title="Lesson">${tag === "picture" ? "<img>" : ""}</${tag}><p>After</p></section>`
+    const original = document.querySelector(tag)!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const placeholder = editor.features.media.placeholder
+    placeholder.showFor(original)
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.value = "https://youtu.be/M7lc1UVf-VE"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    const frame = document.querySelector("iframe")!
+    expect(frame.getAttribute("src")).toBe("https://www.youtube.com/embed/M7lc1UVf-VE")
+    expect(frame.getAttribute("title")).toBe("Lesson")
+    expect(document.querySelector("section")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(document.querySelector("p")!.textContent).toBe("After")
+    const after = editor.toHTML(true)
+    expect(after).not.toContain("◆")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("leaves authored fallback content intact when a source edit cannot safely change the element type", () => {
+    document.body.innerHTML = '<video title="Lesson"><source src="old.mp4"><span>Fallback</span></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    expect(editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://vimeo.com/123456"})).toBe(false)
+    expect(document.querySelector("iframe")).toBeNull()
+    expect(video.querySelector("source")?.getAttribute("src")).toBe("old.mp4")
+    expect(video.querySelector("span")?.textContent).toBe("Fallback")
+  })
+
+  it("converts a source edit on existing media", () => {
+    document.body.innerHTML = '<video title="Lesson" src="old.mp4"></video>'
+    $.selectElement(document.querySelector("video")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://vimeo.com/123456"})
+    expect(document.querySelector("iframe")?.getAttribute("src")).toBe("https://player.vimeo.com/video/123456")
+  })
+
+  it.each([
+    ["https://archive.org/download/item/track.mp3", "audio"],
+    ["https://archive.org/download/item/movie.mp4", "video"],
+    ["https://live.staticflickr.com/65535/123_secret.jpg", "picture"],
+  ])("uses native media for direct provider file %s", (url, tag) => {
+    document.body.innerHTML = '<iframe title="Lesson"></iframe>'
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: url})
+    const result = document.querySelector(tag)!
+    expect((tag === "picture" ? result.querySelector("img")! : result).getAttribute("src")).toBe(url)
+    expect(result.getAttribute("title")).toBe("Lesson")
+  })
+  it.each(["placeholder", "attribute"])("keeps a remote website's origin through %s entry, preview, export and history", async method => {
+    document.body.innerHTML = '<section><!--keep--><iframe title="Lesson"></iframe></section>'
+    const frame = document.querySelector("iframe")!
+    $.selectElement(frame)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const src = "https://esri.github.io/dam-busters/"
+    if(method === "attribute") editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: src})
+    else {
+      const placeholder = editor.features.media.placeholder
+      placeholder.showFor(frame)
+      placeholder.root.querySelector<HTMLInputElement>(".url")!.value = src
+      placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    }
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    const preview = new DOMParser().parseFromString(previewFrameHTML(saved.cloneNode(true) as Document, {
+      bridgeNonce: "test", hostOrigin: location.origin, frameOrigin: "https://editor.example", packages: [],
+      importMap: null, entryURL: "https://editor.example/preview.js", executeScripts: false,
+    }), "text/html")
+    for(const root of [saved, preview]) {
+      expect(root.querySelector("iframe")?.getAttribute("src")).toBe(src)
+      expect(root.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
+      expect(root.querySelector("section")?.firstChild?.nodeType).toBe(Node.COMMENT_NODE)
+      expect(root.body.innerHTML).not.toContain("◆")
+    }
+    const after = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("observes direct and collaboration iframe source changes and isolates local HTML", async () => {
+    document.body.innerHTML = '<custom-lesson><!--keep--><iframe title="Lesson" src="https://example.test/lesson"></iframe></custom-lesson>'
+    const frame = document.querySelector("iframe")!
+    await vi.waitFor(() => expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin"))
+    editor.doc.syncFromDOM()
+    const remote = new Y.Doc()
+    Y.applyUpdate(remote, Y.encodeStateAsUpdate(editor.doc.doc))
+    // Locate by element name: comments are preserved and do not imply child order.
+    const sharedFrame = (sharedDOMBody(remote).get(0) as Y.XmlElement).toArray().find(node => node instanceof Y.XmlElement && node.nodeName === "iframe") as Y.XmlElement
+    sharedFrame.setAttribute("src", "data:text/html,%3Cp%3ELocal%3C/p%3E")
+    Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote))
+    await vi.waitFor(() => expect(frame.getAttribute("sandbox")).toBe("allow-scripts"))
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-top-navigation")
+    const saved = new DOMParser().parseFromString(await editor.serializeHTML(), "text/html")
+    expect(saved.querySelector("iframe")?.getAttribute("sandbox")).toBe("allow-scripts")
+    await vi.waitFor(() => expect(frame.getAttribute("sandbox")).toBe("allow-scripts"))
+    expect(document.querySelector("iframe")).toBe(frame)
+    remote.destroy()
+  })
+
+  it.each(["url", "file"] as const)("retains image width on %s source changes and supports undo", mode => {
+    document.body.innerHTML = '<section><picture style="width: 100%; height: auto; max-width: 300px; max-height: 200px; aspect-ratio: 3 / 2; float: left"><img width="300" height="200" style="width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: fill" alt="Photo" src="old.png"></picture></section>'
+    const picture = document.querySelector("picture")!, image = picture.querySelector("img")!
+    $.selectElement(picture)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    if(mode === "url") editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "new.png"})
+    else expect(editor.features.media.actions.setMediaFile({type: "setMediaFile", file: new File(["image"], "new.png", {type: "image/png"})})).toBe(true)
+    expect(picture.style.width).toBe("100%")
+    expect(picture.style.maxWidth).toBe("300px")
+    expect(picture.style.height).toBe("")
+    expect(picture.style.maxHeight).toBe("")
+    expect(picture.style.aspectRatio).toBe("")
+    expect(picture.style.float).toBe("left")
+    expect(image.style.width).toBe("100%")
+    expect(image.style.maxWidth).toBe("100%")
+    expect(image.style.height).toBe("")
+    expect(image.style.maxHeight).toBe("")
+    expect(image.style.objectFit).toBe("fill")
+    expect(image).toHaveAttribute("width", "300")
+    expect(image).not.toHaveAttribute("height")
+    expect(image).toHaveAttribute("alt", "Photo")
+    const after = editor.toHTML(true)
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector("picture")!.style.aspectRatio).toBe("3 / 2")
+    expect(document.querySelector("img")).toHaveAttribute("width", "300")
+    expect(document.querySelector("img")).toHaveAttribute("height", "200")
+    expect(document.querySelector("img")).toHaveAttribute("src", "old.png")
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("leaves image size alone when the source is unchanged and preserves width when srcset changes", () => {
+    document.body.innerHTML = '<img src="old.png" style="width: 240px; aspect-ratio: 2 / 1">'
+    const image = document.querySelector("img")!
+    $.selectElement(image)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "old.png"})
+    expect(image.style.width).toBe("240px")
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "srcset", value: "new.png 2x"})
+    expect(image.style.width).toBe("240px")
+    expect(image.style.aspectRatio).toBe("")
+  })
+
+  it("retains the width of a resized empty picture when its placeholder receives a source", () => {
+    document.body.innerHTML = '<picture style="width: 100%; max-width: 300px; aspect-ratio: 3 / 2"><img style="width: 100%; height: 100%"></picture>'
+    const picture = document.querySelector("picture")!
+    const placeholder = editor.features.media.placeholder
+    placeholder.showFor(picture)
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.value = "https://example.test/image.png"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    expect(picture.style.aspectRatio).toBe("")
+    expect(picture.style.maxWidth).toBe("300px")
+    expect(picture.querySelector("img")!.style.height).toBe("")
+    expect(picture.querySelector("img")).toHaveAttribute("src", "https://example.test/image.png")
+  })
+
   it("isolates an uploaded local website and preserves its bytes and undo history", async () => {
     document.body.innerHTML = '<section><!--keep--><iframe title="Lesson" sandbox="allow-scripts allow-same-origin"></iframe></section>'
     const frame = document.querySelector("iframe")!
@@ -591,10 +779,10 @@ describe("media editing", () => {
     editor.features.manipulation.insertHTML('<iframe src="https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html"></iframe>')
     const frame = document.querySelector("iframe")!
     expect(frame).not.toBeNull()
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts")
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts allow-same-origin")
     expect(frame.getAttribute("src")).toBe("https://phet.colorado.edu/sims/html/neuron/latest/neuron_all.html")
     expect(frame.parentElement).toBe(document.body)
-    expect(editor.toHTML(true)).toContain('sandbox="allow-scripts"')
+    expect(editor.toHTML(true)).toContain('sandbox="allow-scripts allow-same-origin"')
   })
 
   it.each(["picture", "img", "audio", "video", "iframe", "embed", "object"] as const)(
@@ -1056,6 +1244,23 @@ describe("media editing", () => {
       expect(document.body.querySelector("svg, button, input")).toBeNull()
     },
   )
+
+  it("shows source help inside the empty-media URL field and closes it when the affordance hides", async () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
+    const placeholder = editor.features.media.placeholder
+    const row = placeholder.root.querySelector(".url-row")!
+    const info = row.querySelector<import("../components/media-source-info").MediaSourceInfo>("media-source-info")!
+    expect(info.nextElementSibling).toBe(row.querySelector(".apply"))
+    await info.updateComplete
+    const button = info.shadowRoot!.querySelector("button")!
+    button.dispatchEvent(new Event("focus"))
+    await info.updateComplete
+    expect(info.shadowRoot!.querySelector<HTMLElement>('[role="tooltip"]')!.hidden).toBe(false)
+    expect(editor.toHTML(true)).not.toContain("media-source-info")
+    placeholder.hide()
+    await info.updateComplete
+    expect(info.shadowRoot!.querySelector<HTMLElement>('[role="tooltip"]')!.hidden).toBe(true)
+  })
 
   it.each(["", "example.com/movie.mp4", "/movie.mp4", "//example.com/movie.mp4", "http://", "https://exa mple.com", "ftp://example.com/movie.mp4", "file:///movie.mp4", "about:blank", "data:video/mp4;base64,AAAA", "javascript:alert(1)"])(
     "rejects a non-HTTP or malformed URL without changing the document: %s", source => {
@@ -2194,7 +2399,7 @@ describe("media editing", () => {
     expect(nativeActivation).not.toHaveBeenCalled()
     expect($.selectedElement).toBe(iframe)
     expect(editor.features.selection.isCaptureSelection).toBe(true)
-    expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame"></iframe><audio src="sound.mp3" controls=""></audio>')
+    expect(editor.toHTML(true)).toBe('<iframe src="about:blank#frame" sandbox="allow-scripts"></iframe><audio src="sound.mp3" controls=""></audio>')
   })
 
   it("shields timed media controls but not widget-owned or nested media", async () => {
@@ -2258,7 +2463,7 @@ describe("media editing", () => {
       const placeholder = editor.features.media.placeholder
       expect(placeholder.target).toBe(frame)
       expect(placeholder.element).toHaveAttribute("data-open")
-      expect(editor.toHTML(true)).toBe(`<p>text</p>${html}`)
+      expect(editor.toHTML(true)).toBe(`<p>text</p>${html.replace('srcdoc=""', 'srcdoc="" sandbox="allow-scripts"')}`)
 
       editor.features.selection.actions.selectNode({type: "selectNode", path: [0]})
       document.dispatchEvent(new Event("selectionchange"))

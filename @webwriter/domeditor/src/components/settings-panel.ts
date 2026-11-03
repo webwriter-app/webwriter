@@ -4,6 +4,12 @@ import {keyed} from "lit/directives/keyed.js"
 import {
   appCommands,
   defaultAppSettings,
+  getShortcutLayout,
+  effectiveShortcutLayout,
+  isDefaultHistoryShortcut,
+  physicalShortcutForCommand,
+  type KeyboardLayoutPreference,
+  type ShortcutLayout,
   reservedShortcutReason,
   shortcutFromEvent,
   shortcutParts,
@@ -146,6 +152,8 @@ export class SettingsPanel extends LitElement {
       font-size: 0.72rem;
       font-weight: 600;
     }
+
+    #settings-commands > .setting-card { margin-bottom: 1rem; }
 
     .setting-card + .setting-card {
       margin-top: 1rem;
@@ -432,13 +440,22 @@ export class SettingsPanel extends LitElement {
   private providerType: CloudService["type"] | null = null
   private signInController: AbortController | null = null
 
+  private shortcutLayout?: ShortcutLayout
+  private refreshShortcutLayout = async () => {
+    this.shortcutLayout = await getShortcutLayout()
+    if(this.isConnected) this.requestUpdate()
+  }
+
   connectedCallback() {
     super.connectedCallback()
+    void this.refreshShortcutLayout()
+    this.ownerDocument.defaultView?.addEventListener("focus", this.refreshShortcutLayout)
     this.settingsDialog = this.closest("dialog")
     this.settingsDialog?.addEventListener("cancel", this.handleSettingsDialogCancel, true)
   }
 
   disconnectedCallback() {
+    this.ownerDocument.defaultView?.removeEventListener("focus", this.refreshShortcutLayout)
     this.settingsDialog?.removeEventListener("cancel", this.handleSettingsDialogCancel, true)
     this.settingsDialog = null
     clearTimeout(this.settingsDialogCancelTimer)
@@ -701,12 +718,14 @@ export class SettingsPanel extends LitElement {
       return
     }
 
-    const previous = this.settings.shortcuts[commandId] ?? ""
+    const layout = effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)
+    const previous = physicalShortcutForCommand(commandId, this.settings.shortcuts[commandId] ?? "", layout)
     const conflict = appCommands.find(command => (
-      command.id !== commandId && this.settings.shortcuts[command.id] === shortcut
+      command.id !== commandId && physicalShortcutForCommand(command.id, this.settings.shortcuts[command.id] ?? "", layout) === shortcut
     ))
-    const shortcuts = {...this.settings.shortcuts, [commandId]: shortcut}
-    if(conflict) shortcuts[conflict.id] = previous
+    const asRecorded = (id: string, value: string) => isDefaultHistoryShortcut(id, value) ? `Physical:${value}` : value
+    const shortcuts = {...this.settings.shortcuts, [commandId]: asRecorded(commandId, shortcut)}
+    if(conflict) shortcuts[conflict.id] = asRecorded(conflict.id, previous)
     this.emitSettings({...this.settings, shortcuts})
     this.recordingCommandId = ""
     this.error = ""
@@ -732,12 +751,15 @@ export class SettingsPanel extends LitElement {
       return html`<span class="shortcut-recording">Press shortcut…</span>`
     }
     const shortcut = this.settings.shortcuts[commandId] ?? ""
+    const layout = isDefaultHistoryShortcut(commandId, shortcut) ? undefined : effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)
     return shortcut
-      ? shortcutParts(shortcut).map(part => html`<kbd>${part}</kbd>`)
+      ? shortcutParts(shortcut, undefined, layout).map(part => html`<kbd>${part}</kbd>`)
       : html`<span class="shortcut-empty">Not set</span>`
   }
 
   protected updated() {
+    const keyboard = this.renderRoot.querySelector<HTMLSelectElement>("#keyboard-layout")
+    if(keyboard && keyboard.value !== (this.settings.keyboardLayout ?? "auto")) keyboard.value = this.settings.keyboardLayout ?? "auto"
     const language = this.renderRoot.querySelector<HTMLSelectElement>('select[aria-label="Document language"]')
     if(language && language.value !== this.settings.language) language.value = this.settings.language
     const layout = this.renderRoot.querySelector<HTMLSelectElement>("#default-layout")
@@ -884,6 +906,22 @@ export class SettingsPanel extends LitElement {
         </section>
         <section id="settings-commands" role="tabpanel" aria-label="Commands" class="settings-tab-panel" ?hidden=${this.tab !== "Commands"}>
         <p class="shortcut-help">Select a shortcut, then press its replacement. Reserved system and browser shortcuts cannot be assigned.</p>
+        <section class="setting-card" aria-label="Keyboard layout">
+          <label class="setting-label" for="keyboard-layout">Keyboard layout</label>
+          <select id="keyboard-layout" .value=${this.settings.keyboardLayout ?? "auto"}
+            @change=${(event: Event) => this.emitSettings({...this.settings, keyboardLayout: (event.currentTarget as HTMLSelectElement).value as KeyboardLayoutPreference})}>
+            <option value="auto">Automatic</option>
+            <option value="qwerty">QWERTY</option>
+            <option value="qwertz">QWERTZ (German)</option>
+            <option value="azerty">AZERTY (French)</option>
+            <option value="awerty">ÄWERTY (Turkmen)</option>
+            <option value="querty">QÜERTY (Azerbaijani Latin)</option>
+            <option value="dvorak">Dvorak (US)</option>
+            <option value="colemak">Colemak</option>
+            <option value="workman">Workman</option>
+          </select>
+          <p class="setting-description">Controls shortcut labels. Automatic uses your browser's keyboard layout when available, or guesses from your browser language.</p>
+        </section>
         ${sections.map(section => html`
           <section class="command-section" aria-label=${`${section} commands`}>
             ${this.renderCommands(section)}

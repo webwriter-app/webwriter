@@ -76,10 +76,6 @@ export class RibbonMenu extends LitElement {
     .remove, .label-confirm { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
     .submenu-header { position: sticky; top: -0.35rem; background: white; z-index: 2; padding-bottom: 0.35rem; }
 
-    :host([hidden]) {
-      display: none;
-    }
-
     :host([variant="button"]) {
       position: fixed;
       top: auto;
@@ -327,6 +323,15 @@ export class RibbonMenu extends LitElement {
         margin-left: 0.25rem;
         position-try-fallbacks: flip-inline, bottom span-left;
       }
+
+      .submenu.shape-gallery {
+        inset: auto;
+        margin: 8px;
+        position-area: right span-bottom;
+        position-try-order: most-height;
+        position-try-fallbacks: flip-inline, flip-block, flip-block flip-inline;
+        max-height: calc(100% - 16px);
+      }
     }
 
     .item:hover {
@@ -425,7 +430,22 @@ export class RibbonMenu extends LitElement {
       object-fit: contain;
     }
 
-    :host([gallery]) .menu,
+    :host([gallery]) {
+      display: flex;
+      flex-direction: column;
+    }
+
+    :host([hidden]) {
+      display: none;
+    }
+
+    :host([gallery]) .menu {
+      box-sizing: border-box;
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+    }
+
     .submenu.shape-gallery {
       box-sizing: border-box;
       max-height: calc(100vh - 16px);

@@ -9,7 +9,7 @@ import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
 import type {ElementStyleEditor} from "./element-style-editor"
 import {repeat} from "lit/directives/repeat.js"
-import {appCommands, defaultAppSettings, formatShortcut, type AppSettings} from "../app-settings"
+import {appCommands, defaultAppSettings, formatShortcut, getShortcutLayout, effectiveShortcutLayout, isDefaultHistoryShortcut, type ShortcutLayout, type AppSettings} from "../app-settings"
 import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
 import {
   emptyVersionHistoryState,
@@ -62,6 +62,7 @@ import {
   isWebsiteType,
   mediaAttributeOptions,
   mediaSourceAttribute,
+  platformEmbedURL,
   websiteSourceError,
   timedMediaResourceAttributeOptions,
   type ImageMapAreaState,
@@ -144,6 +145,7 @@ export abstract class EditingControls extends LitElement {
     sectionActive: {type: Boolean, attribute: "section-active"},
     sectionSelected: {type: Boolean, attribute: "section-selected"},
     marks: {attribute: false},
+    popupActive: {type: Boolean, attribute: false},
     allowedMarks: {attribute: false},
     markStyles: {attribute: false},
     markAttributes: {attribute: false},
@@ -202,6 +204,8 @@ export abstract class EditingControls extends LitElement {
   svgText = false
 
   marks: MarkName[] = []
+
+  popupActive = false
 
   /** Marks a containing widget allows; null when all marks are allowed. */
   allowedMarks: MarkName[] | null = null
@@ -533,9 +537,27 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected renderSpanDropdown(selected: readonly MarkName[]) {
+    const shortcut = this.commandShortcut("toggle-popup")
     return html`
       <div class="mark-dropdown-list" role="listbox" aria-label="Advanced mark types" aria-multiselectable="true">
         ${this.spanGroupMembers().map(mark => this.renderSpanMarkOption(mark, selected))}
+        <div class="mark-dropdown-option mark-popup" role="option" aria-selected=${this.popupActive}
+          @click=${(event: MouseEvent) => {
+            if((event.target as Element).closest("input")) return
+            (event.currentTarget as HTMLElement).querySelector("input")?.click()
+          }}>
+          <input type="checkbox" data-ribbon-input-persistent aria-label="Select Popup"
+            .checked=${this.popupActive}
+            ?disabled=${!this.canMark || this.svgText || !!this.math?.active}
+            @pointerdown=${(event: PointerEvent) => event.preventDefault()}
+            @change=${() => this.dispatchEvent(new CustomEvent("ribbon-button-click", {
+              detail: {label: "toggle-popup"}, bubbles: true, composed: true,
+            }))}
+          />
+          <span class="mark-dropdown-option-icon" aria-hidden="true">${ribbonIcon("Popup")}</span>
+          <span class="mark-dropdown-option-name">Popup</span>
+          ${shortcut ? html`<span class="mark-dropdown-shortcut">${shortcut}</span>` : ""}
+        </div>
       </div>
     `
   }
@@ -558,18 +580,24 @@ export abstract class EditingControls extends LitElement {
     const selected = this.spanSelectedMarks().filter(mark =>
       this.spanGroupMembers().includes(mark)
     )
+    const linkActive = this.marks.includes("a")
+    const primary = this.popupActive ? "popup" : selected[0] ?? (linkActive ? "a" : null)
+    const option = primary && primary !== "popup" ? this.markOption(primary) : null
+    const activeCount = selected.length + Number(this.popupActive) + Number(linkActive)
+    const primaryAllowed = !this.allowedMarks || primary === "popup" || this.allowedMarks.includes(primary ?? "a")
     return html`
       <ribbon-button
         class="mark-span"
         style="grid-column: 8; grid-row: 2"
         toggle
-        label="Link…"
-        icon="MarkLink"
-        action="mark:a"
-        .selectionCount=${selected.length}
+        label=${primary === "popup" ? "Popup…" : option ? `${option.label}…` : "Link…"}
+        icon=${primary === "popup" ? "Popup" : option?.icon ?? "MarkLink"}
+        action=${primary === "popup" ? "toggle-popup" : `mark:${primary ?? "a"}`}
+        ?dropdown-on-click=${!primaryAllowed}
+        .selectionCount=${Math.max(0, activeCount - 1)}
         .dropdown=${this.renderSpanDropdown(selected)}
-        ?active=${this.marks.includes("a") || selected.length > 0}
-        ?disabled=${!this.canMark || !!this.allowedMarks && !this.allowedMarks.includes("a") || this.math?.active}
+        ?active=${activeCount > 0}
+        ?disabled=${!this.canMark || this.math?.active}
       ></ribbon-button>
     `
   }
@@ -1099,7 +1127,20 @@ export abstract class EditingControls extends LitElement {
     }
   }
 
+  private shortcutLayout?: ShortcutLayout
+  private refreshShortcutLayout = async () => {
+    this.shortcutLayout = await getShortcutLayout()
+    if(this.isConnected) this.requestUpdate()
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    void this.refreshShortcutLayout()
+    this.ownerDocument.defaultView?.addEventListener("focus", this.refreshShortcutLayout)
+  }
+
   disconnectedCallback() {
+    this.ownerDocument.defaultView?.removeEventListener("focus", this.refreshShortcutLayout)
     this.anchorPositioner?.destroy()
     this.anchorPositioner = null
     super.disconnectedCallback()
@@ -1538,7 +1579,7 @@ export abstract class EditingControls extends LitElement {
   protected dispatchMediaAttribute(type: MediaType, option: MediaAttributeOption, event: Event) {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
     if(input instanceof HTMLInputElement && isWebsiteType(type) && option.name === mediaSourceAttribute(type)) {
-      const error = websiteSourceError(input.value.trim())
+      const error = websiteSourceError(platformEmbedURL(input.value.trim()) ?? input.value.trim())
       input.setCustomValidity(error)
       if(error) {
         input.setAttribute("aria-invalid", "true")
@@ -2754,7 +2795,10 @@ export abstract class EditingControls extends LitElement {
       ?? (action.startsWith("element:")
         ? appCommands.find(candidate => candidate.action === getElementPresentation(action.slice("element:".length)).name)
         : undefined)
-    return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "") : ""
+    if(!command) return ""
+    const shortcut = this.settings.shortcuts[command.id] ?? ""
+    const layout = isDefaultHistoryShortcut(command.id, shortcut) ? undefined : effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)
+    return formatShortcut(shortcut, undefined, layout)
   }
 
   protected renderElementStyleDrawer(category: ElementStyleCategory) {

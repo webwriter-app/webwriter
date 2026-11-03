@@ -1270,7 +1270,8 @@ export class RibbonButton extends LitElement {
         if(!this.submenuOpen || !this.isConnected) return
         this.showPopoverElement(submenu)
         const row = this.renderRoot.querySelector<HTMLElement>(".button-row")!
-        this.anchors.bind(submenu, row, popupAnchorCSS(-1) + "min-width:min(anchor-size(width),calc(100vw - 16px));")
+        const galleryHeight = submenu.gallery ? "max-height:calc(100% - 8px);" : ""
+        this.anchors.bind(submenu, row, popupAnchorCSS(-1) + `min-width:min(anchor-size(width),calc(100vw - 16px));${galleryHeight}`)
         this.anchors.refresh()
         // Border joins describe the native placement; they do not position it.
         const button = row.getBoundingClientRect(), menu = submenu.getBoundingClientRect()

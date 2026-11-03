@@ -88,7 +88,7 @@ it("lists snippet-only simulation collections and preserves their learner embeds
   const collection = pkg("@webwriter/phet", "PhET simulations", [first, {...first, id: "motion", label: "Motion"}])
   expect(galleryPackages([collection], "motion")).toEqual([collection])
   const example = galleryExample('<iframe src="https://phet.colorado.edu/simulation" title="Energy"></iframe>', {pkg: collection, member: first})!
-  expect(example).toContain('sandbox="allow-scripts"')
+  expect(example).toContain('sandbox="allow-scripts allow-same-origin"')
   expect(galleryPreviewPackages(galleryDocument(example, "Energy"), [collection])).toEqual([])
 })
 

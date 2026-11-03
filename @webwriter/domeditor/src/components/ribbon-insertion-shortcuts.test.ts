@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {APP_SETTINGS_STORAGE_KEY, appCommands, defaultAppSettings, formatShortcut, loadAppSettings, persistAppSettings} from "../app-settings"
+import {APP_SETTINGS_STORAGE_KEY, appCommands, defaultAppSettings, effectiveShortcutLayout, formatShortcut, loadAppSettings, persistAppSettings} from "../app-settings"
 import {AppRibbon} from "./ribbon"
 import {SettingsPanel} from "./settings-panel"
 import type {RibbonButton} from "./ribbon-button"
@@ -197,4 +197,33 @@ describe("insertion ribbon shortcuts", () => {
       expect(main.title).toBe(`${label} (${formatShortcut(settings.shortcuts[`insert.${id}`])})`)
     }
   })
+})
+
+
+it("shows configured layout-aware shortcuts in top action tooltips", async () => {
+  const settings = defaultAppSettings()
+  settings.keyboardLayout = "qwertz"
+  settings.shortcuts = {...settings.shortcuts, "editor.undo": "Alt+Y", "editor.redo": "Alt+Z",
+    "document.save": "Ctrl+Y", "editor.preview": "Alt+Shift+Y"}
+  const ribbon = await mountRibbon(settings)
+  const root = ribbon.shadowRoot!
+  const save = root.querySelector<RibbonButton>(".file-save-action")!
+  await save.updateComplete
+  const title = (label: string, shortcut: string) => `${label} (${formatShortcut(shortcut, undefined, effectiveShortcutLayout("qwertz"))})`
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.title).toBe(title("Undo", "Alt+Y"))
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="Redo"]')!.title).toBe(title("Redo", "Alt+Z"))
+  expect(save.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe(title("Save", "Ctrl+Y"))
+  expect(root.querySelector<HTMLButtonElement>(".preview-button")!.title).toBe(title("Preview", "Alt+Shift+Y"))
+
+  ribbon.previewActive = true
+  await ribbon.updateComplete
+  expect(root.querySelector<HTMLButtonElement>(".preview-button")!.title).toBe(title("Exit preview", "Alt+Shift+Y"))
+
+  ribbon.previewActive = false
+  ribbon.settings = {...settings, shortcuts: {...settings.shortcuts, "editor.undo": "", "document.save": "", "editor.preview": ""}}
+  await ribbon.updateComplete
+  await save.updateComplete
+  expect(root.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.title).toBe("Undo")
+  expect(save.shadowRoot!.querySelector<HTMLButtonElement>(".main-button")!.title).toBe("Save")
+  expect(root.querySelector<HTMLButtonElement>(".preview-button")!.title).toBe("Preview")
 })

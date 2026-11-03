@@ -831,8 +831,13 @@ describe("semantic list editing", () => {
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
 
-    keydown("Backspace")
-    keydown("Backspace")
+    // These two edits form one tested undo operation regardless of machine load.
+    const end = editor.doc.beginUndoGroup()
+    try {
+      keydown("Backspace")
+      keydown("Backspace")
+    }
+    finally { end() }
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
 

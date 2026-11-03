@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
+import "@testing-library/jest-dom/vitest"
 import {DomEditorToolbox} from "./toolbox"
-import type {ElementAttributeState} from "../element-attributes"
+import {elementAttributeState, type ElementAttributeState} from "../element-attributes"
 import type {ElementStyleState, SelectedElementTypeState} from "../editor-bridge"
 import type {ElementStyleEditor} from "./element-style-editor"
 import type {ElementAttributeEditor} from "./element-attribute-editor"
@@ -41,6 +42,76 @@ async function mountElement(localName: string, attributes: Record<string, string
 }
 
 describe("specialized element toolbox", () => {
+  it.each([
+    [".ww-popup", "Popup"], ["button", "Popup"], ["[popover]", "Popup Content"],
+  ])("names the selected %s in the toolbox", async (selector, label) => {
+    const root = document.createElement("div")
+    root.innerHTML = '<div class="ww-popup"><button popovertarget="note">Open</button><div id="note" popover="auto"><p>Content</p></div></div>'
+    const element = root.querySelector(selector)!
+    const toolbox = await mountElement(element.localName)
+    toolbox.elementAttributes = elementAttributeState(element, [0])
+    toolbox.elementSelected = true
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${element.localName}"]`)!
+    expect(drawer.label).toBe(label)
+    expect(Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>("ribbon-drawer"), item => item.label)).toContain("Style")
+  })
+
+  it.each([["button", "Popup"], ["[popover]", "Popup Content"]])("shows inline %s in the toolbox", async (selector, label) => {
+    const root = document.createElement("div")
+    root.innerHTML = '<span class="ww-popup"><button popovertarget="note">Open</button><span id="note" popover="auto">Content</span></span>'
+    const element = root.querySelector(selector)!
+    const toolbox = await mountElement("span")
+    toolbox.elementAttributes = elementAttributeState(element, [0])
+    await toolbox.updateComplete
+    const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>(`[data-specialized="${element.localName}"]`)
+    expect(drawer?.label).toBe(label)
+    await drawer!.updateComplete
+    expect(drawer!.shadowRoot!.querySelector(".drawer-toggle")).toHaveAttribute("hidden")
+    expect(drawer!.querySelectorAll("element-style-editor, element-attribute-editor")).toHaveLength(0)
+    expect(drawer!.querySelectorAll("button")).toHaveLength(1)
+    const deleted = vi.fn()
+    toolbox.addEventListener("popup-delete", deleted)
+    drawer!.querySelector<HTMLButtonElement>('button[aria-label^="Delete "]')!.click()
+    expect(deleted.mock.calls[0][0].detail).toEqual({path: [0]})
+  })
+
+  it.each([["button", "toggle"], ["[popover]", "content"]] as const)("offers Style and Delete for a selected popup %s", async (selector, popupRole) => {
+    const root = document.createElement("div")
+    root.innerHTML = '<span class="ww-popup"><button popovertarget="note">Open</button><span id="note" popover="auto">Content</span></span>'
+    const element = root.querySelector(selector)!
+    const toolbox = await mountElement(element.localName)
+    toolbox.elementAttributes = elementAttributeState(element, [0])
+    toolbox.elementStyle = {...styleState(element.localName), target: {
+      localName: element.localName, namespaceURI: element.namespaceURI, popupRole,
+    }}
+    toolbox.elementSelected = true
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Style"] element-style-editor[show-presets]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="popup"] button[aria-label^="Delete "]')).not.toBeNull()
+    expect(toolbox.shadowRoot!.querySelector(".float-placement-label")).toBeNull()
+  })
+
+  it("scopes Popup and Popup Content deletion to their own paths", async () => {
+    const root = document.createElement("div")
+    root.innerHTML = '<div class="ww-popup"><button popovertarget="note">Open</button><div id="note" popover="auto"><p>Content</p></div></div>'
+    const toolbox = await mountElement("p")
+    const toggle = root.querySelector("button")!, content = root.querySelector("[popover]")!
+    toolbox.selectedElementTypes = [toggle, content].map((element, index) => ({
+      element: elementAttributeState(element, [0, index]),
+      style: styleState(element.localName), count: 1, styleProperties: [], configuredWidgetOptions: [],
+    }))
+    await toolbox.updateComplete
+    const drawers = Array.from(toolbox.shadowRoot!.querySelectorAll<RibbonDrawer>('[data-specialized]'))
+    expect(drawers.map(drawer => drawer.label)).toEqual(["Popup", "Popup Content"])
+    const deletion = vi.fn(), selection = vi.fn()
+    toolbox.addEventListener("popup-delete", deletion)
+    toolbox.addEventListener("toolbox-element-select", selection)
+    drawers[1].querySelector<HTMLButtonElement>('button[aria-label="Delete Popup Content"]')!.click()
+    expect(deletion.mock.calls[0][0].detail).toEqual({path: [0, 1]})
+    drawers[0].shadowRoot!.querySelector<HTMLButtonElement>(".pane-label-button")!.click()
+    expect(selection.mock.calls[0][0].detail.selectionTypes).toEqual([{localName: "button", namespaceURI: "http://www.w3.org/1999/xhtml", path: [0, 0]}])
+  })
   it("selects the drawer's element from its heading without activating heading controls", async () => {
     const toolbox = await mountElement("p")
     const drawer = toolbox.shadowRoot!.querySelector<RibbonDrawer>('[data-specialized="p"]')!
@@ -358,6 +429,9 @@ describe("specialized element toolbox", () => {
     await Promise.all(drawers.map(drawer => drawer.updateComplete))
     expect(drawers[0].shadowRoot!.querySelector(".pane-label .element-count")?.textContent).toBe("2")
     expect(drawers[1].shadowRoot!.querySelector(".element-count")).toBeNull()
+    expect(drawers[0].querySelector(".style-reset")!.textContent!.trim()).toBe("")
+    expect(drawers[0].querySelector(".style-reset")!.getAttribute("aria-label")).toBe("Reset element styles")
+    expect(drawers[1].querySelector(".style-reset")!.textContent!.trim()).toBe("Reset")
     expect(drawers[2].expandable).toBe(false)
     const emptyOptions = drawers[2].shadowRoot!.querySelector<HTMLButtonElement>(".drawer-toggle")!
     expect(emptyOptions.hidden).toBe(false)

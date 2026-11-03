@@ -755,6 +755,19 @@ describe("isNodeValid()", () => {
     })
   })
 
+  it("uses flow content rules for a popup content span", () => {
+    const wrapper = document.createElement("span")
+    wrapper.className = "ww-popup"
+    const content = document.createElement("span")
+    content.setAttribute("popover", "auto")
+    wrapper.append(content)
+    document.querySelector("p")!.append(wrapper)
+    expect(editor.schema.isContentValid(content)).toBe(false)
+    content.append(document.createElement("p"), document.createElement("div"))
+    expect(editor.schema.isContentValid(content)).toBe(true)
+    expect(editor.schema.findValidContentTypes(content)).toContain("p")
+  })
+
   describe("transparent rules", () => {
     it("preserves text and mixed phrasing inside links during correction", () => {
       const p = el("p")
@@ -1737,7 +1750,7 @@ describe("media constraints", () => {
     expect(frames).toHaveLength(2)
     expect(frames[0]).toHaveAttribute("src", "https://example.com/page")
     expect(frames[0]).toHaveAttribute("width", "640")
-    expect(frames[0]).toHaveAttribute("sandbox", "allow-scripts")
+    expect(frames[0]).toHaveAttribute("sandbox", "allow-scripts allow-same-origin")
     expect(fragment.querySelector("embed, object")).toBeNull()
     expect(fragment.querySelector("video")).toHaveAttribute("controls")
   })

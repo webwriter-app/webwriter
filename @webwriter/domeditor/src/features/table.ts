@@ -1,4 +1,5 @@
 import {EditorFeature} from "."
+import {popupContentAncestor} from "../element-names"
 import {$, fixedClientX, authoredClassValue, captureRangeIdentity, cloneWithoutEditorMarkers, createStylesheet, focusEditorWindow, getInertDocument, isAppendixInteraction, modifierKeyDown, plainTextFromDOM, removeEditorMarker} from "../utility"
 import {
   buildTableMap,
@@ -99,6 +100,25 @@ export class TableFeature extends EditorFeature {
   /** The connected logical focus of a rectangular cell selection. */
   get selectionFocusCell() {
     return this.hasCellSelection ? this.focusCell : null
+  }
+
+  /** A paste targets a cell only when the entire native selection is in it. */
+  get pasteTargetCell() {
+    if(this.hasCellSelection) return this.focusCell
+    if(this.editor.features.selection.captureSelectedElement) return null
+    const selected = $.selectedElement
+    if(selected?.matches(tableCellSelector) && this.editableTable(tableForNode(selected))) return selected as HTMLTableCellElement
+    const selection = document.getSelection()
+    if(!selection?.rangeCount) return null
+    const cell = cellForNode(selection.anchorNode)
+    if(!cell || cell !== cellForNode(selection.focusNode) || !this.editableTable(tableForNode(cell))) return null
+    for(const endpoint of [selection.anchorNode, selection.focusNode]) {
+      if(popupContentAncestor(endpoint)) return null
+      for(let node = endpoint instanceof Element ? endpoint : endpoint?.parentElement; node && node !== cell; node = node.parentElement) {
+        if(node.localName.includes("-") || node.hasAttribute("is") || node.getAttribute("contenteditable") === "false") return null
+      }
+    }
+    return cell
   }
 
   get selectedTable() {
@@ -957,6 +977,7 @@ export class TableFeature extends EditorFeature {
             : []
         }))
       }
+      if(fragment.childNodes.length) return [[Array.from(fragment.childNodes)]]
     }
     const ownerDocument = getInertDocument(document)
     return plain.split(/\r?\n/).map(row => row.split("\t").map(text => [ownerDocument.createTextNode(text)] as Node[]))
@@ -987,7 +1008,9 @@ export class TableFeature extends EditorFeature {
     const table = this.selectedTable
     if(!table || !matrix.length || !matrix.some(row => row.length)) return false
     let map = this.normalizeTable(table)
-    const rectangle = this.actionRectangle(map)
+    const target = this.pasteTargetCell
+    const placement = target && placementForCell(map, target)
+    const rectangle = this.cellRectangle(map) ?? (placement ? completeCellRectangle(map, placement, placement) : null)
     if(!rectangle) return false
     const sourceRows = matrix.length
     const sourceColumns = Math.max(...matrix.map(row => row.length))
@@ -1015,11 +1038,14 @@ export class TableFeature extends EditorFeature {
   /** Missing clipboard capabilities return false; supported API failures are
    * deliberately propagated without changing the selected cells. */
   async paste() {
-    if(!this.isEnabled || !this.hasCellSelection || !navigator.clipboard?.read) return false
+    if(!this.isEnabled || !this.pasteTargetCell || !navigator.clipboard?.read) return false
     const table = this.selectedTable
     if(!this.editableTable(table)) return false
     const anchor = this.anchorCell
     const focus = this.focusCell
+    const target = this.pasteTargetCell
+    const selection = document.getSelection()
+    const endpoints = selection && [selection.anchorNode, selection.anchorOffset, selection.focusNode, selection.focusOffset]
     const selected = this.selectedCells
     const tableRange = table.ownerDocument.createRange()
     tableRange.selectNodeContents(table)
@@ -1029,7 +1055,11 @@ export class TableFeature extends EditorFeature {
     const stillCurrent = () => {
       if(!this.isEnabled || lifecycle !== this.pasteLifecycle || !this.editableTable(table)
         || this.anchorCell !== anchor || this.focusCell !== focus
-        || this.selectedTable !== table) return false
+        || this.selectedTable !== table || this.pasteTargetCell !== target) return false
+      const currentSelection = document.getSelection()
+      if(!this.hasCellSelection && (!currentSelection || !endpoints
+        || currentSelection.anchorNode !== endpoints[0] || currentSelection.anchorOffset !== endpoints[1]
+        || currentSelection.focusNode !== endpoints[2] || currentSelection.focusOffset !== endpoints[3])) return false
       const current = this.selectedCells
       if(current.length !== selected.length || current.some((cell, index) => cell !== selected[index])) return false
       if((cloneWithoutEditorMarkers(table, true, {inert: true}) as Element).outerHTML !== htmlBefore) return false
@@ -1049,6 +1079,16 @@ export class TableFeature extends EditorFeature {
     const plain = textItem ? await (await textItem.getType("text/plain")).text() : ""
     if(!stillCurrent()) return false
     return this.pasteMatrix(this.clipboardMatrix(html, plain))
+  }
+
+  handlePaste(event: ClipboardEvent) {
+    if(!this.isEnabled || event.defaultPrevented || isAppendixInteraction(event) || !this.pasteTargetCell || !event.clipboardData) return
+    const html = event.clipboardData.getData("text/html")
+    const plain = event.clipboardData.getData("text/plain")
+    if(!html && !plain) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    this.pasteMatrix(this.clipboardMatrix(html, plain))
   }
 
   private resizeEdge(event: PointerEvent, cell: HTMLTableCellElement): TableResizeEdge | null {
@@ -1291,6 +1331,13 @@ export class TableFeature extends EditorFeature {
   activeListeners = {
     click: (event: MouseEvent) => this.insertAtGap(event),
     pointerdown: (event: PointerEvent) => {
+      if(popupContentAncestor(event.target instanceof Node ? event.target : null)) {
+        this.pendingCell = null
+        this.pointerSelecting = false
+        this.setResizeHover(null)
+        this.clearCellSelection(false)
+        return
+      }
       if(this.gapControl(event)) {
         event.preventDefault()
         this.finishResize()
@@ -1439,14 +1486,7 @@ export class TableFeature extends EditorFeature {
       this.deleteSelection()
     },
     paste: (event: ClipboardEvent) => {
-      if(isAppendixInteraction(event)) return
-      if(!this.hasCellSelection || !event.clipboardData) return
-      const html = event.clipboardData.getData("text/html")
-      const plain = event.clipboardData.getData("text/plain")
-      if(!html && !plain) return
-      event.preventDefault()
-      event.stopImmediatePropagation()
-      this.pasteMatrix(this.clipboardMatrix(html, plain))
+      this.handlePaste(event)
     },
   }
 }

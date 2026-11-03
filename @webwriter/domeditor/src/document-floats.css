@@ -1,5 +1,90 @@
 /* Page geometry is shared by editing and standalone exports. */
 @layer webwriter-theme {
+  details:not([is]) { background-color: inherit; }
+  span.ww-popup { display: inline-block; line-height: inherit; }
+  span.ww-popup > button[popovertarget] {
+    display: inline-block;
+    font: inherit;
+    line-height: inherit;
+    padding: 0 0.25em;
+    border: 0;
+    vertical-align: baseline;
+  }
+  .ww-popup > button[popovertarget] {
+    margin-block-end: 0;
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]) {
+    anchor-name: --ww-popup-bubble;
+    container-type: anchored;
+    position-area: bottom span-right;
+    position-try-order: most-height;
+    position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline,
+      --ww-popup-fit-right, --ww-popup-fit-left, --ww-popup-fit-up-right, --ww-popup-fit-up-left;
+    inset: auto;
+    margin: 0.15rem 0 0;
+    box-sizing: border-box;
+    inline-size: max-content;
+    max-inline-size: calc(100vw - 1rem);
+    max-block-size: calc(100% - 0.5rem);
+    padding: 0.75rem 1rem;
+    border: 1px solid #94a3b8;
+    border-radius: 0.6rem;
+    background: white;
+    color: #1f2937;
+    box-shadow: 0 0.2rem 0.75rem rgb(0 0 0 / 15%);
+    overflow: auto;
+    overflow-wrap: anywhere;
+  }
+  @position-try --ww-popup-fit-right {
+    position-area: bottom span-right;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  @position-try --ww-popup-fit-left {
+    position-area: bottom span-left;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  @position-try --ww-popup-fit-up-right {
+    position-area: top span-right;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  @position-try --ww-popup-fit-up-left {
+    position-area: top span-left;
+    max-inline-size: calc(100% - 0.5rem);
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]):popover-open {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+    content: "";
+    position: fixed;
+    position-anchor: --ww-popup-bubble;
+    top: calc(anchor(top) - 0.4rem);
+    left: calc(anchor(left) + 1.25rem);
+    width: 0.7rem;
+    height: 0.7rem;
+    background: inherit;
+    border-top: inherit;
+    border-left: inherit;
+    transform: rotate(45deg);
+  }
+  @container anchored(fallback: flip-inline), anchored(fallback: flip-block flip-inline),
+    anchored(fallback: --ww-popup-fit-left), anchored(fallback: --ww-popup-fit-up-left) {
+    :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+      left: auto;
+      right: calc(anchor(right) + 1.25rem);
+    }
+  }
+  @container anchored(fallback: flip-block), anchored(fallback: flip-block flip-inline),
+    anchored(fallback: --ww-popup-fit-up-right), anchored(fallback: --ww-popup-fit-up-left) {
+    :is(.ww-popup > [popover], .ww-popup-content[popover])::before {
+      top: calc(anchor(bottom) - 0.4rem);
+      transform: rotate(225deg);
+    }
+  }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]) > p:first-child { margin-block-start: 0; }
+  :is(.ww-popup > [popover], .ww-popup-content[popover]) > p:last-child { margin-block-end: 0; }
   html {
     container-type: inline-size;
     --ww-page-width: min(var(--ww-page-max, 2160px), calc(100cqw - 2 * var(--ww-page-gutter, 1rem)));
@@ -50,11 +135,14 @@
 
     /* Default elements fill their column; authored sizes still take precedence.
      * Inline widgets retain their own display; these sizes do not blockify them. */
-    :is(&, & > main, & > article, & > section) > * {
+    :is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]) {
       inline-size: 100%;
       min-inline-size: 0;
-      max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
       margin-inline: auto;
+    }
+
+    :where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover])) {
+      max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
     }
 
     :is(&, & > main, & > article, & > section) > :not(hr) {
@@ -120,68 +208,77 @@
     }
   }
 
-  @container (width >= 1200px) {
+  @container (width >= 720px) {
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
-      /* One occupied side forms one column, even for older documents with
-       * opposite authored float directions. Left wins in that legacy case. */
+      --ww-default-column-width: min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2)));
+      --ww-left-column-ideal: max(min(var(--ww-left-column-default-width, var(--ww-two-column-default-width, var(--ww-prose-max, 45rem))), var(--ww-default-column-width)), var(--ww-left-column-explicit-width, var(--ww-two-column-explicit-width, 0px)));
+      --ww-right-column-ideal: max(min(var(--ww-right-column-default-width, var(--ww-two-column-default-width, var(--ww-prose-max, 45rem))), var(--ww-default-column-width)), var(--ww-right-column-explicit-width, var(--ww-two-column-explicit-width, 0px)));
+      --ww-single-side-limit: max(0px, calc(var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 300px - var(--ww-float-gap)));
+      --ww-left-column-width: min(var(--ww-left-column-ideal), var(--ww-single-side-limit));
+      --ww-right-column-width: min(var(--ww-right-column-ideal), var(--ww-single-side-limit));
       &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
-        --ww-left-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+        --ww-left-lane: calc(var(--ww-left-column-width) + var(--ww-float-gap));
       }
-      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
-        --ww-right-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
+      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+        --ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));
       }
       &:has(:is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
-        --ww-body-max: calc(var(--ww-prose-max, 45rem) + var(--ww-float-width) + var(--ww-float-gap) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
-        --ww-float-width: max(
-          min(var(--ww-two-column-default-width, var(--ww-prose-max, 45rem)), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2))),
-          var(--ww-two-column-explicit-width, 0px));
+        --ww-body-max: calc(var(--ww-prose-max, 45rem) + var(--ww-left-lane) + var(--ww-right-lane) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
       }
-
-      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+      /* When both lanes are occupied, leave at least 300px for prose. */
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+        --ww-side-budget: max(0px, calc(var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 300px - 2 * var(--ww-float-gap)));
+        --ww-left-column-width: min(var(--ww-left-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-right-column-ideal), var(--ww-side-budget) / 2)));
+        --ww-right-column-width: min(var(--ww-right-column-ideal), calc(var(--ww-side-budget) - min(var(--ww-left-column-ideal), var(--ww-side-budget) / 2)));
+      }
+      :is(.ww-float-left, [style*="float: left"], [style*="float:left"]) {
+        --ww-float-width: var(--ww-left-column-width);
         float: left !important;
         clear: left;
+        inline-size: min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width)) !important;
         margin-left: calc(0px - var(--ww-left-lane)) !important;
-        margin-right: calc(var(--ww-left-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+        margin-right: calc(var(--ww-left-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) !important;
       }
-
-      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+      :is(.ww-float-right, [style*="float: right"], [style*="float:right"]) {
+        --ww-float-width: var(--ww-right-column-width);
         float: right !important;
         clear: right;
+        inline-size: min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width)) !important;
         margin-right: calc(0px - var(--ww-right-lane)) !important;
-        margin-left: calc(var(--ww-right-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+        margin-left: calc(var(--ww-right-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) !important;
       }
     }
   }
 
-  @container (720px <= width < 1200px) {
-    body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
-      --ww-float-width: max(min(var(--ww-two-column-default-width, var(--ww-prose-max, 45rem)), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - var(--ww-float-gap)) / 2))), var(--ww-two-column-explicit-width, 0px));
+  @container (width >= 1400px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+      --ww-default-column-width: min(var(--ww-prose-max, 45rem), max(0px, calc((var(--ww-page-width) - var(--ww-leading-gutter-balance, 0px) - 2 * var(--ww-float-gap)) / 3)));
+      --ww-center-column-max: min(var(--ww-prose-max, 45rem), max(var(--ww-default-column-width), calc(3 * var(--ww-default-column-width) - var(--ww-left-column-width) - var(--ww-right-column-width))));
+      --ww-body-max: calc(var(--ww-center-column-max) + var(--ww-left-lane) + var(--ww-right-lane) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
+    }
+  }
 
-      &:has(:is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"])) {
-        --ww-body-max: calc(var(--ww-prose-max, 45rem) + var(--ww-float-width) + var(--ww-float-gap) + var(--ww-leading-gutter-balance, 0px) + 2 * var(--ww-page-gutter, 1rem));
-        --ww-lane: calc(var(--ww-float-width) + var(--ww-float-gap));
-      }
-      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
-        --ww-responsive-float: left;
-        --ww-left-lane: var(--ww-lane);
-      }
-      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) {
-        --ww-responsive-float: right;
-        --ww-right-lane: var(--ww-lane);
-      }
+  /* At intermediate widths, opposite side columns share the right lane.
+   * Keep the authored sides so they return when the viewport is wider. */
+  @container (720px <= width < 1400px) {
+    body:not([class~="ww-canvas"]):not([class~="ww-slides"]):has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])) {
+      --ww-responsive-float: right;
+      --ww-left-lane: 0px;
+      --ww-right-column-width: min(max(var(--ww-left-column-ideal), var(--ww-right-column-ideal)), var(--ww-single-side-limit));
+      --ww-right-lane: calc(var(--ww-right-column-width) + var(--ww-float-gap));
+      --ww-alignment-left: 0px;
+      --ww-alignment-right: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
 
-      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
-        float: left !important;
-        clear: left;
-        margin-left: calc(0px - var(--ww-lane)) !important;
-        margin-right: calc(var(--ww-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
-      }
-
-      &:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"])):not(:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"]))) :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+      :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        --ww-float-width: var(--ww-right-column-width);
         float: right !important;
         clear: right;
-        margin-right: calc(0px - var(--ww-lane)) !important;
-        margin-left: calc(var(--ww-lane) - var(--ww-float-size, var(--ww-float-width))) !important;
+        margin-right: calc(0px - var(--ww-right-lane)) !important;
+        margin-left: calc(var(--ww-right-lane) - min(var(--ww-float-size, var(--ww-float-width)), var(--ww-float-width))) !important;
+      }
+      :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
+        margin-left: 0;
+        margin-right: auto;
       }
     }
   }
@@ -208,7 +305,7 @@
 
   @container (width >= 720px) {
     body:not([class~="ww-canvas"]):not([class~="ww-slides"]) {
-      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])) {
+      &:has(:is(.ww-float-left, [style*="float: left"], [style*="float:left"])):not(:has(:is(.ww-float-right, [style*="float: right"], [style*="float:right"]))) {
         --ww-alignment-left: max(0px, calc(100% - var(--ww-prose-max, 45rem)));
         --ww-alignment-right: 0px;
         :is(&, & > main, & > article, & > section) > :not(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {
@@ -225,6 +322,13 @@
         }
       }
     }
+  }
+
+  /* Pictures in cells need the same sizing box in editing and reading mode. */
+  :where(td, th) picture {
+    display: block;
+    width: 100%;
+    height: auto;
   }
 
   /* Keep table section rows distinct across themes while allowing document
