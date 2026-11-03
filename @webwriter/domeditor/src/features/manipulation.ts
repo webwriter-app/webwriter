@@ -4255,6 +4255,8 @@ export class ManipulationFeature extends EditorFeature {
     },
     "paste": ev => {
       if(ev.defaultPrevented) return
+      this.editor.features.table.handlePaste(ev)
+      if(ev.defaultPrevented) return
       const html = ev.clipboardData?.getData("text/html")
       if(html && this.editor.features.migration.needsMigration(html)) {
         ev.preventDefault()
@@ -4278,10 +4280,14 @@ export class ManipulationFeature extends EditorFeature {
       ev.clipboardData.setData("text/plain", text)
     },
     "cut": ev => {
-      if(ev.defaultPrevented || !ev.clipboardData || $.isEmpty) return
+      if(ev.defaultPrevented || !ev.clipboardData) return
+      if(this.editor.features.selection.captureSelectedElement && (this.editor.features.graphic.selectedShapes.length
+        || this.editor.features.graphic.textEditingRange)) return
+      if(this.editor.features.selection.captureSelectedElement) this.selectCapturedElementForInsertion()
+      if($.isEmpty) return
       const selected = $.selectedElement
       const fragment = $.copy()
-      if(selected !== getDocumentRoot() && selected !== document.body && !$.excludedFlowElements.length
+      if(!selected && !$.isMultiElementSelection && !$.excludedFlowElements.length
         && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6, .ww-popup"))) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment)
@@ -4764,6 +4770,7 @@ export class ManipulationFeature extends EditorFeature {
       && !this.editor.features.graphic.textEditingRange) return this.editor.features.graphic.cut()
     if(this.editor.features.selection.captureSelectedElement && this.editor.features.graphic.textEditingRange) return false
     if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
+    if(this.editor.features.selection.captureSelectedElement) this.selectCapturedElementForInsertion()
     const selection = document.getSelection()
     if(!selection?.rangeCount || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return false
     const captured = {
@@ -4801,7 +4808,7 @@ export class ManipulationFeature extends EditorFeature {
    * Inline content at an empty document or gap is wrapped in a text block.
    * Missing capabilities return false; supported API failures reject. */
   async paste() {
-    if(this.editor.features.table.hasCellSelection) return this.editor.features.table.paste()
+    if(this.editor.features.table.pasteTargetCell) return this.editor.features.table.paste()
     if(this.editor.features.graphic.textInsertionGraphic) return this.editor.features.graphic.paste()
     if(!navigator.clipboard?.read) return false
     const fragment = await this.#clipboardToFragment()

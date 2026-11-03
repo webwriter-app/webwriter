@@ -1022,12 +1022,11 @@ describe("insertable element placement and previews", () => {
     document.dispatchEvent(new ClipboardEvent("paste", {clipboardData: data, bubbles: true, cancelable: true}))
 
     const toggles = Array.from(document.querySelectorAll("td:first-child .ww-popup button[popovertarget]"))
-    expect(toggles).toHaveLength(2)
-    expect(new Set(toggles.map(toggle => toggle.getAttribute("popovertarget"))).size).toBe(2)
-    expect(document.querySelector("td:first-child p")?.textContent).toBe("ToggleToggle after")
-    const copiedContent = document.getElementById(toggles[1].getAttribute("popovertarget")!)
+    expect(toggles).toHaveLength(1)
+    expect(document.querySelector("td:first-child")?.textContent).not.toContain("after")
+    const copiedContent = document.getElementById(toggles[0].getAttribute("popovertarget")!)
     expect(copiedContent?.textContent).toBe("Bubble text")
-    expect(copiedContent?.closest("td")).toBe(toggles[1].closest("td"))
+    expect(copiedContent?.closest("td")).toBe(toggles[0].closest("td"))
   })
 
   it.each(["td", "th"])("replaces cell content with a ribbon image in %s and supports undo", tag => {
@@ -3924,6 +3923,47 @@ describe("copy()", () => {
   })
 })
 describe("cut()", () => {
+  it.each(["p", "custom-widget"])("cuts a whole selected %s through the native clipboard event", tag => {
+    document.body.innerHTML = `<div><!--before--><${tag} title="authored">hello</${tag}><!--after--></div><p>outside</p>`
+    const target = document.querySelector(tag)!
+    editor.features.selection.selectElement(target)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const data = new DataTransfer()
+    const event = new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(data.getData("text/html")).toContain(`<${tag} title="authored">hello</${tag}>`)
+    expect(document.querySelector("div")!.innerHTML).toBe("<!--before--><!--after-->")
+    expect(editor.toHTML(true)).not.toContain("◆")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(document.querySelector(tag)?.getAttribute("title")).toBe("authored")
+    editor.doc.redo()
+    expect(document.querySelector(`${tag}[title="authored"]`)).toBeNull()
+  })
+
+  it.each(["native", "command"])("cuts a captured widget with a collapsed native selection via %s", async method => {
+    document.body.innerHTML = "<custom-widget>hello</custom-widget><p>outside</p>"
+    const widget = document.querySelector("custom-widget")!
+    editor.features.selection.captureElement(widget)
+    expect(document.getSelection()!.isCollapsed).toBe(true)
+    if(method === "native") {
+      const data = new DataTransfer()
+      const event = new ClipboardEvent("cut", {clipboardData: data, bubbles: true, cancelable: true})
+      document.dispatchEvent(event)
+      expect(event.defaultPrevented).toBe(true)
+      expect(data.getData("text/html")).toContain("<custom-widget>hello</custom-widget>")
+    }
+    else {
+      expect(await editor.features.manipulation.cut()).toBe(true)
+      const item = (await navigator.clipboard.read()).find(item => item.types.includes("text/html"))!
+      expect(await (await item.getType("text/html")).text()).toContain("<custom-widget>hello</custom-widget>")
+    }
+    expect(widget.isConnected).toBe(false)
+    expect(document.querySelector("p")!.textContent).toBe("outside")
+  })
+
   it("fills the clipboard with correct HTML", async () => {
     document.body.innerHTML = "<p>hello world</p>"
     $.selectElement(document.body.firstElementChild!)
