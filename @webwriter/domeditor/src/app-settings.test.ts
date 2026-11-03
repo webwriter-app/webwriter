@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {APP_SETTINGS_STORAGE_KEY, builtinShortcuts, defaultAppSettings, loadAppSettings, persistAppSettings, reservedShortcutReason} from "./app-settings"
+import {APP_SETTINGS_STORAGE_KEY, builtinShortcuts, defaultAppSettings, loadAppSettings, persistAppSettings, reservedShortcutReason, formatShortcut, shortcutParts, shortcutFromEvent, getShortcutLayout, effectiveShortcutLayout} from "./app-settings"
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -114,5 +114,76 @@ describe("formula shortcut migration", () => {
     const loaded = loadAppSettings()
     expect(loaded.shortcuts["insert.formula"]).toBe("")
     expect(loaded.shortcuts["insert.heading"]).toBe("Alt+Shift+0")
+  })
+})
+
+
+describe("keyboard layout shortcut labels", () => {
+  it("labels physical shortcuts using the active layout without changing matching", () => {
+    const layout = new Map([["KeyY", "z"], ["KeyZ", "y"]])
+    expect(formatShortcut("Alt+Shift+Y", false, layout)).toBe("Alt+Shift+Z")
+    expect(formatShortcut("Alt+Shift+Y", true, layout)).toBe("⌥⇧Z")
+    expect(shortcutParts("Alt+Shift+Y", false, layout)).toEqual(["Alt", "⇧ Shift", "Z"])
+    expect(shortcutFromEvent(new KeyboardEvent("keydown", {code: "KeyY", key: "Z", altKey: true, shiftKey: true}))).toBe("Alt+Shift+Y")
+    expect(formatShortcut("Alt+Shift+Y", false)).toBe("Alt+Shift+Y")
+  })
+
+  it("falls back when the layout API is unavailable or denied", async () => {
+    vi.stubGlobal("navigator", {})
+    expect(await getShortcutLayout()).toBeUndefined()
+    vi.stubGlobal("navigator", {keyboard: {getLayoutMap: () => Promise.reject(new Error("denied"))}})
+    expect(await getShortcutLayout()).toBeUndefined()
+  })
+})
+
+
+describe("keyboard layout preference", () => {
+  it.each([["de-DE", "Z"], ["fr-FR", "Y"], ["fr-CH", "Z"], ["en-US", "Y"]])
+  ("guesses shortcut labels from %s", (language, expected) => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue([language])
+    expect(formatShortcut("Alt+Shift+Y", false, effectiveShortcutLayout("auto"))).toBe(`Alt+Shift+${expected}`)
+  })
+
+  it("prefers the detected layout and honors explicit overrides", () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["de-DE"])
+    const detected = new Map([["KeyY", "x"]])
+    expect(formatShortcut("Alt+Y", false, effectiveShortcutLayout("auto", detected))).toBe("Alt+X")
+    expect(formatShortcut("Alt+Y", false, effectiveShortcutLayout("qwerty", detected))).toBe("Alt+Y")
+    expect(formatShortcut("Alt+Y", false, effectiveShortcutLayout("qwertz", detected))).toBe("Alt+Z")
+    expect(formatShortcut("Alt+Q", false, effectiveShortcutLayout("azerty"))).toBe("Alt+A")
+  })
+
+  it("persists a chosen layout and handles invalid stored preferences", () => {
+    const settings = defaultAppSettings()
+    settings.keyboardLayout = "qwertz"
+    persistAppSettings(settings)
+    expect(loadAppSettings().keyboardLayout).toBe("qwertz")
+    localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify({...settings, keyboardLayout: "unknown"}))
+    expect(loadAppSettings().keyboardLayout).toBe("auto")
+  })
+})
+
+
+describe("additional keyboard layouts", () => {
+  it.each([
+    ["awerty", {Q: "Ä", X: "Ü", C: "Ç", V: "Ý", Y: "Y"}],
+    ["querty", {W: "Ü", I: "İ", Q: "Q"}],
+    ["dvorak", {Q: "'", W: ",", E: ".", Y: "F", F: "U", Z: ";", X: "Q", B: "X"}],
+    ["colemak", {E: "F", P: ";", Y: "J", F: "T", N: "K", Z: "Z"}],
+    ["workman", {W: "D", P: ";", H: "Y", M: "L", C: "M", B: "V"}],
+  ] as const)("maps and persists %s", (preference, labels) => {
+    const settings = defaultAppSettings()
+    settings.keyboardLayout = preference
+    persistAppSettings(settings)
+    expect(loadAppSettings().keyboardLayout).toBe(preference)
+    for(const [key, label] of Object.entries(labels)) {
+      expect(formatShortcut(`Alt+${key}`, false, effectiveShortcutLayout(preference))).toBe(`Alt+${label}`)
+    }
+  })
+
+  it.each([["tk-TM", "Q", "Ä"], ["az-Latn-AZ", "W", "Ü"], ["az-Cyrl-AZ", "W", "W"]])
+  ("uses a language fallback for %s", (language, key, label) => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue([language])
+    expect(formatShortcut(`Alt+${key}`, false, effectiveShortcutLayout("auto"))).toBe(`Alt+${label}`)
   })
 })

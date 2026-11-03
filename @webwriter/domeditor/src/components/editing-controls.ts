@@ -9,7 +9,7 @@ import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
 import type {ElementStyleEditor} from "./element-style-editor"
 import {repeat} from "lit/directives/repeat.js"
-import {appCommands, defaultAppSettings, formatShortcut, type AppSettings} from "../app-settings"
+import {appCommands, defaultAppSettings, formatShortcut, getShortcutLayout, effectiveShortcutLayout, type ShortcutLayout, type AppSettings} from "../app-settings"
 import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
 import {
   emptyVersionHistoryState,
@@ -1099,7 +1099,20 @@ export abstract class EditingControls extends LitElement {
     }
   }
 
+  private shortcutLayout?: ShortcutLayout
+  private refreshShortcutLayout = async () => {
+    this.shortcutLayout = await getShortcutLayout()
+    if(this.isConnected) this.requestUpdate()
+  }
+
+  connectedCallback() {
+    super.connectedCallback()
+    void this.refreshShortcutLayout()
+    this.ownerDocument.defaultView?.addEventListener("focus", this.refreshShortcutLayout)
+  }
+
   disconnectedCallback() {
+    this.ownerDocument.defaultView?.removeEventListener("focus", this.refreshShortcutLayout)
     this.anchorPositioner?.destroy()
     this.anchorPositioner = null
     super.disconnectedCallback()
@@ -2754,7 +2767,7 @@ export abstract class EditingControls extends LitElement {
       ?? (action.startsWith("element:")
         ? appCommands.find(candidate => candidate.action === getElementPresentation(action.slice("element:".length)).name)
         : undefined)
-    return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "") : ""
+    return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "", undefined, effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)) : ""
   }
 
   protected renderElementStyleDrawer(category: ElementStyleCategory) {

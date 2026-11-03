@@ -973,3 +973,33 @@ it("allows a dev-server display name without exposing password or sign-in contro
   expect(loadAppSettings().cloudServices[0].username).toBe("Dev Ada")
   expect(loadAppSettings().activeCloudServiceId).toBe(service.id)
 })
+
+
+it("updates and saves the keyboard layout used for shortcut labels", async () => {
+  const panel = await mountPanel()
+  panel.tab = "Commands"
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  await panel.updateComplete
+  const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#keyboard-layout")!
+  select.value = "qwertz"
+  select.dispatchEvent(new Event("change", {bubbles: true}))
+  await panel.updateComplete
+  expect(loadAppSettings().keyboardLayout).toBe("qwertz")
+  const undo = panel.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Configure shortcut for Undo"]')!
+  expect(undo.textContent).toContain("Y")
+  expect(panel.settings.shortcuts["editor.undo"]).toBe(defaultAppSettings().shortcuts["editor.undo"])
+})
+
+
+it.each(["awerty", "querty", "dvorak", "colemak", "workman"] as const)("offers and saves %s", async layout => {
+  const panel = await mountPanel()
+  panel.tab = "Commands"
+  panel.addEventListener("settings-change", event => persistAppSettings((event as CustomEvent<AppSettings>).detail))
+  await panel.updateComplete
+  const select = panel.shadowRoot!.querySelector<HTMLSelectElement>("#keyboard-layout")!
+  select.value = layout
+  select.dispatchEvent(new Event("change", {bubbles: true}))
+  await panel.updateComplete
+  expect(select.value).toBe(layout)
+  expect(loadAppSettings().keyboardLayout).toBe(layout)
+})
