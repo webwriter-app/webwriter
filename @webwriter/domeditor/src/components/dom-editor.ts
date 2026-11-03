@@ -1112,9 +1112,11 @@ export class DomEditor extends LitElement {
       background: #f2f2f2;
       color: #2f3742;
       font: 0.75rem/1.25 system-ui, sans-serif;
+      --document-layout-card-width: calc(10rem - 10px);
+      --document-layout-card-gap: 0.45rem;
     }
     .document-layouts-heading { position: relative; display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; min-height: 1.45rem; }
-    .document-layouts-main-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; width: min(38.1rem, calc(100% - 21.45rem)); }
+    .document-layouts-main-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; min-width: 0; width: min(calc(4 * var(--document-layout-card-width) + 3 * var(--document-layout-card-gap)), calc(100% - 21.45rem)); }
     .document-layouts-bar .recent-documents-title {width: min(20.45rem, calc(100% - 6rem)); margin-left: auto; box-sizing: border-box; padding-right: 1.5rem}
     .document-layouts-close { position: absolute; right: 0; border: 0; border-radius: 0.25rem; background: transparent; color: inherit; font: 1.25rem/1 system-ui; cursor: pointer; padding: 0.1rem 0.3rem; }
     .document-layouts-close:hover { background: #e2e5e9; }
@@ -1122,7 +1124,7 @@ export class DomEditor extends LitElement {
     .document-layouts-bar h2 { margin: 0; font-size: 0.75rem; font-weight: 650; }
     .document-layouts-combined-title {display: none}
     .recent-documents-short-title {display: none}
-    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, calc(10rem - 10px))); gap: 0.45rem; }
+    .document-layouts-bar .document-layout-cards { display: grid; grid-template-columns: repeat(4, minmax(0, var(--document-layout-card-width))); gap: var(--document-layout-card-gap); }
     .document-layouts-bar .layout-preset { min-height: 0; }
     .document-layouts-bar .document-layout-error { margin: 0.4rem 0 0; color: #b42318; }
     .document-layouts-options {display: flex; flex-wrap: wrap; align-items: start; gap: 1rem}

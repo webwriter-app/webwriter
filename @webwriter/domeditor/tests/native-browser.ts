@@ -10835,6 +10835,11 @@ await check("recent documents fit one layout card when space is limited", async 
       await layoutFrame()
       const card = root.querySelector<HTMLElement>(".layout-preset")!.getBoundingClientRect()
       const recent = nav.getBoundingClientRect()
+      const cardsInRow = [...root.querySelectorAll<HTMLElement>(".document-layout-cards .layout-preset")]
+        .map(element => element.getBoundingClientRect()).filter(box => Math.abs(box.top - card.top) < 1)
+      const theme = root.querySelector<HTMLElement>(".document-layouts-main-heading document-theme-presets")!.getBoundingClientRect()
+      assert(Math.abs(theme.right - cardsInRow[cardsInRow.length - 1].right) < 1,
+        `theme picker did not align with the layout cards at ${width}px`)
       if(width === 680) singleRowHeight = bar.getBoundingClientRect().height
       const headingView = frame.contentWindow!
       assert((headingView.getComputedStyle(root.querySelector(".recent-documents-short-title")!).display !== "none") === (width <= 650), "recent heading did not shorten in the narrow layout")
