@@ -827,6 +827,7 @@ export class GraphicFeature extends EditorFeature {
   protected handlesCapturedElementInteractions = true
   #pendingImport: {pickerId?: string, apply: (file: File | null) => Promise<void>, cancel: () => void} | null = null
   #selectedShapes = new Set<SVGGraphicsElement>()
+  #shapePastes = new WeakMap<SVGSVGElement, {key: string, shapes: SVGGraphicsElement[]}>()
   #primaryShape: SVGGraphicsElement | null = null
   #interaction: Interaction | null = null
   #connector: ConnectorDrawInteraction | null = null
@@ -868,6 +869,7 @@ export class GraphicFeature extends EditorFeature {
   }
 
   disable() {
+    this.#shapePastes = new WeakMap()
     if(!this.isEnabled) return
     this.#insertionPointer = null
     this.#clearShapePreview()
@@ -1288,12 +1290,67 @@ export class GraphicFeature extends EditorFeature {
     return true
   }
 
+  #shapeClipboardHTML() {
+    const graphic = this.#capturedGraphic()
+    const selected = new Set(this.selectedShapes)
+    if(!graphic || !this.#canInsertText(graphic) || this.textEditingRange || !selected.size) return null
+    const svg = document.createElementNS(SVG_NAMESPACE, "svg")
+    svg.setAttribute("data-webwriter-shapes", "1")
+    svg.setAttribute("data-webwriter-copy", crypto.randomUUID())
+    for(const shape of graphicShapeRoots(graphic)) {
+      if(selected.has(shape)) svg.append(clearEditorMarkerClasses(shape.cloneNode(true)))
+    }
+    return svg.outerHTML
+  }
+
+  async copy() {
+    const html = this.#shapeClipboardHTML()
+    if(!html || typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
+    await navigator.clipboard.write([new ClipboardItem({"text/html": new Blob([html], {type: "text/html"})})])
+    return true
+  }
+
+  #pasteShapes(graphic: SVGSVGElement, html: string) {
+    if(!html || !this.#canInsertText(graphic)) return false
+    const {fragment} = this.editor.parseHTMLFragment(html, true, false)
+    const svg = fragment.firstElementChild
+    if(fragment.children.length !== 1 || svg?.namespaceURI !== SVG_NAMESPACE || svg.localName !== "svg"
+      || svg.getAttribute("data-webwriter-shapes") !== "1") return false
+    const shapes = Array.from(svg.children)
+    if(!shapes.length || shapes.some(shape => !graphicShapeType(shape))) return false
+    const key = svg.getAttribute("data-webwriter-copy") ?? html
+    const previous = this.#shapePastes.get(graphic)
+    const last = previous?.key === key && previous.shapes.length === shapes.length
+      && previous.shapes.every(shape => shape.parentNode === graphic) ? previous.shapes : null
+    const previousBounds = last ? shapeBounds(last[0]) : null
+    this.editor.doc.stopCapturing()
+    for(const shape of shapes) {
+      clearEditorMarkerClasses(shape)
+      graphic.append(shape)
+    }
+    const bounds = shapeBounds(shapes[0])
+    const dx = 24 + (previousBounds ? previousBounds.x - bounds.x : 0)
+    const dy = 24 + (previousBounds ? previousBounds.y - bounds.y : 0)
+    shapes.forEach(shape => this.#moveShape(shape, dx, dy))
+    this.#shapePastes.set(graphic, {key, shapes: shapes as SVGGraphicsElement[]})
+    this.editor.features.selection.captureElement(graphic)
+    this.#setShapeSelection(shapes as SVGGraphicsElement[])
+    this.editor.doc.stopCapturing()
+    this.#refresh()
+    this.editor.postSelectionPath()
+    return true
+  }
+
   /** Routes the toolbar clipboard command to the live graphic or label. */
   async paste() {
     const graphic = this.textInsertionGraphic
     const label = this.#labelEditor
     if(!graphic || !navigator.clipboard?.read) return false
     const items = await navigator.clipboard.read()
+    const htmlItem = items.find(item => item.types.includes("text/html"))
+    const html = htmlItem ? await (await htmlItem.getType("text/html")).text() : ""
+    if(graphic !== this.textInsertionGraphic || label !== this.#labelEditor) return false
+    if(!label && this.#pasteShapes(graphic, html)) return true
     const item = items.find(item => item.types.includes("text/plain"))
     const value = item ? await (await item.getType("text/plain")).text() : ""
     if(graphic !== this.textInsertionGraphic || label !== this.#labelEditor || !value) return false
@@ -1353,6 +1410,14 @@ export class GraphicFeature extends EditorFeature {
 
   // Claim graphic drops before document insertion resolves a text caret.
   captureListeners: DocumentListenerMap = {
+    copy: event => {
+      if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || !event.clipboardData) return
+      const html = this.#shapeClipboardHTML()
+      if(!html) return
+      event.clipboardData.setData("text/html", html)
+      event.preventDefault()
+      event.stopImmediatePropagation()
+    },
     pointerdown: event => {
       this.#rememberInsertionPointer(event)
       if(this.#placePreviewShape(event)) return
@@ -1400,6 +1465,12 @@ export class GraphicFeature extends EditorFeature {
     paste: event => {
       if(event.defaultPrevented || isAppendixInteraction(event) || isFormControlInteraction(event) || isWidgetShadowInteraction(event, this.editor.schema) || this.textEditingRange) return
       const graphic = this.textInsertionGraphic
+      const html = event.clipboardData?.getData("text/html") ?? ""
+      if(graphic && this.#pasteShapes(graphic, html)) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        return
+      }
       const value = event.clipboardData?.getData("text/plain")
       if(!graphic || !value) return
       event.preventDefault()

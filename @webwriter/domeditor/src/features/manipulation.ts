@@ -4707,6 +4707,8 @@ export class ManipulationFeature extends EditorFeature {
    * so the action bridge can report them to its caller. */
   async copy() {
     if(this.editor.features.table.hasCellSelection) return this.editor.features.table.copy()
+    if(this.editor.features.selection.captureSelectedElement && this.editor.features.graphic.selectedShapes.length
+      && !this.editor.features.graphic.textEditingRange) return this.editor.features.graphic.copy()
     if(typeof ClipboardItem !== "function" || !navigator.clipboard?.write) return false
     const item = this.#fragmentToClipboardItem($.copy())
     await navigator.clipboard.write([item])
