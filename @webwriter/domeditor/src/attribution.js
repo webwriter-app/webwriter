@@ -185,7 +185,6 @@ export function createAttributionController(doc, options = {}) {
     root.classList.toggle("non-document-layout", !template && ["ww-canvas", "ww-slides", "ww-board"].filter(name => body.classList.contains(name)).length === 1)
     const bodyStyle = view.getComputedStyle(body)
     const singleRightGutter = !root.classList.contains("non-document-layout")
-      && bodyStyle.getPropertyValue("--ww-responsive-float").trim() === "right"
       && parseFloat(bodyStyle.paddingRight) > parseFloat(bodyStyle.paddingLeft) + 1
     const current = new Set()
     const footnoteList = doc.createElement("ol")

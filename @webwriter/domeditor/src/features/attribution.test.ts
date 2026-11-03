@@ -1180,7 +1180,7 @@ describe("reading attribution", () => {
 
   it.each([false, true])("flips content-column attribution only while a single right gutter is reserved (editing: %s)", async editing => {
     document.body.innerHTML = '<section><p data-ww-attribution-name="Column">Content</p></section><aside style="float:right" data-ww-attribution-name="Float"><p data-ww-attribution-name="Inside float">Nested</p></aside>'
-    document.body.style.cssText = "--ww-responsive-float:right; padding-left:16px; padding-right:200px"
+    document.body.style.cssText = "padding-left:16px; padding-right:200px"
     try {
       if(editing) start()
       else reader = mountAttributionReader()
@@ -1195,9 +1195,9 @@ describe("reading attribution", () => {
       await vi.waitFor(() => expect(column.classList.contains("left-attribution")).toBe(false))
       document.body.style.paddingLeft = "16px"
       await vi.waitFor(() => expect(column.classList.contains("left-attribution")).toBe(true))
-      document.body.style.setProperty("--ww-responsive-float", "none")
+      document.body.style.paddingRight = "16px"
       await vi.waitFor(() => expect(column.classList.contains("left-attribution")).toBe(false))
-      document.body.style.setProperty("--ww-responsive-float", "right")
+      document.body.style.paddingRight = "200px"
       document.body.classList.add("ww-board")
       await vi.waitFor(() => expect(column.classList.contains("left-attribution")).toBe(false))
     }

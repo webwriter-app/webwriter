@@ -2038,7 +2038,11 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.transformation.updateInfo()
       const selected = this.captureSelectedElement ?? this.selectedSectionElement ?? $.selectedElement
       if(selected?.isConnected && !getComputedStyle(selected).getPropertyValue("anchor-name").split(",").some(name => name.trim() === "--selection-anchor")) {
-        this.anchorTransformCaret(selected)
+        const outlineTarget = this.captureSelectedElement ? figureSelectionTarget(selected) : selected
+        // Transformation.updateInfo positions a masked outline when native
+        // float boxes interrupt the selected element's border box. Keep that
+        // geometry instead of replacing it with an anchored rectangular box.
+        if(!this.floatExclusions(outlineTarget).length) this.anchorTransformCaret(selected)
       }
     }
     return caret

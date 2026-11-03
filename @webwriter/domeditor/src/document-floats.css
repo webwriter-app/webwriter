@@ -138,8 +138,11 @@
     :is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover]) {
       inline-size: 100%;
       min-inline-size: 0;
-      max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
       margin-inline: auto;
+    }
+
+    :where(:is(&, & > main, & > article, & > section) > :not(.ww-popup-content[popover])) {
+      max-inline-size: var(--ww-widget-max, var(--ww-prose-max, 45rem));
     }
 
     :is(&, & > main, & > article, & > section) > :not(hr) {
