@@ -2085,14 +2085,14 @@ export function isTextFieldInteraction(event: Event, editingRoot?: Element) {
 
 /** Whether an interaction originated in the editor-owned shadow appendix.
  * Composed events are retargeted to BODY at document listeners, so inspect
- * their original node. Selectionchange has no useful path; in that case the
- * appendix's focused element preserves the boundary. */
-export function isAppendixInteraction(event: Event) {
+ * their original node. Selectionchange and explicit selection refreshes have
+ * no useful path; the appendix's focused element preserves the boundary. */
+export function isAppendixInteraction(event?: Event) {
   const appendix = document.body.shadowRoot
   if(!appendix) return false
   let origin: EventTarget | null | undefined
   try {
-    origin = event.type === "selectionchange"
+    origin = !event || event.type === "selectionchange"
       ? appendix.activeElement
       : event.composedPath()[0]
   }

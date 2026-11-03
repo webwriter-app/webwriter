@@ -4986,6 +4986,26 @@ describe("document listeners", () => {
     expect(feature.selectionCaret?.getAttribute("part")).not.toContain("selection-caret-gap")
     expect(document.body).not.toHaveClass("◆gap-caret-visible")
   })
+  it("preserves a nested appendix control's own selection during presentation refreshes", () => {
+    const paragraph = el("p", "Authored text")
+    const control = document.createElement("div"), nested = document.createElement("div")
+    const editable = document.createElement("div")
+    editable.contentEditable = "true"
+    editable.textContent = "Search fonts"
+    control.attachShadow({mode: "open"}).append(nested)
+    nested.attachShadow({mode: "open"}).append(editable)
+    editor.addAppendix(control)
+    editable.focus()
+    const selection = document.getSelection()!
+    selection.setPosition(editable.firstChild!, 3)
+
+    feature.processSelection()
+
+    expect(selection.anchorNode).toBe(editable.firstChild)
+    expect(selection.anchorOffset).toBe(3)
+    expect(nested.shadowRoot!.activeElement).toBe(editable)
+    expect(editor.toHTML(true)).toBe(paragraph.outerHTML)
+  })
   it("does not reset a widget's shadow contenteditable selection during input", () => {
     const widget = document.createElement("editable-widget")
     const editable = document.createElement("div")

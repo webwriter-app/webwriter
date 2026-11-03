@@ -2501,6 +2501,8 @@ export class SelectionFeature extends EditorFeature {
     }
     // Appendix inputs and SVG label ranges own their text selection. Clamping
     // them into BODY disrupts typing and clears the graphic's capture outline.
+    const selection = document.getSelection()
+    if(isAppendixInteraction() && selection?.anchorNode && !document.body.contains(selection.anchorNode)) return
     if(this.editor.features.math.isComposingPower || this.editor.features.graphic.isTextInputFocused
       || this.editor.features.graphic.textEditingRange) return
     // Shadow controls own capture and their native selection. Focus on a

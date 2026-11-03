@@ -7,17 +7,19 @@ import {connectedComboboxStyles} from "./dropdown-content.styles"
 /** Editable pixel sizes with an unfiltered list of presets. */
 export class FontSizeCombobox extends StyleCombobox {
   static styles = [...StyleCombobox.styles, css`
-    :host {height: 1.75rem; --metadata-combobox-height: 1.75rem;}
+    :host, :host([show-value]) {height: 1.75rem; --metadata-combobox-height: 1.75rem;}
     .listbox {
+      grid-template-rows: minmax(0, 1fr);
       width: anchor-size(width);
-      max-height: min(18rem, calc(100vh - 1rem));
+      max-height: min(18rem, calc(100% - 8px), calc(100vh - 1rem));
       margin-block: -1px;
       padding: 0;
       overflow: hidden;
+      position-try-order: most-height;
       border: 1px solid #a8a8a8;
       position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
     }
-    .option-group {max-height: min(calc(18rem - 2px), calc(100vh - 1rem - 2px)); overflow: auto;}
+    .option-group {min-height: 0; max-height: min(calc(18rem - 2px), calc(100vh - 1rem - 2px), 100%); overflow: auto;}
     .option {min-height: 1.75rem; padding: .35rem .1rem; font-size: .72rem;}
     .option-value {display: none;}
   `, connectedComboboxStyles]
@@ -63,19 +65,24 @@ export class FontSizeCombobox extends StyleCombobox {
     if(!open) { this.close(); return Promise.resolve() }
     const wasOpen = this.open
     const update = super.setOpen(open)
-    void update.then(() => {
-      this.connectDropdown()
-      if(wasOpen || !this.open || !this.isConnected || this.hasInput) return
-      const input = this.renderRoot.querySelector<HTMLInputElement>("input")!
-      input.focus()
-      input.select()
+    void update.then(async () => {
+      if(!this.open || !this.isConnected) return
+      if(!wasOpen && !this.hasInput) {
+        const input = this.renderRoot.querySelector<HTMLInputElement>("input")!
+        input.focus()
+        input.select()
+      }
+      // Anchor-positioned popovers can receive their final top-layer geometry
+      // after showPopover() completes. Join the border after that layout pass.
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      if(this.open && this.isConnected) this.connectDropdown()
     })
     return update
   }
 
   protected updated(changed: Map<string, unknown>) {
     super.updated(changed)
-    this.connectDropdown()
+    if(this.open && this.renderRoot.querySelector(".listbox")?.matches(":popover-open")) this.connectDropdown()
   }
 
   private connectDropdown() {

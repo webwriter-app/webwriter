@@ -25,6 +25,12 @@ function type(input: HTMLInputElement, value: string) {
 }
 
 describe("font size combobox", () => {
+  it("keeps its input at the ribbon field height after showing a numeric value", async () => {
+    const {combo} = await mount()
+    expect(combo.hasAttribute("show-value")).toBe(true)
+    expect(getComputedStyle(combo.shadowRoot!.querySelector(".control")!).height).toBe(getComputedStyle(combo).height)
+  })
+
   it("keeps the trigger border width when the preset list opens", async () => {
     const combo = new FontSizeCombobox()
     document.body.append(combo)
@@ -37,6 +43,40 @@ describe("font size combobox", () => {
     await combo.updateComplete
 
     expect(borderWidth()).toBe(closedWidth)
+  })
+
+  it("connects the popup after the browser opens it", async () => {
+    const combo = new FontSizeCombobox()
+    document.body.append(combo)
+    await combo.updateComplete
+    const nativeShowPopover = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "showPopover")
+    const nativeRect = Object.getOwnPropertyDescriptor(Element.prototype, "getBoundingClientRect")!
+    let shown = false, measuredBeforeOpen = false
+    Object.defineProperty(HTMLElement.prototype, "showPopover", {configurable: true, value() { shown = true }})
+    Object.defineProperty(Element.prototype, "getBoundingClientRect", {configurable: true, value(this: Element) {
+      const element = this as HTMLElement
+      if(element.classList?.contains("control")) {
+        if(!shown) measuredBeforeOpen = true
+        return new DOMRect(0, 10, 100, 28)
+      }
+      if(element.classList?.contains("listbox")) return new DOMRect(0, 37, 100, 100)
+      return nativeRect.value!.call(this)
+    }})
+    try {
+      combo.shadowRoot!.querySelector<HTMLButtonElement>(".toggle")!.click()
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+      const control = combo.shadowRoot!.querySelector<HTMLElement>(".control")!
+      expect(shown).toBe(true)
+      expect(measuredBeforeOpen).toBe(false)
+      expect(control.dataset.connected).toBe("below")
+    }
+    finally {
+      if(nativeShowPopover) Object.defineProperty(HTMLElement.prototype, "showPopover", nativeShowPopover)
+      else delete (HTMLElement.prototype as Partial<HTMLElement>).showPopover
+      Object.defineProperty(Element.prototype, "getBoundingClientRect", nativeRect)
+      combo.remove()
+    }
   })
 
   it("can close before its first render and reopen without changing its value", async () => {
