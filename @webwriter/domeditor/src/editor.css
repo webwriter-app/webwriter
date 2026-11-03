@@ -380,6 +380,7 @@ body:has(:is(picture, img, audio, video, iframe, embed, object).◆element-captu
 :where(body.◆popup-editing .ww-popup > button[popovertarget] *) {
   user-select: text;
   -webkit-user-select: text;
+  cursor: text;
 }
 
 :where(body.◆popup-editing .ww-popup > button[popovertarget])::selection,

@@ -579,18 +579,24 @@ export abstract class EditingControls extends LitElement {
     const selected = this.spanSelectedMarks().filter(mark =>
       this.spanGroupMembers().includes(mark)
     )
+    const linkActive = this.marks.includes("a")
+    const primary = this.popupActive ? "popup" : selected[0] ?? (linkActive ? "a" : null)
+    const option = primary && primary !== "popup" ? this.markOption(primary) : null
+    const activeCount = selected.length + Number(this.popupActive) + Number(linkActive)
+    const primaryAllowed = !this.allowedMarks || primary === "popup" || this.allowedMarks.includes(primary ?? "a")
     return html`
       <ribbon-button
         class="mark-span"
         style="grid-column: 8; grid-row: 2"
         toggle
-        label="Link…"
-        icon="MarkLink"
-        action="mark:a"
-        .selectionCount=${selected.length}
+        label=${primary === "popup" ? "Popup…" : option ? `${option.label}…` : "Link…"}
+        icon=${primary === "popup" ? "Popup" : option?.icon ?? "MarkLink"}
+        action=${primary === "popup" ? "toggle-popup" : `mark:${primary ?? "a"}`}
+        ?dropdown-on-click=${!primaryAllowed}
+        .selectionCount=${Math.max(0, activeCount - 1)}
         .dropdown=${this.renderSpanDropdown(selected)}
-        ?active=${this.marks.includes("a") || selected.length > 0}
-        ?disabled=${!this.canMark || !!this.allowedMarks && !this.allowedMarks.includes("a") || this.math?.active}
+        ?active=${activeCount > 0}
+        ?disabled=${!this.canMark || this.math?.active}
       ></ribbon-button>
     `
   }

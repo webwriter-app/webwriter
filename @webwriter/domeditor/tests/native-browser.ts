@@ -2730,6 +2730,8 @@ await check("popup toggle text selection contrasts with its button", async () =>
     const buttonStyle = view.getComputedStyle(button), selectionStyle = view.getComputedStyle(text.parentElement!, "::selection")
     assert(buttonStyle.userSelect === "text" && selectionStyle.backgroundColor !== buttonStyle.backgroundColor
       && selectionStyle.color !== buttonStyle.color, "popup toggle selection is not visible against its button")
+    assert(buttonStyle.cursor === "text" && view.getComputedStyle(text.parentElement!).cursor === "text",
+      "editable popup toggle does not use a text cursor")
   }
   finally { view.editor?.destroy(); frame.remove() }
 })

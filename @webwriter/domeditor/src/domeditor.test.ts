@@ -18,8 +18,8 @@ const hasExactSelector = (stylesheet: CSSStyleSheet, selector: string) =>
   Array.from(stylesheet.cssRules).some(rule => (rule as CSSStyleRule).selectorText === selector)
 
 describe("popup text selection styling", () => {
-  it("keeps toggle text selectable and gives its selected text a distinct fill in the editor", () => {
-    expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\),\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)\s*\{[^}]*user-select:\s*text;/)
+  it("keeps toggle text selectable with a text cursor and gives its selected text a distinct fill in the editor", () => {
+    expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\),\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)\s*\{[^}]*user-select:\s*text;[^}]*cursor:\s*text;/)
     expect(editorStyleString).toMatch(/:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\]\)::selection,\s*:where\(body\.◆popup-editing \.ww-popup > button\[popovertarget\] \*\)::selection\s*\{[^}]*background-color:\s*#fbbf24;[^}]*color:\s*#1f2937;/)
   })
 })
