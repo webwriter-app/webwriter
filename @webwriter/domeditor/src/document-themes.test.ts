@@ -145,6 +145,11 @@ describe("document themes", () => {
       expect(theme.source).toMatch(/body:not\(\[class~="ww-canvas"\]\):not\(\[class~="ww-slides"\]\)\s*\{[\s\S]*?details:not\(\[is\]\) > summary\s*\{\s*min-block-size:\s*1lh;/)
     }
   })
+  it("defaults details backgrounds to their parent in every bundled theme", () => {
+    for(const theme of documentThemes) {
+      expect(theme.source).toContain("details:not([is]) { background-color: inherit; }")
+    }
+  })
   it("shares a fluid page and widget sizing defaults with standalone documents", () => {
     const source = defaultDocumentTheme.source
     const landmarks = source.slice(source.indexOf(" * Landmarks"), source.indexOf(" * Section\n"))

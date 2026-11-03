@@ -5349,6 +5349,51 @@ describe("setStyle()", () => {
     expect(previous).not.toHaveAttribute("style")
   })
 
+  it.each(["caret", "range", "summary", "inline"])("styles the details containing a %s selection in its summary", mode => {
+    document.body.innerHTML = '<section><details open><summary title="keep">Hello <b>world</b></summary><!--keep--><p>Body</p><test-widget></test-widget></details><p>Outside</p></section>'
+    const details = document.querySelector("details")!, summary = details.querySelector("summary")!
+    const bold = summary.querySelector("b")!, body = details.querySelector("p")!, widget = details.querySelector("test-widget")!
+    if(mode === "caret") $.move(bold.firstChild!, 2)
+    else if(mode === "range") $.selectRange(summary.firstChild!, 2, bold.firstChild!, 3)
+    else $.selectElement(mode === "summary" ? summary : bold)
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const original = editor.toHTML(true), manipulation = editor.features.manipulation
+    expect(manipulation.styleTarget).toBe(details)
+    expect(manipulation.topLevelStyleTarget).toBe(details)
+    expect(manipulation.actions.getStyleState({type: "getStyleState", topLevel: true}).target?.localName).toBe("details")
+    manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: {"background-color": "gold", padding: "8px"}})
+    expect(details).toHaveStyle({backgroundColor: "gold", padding: "8px"})
+    expect(summary).not.toHaveAttribute("style")
+    expect(body).not.toHaveAttribute("style")
+    expect(widget).not.toHaveAttribute("style")
+    expect(document.querySelector("section")).not.toHaveAttribute("style")
+    editor.doc.syncFromDOM()
+    const changed = editor.toHTML(true)
+    expect(changed).not.toContain("◆")
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(changed)
+  })
+
+  it("keeps styling the details body separately when the selection is outside its summary", () => {
+    document.body.innerHTML = '<details open><summary>Title</summary><p>Body</p></details>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph.firstChild!, 2)
+    expect(editor.features.manipulation.styleTarget).toBe(paragraph)
+  })
+
+  it("uses the inner disclosure for a nested summary and preserves atomic widget selections", () => {
+    document.body.innerHTML = '<details open><summary>Outer</summary><details open><summary>Inner <inline-widget>Widget</inline-widget></summary></details></details>'
+    const disclosures = document.querySelectorAll("details"), widget = document.querySelector("inline-widget")!
+    $.move(disclosures[1].querySelector("summary")!.firstChild!, 2)
+    expect(editor.features.manipulation.styleTarget).toBe(disclosures[1])
+    expect(editor.features.manipulation.topLevelStyleTarget).toBe(disclosures[1])
+    $.selectElement(widget)
+    expect(editor.features.manipulation.styleTarget).toBe(widget)
+  })
+
   it.each([false, true])("styles selected sibling paragraphs in the Edit toolbox (backwards: %s)", backwards => {
     document.body.innerHTML = '<p style="color: blue">one</p><!--keep--><p><em>two</em></p><p>three</p>'
     const paragraphs = Array.from(document.querySelectorAll("p"))

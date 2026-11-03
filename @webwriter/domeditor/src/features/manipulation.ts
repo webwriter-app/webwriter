@@ -2496,7 +2496,11 @@ export class ManipulationFeature extends EditorFeature {
     const selection = document.getSelection()
     if(!selection?.anchorNode || !selection.focusNode || selection.rangeCount === 0) return root
     const selectedElement = $.selectedElement
-    if(inAuthoredBody(selectedElement)) return figureSelectionTarget(selectedElement)
+    if(inAuthoredBody(selectedElement)) {
+      const summary = selectedElement.closest("details:not([is]) > summary")
+      if(summary && !atomicEditingContainer(selectedElement, this.editor.schema)) return summary.parentElement!
+      return figureSelectionTarget(selectedElement)
+    }
     const inBody = (node: Node) => node === body || body.contains(node)
     const range = selection.getRangeAt(0)
     if(!inBody(selection.anchorNode) || !inBody(selection.focusNode)) {
@@ -2508,6 +2512,8 @@ export class ManipulationFeature extends EditorFeature {
     const common = range.commonAncestorContainer
     if(common === document || common === document.documentElement || common === body) return root
     const container = getContainer(common)
+    const summary = container.closest("details:not([is]) > summary")
+    if(summary && !atomicEditingContainer(container, this.editor.schema)) return summary.parentElement!
     const popupPart = container.closest("button[popovertarget], [popover]")
     if(inAuthoredBody(popupPart) && ["toggle", "content"].includes(popupElementRole(popupPart) ?? "")) return popupPart
     return inAuthoredBody(container) ? container.matches("caption, figcaption") ? container.parentElement ?? container : container : body
@@ -2521,6 +2527,7 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.editor.features.selection.isCaptureSelection && $.isGapSelection && $.anchor === root) return null
     let target = this.styleTarget
     if(["toggle", "content"].includes(popupElementRole(target) ?? "")) return target
+    if(target.matches("details:not([is])")) return target
     // Table and cell selections keep their scope inside sections and templates.
     const cell = cellForNode(target)
     if(cell && !atomicEditingContainer(cell, this.editor.schema)) return cell
