@@ -122,7 +122,8 @@ export async function checkElementAnchors(inspect = false) {
     const removeSlideButton = slideActions.querySelector<HTMLButtonElement>('[name="remove"].shown')!
     const assertSlideControlsAnchored = (label: string) => {
       const navRect = nav.getBoundingClientRect(), addRect = addSlideButton.getBoundingClientRect()
-      near(addRect.left, navRect.right + 8, `${label} add-slide right offset`)
+      const addOffset = nav.scrollWidth > nav.clientWidth + 1 ? 72 : 8
+      near(addRect.left, navRect.right + addOffset, `${label} add-slide right offset`)
       near(addRect.top + addRect.height / 2, navRect.top + navRect.height / 2, `${label} add-slide vertical center`)
       const linkRect = selectedSlideLink.getBoundingClientRect(), removeRect = removeSlideButton.getBoundingClientRect()
       near(removeRect.left + removeRect.width / 2, linkRect.right - 4, `${label} remove-slide corner x`)

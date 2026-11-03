@@ -28,10 +28,11 @@ export async function checkParagraphStylePresets() {
       editor!.features.manipulation.actions.setStyle({type: "setStyle", topLevel: true, styles: (event as CustomEvent).detail.styles})
     })
     const preset = controls.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Blue style preset"]')!
+    const presetBackground = getComputedStyle(preset).backgroundColor
     preset.click()
     for(const paragraph of paragraphs.slice(0, 2)) {
       const style = view.getComputedStyle(paragraph), box = paragraph.getBoundingClientRect()
-      assert(style.backgroundColor === preset.style.backgroundColor, "selected paragraph did not receive the blue background")
+      assert(style.backgroundColor === presetBackground, "selected paragraph did not receive the blue background")
       assert(style.borderTopStyle === "solid" && style.borderTopWidth === "1px" && style.paddingTop === "8px",
         "selected paragraph did not receive the preset border and padding")
       assert(box.width > 0 && paragraph.scrollWidth <= paragraph.clientWidth + 1, "styled paragraph overflows its container")

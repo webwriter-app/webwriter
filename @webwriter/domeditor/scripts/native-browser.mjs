@@ -283,11 +283,23 @@ const expectedImportMapChecks = [
 ]
 let reportResult
 let activeCheck
+const completedChecks = []
 const resultPromise = new Promise(resolve => { reportResult = resolve })
 const resultPlugin = {
   name: "native-result",
   configureServer(server) {
     server.middlewares.use((request, response, next) => {
+      if(request.url === "/__native-check" && request.method === "POST") {
+        const chunks = []
+        request.on("data", chunk => chunks.push(chunk))
+        request.on("end", () => {
+          const check = JSON.parse(Buffer.concat(chunks).toString())
+          completedChecks.push(check)
+          if(check.error) process.stdout.write(`Failed: ${check.name}: ${check.error}\n`)
+          response.end()
+        })
+        return
+      }
       if(request.url === "/__native-progress" && request.method === "POST") {
         let name = ""
         request.on("data", chunk => { name += chunk })
@@ -346,6 +358,7 @@ const vite = await createServer({
   // Concurrent dev/test servers must not replace this browser's optimized
   // module graph while its lazy fixtures are still importing dependencies.
   cacheDir: join(profile, "vite-cache"),
+  optimizeDeps: {include: ["harper.js", "harper.js/slimBinary", "fontkitten"]},
   ...(widgetStateMode || widgetStorageMode ? {logLevel: "silent"} : {}),
   plugins: [resultPlugin],
   server: {host: "127.0.0.1", port, strictPort: true, hmr: false, watch: null},
@@ -385,15 +398,18 @@ try {
   const args = browserName === "webkit" ? ["swift", "scripts/native-webkit.swift", url]
     : browserName === "firefox" ? ["--headless", "--no-remote", "--new-instance", "--profile", profile, url]
     // Exercise editor autoplay suppression even when Chrome permits playback.
-    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", "--autoplay-policy=no-user-gesture-required", ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
+    : ["--headless=new", "--disable-gpu", "--disable-software-rasterizer", "--no-first-run", "--disable-popup-blocking", "--autoplay-policy=no-user-gesture-required",
+      ...(performanceMode ? ["--window-size=1920,1080"] : []), `--user-data-dir=${profile}`, url]
   browser = spawn(command, args, {
     stdio: ["ignore", "ignore", "pipe"],
+    // Keep each disposable browser and its helpers in an owned process group.
+    detached: process.platform !== "win32",
     ...(browserName === "webkit" && swiftDeveloperDir
       ? {env: {...process.env, DEVELOPER_DIR: swiftDeveloperDir}}
       : {}),
   })
   browser.stderr.on("data", chunk => errors.push(chunk))
-  browserClosed = new Promise(resolve => browser.once("close", (exitCode, signal) => {
+  browserClosed = new Promise(resolve => browser.once("exit", (exitCode, signal) => {
     hasClosed = true
     resolve({error: `Native browser closed before reporting (${exitCode ?? signal})`})
   }))
@@ -402,7 +418,7 @@ try {
     // The full regression suite runs its iframe and layout checks serially.
     const timeoutMs = widgetStateMode || widgetStorageMode ? 600000 : mathVisual || importMapMode ? 60000 : browserName === "webkit" ? 90000 : browserName === "firefox" ? 60000
       : !smoke && !checkFilter && !performanceMode && !widgetAggregationMode ? 600000 : checkFilter ? 120000 : 30000
-    timeout = setTimeout(() => resolve({error: `Native browser timed out${activeCheck ? ` while running: ${activeCheck}` : ""}`}), timeoutMs)
+    timeout = setTimeout(() => resolve({error: `Native browser timed out${activeCheck ? ` while running: ${activeCheck}` : ""}`, checks: completedChecks}), timeoutMs)
   })
   const result = await Promise.race([resultPromise, browserClosed, failedToStart, timedOut])
   clearTimeout(timeout)
@@ -427,12 +443,18 @@ try {
 finally {
   clearTimeout(timeout)
   if(browser && !hasClosed) {
-    browser.kill("SIGTERM")
-    // ChildProcess.killed only means a signal was sent; wait for close.
-    const forceKill = setTimeout(() => browser.kill("SIGKILL"), 1000)
+    const stopBrowser = signal => {
+      if(process.platform === "win32" || !browser.pid) return browser.kill(signal)
+      try { process.kill(-browser.pid, signal) }
+      catch(error) { if(error.code !== "ESRCH") throw error }
+    }
+    stopBrowser("SIGTERM")
+    // Wait for the browser process; crash reporters can retain its stderr pipe.
+    const forceKill = setTimeout(() => stopBrowser("SIGKILL"), 1000)
     try { await browserClosed }
     finally { clearTimeout(forceKill) }
   }
+  browser?.stderr.destroy()
   await vite.close()
   await liveServer?.close()
   await rm(profile, {recursive: true, force: true, maxRetries: 4, retryDelay: 300})

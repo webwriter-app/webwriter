@@ -1,12 +1,13 @@
 import type {DOMEditor} from "../src/domeditor"
 
 /** Clipboard action regression for #282, using real Chromium layout/editing. */
-export async function checkParagraphCut() {
+export async function checkParagraphCut(host?: DOMEditor) {
   const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
   frame.srcdoc = '<!doctype html><body><p>Ready</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  if(host) host.addAppendix(frame)
+  else document.body.append(frame)
   try {
     const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))

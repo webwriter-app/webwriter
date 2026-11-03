@@ -3,11 +3,12 @@ import type {DOMEditor} from "../src/domeditor"
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
 
 /** Native selection focuses a tabindex slide, even when its text owns the caret. */
-export async function checkSlideEditing() {
+export async function checkSlideEditing(host?: DOMEditor) {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px;border:0"
   frame.srcdoc = '<!doctype html><body><h1>Slide heading</h1><p>First editable paragraph</p><p>Second editable paragraph</p><picture><img width="160" height="90" alt="Image"></picture><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  if(host) host.addAppendix(frame)
+  else document.body.append(frame)
   const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
   const settle = async () => { for(let i = 0; i < 3; i++) await new Promise<void>(resolve => view.requestAnimationFrame(() => resolve())) }
   try {

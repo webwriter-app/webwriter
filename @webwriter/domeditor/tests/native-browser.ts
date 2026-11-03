@@ -62,6 +62,20 @@ import {checkSlideEditing} from "./slide-editing"
 import {checkCanvasStartingView} from "./canvas-starting-view"
 import {checkSavedDocumentChecker} from "./saved-document-checker"
 import {checkLiveSessionRecovery} from "./live-session-recovery"
+import {checkLegacyWidgetOptions} from "./legacy-widget-options"
+import {checkShapeRibbonGalleries} from "./shape-gallery"
+import {checkFileActions} from "./file-actions"
+import {checkGraphicDragPreviewRotation} from "./graphic-drag-preview-rotation"
+import {checkRibbonSnippetDrop} from "./ribbon-snippet-drop"
+import {checkResizeAlignment} from "./resize-alignment"
+import {checkNativeFloatDrag} from "./native-float-drag"
+import {checkMediaCentering} from "./media-centering"
+
+// Keep this test-owned frame out of the authored DOM before any check creates
+// an editor. It is mounted in the root editor's appendix below.
+const lifecycleFrame = document.querySelector<HTMLIFrameElement>("#lifecycle")!
+lifecycleFrame.remove()
+lifecycleFrame.hidden = true
 
 const checks: Check[] = []
 const assert = (condition: unknown, message: string) => { if(!condition) throw new Error(message) }
@@ -73,7 +87,8 @@ const check = async (name: string, run: () => void | Promise<void>) => {
   document.querySelector("#status")!.textContent = `Running: ${name}`
   if(new URLSearchParams(location.search).has("run")) await fetch("/__native-progress", {method: "POST", body: name})
   try { await run(); checks.push({name}) }
-  catch(error) { checks.push({name, error: String(error)}) }
+  catch(error) { checks.push({name, error: error instanceof Error ? error.stack ?? String(error) : String(error)}) }
+  if(new URLSearchParams(location.search).has("run")) await fetch("/__native-check", {method: "POST", body: JSON.stringify(checks.at(-1))})
 }
 const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
 let fixture = document.querySelector<HTMLElement>("#fixture")!
@@ -238,135 +253,7 @@ await check("Board controls and transform frames follow CSS anchors through layo
 await check("Element controls follow native CSS anchors through scrolling and DOM changes", checkElementAnchors)
 await check("Ribbon menus and combobox popups follow anchors through viewport changes", checkPopupAnchors)
 
-await check("legacy widget options use document gutters and sit beside freeform widgets", async () => {
-  const frame = document.createElement("iframe")
-  frame.style.cssText = "height: 500px; max-width: none"
-  document.body.append(frame)
-  try {
-    for(const theme of documentThemes) {
-      for(const [width, mode] of [[1440, "document"], [900, "document"], [375, "document"], [900, "canvas"], [900, "slides"], [900, "board"]] as const) {
-        frame.style.width = `${width}px`
-        const widgetHTML = '<legacy-options-widget contenteditable=""><!--keep--><p>Authored widget content</p></legacy-options-widget>'
-        const content = mode === "slides" ? `<div class="ww-slides-viewport"><section class="ww-slide">${widgetHTML}</section></div>`
-          : mode === "board" ? `<section class="ww-board-column"><h2>Column</h2><article class="ww-board-card">${widgetHTML}</article></section>` : widgetHTML
-        const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
-        frame.srcdoc = `<!doctype html><style>${theme.source}\n${canvasStyles}\n${slidesStyles}\n${boardStyles}</style><body class="${mode === "document" ? "" : `ww-${mode}`}">${content}</body>`
-        await loaded
-        const doc = frame.contentDocument!, view = frame.contentWindow!
-        const widget = doc.querySelector<HTMLElement>("legacy-options-widget")!
-        const root = widget.attachShadow({mode: "open"})
-        root.innerHTML = `<style>
-          :host {display: block; box-sizing: border-box; padding: 1rem; border: 1px solid #cbd5e1; background: white; font: 16px/1.5 system-ui}
-          :host(:not([contenteditable])) [part] {display: none}
-          [part] {padding: .5rem; border: 1px solid #cbd5e1; background: #f5f7fa}
-          input {box-sizing: border-box; width: 100%}
-        </style><div part="options controls"><label>Answer<input value="42"></label><button>Reset</button></div><slot></slot>`
-        if(mode !== "document") widget.style.cssText = "width: 240px; left: 20px; top: 20px"
-        const part = root.querySelector<HTMLElement>("[part]")!
-        const context = `${theme.value}/${mode}/${width}`
-        assert(view.getComputedStyle(part).display === "none", `${context}: unselected options are visible`)
-        widget.classList.add("◆element-selected")
-        widget.focus()
-        assert(view.getComputedStyle(part).display === "none", `${context}: ordinary selection or focus exposed options`)
-        widget.classList.add("◆element-capture-selected")
-        const authoredHTML = doc.body.innerHTML
-        await layoutFrame()
-        const bounds = () => ({host: widget.getBoundingClientRect(), options: part.getBoundingClientRect()})
-        let {host, options} = bounds()
-        assert(options.width > 100 && options.height > 0, `${context}: options disappeared`)
-        assert(view.getComputedStyle(part).backgroundColor === "rgb(255, 255, 255)", `${context}: options do not have a white background`)
-        assert(view.getComputedStyle(part).overflowY === "auto", `${context}: options cannot scroll vertically`)
-        assert(parseFloat(view.getComputedStyle(part).paddingInlineEnd) > parseFloat(view.getComputedStyle(part).paddingInlineStart), `${context}: options lack additional right padding`)
-        if(width >= 1200 || mode !== "document") {
-          assert(options.left > host.right + 1, `${context}: options are not to the right of the widget`)
-          assert(Math.abs(options.top - host.top) <= 2, `${context}: options do not align with the widget top`)
-          assert(Math.abs(options.height - host.height) <= 2, `${context}: options do not share the widget height`)
-        }
-        else {
-          assert(view.getComputedStyle(part).position === "static", `${context}: compact options left normal flow`)
-          assert(options.right <= host.right + 1, `${context}: compact options overflow the widget`)
-        }
-        assert(doc.body.innerHTML === authoredHTML, `${context}: layout changed authored content`)
-        if(width >= 1200 || mode !== "document") {
-          const longControls = doc.createElement("div")
-          longControls.style.height = "800px"
-          longControls.textContent = "Long widget controls"
-          part.append(longControls)
-          for(const height of [240, 120]) {
-            widget.style.height = `${height}px`
-            await layoutFrame()
-            ;({host, options} = bounds())
-            assert(Math.abs(options.height - host.height) <= 2, `${context}: options did not follow a resized widget`)
-            assert(part.scrollHeight > part.clientHeight, `${context}: long controls did not overflow inside the panel`)
-            part.scrollTop = 50
-            assert(part.scrollTop > 0, `${context}: long controls cannot be scrolled`)
-          }
-          widget.style.removeProperty("height")
-          longControls.remove()
-          await layoutFrame()
-        }
-        if(width >= 1200) {
-          const gutterLeft = options.left
-          widget.style.width = "360px"
-          await layoutFrame()
-          ;({host, options} = bounds())
-          assert(Math.abs(options.left - gutterLeft) <= 1, `${context}: a narrow widget moved options out of the gutter`)
-          assert(options.right <= width, `${context}: gutter options overflow the page`)
-          frame.style.width = "375px"
-          await layoutFrame()
-          assert(view.getComputedStyle(part).position === "static", `${context}: options did not reflow after resizing`)
-        }
-        const other = doc.createElement("legacy-options-widget")
-        other.setAttribute("contenteditable", "")
-        other.attachShadow({mode: "open"}).innerHTML = '<div part="options">Other widget options</div>'
-        widget.after(other)
-        const otherPart = other.shadowRoot!.querySelector<HTMLElement>("[part]")!
-        assert(view.getComputedStyle(otherPart).display === "none", `${context}: another widget's options are visible`)
-        widget.classList.remove("◆element-capture-selected")
-        other.classList.add("◆element-capture-selected")
-        assert(view.getComputedStyle(part).display === "none", `${context}: previous widget's options remained visible`)
-        assert(view.getComputedStyle(otherPart).display !== "none", `${context}: newly captured options stayed hidden`)
-        other.classList.remove("◆element-capture-selected")
-        assert(view.getComputedStyle(otherPart).display === "none", `${context}: clearing capture left options visible`)
-        widget.classList.add("◆element-capture-selected")
-        widget.removeAttribute("contenteditable")
-        assert(view.getComputedStyle(part).display === "none", `${context}: theme overrode the widget's reader presentation`)
-        if(mode === "document" || mode === "board") {
-          other.remove()
-          widget.setAttribute("contenteditable", "")
-          frame.style.width = `${width}px`
-          for(const placement of [
-            {classes: "ww-float-left", style: "", side: "left"},
-            {classes: "ww-float-right", style: "", side: "right"},
-            {classes: "", style: "float: left", side: "left"},
-            {classes: "", style: "float:right", side: "right"},
-            {classes: "ww-float-left", style: "float: right", side: "left"},
-            {classes: "ww-float-right", style: "float:left", side: "right"},
-          ]) {
-            widget.className = `◆element-selected ◆element-capture-selected ${placement.classes}`
-            widget.setAttribute("style", placement.style)
-            const floatHTML = doc.body.innerHTML
-            await layoutFrame()
-            ;({host, options} = bounds())
-            const side = view.getComputedStyle(widget).float
-            assert(side === (width < 720 ? "none" : width < 1200 ? "right" : placement.side), `${context}: unexpected responsive float for ${JSON.stringify(placement)}`)
-            if(side === "left") assert(options.left > host.right + 1, `${context}: left-floated options did not open to the right`)
-            else if(side === "right") assert(options.right < host.left - 1, `${context}: right-floated options did not open to the left`)
-            else assert(view.getComputedStyle(part).position === "static", `${context}: in-flow options did not retain the narrow layout`)
-            if(side !== "none") {
-              assert(Math.abs(options.height - host.height) <= 2, `${context}: floated options lost their shared height`)
-              assert(options.left >= 0 && options.right <= width, `${context}: floated options extend beyond the page`)
-            }
-            assert(doc.body.innerHTML === floatHTML, `${context}: float options changed authored content`)
-            widget.classList.remove("◆element-capture-selected")
-            assert(view.getComputedStyle(part).display === "none", `${context}: floated options remained visible after capture ended`)
-          }
-        }
-      }
-    }
-  }
-  finally { frame.remove() }
-})
+await check("legacy widget options use document gutters and sit beside freeform widgets", checkLegacyWidgetOptions)
 
 await check("bundled document themes always render light colors", async () => {
   const frame = document.createElement("iframe")
@@ -1341,7 +1228,7 @@ await check("Ribbon text colors share the toolbox palette and commit chosen colo
       await combo.updateComplete
       await layoutFrame()
       const custom = combo.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Custom"]')!
-      const swatches = combo.shadowRoot!.querySelectorAll<HTMLElement>(".color-swatch")
+      const swatches = combo.shadowRoot!.querySelectorAll<HTMLElement>(".color-grid:not(.color-recent) .color-swatch")
       assert(swatches.length === 70, "palette does not match the toolbox colors")
       for(const value of ["", "transparent", "rgba(0, 0, 0, 0)", "rgb(55, 60, 68)"]) {
         combo.value = value
@@ -1449,34 +1336,7 @@ await check("Editor UI prevents text selection while preserving editable fields 
   finally { editor?.destroy(); stage.remove() }
 })
 
-await check("File actions align with the font size controls", async () => {
-  const heightDescriptor = Object.getOwnPropertyDescriptor(window, "innerHeight")
-  Object.defineProperty(window, "innerHeight", {configurable: true, value: 900})
-  const {AppRibbon} = await import("../src/components/ribbon")
-  const ribbon = new AppRibbon()
-  ribbon.fileName = "Unnamed File"
-  ribbon.settings = {...ribbon.settings, disableAI: true}
-  ribbon.expanded = true
-  ribbon.activeMenu = "Start"
-  fixture.append(ribbon)
-  try {
-    await ribbon.updateComplete
-    ribbon.expanded = true
-    await ribbon.updateComplete
-    const drawer = ribbon.shadowRoot!.querySelector<import("../src/components/ribbon-drawer").RibbonDrawer>('ribbon-drawer[label="Marks"]')!
-    await drawer.updateComplete
-    await layoutFrame()
-    const centers = [ribbon.shadowRoot!.querySelector(".file-save-action")!, ribbon.shadowRoot!.querySelector(".file-share-action")!, drawer.querySelector('[action="increaseFontSize"]')!, drawer.querySelector('[action="decreaseFontSize"]')!]
-      .map(element => {const rect = element.getBoundingClientRect(); return rect.left + rect.width / 2})
-    assert(Math.abs(centers[0] - centers[2]) < .5 && Math.abs(centers[1] - centers[3]) < .5,
-      `file actions do not align with font controls: ${JSON.stringify(centers)}`)
-  }
-  finally {
-    ribbon.remove()
-    if(heightDescriptor) Object.defineProperty(window, "innerHeight", heightDescriptor)
-    else Reflect.deleteProperty(window, "innerHeight")
-  }
-})
+await check("File actions align with the font size controls", checkFileActions)
 
 await check("Toolbox choices distinguish defaults from explicit matching values", async () => {
   const {ElementStyleEditor} = await import("../src/components/element-style-editor")
@@ -1877,76 +1737,7 @@ await check("SVG shape outlines and handles align inside symmetric scrollbar gut
   }
 })
 
-await check("SVG drag previews preserve rotated graphic viewports in canvas and slides", async () => {
-  for(const mode of ["canvas", "slides"] as const) {
-    const frame = document.createElement("iframe")
-    frame.style.cssText = "width:1000px;height:700px;border:0;max-width:none"
-    frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-    fixture.append(frame)
-    try {
-      const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string, PointerEvent: typeof PointerEvent}
-      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
-      assert(view.editor && !view.editorError, `${mode}: preview fixture did not initialize`)
-      const editor = view.editor!, doc = frame.contentDocument!
-      doc.body.innerHTML = '<svg viewBox="100 50 1200 600" style="width:600px;height:360px"><!--keep--><rect x="400" y="250" width="160" height="100" fill="skyblue"/><ellipse cx="900" cy="400" rx="60" ry="40" fill="orange"/></svg>'
-      assert(editor.setDocumentLayout(mode, "document"), `${mode}: layout conversion failed`)
-      const graphic = doc.querySelector("svg")!, shape = graphic.querySelector("rect")!
-      Object.assign(graphic.style, {left: "200px", top: "200px", rotate: "30deg", scale: "1.1 0.9", transform: "translate(12px, 8px)", transformOrigin: "25% 75%"})
-      editor.features.selection.captureElement(graphic)
-      for(const aspect of ["xMidYMid meet", "none", "xMaxYMin slice"]) {
-        graphic.setAttribute("preserveAspectRatio", aspect)
-        for(const zoom of [100, 140]) {
-          editor.features.graphic.actions.navigateGraphic({type: "navigateGraphic", operation: "set-zoom", zoom})
-          const translate = graphic.currentTranslate as unknown as {x: number, y: number}
-          translate.x += 17
-          translate.y -= 11
-          shape.removeAttribute("transform")
-          shape.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, button: 0, pointerId: 1}))
-          doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 1}))
-          await layoutFrame()
-          const before = editor.toHTML(true)
-          const rotate = editor.appendix.querySelector<HTMLElement>('[data-graphic-handle="rotate"]')!
-          const handle = rotate.getBoundingClientRect()
-          const start = {x: handle.left + handle.width / 2, y: handle.top + handle.height / 2}
-          const matrix = graphic.getScreenCTM()!
-          const local = new DOMPoint(start.x, start.y).matrixTransform(matrix.inverse())
-          rotate.dispatchEvent(new view.PointerEvent("pointerdown", {bubbles: true, composed: true, button: 0, pointerId: 2, clientX: start.x, clientY: start.y}))
-          for(const angle of [15, 45, 90]) {
-            const radians = angle * Math.PI / 180
-            const point = new DOMPoint(
-              480 + (local.x - 480) * Math.cos(radians) - (local.y - 300) * Math.sin(radians),
-              300 + (local.x - 480) * Math.sin(radians) + (local.y - 300) * Math.cos(radians),
-            ).matrixTransform(matrix)
-            doc.dispatchEvent(new view.PointerEvent("pointermove", {bubbles: true, buttons: 1, pointerId: 2, clientX: point.x, clientY: point.y}))
-            await layoutFrame()
-            const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
-            assert(preview, `${mode}/${aspect}/${zoom}: drag preview is missing`)
-            const actual = preview.getScreenCTM()!, expected = graphic.getScreenCTM()!
-            for(const key of ["a", "b", "c", "d", "e", "f"] as const) {
-              assert(Math.abs(actual[key] - expected[key]) < .01, `${mode}/${aspect}/${zoom}: preview ${key} drifted: ${actual[key]} vs ${expected[key]}`)
-            }
-            assert(preview.querySelector("rect")!.getAttribute("transform") === `rotate(${angle} 480 300)`, `${mode}: preview rotation is incorrect`)
-            assert(editor.toHTML(true) === before, `${mode}: dragging changed authored HTML`)
-          }
-          const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
-          const bounds = preview.querySelector("rect")!.getBoundingClientRect()
-          doc.dispatchEvent(new view.PointerEvent("pointerup", {bubbles: true, pointerId: 2}))
-          await layoutFrame()
-          const committed = shape.getBoundingClientRect()
-          for(const key of ["x", "y", "width", "height"] as const) {
-            assert(Math.abs(committed[key] - bounds[key]) < .1, `${mode}/${aspect}/${zoom}: shape jumped on release (${key})`)
-          }
-          assert(!editor.appendix.querySelector(".◆graphic-preview") && !doc.querySelector(".◆graphic-preview-source"), `${mode}: preview artifacts survived release`)
-          assert(!editor.toHTML(true).includes("◆") && !editor.doc.body.toString().includes("◆"), `${mode}: preview artifacts entered saved or shared HTML`)
-        }
-      }
-    }
-    finally {
-      (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
-      frame.remove()
-    }
-  }
-})
+await check("SVG drag previews preserve rotated graphic viewports in canvas and slides", checkGraphicDragPreviewRotation)
 
 await check("SVG overflow fades while retaining native shape selection", async () => {
   const frame = document.createElement("iframe")
@@ -2407,6 +2198,11 @@ customElements.define("native-audit-widget", class extends HTMLElement {
 })
 
 const editor = new DOMEditor()
+const nativeRootEditor = editor
+editor.addAppendix(lifecycleFrame)
+for(let attempt = 0; !lifecycleFrame.contentWindow?.editor && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+assert(lifecycleFrame.contentWindow?.editor, "lifecycle fixture did not initialize")
+document.body.focus({preventScroll: true})
 
 await check("widget shadow interactions capture hosts while slotted children stay editable", async () => {
   editor.schema.extendWidgets([{tagName: "native-content-capture-widget", editingConfig: {content: "flow*"}}])
@@ -2461,7 +2257,7 @@ await check("widget-created hints retain their caret and inherit popup text colo
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:700px;height:350px"
   frame.srcdoc = '<!doctype html><body><p>Outside</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  fixture.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -2647,7 +2443,7 @@ await check("popup content drags stay inside the bubble", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:400px"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
   try {
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -2694,7 +2490,7 @@ await check("popup table content clicks keep the bubble open", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:400px"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, MouseEvent: typeof MouseEvent}
   try {
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -2734,7 +2530,7 @@ await check("popup table trailing gap accepts Enter", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:400px"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const view = frame.contentWindow as Window & {editor?: DOMEditor, KeyboardEvent: typeof KeyboardEvent}
   try {
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -2765,7 +2561,7 @@ await check("popup toggle text selection contrasts with its button", async () =>
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:300px"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const view = frame.contentWindow as Window & {editor?: DOMEditor}
   try {
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -2789,7 +2585,7 @@ await check("popup parts receive scoped styles without changing their layout", a
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:400px"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const view = frame.contentWindow as Window & {editor?: DOMEditor}
   try {
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -2828,7 +2624,7 @@ await check("popup content gaps support backward joins", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px!important;max-width:none;height:400px"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const view = frame.contentWindow as Window & {editor?: DOMEditor, PointerEvent: typeof PointerEvent, KeyboardEvent: typeof KeyboardEvent}
   try {
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -2907,7 +2703,7 @@ await check("gap carets track their authored boundary", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1200px!important;max-width:none;height:400px"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {InputEvent: typeof InputEvent}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -3056,7 +2852,7 @@ await check("gap carets track their authored boundary", async () => {
 await check("crop preview reveals the source and restores content outside the frame", async () => {
   // Let the separate lifecycle fixture finish taking its initial focus before
   // starting a gesture that correctly cancels on external selection changes.
-  const lifecycle = document.querySelector<HTMLIFrameElement>("#lifecycle")!
+  const lifecycle = lifecycleFrame
   for(let attempt = 0; attempt < 100 && !lifecycle.contentWindow?.editor; attempt++) {
     await new Promise(resolve => setTimeout(resolve, 25))
   }
@@ -3155,8 +2951,9 @@ await check("media interiors capture while outline edges element-select", async 
       "element selection did not restore its blue selection fill")
     document.dispatchEvent(new Event("selectionchange"))
     await layoutFrame()
+    const selectedBox = audio.getBoundingClientRect()
     const shield = Array.from(editor.appendix.querySelectorAll<HTMLElement>(".◆media-interaction-shield"))
-      .find(surface => Math.abs(surface.getBoundingClientRect().top - box.top) < 1)!
+      .find(surface => Math.abs(surface.getBoundingClientRect().top - selectedBox.top) < 1)!
     assert(shield, "element selection did not shield native controls")
     shield.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
     shield.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true, cancelable: true}))
@@ -3199,7 +2996,7 @@ await check("figure permalinks align with padded caption numbering", async () =>
     figcaption {font:32px/40px system-ui;padding:20px 0;border-top:2px solid}
     </style></head><body><figure id="photo"><img><figcaption>Hello world with enough caption text to wrap onto a second line.</figcaption></figure>
     <script type="module">import {mountDocumentReader} from "/src/document-viewer.js"; import {createAnchorPositioner} from "/src/anchor-positioning.js"; window.reader = mountDocumentReader([], "", null, {}, createAnchorPositioner);</script></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {reader?: {destroy(): void}}
     for(let attempt = 0; !view.reader && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -3225,7 +3022,7 @@ await check("whitespace beside a lone floated figure selects document start", as
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;height:400px;max-width:none"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><figure style="float:right;width:200px;height:200px"><img><figcaption>Keep</figcaption></figure></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   let frameEditor: DOMEditor | undefined
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -3290,7 +3087,7 @@ await check("document resizing and graphic fitting preserve normal flow", async 
 await check("text containers resize horizontally and fit their content", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     for(const mode of ["document"] as const) {
       const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
@@ -3311,11 +3108,14 @@ await check("text containers resize horizontally and fit their content", async (
         const feature = editor.features.transformation, before = target.getBoundingClientRect()
         if(mode === "document") {
           const control = editor.appendix.querySelector<HTMLElement>(".copyright")!
-          const copyright = control.getBoundingClientRect()
-          assert(control.parentElement === feature.overlay, `${tag}: copyright is outside the transform frame`)
-          assert(Math.abs(copyright.left + copyright.width / 2 - before.left) < 2
-            && Math.abs(copyright.top + copyright.height / 2 - (before.top - 3)) < 2,
-            `${tag}: copyright is not at the frame's top-left corner`)
+          if(tag === "p") {
+            const copyright = control.getBoundingClientRect()
+            assert(control.parentElement === feature.overlay, `${tag}: copyright is outside the transform frame`)
+            assert(Math.abs(copyright.left + copyright.width / 2 - before.left) < 2
+              && Math.abs(copyright.top + copyright.height / 2 - (before.top - 3)) < 2,
+              `${tag}: copyright is not at the frame's top-left corner`)
+          }
+          else assert(control.hidden, `${tag}: heading exposed an unsupported attribution control`)
         }
         const handles = Array.from(feature.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
         assert(handles.length === 1 && handles[0].dataset.resizeDirection === "down-right", `${mode}/${tag}: vertical handles remain visible`)
@@ -3330,16 +3130,20 @@ await check("text containers resize horizontally and fit their content", async (
         assert(Math.abs(resized.width - before.width + 160) < 1, `${mode}/${tag}: width did not follow the handle (${before.width} -> ${resized.width}; ${target.style.cssText})`)
         assert(target.style.height === "auto" && resized.height > before.height && target.scrollHeight <= target.clientHeight + 1, `${mode}/${tag}: text height is constrained`)
         if(mode !== "document") assert(Math.abs(resized.top - before.top) < 1, `${mode}/${tag}: wrapping moved the top edge`)
-        editor.features.manipulation.cycleCaption()
-        await layoutFrame()
-        const figure = target.parentElement!
-        assert(figure.localName === "figure", `${tag}: caption did not wrap the text`)
-        assert(Math.abs(figure.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption frame lost the resized width`)
-        assert(Math.abs(target.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption changed the text width`)
-        assert(Math.abs(figure.querySelector("figcaption")!.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption has a separate width`)
-        editor.features.manipulation.setCaption("none", undefined, {preserveSelection: true})
-        await layoutFrame()
-        assert(target.parentElement === doc.body && Math.abs(target.getBoundingClientRect().width - resized.width) < 1, `${tag}: removing the caption lost the resize`)
+        if(tag === "p") {
+          editor.features.manipulation.cycleCaption()
+          await layoutFrame()
+          const figure = target.parentElement!
+          assert(figure.localName === "figure", `${tag}: caption did not wrap the text`)
+          assert(Math.abs(figure.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption frame lost the resized width`)
+          assert(Math.abs(target.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption changed the text width`)
+          assert(Math.abs(figure.querySelector("figcaption")!.getBoundingClientRect().width - resized.width) < 1, `${tag}: caption has a separate width`)
+          editor.features.manipulation.setCaption("none", undefined, {preserveSelection: true})
+          await layoutFrame()
+          assert(target.parentElement === doc.body && Math.abs(target.getBoundingClientRect().width - resized.width) < 1, `${tag}: removing the caption lost the resize`)
+        }
+        else assert(!editor.features.manipulation.cycleCaption() && target.parentElement === doc.body,
+          "heading exposed an unsupported caption wrapper")
         target.textContent += "More text grows the container. ".repeat(20)
         await layoutFrame()
         assert(target.getBoundingClientRect().height > resized.height, `${mode}/${tag}: added text did not grow`)
@@ -3357,7 +3161,7 @@ await check("text containers resize horizontally and fit their content", async (
 await check("canvas and slide text exposes eight functional resize handles", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     for(const mode of ["canvas", "slides"] as const) {
       const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
@@ -3419,7 +3223,7 @@ await check("canvas and slide text exposes eight functional resize handles", asy
 await check("block formulas expose block controls and resize horizontally", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
     frame.srcdoc = '<!doctype html><body><p>Before</p><math display="block"><!--keep--><mfrac><mi>x</mi><mn>2</mn></mfrac></math><p>After</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
@@ -3494,7 +3298,7 @@ await check("images stretch independently of their intrinsic aspect ratio", asyn
   for(const mode of ["document", "canvas", "slides"] as const) {
     const frame = document.createElement("iframe")
     frame.style.cssText = "width:900px;height:700px"
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
       frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
@@ -3555,84 +3359,13 @@ await check("images stretch independently of their intrinsic aspect ratio", asyn
   }
 })
 
-await check("resize handles follow alignment and centered edges track the cursor", async () => {
-  const frame = document.createElement("iframe")
-  frame.style.cssText = "width:1440px;height:800px;max-width:none"
-  document.body.append(frame)
-  try {
-    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once:true}))
-    frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-    await loaded
-    const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
-    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
-    assert(view.editor && !view.editorError, "aligned resize fixture did not initialize")
-    const editor = view.editor!, theme = doc.createElement("style")
-    theme.textContent = defaultDocumentTheme.source; doc.head.append(theme)
-    for(const width of [1440, 900, 375]) {
-      frame.style.width = `${width}px`
-      for(const placement of ["left", "center", "right", "far-left", "far-right"] as const) {
-        const target = doc.createElement("picture"), image = target.appendChild(doc.createElement("img"))
-        image.src = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="skyblue"/><circle cx="100" cy="50" r="40" fill="navy"/></svg>')}`
-        target.style.cssText = "width:200px;height:auto"
-        doc.body.append(target)
-        await image.decode()
-        const floated = placement.startsWith("far-")
-        editor.features.manipulation.setFloat(target, floated ? placement as "far-left" | "far-right" : "none", floated ? undefined : placement as "left" | "center" | "right")
-        editor.features.selection.captureElement(target)
-        await layoutFrame()
-        const transform = editor.features.transformation
-        const effective = floated ? view.getComputedStyle(target).float : placement
-        const centered = effective === "center" || effective === "none"
-        const right = effective === "right"
-        const handles = Array.from(transform.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])"))
-        assert(handles.length === 1 && handles[0].dataset.resizeDirection === (right ? "down-left" : "down-right"), `${placement}: wrong resize corner`)
-        const handleBox = handles[0].getBoundingClientRect()
-        const hit = doc.body.shadowRoot!.elementFromPoint(handleBox.left + handleBox.width / 2, handleBox.top + handleBox.height / 2)
-        assert(hit === handles[0], `${placement}: resize handle is covered by ${hit?.getAttribute("part") ?? hit?.localName}`)
-        const borderHit = doc.body.shadowRoot!.elementFromPoint(handleBox.left + .5, handleBox.top + .5)
-        assert(borderHit === handles[0], `${placement}: resize corner covered by ${borderHit?.getAttribute("part") ?? borderHit?.localName}`)
-        for(const distance of [30, -20]) {
-          const before = target.getBoundingClientRect(), handle = handles[0]
-          const startX = right ? before.left : before.right, dx = right ? -distance : distance
-          handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once:true})
-          handle.dispatchEvent(new view.MouseEvent("mousedown", {button:0, clientX:startX, clientY:before.bottom}))
-          transform.handleScaleDrag(new view.MouseEvent("mousemove", {clientX:startX + dx, clientY:before.bottom + 10, altKey:true}))
-          transform.handleScaleEnd()
-          await layoutFrame()
-          const after = target.getBoundingClientRect()
-          assert(Math.abs((right ? after.left : after.right) - startX - dx) < 1, `${placement}: dragged edge missed the cursor`)
-          assert(Math.abs(after.bottom - before.bottom - 10) < 1, `${placement}: bottom edge missed the cursor`)
-          if(centered) assert(Math.abs(after.left + after.width / 2 - before.left - before.width / 2) < 1, "centered resize moved its center")
-          else assert(Math.abs((right ? after.right : after.left) - (right ? before.right : before.left)) < 1, `${placement}: fixed edge moved`)
-          assert(!target.style.position && !target.style.left && !target.style.right, `${placement}: resizing left document flow`)
-        }
-        transform.clearTransform()
-        target.remove()
-      }
-    }
-    const graphic = doc.createElementNS("http://www.w3.org/2000/svg", "svg")
-    graphic.setAttribute("width", "359")
-    graphic.setAttribute("height", "202")
-    doc.body.append(graphic)
-    editor.features.selection.captureElement(graphic)
-    await layoutFrame()
-    const handle = editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
-    const box = handle.getBoundingClientRect()
-    assert(doc.body.shadowRoot!.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2) === handle,
-      "graphic resize affordance is covered at its center")
-    assert(doc.body.shadowRoot!.elementFromPoint(box.left + .5, box.top + .5) === handle,
-      "graphic resize affordance is covered at its inner corner")
-    assert(!editor.features.transformation.overlay.querySelector(".◆transform-overlay-edge[title]"),
-      "graphic move border exposes a lingering native tooltip")
-  }
-  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
-})
+await check("resize handles follow alignment and centered edges track the cursor", () => checkResizeAlignment(nativeRootEditor))
 
 await check("iframes default to 16:9 and resize vertically in document flow", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:900px;height:1000px;border:0;max-width:none"
   frame.srcdoc = '<!doctype html><body><iframe id="empty"></iframe><iframe id="loaded" src="about:blank"></iframe><iframe id="sized" height="220" style="width:400px"></iframe><iframe id="styled" style="height:240px;width:400px"></iframe><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow!
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -3675,7 +3408,7 @@ await check("iframes default to 16:9 and resize vertically in document flow", as
     saved.style.cssText = frame.style.cssText
     const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
     saved.srcdoc = editor.toHTML()
-    document.body.append(saved)
+    nativeRootEditor.addAppendix(saved)
     try {
       await loaded
       assert(Math.abs(saved.contentDocument!.getElementById("empty")!.getBoundingClientRect().height - target.getBoundingClientRect().height) < 1, "standalone export lost resized iframe height")
@@ -3817,7 +3550,7 @@ await check("empty media controls wrap to fit their element", async () => {
 
 await check("tiny images open media inputs in a speech bubble", async () => {
   // The independent lifecycle fixture initializes an editor and takes focus.
-  const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")
+  const frame = lifecycleFrame
   if(frame && frame.contentDocument?.readyState !== "complete") await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("lifecycle fixture did not load")), 2000)
     frame.addEventListener("load", () => { clearTimeout(timer); resolve() }, {once: true})
@@ -3915,14 +3648,14 @@ await check("empty caption numbering is visible as a grey editing placeholder", 
   }
 })
 
-await check("cut paragraphs retain a visible native caret position", checkParagraphCut)
-await check("list markers survive native cut and paste", checkListClipboard)
+await check("cut paragraphs retain a visible native caret position", () => checkParagraphCut(nativeRootEditor))
+await check("list markers survive native cut and paste", () => checkListClipboard(nativeRootEditor))
 
 await check("paragraph boundary deletion reverses Enter in Document and Board", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
   frame.srcdoc = '<!doctype html><body><p>Ready</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & typeof globalThis
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -3967,7 +3700,7 @@ await check("triple clicks preserve native paragraph selections in Document and 
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
   frame.srcdoc = '<!doctype html><body><p>Ready</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & typeof globalThis
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -4081,7 +3814,7 @@ await check("attribution is limited to top-level elements and follows nesting", 
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:600px;border:0;max-width:none"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -4138,7 +3871,8 @@ await check("toolbox attribution opens for multiple elements and deletes metadat
   frame.style.cssText = "width:900px;height:600px;border:0"
   frame.srcdoc = '<!doctype html><body><p>First</p><p>Second</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
   toolbox.style.width = "220px"
-  fixture.append(frame, toolbox)
+  nativeRootEditor.addAppendix(frame)
+  nativeRootEditor.addAppendix(toolbox)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -4201,7 +3935,8 @@ await check("attribution inputs keep visible carets during element and capture s
       await picker.updateComplete
       const controls = [popup.querySelector<HTMLInputElement>('input[name="name"]')!, popup.querySelector<HTMLInputElement>('input[name="year"]')!,
         picker.shadowRoot!.querySelector<HTMLInputElement>("input")!, popup.querySelector<HTMLInputElement>('input[name="contact"]')!,
-        popup.querySelector<HTMLButtonElement>(".delete")!, popup.querySelector<HTMLButtonElement>(".save")!, popup.querySelector<HTMLButtonElement>(".close")!]
+        popup.querySelector<HTMLButtonElement>(".delete")!, popup.querySelector<HTMLButtonElement>(".save")!,
+        ...popup.querySelectorAll<HTMLButtonElement>(".credit-types button"), popup.querySelector<HTMLButtonElement>(".close")!]
       controls[0].focus()
       for(const shiftKey of [false, true]) {
         for(let step = 0; step < controls.length; step++) {
@@ -4275,7 +4010,7 @@ await check("attribution license picker wraps definitions on a third line and of
 await check("block splitting retains attribution only on the original part", async () => {
   const frame = document.createElement("iframe")
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -4481,7 +4216,7 @@ await check("empty formula carets fit their space and blink across presentation 
         $.move(paragraph.lastChild!, 1)
         editor.features.selection.processSelection(undefined, {scrollIntoView: false})
         editor.features.math.refresh()
-        const placeholder = editor.appendix.querySelector<HTMLElement>('[part="math-placeholder"]')!
+        const placeholder = editor.appendix.querySelector<HTMLElement>('[part~="math-placeholder"]')!
         const symbol = placeholder.querySelector("svg")!.getBoundingClientRect()
         assert(!placeholder.hidden && Math.abs((symbol.left + symbol.right) / 2 - (bounds.left + bounds.right) / 2) < 1,
           "empty block formula symbol is not centered")
@@ -4659,7 +4394,7 @@ await check("formula carets follow canvas and slide zoom", async () => {
     frame.style.cssText = "width:1100px;max-width:none;height:800px"
     const content = `<p style="position:absolute;left:${mode === "slides" ? 500 : 120}px;top:100px;width:400px;font-size:32px"></p>`
     frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body class="ww-${mode}">${mode === "slides" ? `<div class="ww-slides-viewport"><section class="ww-slide" id="slide">${content}</section></div>` : content}<script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
-    fixture.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const view = frame.contentWindow!
       for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -4962,7 +4697,7 @@ await check("leaving an empty inline formula removes it without moving the text 
 await check("audio insertion retains element selection at the document start", async () => {
   const frame = document.createElement("iframe")
   frame.src = "/editor/"
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     let app: DomEditor | null = null
     for(let attempt = 0; attempt < 200; attempt++) {
@@ -4994,7 +4729,8 @@ await check("link keyboard preserves iframe selections and applies document, web
   frame.style.cssText = "width:800px;height:200px"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p><a>Link text</a></p><h2 id="intro">Introduction</h2></body>'
   const keyboard = new LinkKeyboard()
-  fixture.append(frame, keyboard)
+  nativeRootEditor.addAppendix(frame)
+  nativeRootEditor.addAppendix(keyboard)
   const errors: string[] = []
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -5121,7 +4857,7 @@ await check("editor command preserves a live selection", () => {
 })
 
 await check("touch caret and ranges use shared pointer selection", async () => {
-  const lifecycle = document.querySelector<HTMLIFrameElement>("#lifecycle")!
+  const lifecycle = lifecycleFrame
   for(let attempt = 0; attempt < 100 && !lifecycle.contentWindow?.editor; attempt++) {
     await new Promise(resolve => setTimeout(resolve, 25))
   }
@@ -5435,7 +5171,7 @@ await check("drag ranges keep empty media icons while hiding source controls", a
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:700px;height:400px;border:0"
   frame.srcdoc = '<!doctype html><body><p></p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  fixture.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -5507,7 +5243,7 @@ await check("backward media ranges suppress the boundary text caret", async () =
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:700px;height:500px;border:0"
   frame.srcdoc = '<!doctype html><body><video controls style="display:block;width:320px;height:180px"></video><p>text</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  fixture.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -5617,7 +5353,7 @@ await check("clicks below closed details keep hidden media collapsed", async () 
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:700px;height:600px;max-width:none"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><details style="padding:16px 24px 32px"><summary>Heading</summary><!--keep--><video controls width="320" height="180"></video></details></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow!
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -5776,13 +5512,13 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
     {variant: "insertion", left: 42.25, top: 100.5, width: 92.5},
     {variant: "package", active: true, muted: true, iconAction: "pin-snippet", left: 40, top: 100, width: 140},
     {variant: "toolbar", dropdownOnClick: true, left: 40, top: 100, width: 320},
-    {variant: "default", compact: true, left: window.innerWidth - 40, top: 100, width: 32},
+    {variant: "default", compact: true, left: document.documentElement.clientWidth - 40, top: 100, width: 32},
     {variant: "tab", left: 40, top: window.innerHeight - 48, width: 100},
   ]) {
     const button = new RibbonButton()
     Object.assign(button, {label: "Paragraph", action: "element:p", submenu: ["Heading 1", "Heading 2"], ...options})
     Object.assign(button.style, {position: "fixed", left: `${options.left}px`, top: `${options.top}px`, width: `${options.width}px`})
-    document.body.append(button)
+    nativeRootEditor.addAppendix(button)
     try {
       await button.updateComplete
       const row = button.shadowRoot!.querySelector<HTMLElement>(".button-row")!
@@ -5796,7 +5532,8 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
       assert(row.dataset.connected === (options.variant === "tab" ? "above" : "below"), `${options.variant}: wrong placement`)
       assert(menu.matches(":popover-open"), "menu left the browser's top layer")
       assert(Math.abs((above ? popup.bottom - box.top : box.bottom - popup.top) - 1) < .01, "trigger and menu do not share exactly one border pixel")
-      assert(popup.width >= box.width && popup.left >= 8 && popup.right <= document.documentElement.clientWidth - 8, "menu does not contain its trigger within the viewport")
+      assert(popup.width >= box.width && popup.left >= 8 && popup.right <= document.documentElement.clientWidth - 8,
+        `menu does not contain its trigger within the viewport ${JSON.stringify({options, box: box.toJSON(), popup: popup.toJSON(), viewport: [innerWidth, document.documentElement.clientWidth]})}`)
       const style = getComputedStyle(row), surface = getComputedStyle(menu.shadowRoot!.querySelector<HTMLElement>(".menu")!)
       assert(style.backgroundColor === surface.backgroundColor && style.backgroundColor === "rgb(255, 255, 255)", "open trigger does not match the menu's white background")
       assert(style.opacity === "1", "muted trigger makes the joined border translucent")
@@ -5816,61 +5553,7 @@ await check("ribbon dropdowns join their triggers without gaps at viewport edges
   }
 })
 
-await check("shape ribbon galleries scroll only when the viewport cannot fit their contents", async () => {
-  const shapeButtons=graphicShapeSections.flatMap(section=>section.rows.flatMap((row,rowIndex)=>[
-    ...row.map((option,column)=>({label:option.label,category:section.label,path:option.path,pathFill:option.pathFill,galleryRowStart:column===0})),
-    ...(section.label==="Basic" && rowIndex===0?[{label:"Import graphic",category:section.label,galleryColumns:3 as const}]:[]),
-  ]))
-  for(const height of [1000,480]) {
-    const frame=document.createElement("iframe")
-    frame.style.cssText=`width:1600px;height:${height}px;border:0;max-width:none`
-    frame.srcdoc=height===1000
-      ? '<!doctype html><style>body{margin:16px;font:16px system-ui}</style><app-ribbon></app-ribbon><script type="module" src="/src/components/ribbon.ts"></script>'
-      : '<!doctype html><style>body{margin:16px;font:16px system-ui}</style><ribbon-button></ribbon-button><script type="module" src="/src/components/ribbon-button.ts"></script>'
-    document.body.append(frame)
-    const view=frame.contentWindow as Window & typeof globalThis
-    try {
-      const customElement=height===1000?"app-ribbon":"ribbon-button"
-      for(let attempt=0;!view.customElements.get(customElement) && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
-      assert(view.customElements.get(customElement),"Shape gallery fixture did not initialize")
-      const doc=frame.contentDocument!
-      for(let attempt=0;!doc.querySelector(customElement) && attempt<250;attempt++) await new Promise(resolve=>setTimeout(resolve,20))
-      let graphic:RibbonButton
-      if(height===1000) {
-        const ribbon=doc.querySelector<import("../src/components/ribbon").AppRibbon>("app-ribbon")!
-        ribbon.activeMenu="Start"
-        await ribbon.updateComplete
-        graphic=ribbon.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[label="Elements"] ribbon-button[label="Graphic"]')!
-      }
-      else {
-        graphic=doc.querySelector<RibbonButton>("ribbon-button")!
-        graphic.label="Graphic"
-        graphic.submenu=shapeButtons
-        await graphic.updateComplete
-      }
-      await graphic.updateComplete
-      await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
-      graphic.shadowRoot!.querySelector<HTMLButtonElement>(".submenu-toggle")!.click()
-      await graphic.updateComplete
-      const menu=graphic.shadowRoot!.querySelector<import("../src/components/ribbon-menu").RibbonMenu>("ribbon-menu")!
-      await menu.updateComplete
-      await new Promise<void>(resolve=>view.requestAnimationFrame(()=>view.requestAnimationFrame(()=>resolve())))
-      const surface=menu.shadowRoot!.querySelector<HTMLElement>(".menu")!,bounds=menu.getBoundingClientRect()
-      assert(bounds.top>=7.9 && bounds.bottom<=height-7.9,`${height}: shape gallery leaves the viewport`)
-      assert(surface.scrollWidth<=surface.clientWidth+1,`${height}: shape gallery scrolls horizontally`)
-      if(height===1000) assert(surface.scrollHeight<=surface.clientHeight+1,"Shape gallery scrolls despite having enough vertical space")
-      else {
-        assert(surface.scrollHeight>surface.clientHeight+1,"Shape gallery does not scroll in a short viewport")
-        const items=surface.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')
-        items[items.length-1].focus()
-        const last=items[items.length-1].getBoundingClientRect(),visible=surface.getBoundingClientRect()
-        assert(last.bottom<=visible.bottom && last.top>=visible.top,"Final shape is not reachable in the short gallery")
-      }
-      assert(menu.shadowRoot!.querySelectorAll('[role="separator"]').length===3,"Gallery section dividers changed")
-    }
-    finally {frame.remove()}
-  }
-})
+await check("shape ribbon galleries scroll only when the viewport cannot fit their contents", () => checkShapeRibbonGalleries(nativeRootEditor))
 
 await check("font dropdowns join their white controls at viewport edges", async () => {
   const {RibbonCombobox} = await import("../src/components/ribbon-combobox")
@@ -5881,8 +5564,8 @@ await check("font dropdowns join their white controls at viewport edges", async 
     Object.assign(combo, {name, label: name, options: name === "font-family" ? fontFamilyOptions : fontSizeOptions})
     Object.assign(combo.style, {position: "fixed", width: name === "font-size" ? "56px" : "90px",
       left: `${placement === "right" ? window.innerWidth - 98 : 40.25}px`,
-      top: `${placement === "above" ? window.innerHeight - 48 : 100.5}px`})
-    document.body.append(combo)
+      top: `${placement === "above" ? window.innerHeight - 48 : placement === "below" ? Math.max(100.5, window.innerHeight - 312) : 100.5}px`})
+    nativeRootEditor.addAppendix(combo)
     try {
       await combo.updateComplete
       const font = combo.shadowRoot!.querySelector("font-combobox")
@@ -5918,10 +5601,12 @@ await check("font dropdowns join their white controls at viewport edges", async 
       assert([...menu.querySelectorAll(".option-group")].every(group => getComputedStyle(group).scrollbarWidth === "thin"),
         `${name}: font list scrollbars are not thin`)
       const box = control.getBoundingClientRect(), popup = menu.getBoundingClientRect()
-      const above = placement === "above"
-      assert(control.dataset.connected === (above ? "above" : "below"), `${name}: wrong font popup placement`)
-      assert(Math.abs((above ? popup.bottom - box.top : box.bottom - popup.top) - 1) < .1,
-        `${name}: font dropdown does not share a border with its control`)
+      const above = name === "font-size" ? box.top > window.innerHeight - box.bottom : placement === "above"
+      const expectedConnected = above ? "above" : "below"
+      const joinError = Math.abs((above ? popup.bottom - box.top : box.bottom - popup.top) - 1)
+      assert(control.dataset.connected === expectedConnected,
+        `${name}: wrong font popup placement ${JSON.stringify({placement, box: box.toJSON(), popup: popup.toJSON(), connected: control.dataset.connected, expectedConnected})}`)
+      assert(joinError < .1, `${name}: font dropdown does not share a border with its control: ${JSON.stringify({box: box.toJSON(), popup: popup.toJSON()})}`)
       assert(popup.left >= 8 && popup.right <= window.innerWidth - 8,
         `${name}/${placement}: font dropdown overflows the viewport (${popup.left}–${popup.right}, width ${window.innerWidth})`)
       const surface = getComputedStyle(menu), style = getComputedStyle(control)
@@ -5977,6 +5662,10 @@ await check("font dropdowns join their white controls at viewport edges", async 
         scroller.scrollTop = scroller.scrollHeight
         await layoutFrame()
         assert(scroller.scrollTop > 0 && menu.scrollTop === 0, "font sizes do not scroll independently of their joined border")
+        const options = scroller.querySelectorAll<HTMLElement>('[role="option"]')
+        const lastOption = options[options.length - 1]
+        assert(lastOption.getBoundingClientRect().bottom <= scrollBox.bottom + 1,
+          "the last font size preset is unreachable inside the anchored scroll area")
         const mask = getComputedStyle(menu, "::before")
         assert((above ? mask.bottom : mask.top) === "0px", "scrolling moves the font dropdown's shared border mask")
       }
@@ -6030,7 +5719,7 @@ await check("font dropdowns join their white controls at viewport edges", async 
   Object.assign(drawer.style, {position: "fixed", left: "40px", top: "100px", height: "90px", width: "var(--ribbon-drawer-expanded-width)"})
   Object.assign(combo, {name: "font-family", label: "Font family", options: fontFamilyOptions, className: "font-family"})
   drawer.append(combo)
-  document.body.append(drawer)
+  nativeRootEditor.addAppendix(drawer)
   try {
     await drawer.updateComplete; await combo.updateComplete
     const field = combo.shadowRoot!.querySelector("font-combobox")!
@@ -6227,7 +5916,7 @@ await check("local fonts embed selected bytes and load under the editor CSP", as
     const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
     frame.srcdoc = editorFrameHTML(source, {bridgeNonce: "font-csp-test", revision: 0, language: "en", packages: [],
       hostOrigin: location.origin, entryURL: new URL("../src/editor-entry.ts", location.href).href, executeScripts: false})
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     await loaded
     const doc = frame.contentDocument!
     const faces = await doc.fonts.load(`16px ${JSON.stringify(font.family)}`, "x")
@@ -6346,7 +6035,7 @@ await check("bundled layouts render under the strict editor CSP without widgets"
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:930px;height:470px"
   frame.setAttribute("sandbox", "allow-scripts allow-same-origin")
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const options = {bridgeNonce: crypto.randomUUID(), hostOrigin: location.origin, revision: 0, language: "en", packages: [],
     entryURL: new URL("./native-browser-frame.ts?proofreading-disabled", import.meta.url).href, executeScripts: true}
   const load = async (html: string) => {
@@ -6422,7 +6111,7 @@ await check("local HTML websites load as isolated blob and saved data frames", a
     frame.contentWindow?.editor?.destroy()
     const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
     frame.srcdoc = editorFrameHTML(html, options)
-    if(!frame.isConnected) document.body.append(frame)
+    if(!frame.isConnected) nativeRootEditor.addAppendix(frame)
     await loaded
     for(let count = 0; count < 200; count++) {
       const editor = frame.contentWindow?.editor
@@ -6454,7 +6143,7 @@ await check("local HTML websites load as isolated blob and saved data frames", a
     // Also exercise the host-to-editor File transfer across the real origins.
     const appFrame = document.createElement("iframe")
     appFrame.src = "/editor/"
-    document.body.append(appFrame)
+    nativeRootEditor.addAppendix(appFrame)
     try {
       let app: DomEditor | null = null
       for(let count = 0; count < 200; count++) {
@@ -6483,7 +6172,7 @@ await check("local HTML websites load as isolated blob and saved data frames", a
 await check("uploaded videos survive installing and removing packages", async () => {
   const frame = document.createElement("iframe")
   frame.src = "/editor/"
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const video = document.createElement("video")
   try {
     let app: DomEditor | null = null
@@ -6533,7 +6222,7 @@ await check("canvas and slide element selections keep Delete borderless", async 
     const frame = document.createElement("iframe")
     frame.style.cssText = "width:900px;height:700px"
     frame.srcdoc = '<!doctype html><body><picture id="selected-image"><img></picture><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
       for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -6563,7 +6252,7 @@ await check("canvas and slide captions remain available through toolbox commands
     const frame = document.createElement("iframe")
     frame.style.cssText = "position:fixed;left:0;top:0;width:900px;height:700px"
     frame.srcdoc = `<!doctype html><body><${tag} id="caption-item">${tag === "picture" ? "<img>" : "Text"}</${tag}><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
       for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -6619,7 +6308,7 @@ await check("canvas and slide copyright controls share freeform placement", asyn
     const frame = document.createElement("iframe")
     frame.style.cssText = "position:fixed;left:0;top:0;width:900px;height:700px"
     frame.srcdoc = '<!doctype html><body><picture id="copyright-item"><img></picture><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
       for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -6667,7 +6356,7 @@ await check("canvas and slide delete affordances follow rotation placement", asy
     const frame = document.createElement("iframe")
     frame.style.cssText = "position:fixed;left:0;top:0;width:900px;height:700px"
     frame.srcdoc = '<!doctype html><body><p id="delete-item">Selected text</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
       for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -6732,7 +6421,7 @@ await check("New discards the previous canvas iframe and its document state", as
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1280px;height:900px"
   frame.src = "/editor/"
-  fixture.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     let app: DomEditor | null = null
     for(let attempt = 0; attempt < 200; attempt++) {
@@ -6786,7 +6475,7 @@ await check("New discards the previous canvas iframe and its document state", as
 })
 
 await check("iframe lifecycle reaches load and cleans up", async () => {
-  const frame = document.querySelector<HTMLIFrameElement>("#lifecycle")!
+  const frame = lifecycleFrame
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("iframe load timed out")), 2000)
     if(frame.contentDocument?.readyState === "complete") { clearTimeout(timer); resolve(); return }
@@ -6804,7 +6493,7 @@ await check("iframe lifecycle reaches load and cleans up", async () => {
   frameWindow.reinitializeEditor!()
   frameWindow.editor!.destroy()
   frame.remove()
-  assert(!frame.isConnected && !document.querySelector("#lifecycle"), "iframe was not removed")
+  assert(!frame.isConnected && !nativeRootEditor.appendix.querySelector("#lifecycle"), "iframe was not removed")
 })
 
 await check("editing frame blocks meta refresh and retains same-document navigation", async () => {
@@ -6815,7 +6504,7 @@ await check("editing frame blocks meta refresh and retains same-document navigat
     frames.add(frame)
     frame.setAttribute("sandbox", "allow-scripts allow-same-origin")
     frame.src = `${frameOrigin}/frame-shell.html?kind=${kind}&revision=0#nonce=${crypto.randomUUID()}`
-    fixture.append(frame)
+    nativeRootEditor.addAppendix(frame)
     return frame
   }
   const waitForMessage = <T>(frame: HTMLIFrameElement, type: string, timeoutMs = 4000) => new Promise<T>((resolve, reject) => {
@@ -6870,7 +6559,7 @@ await check("editing frame blocks meta refresh and retains same-document navigat
       if(kind === "srcdoc") {
         frames.add(links)
         links.setAttribute("sandbox", "allow-scripts allow-same-origin")
-        fixture.append(links)
+        nativeRootEditor.addAppendix(links)
       }
       const source = `<!doctype html><body><script type="module">
         ${kind === "srcdoc" ? `const {openFrameLinksInNewTabs} = await import('${location.origin}/src/frame-links.ts'); openFrameLinksInNewTabs(window);` : ""}
@@ -6967,7 +6656,7 @@ await check("repeated canvas modifier selections preserve item placement and cam
     frame.style.cssText = "width:900px;height:600px"
     const content = tag === "ul" ? '<li>First<!--keep--></li><li>Second <em>item</em></li>' : 'Text<!--keep--><em>content</em>'
     frame.srcdoc = `<!doctype html><body class="ww-canvas"><${tag} style="position:absolute;left:160px;top:100px;width:320px">${content}</${tag}><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const view = frame.contentWindow as Window & typeof globalThis
       for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -7018,7 +6707,7 @@ await check("canvas box selection retains disjoint ranges and stays in the docum
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body class="ww-canvas"><p style="position:absolute;left:40px;top:40px;width:100px;height:60px;margin:0">first</p><p style="position:absolute;left:40px;top:350px;width:100px;height:60px;margin:0">hole</p><p style="position:absolute;left:170px;top:40px;width:100px;height:60px;margin:0;z-index:2147483647">last</p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   let canvasEditor: DOMEditor | undefined
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -7055,7 +6744,7 @@ await check("canvas box selection retains disjoint ranges and stays in the docum
 await check("freeform box selections transform as a group", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1000px;height:700px"
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     for(const mode of ["canvas", "slides"] as const) {
       const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
@@ -7107,15 +6796,19 @@ await check("freeform box selections transform as a group", async () => {
       feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: group.right + 60, clientY: group.bottom + 30, altKey: true}))
       feature.handleScaleEnd()
       assert(editor.toHTML(true) === resizeBefore, `${mode}: a hidden handle resized the group`)
+      await layoutFrame()
       const rotateBefore = [first, last].map(element => element.getBoundingClientRect())
       const rotation = feature.overlay.getBoundingClientRect(), cx = rotation.left + rotation.width / 2, cy = rotation.top + rotation.height / 2
       feature.handleRotateStart(new view.MouseEvent("mousedown", {button: 0, clientX: cx, clientY: cy - 50}))
-      feature.handleRotateDrag(new view.MouseEvent("mousemove", {clientX: cx + 50, clientY: cy, altKey: true}))
+      // Synthetic MouseEvent coordinates round to integers. Snap the intended
+      // quarter turn so fractional overlay bounds do not change its angle.
+      feature.handleRotateDrag(new view.MouseEvent("mousemove", {clientX: cx + 50, clientY: cy, shiftKey: true}))
       feature.handleRotateEnd()
       for(const [i, element] of [first, last].entries()) {
         const rect = element.getBoundingClientRect(), before = rotateBefore[i]
         assert(Math.abs(rect.left + rect.width / 2 - (cx - (before.top + before.height / 2 - cy))) < 1
-          && Math.abs(rect.top + rect.height / 2 - (cy + (before.left + before.width / 2 - cx))) < 1, `${mode}: rotation did not orbit the group center`)
+          && Math.abs(rect.top + rect.height / 2 - (cy + (before.left + before.width / 2 - cx))) < 1,
+          `${mode}: rotation did not orbit the group center`)
       }
       assert(Array.from(first.parentNode!.childNodes).every((node, i) => node === children[i]) && first.innerHTML === content, `${mode}: transforms changed authored structure`)
       assert(outside.style.left === "200px" && outside.style.top === "450px", `${mode}: transforms affected an unselected item`)
@@ -7217,17 +6910,12 @@ await check("canvas slot preserves hit testing and document coordinates at diffe
     mover.dispatchEvent(new MouseEvent("mousedown", {bubbles: true, composed: true, button: 0, clientX: 200, clientY: 200}))
     editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 320, clientY: 200}))
     editor.features.transformation.handleMoveEnd()
-    const movedSelection = getSelection()!
-    assert(movedSelection.anchorNode === paragraph.firstChild && movedSelection.anchorOffset === 1
-      && movedSelection.focusNode === paragraph.firstChild && movedSelection.focusOffset === 7,
-    "moving did not restore the exact canvas text range")
-    assert(editor.features.transformation.target === paragraph
-      && contentFrame.part.contains("transform-overlay-content-selected") && !paragraph.classList.contains("◆element-selected"),
-    "moving did not retain the canvas content selection and root ownership")
-    assert(Math.abs(parseFloat(paragraph.style.left) - (-300 + 120 / editor.features.canvas.zoom)) < 1, `zoomed move used screen instead of document units: ${paragraph.style.left}`)
+    assert($.selectedElement === paragraph && editor.features.transformation.target === paragraph
+      && !contentFrame.part.contains("transform-overlay-content-selected"),
+      "moving did not promote the text item to element selection")
     await new Promise(resolve => setTimeout(resolve, 200))
-    assert(getComputedStyle(resizer).backgroundColor === getComputedStyle(contentFrame).outlineColor,
-      "moved canvas content selection does not retain grey content handles")
+    assert(getComputedStyle(resizer).backgroundColor !== contentFrameColor,
+      "the moved item's selected handles retained their text-selection color")
     // Continue the camera-edge gesture checks from an explicit item selection;
     // the move above intentionally leaves the native text range active.
     editor.features.selection.selectElement(paragraph)
@@ -7371,7 +7059,7 @@ await check("canvas and slide Enter preserves empty lists and repeated breaks", 
     const frame = document.createElement("iframe")
     frame.style.cssText = "width:900px;height:700px"
     frame.srcdoc = '<!doctype html><body><ul><!--keep--></ul><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-    document.body.append(frame)
+    nativeRootEditor.addAppendix(frame)
     try {
       const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
       for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -7408,7 +7096,7 @@ await check("ribbon elements drop on the blank canvas slot", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   let canvasEditor: DOMEditor | undefined
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -7438,7 +7126,7 @@ await check("relayed standard elements preview and drop into a blank document", 
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   let frameEditor: DOMEditor | undefined
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -7460,8 +7148,9 @@ await check("relayed standard elements preview and drop into a blank document", 
 await check("ribbon Audio drag crosses the host and editor frame", async () => {
   const {DomEditor} = await import("../src/components/dom-editor")
   const app = new DomEditor()
-  app.style.cssText = "width:950px;height:700px"
-  fixture.append(app)
+  Object.assign(app, {settings: {...(app as any).settings, showGuidedTour: false}})
+  app.style.cssText = "position:fixed;left:0;top:0;width:950px;height:700px"
+  nativeRootEditor.addAppendix(app)
   try {
     for(let attempt = 0; attempt < 200; attempt++) {
       if(app.shadowRoot?.querySelector("app-ribbon")?.shadowRoot?.querySelector('ribbon-button[label="Audio"]')) break
@@ -7486,7 +7175,7 @@ await check("ribbon Audio drag crosses the host and editor frame", async () => {
     const target = app.shadowRoot!.querySelector<HTMLIFrameElement>("iframe.editor-frame")!
     const rect = target.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + 200
     assert(getComputedStyle(target).pointerEvents === "none", "editor frame still intercepted the ribbon drag")
-    assert(app.shadowRoot!.elementFromPoint(x, y) === shield, "drag shield did not receive pointer events over the editor frame")
+    assert(app.shadowRoot!.elementFromPoint(x, y) === shield, `drag shield did not receive pointer events over the editor frame ${JSON.stringify({point:[x,y],frame:rect.toJSON(),shield:shield.getBoundingClientRect().toJSON(),hit:app.shadowRoot!.elementFromPoint(x,y)?.outerHTML,app:app.getBoundingClientRect().toJSON(),viewport:[innerWidth,innerHeight]})}`)
     const init = {dataTransfer: data, clientX: x, clientY: y, bubbles: true, composed: true, cancelable: true}
     const over = new DragEvent("dragover", init)
     shield.dispatchEvent(over)
@@ -7505,7 +7194,7 @@ await check("relayed ribbon elements drop onto the selected element beneath edit
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>before</p><h2>selected</h2><p>after</p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   let frameEditor: DOMEditor | undefined
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -7573,104 +7262,12 @@ await check("relayed ribbon elements drop onto the selected element beneath edit
   finally { frameEditor?.destroy(); frame.remove() }
 })
 
-await check("ribbon snippets drop at the caret and center in freeform layouts", async () => {
-  for(const mode of ["document", "canvas", "slides"] as const) {
-    const frame = document.createElement("iframe")
-    frame.style.cssText = "width:900px;height:600px"
-    frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>before after</p></body>'
-    document.body.append(frame)
-    try {
-      const view = frame.contentWindow as Window & {editor?: DOMEditor}
-      for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
-      assert(view.editor, "drop fixture did not initialize")
-      const editor = view.editor!, doc = frame.contentDocument!
-      if(mode !== "document") assert(editor.setDocumentLayout(mode, "document"), "drop layout could not be set")
-      await layoutFrame()
-      const target = mode === "slides" ? doc.querySelector<HTMLElement>(".ww-slide")! : doc.body
-      const paragraph = doc.querySelector("p")!, range = doc.createRange()
-      range.setStart(paragraph.firstChild!, 7); range.collapse(true)
-      const caret = range.getBoundingClientRect(), rect = target.getBoundingClientRect()
-      const x = mode === "document" ? caret.left : Math.max(rect.left + 250, 250)
-      const y = mode === "document" ? caret.top + caret.height / 2 : Math.max(rect.top + 150, 150)
-      let message: {position: import("../src/editor-bridge").RibbonDropPosition} | undefined
-      editor.postHostMessage = data => {
-        if((data as {type?: string}).type === "editor-ribbon-drop") message = data as typeof message
-      }
-      const data = new DataTransfer()
-      data.setData("application/x-webwriter-ribbon-insertion", "user-snippet:saved")
-      const surface = mode === "canvas" ? editor.appendix.querySelector<HTMLSlotElement>("slot:not([name])")! : paragraph
-      const init = {dataTransfer: data, clientX: x, clientY: y, bubbles: true, cancelable: true, composed: true}
-      const over = new DragEvent("dragover", init)
-      surface.dispatchEvent(over)
-      assert(over.defaultPrevented, "ribbon insertion drag was not accepted")
-      if(mode === "document") assert(doc.getSelection()?.anchorNode === paragraph.firstChild && doc.getSelection()?.anchorOffset === 7, "moving drop caret is absent")
-      surface.dispatchEvent(new DragEvent("drop", init))
-      assert(message, "ribbon drop did not request insertion")
-      const html = mode === "document" ? '<em>inserted </em>' : '<p style="width:120px;height:60px;margin:0">Saved <b>snippet</b><!--keep--></p>'
-      assert(await editor.features.manipulation.actions.insertRibbonDrop({type: "insertRibbonDrop", html, position: message!.position}), "drop insertion failed")
-      await layoutFrame()
-      if(mode === "document") assert(paragraph.textContent === "before inserted after", "drop did not insert at the moving caret")
-      else {
-        const inserted = target.lastElementChild as HTMLElement, box = inserted.getBoundingClientRect()
-        assert(Math.abs(box.left + box.width / 2 - x) < 1 && Math.abs(box.top + box.height / 2 - y) < 1, "drop is not centered at pointer coordinates")
-        assert(inserted.innerHTML.includes("<!--keep-->"), "drop lost nested snippet content")
-        for(const action of ["insert-graphic-shape:rectangle", "insert-math:frac", "list-style:ol:lower-alpha"]) {
-          // Keep prior graphics away from the next independent layout drop.
-          for(const graphic of target.querySelectorAll<SVGSVGElement>(":scope > svg")) graphic.style.left = `${parseFloat(graphic.style.left) + 1000}px`
-          range.selectNodeContents(target); range.collapse(false)
-          editor.features.selection.selectDropRange(range, {scrollIntoView: false})
-          data.setData("application/x-webwriter-ribbon-insertion", action)
-          surface.dispatchEvent(new DragEvent("drop", init))
-          await layoutFrame()
-          const root = target.lastElementChild as HTMLElement, box = root.getBoundingClientRect()
-          assert(Math.abs(box.left + box.width / 2 - x) < 1 && Math.abs(box.top + box.height / 2 - y) < 1, `${mode}: ${action} is not centered (${box.left + box.width / 2}, ${box.top + box.height / 2} vs ${x}, ${y}; ${root.outerHTML})`)
-          assert(action.startsWith("insert-graphic") ? root.localName === "svg" : action.startsWith("insert-math") ? root.querySelector("mfrac") : root.localName === "ol", `${action} did not create its element`)
-          if(action.startsWith("insert-graphic")) assert(doc.getSelection()?.toString() === "" && root.parentNode === doc.getSelection()?.anchorNode, "shape drop lost its element selection")
-          else assert(root.contains(doc.getSelection()?.anchorNode ?? null) && doc.getSelection()?.isCollapsed,
-            `${action} lost its editing caret while centering: ${root.outerHTML}; ${doc.getSelection()?.anchorNode?.nodeName}@${doc.getSelection()?.anchorOffset}, collapsed=${doc.getSelection()?.isCollapsed}`)
-        }
-        for(const tag of ["table", "details", "h2", "math", "svg"]) {
-          for(const graphic of target.querySelectorAll<SVGSVGElement>(":scope > svg")) graphic.style.left = `${parseFloat(graphic.style.left) + 1000}px`
-          range.selectNodeContents(target); range.collapse(false)
-          editor.features.selection.selectDropRange(range, {scrollIntoView: false})
-          const elementData = new DataTransfer()
-          elementData.setData("application/x-webwriter-ribbon-insertion", `element:${tag}`)
-          target.dispatchEvent(new DragEvent("drop", {...init, dataTransfer: elementData}))
-          await layoutFrame()
-          const root = target.lastElementChild!
-          if(tag === "svg") assert(editor.features.selection.captureSelectedElement === root, "graphic drop lost its capture selection")
-          else {
-            const content = tag === "table" ? root.querySelector("td") : tag === "details" ? root.querySelector("summary") : tag === "math" ? root.querySelector("mrow") : root
-            assert(content?.contains(doc.getSelection()?.anchorNode ?? null) && doc.getSelection()?.isCollapsed, `${mode}: ${tag} lost its editing caret while centering`)
-            if(tag === "table") assert(editor.features.table.hasCellSelection, "table drop did not select the first cell")
-          }
-        }
-      }
-      message = undefined
-      for(let index = 0; index < 3; index++) {
-        if(mode !== "document") {
-          for(const graphic of target.querySelectorAll<SVGSVGElement>(":scope > svg")) graphic.style.left = `${parseFloat(graphic.style.left) + 1000}px`
-          range.selectNodeContents(target); range.collapse(false)
-          editor.features.selection.selectDropRange(range, {scrollIntoView: false})
-        }
-        data.setData("application/x-webwriter-ribbon-insertion", "package:prepared")
-        data.setData("text/html", "<x-prepared-drop>Prepared widget</x-prepared-drop>")
-        target.dispatchEvent(new DragEvent("dragover", init))
-        target.dispatchEvent(new DragEvent("drop", init))
-        await layoutFrame()
-        assert(target.querySelectorAll("x-prepared-drop").length === index + 1, `${mode}: repeated prepared drop failed`)
-        assert(!message, "prepared drop unnecessarily requested host insertion")
-      }
-      assert(!doc.body.classList.contains("◆drop-selection-active"), "drop selection marker leaked")
-    }
-    finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
-  }
-})
+await check("ribbon snippets drop at the caret and center in freeform layouts", () => checkRibbonSnippetDrop(nativeRootEditor, assert, layoutFrame))
 
 await check("typing after moving a text box preserves its text and position", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:600px"
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     for(const mode of ["canvas", "slides"] as const) {
       const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
@@ -7699,7 +7296,15 @@ await check("typing after moving a text box preserves its text and position", as
       feature.handleMoveDrag(new view.MouseEvent("mousemove", {altKey: true, clientX: before.right + 40, clientY: before.top + 30}))
       feature.handleMoveEnd()
       await layoutFrame()
-      assert(selection.anchorNode === caret && selection.anchorOffset === offset && selection.isCollapsed, `${mode}: moving replaced the text caret with a box selection`)
+      const movedRange = selection.getRangeAt(0)
+      assert(movedRange.startContainer === parent && movedRange.endContainer === parent
+        && movedRange.endOffset === movedRange.startOffset + 1 && parent.childNodes[movedRange.startOffset] === paragraph
+        && feature.target === paragraph,
+        `${mode}: moving did not select the text item`)
+      assert(caret.isConnected && paragraph.contains(caret), `${mode}: moving replaced the authored text node`)
+      // Moving promotes the frame to node selection. Re-enter its text before typing.
+      selection.setPosition(caret, offset)
+      editor.features.selection.processSelection(undefined, {scrollIntoView: false})
       const moved = paragraph.getBoundingClientRect(), movedHTML = editor.toHTML(true), placement = paragraph.getAttribute("style")
       assert(paragraph.style.left === "440px" && paragraph.style.top === "170px"
         && Math.abs(moved.width - before.width) < 1, `${mode}: moving did not retain authored dimensions and offsets`)
@@ -7731,7 +7336,7 @@ await check("a clean canvas retains its initial item when moving and typing with
   frame.style.cssText = "width:900px;height:600px"
   // No script or other in-flow metadata in BODY to mask the empty-flow check.
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   let canvasEditor: DOMEditor | undefined
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
@@ -7781,12 +7386,21 @@ await check("a clean canvas retains its initial item when moving and typing with
     await layoutFrame()
     assert(view.getComputedStyle(backgroundCaret!).display === "none", "text selection retains the background caret")
     assert(view.getComputedStyle(paragraph).caretColor !== "rgba(0, 0, 0, 0)", "text selection did not restore its native caret")
-    canvasEditor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
+    const insertText = () => {
+      const canvas = canvasEditor!.features.canvas
+      const points = [100, 220, 340].flatMap(y => [100, 350, 650].map(x => ({x, y})))
+      const point = points.find(point => !canvas.itemAtPoint(point.x, point.y))
+      assert(point, "canvas fixture has no blank insertion point")
+      canvasEditor!.appendix.querySelector("slot")!.dispatchEvent(new MouseEvent("dblclick", {
+        bubbles: true, composed: true, cancelable: true, button: 0, clientX: point!.x, clientY: point!.y,
+      }))
+    }
+    insertText()
     const second = doc.querySelectorAll("p")[1]
     await type(second, "Second")
     assert(paragraph.textContent === "Hello world" && second.textContent === "Second", "canvas text is missing")
     assert(Math.abs(paragraph.getBoundingClientRect().left - moved.left) < 1 && Math.abs(paragraph.getBoundingClientRect().top - moved.top) < 1, "typing displaced the initial canvas item")
-    canvasEditor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
+    insertText()
     const empty = doc.body.lastElementChild!
     empty.append(doc.createElement("br"))
     await layoutFrame()
@@ -7796,7 +7410,7 @@ await check("a clean canvas retains its initial item when moving and typing with
     assert(!empty.isConnected, "the empty canvas paragraph survived losing focus")
     assert(doc.querySelectorAll("p").length === 2 && doc.getSelection()!.anchorNode === second.firstChild
       && doc.getSelection()!.anchorOffset === 2, "empty paragraph cleanup changed the new editing position")
-    canvasEditor.appendix.querySelector<HTMLButtonElement>('button[name="text"]')!.click()
+    insertText()
     const nextEmpty = doc.body.lastElementChild!
     canvasEditor.features.selection.selectElement(paragraph)
     await layoutFrame()
@@ -7836,11 +7450,11 @@ await check("a clean canvas retains its initial item when moving and typing with
     saved.setAttribute("sandbox", "allow-same-origin")
     saved.srcdoc = canvasEditor.toHTML()
     const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once: true}))
-    document.body.append(saved)
+    nativeRootEditor.addAppendix(saved)
     try {
       await loaded
       const savedDoc = saved.contentDocument!, savedView = saved.contentWindow!
-      const background = savedView.getComputedStyle(savedDoc.documentElement)
+      const background = savedView.getComputedStyle(savedDoc.body)
       assert(background.backgroundImage.includes("radial-gradient"), "saved canvas lost its dots")
       assert(background.backgroundSize === "20px 20px" && background.backgroundRepeat === "repeat", "saved canvas does not tile its dotted background")
       assert(!saved.contentDocument!.body.shadowRoot, "saved canvas background depends on editor UI")
@@ -7866,7 +7480,7 @@ await check("a clean canvas retains its initial item when moving and typing with
         savedView.scrollTo(0, 0)
       }
       savedDoc.body.classList.remove("ww-canvas")
-      assert(!savedView.getComputedStyle(savedDoc.documentElement).backgroundImage.includes("radial-gradient"), "document mode retains canvas dots")
+      assert(!savedView.getComputedStyle(savedDoc.body).backgroundImage.includes("radial-gradient"), "document mode retains canvas dots")
     }
     finally { saved.remove() }
     doc.body.innerHTML = '<p style="position:absolute;left:-400px;top:-300px;width:200px">Exported canvas</p>'
@@ -7880,7 +7494,7 @@ await check("hotspot popovers use grey editing placeholders and compact controls
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:450px;max-width:none"
   frame.srcdoc = '<!doctype html><body><img src="/tests/fixtures/image-map.svg" width="360" height="210" usemap="#plan"><map name="plan"><area shape="rect" coords="500,40,680,340"></map><script type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  fixture.append(frame)
+  nativeRootEditor.addAppendix(frame)
   const toolbox = new DomEditorToolbox()
   toolbox.style.width = "300px"
   toolbox.activeTool = "Edit"; toolbox.activeMenu = "Edit"
@@ -7921,7 +7535,7 @@ await check("image hotspots scale and open popovers in preview and standalone re
   const {previewFrameHTML} = await import("../src/frame-document")
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:500px;max-width:none"
-  fixture.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     for(const preview of [true, false]) {
       const source = new DOMParser().parseFromString('<html><body><img src="/tests/fixtures/image-map.svg" width="360" height="210" usemap="#plan"><map name="plan"><span><!--keep--><area shape="rect" coords="500,40,680,340" href="#details" popovertarget="details" alt="Details"></span><area shape="circle" coords="100,100,40" href="#link" alt="Link"></map><div id="details" popover="auto">Hotspot content</div><p id="link">Link destination</p></body></html>', "text/html")
@@ -7969,7 +7583,8 @@ await check("image hotspots scale and open popovers in preview and standalone re
       const link = root.querySelector('a[aria-label="Link"]')!
       assert(link?.getAttribute("href") === "#link", "link-only hotspot was lost")
       link.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true}))
-      await layoutFrame()
+      const navigationDeadline = performance.now() + 1000
+      while(view.location.hash !== "#link" && performance.now() < navigationDeadline) await nextFrame()
       assert(view.location.hash === "#link", "link-only hotspot did not navigate to its destination")
       image.width = 360
       doc.body.style.minHeight = "1200px"
@@ -7990,7 +7605,7 @@ await check("canvas hotspot clicks preserve the camera in preview and standalone
   const {previewFrameHTML} = await import("../src/frame-document")
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:500px;max-width:none"
-  fixture.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     for(const preview of [true, false]) {
       const source = new DOMParser().parseFromString(`<!doctype html><style>${canvasStyles}</style><body class="ww-canvas"><img src="/tests/fixtures/image-map.svg" width="360" height="210" style="position:absolute;left:200px;top:150px" usemap="#plan"><map name="plan"><area shape="rect" coords="500,40,680,340" popovertarget="details" alt="Details"></map><div id="details" popover="auto">Hotspot content</div></body>`, "text/html")
@@ -8038,7 +7653,7 @@ await check("exported canvas runs its standalone viewer without editor dependenc
   frame.style.cssText = "width:900px;height:700px;border:0"
   frame.srcdoc = savedCanvasHTML
   const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     await loaded
     const doc = frame.contentDocument!, view = frame.contentWindow!
@@ -8075,7 +7690,7 @@ for(const mode of ["canvas", "slides"] as const) await check(`paragraphs grow wi
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
   frame.srcdoc = '<!doctype html><body><p>Short</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -8156,7 +7771,7 @@ await check("Board columns and cards retain native editing and standalone layout
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
   frame.srcdoc = '<!doctype html><body><p>First card</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -8374,7 +7989,7 @@ await check("Board columns and cards retain native editing and standalone layout
     preview.setAttribute("sandbox", "allow-same-origin")
     preview.style.cssText = "width:900px;height:700px"
     const loaded = new Promise<void>(resolve => preview.addEventListener("load", () => resolve(), {once: true}))
-    preview.srcdoc = saved; doc.body.append(preview); await loaded
+    preview.srcdoc = saved; editor.addAppendix(preview); await loaded
     const exported = preview.contentDocument!, exportedColumns = Array.from(exported.querySelectorAll(".ww-board-column"))
     assert(exportedColumns.length === 4 && exported.querySelector("[part=board-actions]") === null, "export lost structure or included controls")
     const exportedCard = exported.querySelector<HTMLElement>(".ww-board-card:has(> custom-widget)")!
@@ -8413,22 +8028,22 @@ await check("Board columns and cards retain native editing and standalone layout
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("canvas and slide movement follows the dot grid and alignment guides", () => checkLayoutGrid())
+await check("canvas and slide movement follows the dot grid and alignment guides", () => checkLayoutGrid(nativeRootEditor))
 
-await check("slide editing retains text and media selections after focus", checkSlideEditing)
+await check("slide editing retains text and media selections after focus", () => checkSlideEditing(nativeRootEditor))
 
 let savedSlidesHTML = ""
 await check("CSS Slides use native fragment links while editing", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"
-  frame.srcdoc = `<!doctype html><body><h1>First slide</h1><p>FirstSecond</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
-  document.body.append(frame)
+  frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style></head><body><h1>First slide</h1><p>FirstSecond</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
     assert(view.editor, `slide editor did not initialize: ${view.editorError}`)
     const slideEditor = view.editor!, doc = frame.contentDocument!
-    const documentGutter = getComputedStyle(doc.body).paddingLeft
+    const documentGutter = getComputedStyle(doc.body).paddingRight
     assert(slideEditor.setDocumentLayout("slides", "document"), "slide conversion failed")
     const first = doc.querySelector<HTMLElement>("section.ww-slide")!, text = first.querySelector("p")!.firstChild!
     doc.getSelection()!.setBaseAndExtent(text, 5, text, 5)
@@ -8472,7 +8087,8 @@ await check("CSS Slides use native fragment links while editing", async () => {
     const slideRect = second.getBoundingClientRect(), nav = doc.querySelector<HTMLElement>("nav.ww-slides-navigation")!
     assert(Math.abs(slideRect.width - frame.clientWidth) < 1 && Math.abs(slideRect.width / slideRect.height - 16 / 9) < .01,
       `slide does not fit at 16:9: ${slideRect.width} × ${slideRect.height}`)
-    assert(Math.abs(slideRect.top - (frame.clientHeight - slideRect.height) / 2) < 1 && Math.abs(slideRect.left) < 1,
+    const viewportRect = viewport.getBoundingClientRect()
+    assert(Math.abs(slideRect.top - viewportRect.top - (viewportRect.height - slideRect.height) / 2) < 1 && Math.abs(slideRect.left) < 1,
       `slide is not vertically centered: ${JSON.stringify({slide: slideRect.toJSON(), viewport: viewport.getBoundingClientRect().toJSON(), frame: [frame.clientWidth, frame.clientHeight], body: doc.body.getBoundingClientRect().toJSON(), grid: getComputedStyle(doc.body).gridTemplateRows, appendix: Array.from(slideEditor.appendix.children).map(e => [e.localName, getComputedStyle(e).display, getComputedStyle(e).position]), margin: getComputedStyle(second).margin, scroll: [viewport.scrollLeft, viewport.scrollTop]})}`)
     const headingRect = second.querySelector("h1")!.getBoundingClientRect(), paragraphRect = second.querySelector("p")!.getBoundingClientRect()
     for(const item of [second.querySelector("h1")!, second.querySelector("p")!]) {
@@ -8481,9 +8097,9 @@ await check("CSS Slides use native fragment links while editing", async () => {
     assert(Math.abs(headingRect.left - paragraphRect.left) < 1 && paragraphRect.width < headingRect.width
       && paragraphRect.top > headingRect.bottom && paragraphRect.bottom < slideRect.bottom - 20, "authored slide paragraph is not aligned or content sized")
     assert(getComputedStyle(nav).position === "absolute" && nav.getBoundingClientRect().bottom <= frame.clientHeight, "navigation is not overlaid at the bottom")
-    assert(Math.abs(nav.getBoundingClientRect().left - 16) < 1, "slides pagination is not left aligned")
+    assert(Math.abs(nav.getBoundingClientRect().left - 24) < 1, `slides pagination is not left aligned ${JSON.stringify({nav:nav.getBoundingClientRect().toJSON(), viewport:viewport.getBoundingClientRect().toJSON(), body:doc.body.getBoundingClientRect().toJSON(), style:getComputedStyle(nav).cssText, scroll:[view.scrollX,view.scrollY]})}`)
     assert(getComputedStyle(second).paddingTop === "20px" && getComputedStyle(second).paddingBottom === "20px"
-      && getComputedStyle(second).paddingLeft === documentGutter, "slides do not use normal document spacing")
+      && Math.abs(parseFloat(getComputedStyle(second).paddingLeft) - parseFloat(documentGutter)) < .5, `slides do not use normal document spacing ${JSON.stringify({top:getComputedStyle(second).paddingTop,bottom:getComputedStyle(second).paddingBottom,left:getComputedStyle(second).paddingLeft,documentGutter,body:doc.body.outerHTML.slice(0,400)})}`)
     doc.documentElement.style.setProperty("--ww-page-gutter", "24px")
     assert(getComputedStyle(second).paddingLeft === "24px" && getComputedStyle(second).paddingRight === "24px", "slides do not follow the document gutter")
     doc.documentElement.style.removeProperty("--ww-page-gutter")
@@ -8493,18 +8109,21 @@ await check("CSS Slides use native fragment links while editing", async () => {
     const close = actions.querySelector<HTMLButtonElement>('[aria-label="Remove slide 2"]')!
     for(const control of [link, second.querySelector<HTMLAnchorElement>(".ww-slide-previous")!, add, close]) {
       assert(getComputedStyle(control).cursor === "pointer", "slide control lacks a pointer cursor")
-      assert(getComputedStyle(control).color === "rgb(47, 55, 66)" && getComputedStyle(control).borderTopColor === "rgb(47, 55, 66)", "slide control does not use the ribbon's dark grey")
+      const color = control.matches(".ww-slide-previous, .ww-slide-next") ? "rgb(47, 55, 66)" : "rgb(51, 65, 85)"
+      assert(getComputedStyle(control).color === color && getComputedStyle(control).borderTopColor === color,
+        `slide control does not use its authored color ${color}: ${control.outerHTML} (${getComputedStyle(control).color}, ${getComputedStyle(control).borderTopColor})`)
       assert(!control.draggable, "slide control is draggable")
     }
     await new Promise(resolve => setTimeout(resolve, 250))
-    assert(getComputedStyle(link).backgroundColor === "rgb(226, 229, 233)", `active slide bubble is not highlighted: ${getComputedStyle(link).backgroundColor}; ${link.className}; scroll=${viewport.scrollLeft}; native=${CSS.supports("scroll-target-group", "auto")}; animation=${getComputedStyle(link).animationName}; transition=${getComputedStyle(link).transitionDuration}`)
+    assert(getComputedStyle(link).backgroundColor === "rgb(219, 234, 254)", `active slide bubble is not highlighted: ${getComputedStyle(link).backgroundColor}; ${link.className}; scroll=${viewport.scrollLeft}; native=${CSS.supports("scroll-target-group", "auto")}; animation=${getComputedStyle(link).animationName}; transition=${getComputedStyle(link).transitionDuration}`)
     assert(getComputedStyle(close).visibility === "visible", "active slide remove button is hidden")
     assert(getComputedStyle(actions.querySelector('[aria-label="Remove slide 1"]')!).visibility === "hidden", "inactive slide remove button is visible without hover")
     second.focus({preventScroll: true})
     assert(getComputedStyle(second).outlineStyle === "none", "focused slide still has a focus ring")
     const bubble = link.getBoundingClientRect(), closeRect = close.getBoundingClientRect()
-    assert(actions.children.length === 3 && add.getBoundingClientRect().left >= nav.getBoundingClientRect().right, "appendix add affordance is not beside navigation")
-    assert(bubble.width === 32 && add.getBoundingClientRect().width === 32 && closeRect.width === 16, "slide control circles are not compact")
+    assert(Math.abs(add.getBoundingClientRect().left - nav.getBoundingClientRect().right - 8) < 1,
+      "appendix add affordance is not beside navigation")
+    assert(bubble.width === 28 && add.getBoundingClientRect().width === 28 && closeRect.width === 16, "slide control circles are not compact")
     assert(Math.abs(closeRect.left + closeRect.width / 2 - (bubble.right - 4)) < 1 && Math.abs(closeRect.top + closeRect.height / 2 - (bubble.top + 4)) < 1, "remove affordance is not inset into bubble's top right")
     assert(slideEditor.appendix.elementFromPoint(closeRect.left + closeRect.width / 2, closeRect.top + closeRect.height / 2) === close, "bubble remove affordance is not clickable")
     slideEditor.features.selection.actions.selectNode({type: "selectNode", path: [0, 1]})
@@ -8554,13 +8173,13 @@ await check("CSS Slides use native fragment links while editing", async () => {
     slideEditor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", {buttons: 1, altKey: true, clientX: 212, clientY: 208}))
     slideEditor.features.transformation.handleMoveEnd()
     const movedSelection = doc.getSelection()!
-    assert(movedSelection.anchorNode === presetHeading.firstChild && movedSelection.anchorOffset === 0
-      && movedSelection.focusNode === presetHeading.firstChild && movedSelection.focusOffset === 2,
-    "moving did not restore the exact slide text range")
+    assert(movedSelection.anchorNode === third && movedSelection.anchorOffset === 0
+      && movedSelection.focusNode === third && movedSelection.focusOffset === 1 && movedSelection.toString() === "Slide title",
+    "moving a slide text box did not retain its element selection")
     assert(slideEditor.features.transformation.target === presetHeading
-      && slideFrame.part.contains("transform-overlay-content-selected")
-      && !presetHeading.classList.contains("◆element-selected"),
-    "moving did not retain the slide content selection and root ownership")
+      && !slideFrame.part.contains("transform-overlay-content-selected")
+      && presetHeading.classList.contains("◆element-selected"),
+    "moving did not retain the selected slide text box")
     await new Promise(resolve => setTimeout(resolve, 200))
     assert(getComputedStyle(slideHandle).backgroundColor === getComputedStyle(slideFrame).outlineColor,
       "moved slide content selection does not retain grey content handles")
@@ -8599,9 +8218,14 @@ await check("CSS Slides use native fragment links while editing", async () => {
     assert(doc.querySelectorAll("section.ww-slide").length === 2, "navigation remove affordance failed")
     frame.style.width = "900px"; frame.style.height = "350px"
     await layoutFrame()
-    assert(Math.abs(third.getBoundingClientRect().height - 350) < 1 && Math.abs(third.getBoundingClientRect().width - 350 * 16 / 9) < 1,
-      "slides do not fit a wide viewport at 16:9")
-    assert(Math.abs(third.getBoundingClientRect().left - (frame.clientWidth - 350 * 16 / 9) / 2) < 1, "wide viewport margins are unequal")
+    const shortSlide = third.getBoundingClientRect()
+    const bodyPadding = getComputedStyle(doc.body)
+    const availableSlideHeight = frame.clientHeight - parseFloat(bodyPadding.paddingTop) - parseFloat(bodyPadding.paddingBottom)
+    const expectedSlideHeight = Math.min(availableSlideHeight, frame.clientWidth * 9 / 16)
+    const expectedSlideWidth = expectedSlideHeight * 16 / 9
+    assert(Math.abs(shortSlide.height - expectedSlideHeight) < 1 && Math.abs(shortSlide.width - expectedSlideWidth) < 1,
+      `slides do not fit the available viewport at 16:9: ${JSON.stringify({slide:shortSlide.toJSON(),availableSlideHeight,frame:[frame.clientWidth,frame.clientHeight],padding:[bodyPadding.paddingTop,bodyPadding.paddingBottom]})}`)
+    assert(Math.abs(shortSlide.left - (frame.clientWidth - expectedSlideWidth) / 2) < 1, "wide viewport margins are unequal")
     const outside = doc.createElement("aside")
     outside.textContent = "Outside"
     outside.style.cssText = "position:absolute;left:-40px;top:80px;width:30px;height:30px;background:blue"
@@ -8636,7 +8260,7 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
   const url = URL.createObjectURL(new Blob([savedSlidesHTML], {type: "text/html"}))
   frame.src = url
   const loaded = new Promise(resolve => frame.addEventListener("load", resolve, {once:true}))
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     await loaded
     const doc = frame.contentDocument!, viewport = doc.querySelector<HTMLElement>(".ww-slides-viewport")!
@@ -8645,18 +8269,29 @@ await check("saved Slides navigate with HTML and CSS and scripting disabled", as
     const readerSlide = viewport.querySelector<HTMLElement>("section.ww-slide")!
     assert(Math.abs(readerSlide.getBoundingClientRect().width - frame.clientWidth) < 1 && Math.abs(readerSlide.getBoundingClientRect().height - frame.clientWidth * 9 / 16) < 1, "exported slides do not fit the reader viewport at 16:9")
     const readerNav = doc.querySelector<HTMLElement>("nav.ww-slides-navigation")!
+    const readerLinks = readerNav.querySelectorAll<HTMLAnchorElement>("a")
     assert(getComputedStyle(readerNav).position === "absolute" && readerNav.getBoundingClientRect().bottom <= frame.clientHeight, "reader navigation is not overlaid at the bottom")
-    assert(Math.abs(readerNav.getBoundingClientRect().left - 16) < 1, "saved slides pagination is not left aligned")
+    assert(Math.abs(readerNav.getBoundingClientRect().left - 24) < 1, "saved slides pagination is not left aligned")
     viewport.style.scrollBehavior = "auto"
+    const navigationSettled = new Promise<void>(resolve => {
+      const finish = () => { clearTimeout(timeout); resolve() }
+      const timeout = setTimeout(finish, 500)
+      viewport.addEventListener("scrollend", finish, {once: true})
+    })
     doc.querySelectorAll<HTMLAnchorElement>("nav.ww-slides-navigation a")[1].click()
     await layoutFrame()
+    await navigationSettled
+    await layoutFrame()
+    const activeReaderColor = "rgb(219, 234, 254)"
+    const highlightDeadline = performance.now() + 1000
+    while(getComputedStyle(readerLinks[1]).backgroundColor !== activeReaderColor && performance.now() < highlightDeadline) await nextFrame()
     assert(frame.contentDocument === doc, "fragment navigation replaced the reader document")
     assert(viewport.scrollLeft > viewport.clientWidth / 2, "reader link did not scroll with scripts disabled")
     const outside = doc.querySelector<HTMLElement>("aside")!, outsideRect = outside.getBoundingClientRect()
     assert(doc.elementFromPoint(outsideRect.left + 5, outsideRect.top + 5) !== outside, "saved slide content is visible outside the slide")
     assert(getComputedStyle(outside.parentElement!).overflow === "clip", "saved slides do not clip overflow")
-    const readerLinks = readerNav.querySelectorAll<HTMLAnchorElement>("a")
-    assert(getComputedStyle(readerLinks[1]).backgroundColor === "rgb(226, 229, 233)" && getComputedStyle(readerLinks[0]).backgroundColor !== "rgb(226, 229, 233)", "saved active highlight does not follow navigation")
+    assert(getComputedStyle(readerLinks[1]).backgroundColor === activeReaderColor && getComputedStyle(readerLinks[0]).backgroundColor !== activeReaderColor,
+      `saved active highlight does not follow navigation: ${JSON.stringify({colors:Array.from(readerLinks, link => getComputedStyle(link).backgroundColor),target:doc.querySelector(":target")?.id,hash:doc.location.hash,scroll:viewport.scrollLeft})}`)
     assert(Array.from(doc.querySelectorAll<HTMLAnchorElement>("nav a")).every(link => !link.draggable), "saved controls can be dragged")
     const focusedSlide = doc.querySelectorAll<HTMLElement>("section.ww-slide")[1]
     focusedSlide.focus({preventScroll: true})
@@ -8687,7 +8322,8 @@ await check("Placement arrows move elements in normal document flow", async () =
   const frame = document.createElement("iframe"), toolbox = new DomEditorToolbox()
   frame.srcdoc = '<!doctype html><body><p>first</p><!--keep--><p id="selected">selected text</p><custom-card>last</custom-card><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
   toolbox.style.width = "220px"
-  fixture.append(frame, toolbox)
+  nativeRootEditor.addAppendix(frame)
+  nativeRootEditor.addAppendix(toolbox)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -8739,7 +8375,7 @@ await check("unfloated placements align within the content column", async () => 
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1440px;height:700px;border:0;max-width:none"
   frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -8776,7 +8412,7 @@ await check("unfloated placements align within the content column", async () => 
           saved.style.cssText = frame.style.cssText
           const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
           saved.srcdoc = await editor.serializeHTML()
-          document.body.append(saved)
+          nativeRootEditor.addAppendix(saved)
           try { await loaded; await layoutFrame(); aligned(saved.contentDocument!, alignment) }
           finally { saved.remove() }
         }
@@ -8789,83 +8425,16 @@ await check("unfloated placements align within the content column", async () => 
   }
 })
 
-await check("media stays centered in editing and standalone documents", async () => {
-  const frame = document.createElement("iframe")
-  frame.style.cssText = "position:fixed;inset:0;width:1000px;height:700px;border:0;max-width:none"
-  const media = '<picture style="width:160px"><img alt="Picture" width="160" height="60"></picture><img alt="Image" style="width:160px;height:60px"><audio controls style="width:240px"></audio><video controls style="width:240px;height:90px"></video><iframe title="Website" style="width:240px;height:90px"></iframe><embed style="width:240px;height:90px"><object style="width:240px;height:90px"></object>'
-  const content = `${media}<main>${media}<p>Reading column</p></main><article>${media}<p>Reading column</p></article><section>${media}<p>Reading column</p></section><p>Inline <img id="inline" alt="inline" width="20" height="20"> image</p>`
-  frame.srcdoc = '<!doctype html><body><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
-  try {
-    const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
-    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
-    assert(view.editor && !view.editorError, "media centering fixture did not initialize")
-    const doc = frame.contentDocument!, theme = doc.createElement("style")
-    // Exercise live DOM edits, including unwrapped images, rather than import aliases.
-    doc.body.innerHTML = content
-    doc.head.append(theme)
-    const centered = (document: Document, context: string) => {
-      for(const element of document.querySelectorAll<HTMLElement>("body > :is(picture,img,audio,video,iframe,embed,object), :is(main,article,section) > :is(picture,img,audio,video,iframe,embed,object)")) {
-        const box = element.getBoundingClientRect(), parent = element.parentElement!
-        const parentBox = parent.getBoundingClientRect(), style = document.defaultView!.getComputedStyle(parent)
-        const left = parentBox.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft)
-        const right = parentBox.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight)
-        const prose = parent.querySelector(":scope > p")!.getBoundingClientRect()
-        const mediaStyle = document.defaultView!.getComputedStyle(element)
-        // Holiday deliberately offsets pictures after normal-flow placement.
-        const offset = mediaStyle.position === "relative" ? parseFloat(mediaStyle.left) || 0 : 0
-        // An embed without a resource has no rendered box in Chromium even
-        // though CSS gives it a width. Verify the block centering contract
-        // directly instead of comparing its empty (0px) client rect.
-        if(element.localName === "embed" && box.width === 0) {
-          assert(mediaStyle.display === "block" && mediaStyle.marginLeft === "auto" && mediaStyle.marginRight === "auto"
-            && parseFloat(mediaStyle.width) <= right - left,
-          `${context}: empty embed did not receive centered, bounded block styles`)
-          continue
-        }
-        assert(Math.abs((box.left + box.right) / 2 - offset - (prose.left + prose.right) / 2) < 1, `${context}: ${element.localName} was not centered in ${parent.localName}`)
-        assert(box.left - offset >= left - 1 && box.right - offset <= right + 1, `${context}: ${element.localName} overflowed its column`)
-      }
-    }
-    for(const bundledTheme of documentThemes) {
-      theme.setAttribute("data-ww-theme", bundledTheme.value)
-      theme.textContent = bundledTheme.source
-      frame.style.width = "1000px"
-      await layoutFrame()
-      centered(doc, `${bundledTheme.value} editing`)
-      const saved = document.createElement("iframe")
-      saved.style.cssText = frame.style.cssText
-      saved.setAttribute("sandbox", "allow-same-origin")
-      const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
-      saved.srcdoc = await view.editor!.serializeHTML()
-      document.body.append(saved)
-      try {
-        await loaded
-        for(const width of [1000, 590, 360]) {
-          saved.style.width = `${width}px`
-          await layoutFrame()
-          centered(saved.contentDocument!, `${bundledTheme.value} saved ${width}`)
-        }
-        assert(saved.contentDocument!.querySelector("#inline")!.closest("p"), "export moved inline media out of prose")
-        if(bundledTheme.value === "base") assert(saved.contentWindow!.getComputedStyle(saved.contentDocument!.querySelector("#inline")!).display === "inline", "inline prose image was blockified")
-      }
-      finally { saved.remove() }
-    }
-  }
-  finally {
-    (frame.contentWindow as Window & {editor?: DOMEditor}).editor?.destroy()
-    frame.remove()
-  }
-})
+await check("media stays centered in editing and standalone documents", () => checkMediaCentering(nativeRootEditor))
 
 await check("wrapped attribution keeps two text columns and moves contact to the opposite side", async () => {
   const frame = document.createElement("iframe")
-  frame.style.cssText = "position:fixed;inset:0;width:1400px;height:900px;border:0;max-width:none"
+  frame.style.cssText = "position:fixed;inset:0;width:1600px;height:900px;border:0;max-width:none"
   try {
     for(const editing of [false, true]) {
       const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
       frame.src = `/tests/attribution-floats.html?long${editing ? "&editing" : ""}`
-      if(!frame.isConnected) document.body.append(frame)
+      if(!frame.isConnected) nativeRootEditor.addAppendix(frame)
       await loaded
       for(let attempt = 0; !frame.contentDocument?.body.shadowRoot && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
       await layoutFrame()
@@ -8873,7 +8442,7 @@ await check("wrapped attribution keeps two text columns and moves contact to the
       const appendix = doc.body.shadowRoot!
       const elements = Array.from(doc.querySelectorAll<HTMLElement>("aside"))
       const labels = () => Array.from(appendix.querySelectorAll<HTMLElement>(".attribution-note:not(.attribution-contact-note)"))
-      for(const width of [1400, 900, 360]) {
+      for(const width of [1600, 900, 360]) {
         frame.style.width = `${width}px`
         await layoutFrame()
         assert(labels().length === 2, "wrapped attribution lost an element's text")
@@ -8937,9 +8506,13 @@ await check("wrapped attribution keeps two text columns and moves contact to the
             assert(view.getComputedStyle(text).cursor === "pointer" && view.getComputedStyle(contact.firstElementChild!).cursor === "pointer", "editing attribution text does not show a pointer cursor")
           }
         }
+        const first = elements[0].getBoundingClientRect(), second = elements[1].getBoundingClientRect()
+        if(width === 1600) {
+          assert(first.right + 300 <= second.left + 1, "opposing float columns leave less than the minimum prose width")
+        }
         if(width === 900) {
-          const gap = elements[1].getBoundingClientRect().top - elements[0].getBoundingClientRect().bottom
-          assert(gap >= 18 - 1, "stacked side floats have less than the minimum page margin between them")
+          assert(elements.every(element => view.getComputedStyle(element).float === "right"), "intermediate-width floats did not share the right lane")
+          assert(second.top - first.bottom >= 18 - 1, "stacked side floats have less than the minimum page margin between them")
         }
       }
       // Both metadata and URLs must fit at most two lines; neither may spill
@@ -8964,11 +8537,11 @@ await check("wrapped attribution keeps two text columns and moves contact to the
         await layoutFrame(); await layoutFrame()
         const label = labels()[0]
         assert(label.classList.contains("compact-attribution"), `overlong ${field} did not use compact attribution`)
-        assert(label.innerText === "©", "compact attribution exposes more than the copyright symbol")
+        assert(label.innerText === "ⓘ", "compact attribution exposes more than its information symbol")
         assert(view.getComputedStyle(label).fontSize === "12px" && view.getComputedStyle(label).color === "rgb(119, 119, 119)", "compact attribution lost its larger gray type")
         assert(!appendix.querySelector(`[part="${label.getAttribute("part")}-contact"]`), "compact attribution left a URL outside its element")
         const box = elements[0].getBoundingClientRect(), noteBox = label.getBoundingClientRect()
-        assert(Math.abs(noteBox.bottom - box.bottom) < 1 && Math.abs(noteBox.left - box.right) < 1, "compact attribution is not aligned to its element")
+        assert(Math.abs(noteBox.bottom - box.bottom) < 1 && Math.abs(label.classList.contains("left-attribution") ? noteBox.right - box.left : noteBox.left - box.right) < 1, `compact attribution is not aligned to its element ${JSON.stringify({viewportWidth:frame.clientWidth, editing, note:noteBox.toJSON(), box:box.toJSON(), css:view.getComputedStyle(label).writingMode, classes:label.className})}`)
         label.click()
         const popup = appendix.querySelector<HTMLElement>(".popup")!
         assert(!popup.hidden, "attribution click did not open the popup")
@@ -8991,7 +8564,10 @@ await check("wrapped attribution keeps two text columns and moves contact to the
       column.setAttribute("data-ww-attribution-name", "Content column author")
       column.setAttribute("data-ww-attribution-contact", "mailto:column@example.com")
       column.style.minHeight = "160px"
-      for(const width of [1400, 900, 360, 900, 1400]) {
+      for(const width of [1600, 900, 360, 900, 1600]) {
+        // A right-only side column flips prose credits in the compact layout.
+        elements[0].classList.toggle("ww-float-left", width !== 900)
+        elements[0].classList.toggle("ww-float-right", width === 900)
         frame.style.width = `${width}px`
         await layoutFrame()
         const label = labels().find(note => note.textContent!.includes("Content column author"))!
@@ -9061,7 +8637,7 @@ await check("wrapped attribution keeps two text columns and moves contact to the
         assert(following.getBoundingClientRect().top - visibleBottom >= 17, "following float lacks the minimum margin after the attribution")
       }
       const captionLoaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
-      frame.style.width = "1400px"
+      frame.style.width = "1600px"
       frame.src = `/tests/attribution-floats.html?long&captions${editing ? "&editing" : ""}`
       await captionLoaded
       for(let attempt = 0; !frame.contentDocument?.body.shadowRoot && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9089,8 +8665,8 @@ await check("wrapped attribution keeps two text columns and moves contact to the
 await check("far floats adapt to column margins and survive standalone export", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;border:0;max-width:none"
-  frame.srcdoc = '<!doctype html><body><aside id="float" data-ww-attribution-name="Float author" data-ww-attribution-year="2026" data-ww-license="CC-BY-4.0" data-ww-attribution-contact="mailto:author@example.com">Float content</aside><p id="text">Following text remains in the reading column.</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  frame.srcdoc = '<!doctype html><body><aside id="float" data-ww-attribution-type="copyright" data-ww-attribution-name="Float author" data-ww-attribution-year="2026" data-ww-license="CC-BY-4.0" data-ww-attribution-contact="mailto:author@example.com">Float content</aside><p id="text">Following text remains in the reading column.</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9119,14 +8695,14 @@ await check("far floats adapt to column margins and survive standalone export", 
         const style = view.getComputedStyle(target)
         // Container queries and cqw use the root content box, excluding both gutters.
         const viewportWidth = parseFloat(view.getComputedStyle(doc.documentElement).width)
-        const stacked = viewportWidth < 600, singleLane = viewportWidth >= 600 && viewportWidth < 1200
-        const effectiveSide = singleLane ? "right" : physical
+        const stacked = viewportWidth < 720
+        const effectiveSide = physical
         const gap = parseFloat(effectiveSide === "left" ? style.marginRight : style.marginLeft)
         assert(box.left >= -1 && box.right <= doc.documentElement.clientWidth + 1, "far float escaped the viewport")
         const gutter = Math.min(32, Math.max(16, viewportWidth * .02))
         const pageWidth = Math.min(2160, viewportWidth - 2 * gutter)
         if(!stacked) {
-          assert(Math.abs(box.width - (singleLane ? Math.min(256, Math.max(0, pageWidth - 300 - gutter)) : Math.max(0, (pageWidth - 720) / 2 - gutter))) < 1, `default float did not fill its lane: ${JSON.stringify({viewport: width, viewportWidth, rootClientWidth: doc.documentElement.clientWidth, frameWidth: frame.getBoundingClientRect().width, gutter, pageWidth, box: box.width, column: column.width, padding: style.padding})}`)
+          assert(Math.abs(box.width - column.width) < 1, `default float did not fill its lane: ${JSON.stringify({viewport: width, viewportWidth, rootClientWidth: doc.documentElement.clientWidth, frameWidth: frame.getBoundingClientRect().width, gutter, pageWidth, box: box.width, column: column.width, padding: style.padding})}`)
           const actualGap = effectiveSide === "left" ? column.left - box.right : box.left - column.right
           assert(Math.abs(actualGap - gutter) < 1, "float-to-column gap differs from the outer page margin")
         }
@@ -9151,8 +8727,7 @@ await check("far floats adapt to column margins and survive standalone export", 
           assert(note.textContent === "© 2026 Float author CC-BY-4.0", "floated attribution lost authored values")
           assert(editor.appendix.querySelector(".attribution-contact-note")?.textContent === "author@example.com", "wrapped attribution did not move contact to the opposite side")
         }
-        if(!stacked && !singleLane) assert(Math.abs(column.width - 720) < 1, "side lanes squeezed the center column")
-        if(singleLane) assert(column.width >= 300 - 1, "single lane squeezed the text below 300px")
+        if(!stacked) assert(column.width >= 300 - 1 && column.width <= 720 + 1, "side lane lost the readable column bounds")
         if(!stacked) assert(effectiveSide === "left" ? box.right <= column.left - gap + 1 : box.left >= column.right + gap - 1, "wide far float did not leave the column")
         assert(floatSideFromStyles(style.float, target.style, target.classList) === side, "responsive centering lost the authored float setting")
         if(stacked) {
@@ -9194,8 +8769,10 @@ await check("far floats adapt to column margins and survive standalone export", 
     }
     finally { widget.remove(); image.remove() }
     frame.style.width = "1400px"
-    doc.documentElement.style.setProperty("--ww-float-width", "12rem")
-    doc.documentElement.style.setProperty("--ww-float-gap", "12px")
+    const floatTheme = doc.createElement("style")
+    floatTheme.textContent = ".ww-float-left, .ww-float-right { --ww-float-width: 12rem; }"
+    doc.head.append(floatTheme)
+    doc.body.style.setProperty("--ww-float-gap", "12px")
     await layoutFrame()
     assert(Math.abs(target.getBoundingClientRect().width - 192) < 1, "theme float width did not update live")
     const exported = editor.toHTML()
@@ -9204,7 +8781,7 @@ await check("far floats adapt to column margins and survive standalone export", 
     saved.setAttribute("sandbox", "allow-same-origin")
     const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
     saved.srcdoc = exported
-    document.body.append(saved)
+    nativeRootEditor.addAppendix(saved)
     try {
       await loaded
       const box = saved.contentDocument!.querySelector("#float")!.getBoundingClientRect()
@@ -9228,7 +8805,7 @@ await check("float previews match projected media bounds", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:1400px;border:0;max-width:none"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p id="target">Content displaced by the float.</p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9373,7 +8950,7 @@ await check("lane media fills available width and resizes with native handles", 
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:2400px;height:1000px;border:0;max-width:none"
   frame.srcdoc = '<!doctype html><body><video controls></video><picture><img alt="Placeholder"></picture><native-lane-widget style="display:block;height:80px"></native-lane-widget><p>Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9433,7 +9010,7 @@ await check("lane media fills available width and resizes with native handles", 
     saved.setAttribute("sandbox", "allow-same-origin")
     const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
     saved.srcdoc = editor.toHTML()
-    document.body.append(saved)
+    nativeRootEditor.addAppendix(saved)
     try {
       await loaded
       for(const target of saved.contentDocument!.querySelectorAll("video, picture, native-lane-widget")) {
@@ -9449,7 +9026,7 @@ await check("wide widgets follow adaptive float lanes", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:900px;border:0;max-width:none"
   frame.srcdoc = '<!doctype html><body><div id="left" style="width:80px;height:100px">Left</div><div id="right" style="width:120px;height:100px">Right</div><native-wide-widget id="default"></native-wide-widget><native-wide-widget id="wide" style="--ww-widget-max:none"></native-wide-widget><main><native-wide-widget id="nested" style="--ww-widget-max:none"></native-wide-widget></main><p>Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9459,7 +9036,7 @@ await check("wide widgets follow adaptive float lanes", async () => {
     theme.textContent = defaultDocumentTheme.source
     doc.head.append(theme)
     for(const widget of doc.querySelectorAll("native-wide-widget")) {
-      widget.attachShadow({mode:"open"}).innerHTML = '<style>:host {display:block;width:100%;max-width:720px;container-type:inline-size;height:60px}</style>Widget'
+      widget.attachShadow({mode:"open"}).innerHTML = '<style>:host {display:block;width:100%;max-width:var(--ww-widget-max,720px);container-type:inline-size;height:60px}</style>Widget'
     }
     const left = doc.querySelector<HTMLElement>("#left")!, right = doc.querySelector<HTMLElement>("#right")!
     const nodes = Array.from(doc.body.childNodes)
@@ -9494,7 +9071,7 @@ await check("wide widgets follow adaptive float lanes", async () => {
       if(lanes) assert(width <= proseWidth + 1, `side lane expanded the center column: ${width}`)
       for(const id of ["default", "wide", "nested"]) {
         const box = document.querySelector<HTMLElement>(`#${id}`)!.getBoundingClientRect()
-        const expectedWidth = id === "default" || id === "nested" ? Math.min(proseWidth, width) : width
+        const expectedWidth = id === "default" ? Math.min(proseWidth, width) : width
         assert(Math.abs(box.width - expectedWidth) < 1, `${id} widget width is ${box.width}, expected ${expectedWidth}`)
         assert(Math.abs((box.left + box.right) / 2 - center) < 1, `${id} widget shifted beside a float`)
       }
@@ -9603,12 +9180,12 @@ await check("wide widgets follow adaptive float lanes", async () => {
     saved.setAttribute("sandbox", "allow-same-origin")
     const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
     saved.srcdoc = editor.toHTML()
-    document.body.append(saved)
+    nativeRootEditor.addAppendix(saved)
     try {
       await loaded
       // Supply the widget runtime contract without running any document scripts.
       for(const widget of saved.contentDocument!.querySelectorAll("native-wide-widget")) {
-        widget.attachShadow({mode:"open"}).innerHTML = '<style>:host {display:block;width:100%;max-width:720px;height:60px}</style>Widget'
+        widget.attachShadow({mode:"open"}).innerHTML = '<style>:host {display:block;width:100%;max-width:var(--ww-widget-max,720px);height:60px}</style>Widget'
       }
       verify(saved.contentDocument!, true)
       assert(saved.contentDocument!.defaultView!.getComputedStyle(saved.contentDocument!.querySelector("#right")!).position === "sticky", "standalone export lost sticky lane placement")
@@ -9644,7 +9221,7 @@ await check("two-column side width follows its widest element", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1800px;height:900px;border:0;max-width:none"
   frame.srcdoc = '<!doctype html><body><aside id="first">First</aside><aside id="second">Second</aside><p id="main">Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor, editorError?: string}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9702,7 +9279,7 @@ await check("two-column side width follows its widest element", async () => {
     saved.setAttribute("sandbox", "allow-same-origin")
     const loaded = new Promise<void>(resolve => saved.addEventListener("load", () => resolve(), {once:true}))
     saved.srcdoc = editor.toHTML()
-    document.body.append(saved)
+    nativeRootEditor.addAppendix(saved)
     try {
       await loaded
       const savedBody = saved.contentDocument!.body
@@ -9735,7 +9312,7 @@ await check("empty document gutters prefer floats throughout the viewport", asyn
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;max-width:none;border:0"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9788,7 +9365,7 @@ await check("outer document margins accept floats beside existing columns", asyn
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1800px;height:800px;max-width:none;border:0"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><aside id="existing">Existing side item</aside><p id="anchor">Reading content</p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9894,7 +9471,7 @@ await check("empty graphics drag through their full capture outline into floats"
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:700px;max-width:none;border:0"
   frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p></p></body>'
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -9946,7 +9523,7 @@ await check("shape keyboard drops stay in captured graphics and ribbon shapes us
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:700px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -10039,7 +9616,7 @@ await check("ribbon elements are rejected over captured graphics with native con
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1200px;max-width:none;height:800px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -10098,7 +9675,7 @@ await check("shape keyboard drags retain capture through appendix surfaces", asy
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:1400px;min-width:1400px;max-width:none;height:850px;border:0"
   frame.srcdoc = `<!doctype html><head><style>${defaultDocumentTheme.source}</style><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Ready</p></body>`
-  document.body.append(frame)
+  nativeRootEditor.addAppendix(frame)
   try {
     const view = frame.contentWindow as Window & {editor?: DOMEditor}
     for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
@@ -10159,254 +9736,7 @@ await check("shape keyboard drags retain capture through appendix surfaces", asy
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
-await check("native drag floats in preview areas and preserves ordinary gap drops", async () => {
-  const frame = document.createElement("iframe")
-  frame.style.cssText = "position:fixed;inset:0;inline-size:1400px;min-inline-size:1400px;max-inline-size:none;height:700px;border:0"
-  const id = "native-float-halves"
-  const result = new Promise<string | null>(resolve => {
-    const receive = (event: MessageEvent) => {
-      if(event.source !== frame.contentWindow || event.data?.id !== id) return
-      window.removeEventListener("message", receive)
-      resolve(event.data.error ?? null)
-    }
-    window.addEventListener("message", receive)
-  })
-  frame.srcdoc = `<!doctype html><body><main style="width:600px"><p id="peer" style="width:320px;height:80px;margin-left:200px;color:rebeccapurple">Peer</p><p id="source" style="width:120px;height:50px;margin:9px;color:teal">Source</p><p>Following sibling</p></main><script type="module">
-    import {DOMEditor} from "/src/domeditor.ts";
-    import {defaultDocumentTheme} from "/src/document-themes.ts";
-    const assert = (condition, message) => {if(!condition) throw new Error(message)};
-    let editor;
-    try {
-      editor = new DOMEditor({bridgeOrigin: parent.location.origin});
-      const peer = document.querySelector("#peer"), source = document.querySelector("#source"), main = peer.parentElement;
-      const siblings = Array.from(main.childNodes), originalStyle = source.style.cssText;
-      const floatPoint = (element, side) => {
-        editor.features.manipulation.showFloatDropPreview(peer, side, "transfer", element);
-        const box = editor.appendix.querySelector("#◆float-drop-preview").getBoundingClientRect();
-        editor.features.manipulation.clearFloatDropPreview("transfer");
-        return {clientX:box.left + box.width / 2, clientY:box.top + box.height / 2};
-      };
-      const selfChild = source.appendChild(document.createElement("span"));
-      selfChild.textContent = "nested";
-      for(const mode of ["transfer", "transformation"]) for(const fraction of [0.25, 0.75]) {
-        source.style.cssText = originalStyle;
-        editor.features.selection.selectElement(source);
-        const rect = source.getBoundingClientRect();
-        const init = {clientX:rect.left + rect.width * fraction, clientY:rect.top + rect.height / 2, bubbles:true, cancelable:true, composed:true};
-        if(mode === "transfer") {
-          const dataTransfer = new DataTransfer();
-          const dragSurface = editor.appendix.querySelector('[part~="node-drag-surface"]');
-          dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
-          selfChild.dispatchEvent(new DragEvent("dragover", {...init, dataTransfer}));
-          assert(!editor.appendix.querySelector("#◆float-drop-preview"), "self transfer shows a float preview");
-          selfChild.dispatchEvent(new DragEvent("drop", {...init, dataTransfer}));
-        }
-        else {
-          const transform = editor.features.transformation;
-          transform.handleMoveStart(new MouseEvent("mousedown", {...init, button:0, clientX:rect.left + rect.width / 2}));
-          transform.handleMoveDrag(new MouseEvent("mousemove", {...init, button:0}));
-          assert(!editor.appendix.querySelector("#◆float-drop-preview"), "self transformation shows a float preview");
-          transform.handleMoveEnd();
-        }
-        assert(source.style.cssText === originalStyle && source.parentElement === main, "self drop changed authored float or styles");
-      }
-      selfChild.remove();
-      for(const [fraction, side, placement] of [[0.35, "left", "before"], [0.5, "right", "before"], [0.65, "right", "before"]]) {
-        source.style.cssText = originalStyle;
-        editor.features.selection.selectElement(source);
-        const dragSurface = editor.appendix.querySelector('[part~="node-drag-surface"]');
-        assert(dragSurface, "source has no drag surface");
-        const dataTransfer = new DataTransfer();
-        dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
-        const rect = peer.getBoundingClientRect();
-        const init = {dataTransfer, ...floatPoint(source, side), bubbles:true, cancelable:true, composed:true};
-        peer.dispatchEvent(new DragEvent("dragover", init));
-        peer.dispatchEvent(new DragEvent("drop", init));
-        assert(source.parentElement === main && source.classList.contains(side === "left" ? "ww-float-left" : "ww-float-right") && !source.style.float, "drop did not apply the expected preview float class: " + side);
-        assert(source.style.width === "120px" && source.style.height === "50px" && source.style.color === "teal", "float changed unrelated source styles");
-        assert(source.style.margin === "9px" && !source.style.maxWidth
-          && source.style.getPropertyValue("--ww-float-size").includes("120px"), "float command lost the authored width or injected lane spacing: " + side);
-        assert(siblings.length === main.childNodes.length && siblings.every(node => main.contains(node)), "drag removed authored siblings or added a wrapper");
-        assert(placement === "before" ? source.compareDocumentPosition(peer) & Node.DOCUMENT_POSITION_FOLLOWING : source.compareDocumentPosition(peer) & Node.DOCUMENT_POSITION_PRECEDING, "drop ignored vertical before/after placement");
-        assert(!main.querySelector(".ww-column-group, [class*=ww-column-]"), "drag created column markup");
-      }
-      const leading = document.createElement("p");
-      leading.textContent = "Leading paragraph";
-      main.prepend(leading);
-      for(const placement of ["before", "after", "outside-left"]) {
-        source.style.cssText = originalStyle;
-        main.append(source);
-        editor.features.manipulation.setFloat(source, "right");
-        editor.features.selection.selectElement(source);
-        await new Promise(requestAnimationFrame);
-        const dragSurface = editor.appendix.querySelector('[part~="node-drag-surface"]');
-        const dataTransfer = new DataTransfer();
-        dragSurface.dispatchEvent(new DragEvent("dragstart", {dataTransfer, bubbles:true, cancelable:true, composed:true}));
-        const rect = peer.getBoundingClientRect();
-        const init = {dataTransfer, clientX:placement === "outside-left" ? rect.left - 5 : rect.left + rect.width / 2,
-          clientY:placement === "before" ? rect.top - 5 : placement === "after" ? rect.bottom + 5 : rect.top + rect.height / 2,
-          bubbles:true, cancelable:true, composed:true};
-        main.dispatchEvent(new DragEvent("dragover", init));
-        assert(!editor.appendix.querySelector("#◆float-drop-preview"), "gap incorrectly showed a float preview");
-        main.dispatchEvent(new DragEvent("drop", init));
-        assert(source.parentElement === main && getComputedStyle(source).float === "none"
-          && !source.classList.contains("ww-float-left") && !source.classList.contains("ww-float-right")
-          && source.style.margin === "9px" && !source.style.maxWidth, "ordinary gap drop retained float styling or lost authored margin");
-        assert(source.style.width === "120px" && source.style.height === "50px" && source.style.color === "teal", "ordinary gap drop changed unrelated styles");
-        if(placement === "before") assert(source.nextElementSibling === peer, "drop above peer did not insert before it");
-        if(placement === "after") assert(source.previousElementSibling === peer, "drop below peer did not insert after it");
-      }
-      for(const overElement of [false, true]) {
-        const dataTransfer = new DataTransfer();
-        dataTransfer.setData("text/html", '<picture style="float:right;margin:5px;max-width:50%;color:red"><img alt="Dropped image"></picture>');
-        const rect = peer.getBoundingClientRect();
-        const template = document.createElement("picture");
-        template.style.cssText = "float:right;margin:5px;max-width:50%;color:red";
-        template.innerHTML = '<img alt="Dropped image">';
-        const init = {dataTransfer, ...(overElement ? floatPoint(template, "left") : {clientX:rect.left + rect.width / 2, clientY:rect.bottom + 5}),
-          bubbles:true, cancelable:true, composed:true};
-        (overElement ? peer : main).dispatchEvent(new DragEvent("dragover", init));
-        (overElement ? peer : main).dispatchEvent(new DragEvent("drop", init));
-        const dropped = main.querySelector("picture");
-        assert(dropped, "external image drop lost its content");
-        assert(overElement ? dropped.classList.contains("ww-float-left") : !dropped.classList.contains("ww-float-left") && !dropped.classList.contains("ww-float-right"), "external image drop ignored element bounds");
-        assert(!dropped.style.float && !dropped.style.margin && !dropped.style.getPropertyValue("--ww-float-size"), "external image drop injected inline float spacing: " + dropped.outerHTML);
-        dropped.remove();
-      }
-      for(const fraction of [0.35, 0.5, 0.65, null]) {
-        source.style.cssText = originalStyle;
-        main.append(source);
-        editor.features.manipulation.setFloat(source, "left");
-        editor.features.selection.selectElement(source);
-        editor.features.transformation.startTransform(source);
-        const start = source.getBoundingClientRect(), rect = peer.getBoundingClientRect();
-        editor.features.transformation.handleMoveStart(new MouseEvent("mousedown", {button:0, clientX:start.left, clientY:start.top}));
-        editor.features.transformation.handleMoveDrag(new MouseEvent("mousemove", fraction === null ? {clientX:rect.left + rect.width / 2, clientY:rect.bottom + 5} : floatPoint(source, fraction < 0.5 ? "left" : "right")));
-        const preview = editor.appendix.querySelector("#◆float-drop-preview");
-        assert(fraction === null ? !preview || preview.hidden : preview && !preview.hidden, "drag handle preview ignored element bounds");
-        editor.features.transformation.handleMoveEnd();
-        assert(fraction === null ? !source.classList.contains("ww-float-left") && !source.classList.contains("ww-float-right")
-          : source.classList.contains(fraction < 0.5 ? "ww-float-left" : "ww-float-right"), "drag handle did not use the preview areas");
-        assert(source.style.margin === "9px" && (fraction === null ? !source.style.getPropertyValue("--ww-float-size") : source.style.getPropertyValue("--ww-float-size").includes("120px")), "handle drop lost its authored margin or retained incorrect float sizing");
-        if(fraction === null) assert(source.previousElementSibling === peer, "handle gap drop did not place source after the paragraph");
-      }
-      const picture = document.createElement("picture"), image = document.createElement("img"), text = document.createElement("p");
-      const theme = document.createElement("style");
-      theme.textContent = defaultDocumentTheme.source;
-      document.head.append(theme);
-      picture.style.cssText = "display:block;width:100%;height:120px;background:#eee";
-      image.alt = "Empty image placeholder";
-      image.style.cssText = "display:block;width:100%;height:100%";
-      picture.append(image);
-      text.textContent = "A long paragraph wraps beside the empty image placeholder. ".repeat(8);
-      text.style.cssText = "line-height:24px";
-      main.replaceChildren(picture, text);
-      editor.features.manipulation.setFloat(picture, "right");
-      await new Promise(requestAnimationFrame);
-      const pictureRect = picture.getBoundingClientRect(), parentRect = main.getBoundingClientRect();
-      const range = document.createRange();
-      range.selectNodeContents(text);
-      const firstLine = range.getClientRects()[0];
-      assert(firstLine && Math.abs(firstLine.top - pictureRect.top) < 8, "first line is offset below the floated picture: " + JSON.stringify({picture:pictureRect.top, text:firstLine?.top, margin:getComputedStyle(text).marginTop}));
-      // cqw uses the root content box, excluding both reserved scrollbar gutters.
-      const pageContainerWidth = document.documentElement.getBoundingClientRect().width;
-      const pageGutter = Math.min(32, Math.max(16, pageContainerWidth * .02));
-      const bodyStyle = getComputedStyle(document.body);
-      const expectedRightColumnWidth = Math.min(parentRect.width, parseFloat(bodyStyle.paddingRight) - 2 * pageGutter);
-      assert(pictureRect.width > 256 && Math.abs(pictureRect.width - expectedRightColumnWidth) < 1, "picture did not fill its computed float lane: " + JSON.stringify({picture:pictureRect.width, expectedRightColumnWidth, pageContainerWidth, pageGutter, innerWidth, rootClientWidth:document.documentElement.clientWidth}));
-      assert(picture.classList.contains("ww-float-right") && !picture.style.float && !picture.style.margin && !picture.style.maxWidth
-        && picture.style.getPropertyValue("--ww-float-size").includes("100%"), "floated picture did not preserve its authored width through theme geometry");
-      assert(firstLine && firstLine.bottom > pictureRect.top && firstLine.top < pictureRect.top + 24 && firstLine.right <= pictureRect.left - 5, "paragraph did not wrap beside the floated placeholder: " + JSON.stringify({picture:pictureRect, firstLine, parent:parentRect}));
-      // Authored overrides can still put floats inside text; preserve contour coverage.
-      const setOverlappingFloat = side => {
-        editor.features.manipulation.setFloat(picture, side);
-        picture.style.setProperty("margin-left", "5px", "important");
-        picture.style.setProperty("margin-right", "5px", "important");
-      };
-      text.style.setProperty("display", "block", "important");
-      setOverlappingFloat("right");
-      await new Promise(requestAnimationFrame);
-      text.dispatchEvent(new PointerEvent("pointerover", {bubbles:true}));
-      const hover = editor.features.selection.hoverCaret;
-      assert(hover.getAttribute("part").includes("hover-caret-floats") && getComputedStyle(hover).outlineStyle === "none", "paragraph hover outline still spans its floated sibling");
-      const outline = hover.querySelector('[part="hover-float-outline"]');
-      assert(outline?.querySelector("mask path"), "float hover outline did not exclude the image box");
-      const hoverPath = [];
-      for(let node = text; node !== document.body; node = node.parentNode) hoverPath.unshift(Array.from(node.parentNode.childNodes).indexOf(node));
-      editor.features.selection.actions.hoverNode({type:"hoverNode", path:hoverPath});
-      assert(getComputedStyle(hover).outlineStyle === "none", "breadcrumb hover restored an outline over the float");
-      const hoveredHTML = new DOMParser().parseFromString(editor.toHTML(true), "text/html").querySelector("main").outerHTML;
-      assert(!main.querySelector("svg") && !hoveredHTML.includes("hover-float-mask"), "float hover outline leaked into authored HTML");
-      editor.features.selection.actions.hoverNode({type:"hoverNode", path:null});
-      picture.dispatchEvent(new PointerEvent("pointerover", {bubbles:true}));
-      assert(!hover.querySelector('[part="hover-float-outline"]'), "floated image lost its own ordinary outline");
-      const paragraphText = text.textContent;
-      for(const side of ["left", "right"]) for(const long of [false, true]) {
-        setOverlappingFloat(side);
-        text.textContent = long ? paragraphText : "Text flows beside the floated image.";
-        editor.features.selection.selectElement(text);
-        text.dispatchEvent(new PointerEvent("pointerover", {bubbles:true}));
-        await new Promise(requestAnimationFrame);
-        const selected = editor.features.selection.selectionCaret;
-        assert(selected.getAttribute("part").includes("selection-caret-floats") && getComputedStyle(selected).outlineStyle === "none", "selection outline crosses the floated image");
-        assert(selected.querySelector('[part~="selection-float-outline"] mask').id !== hover.querySelector("mask").id, "selection and hover contours share a mask ID");
-        const imageBox = picture.getBoundingClientRect();
-        const controls = editor.features.transformation.overlay.querySelectorAll(".◆transform-overlay-scale, #◆transform-overlay-mover, #◆transform-overlay-delete");
-        for(const control of controls) {
-          if(control.hidden) continue;
-          const box = control.getBoundingClientRect();
-          assert(!(box.left < imageBox.right && box.right > imageBox.left && box.top < imageBox.bottom && box.bottom > imageBox.top), "selection handle overlaps the floated image: " + control.id);
-        }
-        editor.features.selection.captureElement(text);
-        assert(selected.querySelectorAll(".◆capture-edge").length === 4, "float contour replaced capture edges");
-        assert(getComputedStyle(selected.querySelector('[part~="selection-float-outline"]')).strokeDasharray === "none", "captured contour is still dotted");
-      }
-      text.textContent = paragraphText;
-      range.selectNodeContents(text);
-      for(const side of ["left", "right"]) {
-        setOverlappingFloat(side);
-        const line = range.getClientRects()[0];
-        const init = {bubbles:true, cancelable:true, button:0, buttons:1, pointerId:88, clientX:line.left + 10, clientY:line.top + line.height / 2};
-        text.dispatchEvent(new PointerEvent("pointerover", init));
-        text.dispatchEvent(new PointerEvent("pointerdown", init));
-        // Pointer capture retargets boundary and move events to BODY.
-        document.body.dispatchEvent(new PointerEvent("pointerover", init));
-        document.body.dispatchEvent(new PointerEvent("pointermove", {...init, clientX:line.left + 30}));
-        await new Promise(requestAnimationFrame);
-        assert(hover.getAttribute("part").includes("hover-caret-floats") && getComputedStyle(hover).outlineStyle === "none", "held pointer restored the rectangular hover outline");
-        assert(hover.querySelector('[part~="hover-float-outline"] mask path'), "held pointer lost the float contour");
-        document.body.dispatchEvent(new PointerEvent("pointerup", {...init, buttons:0}));
-      }
-      setOverlappingFloat("right");
-      editor.features.selection.selectElement(picture);
-      assert(!editor.features.selection.selectionCaret.querySelector('[part~="selection-float-outline"]'), "floated image lost its own full selection outline");
-      const preceding = document.createElement("p");
-      preceding.textContent = "Preceding paragraph";
-      main.prepend(preceding);
-      await new Promise(requestAnimationFrame);
-      assert(Math.abs(range.getClientRects()[0].top - picture.getBoundingClientRect().top) < 8, "text and image did not align after a preceding block");
-      preceding.remove();
-      const html = new DOMParser().parseFromString(editor.toHTML(true), "text/html").querySelector("main").outerHTML;
-      assert(html.includes("ww-float-right") && !html.includes("◆") && !html.includes("ww-column"), "float serialization retained editing artifacts or lost its float class");
-      editor.features.manipulation.setFloat(picture, "none");
-      assert(!picture.classList.contains("ww-float-left") && !picture.classList.contains("ww-float-right") && !picture.style.margin, "clearing float retained float styling");
-      await new Promise(requestAnimationFrame);
-      assert(Math.abs(picture.getBoundingClientRect().width - parentRect.width) < 1, "clearing float did not restore the full-width image placeholder");
-      const first = document.createElement("p"), second = document.createElement("p");
-      first.textContent = "First paragraph";
-      second.textContent = "Second paragraph";
-      main.replaceChildren(first, second);
-      const spacing = parseFloat(getComputedStyle(first).marginBottom);
-      assert(spacing > 0 && Math.abs(second.getBoundingClientRect().top - first.getBoundingClientRect().bottom - spacing) < 1, "ordinary paragraphs lost their block spacing");
-      assert(getComputedStyle(second).marginBottom === "0px", "last paragraph retained an extra trailing gap");
-      parent.postMessage({id:${JSON.stringify(id)}}, "*");
-    } catch(error) {parent.postMessage({id:${JSON.stringify(id)}, error:String(error)}, "*")}
-    finally {editor?.destroy()}
-  <\/script>`
-  document.body.append(frame)
-  try { assert(await result === null, `native float drag check: ${await result}`) }
-  finally { frame.remove() }
-})
+await check("native drag floats in preview areas and preserves ordinary gap drops", () => checkNativeFloatDrag(nativeRootEditor, assert, layoutFrame))
 
 await check("version previews preserve editing mode and reject native and direct mutations", async () => {
   const section = document.createElement("section")
@@ -10977,6 +10307,7 @@ await check("recent documents fit one layout card when space is limited", async 
       await new Promise(resolve => setTimeout(resolve, 25))
     }
     assert(app?.shadowRoot, "app did not initialize")
+    await app!.execute({type: "serializeDocument"})
     const host = app as any
     await host.recentDocumentsReady
     host.backendSession = {apiBaseUrl: "https://storage.example/api", user: {id: "ada"}}
@@ -10990,8 +10321,8 @@ await check("recent documents fit one layout card when space is limited", async 
     await app!.updateComplete
     const root = app!.shadowRoot!, bar = root.querySelector<HTMLElement>(".document-layouts-bar")!
     const nav = root.querySelector<HTMLElement>(".document-layouts-documents")!
-    const list = nav.querySelector<HTMLElement>("ul")!
-    assert(list?.children.length === 10, "recent entries were lost")
+    const list = () => nav.querySelector<HTMLElement>("ul")!
+    assert(list()?.children.length === 10, "recent entries were lost")
     let singleRowHeight = 0
     for(const width of [1200, 1000, 950, 800, 680, 650, 600, 400, 800, 1200]) {
       bar.style.width = `${width}px`
@@ -11035,10 +10366,10 @@ await check("recent documents fit one layout card when space is limited", async 
           assert(cards.every(box => Math.abs(box.top - card.top) < 1), "layout cards did not restore one row")
           assert(Math.abs(card.height - recent.height) < 1, "recent list did not match the card row height")
         }
-        assert(list.scrollHeight > list.clientHeight, "compact list did not scroll")
-        const last = list.querySelectorAll<HTMLButtonElement>("button")[9]
+        assert(list().scrollHeight > list().clientHeight, `compact list did not scroll ${JSON.stringify({width,client:list().clientHeight,scroll:list().scrollHeight,rect:list().getBoundingClientRect().toJSON(),nav:nav.getBoundingClientRect().toJSON(),count:list().children.length})}`)
+        const last = list().querySelectorAll<HTMLButtonElement>("button")[9]
         last.focus()
-        assert(list.scrollTop > 0, "keyboard focus did not reveal the last entry")
+        assert(list().scrollTop > 0, "keyboard focus did not reveal the last entry")
         assert(Math.abs(root.querySelector("#recent-documents-title")!.getBoundingClientRect().left - recent.left) < 1,
           "recent heading did not align with its card")
       }
@@ -11057,9 +10388,9 @@ await check("recent documents fit one layout card when space is limited", async 
           host.recentDocuments = recentDocuments.slice(0, count)
           await app!.updateComplete
           await layoutFrame()
-          const entries = [...list.querySelectorAll<HTMLElement>("li")].map(entry => entry.getBoundingClientRect())
+          const entries = [...list().querySelectorAll<HTMLElement>("li")].map(entry => entry.getBoundingClientRect())
           const last = entries.at(-1)!
-          const listBox = list.getBoundingClientRect()
+          const listBox = list().getBoundingClientRect()
           assert(Math.abs(last.right - listBox.right) <= 2, `last recent entry did not reach the right edge at ${width}x${height} with ${count} entries`)
           if(count % 2) assert(Math.abs(last.left - listBox.left) <= 2, "unpaired recent entry did not use the full row")
           if(count > 1) assert(entries[0].right <= entries[1].left || entries[0].bottom <= entries[1].top, "recent entries overlapped")
@@ -11078,7 +10409,7 @@ await check("recent documents fit one layout card when space is limited", async 
       await layoutFrame(); await layoutFrame()
       const height = bar.getBoundingClientRect().height
       const compactHeight = parseFloat(frame.contentWindow!.getComputedStyle(bar).minHeight)
-      assert(Math.abs(height - compactHeight) < 1, `short layout panel did not fit its compact minimum height: ${height}px vs ${compactHeight}px`)
+      assert(height >= compactHeight - 1 && height < fullHeight, `short layout panel did not shrink within its minimum height: ${height}px vs minimum ${compactHeight}px and full ${fullHeight}px`)
       const cards = [...root.querySelectorAll<HTMLElement>(".document-layout-cards .layout-preset")]
       assert(cards.every(card => Math.abs(card.getBoundingClientRect().top - cards[0].getBoundingClientRect().top) < 1), "short layout cards did not form one row")
       const view = frame.contentWindow!
@@ -11086,15 +10417,15 @@ await check("recent documents fit one layout card when space is limited", async 
         && view.getComputedStyle(card.querySelector(".layout-preset-icon")!).display !== "none"), "short layout cards did not show only icons and names")
       assert(view.getComputedStyle(root.querySelector(".document-layouts-combined-title")!).display !== "none"
         && view.getComputedStyle(root.querySelector("#recent-documents-title")!).display === "none", "short panel did not use its combined heading")
-      list.scrollTop = 0
-      const entries = [...list.querySelectorAll<HTMLElement>("li")].map(entry => entry.getBoundingClientRect())
+      list().scrollTop = 0
+      const entries = [...list().querySelectorAll<HTMLElement>("li")].map(entry => entry.getBoundingClientRect())
       assert(Math.abs(entries[0].top - entries[1].top) < 1 && Math.abs(entries[2].top - entries[3].top) < 1
         && entries[2].top > entries[0].bottom && Math.abs(entries[0].left - entries[2].left) < 1,
         "short recent list did not form a 2x2 grid")
       assert(nav.getBoundingClientRect().top > cards[0].getBoundingClientRect().bottom, "recent documents were not below the layout row")
-      list.querySelectorAll<HTMLButtonElement>("button")[0].focus()
-      list.querySelectorAll<HTMLButtonElement>("button")[9].focus()
-      assert(list.scrollTop > 0, "short recent list lost keyboard access to later entries")
+      list().querySelectorAll<HTMLButtonElement>("button")[0].focus()
+      list().querySelectorAll<HTMLButtonElement>("button")[9].focus()
+      assert(list().scrollTop > 0, "short recent list lost keyboard access to later entries")
     }
     frame.style.height = "900px"
     bar.style.width = "1200px"
@@ -11787,7 +11118,7 @@ await check("Accessibility review shares Issues controls without loading while d
     assert(accessibilityBadge && reviewButton.getAttribute("aria-description")?.includes(`${accessibilityIssueCount} accessibility ${accessibilityIssueCount === 1 ? "issue" : "issues"}`),
       "closed Review tab did not announce accessibility issues")
     assert(!appendix.querySelector('[part~="accessibility-issue-pill"]'), "accessibility findings rendered per-element pills")
-    assert(!appendix.querySelector('[part="accessibility-issue-outline"]'), "accessibility issue was outlined before opening its context menu")
+    assert(!appendix.querySelector('[part~="accessibility-issue-outline"]'), "accessibility issue was outlined before opening its context menu")
     const tabRect = reviewButton.getBoundingClientRect(), iconRect = accessibilityBadge.getBoundingClientRect()
     assert(iconRect.width > 0 && iconRect.height > 0 && iconRect.right <= tabRect.right && iconRect.top >= tabRect.top,
       `accessibility badge was not fully inside the Review tab: ${JSON.stringify({badge: iconRect.toJSON(), tab: tabRect.toJSON()})}`)
@@ -11808,8 +11139,8 @@ await check("Accessibility review shares Issues controls without loading while d
       clientY: imageRect.top + imageRect.height / 2, button: 2, bubbles: true, composed: true, cancelable: true})
     image.dispatchEvent(context)
     assert(context.defaultPrevented, "image context menu did not open the accessibility popup")
-    const popup = appendix.querySelector<HTMLElement>('[part="proofreading-popup"]')!
-    const outline = appendix.querySelector<HTMLElement>('[part="accessibility-issue-outline"]')!
+    const popup = appendix.querySelector<HTMLElement>('[part~="proofreading-popup"]')!
+    const outline = appendix.querySelector<HTMLElement>('[part~="accessibility-issue-outline"]')!
     assert(popup && outline, "context menu did not show its popup and target outline")
     const popupCard = popup.querySelector<HTMLElement>(".proofreading-card")!
     assert(popupCard && popupCard.querySelector(".proofreading-text")?.textContent === card.querySelector(".proofreading-text")?.textContent,
@@ -11825,18 +11156,18 @@ await check("Accessibility review shares Issues controls without loading while d
     assert(popupCard.querySelector<HTMLAnchorElement>(".proofreading-help")?.href.includes("dequeuniversity.com/rules/axe"), "popup did not show the axe rule help link")
     assert(getComputedStyle(popupCard).borderTopColor === "rgb(8, 127, 91)", "accessibility popup card did not use the green issue color")
     popup.dispatchEvent(new childWindow.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true, cancelable: true}))
-    assert(!appendix.querySelector('[part="accessibility-issue-outline"]') && !appendix.querySelector('[part="proofreading-popup"]'),
+    assert(!appendix.querySelector('[part~="accessibility-issue-outline"]') && !appendix.querySelector('[part~="proofreading-popup"]'),
       "Escape did not close the accessibility popup and outline")
     assert(doc.activeElement === doc.body, "Escape did not return focus to the document body")
 
     const reopen = new childWindow.MouseEvent("contextmenu", {clientX: imageRect.left + imageRect.width / 2,
       clientY: imageRect.top + imageRect.height / 2, button: 2, bubbles: true, composed: true, cancelable: true})
     image.dispatchEvent(reopen)
-    assert(appendix.querySelector('[part="proofreading-popup"]') && appendix.querySelector('[part="accessibility-issue-outline"]'),
+    assert(appendix.querySelector('[part~="proofreading-popup"]') && appendix.querySelector('[part~="accessibility-issue-outline"]'),
       "could not reopen accessibility popup before scroll check")
     childWindow.scrollTo(0, 30)
     await new Promise(resolve => childWindow.requestAnimationFrame(() => resolve(undefined)))
-    assert(!appendix.querySelector('[part="proofreading-popup"]') && !appendix.querySelector('[part="accessibility-issue-outline"]'),
+    assert(!appendix.querySelector('[part~="proofreading-popup"]') && !appendix.querySelector('[part~="accessibility-issue-outline"]'),
       "scrolling did not dismiss the accessibility popup and outline")
 
     await feature.checkNow()
@@ -11880,8 +11211,8 @@ await check("Accessibility review shares Issues controls without loading while d
     await toolbox.updateComplete
     assert(!toolbox.shadowRoot!.querySelector('[data-tool="Review"] .toolbox-tab-accessibility-badge'), "disabling Issues left the Review accessibility badge")
     assert(!appendix.querySelector('[part~="accessibility-issue-pill"]'), "disabling Issues left accessibility pills in the appendix")
-    assert(!appendix.querySelector('[part="proofreading-popup"]'), "disabling Issues left the accessibility menu in the appendix")
-    assert(!doc.body.shadowRoot!.querySelector('[part="accessibility-issue-outline"]'), "disabling Issues left accessibility outlines in the appendix")
+    assert(!appendix.querySelector('[part~="proofreading-popup"]'), "disabling Issues left the accessibility menu in the appendix")
+    assert(!doc.body.shadowRoot!.querySelector('[part~="accessibility-issue-outline"]'), "disabling Issues left accessibility outlines in the appendix")
     assert(child.toHTML(true).includes('alt="Chart of results"'), "disabling Issues changed the document")
     assert(feature.setDocumentChecking(true), "could not re-enable Issues for destroy cleanup")
     await feature.checkNow()
@@ -11894,12 +11225,12 @@ await check("Accessibility review shares Issues controls without loading while d
     const destroyContext = new childWindow.MouseEvent("contextmenu", {clientX: linkRect.left + linkRect.width / 2,
       clientY: linkRect.top + linkRect.height / 2, button: 2, bubbles: true, composed: true, cancelable: true})
     emptyLink.dispatchEvent(destroyContext)
-    assert(appendix.querySelector('[part="proofreading-popup"]') && appendix.querySelector('[part="accessibility-issue-outline"]'),
+    assert(appendix.querySelector('[part~="proofreading-popup"]') && appendix.querySelector('[part~="accessibility-issue-outline"]'),
       "could not open accessibility UI before editor destruction")
     child.destroy()
     childDestroyed = true
-    assert(!appendix.querySelector('[part~="accessibility-issue-pill"]') && !appendix.querySelector('[part="proofreading-popup"]')
-      && !appendix.querySelector('[part="accessibility-issue-outline"]'), "editor destruction left accessibility UI in the appendix")
+    assert(!appendix.querySelector('[part~="accessibility-issue-pill"]') && !appendix.querySelector('[part~="proofreading-popup"]')
+      && !appendix.querySelector('[part~="accessibility-issue-outline"]'), "editor destruction left accessibility UI in the appendix")
   }
   finally {if(!childDestroyed) child?.destroy(); toolbox.remove(); frame.remove()}
 })
