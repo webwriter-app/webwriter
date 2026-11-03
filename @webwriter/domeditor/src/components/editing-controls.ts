@@ -9,7 +9,7 @@ import type {RibbonButton} from "./ribbon-button"
 import type {RibbonCombobox} from "./ribbon-combobox"
 import type {ElementStyleEditor} from "./element-style-editor"
 import {repeat} from "lit/directives/repeat.js"
-import {appCommands, defaultAppSettings, formatShortcut, getShortcutLayout, effectiveShortcutLayout, type ShortcutLayout, type AppSettings} from "../app-settings"
+import {appCommands, defaultAppSettings, formatShortcut, getShortcutLayout, effectiveShortcutLayout, isDefaultHistoryShortcut, type ShortcutLayout, type AppSettings} from "../app-settings"
 import {dialogClosedByValues, type DialogSelectionState} from "../dialog"
 import {
   emptyVersionHistoryState,
@@ -2767,7 +2767,10 @@ export abstract class EditingControls extends LitElement {
       ?? (action.startsWith("element:")
         ? appCommands.find(candidate => candidate.action === getElementPresentation(action.slice("element:".length)).name)
         : undefined)
-    return command ? formatShortcut(this.settings.shortcuts[command.id] ?? "", undefined, effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)) : ""
+    if(!command) return ""
+    const shortcut = this.settings.shortcuts[command.id] ?? ""
+    const layout = isDefaultHistoryShortcut(command.id, shortcut) ? undefined : effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)
+    return formatShortcut(shortcut, undefined, layout)
   }
 
   protected renderElementStyleDrawer(category: ElementStyleCategory) {

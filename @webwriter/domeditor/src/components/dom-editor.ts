@@ -241,6 +241,7 @@ import type {
 import {
   appCommands,
   builtinShortcuts,
+  commandForShortcutEvent,
   loadAppSettings,
   loadDocumentSettings,
   persistDocumentSettings,
@@ -3421,7 +3422,7 @@ export class DomEditor extends LitElement {
       && event.altKey && !event.ctrlKey && !event.metaKey) return
     const shortcut = shortcutFromEvent(event)
     if(!shortcut) return
-    const command = appCommands.find(candidate => this.settings.shortcuts[candidate.id] === shortcut)
+    const command = commandForShortcutEvent(this.settings.shortcuts, event)
     if(!command && !builtinShortcuts().has(shortcut)) return
     // Printing belongs to the document regardless of which UI control has focus.
     if(command?.id !== "document.print") {

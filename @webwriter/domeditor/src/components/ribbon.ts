@@ -3596,6 +3596,11 @@ export class AppRibbon extends EditingControls {
     ]
   }
 
+  private shortcutTitle(label: string, action = label) {
+    const shortcut = this.commandShortcut(action)
+    return shortcut ? `${label} (${shortcut})` : label
+  }
+
   render() {
     const visibleTabs = this.previewActive ? ["File"] : menuTabs
     const aiReviewPending = Boolean(this.pendingAIEdit)
@@ -3645,6 +3650,7 @@ export class AppRibbon extends EditingControls {
                       class="file-quick-action file-save-action"
                       label="Save"
                       action="Save"
+                      shortcut=${this.commandShortcut("Save")}
                       compact
                       ?disabled=${this.previewActive || historyPreviewPending}
                     ></ribbon-button>
@@ -3693,7 +3699,7 @@ export class AppRibbon extends EditingControls {
                   class="history-button"
                   type="button"
                   aria-label="Undo"
-                  title="Undo"
+                  title=${this.shortcutTitle("Undo")}
                   ?disabled=${!this.undoState.canUndo || aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Undo")}
                 >
@@ -3703,7 +3709,7 @@ export class AppRibbon extends EditingControls {
                   class="history-button"
                   type="button"
                   aria-label="Redo"
-                  title="Redo"
+                  title=${this.shortcutTitle("Redo")}
                   ?disabled=${!this.undoState.canRedo || aiReviewPending || historyPreviewPending}
                   @click=${() => this.handleTopButtonClick("Redo")}
                 >
@@ -3716,7 +3722,7 @@ export class AppRibbon extends EditingControls {
               type="button"
               ?active=${this.previewActive}
               aria-label=${this.previewActive ? "Exit preview" : "Preview"}
-              title=${this.previewActive ? "Exit preview" : "Preview"}
+              title=${this.shortcutTitle(this.previewActive ? "Exit preview" : "Preview", "Preview")}
               aria-pressed=${this.previewActive}
               aria-description=${this.recoveredReplay ? "A recovered session recording is available" : nothing}
               ?disabled=${aiReviewPending || historyPreviewPending}

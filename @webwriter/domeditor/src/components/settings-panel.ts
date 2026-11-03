@@ -6,6 +6,8 @@ import {
   defaultAppSettings,
   getShortcutLayout,
   effectiveShortcutLayout,
+  isDefaultHistoryShortcut,
+  physicalShortcutForCommand,
   type KeyboardLayoutPreference,
   type ShortcutLayout,
   reservedShortcutReason,
@@ -716,12 +718,14 @@ export class SettingsPanel extends LitElement {
       return
     }
 
-    const previous = this.settings.shortcuts[commandId] ?? ""
+    const layout = effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)
+    const previous = physicalShortcutForCommand(commandId, this.settings.shortcuts[commandId] ?? "", layout)
     const conflict = appCommands.find(command => (
-      command.id !== commandId && this.settings.shortcuts[command.id] === shortcut
+      command.id !== commandId && physicalShortcutForCommand(command.id, this.settings.shortcuts[command.id] ?? "", layout) === shortcut
     ))
-    const shortcuts = {...this.settings.shortcuts, [commandId]: shortcut}
-    if(conflict) shortcuts[conflict.id] = previous
+    const asRecorded = (id: string, value: string) => isDefaultHistoryShortcut(id, value) ? `Physical:${value}` : value
+    const shortcuts = {...this.settings.shortcuts, [commandId]: asRecorded(commandId, shortcut)}
+    if(conflict) shortcuts[conflict.id] = asRecorded(conflict.id, previous)
     this.emitSettings({...this.settings, shortcuts})
     this.recordingCommandId = ""
     this.error = ""
@@ -747,8 +751,9 @@ export class SettingsPanel extends LitElement {
       return html`<span class="shortcut-recording">Press shortcut…</span>`
     }
     const shortcut = this.settings.shortcuts[commandId] ?? ""
+    const layout = isDefaultHistoryShortcut(commandId, shortcut) ? undefined : effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)
     return shortcut
-      ? shortcutParts(shortcut, undefined, effectiveShortcutLayout(this.settings.keyboardLayout, this.shortcutLayout)).map(part => html`<kbd>${part}</kbd>`)
+      ? shortcutParts(shortcut, undefined, layout).map(part => html`<kbd>${part}</kbd>`)
       : html`<span class="shortcut-empty">Not set</span>`
   }
 

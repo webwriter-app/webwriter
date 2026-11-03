@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {afterEach, describe, expect, it, vi} from "vitest"
-import {APP_SETTINGS_STORAGE_KEY, builtinShortcuts, defaultAppSettings, loadAppSettings, persistAppSettings, reservedShortcutReason, formatShortcut, shortcutParts, shortcutFromEvent, getShortcutLayout, effectiveShortcutLayout} from "./app-settings"
+import {APP_SETTINGS_STORAGE_KEY, builtinShortcuts, defaultAppSettings, loadAppSettings, persistAppSettings, reservedShortcutReason, formatShortcut, shortcutParts, shortcutFromEvent, getShortcutLayout, effectiveShortcutLayout, commandForShortcutEvent, physicalShortcutForCommand} from "./app-settings"
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -185,5 +185,30 @@ describe("additional keyboard layouts", () => {
   ("uses a language fallback for %s", (language, key, label) => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue([language])
     expect(formatShortcut(`Alt+${key}`, false, effectiveShortcutLayout("auto"))).toBe(`Alt+${label}`)
+  })
+})
+
+
+describe("standard history shortcuts", () => {
+  it.each([true, false])("uses the letter on QWERTZ for undo and redo (Apple: %s)", apple => {
+    const settings = defaultAppSettings(apple)
+    const event = (key: string, code: string, shiftKey = false) => new KeyboardEvent("keydown", {
+      key, code, shiftKey, metaKey: apple, ctrlKey: !apple,
+    })
+    expect(commandForShortcutEvent(settings.shortcuts, event("z", "KeyY"), apple)?.id).toBe("editor.undo")
+    expect(commandForShortcutEvent(settings.shortcuts, apple ? event("Z", "KeyY", true) : event("y", "KeyZ"), apple)?.id).toBe("editor.redo")
+    const layout = effectiveShortcutLayout("qwertz")
+    expect(physicalShortcutForCommand("editor.undo", settings.shortcuts["editor.undo"], layout, apple)).toBe(`${apple ? "Meta" : "Ctrl"}+Y`)
+  })
+
+  it("retains physical matching for recorded history bindings", () => {
+    const settings = defaultAppSettings(false)
+    settings.shortcuts["editor.undo"] = "Physical:Ctrl+Z"
+    const germanY = new KeyboardEvent("keydown", {key: "y", code: "KeyZ", ctrlKey: true})
+    expect(commandForShortcutEvent(settings.shortcuts, germanY, false)?.id).toBe("editor.undo")
+    expect(formatShortcut(settings.shortcuts["editor.undo"], false, effectiveShortcutLayout("qwertz"))).toBe("Ctrl+Y")
+    settings.shortcuts["editor.undo"] = ""
+    settings.shortcuts["editor.redo"] = ""
+    expect(commandForShortcutEvent(settings.shortcuts, germanY, false)).toBeUndefined()
   })
 })
