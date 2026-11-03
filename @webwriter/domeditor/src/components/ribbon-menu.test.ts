@@ -46,6 +46,25 @@ async function open(menu: RibbonMenu, label: string) {
 }
 
 describe("nested ribbon menus", () => {
+  it.each(["shapes", "media"])("keeps a closed %s gallery menu hidden", async kind => {
+    const shapes = graphicShapeOptions.map(shape => ({label: shape.label, category: shape.category, path: shape.path}))
+    const menu = new RibbonMenu()
+    menu.variant = "button"
+    menu.hidden = true
+    menu.groups = [{label: "Options", buttons: kind === "shapes" ? shapes : [
+      {label: "Image"}, {label: "Graphic", submenu: shapes},
+    ]}]
+    document.body.append(menu)
+    await menu.updateComplete
+
+    expect(menu.gallery).toBe(true)
+    expect(getComputedStyle(menu).display).toBe("none")
+    menu.hidden = false
+    expect(getComputedStyle(menu).display).toBe("flex")
+    menu.hidden = true
+    expect(getComputedStyle(menu).display).toBe("none")
+  })
+
   it("lets button galleries shrink to their anchor area while nested galleries use the viewport", async () => {
     const buttons=graphicShapeOptions.map(shape=>({label:shape.label,category:shape.category,path:shape.path}))
     const menu=new RibbonMenu()

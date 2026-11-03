@@ -76,10 +76,6 @@ export class RibbonMenu extends LitElement {
     .remove, .label-confirm { flex: 0 0 1.5rem; width: 1.5rem; padding: 0.2rem; }
     .submenu-header { position: sticky; top: -0.35rem; background: white; z-index: 2; padding-bottom: 0.35rem; }
 
-    :host([hidden]) {
-      display: none;
-    }
-
     :host([variant="button"]) {
       position: fixed;
       top: auto;
@@ -437,6 +433,10 @@ export class RibbonMenu extends LitElement {
     :host([gallery]) {
       display: flex;
       flex-direction: column;
+    }
+
+    :host([hidden]) {
+      display: none;
     }
 
     :host([gallery]) .menu {
