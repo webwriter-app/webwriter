@@ -3473,26 +3473,6 @@ export class GraphicFeature extends EditorFeature {
       height: `${rect.height}px`,
       transform: "",
     })
-    // Keep the SVG viewport at its untransformed size. A rotated bounding
-    // rectangle would enlarge the preview and lose the graphic's orientation.
-    try {
-      const ctm = graphic.getCTM?.()
-      if(ctm && graphic.clientWidth > 0 && graphic.clientHeight > 0) {
-        // getCTM omits the root's native pan/zoom, which the preview copies below.
-        const local = new DOMMatrix().translate(viewport.x, viewport.y).scale(viewport.scale).multiply(ctm)
-        const matrix = DOMMatrix.fromMatrix(this.#screenMatrix(graphic)).multiply(local.inverse())
-        if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
-          Object.assign(preview.style, {
-            left: `${fixedClientX(0)}px`, top: "0",
-            width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
-            transformOrigin: "0 0", transform: matrix.toString(),
-          })
-        }
-      }
-    }
-    catch {
-      // Detached/test SVGs may not expose an invertible viewport transform.
-    }
     try {
       preview.currentScale = viewport.scale
       const translate = preview.currentTranslate as unknown as {x: number, y: number}
@@ -3503,6 +3483,59 @@ export class GraphicFeature extends EditorFeature {
     }
     catch {
       // Preview navigation is a progressive enhancement in DOM shims.
+    }
+    const positionFromSource = () => {
+      const ctm = graphic.getCTM?.()
+      if(!ctm || !(graphic.clientWidth > 0 && graphic.clientHeight > 0)) return
+      // getCTM omits the root's native pan/zoom, which the preview copies above.
+      const local = new DOMMatrix().translate(viewport.x, viewport.y).scale(viewport.scale).multiply(ctm)
+      const matrix = DOMMatrix.fromMatrix(this.#screenMatrix(graphic)).multiply(local.inverse())
+      if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
+        Object.assign(preview.style, {
+          left: `${fixedClientX(0)}px`, top: "0",
+          width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
+          transformOrigin: "0 0", transform: matrix.toString(),
+        })
+      }
+    }
+    // Keep the SVG viewport at its untransformed size. A rotated bounding
+    // rectangle would enlarge the preview and lose the graphic's orientation.
+    try {
+      if(preview.isConnected && graphic.clientWidth > 0 && graphic.clientHeight > 0) {
+        Object.assign(preview.style, {
+          left: `${fixedClientX(0)}px`, top: "0",
+          width: `${graphic.clientWidth}px`, height: `${graphic.clientHeight}px`,
+          transformOrigin: "0 0", transformBox: "border-box",
+        })
+        const local = preview.getCTM?.(), screen = preview.getScreenCTM?.()
+        if(local && screen) {
+          // Derive the fixed appendix's live screen origin from the preview
+          // itself, then map its SVG viewport onto the source's current CTM.
+          const localInverse = DOMMatrix.fromMatrix(local).inverse()
+          const fixedToScreen = DOMMatrix.fromMatrix(screen).multiply(localInverse)
+          const target = DOMMatrix.fromMatrix(this.#screenMatrix(graphic))
+          const matrix = fixedToScreen.inverse()
+            .multiply(target)
+            .multiply(localInverse)
+          if([matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f].every(Number.isFinite)) {
+            preview.style.transform = matrix.toString()
+            const actual = preview.getScreenCTM?.()
+            if(actual) {
+              // Correct SVG root viewport-origin offsets in fixed CSS space.
+              const appendixFromScreen = fixedToScreen.inverse()
+              const dx = target.e - actual.e, dy = target.f - actual.f
+              matrix.e += (appendixFromScreen.a * dx + appendixFromScreen.c * dy) * viewport.scale
+              matrix.f += (appendixFromScreen.b * dx + appendixFromScreen.d * dy) * viewport.scale
+              preview.style.transform = matrix.toString()
+            }
+          }
+        }
+        else positionFromSource()
+      }
+      else positionFromSource()
+    }
+    catch {
+      // Detached/test SVGs may not expose an invertible viewport transform.
     }
     if(this.#presentedGraphic === graphic) this.#updateOverflowPresentation(graphic)
   }

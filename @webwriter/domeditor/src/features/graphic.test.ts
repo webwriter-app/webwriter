@@ -3427,6 +3427,14 @@ describe("graphic editing", () => {
     }))
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     const preview = editor.appendix.querySelector<SVGSVGElement>(".◆graphic-preview")!
+    const previewLocal = viewport.multiply(local)
+    Object.defineProperties(preview, {
+      getCTM: {value: () => previewLocal},
+      getScreenCTM: {value: () => DOMMatrix.fromMatrix(
+        preview.style.transform ? new DOMMatrix(preview.style.transform) : new DOMMatrix(),
+      ).multiply(previewLocal)},
+    })
+    editor.features.graphic.refresh()
     expect(preview.querySelector("rect")).toHaveAttribute("transform", "rotate(90 800 450)")
     expect(preview.style.width).toBe("800px")
     expect(preview.style.height).toBe("450px")
