@@ -711,7 +711,7 @@ export class SelectionFeature extends EditorFeature {
 
   #navigateContainerGap(direction: "backward" | "forward", vertical: boolean) {
     const selected = $.selectedElement
-    if(selected?.matches("ul, ol, dl, menu, details")) {
+    if(selected && (selected.matches("ul, ol, dl, menu, details, table") || isContentfulWidget(selected, this.editor.schema))) {
       $.selectGap(selected, direction === "backward" ? "before" : "after")
       this.processSelection()
       return true
@@ -719,16 +719,15 @@ export class SelectionFeature extends EditorFeature {
     if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
     let widget = isElement($.anchor) ? $.anchor : $.anchor.parentElement
     while(widget && !isContentfulWidget(widget, this.editor.schema)) widget = widget.parentElement
-    if(widget && !this.editor.schema.get(widget).inseperable
-      && isContentfulWidget(widget.parentElement, this.editor.schema)
+    if(widget && (!this.editor.schema.get(widget).inseperable || !isContentfulWidget(widget.parentElement, this.editor.schema))
       && this.#atDisclosureEdge(widget, direction, vertical)) {
       $.selectGap(widget, direction === "backward" ? "before" : "after")
       this.processSelection()
       return true
     }
     const adjacent = this.#adjacentNavigationElement(direction)
-    if($.listGap || $.detailsGap) {
-      const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details")
+    if($.listGap || $.detailsGap || $.captionedGap?.element.matches("table") || $.blockGap && isContentfulWidget($.blockGap.element, this.editor.schema)) {
+      const outer = getContainer($.anchor).closest("ul, ol, dl, menu, details, table")
       if(outer && (!outer.matches("details") || outer.hasAttribute("open")) && this.#atDisclosureEdge(outer, direction, false)) {
         $.selectGap(outer, direction === "backward" ? "before" : "after")
         this.processSelection()
@@ -741,7 +740,7 @@ export class SelectionFeature extends EditorFeature {
       else $.move(edge, direction === "forward" ? 0 : -1)
     }
     else {
-      const container = getContainer($.anchor).closest("ul, ol, dl, menu, details")
+      const container = getContainer($.anchor).closest("ul, ol, dl, menu, details, table")
       const scope = container?.matches("details:not([open])") ? container.querySelector(":scope > summary") : container
       if(container && scope && this.#atDisclosureEdge(scope, direction, vertical)) {
         $.selectGap(container, direction === "backward" ? "before" : "after")
@@ -750,10 +749,38 @@ export class SelectionFeature extends EditorFeature {
         const block = this.#selectionBlock()
         const neighbor = adjacent ?? (block && this.#atDisclosureEdge(block, direction, vertical)
           ? this.#adjacentNavigationElement(direction, true) : null)
-        if(!neighbor?.matches("ul, ol, dl, menu, details")) return false
+        if(!neighbor || !(neighbor.matches("ul, ol, dl, menu, details, table") || isContentfulWidget(neighbor, this.editor.schema))) return false
         $.selectGap(neighbor, direction === "forward" ? "before" : "after")
       }
     }
+    this.processSelection()
+    return true
+  }
+
+  /** Expose block edges to vertical navigation without manufacturing DOM
+   * nodes. The browser retains line navigation until the first or last line. */
+  #navigateBlockGap(direction: "backward" | "forward") {
+    if(!$.isEmpty || !$.anchor || !getDocumentRoot().contains($.anchor)) return false
+    if($.isGapSelection) {
+      if(direction === "backward") return false
+      const adjacent = this.#adjacentNavigationElement(direction)
+      if(!adjacent || isAtomicEditingElement(adjacent, this.editor.schema)) return false
+      const edge = this.#disclosureEdge(adjacent, direction === "forward" ? "backward" : "forward")
+      if(!edge) return false
+      $.move(edge, direction === "forward" ? 0 : -1)
+      this.processSelection()
+      return true
+    }
+    let block = this.#selectionBlock()
+    if(!block) {
+      let element = isElement($.anchor) ? $.anchor : $.anchor.parentElement
+      while(element && element !== getDocumentRoot() && !isSectionElement(element)) element = element.parentElement
+      if(element !== getDocumentRoot()) block = element
+    }
+    if(!block || !block.parentElement || block.parentElement.matches("table, thead, tbody, tfoot, tr, colgroup")
+      || block.closest("ul, ol, dl, menu, details, figure")
+      || !this.#atDisclosureEdge(block, direction, true)) return false
+    $.selectGap(block, direction === "backward" ? "before" : "after")
     this.processSelection()
     return true
   }
@@ -2675,7 +2702,7 @@ export class SelectionFeature extends EditorFeature {
           && sel.anchorNode.matches("li, dt, dd")
           && isElement(children.item(i))
           && (children.item(i) as Element).matches("ul, ol, dl, menu")
-        const structuralGap = $.mathBoundary ?? $.listGap ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap ?? $.captionedGap
+        const structuralGap = $.mathBoundary ?? $.listGap ?? $.detailsGap ?? $.dividerGap ?? $.styledParagraphGap ?? $.captionedGap ?? $.blockGap
         const placement = structuralGap?.placement ?? (!before || nestedListAfter ? "before": "after")
         const element = structuralGap?.element ?? (placement === "after" ? before : after)
         if(!element) {
@@ -2853,6 +2880,7 @@ export class SelectionFeature extends EditorFeature {
           || this.#navigateMathBoundary(direction)
           || this.#navigateContainerGap(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
           || this.#navigateAtomicSelection(direction, ev.key === "ArrowUp" || ev.key === "ArrowDown")
+          || (ev.key === "ArrowUp" || ev.key === "ArrowDown") && this.#navigateBlockGap(direction)
           || ev.key === "ArrowUp" && this.#navigateTextFromGap())) {
         ev.preventDefault()
       }

@@ -6747,6 +6747,124 @@ describe("selection invariants", () => {
   })
 })
 
+describe("block and contentful widget gaps", () => {
+  const press = (key: string) => {
+    const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true})
+    document.dispatchEvent(event)
+    return event
+  }
+
+  it.each(["table", "content-widget", "blockquote", "h2"])("navigates above and below a %s", tag => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "flow*"}}])
+    const content = tag === "table" ? '<tbody><tr><td><b>First</b></td><td>Last</td></tr></tbody>' : '<b>First</b> Last'
+    document.body.innerHTML = `<section>Before<!--keep--><${tag}>${content}</${tag}><!--keep-->After</section>`
+    const element = document.querySelector(tag)!
+    if(tag === "content-widget") editor.features.widget.refresh()
+    const first = element.querySelector("b")!.firstChild!, last = tag === "table" ? element.querySelectorAll("td")[1].firstChild! : element.lastChild!
+    for(const [key, text, offset, placement] of [["ArrowUp", first, 0, "before"], ["ArrowDown", last, -1, "after"]] as const) {
+      $.move(text, offset)
+      expect(press(key).defaultPrevented).toBe(true)
+      expect($.anchor).toBe(element.parentNode)
+      expect($.isGapSelection).toBe(true)
+      expect(element).toHaveClass(`◆gap-${placement}-selected`)
+      expect(feature.selectionCaret?.getAttribute("part")).toContain("gap-caret")
+    }
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it.each(["before", "after"] as const)("resolves a mouse hit %s an uncaptioned table", placement => {
+    document.body.innerHTML = '<section>Before<!--keep--><table><tbody><tr><td>Cell</td></tr></tbody></table><!--keep-->After</section>'
+    const table = document.querySelector("table")!, text = table.querySelector("td")!.firstChild!
+    vi.spyOn(table, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 100, 200, 100))
+    const caret = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    const elements = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: text, offset: placement === "before" ? 0 : 4})})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.querySelector("section")!]})
+    try {
+      const point = $.pointFromCoords(50, placement === "before" ? 90 : 210, document.querySelector("section"), editor.schema)
+      expect(point).toMatchObject({node: table.parentNode, offset: placement === "before" ? 2 : 3, overrideNative: true})
+      $.selectRange(point!.node, point!.offset)
+      feature.processSelection()
+      expect($.isGapSelection).toBe(true)
+      expect(table).toHaveClass(`◆gap-${placement}-selected`)
+    }
+    finally {
+      if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      if(elements) Object.defineProperty(document, "elementsFromPoint", elements)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it("types after a final table and supports undo and redo", async () => {
+    document.body.innerHTML = '<table><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const table = document.querySelector("table")!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(table.querySelector("td")!.firstChild!, -1)
+    expect(press("ArrowDown").defaultPrevented).toBe(true)
+    expect($.anchor).toBe(document.body)
+    expect($.anchorOffset).toBe(1)
+    document.body.dispatchEvent(new InputEvent("beforeinput", {inputType: "insertText", data: "After", bubbles: true, cancelable: true}))
+    expect(table.nextElementSibling?.textContent).toBe("After")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(sharedDOMBody(editor.doc.doc).toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(document.body.textContent).toBe("Cell")
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(document.body.textContent).toBe("CellAfter")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("uses the final table boundary when native hit testing returns the preceding paragraph", () => {
+    document.body.innerHTML = '<p>Before</p><!--keep--><table><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const paragraph = document.querySelector("p")!, table = document.querySelector("table")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 20, 200, 20))
+    vi.spyOn(table, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 80, 200, 100))
+    const caret = Object.getOwnPropertyDescriptor(document, "caretPositionFromPoint")
+    const elements = Object.getOwnPropertyDescriptor(document, "elementsFromPoint")
+    Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => ({offsetNode: paragraph.firstChild, offset: 6})})
+    Object.defineProperty(document, "elementsFromPoint", {configurable: true, value: () => [document.body]})
+    try {
+      const point = $.pointFromCoords(50, 190, document.body, editor.schema)
+      expect(point).toMatchObject({node: document.body, offset: 3, overrideNative: true})
+      $.selectRange(point!.node, point!.offset)
+      feature.processSelection()
+      expect(table).toHaveClass("◆gap-after-selected")
+      expect($.isGapSelection).toBe(true)
+    }
+    finally {
+      if(caret) Object.defineProperty(document, "caretPositionFromPoint", caret)
+      else Reflect.deleteProperty(document, "caretPositionFromPoint")
+      if(elements) Object.defineProperty(document, "elementsFromPoint", elements)
+      else Reflect.deleteProperty(document, "elementsFromPoint")
+    }
+  })
+
+  it("exposes a standard block gap beside bare text inside a contentful widget", () => {
+    editor.schema.extendWidgets([{tagName: "content-widget", editingConfig: {content: "flow*"}}])
+    document.body.innerHTML = '<content-widget>Before<blockquote><p>Inside</p></blockquote>After</content-widget>'
+    editor.features.widget.refresh()
+    const widget = document.querySelector("content-widget")!, block = widget.querySelector("blockquote")!
+    $.selectGap(block, "before")
+    feature.processSelection()
+    expect($.isGapSelection).toBe(true)
+    expect(block).toHaveClass("◆gap-before-selected")
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("keeps a text caret beside an inline image in a paragraph", () => {
+    document.body.innerHTML = '<p>Before<img alt="inline">After</p>'
+    const paragraph = document.querySelector("p")!
+    $.move(paragraph, 1)
+    expect($.isGapSelection).toBe(false)
+    expect($.isTextSelection).toBe(true)
+  })
+})
+
 describe("list gap selection", () => {
   const press = (key: string, init: KeyboardEventInit = {}) => {
     const event = new KeyboardEvent("keydown", {key, bubbles: true, cancelable: true, ...init})

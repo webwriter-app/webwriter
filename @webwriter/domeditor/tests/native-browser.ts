@@ -2990,6 +2990,55 @@ await check("gap carets track their authored boundary", async () => {
         assert(!view.editor!.toHTML(true).includes("◆"), `${tag}: gap markers leaked into HTML`)
       }
     }
+    view.editor!.schema.extendWidgets([{tagName: "native-gap-widget", editingConfig: {content: "flow*"}}])
+    for(const tag of ["table", "native-gap-widget", "h2"]) {
+      for(const placement of ["before", "after"] as const) {
+        const before = placement === "before"
+        const content = tag === "table" ? '<tbody><tr><td>First</td><td>Last</td></tr></tbody>' : '<span>First</span>'
+        doc.body.innerHTML = `<${tag} style="${tag === "native-gap-widget" ? "display:block;" : ""}margin:30px 0">${content}</${tag}>`
+        const element = doc.querySelector(tag)!, text = (before ? element.querySelector("td, span") : element.querySelector("td:last-child, span"))!.firstChild!
+        if(tag === "native-gap-widget") view.editor!.features.widget.refresh()
+        const authored = element.innerHTML
+        selection.setPosition(text, before ? 0 : text.textContent!.length)
+        const key = new listView.KeyboardEvent("keydown", {key: before ? "ArrowUp" : "ArrowDown", bubbles: true, cancelable: true})
+        doc.dispatchEvent(key)
+        assert(key.defaultPrevented && selection.anchorNode === doc.body && selection.anchorOffset === (before ? 0 : 1), `${tag}: keyboard missed ${placement} gap`)
+        assert(element.classList.contains(`◆gap-${placement}-selected`), `${tag}: keyboard gap marker is missing`)
+        await layoutFrame()
+        const box = element.getBoundingClientRect(), caret = feature.gapCaret!.getBoundingClientRect()
+        const expected = before ? box.top : box.bottom + (parseFloat(view.getComputedStyle(element).marginBottom) || 0)
+        assert(caret.width > 0 && Math.abs(caret.top - expected) < 1, `${tag}: ${placement} gap caret misses its boundary`)
+        selection.setPosition(text, 2)
+        const x = box.left + box.width / 2, y = before ? box.top - 4 : box.bottom + 4
+        const target = doc.elementFromPoint(x, y) ?? doc.body
+        const down = new listView.PointerEvent("pointerdown", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true})
+        target.dispatchEvent(down)
+        target.dispatchEvent(new listView.PointerEvent("pointerup", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true}))
+        assert(down.defaultPrevented, `${tag}: native pointer handling replaced the ${placement} gap`)
+        assert(selection.anchorNode === doc.body && selection.anchorOffset === (before ? 0 : 1), `${tag}: pointer missed ${placement} gap`)
+        doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "Outside"}))
+        assert((before ? element.previousElementSibling : element.nextElementSibling)?.textContent === "Outside", `${tag}: typing missed the gap`)
+        assert(element.innerHTML === authored && !view.editor!.toHTML(true).includes("◆"), `${tag}: gap editing changed content or leaked markers`)
+      }
+    }
+    doc.body.innerHTML = '<p>Before</p><!--keep--><table style="margin:30px 0"><tbody><tr><td>Cell</td></tr></tbody></table>'
+    const trailingTable = doc.querySelector("table")!, tableText = trailingTable.querySelector("td")!.firstChild!
+    selection.setPosition(tableText, 4)
+    const downKey = new listView.KeyboardEvent("keydown", {key: "ArrowDown", bubbles: true, cancelable: true})
+    doc.dispatchEvent(downKey)
+    assert(downKey.defaultPrevented && selection.anchorNode === doc.body && selection.anchorOffset === 3
+      && trailingTable.classList.contains("◆gap-after-selected"), "Arrow Down missed the gap after the final table")
+    await layoutFrame()
+    const tableBox = trailingTable.getBoundingClientRect(), x = tableBox.left + tableBox.width / 2, y = tableBox.bottom + 4
+    const target = doc.elementFromPoint(x, y) ?? doc.body
+    selection.setPosition(doc.querySelector("p")!.firstChild!, 6)
+    const down = new listView.PointerEvent("pointerdown", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true})
+    target.dispatchEvent(down)
+    target.dispatchEvent(new listView.PointerEvent("pointerup", {button: 0, pointerId: 1, pointerType: "mouse", clientX: x, clientY: y, bubbles: true, cancelable: true}))
+    assert(down.defaultPrevented && selection.anchorNode === doc.body && selection.anchorOffset === 3
+      && trailingTable.classList.contains("◆gap-after-selected"), "click below the final table jumped above it")
+    doc.body.dispatchEvent(new view.InputEvent("beforeinput", {bubbles: true, cancelable: true, inputType: "insertText", data: "After"}))
+    assert(trailingTable.nextElementSibling?.textContent === "After" && trailingTable.querySelector("td")?.textContent === "Cell", "typing after the final table missed its gap")
     doc.body.innerHTML = "<p>one one</p><!--keep--><p><span>two</span></p>"
     const second = doc.querySelectorAll("p")[1], text = second.querySelector("span")!.firstChild!
     selection.setPosition(doc.body, doc.body.childNodes.length)

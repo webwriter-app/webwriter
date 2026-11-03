@@ -534,7 +534,7 @@ export class EditingSelection {
     while(widget && !isContentfulWidget(widget, schema)) widget = widget.parentElement
     if(widget && !atomicEditingContainer(pointerTarget as Node, schema)) {
       const widgetRect = widget.getBoundingClientRect()
-      if(!fromSlotPadding && isContentfulWidget(widget.parentElement, schema) && widgetRect.height > 0
+      if(!fromSlotPadding && widget.parentElement && widgetRect.height > 0
         && (y < widgetRect.top || y > widgetRect.bottom)) {
         return gap(widget, y < widgetRect.top ? "before" : "after")
       }
@@ -659,6 +659,21 @@ export class EditingSelection {
       }
     }
     const flow = flowRoot ?? editingFlowRoot(pointerElement ?? offsetNode ?? null)
+    // Native caret hit testing can skip a trailing table and return text in
+    // the preceding paragraph. Empty space beyond the flow's last rendered
+    // child belongs to the boundary after that child.
+    if((!pointerElement || pointerElement === root || pointerElement === document.documentElement) && flow === root) {
+      const last = layoutChildren(root).at(-1)
+      if(last?.node instanceof Element && y > last.rect.bottom) {
+        return {...gap(last.node, "after"), overrideNative: true}
+      }
+    }
+    // Blank document space often targets BODY while native caret hit testing
+    // resolves into a widget's slotted text. Use that live host's outer box.
+    if(caretElement && (!pointerElement || pointerElement === root || pointerElement === document.documentElement)) {
+      const caretWidgetGap = this.widgetGapFromCoords(x, y, caretElement, schema)
+      if(caretWidgetGap && (!selectionRoot || selectionRoot.contains(caretWidgetGap.node))) return caretWidgetGap
+    }
     // A root containing only floats/positioned elements still has an editable
     // start. Native hit testing may return no caret, or a nearby floated caption.
     if(!selectionRoot && flow === root && (!hit || hit === root)
@@ -697,7 +712,7 @@ export class EditingSelection {
       disclosure = disclosure.parentElement?.closest("details") ?? null
     }
     if(disclosureGap) return disclosureGap
-    const captioned = pointerElement?.closest("figure, table:has(> caption)") ?? caretElement?.closest("figure, table:has(> caption)")
+    const captioned = pointerElement?.closest("figure, table") ?? caretElement?.closest("figure, table")
     if(captioned && root.contains(captioned) && !isOutOfFlow(captioned)) {
       const rect = captioned.getBoundingClientRect()
       if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
@@ -801,6 +816,17 @@ export class EditingSelection {
       }
     }
     const hitElement = offsetNode instanceof Element ? offsetNode : offsetNode?.parentElement
+    // A native caret can land inside an inline wrapper even when the pointer
+    // is outside its block. Address the block's boundary, not the wrapper's.
+    let caretBlock = hitElement
+    while(caretBlock && caretBlock !== root && isMarkElement(caretBlock)) caretBlock = caretBlock.parentElement
+    if(caretBlock && caretBlock !== root && root.contains(caretBlock) && isBlockLike(caretBlock)
+      && !isOutOfFlow(caretBlock) && (!pointerElement || pointerElement.contains(caretBlock) || caretBlock.contains(pointerElement))) {
+      const rect = caretBlock.getBoundingClientRect()
+      if(rect.height > 0 && (y < rect.top || y > rect.bottom)) {
+        return {...gap(caretBlock, y < rect.top ? "before" : "after"), overrideNative: true}
+      }
+    }
     const styledParagraph = hitElement?.closest("p")
     if(styledParagraph?.style.length && root.contains(styledParagraph) && !isOutOfFlow(styledParagraph)
       && editingFlowRoot(styledParagraph) === flow) {
@@ -835,7 +861,7 @@ export class EditingSelection {
         return gap(firstRootElement, "before")
       }
       const lastRootElement = Array.from(root.children).reverse().find(element => !isOutOfFlow(element))
-      if(lastRootElement && (lastRootElement.matches("ul, ol, dl, menu, details, figure, table:has(> caption)") || lastRootElement instanceof HTMLParagraphElement && lastRootElement.style.length > 0)
+      if(lastRootElement && (isBlockLike(lastRootElement) || isContentfulWidget(lastRootElement, schema))
         && y > lastRootElement.getBoundingClientRect().bottom) {
         return gap(lastRootElement, "after")
       }
@@ -876,7 +902,7 @@ export class EditingSelection {
     }
     if(offsetNode instanceof Element && typeof offset === "number") {
       const gapAddressableElement = (node: Node | null) => !isOutOfFlow(node) && (isAtomicEditingElement(node, schema)
-        || node instanceof Element && node.matches("ul, ol, dl, menu, table, details")
+        || node instanceof Element && (isBlockLike(node) || isContentfulWidget(node, schema))
         || node instanceof HTMLParagraphElement && node.style.length > 0)
       const atomicAtCaret = gapAddressableElement(offsetNode) ? offsetNode : null
       const elementBeforeCaret = adjacentElement(offsetNode.childNodes, offset, "before")
@@ -900,7 +926,7 @@ export class EditingSelection {
         }
       }
       const beforeRect = atomicBeforeCaret?.getBoundingClientRect()
-      if(atomicBeforeCaret?.matches("ul, ol, dl, menu, details, p") && beforeRect && beforeRect.height > 0 && y < beforeRect.top) {
+      if(atomicBeforeCaret && beforeRect && beforeRect.height > 0 && y < beforeRect.top) {
         return gap(atomicBeforeCaret, "before")
       }
       if(atomicBeforeCaret && beforeRect && (beforeRect.right > beforeRect.left || beforeRect.bottom > beforeRect.top)
@@ -908,7 +934,7 @@ export class EditingSelection {
         return gap(atomicBeforeCaret, "after")
       }
       const afterRect = atomicAfterCaret?.getBoundingClientRect()
-      if(atomicAfterCaret?.matches("ul, ol, dl, menu, details, p") && afterRect && afterRect.height > 0 && y < afterRect.top) {
+      if(atomicAfterCaret && afterRect && afterRect.height > 0 && y < afterRect.top) {
         return gap(atomicAfterCaret, "before")
       }
       if(atomicAfterCaret && afterRect && (afterRect.right > afterRect.left || afterRect.bottom > afterRect.top)
@@ -987,7 +1013,7 @@ export class EditingSelection {
     }
     if(mathRoot(anchor)) return false
     if(this.mathBoundary) return this.mathBoundary.element.getAttribute("display") === "block"
-    if(this.listGap || this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap) return true
+    if(this.listGap || this.detailsGap || this.dividerGap || this.styledParagraphGap || this.captionedGap || this.blockGap) return true
     if(!isElement(anchor)) return false
     const inSlide = slideLayoutRole(anchor) === "slide"
     const inBoardCard = boardLayoutRole(anchor) === "card"
@@ -1042,9 +1068,9 @@ export class EditingSelection {
     return this.#gapBeside("ul, ol, dl, menu")
   }
 
-  /** Figure and captioned-table boundaries remain gaps in any text-bearing container. */
+  /** Figure and table boundaries remain gaps in any text-bearing container. */
   static get captionedGap() {
-    return this.#gapBeside("figure, table:has(> caption)")
+    return this.#gapBeside("figure, table")
   }
 
   /** Dividers expose gaps even within sections, table cells, or bare text. */
@@ -1055,6 +1081,25 @@ export class EditingSelection {
   static get styledParagraphGap() {
     const boundary = this.#gapBeside("p[style]")
     return boundary && (boundary.element as HTMLParagraphElement).style.length > 0 ? boundary : null
+  }
+
+  /** Block boundaries are addressable even beside bare text or in a section
+   * or table cell. Table structure itself is never an editing gap. */
+  static get blockGap() {
+    const parent = this.anchor
+    if(!this.isEmpty || !isElement(parent) || !getDocumentRoot().contains(parent)
+      || parent.matches("table, thead, tbody, tfoot, tr, colgroup")) return null
+    for(let node: Element | null = parent; node && node !== getDocumentRoot(); node = node.parentElement) {
+      if(isAtomicEditingElement(node) && !node.classList.contains("◆widget-editable")) return null
+    }
+    const before = adjacentElement(parent.childNodes, this.anchorOffset, "before")
+    const after = adjacentElement(parent.childNodes, this.anchorOffset, "after")
+    const block = (element: Element | null) => element && !isOutOfFlow(element)
+      && (isBlockLike(element) || parent.localName !== "p" && (isAtomicEditingElement(element)
+        || element.localName.includes("-") || element.hasAttribute("is")))
+    if(block(before)) return {element: before!, placement: "after" as const}
+    if(block(after)) return {element: after!, placement: "before" as const}
+    return null
   }
 
   /** Inline formulas have text carets at their edges; block formulas have gaps,
