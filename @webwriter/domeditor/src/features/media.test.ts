@@ -8,7 +8,7 @@ import {sharedDOMBody} from "../domdoc"
 import editorStyleString from "../editor.css?raw"
 import {$} from "../utility"
 import {Schema} from "../schema"
-import {createImageMapPopoverController, imageMapHotspotBounds} from "../media"
+import {createImageMapPopoverController, imageMapHotspotBounds, platformEmbedURL} from "../media"
 
 let editor: DOMEditor
 const fetchSettings = (window as unknown as TestWindow).happyDOM.settings.fetch
@@ -48,6 +48,82 @@ afterEach(() => {
 })
 
 describe("media editing", () => {
+  it.each([
+    ["https://youtu.be/M7lc1UVf-VE?t=25", "https://www.youtube.com/embed/M7lc1UVf-VE?start=25"],
+    ["https://www.youtube.com/watch?v=M7lc1UVf-VE", "https://www.youtube.com/embed/M7lc1UVf-VE"],
+    ["https://vimeo.com/123456/abcdef", "https://player.vimeo.com/video/123456?h=abcdef"],
+    ["https://www.tiktok.com/@person/video/6718335390845095173", "https://www.tiktok.com/player/v1/6718335390845095173"],
+    ["https://www.instagram.com/p/ABC-123/", "https://www.instagram.com/p/ABC-123/embed/"],
+    ["https://archive.org/details/example", "https://archive.org/embed/example"],
+    ["https://miro.com/app/board/uXjVOD9zD_k=/", "https://miro.com/app/live-embed/uXjVOD9zD_k=/"],
+    ["https://www.mentimeter.com/app/presentation/abc123", "https://www.mentimeter.com/app/presentation/abc123/embed"],
+    ["https://www.figma.com/design/abc/example?node-id=1-2", "https://embed.figma.com/design/abc/example?node-id=1-2&embed-host=webwriter"],
+    ["https://x.com/person/status/12345", "https://platform.twitter.com/embed/Tweet.html?id=12345"],
+    ["https://www.pinterest.com/pin/12345/", "https://assets.pinterest.com/ext/embed.html?id=12345"],
+    ["https://www.flickr.com/photos/person/albums/12345/", "https://embedr.flickr.com/photosets/12345"],
+    ["https://www.facebook.com/person/posts/12345", "https://www.facebook.com/plugins/post.php?href=https%3A%2F%2Fwww.facebook.com%2Fperson%2Fposts%2F12345"],
+  ])("converts a supported share URL: %s", (input, output) => {
+    expect(platformEmbedURL(input)).toBe(output)
+  })
+
+  it.each(["https://youtube.com.evil.test/watch?v=M7lc1UVf-VE", "https://youtube.com/watch?v=bad", "https://flickr.com/photos/person/12345", "https://example.com/movie.mp4", "javascript:alert(1)"])("leaves unrecognized URLs alone: %s", input => {
+    expect(platformEmbedURL(input)).toBeNull()
+  })
+
+  it.each(["picture", "audio", "video", "iframe"])("converts a %s placeholder to a website while preserving surrounding DOM", async tag => {
+    document.body.innerHTML = `<section><!--keep--><${tag} title="Lesson">${tag === "picture" ? "<img>" : ""}</${tag}><p>After</p></section>`
+    const original = document.querySelector(tag)!
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const before = editor.toHTML(true)
+    const placeholder = editor.features.media.placeholder
+    placeholder.showFor(original)
+    placeholder.root.querySelector<HTMLInputElement>(".url")!.value = "https://youtu.be/M7lc1UVf-VE"
+    placeholder.root.querySelector<HTMLButtonElement>(".apply")!.click()
+    const frame = document.querySelector("iframe")!
+    expect(frame.getAttribute("src")).toBe("https://www.youtube.com/embed/M7lc1UVf-VE")
+    expect(frame.getAttribute("title")).toBe("Lesson")
+    expect(document.querySelector("section")!.firstChild!.nodeType).toBe(Node.COMMENT_NODE)
+    expect(document.querySelector("p")!.textContent).toBe("After")
+    const after = editor.toHTML(true)
+    expect(after).not.toContain("◆")
+    editor.doc.syncFromDOM()
+    editor.doc.undo()
+    expect(editor.toHTML(true)).toBe(before)
+    editor.doc.redo()
+    expect(editor.toHTML(true)).toBe(after)
+  })
+
+  it("leaves authored fallback content intact when a source edit cannot safely change the element type", () => {
+    document.body.innerHTML = '<video title="Lesson"><source src="old.mp4"><span>Fallback</span></video>'
+    const video = document.querySelector("video")!
+    $.selectElement(video)
+    expect(editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://vimeo.com/123456"})).toBe(false)
+    expect(document.querySelector("iframe")).toBeNull()
+    expect(video.querySelector("source")?.getAttribute("src")).toBe("old.mp4")
+    expect(video.querySelector("span")?.textContent).toBe("Fallback")
+  })
+
+  it("converts a source edit on existing media", () => {
+    document.body.innerHTML = '<video title="Lesson" src="old.mp4"></video>'
+    $.selectElement(document.querySelector("video")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: "https://vimeo.com/123456"})
+    expect(document.querySelector("iframe")?.getAttribute("src")).toBe("https://player.vimeo.com/video/123456")
+  })
+
+  it.each([
+    ["https://archive.org/download/item/track.mp3", "audio"],
+    ["https://archive.org/download/item/movie.mp4", "video"],
+    ["https://live.staticflickr.com/65535/123_secret.jpg", "picture"],
+  ])("uses native media for direct provider file %s", (url, tag) => {
+    document.body.innerHTML = '<iframe title="Lesson"></iframe>'
+    $.selectElement(document.querySelector("iframe")!)
+    editor.features.media.actions.setMediaAttribute({type: "setMediaAttribute", name: "src", value: url})
+    const result = document.querySelector(tag)!
+    expect((tag === "picture" ? result.querySelector("img")! : result).getAttribute("src")).toBe(url)
+    expect(result.getAttribute("title")).toBe("Lesson")
+  })
+
   it.each(["url", "file"] as const)("retains image width on %s source changes and supports undo", mode => {
     document.body.innerHTML = '<section><picture style="width: 100%; height: auto; max-width: 300px; max-height: 200px; aspect-ratio: 3 / 2; float: left"><img width="300" height="200" style="width: 100%; height: 100%; max-width: 100%; max-height: 100%; object-fit: fill" alt="Photo" src="old.png"></picture></section>'
     const picture = document.querySelector("picture")!, image = picture.querySelector("img")!
@@ -1113,6 +1189,23 @@ describe("media editing", () => {
       expect(document.body.querySelector("svg, button, input")).toBeNull()
     },
   )
+
+  it("shows source help inside the empty-media URL field and closes it when the affordance hides", async () => {
+    editor.features.media.actions.insertMedia({type: "insertMedia", media: "video"})
+    const placeholder = editor.features.media.placeholder
+    const row = placeholder.root.querySelector(".url-row")!
+    const info = row.querySelector<import("../components/media-source-info").MediaSourceInfo>("media-source-info")!
+    expect(info.nextElementSibling).toBe(row.querySelector(".apply"))
+    await info.updateComplete
+    const button = info.shadowRoot!.querySelector("button")!
+    button.dispatchEvent(new Event("focus"))
+    await info.updateComplete
+    expect(info.shadowRoot!.querySelector<HTMLElement>('[role="tooltip"]')!.hidden).toBe(false)
+    expect(editor.toHTML(true)).not.toContain("media-source-info")
+    placeholder.hide()
+    await info.updateComplete
+    expect(info.shadowRoot!.querySelector<HTMLElement>('[role="tooltip"]')!.hidden).toBe(true)
+  })
 
   it.each(["", "example.com/movie.mp4", "/movie.mp4", "//example.com/movie.mp4", "http://", "https://exa mple.com", "ftp://example.com/movie.mp4", "file:///movie.mp4", "about:blank", "data:video/mp4;base64,AAAA", "javascript:alert(1)"])(
     "rejects a non-HTTP or malformed URL without changing the document: %s", source => {

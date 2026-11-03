@@ -2,6 +2,7 @@ import {EditorFeature} from "."
 import {SVG_NAMESPACE, graphicShapeGeometry} from "../graphic"
 import type {Schema} from "../schema"
 import {MediaCapture} from "../components/media-capture"
+import type {MediaSourceInfo} from "../components/media-source-info"
 import {mediaSourceButtonStyles} from "../components/media-source.styles"
 import {stripActiveContent} from "../active-content"
 import folderOpen from "@tabler/icons/outline/folder-open.svg?raw"
@@ -33,6 +34,8 @@ import {
   imageMapAreaAttributeOptions,
   mediaSourceAttribute,
   mediaSourceTarget,
+  platformEmbedURL,
+  platformMediaURL,
   timedMediaResourceAttributeOptions,
   websiteSourceError,
   websiteTypes,
@@ -162,6 +165,7 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     width: 100%;
     height: var(--control-height);
     padding: .35rem .65rem;
+    padding-inline-end: 3.25rem;
     border: 1px solid #c7c9ce;
     border-radius: .35rem;
     color: #343740;
@@ -195,6 +199,13 @@ const mediaPlaceholderStylesheet = createStylesheet(`
     color: #343740;
     background: rgba(255, 255, 255, 0.5);
     cursor: pointer;
+  }
+  .url-row media-source-info {
+    position: absolute;
+    inset-inline-end: 1.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: auto;
   }
   .apply:hover { background: rgba(238, 244, 251, 0.5); }
   .apply:active { color: #1e4f87; background: rgba(196, 220, 244, 0.5); }
@@ -322,6 +333,8 @@ class MediaPlaceholder {
       </div>
     `
 
+    root.querySelector(".url-row")!.insertBefore(document.createElement("media-source-info"), root.querySelector(".apply"))
+
     const picker = root.querySelector<HTMLInputElement>(".picker")!
     const url = root.querySelector<HTMLInputElement>(".url")!
     const file = root.querySelector<HTMLButtonElement>(".file")!
@@ -411,6 +424,7 @@ class MediaPlaceholder {
   }
 
   private closePopup() {
+    if(this.element.hasAttribute("data-popup-open")) this.root.querySelector<MediaSourceInfo>("media-source-info")?.hide?.()
     this.element.removeAttribute("data-popup-open")
     this.root.querySelector(".expand")!.setAttribute("aria-expanded", "false")
     const content = this.root.querySelector<HTMLElement>(".content")!
@@ -456,7 +470,7 @@ class MediaPlaceholder {
     try { url = new URL(source) } catch {}
     this.clearUrlError()
     const website = isWebsiteType(placeholderMediaType(this.target))
-    const message = website ? websiteSourceError(source) || (!url ? "Enter a valid https:// website URL." : "")
+    const message = website ? websiteSourceError(platformEmbedURL(source) ?? source) || (!url ? "Enter a valid https:// website URL." : "")
       : !url || !["http:", "https:"].includes(url.protocol) ? "Enter a valid http:// or https:// URL." : ""
     if(!url || message) {
       input.setCustomValidity(message)
@@ -486,6 +500,7 @@ class MediaPlaceholder {
 
   showFor(target: Element) {
     if(this.target !== target) {
+      this.root.querySelector<MediaSourceInfo>("media-source-info")?.hide?.()
       this.closePopup()
       this.root.querySelector<HTMLInputElement>(".url")!.value = ""
       this.clearUrlError()
@@ -538,6 +553,7 @@ class MediaPlaceholder {
   }
 
   hide() {
+    this.root.querySelector<MediaSourceInfo>("media-source-info")?.hide?.()
     this.closePopup()
     this.target = null
     this.element.removeAttribute("data-open")
@@ -1804,6 +1820,9 @@ export class MediaFeature extends EditorFeature {
       if(!element || !mediaAttributeOptions[element.localName as MediaType].some(option => option.name === name)) {
         throw new TypeError(`Attribute '${name}' is not editable for the selected media`)
       }
+      if(value && name === mediaSourceAttribute(element) && (platformEmbedURL(value) || platformMediaURL(value))) {
+        return this.setSource(element, value, true)
+      }
       if(value && isWebsiteType(element.localName) && name === mediaSourceAttribute(element.localName as WebsiteType)) {
         const error = websiteSourceError(value)
         if(error) throw new TypeError(error)
@@ -2461,6 +2480,29 @@ export class MediaFeature extends EditorFeature {
   private setSource(element: Element, source: string, replace = false, attribute?: "poster") {
     if(!element.isConnected || !document.body.contains(element) || !(element.matches(mediaSelector) || isGraphicImage(element))
       || (attribute && !element.matches("video")) || (!replace && !isEmptyMedia(element)) || sourceEditingBlocked(element, this.editor.schema)) return false
+    const direct = !attribute && !isGraphicImage(element) ? platformMediaURL(source) : null
+    const embed = !attribute && !direct && !isGraphicImage(element) ? platformEmbedURL(source) : null
+    if(embed || direct) {
+      const type = direct?.type ?? "iframe"
+      if(!(element.localName === type || type === "picture" && element.matches("img"))) {
+        // An iframe serializes its children as raw text. Do not move authored
+        // fallback nodes into it, where a save/reopen would change their DOM.
+        const children = Array.from(element.childNodes)
+        const disposableImage = element.matches("picture") && children.length === 1
+          && children[0] instanceof HTMLImageElement
+          && Array.from(children[0].attributes).every(attr => attr.name === "src" || attr.name === "class" && !authoredClassValue(attr.value))
+        if(children.length && !disposableImage) return false
+        const replacement = element.ownerDocument.createElement(type)
+        for(const attr of Array.from(element.attributes)) {
+          if(["src", "srcset", "data", "srcdoc"].includes(attr.name)) continue
+          const value = attr.name === "class" ? authoredClassValue(attr.value) : attr.value
+          if(value || attr.name !== "class") replacement.setAttributeNS(attr.namespaceURI, attr.name, value)
+        }
+        element.replaceWith(replacement)
+        element = replacement
+      }
+      source = direct?.url ?? embed!
+    }
     const target = mediaSourceTarget(element)
     if(!attribute && element.matches("picture, img") && target.getAttribute("src") !== source) this.clearImageHeight(element, target)
     if(isGraphicImage(element)) this.editor.doc.stopCapturing()

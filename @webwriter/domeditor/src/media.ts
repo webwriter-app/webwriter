@@ -640,3 +640,95 @@ export function mountImageMapReader(doc: Document, controller: ReturnType<typeof
     },
   }
 }
+
+export const embeddablePlatformNames = ["YouTube", "Vimeo", "Instagram", "TikTok", "Internet Archive", "Flickr albums", "Miro", "Mentimeter", "Figma", "Pinterest", "Twitter/X", "Facebook"] as const
+
+/** Direct files from these providers can use native media elements. */
+export function platformMediaURL(source: string): {type: "picture" | "audio" | "video", url: string} | null {
+  let url: URL
+  try { url = new URL(source) } catch { return null }
+  if(url.protocol !== "https:" || url.username || url.password || url.port) return null
+  const host = url.hostname.toLowerCase()
+  if(!(host === "archive.org" && url.pathname.startsWith("/download/")
+    || host === "live.staticflickr.com" || /^farm\d+\.staticflickr\.com$/.test(host))) return null
+  const extension = url.pathname.match(/\.([a-z\d]+)$/i)?.[1].toLowerCase()
+  const type = extension && (["jpg", "jpeg", "png", "gif", "webp", "avif"].includes(extension) ? "picture"
+    : ["mp3", "oga", "opus", "wav", "m4a", "flac"].includes(extension) ? "audio"
+    : ["mp4", "webm", "ogv", "m4v"].includes(extension) ? "video" : null)
+  return type ? {type, url: url.href} : null
+}
+
+/** Resolve share URLs whose providers expose a stable iframe endpoint. Leave
+ * unknown URLs alone: a page URL is not necessarily an embeddable resource. */
+export function platformEmbedURL(source: string): string | null {
+  let url: URL
+  try { url = new URL(source) } catch { return null }
+  if(!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.port) return null
+  const host = url.hostname.toLowerCase().replace(/^www\./, "")
+  const path = url.pathname
+  let match: RegExpMatchArray | null
+  if(host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be" || host === "youtube-nocookie.com") {
+    const id = host === "youtu.be" ? path.match(/^\/([\w-]{11})\/?$/)?.[1]
+      : path === "/watch" ? url.searchParams.get("v") : path.match(/^\/(?:embed|shorts|live)\/([\w-]{11})\/?$/)?.[1]
+    if(id && /^[\w-]{11}$/.test(id)) {
+      const embed = new URL(`https://www.youtube.com/embed/${id}`)
+      const start = url.searchParams.get("start") ?? url.searchParams.get("t")
+      if(start && /^\d+s?$/.test(start)) embed.searchParams.set("start", start.replace(/s$/, ""))
+      const list = url.searchParams.get("list")
+      if(list && /^[\w-]+$/.test(list)) embed.searchParams.set("list", list)
+      return embed.href
+    }
+    const list = url.searchParams.get("list")
+    if(host !== "youtu.be" && path === "/playlist" && list && /^[\w-]+$/.test(list)) {
+      const embed = new URL("https://www.youtube.com/embed")
+      embed.searchParams.set("listType", "playlist")
+      embed.searchParams.set("list", list)
+      return embed.href
+    }
+  }
+  if(host === "vimeo.com" && (match = path.match(/^\/(?:video\/|channels\/[^/]+\/|groups\/[^/]+\/videos\/)?(\d+)(?:\/([\da-f]+))?\/?$/i))) {
+    const embed = new URL(`https://player.vimeo.com/video/${match[1]}`)
+    const hash = match[2] ?? url.searchParams.get("h")
+    if(hash && /^[\da-f]+$/i.test(hash)) embed.searchParams.set("h", hash)
+    return embed.href
+  }
+  if(host === "player.vimeo.com" && /^\/video\/\d+\/?$/.test(path)) {
+    url.protocol = "https:"
+    return url.href
+  }
+  if(host === "tiktok.com" && /^\/player\/v1\/\d+\/?$/.test(path)
+    || host === "archive.org" && /^\/embed\/[\w.-]+\/?$/.test(path)
+    || host === "miro.com" && /^\/app\/live-embed\/[\w=-]+\/?$/.test(path)
+    || host === "embed.figma.com" && /^\/(?:design|board|proto|slides|deck)\/[\w-]+(?:\/|$)/.test(path)
+    || host === "assets.pinterest.com" && path === "/ext/embed.html" && /^\d+$/.test(url.searchParams.get("id") ?? "")
+    || host === "platform.twitter.com" && path === "/embed/Tweet.html" && /^\d+$/.test(url.searchParams.get("id") ?? "")
+    || host === "embedr.flickr.com" && /^\/photosets\/\d+\/?$/.test(path)) {
+    url.protocol = "https:"
+    return url.href
+  }
+  if(host === "tiktok.com" && (match = path.match(/^\/@[^/]+\/(?:video|photo)\/(\d+)\/?$/))) return `https://www.tiktok.com/player/v1/${match[1]}`
+  if(host === "instagram.com" && (match = path.match(/^\/(p|reel|tv)\/([\w-]+)(?:\/embed)?\/?$/))) return `https://www.instagram.com/${match[1]}/${match[2]}/embed/`
+  if(host === "archive.org" && (match = path.match(/^\/details\/([\w.-]+)\/?$/))) return `https://archive.org/embed/${match[1]}`
+  if(host === "miro.com" && (match = path.match(/^\/app\/board\/([\w=-]+)\/?$/))) {
+    url.hostname = "miro.com"
+    url.protocol = "https:"
+    url.pathname = `/app/live-embed/${match[1]}/`
+    return url.href
+  }
+  if(host === "mentimeter.com" && (match = path.match(/^\/app\/presentation\/([\w-]+)(?:\/(?:edit|embed))?\/?$/))) return `https://www.mentimeter.com/app/presentation/${match[1]}/embed`
+  if(host === "figma.com" && /^\/(?:design|board|proto|slides|deck)\/[\w-]+(?:\/|$)/.test(path)) {
+    url.hostname = "embed.figma.com"
+    url.protocol = "https:"
+    url.searchParams.set("embed-host", "webwriter")
+    return url.href
+  }
+  if((host === "x.com" || host === "twitter.com" || host === "mobile.twitter.com") && (match = path.match(/^\/(?:\w+|i\/web)\/status\/(\d+)(?:\/.*)?$/))) return `https://platform.twitter.com/embed/Tweet.html?id=${match[1]}`
+  if((host === "pinterest.com" || /^pinterest\.(?:de|fr|es|it|ca|co\.uk|com\.au)$/.test(host)) && (match = path.match(/^\/pin\/(\d+)\/?$/))) return `https://assets.pinterest.com/ext/embed.html?id=${match[1]}`
+  if((host === "facebook.com" || host === "m.facebook.com" || host === "fb.watch") && (path.match(/^\/[^/]+\/(?:posts|videos|reel)\/[^/]+/) || host === "fb.watch" && /^\/[^/]+\/?$/.test(path))) {
+    const embed = new URL(`https://www.facebook.com/plugins/${path.includes("/videos/") || path.includes("/reel/") || host === "fb.watch" ? "video" : "post"}.php`)
+    embed.searchParams.set("href", url.href)
+    return embed.href
+  }
+  if(host === "flickr.com" && (match = path.match(/^\/photos\/[^/]+\/albums\/(\d+)\/?$/))) return `https://embedr.flickr.com/photosets/${match[1]}`
+  return null
+}

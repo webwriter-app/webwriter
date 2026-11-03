@@ -3,6 +3,7 @@ import type {DistributionSelectionState} from "./distribution-controls"
 import type {DistributionItem} from "../distribution.js"
 import type {LiveSessionFeedback, LiveSessionLearner} from "../live-session"
 import "./float-info"
+import "./media-source-info"
 import type {FloatInfo} from "./float-info"
 import {css, html, nothing, type TemplateResult} from "lit"
 import {guard} from "lit/directives/guard.js"
@@ -1297,6 +1298,7 @@ export class DomEditorToolbox extends EditingControls {
     })
     return html`<div class="media-source" data-cover=${cover}>
       <div class="media-source-label"><label for=${id}>${label}</label>
+        ${!cover && !resource ? html`<media-source-info></media-source-info>` : nothing}
         ${!cover && !resource && media.sourceSize !== undefined && media.sourceSize > 50 * 1024 * 1024 ? html`<button type="button" class="large-source-warning" aria-label="Large source file warning" aria-describedby="large-source-warning-message">!
           <span id="large-source-warning-message" class="large-source-warning-bubble" role="tooltip">Large source files can lead to performance issues for readers</span>
         </button>` : nothing}

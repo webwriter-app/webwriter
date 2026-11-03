@@ -1,3 +1,4 @@
+import "./components/media-source-info"
 import {DOMEditor as CoreDOMEditor, type DOMEditorOptions} from "./domeditor-core"
 import {appendSerializedAssets} from "./serialization"
 

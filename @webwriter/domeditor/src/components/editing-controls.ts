@@ -62,6 +62,7 @@ import {
   isWebsiteType,
   mediaAttributeOptions,
   mediaSourceAttribute,
+  platformEmbedURL,
   websiteSourceError,
   timedMediaResourceAttributeOptions,
   type ImageMapAreaState,
@@ -1578,7 +1579,7 @@ export abstract class EditingControls extends LitElement {
   protected dispatchMediaAttribute(type: MediaType, option: MediaAttributeOption, event: Event) {
     const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
     if(input instanceof HTMLInputElement && isWebsiteType(type) && option.name === mediaSourceAttribute(type)) {
-      const error = websiteSourceError(input.value.trim())
+      const error = websiteSourceError(platformEmbedURL(input.value.trim()) ?? input.value.trim())
       input.setCustomValidity(error)
       if(error) {
         input.setAttribute("aria-invalid", "true")
