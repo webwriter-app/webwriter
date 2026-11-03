@@ -891,11 +891,14 @@ export class TransformationFeature extends EditorFeature {
     }
     const span = (y: number) => {
       let spans = [{left: 0, right: width}]
-      for(const box of floats.filter(box => box.top <= y && box.bottom >= y)) {
+      // Overlay geometry is rounded to CSS pixels; an edge that visually
+      // coincides with a float can differ by a fraction of a pixel.
+      for(const box of floats.filter(box => box.top <= y + 1 && box.bottom >= y - 1)) {
         spans = spans.flatMap(part => box.right <= part.left || box.left >= part.right ? [part]
           : [...(box.left > part.left ? [{left: part.left, right: box.left}] : []), ...(box.right < part.right ? [{left: box.right, right: part.right}] : [])])
       }
-      return spans.sort((a, b) => (b.right - b.left) - (a.right - a.left))[0] ?? {left: 0, right: 0}
+      const outside = Math.min(0, ...floats.filter(box => box.top <= y + 1 && box.bottom >= y - 1).map(box => box.left)) - 12
+      return spans.sort((a, b) => (b.right - b.left) - (a.right - a.left))[0] ?? {left: outside, right: outside}
     }
     const top = span(0), bottom = span(height)
     const bounds = {"top-left": top.left, "top-right": top.right, "bottom-left": bottom.left, "bottom-right": bottom.right,
