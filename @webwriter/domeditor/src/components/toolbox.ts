@@ -1199,7 +1199,7 @@ export class DomEditorToolbox extends EditingControls {
             detail: {styles: resetStyles}, bubbles: true, composed: true,
           }))
           configuredWidgetOptions.forEach(option => dispatchOption(option.name, null))
-        }}>${ribbonIcon("Restore")}Reset</button>
+        }}>${ribbonIcon("Restore")}${(group?.count ?? 1) > 1 ? nothing : "Reset"}</button>
       ${tableControls ? html`<div class="table-structure-controls" role="group" aria-label="Table structure">${this.renderTableStructureControls()}</div>` : nothing}
       ${details && attributes ? html`<label class="specialized-widget-primary details-open-default">
         <input type="checkbox" data-ribbon-input-persistent .checked=${Object.hasOwn(attributes.attributes, "open")}
