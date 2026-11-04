@@ -1372,6 +1372,63 @@ export const editingControlStyles = css`
       padding: 0.08rem 0;
     }
 
+    .graphic-endings {
+      grid-column: 1 / -1;
+    }
+
+    .graphic-ending-input {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: .25rem;
+    }
+
+    .graphic-ending-side {
+      display: grid;
+      grid-template-columns: 1.85rem minmax(0, 1fr);
+    }
+
+    .graphic-ending-side:last-child {
+      grid-template-columns: minmax(0, 1fr) 1.85rem;
+    }
+
+    .graphic-inline-controls .graphic-ending-side > select {
+      appearance: none;
+      height: 1.7rem;
+      padding: 0;
+      border: var(--editor-control-border-width, .5px) solid #c5ccd5;
+      background: transparent;
+      text-align: center;
+      font-size: .8rem;
+      cursor: pointer;
+    }
+
+    .graphic-inline-controls .graphic-ending-side > select:first-child {
+      border-right: 0;
+      border-radius: 4px 0 0 4px;
+    }
+
+    .graphic-inline-controls .graphic-ending-side > select:last-child {
+      border-left: 0;
+      border-radius: 0 4px 4px 0;
+    }
+
+    .graphic-inline-controls .graphic-ending-side > select:focus-visible {
+      position: relative;
+      z-index: 1;
+      outline: 2px solid #b9d7f5;
+      outline-offset: -1px;
+    }
+
+    .graphic-ending-side > style-combobox {
+      --style-combobox-radius: 0 4px 4px 0;
+      --style-combobox-popup-width: 6.75rem;
+      --style-combobox-popup-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+    }
+
+    .graphic-ending-side:last-child > style-combobox {
+      --style-combobox-radius: 4px 0 0 4px;
+    }
+
     .graphic-connector-controls .graphic-boolean-parameter > span {
       text-align: center;
     }
@@ -1568,9 +1625,10 @@ export const editingControlStyles = css`
     ribbon-drawer[pane] .graphic-connector-controls {
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0.25rem 0.35rem;
+      align-items: start;
     }
 
-    ribbon-drawer[pane] .graphic-connector-controls .graphic-parameter:first-child {
+    ribbon-drawer[pane] .graphic-connector-controls > .graphic-parameter:first-child {
       grid-column: 1 / -1;
     }
 

@@ -1,5 +1,5 @@
 import {EditorFeature, type DocumentListenerMap} from "."
-import {canvasControlsStyles, canvasIcons} from "../canvas-viewer.js"
+import {canvasControlsStyles, groupCanvasZoomPresets, updateCanvasZoomControls, type CanvasNavigation} from "../canvas-viewer.js"
 import {$, clearInlinePlacement, createAnchorPositioner, createStylesheet, isAppendixInteraction, isFormControlInteraction, isWidgetShadowInteraction, removeEditorMarker} from "../utility"
 import {getDocumentRoot} from "../document-template"
 import {documentLayoutMode, resetEmptyLayoutContent, isSlide, slideLayoutRole, slidesClass, slidesStyles, slideWidth, slideHeight} from "../document-layout"
@@ -41,8 +41,7 @@ export class SlidesFeature extends EditorFeature {
     }`)
     this.currentCache = null
     slide?.scrollIntoView?.({block: "nearest", inline: "center", behavior: "instant"})
-    const output = this.zoomControls?.querySelector("output")
-    if(output) output.textContent = `${Math.round(this.zoom * 100)}%`
+    updateCanvasZoomControls(this.zoomControls, this.zoom)
     this.editor.features.transformation.updateInfo()
     this.editor.features.layout.refresh()
     this.editor.features.graphic.refresh()
@@ -576,16 +575,18 @@ export class SlidesFeature extends EditorFeature {
     this.zoomControls.setAttribute("part", "slide-zoom-controls")
     this.zoomControls.contentEditable = "false"
     this.zoomControls.setAttribute("role", "toolbar"); this.zoomControls.setAttribute("aria-label", "Slide zoom")
-    for(const [operation, label, text] of [["zoom-out", "Zoom out", "−"], ["zoom-in", "Zoom in", "+"], ["actual-size", "Actual size", "100%"], ["fit-content", "Fit slide", ""]] as const) {
-      if(operation === "zoom-in") this.zoomControls.append(document.createElement("output"))
+    const zoomButton = (operation: CanvasNavigation, label: string, text = "") => {
       const button = document.createElement("button")
       button.type = "button"; button.name = operation; button.textContent = text
-      if(operation === "fit-content") button.innerHTML = canvasIcons.fit
       button.title = label; button.setAttribute("aria-label", label)
       button.addEventListener("pointerdown", event => event.preventDefault())
       button.addEventListener("click", () => this.actions.navigateSlides({type: "navigateSlides", operation}))
-      this.zoomControls.append(button)
+      return button
     }
+    this.zoomControls.append(
+      zoomButton("zoom-out", "Zoom out", "−"), document.createElement("output"), zoomButton("zoom-in", "Zoom in", "+"),
+      groupCanvasZoomPresets(zoomButton("actual-size", "Reset zoom to 100%"), zoomButton("fit-content", "Fit slide")),
+    )
     this.editor.addAppendix(this.zoomControls)
     this.stylesheet = createStylesheet(canvasControlsStyles + `
       [part=slide-zoom-controls] { flex-wrap: nowrap; overflow-x: auto; }

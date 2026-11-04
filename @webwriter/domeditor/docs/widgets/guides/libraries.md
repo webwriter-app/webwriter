@@ -59,7 +59,7 @@ import {onMount} from "svelte"
 ```
 <!-- /library -->
 
-`@webwriter/build` keeps shared dependencies as imports. WebWriter resolves compatible versions through the document's import map. Use `prebuiltDependencies` for dependencies that must be bundled, such as CommonJS code.
+`@webwriter/build` bundles dependencies into each widget by default. For WebWriter 2, pass `--shared-dependencies` to keep compatible dependencies as imports resolved through the document's import map. In that mode, use `prebuiltDependencies` for dependencies that must be bundled, such as CommonJS code.
 
 <!-- library:lit -->
 Declare both `@webwriter/lit` and `lit` in `dependencies`. Register third-party shadow components through `static scopedElements` to avoid global name collisions.

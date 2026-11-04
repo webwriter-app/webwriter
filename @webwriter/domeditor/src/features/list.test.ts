@@ -685,6 +685,83 @@ describe("semantic list editing", () => {
     expect($.anchorOffset).toBe(0)
   })
 
+  it.each(["Backspace", "Delete"] as const)("splits a list into adjacent lists when %s removes its empty middle item", key => {
+    document.body.innerHTML = '<ul class="authored"><li>A</li><!--before--><li><br></li><!--after--><li><my-widget></my-widget>B</li></ul>'
+    const [first, empty, last] = document.querySelectorAll("li")
+    $.move(empty)
+
+    keydown(key)
+
+    expect(cleanHTML()).toBe('<ul class="authored"><li>A</li><!--before--></ul><ul class="authored"><!--after--><li><my-widget></my-widget>B</li></ul>')
+    expect(document.querySelectorAll("ul")[0].firstElementChild).toBe(first)
+    expect(document.querySelectorAll("ul")[1].lastElementChild).toBe(last)
+    expect($.anchor).toBe(key === "Backspace" ? first : last)
+  })
+
+  it.each(["backward", "forward"] as const)("splits a list when deleting an adjacent empty item %s", direction => {
+    document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
+    const items = document.querySelectorAll("li")
+    $.move(direction === "backward" ? items[2].firstChild! : items[0].firstChild!, direction === "backward" ? 0 : 1)
+
+    editor.features.manipulation.delete(direction)
+
+    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+  })
+
+  it.each(["backward", "forward"] as const)("splits a list when deleting a middle item from its %s gap", direction => {
+    document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
+    const empty = document.querySelectorAll("li")[1]
+    $.selectGap(empty, direction === "backward" ? "after" : "before")
+    editor.features.manipulation.delete(direction)
+    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+  })
+
+  it("splits a list when deleting a selected empty middle item", () => {
+    document.body.innerHTML = '<ul><li>A</li><li></li><li>B</li></ul>'
+    $.selectElement(document.querySelectorAll("li")[1])
+    editor.features.manipulation.delete("backward")
+    expect(cleanHTML()).toBe('<ul><li>A</li></ul><ul><li>B</li></ul>')
+  })
+
+  it("preserves ordered numbering and supports undo and redo when deleting a middle item", async () => {
+    document.body.innerHTML = '<ol id="steps" start="4"><li>A</li><li></li><li>B</li></ol>'
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    $.move(document.querySelectorAll("li")[1])
+    keydown("Backspace")
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><ol start="6"><li>B</li></ol>')
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li><li></li><li>B</li></ol>')
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ol id="steps" start="4"><li>A</li></ol><ol start="6"><li>B</li></ol>')
+  })
+
+  it("splits a nested list without changing its owning item", () => {
+    document.body.innerHTML = '<ul><li>Owner<ul><li>A</li><li></li><li>B</li></ul></li></ul>'
+    $.move(document.querySelectorAll("ul ul li")[1])
+    keydown("Backspace")
+    expect(cleanHTML()).toBe('<ul><li>Owner<ul><li>A</li></ul><ul><li>B</li></ul></li></ul>')
+  })
+
+  it("preserves the implicit numbering of a reversed ordered list on both sides", () => {
+    document.body.innerHTML = '<ol reversed><li>A</li><li></li><li>B</li></ol>'
+    $.move(document.querySelectorAll("li")[1])
+    keydown("Backspace")
+    expect(cleanHTML()).toBe('<ol reversed="" start="3"><li>A</li></ol><ol reversed="" start="1"><li>B</li></ol>')
+  })
+
+  it("splits a description list around a removed empty description", () => {
+    document.body.innerHTML = '<dl><dt>A</dt><dd></dd><dt>B</dt><dd>Meaning</dd></dl>'
+    $.move(document.querySelector("dd")!)
+    keydown("Delete")
+    expect(cleanHTML()).toBe('<dl><dt>A</dt></dl><dl><dt>B</dt><dd>Meaning</dd></dl>')
+  })
+
   it("preserves ordered numbering and does not duplicate an id when exiting mid-list", () => {
     document.body.innerHTML = '<ol id="steps" start="4"><li>A</li><li>B</li></ol>'
     $.move(document.querySelector("li")!.firstChild!, 1)
@@ -925,6 +1002,161 @@ describe("semantic list editing", () => {
       style: "upper-roman",
       ordered: {start: "", reversed: false, numbering: "", itemValue: ""},
     })
+  })
+
+  it.each(["items", "element", "text"] as const)("converts a fully selected list using the style menu (%s)", selection => {
+    document.body.innerHTML = '<ul id="list"><li>One</li><li>Two</li><li>Three</li></ul>'
+    const list = document.querySelector("ul")!
+    const items = Array.from(list.children)
+    if(selection === "items") $.selectRange(list, 0, list, list.childNodes.length)
+    else if(selection === "element") $.selectElement(list)
+    else $.selectRange(items[0].firstChild!, 0, items[2].firstChild!, 5)
+
+    editor.features.list.setListStyle("ol", "decimal")
+
+    expect(document.querySelector("ol")?.innerHTML).toBe("<li>One</li><li>Two</li><li>Three</li>")
+    expect(document.querySelector("ol")?.style.listStyleType).toBe("decimal")
+    expect(Array.from(document.querySelector("ol")!.children)).toEqual(items)
+  })
+
+  it("switches from a changed bullet style to enumeration", () => {
+    document.body.innerHTML = "<ul><li>One</li><li>Two</li><li>Three</li></ul>"
+    const text = document.querySelector("li")!.firstChild!
+    $.move(text, 2)
+    editor.features.list.setListStyle("ul", "square")
+    editor.features.list.setListStyle("ol", "decimal")
+    expect(cleanHTML()).toBe('<ol style="list-style-type: decimal;"><li>One</li><li>Two</li><li>Three</li></ol>')
+    expect($.anchor).toBe(text)
+    expect($.anchorOffset).toBe(2)
+  })
+
+  it.each(["items", "element", "text", "caret"] as const)("converts an existing list through the Enumeration insertion action (%s)", selection => {
+    document.body.innerHTML = '<ul id="list" style="list-style-type: square; color: red"><!--keep--><li>One</li><li>Two<my-widget></my-widget></li><li>Three</li></ul>'
+    const list = document.querySelector("ul")!
+    list.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:title", "authored")
+    const children = Array.from(list.childNodes)
+    const items = list.querySelectorAll("li")
+    const firstText = items[0].firstChild!, lastText = items[2].firstChild!
+    if(selection === "items") $.selectRange(list, 0, list, list.childNodes.length)
+    else if(selection === "element") $.selectElement(list)
+    else if(selection === "text") $.selectRange(items[0].firstChild!, 0, items[2].firstChild!, 5)
+    else $.move(items[0].firstChild!, 2)
+    editor.doc.syncFromDOM()
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+    const ordered = document.querySelector("ol")!
+    expect(ordered).not.toBeNull()
+    expect(Array.from(ordered.childNodes)).toEqual(children)
+    expect(ordered.id).toBe("list")
+    expect(ordered.getAttributeNS("http://www.w3.org/1999/xlink", "title")).toBe("authored")
+    expect(ordered.style.color).toBe("red")
+    expect(ordered.style.listStyleType).toBe("decimal")
+    expect(ordered.style.listStyleImage).toBe("none")
+    if(selection === "text") {
+      expect($.anchor).toBe(firstText)
+      expect($.focus).toBe(lastText)
+      expect($.anchorOffset).toBe(0)
+      expect($.focusOffset).toBe(5)
+    }
+    else if(selection === "caret") {
+      expect($.anchor).toBe(firstText)
+      expect($.anchorOffset).toBe(2)
+    }
+    else if(selection === "element") expect($.selectedElement).toBe(ordered)
+    else {
+      expect($.anchor).toBe(ordered)
+      expect($.focus).toBe(ordered)
+      expect($.anchorOffset).toBe(0)
+      expect($.focusOffset).toBe(children.length)
+    }
+    expect(cleanHTML()).not.toContain("◆")
+  })
+
+  it.each(["forward", "backward", "parent", "style menu"] as const)("converts a list selected through its trailing empty paragraph (%s)", mode => {
+    document.body.innerHTML = '<ul id="list" style="list-style-type: circle"><li>etzw</li><li>eerte</li><li>eet</li></ul>\n<p><br></p><p>Keep</p>'
+    const list = document.querySelector("ul")!, [empty, next] = document.querySelectorAll("p")
+    const items = Array.from(list.children), start = items[0].firstChild!
+    if(mode === "parent") $.selectRange(document.body, 0, document.body, 3)
+    else if(mode === "forward") $.selectRange(start, 0, empty, 0)
+    else $.selectRange(empty, 0, start, 0)
+
+    if(mode === "style menu") editor.features.list.setListStyle("ol", "decimal")
+    else editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+
+    const ordered = document.querySelector("ol")!
+    expect(ordered?.id).toBe("list")
+    expect(ordered.style.listStyleType).toBe("decimal")
+    expect(Array.from(ordered.children)).toEqual(items)
+    expect(empty.isConnected).toBe(false)
+    expect(document.body.lastElementChild).toBe(next)
+    if(mode === "backward" || mode === "style menu") {
+      expect($.anchor).toBe(ordered)
+      expect($.anchorOffset).toBe(3)
+      expect($.focus).toBe(start)
+    }
+  })
+
+  it("leaves an unselected empty paragraph after the list", () => {
+    document.body.innerHTML = '<ul><li>One</li><li>Two</li></ul><p><br></p>'
+    const list = document.querySelector("ul")!, paragraph = document.querySelector("p")!
+    const items = Array.from(list.children)
+    $.selectRange(items[0].firstChild!, 0, document.body, 1)
+
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+
+    expect(Array.from(document.querySelector("ol")!.children)).toEqual(items)
+    expect(document.body.lastElementChild).toBe(paragraph)
+  })
+
+  it("shares and undoes Enumeration insertion on an existing list", async () => {
+    const before = '<ul style="list-style-type: square"><li>One</li><li>Two</li></ul><p></p>'
+    document.body.innerHTML = before
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    const list = document.querySelector("ul")!
+    $.selectRange(list, 0, document.querySelector("p")!, 0)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+    editor.doc.syncFromDOM()
+    editor.doc.stopCapturing()
+    expect(editor.doc.body.toString()).toContain('<ol style="list-style-type: decimal; list-style-image: none;"><li>One</li><li>Two</li></ol>')
+    expect(editor.doc.body.toString()).not.toContain("<p")
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe(before)
+    editor.doc.redo()
+    await Promise.resolve()
+    expect(cleanHTML()).toBe('<ol style="list-style-type: decimal; list-style-image: none;"><li>One</li><li>Two</li></ol>')
+  })
+
+  it("resets an existing enumeration and an image bullet to decimal markers", () => {
+    document.body.innerHTML = '<ol style="list-style-type: upper-roman; list-style-image: url(marker.png); color: red"><li>One</li><li>Two</li></ol>'
+    const list = document.querySelector("ol")!
+    $.move(list.querySelector("li")!.firstChild!, 1)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ol"})
+    expect(document.querySelector("ol")).toBe(list)
+    expect(list.style.listStyleType).toBe("decimal")
+    expect(list.style.listStyleImage).toBe("none")
+    expect(list.style.color).toBe("red")
+  })
+
+  it("shows the chosen numbered style instead of an existing image bullet", () => {
+    document.body.innerHTML = '<ul style="list-style-image: url(marker.png)"><li>One</li></ul>'
+    $.move(document.querySelector("li")!.firstChild!, 1)
+    editor.features.list.setListStyle("ol", "decimal")
+    const list = document.querySelector("ol")!
+    expect(list.style.listStyleType).toBe("decimal")
+    expect(list.style.listStyleImage).toBe("none")
+  })
+
+  it("converts an ordered list to a bulleted list without rebuilding items", () => {
+    document.body.innerHTML = '<ol><li>One</li><li>Two</li></ol>'
+    const list = document.querySelector("ol")!
+    const items = Array.from(list.children)
+    $.move(items[0].firstChild!, 1)
+    editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
+    expect(Array.from(document.querySelector("ul")!.children)).toEqual(items)
+    expect($.anchor).toBe(items[0].firstChild)
+    expect($.anchorOffset).toBe(1)
   })
 
   it("edits native ordered-list and direct item numbering without normalizing the list", () => {

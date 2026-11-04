@@ -1,5 +1,5 @@
 import { DocumentListenerMap, EditorFeature } from "."
-import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
+import {$, fixedClientX, figureSelectionTarget, isOutOfFlow, editingFlowRoot, uiMotionDisabled, atomicEditingContainer, caretRect, isAppendixInteraction, isCaretAtBoundary, isEmptyParagraph, isFormControlInteraction, isWidgetShadowInteraction, focusEditorWindow, focusedWidgetHost, getContainer, isAtomicEditingElement, isContentfulWidget, isElement, modifierKeyDown, removeEditorMarker, setPart, textOffsetIn, textPointAtOffset, widgetHostForScrollEvent, widgetHostForShadowInteraction} from "../utility"
 import {mediaContainerForNode} from "../media"
 import {SVG_NAMESPACE, graphicContainerForNode, standaloneGraphicShape} from "../graphic"
 import {isSectionElement} from "../sections"
@@ -142,12 +142,13 @@ export class SelectionFeature extends EditorFeature {
     this.#atomicAnchors.refresh()
   }
 
-  /** Ordinary element boxes follow CSS anchors. Cropping still needs the
-   * visible media geometry rather than the element's full border box. */
+  /** Ordinary element boxes follow CSS anchors. Transformed layout items
+   * and cropped media use their measured geometry. */
   readonly #positionAtomicOverlays = () => {
     if(this.#atomicOverlayFrame !== null) cancelAnimationFrame(this.#atomicOverlayFrame)
     this.#atomicOverlayFrame = null
     let measured = false
+    const spatialSelection = $.isMultiElementSelection && (this.editor.features.canvas.active || this.editor.features.slides.active)
     for(const overlays of [this.#atomicOverlays, this.#boxDrag?.previews]) overlays?.forEach((overlay, element) => {
       if(!document.body.contains(element)) {
         this.#atomicAnchors.release(overlay)
@@ -159,6 +160,15 @@ export class SelectionFeature extends EditorFeature {
       const crop = media ? getComputedStyle(media).getPropertyValue("object-view-box") : "none"
       const cropped = Boolean(media && crop && crop !== "none") && element instanceof HTMLElement
       const transformed = this.editor.features.transformation.boxTransformed(element)
+      if(spatialSelection && overlays === this.#atomicOverlays && transformed
+        && (element instanceof HTMLElement || element instanceof SVGSVGElement || mathRoot(element) === element)) {
+        this.#atomicAnchors.release(overlay)
+        measured = true
+        const {styles} = this.editor.features.transformation.boxGeometry(element as HTMLElement | SVGSVGElement | MathMLElement)
+        Object.assign(overlay.style, {...styles, left: `${fixedClientX(parseFloat(styles.left))}px`})
+        return
+      }
+      overlay.style.removeProperty("transform")
       if(!cropped && !transformed) {
         for(const property of ["left", "top", "width", "height"]) overlay.style.removeProperty(property)
         this.#atomicAnchors.bind(overlay, element)
@@ -747,6 +757,7 @@ export class SelectionFeature extends EditorFeature {
       }
       else {
         const block = this.#selectionBlock()
+        if(isEmptyParagraph(block)) return false
         const neighbor = adjacent ?? (block && this.#atDisclosureEdge(block, direction, vertical)
           ? this.#adjacentNavigationElement(direction, true) : null)
         if(!neighbor || !(neighbor.matches("ul, ol, dl, menu, details, table") || isContentfulWidget(neighbor, this.editor.schema))) return false
@@ -777,7 +788,7 @@ export class SelectionFeature extends EditorFeature {
       while(element && element !== getDocumentRoot() && !isSectionElement(element)) element = element.parentElement
       if(element !== getDocumentRoot()) block = element
     }
-    if(!block || !block.parentElement || block.parentElement.matches("table, thead, tbody, tfoot, tr, colgroup")
+    if(!block || isEmptyParagraph(block) || !block.parentElement || block.parentElement.matches("table, thead, tbody, tfoot, tr, colgroup")
       || block.closest("ul, ol, dl, menu, details, figure")
       || !this.#atDisclosureEdge(block, direction, true)) return false
     $.selectGap(block, direction === "backward" ? "before" : "after")
@@ -1202,7 +1213,7 @@ export class SelectionFeature extends EditorFeature {
     const left = Math.min(x, event.clientX), top = Math.min(y, event.clientY)
     const right = Math.max(x, event.clientX), bottom = Math.max(y, event.clientY)
     Object.assign(drag.overlay.style, {left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px`})
-    const elements: Element[] = this.editor.features.canvas.items(drag.root).filter(element => {
+    const hits = this.editor.features.canvas.items(drag.root).filter(element => {
       const geometry = element instanceof HTMLElement || element instanceof SVGSVGElement
         ? this.editor.features.transformation.boxGeometry(element) : null
       const rect = geometry?.rect ?? element.getBoundingClientRect()
@@ -1211,6 +1222,11 @@ export class SelectionFeature extends EditorFeature {
       const epsilon = 1e-6
       return rect.width > 0 && rect.height > 0 && corners.every(point => point.x >= left - epsilon && point.x <= right + epsilon && point.y >= top - epsilon && point.y <= bottom + epsilon)
     })
+    const selected = new Set<Element>()
+    for(const hit of hits) if(!selected.has(hit)) {
+      for(const peer of this.editor.features.transformation.groupSelectionPeers(hit)) selected.add(peer)
+    }
+    const elements = [...selected]
     drag.elements = elements
     for(const [element, overlay] of drag.previews) if(!elements.includes(element)) {
       this.#atomicAnchors.release(overlay)
@@ -1292,6 +1308,10 @@ export class SelectionFeature extends EditorFeature {
     if(ev.defaultPrevented || (isElement(ev.target) && ev.target.closest(".◆editor-only"))
       || ev.button !== 0) return
     const origin = ev.composedPath()[0] ?? ev.target
+    if(fromCanvasSlot) {
+      const item = this.editor.features.canvas.itemAtPoint(ev.clientX, ev.clientY)
+      if(item && this.editor.features.transformation.handleGroupedPointer(ev, item)) return
+    }
     if(this.editor.features.slides.active && (origin === document.body || origin === document.documentElement
       || origin instanceof Element && (isSlide(origin) || origin.matches("body > .ww-slides-viewport")))) {
       ev.preventDefault()
@@ -1608,7 +1628,9 @@ export class SelectionFeature extends EditorFeature {
       const target = this.#modifierSelectionTarget(widget ?? event.target)
       if(target && (this.editor.features.canvas.active || this.editor.features.slides.active)) {
         const elements = $.selectedElements
-        $.selectElements(elements.includes(target) ? elements.filter(element => element !== target) : [...elements, target])
+        const peers = this.editor.features.transformation.groupSelectionPeers(target)
+        $.selectElements(peers.every(peer => elements.includes(peer))
+          ? elements.filter(element => !peers.includes(element)) : [...elements, ...peers])
       }
       else if(target) $.selectElement(target)
       this.processSelection(undefined, {scrollIntoView: !isContentfulWidget(widget, this.editor.schema)})
@@ -1618,12 +1640,13 @@ export class SelectionFeature extends EditorFeature {
     return true
   }
 
-  /** Routes wheel input over an inactive widget to the editor document instead
+  /** Routes wheel input over an inactive widget to the document or canvas instead
    * of letting the widget consume it (for example, to zoom a map).
    * Contentful and capture-selected widgets retain their native wheel behavior. */
   readonly #handleWidgetWheel = (event: WheelEvent) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
     if(!widget || isContentfulWidget(widget, this.editor.schema) || widget === this.captureSelectedWidget) return
+    if(this.editor.features.canvas.handleWheel(event, true)) return
     event.stopPropagation()
     // Preserve browser page zoom while still keeping the event out of the
     // widget. Regular wheel scrolling has to be redirected explicitly because
@@ -1664,6 +1687,8 @@ export class SelectionFeature extends EditorFeature {
       return
     }
     if(widget === this.captureSelectedWidget) return
+    if(event instanceof PointerEvent && event.type === "pointerdown"
+      && this.editor.features.transformation.handleGroupedPointer(event, widget, false)) return
     this.clearSelectedSection()
     this.#endDrag()
     this.#capturedElement = widget
@@ -2600,6 +2625,11 @@ export class SelectionFeature extends EditorFeature {
       this.editor.features.slides.constrainSelection()
       this.editor.features.board.constrainSelection()
       sel = document.getSelection()
+      if(sel?.isCollapsed && sel.anchorNode && $.isGapSelection) {
+        const paragraph = $.emptyParagraphAtBoundary(sel.anchorNode, sel.anchorOffset)
+        if(paragraph) $.move(paragraph)
+      }
+      sel = document.getSelection()
       this.editor.features.list.clearSelectionPresentation()
     }
     const kind = this.#selectionKind(inDragSelection, capturedElement)
@@ -2917,7 +2947,7 @@ export class SelectionFeature extends EditorFeature {
       }
       else if(ev.key === "ArrowUp") {
         const firstRootElement = Array.from(getDocumentRoot().children).find(element => !isOutOfFlow(element))
-        if(!ev.shiftKey && firstRootElement && isCaretAtStartOf(firstRootElement)) {
+        if(!ev.shiftKey && firstRootElement && !isEmptyParagraph(firstRootElement) && isCaretAtStartOf(firstRootElement)) {
           ev.preventDefault()
           $.selectGap(firstRootElement, "before")
           this.processSelection()

@@ -11,6 +11,7 @@ import type {RibbonButton} from "../src/components/ribbon-button"
 import {$, caretRect, pathFromNode, cloneWithoutEditorMarkers} from "../src/utility"
 import {defaultDocumentTheme, documentThemes, documentWidgetStyleSource} from "../src/document-themes"
 import {boardStyles, canvasStyles, slidesStyles} from "../src/document-layout"
+import {appendSerializedAssets} from "../src/serialization"
 import {floatSideFromStyles} from "../src/element-styles"
 import {initializeEditorMessage, replayHostDrag, replayHostPointer, executeCompleteEvent, executeFailureEvent, selectionChangeEvent, isProofreadingStateChangeMessage, proofreadingStateChangeEvent, type ProofreadingAction, type SelectionChangeDetail} from "../src/editor-bridge"
 import {SharedDOMDoc} from "../src/domdoc"
@@ -152,7 +153,7 @@ await check("multi-paragraph style presets stay within the selected siblings", c
 await check("Tab indents paragraphs without moving the centered prose column", checkParagraphIndent)
 await check("undo and redo restore and reveal selections in nested scrollers", checkHistorySelection)
 await check("SVG shape fills keep overlaps solid and intentional holes open", checkGraphicShapeFills)
-await check("canvas starting view frames resize, delete and open without shifting", checkCanvasStartingView)
+await check("canvas starting view frames drag, resize and open without shifting", checkCanvasStartingView)
 await check("SVG arrowheads select their connector, fit its outline and resize independently", checkGraphicArrowheads)
 
 await check("SVG stroke colors preserve line placement and selection", checkGraphicPaint)
@@ -6836,6 +6837,108 @@ await check("freeform box selections transform as a group", async () => {
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("canvas wheel and hand panning cover interactive embeds and restore their hit targets", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:760px;height:500px;max-width:none"
+  frame.srcdoc = `<!doctype html><style>${canvasStyles}</style><body class="ww-canvas">
+    <iframe sandbox srcdoc="<button>Embedded control</button>" style="position:absolute;left:180px;top:120px;width:320px;height:180px"></iframe>
+    <video controls style="position:absolute;left:500px;top:330px;width:180px;height:100px"></video>
+    <map-widget style="position:absolute;left:40px;top:40px;width:120px;height:80px"></map-widget>
+    <script>customElements.define("map-widget", class extends HTMLElement {
+      constructor() { super(); const root = this.attachShadow({mode: "open"}); const surface = document.createElement("div");
+        surface.id = "map-surface"; surface.style.cssText = "display:block;width:100%;height:100%;background:#ddd";
+        surface.addEventListener("wheel", event => { this.wheelCalls = (this.wheelCalls || 0) + 1; event.preventDefault() }); root.append(surface) }
+    })</script>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow! as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "canvas fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, appendix = editor.appendix
+    const embed = doc.querySelector("iframe")!, slot = appendix.querySelector("slot")!
+    editor.features.selection.captureElement(embed)
+    await layoutFrame()
+    const rect = embed.getBoundingClientRect()
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+    assert(doc.elementFromPoint(x, y) === embed, "the captured frame is not initially interactive")
+    const wheelAt = (x: number, y: number) => {
+      const target = appendix.elementFromPoint(x, y) ?? doc.elementFromPoint(x, y)!
+      const event = new view.WheelEvent("wheel", {clientX: x, clientY: y, deltaX: 24, deltaY: 12, bubbles: true, composed: true, cancelable: true})
+      target.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    const before = slot.style.transform, authored = editor.toHTML()
+    assert(wheelAt(40, 400) && slot.style.transform !== before, "background wheel did not pan")
+    const shield = appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+    assert(appendix.elementFromPoint(x, y) === shield, "the embedded page would receive wheel input during the Canvas gesture")
+    const hand = appendix.querySelector<HTMLButtonElement>('button[name="hand"]')!, controlRect = hand.getBoundingClientRect()
+    assert(hand.contains(appendix.elementFromPoint(controlRect.x + controlRect.width / 2, controlRect.y + controlRect.height / 2)),
+      "the wheel gesture blocked the Canvas toolbar")
+    const panned = slot.style.transform
+    assert(wheelAt(x, y) && slot.style.transform !== panned, "the camera stopped at the embedded page")
+    const settleWheel = async () => {
+      for(let attempt = 0; !shield.hidden && attempt < 20; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    }
+    await settleWheel()
+    assert(shield.hidden && doc.elementFromPoint(x, y) === embed, "the frame did not regain input after the gesture")
+
+    const map = doc.querySelector("map-widget")! as HTMLElement & {wheelCalls?: number}
+    editor.features.selection.captureElement(map)
+    const mapSurface = map.shadowRoot!.querySelector<HTMLElement>("#map-surface")!
+    const mapRect = map.getBoundingClientRect(), mapPoint = {clientX: mapRect.x + mapRect.width / 2, clientY: mapRect.y + mapRect.height / 2}
+    const directMapWheel = () => {
+      const event = new view.WheelEvent("wheel", {...mapPoint, deltaX: 24, deltaY: 12, bubbles: true, composed: true, cancelable: true})
+      mapSurface.dispatchEvent(event)
+      return event
+    }
+    assert(wheelAt(40, 400), "background touchpad wheel did not start a Canvas pan before the map event")
+    const callsBeforePanWheel = map.wheelCalls ?? 0, cameraDuringPanWheel = slot.style.transform
+    assert(directMapWheel().defaultPrevented && (map.wheelCalls ?? 0) === callsBeforePanWheel
+      && slot.style.transform !== cameraDuringPanWheel,
+      "a composed wheel over the captured map reached its handler or failed to pan during the active Canvas gesture")
+    await settleWheel()
+    assert(shield.hidden, "the Canvas wheel gesture did not become idle")
+    const callsBeforeIdleWheel = map.wheelCalls ?? 0, cameraBeforeIdleWheel = slot.style.transform
+    directMapWheel()
+    assert((map.wheelCalls ?? 0) === callsBeforeIdleWheel + 1 && slot.style.transform === cameraBeforeIdleWheel,
+      "an idle wheel over the captured map did not reach its native handler")
+
+    editor.features.selection.captureElement(embed)
+    await layoutFrame()
+    const video = doc.querySelector("video")!
+    const center = (element: Element) => {
+      const rect = element.getBoundingClientRect()
+      return {clientX: rect.x + rect.width / 2, clientY: rect.y + rect.height / 2}
+    }
+    const hit = ({clientX, clientY}: {clientX: number, clientY: number}) => appendix.elementFromPoint(clientX, clientY)
+    assert(hit(center(video))?.matches('[part="media-interaction-shield"]'), "the editor media shield is not reachable")
+    hand.click()
+    assert(hand.contains(hit(center(hand))), "Hand mode blocked its own toolbar")
+    assert(view.getComputedStyle(shield).cursor === "grab", "Hand mode did not show the grab cursor")
+    for(const media of [embed, video]) {
+      const point = center(media)
+      const target = hit(point)
+      assert(target === shield, `Hand mode does not cover ${media.localName}`)
+      const camera = slot.style.transform
+      const pointer = (type: string, clientX: number, buttons: number) => new view.PointerEvent(type, {
+        ...point, clientX, button: 0, buttons, pointerType: "mouse", pointerId: 71, bubbles: true, composed: true, cancelable: true,
+      })
+      const down = pointer("pointerdown", point.clientX, 1)
+      target!.dispatchEvent(down)
+      assert(view.getComputedStyle(shield).cursor === "grabbing", "dragging did not show the grabbing cursor")
+      target!.dispatchEvent(pointer("pointermove", point.clientX + 16, 1))
+      target!.dispatchEvent(pointer("pointerup", point.clientX + 16, 0))
+      assert(down.defaultPrevented && slot.style.transform !== camera, `dragging over ${media.localName} did not pan`)
+    }
+    appendix.querySelector('button[name="hand"]')!.dispatchEvent(new view.KeyboardEvent("keydown", {key: "Escape", bubbles: true, composed: true}))
+    const framePoint = center(embed)
+    assert(shield.hidden && doc.elementFromPoint(framePoint.clientX, framePoint.clientY) === embed, "Escape did not restore embedded input")
+    assert(editor.toHTML() === authored, "panning changed the authored document")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("canvas slot preserves hit testing and document coordinates at different zoom levels", async () => {
   const paragraph = document.createElement("p")
   paragraph.textContent = "Canvas text"
@@ -7505,6 +7608,47 @@ await check("a clean canvas retains its initial item when moving and typing with
   finally { canvasEditor?.destroy(); frame.remove() }
 })
 
+await check("canvas circle hotspots stay round while drawing and after image resizing", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:800px;height:450px;max-width:none"
+  frame.srcdoc = '<!doctype html><body class="ww-canvas"><img src="/tests/fixtures/image-map.svg" style="position:absolute;left:120px;top:90px;width:360px;height:140px"><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "hotspot editor fixture did not initialize")
+    const editor = view.editor!, image = frame.contentDocument!.querySelector("img")!
+    await image.decode()
+    editor.features.selection.captureElement(image)
+    assert(editor.features.media.actions.startImageMapDrawing({type:"startImageMapDrawing", shape:"circle"}), "could not start drawing")
+    const {root} = editor.features.media.imageMapOverlay
+    const svg = root.querySelector("svg")!
+    const box = image.getBoundingClientRect(), x = box.left + box.width / 2, y = box.top + box.height / 2
+    const pointer = (type: string, clientX: number) => svg.dispatchEvent(new view.PointerEvent(type,
+      {bubbles:true, button:0, clientX, clientY:y}))
+    const circleBox = (selector: string) => root.querySelector(selector)!.getBoundingClientRect()
+    pointer("pointerdown", x)
+    pointer("pointermove", x + 24)
+    const preview = circleBox("circle.preview")
+    assert(Math.abs(preview.width - 48) < 1 && Math.abs(preview.height - 48) < 1, "drawing preview did not follow the circular pointer radius")
+    pointer("pointerup", x + 24)
+    const area = frame.contentDocument!.querySelector("area")!
+    const coords = area.coords
+    const committed = circleBox("circle.hotspot")
+    assert(Math.abs(committed.width - preview.width) < 1 && Math.abs(committed.height - preview.height) < 1,
+      "committed hotspot differs from the drawing preview")
+
+    image.style.width = "180px"
+    await layoutFrame()
+    const resized = circleBox("circle.hotspot"), resizedImage = image.getBoundingClientRect()
+    assert(resized.width > 0 && Math.abs(resized.width - resized.height) < 1, "resized hotspot is no longer round")
+    assert(Math.abs(resized.left + resized.width / 2 - (resizedImage.left + resizedImage.width / 2)) < 1,
+      "resized hotspot moved away from its image coordinates")
+    assert(area.coords === coords, "resizing the image rewrote the map coordinates")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("hotspot popovers use grey editing placeholders and compact controls", async () => {
   const {DomEditorToolbox} = await import("../src/components/toolbox")
   const frame = document.createElement("iframe")
@@ -7574,6 +7718,11 @@ await check("image hotspots scale and open popovers in preview and standalone re
         const box = image.getBoundingClientRect()
         const svg = root.querySelector("svg")!
         assert(Math.abs(svg.getBoundingClientRect().width - box.width) < 1, "hotspot overlay did not resize with the image")
+        const circle = root.querySelector('a[aria-label="Link"] circle')!
+        const circleBox = circle.getBoundingClientRect()
+        assert(circleBox.width > 0 && Math.abs(circleBox.width - circleBox.height) < 1, "reading-mode circle stretched with the image")
+        assert(root.elementFromPoint(circleBox.left + circleBox.width / 2, circleBox.top + circleBox.height / 2) === circle,
+          "the corrected circle is not its own pointer hit target")
         const hit = root.elementFromPoint(box.left + 590 * box.width / 720, box.top + 190 * box.height / 420)!
         assert(hit.closest("a")?.getAttribute("aria-label") === "Details", "scaled hotspot is not the pointer hit target")
         hit.dispatchEvent(new view.MouseEvent("click", {bubbles:true, composed:true, cancelable:true}))
@@ -7667,6 +7816,11 @@ await check("canvas hotspot clicks preserve the camera in preview and standalone
 await check("exported canvas runs its standalone viewer without editor dependencies", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px;border:0"
+  if(!savedCanvasHTML) {
+    const source = new DOMParser().parseFromString(`<style>${canvasStyles}</style><body class="ww-canvas"><p style="left:-400px;top:-300px;width:200px">Exported canvas</p></body>`, "text/html")
+    appendSerializedAssets(source, [])
+    savedCanvasHTML = `<!doctype html>${source.documentElement.outerHTML}`
+  }
   frame.srcdoc = savedCanvasHTML
   const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
   nativeRootEditor.addAppendix(frame)
@@ -7682,12 +7836,26 @@ await check("exported canvas runs its standalone viewer without editor dependenc
     assert(Math.abs((rect.left + rect.right) / 2 - view.innerWidth / 2) < 1
       && Math.abs((rect.top + rect.bottom) / 2 - view.innerHeight / 2) < 1, "reader did not center fitted content")
     const slot = appendix.querySelector("slot")!
+    const map = appendix.querySelector<HTMLButtonElement>('[part="canvas-minimap"]')!
+    const thumbnail = map.querySelector("image")!
+    for(let i = 0; !thumbnail.hasAttribute("href") && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(!map.hidden && thumbnail.getAttribute("href")?.startsWith("data:image/svg+xml"), "saved reader did not render its minimap")
+    assert(!doc.querySelector("[data-snapdom-internal], [part=canvas-minimap]"), "minimap helpers leaked into the authored document")
+    const image = thumbnail.getAttribute("href")
+    const viewport = map.querySelector(".◆canvas-minimap-camera")!
+    const width = Number(viewport.getAttribute("width"))
     const before = slot.style.transform
     appendix.querySelector<HTMLButtonElement>('button[name="zoom-in"]')!.click()
     assert(slot.style.transform !== before && appendix.querySelector("output")!.textContent === "120%", "reader zoom control did not move the camera")
+    assert(Number(viewport.getAttribute("width")) < width && thumbnail.getAttribute("href") === image, "zoom did not update the viewport independently of the snapshot")
     const zoomed = slot.style.transform
     slot.dispatchEvent(new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaY: 100}))
     assert(slot.style.transform !== zoomed, "reader did not pan with the wheel")
+    const minimapRect = map.getBoundingClientRect()
+    map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: minimapRect.left + minimapRect.width / 2, clientY: minimapRect.top + minimapRect.height / 2}))
+    const centered = item.getBoundingClientRect()
+    assert(Math.abs((centered.left + centered.right) / 2 - view.innerWidth / 2) < 1
+      && Math.abs((centered.top + centered.bottom) / 2 - view.innerHeight / 2) < 1, "minimap click did not center the camera")
     appendix.querySelector<HTMLButtonElement>('button[name="fit-content"]')!.click()
     const fitted = item.getBoundingClientRect()
     assert(Math.abs((fitted.left + fitted.right) / 2 - view.innerWidth / 2) < 1
@@ -9034,6 +9202,102 @@ await check("lane media fills available width and resizes with native handles", 
       }
     }
     finally { saved.remove() }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("pinned floats keep their selection frame aligned while scrolling", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1500px;height:600px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><svg viewBox="0 0 720 405"></svg><p style="height:1500px">Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "pinned float fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, theme = doc.createElement("style")
+    theme.textContent = defaultDocumentTheme.source
+    doc.head.append(theme)
+    const target = doc.querySelector("svg")!
+    assert(editor.features.manipulation.setFloat(target, "far-left"), "could not float the grid")
+    editor.features.selection.captureElement(target)
+    const checkFrames = (label: string) => {
+      const rect = target.getBoundingClientRect()
+      for(const overlay of [editor.features.transformation.overlay, editor.features.selection.selectionCaret!]) {
+        const box = overlay.getBoundingClientRect()
+        for(const edge of ["left", "top", "right", "bottom"] as const) {
+          assert(Math.abs(box[edge] - rect[edge]) < 1, `${label}: ${overlay.getAttribute("part")} ${edge} at ${box[edge]}, expected ${rect[edge]}`)
+        }
+      }
+    }
+    await layoutFrame()
+    checkFrames("before pinning")
+    const initialTop = target.getBoundingClientRect().top
+    assert(editor.features.layout.actions.setFloatSticky({type:"setFloatSticky", enabled:true}), "could not pin the float")
+    await layoutFrame()
+    assert(Math.abs(target.getBoundingClientRect().top - initialTop) < 1,
+      `pinning moved the float down from ${initialTop} to ${target.getBoundingClientRect().top}`)
+    checkFrames("after pinning")
+    view.scrollTo(0, 200); await layoutFrame()
+    const pinnedTop = target.getBoundingClientRect().top
+    assert(view.getComputedStyle(target).position === "sticky" && pinnedTop >= 0 && pinnedTop < 40, "float did not stick")
+    checkFrames("while pinned")
+    view.scrollTo(0, 400); await layoutFrame()
+    assert(target.getBoundingClientRect().top === pinnedTop, "pinned float moved on further scroll")
+    checkFrames("after further scroll")
+    view.scrollTo(0, 0); await layoutFrame()
+    checkFrames("after scrolling back")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("pinned empty media stays in place and keeps its controls clickable", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1200px;height:600px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><p style="height:1500px">Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "empty media fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const {layout, media, selection, transformation} = editor.features
+    for(const markup of ["<picture><img></picture>", "<video controls></video>", "<iframe title='Empty website'></iframe>"]) {
+      doc.querySelector("p")!.insertAdjacentHTML("beforebegin", markup)
+      const target = doc.body.firstElementChild!
+      const label = target.localName
+      assert(editor.features.manipulation.setFloat(target, "far-left"), `${label}: could not float media`)
+      selection.captureElement(target)
+      await layoutFrame()
+      const initial = target.getBoundingClientRect()
+      assert(layout.actions.setFloatSticky({type: "setFloatSticky", enabled: true}), `${label}: could not pin media`)
+      await layoutFrame()
+      const pinned = target.getBoundingClientRect()
+      assert(Math.abs(initial.top - pinned.top) < 1, `${label}: pinning moved media from ${initial.top} to ${pinned.top}`)
+      assert(view.getComputedStyle(target).position === "sticky", `${label}: empty media styles overrode sticky positioning`)
+      let stickyTop: number | undefined
+      for(const scroll of [0, 200, 400]) {
+        view.scrollTo(0, scroll)
+        await layoutFrame()
+        const box = target.getBoundingClientRect()
+        if(scroll) {
+          stickyTop ??= box.top
+          assert(box.top >= 0 && box.top < 40 && Math.abs(box.top - stickyTop) < 1,
+            `${label}: media did not stick while scrolling`)
+        }
+        const input = media.placeholder.root.querySelector<HTMLInputElement>(".url")!
+        const url = input.getBoundingClientRect()
+        const x = url.left + url.width / 2, y = url.top + url.height / 2
+        assert(doc.elementFromPoint(x, y) === doc.body && media.placeholder.root.elementFromPoint(x, y) === input,
+          `${label}: URL input is blocked at scroll ${scroll}`)
+        const edge = transformation.overlay.querySelector('[part~="transform-overlay-edge-right"]')!
+        const edgeX = box.right - 2, edgeY = box.top + box.height / 3
+        assert(doc.elementFromPoint(edgeX, edgeY) === doc.body && editor.appendix.elementFromPoint(edgeX, edgeY) === edge,
+          `${label}: selection edge is blocked at scroll ${scroll}`)
+      }
+      target.remove()
+      view.scrollTo(0, 0)
+    }
   }
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })

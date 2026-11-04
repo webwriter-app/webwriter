@@ -117,17 +117,17 @@ describe("shape keyboard", () => {
   it("starts the star variants on the last row and maps shortcuts to their new positions", async () => {
     const keyboard = await mountKeyboard()
     const keys = [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>(".grid .key")]
-    expect(keys.slice(29, 33).map(key => key.title)).toEqual(["3-point star", "4-point star", "5-point star", "6-point star"])
+    expect(keys.slice(30, 34).map(key => key.title)).toEqual(["3-point star", "4-point star", "5-point star", "6-point star"])
     const rows = [...keyboard.shadowRoot!.querySelectorAll(".key-row")]
-    expect(rows.map(row => row.querySelectorAll("button").length)).toEqual([7, 11, 11, 11])
+    expect(rows.map(row => row.querySelectorAll("button").length)).toEqual([8, 11, 11, 11])
     expect([...rows[3].querySelectorAll<HTMLButtonElement>("button")].map(key => key.title)).toEqual(stars.map(option => option.label))
-    expect(keys[29].querySelector(".hint")!.textContent).toBe("<")
-    expect(keys[30].querySelector(".hint")!.textContent).toBe("z")
-    expect(keys[31].querySelector(".hint")!.textContent).toBe("x")
+    expect(keys[30].querySelector(".hint")!.textContent).toBe("<")
+    expect(keys[31].querySelector(".hint")!.textContent).toBe("z")
+    expect(keys[32].querySelector(".hint")!.textContent).toBe("x")
     const commands: string[] = []
     keyboard.addEventListener("shape-keyboard-preview", event => commands.push((event as CustomEvent).detail.shape))
     const input = {type: "keydown" as const, key: "<", code: "IntlBackslash", altKey: true, shiftKey: false, capsLock: false, repeat: false}
-    expect(keyboard.handleInput({...input, key: "8", code: "Digit8"})).toBe(false)
+    expect(keyboard.handleInput({...input, key: "9", code: "Digit9"})).toBe(false)
     expect(keyboard.handleInput({...input, key: "-", code: "Minus"})).toBe(false)
     keyboard.handleInput(input)
     keyboard.handleInput({...input, key: "z", code: "KeyZ"})
@@ -450,7 +450,7 @@ describe("shape keyboard", () => {
     const hint = firstRow.querySelector<HTMLElement>(".shape-hint")!
     expect(hint.textContent).toBe("Hold key and click to insert")
     expect(hint.style.gridColumn).toBe("9 / span 3")
-    expect(firstRow.querySelectorAll("button")).toHaveLength(7)
+    expect(firstRow.querySelectorAll("button")).toHaveLength(8)
     expect(firstRow.children).toHaveLength(9)
     keyboard.shadowRoot!.querySelector<HTMLButtonElement>('.tabs button[aria-label="Advanced"]')!.click()
     await keyboard.updateComplete
@@ -515,8 +515,8 @@ describe("shape keyboard", () => {
   it("moves Frame onward and the old side keys to Advanced, stars to Basic, and the full block-arrow range to Arrows", async () => {
     const keyboard = await mountKeyboard()
     const titles = () => [...keyboard.shadowRoot!.querySelectorAll<HTMLButtonElement>(".grid .key")].map(key => key.title)
-    expect(titles().slice(0, 29)).toEqual(basic.slice(0, 29).map(option => option.label))
-    expect(titles().slice(29)).toEqual(stars.map(option => option.label))
+    expect(titles().slice(0, 30)).toEqual(basic.slice(0, 30).map(option => option.label))
+    expect(titles().slice(30)).toEqual(stars.map(option => option.label))
     expect(titles()).toContain("32-point star")
     expect(titles()).not.toContain("Frame")
     expect(titles()).not.toContain("Explosion 1")

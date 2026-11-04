@@ -40,6 +40,25 @@ describe("breadcrumb float indicators", () => {
     expect(indicator.getAttribute("aria-label")).toBe(direction === "left" ? "Left float" : "Right float")
     expect(indicator.querySelector(`.icon-tabler-float-${direction}`)).not.toBeNull()
   })
+
+  it.each(["far-left", "far-right"] as const)("shows a balloon after the symbol when a %s float is pinned", async float => {
+    const breadcrumb = document.createElement("dom-editor-breadcrumb") as DomEditorBreadcrumb
+    document.body.append(breadcrumb)
+    const item = {path: [0], name: "Image", float}
+    breadcrumb.path = [{...item, position: "sticky", positionAnchor: true}]
+    await breadcrumb.updateComplete
+    const root = breadcrumb.shadowRoot!
+    expect(root.querySelector('.position-float + [aria-label="Pinned float"] .icon-tabler-balloon')).not.toBeNull()
+    expect(root.querySelector(".position-anchor")).toBeNull()
+
+    breadcrumb.path = [item]
+    await breadcrumb.updateComplete
+    expect(root.querySelector(".position-balloon")).toBeNull()
+    breadcrumb.path = [{path: [0], name: "Image", position: "sticky", positionAnchor: true}]
+    await breadcrumb.updateComplete
+    expect(root.querySelector(".position-balloon")).toBeNull()
+    expect(root.querySelector(".position-anchor")).not.toBeNull()
+  })
 })
 
 describe("breadcrumb path separators", () => {

@@ -16,83 +16,92 @@ export async function checkCanvasStartingView() {
     assert(view.editor, "starting view fixture did not initialize")
     const editor = view.editor!, doc = frame.contentDocument!, canvas = editor.features.canvas
     assert(editor.setDocumentLayout("canvas", "document"), "canvas conversion failed")
-    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-out"})
+    const minimap = editor.appendix.querySelector<HTMLButtonElement>('[part="canvas-minimap"]')!
+    const toggle = editor.appendix.querySelector<HTMLButtonElement>('[name="minimap-toggle"]')!
+    for(let i = 0; !minimap.querySelector("image")?.hasAttribute("href") && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(minimap.querySelector("image")?.getAttribute("href")?.startsWith("data:image/svg+xml"), "editor did not capture the minimap")
+    assert(toggle.getAttribute("aria-expanded") === "true" && minimap.getBoundingClientRect().top > toggle.getBoundingClientRect().bottom,
+      "editor minimap is not initially open below the canvas controls")
+    const toolbar = toggle.parentElement!
+    const expanded = toolbar.getBoundingClientRect()
+    const controls = toolbar.parentElement!
+    const mapRect = minimap.getBoundingClientRect()
+    const bottomGap = controls.getBoundingClientRect().bottom - parseFloat(view.getComputedStyle(controls).borderBottomWidth) - mapRect.bottom
+    assert(Math.abs(mapRect.top - expanded.bottom - bottomGap) < .5, "minimap has uneven spacing above and below")
+    toggle.click()
     await settle()
-    const button = editor.appendix.querySelector<HTMLButtonElement>('button[name="starting-view"]')!
+    const collapsed = toolbar.getBoundingClientRect()
+    assert(minimap.hidden && toggle.getAttribute("aria-expanded") === "false", "minimap did not close")
+    assert(Math.abs(expanded.left - collapsed.left) < .5 && Math.abs(expanded.width - collapsed.width) < .5
+      && Math.abs(expanded.height - collapsed.height) < .5, "collapsing the minimap shifted the toolbar")
+    assert(view.getComputedStyle(toggle).backgroundColor === "rgba(0, 0, 0, 0)", "minimap chevron has a background")
+    const presets = toolbar.querySelector('[role="group"]')!
+    assert(presets.querySelector('[name="actual-size"]') && presets.querySelector('[name="fit-content"]'), "zoom presets are not grouped")
+    toggle.click()
+    const group = editor.appendix.querySelector<HTMLElement>('.◆canvas-starting-view-controls')!
+    const button = group.querySelector<HTMLButtonElement>('[name="add-starting-view"]')!
+    const show = group.querySelector<HTMLButtonElement>('[name="starting-view"]')!
+    assert(group.getAttribute("role") === "group" && group.firstElementChild === button && button.querySelector("svg")
+      && show.textContent === "Starting view" && show.disabled, "starting-view controls are not an add-icon and label group")
+    assert(view.getComputedStyle(group).backgroundColor === "rgba(255, 255, 255, 0.5)", "starting-view overlay lacks its translucent background")
     button.click()
-    await settle()
     const bounds = doc.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
     assert(bounds && Math.abs(bounds.getBoundingClientRect().left) < 1 && Math.abs(bounds.getBoundingClientRect().width - 900) < 1, "saved bounds do not match the viewport")
-    assert(editor.features.transformation.target === bounds, "new starting view was not selected")
-    const group = editor.appendix.querySelector<HTMLElement>('.◆canvas-starting-view-controls')!
-    assert(group.getAttribute("role") === "group" && group.querySelector('[name="starting-view"]')?.textContent === "Starting view"
-      && group.querySelector('[name="delete-starting-view"] svg'), "starting-view controls are not a labeled button and trash-icon group")
-    editor.features.selection.selectElement(doc.querySelector("p")!)
-    // Move the camera so all four edges and their controls are within reach.
-    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-out"})
-    await settle()
-    const outline = editor.appendix.querySelector<HTMLElement>("[part=canvas-starting-view]")!
-    const box = outline.getBoundingClientRect()
-    const x = box.left + box.width / 2, y = box.top
-    const hit = editor.appendix.elementFromPoint(x, y)!
-    assert(outline.contains(hit), `dotted outline cannot be clicked (${hit?.outerHTML})`)
-    hit.dispatchEvent(new view.PointerEvent("pointerdown", {button: 0, pointerId: 7, clientX: x, clientY: y, bubbles: true, cancelable: true, composed: true}))
-    await settle()
-    const transform = editor.features.transformation
-    assert(transform.target === bounds, "frame click did not select authored bounds")
-    assert(view.getComputedStyle(transform.overlay).outlineStyle === "none", "selection added a second frame")
-    assert(view.getComputedStyle(outline).borderColor === view.getComputedStyle(transform.overlay).getPropertyValue("--ww-transform-color").trim()
-      || view.getComputedStyle(outline).borderColor === view.getComputedStyle(transform.overlay.querySelector(".◆transform-overlay-scale")!).backgroundColor,
-      "selected dotted frame did not become selection blue")
-    assert(transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!.hidden, "starting view exposes rotation")
-    const label = outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!
-    const verifySelectionLabel = (inside: boolean) => {
-      const labelRect = label.getBoundingClientRect(), frameRect = bounds.getBoundingClientRect()
-      assert(view.getComputedStyle(label).display !== "none" && label.textContent === "STARTING VIEW", "selected starting-view label is absent")
-      assert(view.getComputedStyle(label).color === view.getComputedStyle(outline).borderColor, "starting-view label does not match selection blue")
-      assert(inside ? labelRect.top > frameRect.top && labelRect.bottom < frameRect.bottom : labelRect.bottom < frameRect.top && labelRect.top >= 0,
-        "starting-view label did not flip to the available side of the frame")
-      const deleter = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-delete")!
-      const deleteRect = deleter.getBoundingClientRect(), stem = view.getComputedStyle(deleter, "::after")
-      const dot = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-up-right")!.getBoundingClientRect()
-      const start = deleteRect.top + parseFloat(stem.top) * canvas.zoom, end = start + parseFloat(stem.height) * canvas.zoom
-      const centerX = dot.left + dot.width / 2, centerY = dot.top + dot.height / 2
-      assert(Math.abs(deleteRect.left + (parseFloat(stem.left) + parseFloat(stem.width) / 2) * canvas.zoom - centerX) < 1
-        && start <= centerY + 1 && end >= centerY - 1, "delete connector does not meet the top-right selection dot")
+    const outline = editor.appendix.querySelector<HTMLElement>("[part=canvas-minimap-starting-view]")!
+    const edge = outline.querySelector<HTMLButtonElement>("button")!, corner = outline.querySelector<HTMLElement>("[data-corner=nw]")!
+    const map = minimap.getBoundingClientRect()
+    let outlineRect = outline.getBoundingClientRect()
+    for(let i = 0; (outline.hidden || outlineRect.top < map.top || outlineRect.right > map.right) && i < 100; i++) {
+      await new Promise(resolve => setTimeout(resolve, 20))
+      outlineRect = outline.getBoundingClientRect()
     }
-    verifySelectionLabel(false)
-    const originalTop = bounds.style.top
-    bounds.style.top = `${canvas.clientPoint(0, 8).y}px`
+    assert(!outline.hidden && view.getComputedStyle(bounds).visibility === "hidden"
+      && !editor.appendix.querySelector("[part=canvas-starting-view]"), "starting view is not limited to the minimap")
+    const x = outlineRect.left + outlineRect.width / 2, y = outlineRect.top + 1
+    const hit = editor.appendix.elementFromPoint(x, y)!
+    assert(edge.contains(hit), "starting view frame cannot be dragged in the minimap")
+    assert(editor.appendix.elementFromPoint(x, outlineRect.top + outlineRect.height / 2) === minimap,
+      "starting view frame intercepts clicks inside it")
+    const reset = presets.querySelector<HTMLButtonElement>('[name="actual-size"]')!
+    assert(reset.querySelector("svg") && !reset.textContent?.trim() && reset.getAttribute("aria-label") === "Reset zoom to 100%", "reset zoom is not an icon button")
+    // Synthetic browser events do not have an active native pointer to capture.
+    edge.setPointerCapture = corner.setPointerCapture = () => {}
+    const pointer = (type: string, clientX: number, clientY: number, handle: Element = hit) => handle.dispatchEvent(new view.PointerEvent(type, {
+      button: 0, pointerId: 7, isPrimary: true, clientX, clientY, bubbles: true, cancelable: true, composed: true,
+    }))
+    const slot = editor.appendix.querySelector("slot")!, camera = slot.style.transform, zoom = canvas.zoom
+    const savedPosition = bounds.style.left
+    const width = bounds.style.width, height = bounds.style.height
+    pointer("pointerdown", x, y)
+    pointer("pointermove", x + 8, y - 7)
+    assert(outline.getBoundingClientRect().left > outlineRect.left && slot.style.transform !== camera
+      && canvas.zoom === zoom && bounds.style.left === savedPosition, "drag did not move the frame and pan the camera live")
+    pointer("pointerup", x + 8, y - 7)
     await settle()
-    verifySelectionLabel(true)
-    bounds.style.top = originalTop
-    await settle()
-    const handles = transform.overlay.querySelectorAll<HTMLElement>(".◆transform-overlay-scale:not([hidden])")
-    assert(handles.length === 8, "starting view is missing ordinary resize handles")
-    const handle = transform.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!
-    const rect = handle.getBoundingClientRect(), width = parseFloat(bounds.style.width)
-    const selectedRect = bounds.getBoundingClientRect()
-    assert(Math.abs(rect.left + rect.width / 2 - (selectedRect.right - 1)) < 1 && Math.abs(rect.top + rect.height / 2 - (selectedRect.bottom - 1)) < 1,
-      "resize affordances are not directly on the dotted frame")
-    handle.addEventListener("mousedown", event => transform.handleScaleStart(event), {once: true})
-    handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: rect.left + 4, clientY: rect.top + 4}))
-    transform.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: rect.left + 84, clientY: rect.top + 44}))
-    transform.handleScaleEnd()
-    await settle()
-    assert(parseFloat(bounds.style.width) > width, "ordinary resize did not update starting bounds")
-    assert(Math.abs(outline.getBoundingClientRect().width - bounds.getBoundingClientRect().width) < 1, "dotted outline did not follow resizing")
+    assert(bounds.style.left !== savedPosition && bounds.style.width === width && bounds.style.height === height, "drag did not save the new center at the original size")
+    const moved = bounds.getBoundingClientRect()
+    assert(Math.abs(moved.left + moved.width / 2 - view.innerWidth / 2) < 1
+      && Math.abs(moved.top + moved.height / 2 - view.innerHeight / 2) < 1, "camera did not follow the moved starting view")
+    const handle = corner.getBoundingClientRect(), cx = handle.left + handle.width / 2, cy = handle.top + handle.height / 2
+    assert(edge.getAttribute("aria-pressed") === "true" && editor.appendix.elementFromPoint(cx, cy) === corner,
+      "the selected frame has no accessible resize corner")
+    pointer("pointerdown", cx, cy, corner)
+    pointer("pointermove", cx + 6, cy + 5, corner)
+    pointer("pointerup", cx + 6, cy + 5, corner)
+    assert(parseFloat(bounds.style.width) < parseFloat(width) && parseFloat(bounds.style.height) < parseFloat(height),
+      "resizing the frame did not change the saved dimensions")
     const authoredBounds = bounds.getAttribute("style")
-    editor.features.selection.selectElement(doc.querySelector("p")!)
-    const slot = editor.appendix.querySelector("slot")!
     slot.dispatchEvent(new view.WheelEvent("wheel", {deltaX: 3000, deltaY: 2000, bubbles: true, composed: true, cancelable: true}))
-    editor.appendix.querySelector<HTMLButtonElement>('[name="starting-view"]')!.click()
+    show.click()
     await settle()
     const shown = bounds.getBoundingClientRect()
-    assert(editor.features.transformation.target === bounds && Math.abs(shown.left + shown.width / 2 - view.innerWidth / 2) < 1
-      && Math.abs(shown.top + shown.height / 2 - view.innerHeight / 2) < 1, "Starting view button did not bring back and select the frame")
+    assert(Math.abs(shown.left + shown.width / 2 - view.innerWidth / 2) < 1
+      && Math.abs(shown.top + shown.height / 2 - view.innerHeight / 2) < 1, "Starting view button did not center the camera on the frame")
+    assert(canvas.zoom > zoom, "Starting view button did not use the resized frame to set the zoom")
     assert(bounds.getAttribute("style") === authoredBounds, "Starting view button reset the existing authored bounds")
     const saved = editor.toHTML()
-    assert(!saved.includes('part="canvas-starting-view"') && !saved.includes('part="canvas-starting-view-label"') && !saved.includes("◆element-selected"), "frame UI leaked into export")
+    const savedBody = new DOMParser().parseFromString(saved, "text/html").body
+    assert(!savedBody.querySelector("[part=canvas-minimap-starting-view]") && !savedBody.outerHTML.includes("◆element-selected"), "starting view UI leaked into authored HTML")
     // Documents created before starting views lack the portable hiding rule.
     // The editor's adopted layout stylesheet masks that omission until preview.
     const legacy = new DOMParser().parseFromString(saved, "text/html")
@@ -115,42 +124,71 @@ export async function checkCanvasStartingView() {
       const loaded = new Promise<void>(resolve => preview.addEventListener("load", () => resolve(), {once: true}))
       document.body.append(preview)
       await loaded
-      const output = preview.contentDocument!, outputView = preview.contentWindow! as Window & {firstCamera?: Promise<string>}
+      const output = preview.contentDocument!, outputView = preview.contentWindow! as Window & typeof globalThis & {firstCamera?: Promise<string>}
       const slot = output.body.shadowRoot!.querySelector("slot")!
       const first = await outputView.firstCamera
       assert(first === slot.style.transform, `reader shifted after its first frame (${first} -> ${slot.style.transform})`)
       const result = output.querySelector<HTMLElement>(".ww-canvas-starting-view")!.getBoundingClientRect()
       assert(Math.abs((result.left + result.right) / 2 - width / 2) < 1 && Math.abs((result.top + result.bottom) / 2 - height / 2) < 1, "reader did not center starting view")
       assert(result.width <= width + 1 && result.height <= height + 1 && (Math.abs(result.width - width) < 1 || Math.abs(result.height - height) < 1), "reader did not fit starting view to available screen")
-      assert(!output.body.shadowRoot!.querySelector("[part=canvas-starting-view]"), "reader exposes the dotted editing outline")
+      const readerOutline = output.body.shadowRoot!.querySelector<HTMLElement>("[part=canvas-minimap-starting-view]")!
+      for(let i = 0; readerOutline.hidden && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
+      const readerEdge = readerOutline.querySelector<HTMLButtonElement>("button")!
+      assert(!readerOutline.hidden && readerEdge.disabled && outputView.getComputedStyle(readerEdge).borderTopStyle === "dashed",
+        "reader lacks a read-only starting view frame on its minimap")
       const outputWidget = output.querySelector<HTMLElement>("starting-view-widget")!
       const shadow = outputWidget.attachShadow({mode: "open"})
       shadow.innerHTML = '<slot></slot><button>Shadow action</button><input aria-label="Shadow answer">'
-      const pan = output.body.shadowRoot!.querySelector<HTMLButtonElement>('[name="hand"]')!
-      // Even with the hand tool enabled, widget controls own their input.
-      pan.click()
+      const appendix = output.body.shadowRoot!
+      const pan = appendix.querySelector<HTMLButtonElement>('[name="hand"]')!
       for(const root of [outputWidget, shadow]) {
         const action = root.querySelector<HTMLButtonElement>("button")!, input = root.querySelector<HTMLInputElement>("input")!
         const rect = action.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
         assert(output.elementFromPoint(x, y) === (root === shadow ? outputWidget : action), "starting bounds cover a widget control")
         if(root === shadow) assert(shadow.elementFromPoint(x, y) === action, "widget shadow action is unreachable")
-        const pointer = new (preview.contentWindow as Window & typeof globalThis).PointerEvent("pointerdown", {button: 0, pointerId: 12, clientX: x, clientY: y, bubbles: true, composed: true, cancelable: true})
-        action.dispatchEvent(pointer)
-        assert(!pointer.defaultPrevented && !output.body.classList.contains("◆canvas-panning"), "reader stole widget input")
         let clicked = false
         action.addEventListener("click", () => { clicked = true }, {once: true})
         action.click()
         input.focus()
-        assert(clicked && (root === shadow ? shadow.activeElement : output.activeElement) === input, "widget action or editable input failed")
+        assert(clicked && (root === shadow ? shadow.activeElement : output.activeElement) === input, "widget action or editable input failed with Hand off")
+      }
+      pan.click()
+      const panSurface = appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+      assert(panSurface && !panSurface.hidden, "Hand did not show the canvas pan surface")
+      for(const root of [outputWidget, shadow]) {
+        const action = root.querySelector<HTMLButtonElement>("button")!
+        const rect = action.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+        const hit = appendix.elementFromPoint(x, y)!
+        assert(hit === panSurface, `Hand surface does not cover widget control (${hit?.outerHTML})`)
+        const before = slot.style.transform
+        const pointer = (type: string, clientX: number, clientY: number) => new outputView.PointerEvent(type, {
+          button: 0, buttons: type === "pointerup" ? 0 : 1, pointerId: 12,
+          clientX, clientY, bubbles: true, composed: true, cancelable: true,
+        })
+        hit.dispatchEvent(pointer("pointerdown", x, y))
+        output.dispatchEvent(pointer("pointermove", x + 36, y + 24))
+        output.dispatchEvent(pointer("pointerup", x + 36, y + 24))
+        assert(slot.style.transform !== before, "Hand drag over widget control did not pan the canvas")
+      }
+      pan.click()
+      assert(panSurface.hidden, "Hand off did not hide the canvas pan surface")
+      for(const root of [outputWidget, shadow]) {
+        const action = root.querySelector<HTMLButtonElement>("button")!, input = root.querySelector<HTMLInputElement>("input")!
+        const rect = action.getBoundingClientRect(), x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+        const hit = output.elementFromPoint(x, y)
+        assert(hit === (root === shadow ? outputWidget : action), "widget hit target was not restored when Hand turned off")
+        input.focus()
+        assert((root === shadow ? shadow.activeElement : output.activeElement) === input, "widget input did not regain focus with Hand off")
       }
       preview.remove()
     }
     editor.appendix.querySelector('[name="delete-starting-view"] path')!.dispatchEvent(new view.MouseEvent("click", {bubbles: true, composed: true}))
     await settle()
-    assert(!doc.querySelector(".ww-canvas-starting-view") && outline.hidden, "ordinary delete left starting view or outline")
+    assert(!doc.querySelector(".ww-canvas-starting-view") && outline.hidden, "delete left the starting view frame visible")
     editor.doc.undo()
     await settle()
-    assert(doc.querySelector(".ww-canvas-starting-view") && !outline.hidden, "undo did not restore starting view")
+    for(let i = 0; outline.hidden && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
+    assert(doc.querySelector(".ww-canvas-starting-view") && !outline.hidden, "undo did not restore the minimap starting view")
     // Empty paragraph cleanup shifts live Range offsets. Exercise the browser's
     // actual adjustment here; Happy DOM does not implement that behavior.
     const empty = document.createElement("iframe")
@@ -162,9 +200,11 @@ export async function checkCanvasStartingView() {
       for(let i = 0; !emptyView.editor && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
       assert(emptyView.editor, "empty canvas fixture did not initialize")
       emptyView.editor!.features.canvas.convert("canvas")
-      emptyView.editor!.appendix.querySelector<HTMLButtonElement>('[name="starting-view"]')!.click()
+      emptyView.editor!.appendix.querySelector<HTMLButtonElement>('[name="add-starting-view"]')!.click()
       const emptyBounds = empty.contentDocument!.querySelector(".ww-canvas-starting-view")
-      assert(emptyBounds && emptyView.editor!.features.transformation.target === emptyBounds, "empty canvas did not select its new starting view")
+      const emptyOutline = emptyView.editor!.appendix.querySelector<HTMLElement>('[part="canvas-minimap-starting-view"]')!
+      for(let i = 0; emptyOutline.hidden && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 20))
+      assert(emptyBounds && !emptyOutline.hidden, "empty canvas did not show its starting view on the minimap")
     }
     finally { empty.contentWindow?.editor?.destroy(); empty.remove() }
     // Retain a useful interactive fixture for manual visual inspection.

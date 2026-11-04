@@ -1575,6 +1575,9 @@ export class ManipulationFeature extends EditorFeature {
     if(tag === "p" && (this.unwrapDetailsForParagraphInsertion(range, this.editor.features.selection.captureSelectedElement ?? $.selectedElement ?? null)
       || this.editor.features.list.unwrapSelectionToParagraphs())) return true
 
+    if((tag === "ul" || tag === "ol") && !this.editor.features.selection.captureSelectedElement
+      && this.editor.features.list.convertActiveList(tag)) return true
+
     if(/^h[1-6]$/.test(tag) && (getContainer(range.startContainer).closest("li, dt, dd")
       || getContainer(range.endContainer).closest("li, dt, dd"))) return true
     const captured = this.editor.features.selection.captureSelectedElement
@@ -1587,6 +1590,43 @@ export class ManipulationFeature extends EditorFeature {
       }
       if(container === root || container === document.body || !container.parentElement) return false
       range.selectNode(container)
+    }
+    else if(tag === "ul" || tag === "ol") {
+      // List insertion formats the text blocks touched by the selection. A
+      // text range ending inside a block must not leave a split paragraph on
+      // either side of the list. Restrict expansion to sibling text blocks;
+      // other structures retain the general conversion behavior below.
+      const blockAt = (node: Node) => getContainer(node).closest("p, h1, h2, h3, h4, h5, h6")
+      const first = blockAt(range.startContainer), last = blockAt(range.endContainer)
+      const parent = first?.parentNode ?? last?.parentNode
+      const validBlock = (block: Element | null) => !block || block.parentNode === parent
+        && this.isTextBlock(block) && !atomicEditingContainer(block, this.editor.schema)
+      if(parent && validBlock(first) && validBlock(last)
+        && (first || range.startContainer === parent) && (last || range.endContainer === parent)) {
+        const atEdge = (node: Node, offset: number, block: Element, end: boolean) => {
+          while(node !== block) {
+            const length = node instanceof Text ? node.length : node.childNodes.length
+            if(offset !== (end ? length : 0)) return false
+            const parent = node.parentNode
+            if(!parent) return false
+            const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
+            node = parent
+            offset = index + (end ? 1 : 0)
+          }
+          return offset === (end ? block.childNodes.length : 0)
+        }
+        const startsAfterFirst = first && first !== last && atEdge(range.startContainer, range.startOffset, first, true)
+        const endsBeforeLast = last && first !== last && atEdge(range.endContainer, range.endOffset, last, false)
+        if(first) {
+          if(startsAfterFirst) range.setStartAfter(first)
+          else range.setStartBefore(first)
+        }
+        if(last) {
+          if(endsBeforeLast) range.setEndBefore(last)
+          else range.setEndAfter(last)
+        }
+        if(range.collapsed) return true
+      }
     }
     // Never split a widget host through a text range. Whole hosts can be
     // wrapped in disclosures without touching their internals.
@@ -2838,6 +2878,7 @@ export class ManipulationFeature extends EditorFeature {
         ...(["toggle", "content"].includes(popupElementRole(target) ?? "") ? {popupRole: popupElementRole(target) as "toggle" | "content"} : {}),
         placement: this.editor.features.layout.getPlacementState(target),
         grouping: this.editor.features.board.groupingState(target),
+        spatialGrouping: includeSelection ? this.editor.features.transformation.groupingState([target]) : undefined,
         canMoveUp: movable && target.previousElementSibling !== null,
         canMoveDown: movable && target.nextElementSibling !== null,
         alignment,
@@ -2861,7 +2902,10 @@ export class ManipulationFeature extends EditorFeature {
   private getElementsStyleState(properties: string[] = [], elements: Element[]) {
     if(!elements.length) return this.getStyleState(properties, null, false)
     const styles = elements.map(element => this.getStyleState(properties, element, false))
-    return {...styles[0], inline: commonValues(styles.map(state => state.inline)),
+    const target = styles[0].target
+    const grouping = $.isMultiElementSelection ? $.selectedElements : elements.length === 1 ? elements : []
+    return {...styles[0], target: target && {...target, spatialGrouping: this.editor.features.transformation.groupingState(grouping)},
+      inline: commonValues(styles.map(state => state.inline)),
       hasInlineStyles: styles.some(state => state.hasInlineStyles),
       authoredProperties: [...(styles[0].authoredProperties ?? [])].filter(name => styles.every(state => state.authoredProperties?.includes(name))),
       computed: commonValues(styles.map(state => state.computed))}
@@ -3254,6 +3298,7 @@ export class ManipulationFeature extends EditorFeature {
     }
     this.selectCapturedElementForInsertion()
     if(this.insertLayoutPaste(fragment)) return
+    if(this.insertListPaste(fragment)) return true
     const container = $.anchorContainer
     if(!$.isElementSelection && !$.isGapSelection && !$.isEmptyDocumentSelection
       && container && container === $.focusContainer && !isDocumentRoot(container)
@@ -3286,6 +3331,52 @@ export class ManipulationFeature extends EditorFeature {
     return result
   }
 
+  /** Insert copied list items into the live list at an item boundary. */
+  private insertListPaste(fragment: DocumentFragment) {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || $.isMultiElementSelection || $.excludedFlowElements.length) return false
+    const children = Array.from(fragment.childNodes).filter(node => !(node instanceof Text) || node.data.trim())
+    if(children.length !== 1 || !isElement(children[0])) return false
+    const source = children[0]
+    if(source.hasAttribute("is") || !source.matches("ul, ol, dl, menu")) return false
+    const items = Array.from(source.childNodes)
+    if(!items.some(node => isElement(node) && node.matches("li, dt, dd"))
+      || items.some(node => isElement(node) ? !node.matches(source.localName === "dl" ? "dt, dd" : "li")
+        : node.nodeType !== Node.COMMENT_NODE && !(node instanceof Text && !node.data.trim()))) return false
+    let range = $.listItemRange
+    if(!range && selection.isCollapsed) {
+      const node = selection.anchorNode
+      const element = node instanceof Element ? node : node?.parentElement
+      const item = element?.closest("li, dt, dd")
+      const list = item?.parentElement
+      if(item && list?.matches("ul, ol, dl, menu") && !atomicEditingContainer(item, this.editor.schema)) {
+        const atStart = isCaretAtBoundary(item, "start"), atEnd = isCaretAtBoundary(item, "end")
+        if(!atStart && !atEnd) return false
+        range = document.createRange()
+        range.setStart(list, Array.from(list.childNodes).indexOf(item) + (atEnd ? 1 : 0))
+        range.collapse(true)
+      }
+      else if(isElement(node) && node.matches("ul, ol, dl, menu")) range = selection.getRangeAt(0).cloneRange()
+    }
+    const target = range?.startContainer
+    if(!range || !isElement(target) || !target.isConnected || target.localName !== source.localName
+      || target.hasAttribute("is") || atomicEditingContainer(target, this.editor.schema)) return false
+    const attributes = (element: Element) => Array.from(element.attributes)
+      .filter(attribute => attribute.name !== "class" || authoredClassValue(attribute.value))
+      .map(attribute => [attribute.name, attribute.name === "class" ? authoredClassValue(attribute.value) : attribute.value] as const)
+    const sourceAttributes = attributes(source), targetAttributes = attributes(target)
+    if(sourceAttributes.length !== targetAttributes.length || sourceAttributes.some(([name, value]) => !targetAttributes.some(([other, otherValue]) => name === other && value === otherValue))) return false
+    return this.withNormalization(() => {
+      range.deleteContents()
+      const inserted = document.createDocumentFragment()
+      inserted.append(...items)
+      range.insertNode(inserted)
+      const last = items.at(-1)!
+      $.move(target, Array.from(target.childNodes).indexOf(last) + 1)
+      return true
+    })
+  }
+
   /** Duplicate whole layout items without replacing the selected original or
    * invoking the general insertion placement. Re-read the last live copy's
    * geometry so moves, undo and remote replacements cannot leave stale offsets. */
@@ -3300,6 +3391,7 @@ export class ManipulationFeature extends EditorFeature {
       || element.matches("style,script,link,meta,template") || slideLayoutRole(element))
       || Array.from(fragment.childNodes).some(node => node instanceof Text && node.data.trim())) return false
     const items = elements as (HTMLElement | SVGSVGElement)[]
+    this.editor.features.transformation.preparePastedGroups(items)
     const previous = this.layoutPastes.get(root)
     const last = previous?.key === key && previous.elements.length === items.length
       && previous.elements.every(element => element.parentElement === root) ? previous.elements : null
@@ -4287,7 +4379,7 @@ export class ManipulationFeature extends EditorFeature {
       }
     },
     "copy": ev => {
-      if(!ev.clipboardData || !$.excludedFlowElements.length) return
+      if(ev.defaultPrevented || !ev.clipboardData || !$.excludedFlowElements.length && !$.listItemRange) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment($.copy())
       ev.clipboardData.setData("text/html", html)
@@ -4301,12 +4393,14 @@ export class ManipulationFeature extends EditorFeature {
       if($.isEmpty) return
       const selected = $.selectedElement
       const fragment = $.copy()
-      if(!selected && !$.isMultiElementSelection && !$.excludedFlowElements.length
+      if(!selected && !$.isMultiElementSelection && !$.excludedFlowElements.length && !$.listItemRange
         && !Array.from(fragment.children).some(element => element.matches("ul, ol, dl, menu, h1, h2, h3, h4, h5, h6, .ww-popup"))) return
       ev.preventDefault()
       const {clipboardHTML: html, text} = this.editor.serializeClipboardFragment(fragment)
       ev.clipboardData.setData("text/html", html)
       ev.clipboardData.setData("text/plain", text)
+      const listRange = $.listItemRange
+      if(listRange) $.selectRange(listRange.startContainer, listRange.startOffset, listRange.endContainer, listRange.endOffset)
       $.delete()
       this.editor.features.dialog.ensurePopupContent()
     },
@@ -4481,6 +4575,16 @@ export class ManipulationFeature extends EditorFeature {
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return
     if($.isMultiElementSelection) return this.withNormalization(() => $.delete())
     const selected = $.selectedElement
+    const caret = $.anchor
+    const caretItem = $.isEmpty && isElement(caret) ? caret.matches("br") ? caret.parentElement : caret : null
+    const removedItem = selected ?? caretItem
+    if(removedItem && this.editor.features.list.hasItemsAround(removedItem)
+      && this.editor.features.list.isEmptyItem(removedItem)) return this.withNormalization(() => {
+      const split = this.editor.features.list.splitAroundRemovedItem(removedItem)
+      if(!split) return
+      removedItem.remove()
+      direction === "forward" ? $.move(split.after) : $.move(split.before, -1)
+    })
     const popupRole = selected && popupElementRole(selected)
     if(selected && (popupRole === "toggle" || popupRole === "content")) {
       const wrapper = selected.closest(".ww-popup") ?? popupDisplayToggle(selected)?.closest(".ww-popup")
@@ -4571,10 +4675,12 @@ export class ManipulationFeature extends EditorFeature {
       const previousElement = $.elementBefore
       const nextElement = $.elementAfter
       if(direction === "backward" && container?.textContent && isCaretAtBoundary(container, "start") && previousElement && !previousElement.textContent) {
+        this.editor.features.list.splitAroundRemovedItem(previousElement)
         previousElement.remove()
         return
       }
       if(direction === "forward" && container?.textContent && isCaretAtBoundary(container, "end") && nextElement && !nextElement.textContent) {
+        this.editor.features.list.splitAroundRemovedItem(nextElement)
         nextElement.remove()
         return
       }
@@ -4590,15 +4696,16 @@ export class ManipulationFeature extends EditorFeature {
         const previous = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "previous")
         const next = isOutOfFlow(emptyContainer) ? null : flowSibling(emptyContainer, "next")
         $.delete()
+        const split = this.editor.features.list.splitAroundRemovedItem(emptyContainer)
         emptyContainer.remove()
-        if(direction === "forward" && next) {
-          $.move(next)
+        if(direction === "forward" && (split?.after ?? next)) {
+          $.move((split?.after ?? next)!)
         }
-        else if(previous) {
-          $.move(previous, -1)
+        else if(split?.before ?? previous) {
+          $.move((split?.before ?? previous)!, -1)
         }
-        else if(next) {
-          $.move(next)
+        else if(split?.after ?? next) {
+          $.move((split?.after ?? next)!)
         }
         else {
           // A sole empty paragraph may still be inside an authored list item
@@ -4630,6 +4737,7 @@ export class ManipulationFeature extends EditorFeature {
         const {elementBefore, elementAfter} = $
         if(elementBefore.matches("summary") || elementAfter.matches("summary")) return
         if(!elementBefore.textContent) {
+          this.editor.features.list.splitAroundRemovedItem(elementBefore)
           elementBefore.remove()
           $.selectGap(elementAfter, "before")
         }
@@ -4645,6 +4753,7 @@ export class ManipulationFeature extends EditorFeature {
         const {elementBefore, elementAfter} = $
         if(elementBefore.matches("summary") || elementAfter.matches("summary")) return
         if(!elementAfter.textContent) {
+          this.editor.features.list.splitAroundRemovedItem(elementAfter)
           elementAfter.remove()
           $.selectGap(elementBefore)
         }
@@ -4812,6 +4921,8 @@ export class ManipulationFeature extends EditorFeature {
     if(currentData.content !== copied.content || currentData.text !== copied.text) return false
     if(!this.editor.features.slides.allowsSelection() || !this.editor.features.board.allowsSelection()) return false
     return this.withNormalization(() => {
+      const listRange = $.listItemRange
+      if(listRange) $.selectRange(listRange.startContainer, listRange.startOffset, listRange.endContainer, listRange.endOffset)
       $.delete()
       this.editor.features.dialog.ensurePopupContent()
       return true

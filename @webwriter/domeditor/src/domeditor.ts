@@ -19,6 +19,7 @@ export type {DOMEditorOptions, EditingAction} from "./domeditor-core"
 export class DOMEditor extends CoreDOMEditor {
   constructor(options: DOMEditorOptions = {}) {
     super({...options,
+      loadCanvasSnapdom: options.loadCanvasSnapdom ?? (async () => (await import("virtual:canvas-snapdom")).snapdom),
       bundleOfflineModules: options.bundleOfflineModules ?? (async (...args) => (await import("./offline-module-bundler")).bundleOfflineModules(...args)),
       appendSerializedAssets: options.appendSerializedAssets ?? appendSerializedAssets}, editor => ({
       "dependency": new DependencyFeature(editor),

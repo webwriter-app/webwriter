@@ -196,6 +196,19 @@ function adjacentElement(nodes: NodeListOf<ChildNode>, offset: number, direction
   return null
 }
 
+/** An editable paragraph with no authored content can hold the caret itself. */
+export function isEmptyParagraph(node: Node | null): boolean {
+  if(!isElement(node) || node.localName !== "p" || node.hasAttribute("is")
+    || node.getAttribute("contenteditable") === "false") return false
+  let breaks = 0
+  const empty = (child: Node): boolean => child instanceof Text ? !child.data.trim()
+    : child.nodeType === Node.COMMENT_NODE ? true
+      : isElement(child) && !child.hasAttribute("is") && child.getAttribute("contenteditable") !== "false"
+        && (child.localName === "br" ? ++breaks <= 1 : isMarkElement(child))
+        && Array.from(child.childNodes).every(empty)
+  return Array.from(node.childNodes).every(empty)
+}
+
 function edgeTextDescendant(node: Node, direction: "start" | "end"): Text | null {
   if(node instanceof Text) return node
   const children = Array.from(node.childNodes)
@@ -415,9 +428,12 @@ export class EditingSelection {
       this.move(element)
       return
     }
-    const parent = element.parentElement!
+    const parent = element.parentElement
+    if(!parent) return
     const i = Array.from(parent.childNodes).indexOf(element)
-    this.#selection.setPosition(parent, direction === "before"? i: i + 1)
+    const offset = direction === "before" ? i : i + 1
+    const paragraph = this.emptyParagraphAtBoundary(parent, offset)
+    this.#selection.setPosition(paragraph ?? parent, paragraph ? 0 : offset)
     window.focus()
   }
 
@@ -527,7 +543,9 @@ export class EditingSelection {
     }
     const gap = (element: Element, placement: "before" | "after") => {
       const parent = element.parentNode!
-      return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
+      const offset = Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0)
+      const paragraph = this.emptyParagraphAtBoundary(parent, offset)
+      return point(paragraph ?? parent, paragraph ? 0 : offset)
     }
     let widget = pointerTarget instanceof Node && pointerTarget.getRootNode() === document
       ? isElement(pointerTarget) ? pointerTarget : pointerTarget.parentElement : null
@@ -577,7 +595,10 @@ export class EditingSelection {
     const gap = (element: Element, placement: "before" | "after") => {
       if(element === selectionRoot) return point(element, placement === "after" ? element.childNodes.length : 0)
       const parent = element.parentNode!
-      return point(parent, Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0))
+      const offset = Array.from(parent.childNodes).indexOf(element) + (placement === "after" ? 1 : 0)
+      const paragraph = this.emptyParagraphAtBoundary(parent, offset)
+      if(paragraph) return {node: paragraph, offset: 0, overrideNative: true}
+      return point(parent, offset)
     }
     const hit = document.elementsFromPoint?.(x, y).find(element => element !== document.body
       && element !== document.documentElement && root.contains(element))
@@ -1003,8 +1024,7 @@ export class EditingSelection {
   static get isGapSelection() {
     const anchor = this.anchor
     if(this.isEmpty && anchor && this.summaryAtLeadingBoundary(anchor, this.anchorOffset)) return false
-    if(this.isEmpty && isElement(anchor) && anchor.localName === "p"
-      && Array.from(anchor.childNodes).every(node => isText(node) && !node.data.trim() || isElement(node) && node.localName === "br")) return false
+    if(this.isEmpty && isEmptyParagraph(anchor)) return false
     if(this.isEmpty && isElement(anchor) && anchor.localName === "span" && popupElementRole(anchor) === "popup") return false
     if(this.isEmpty && isElement(anchor) && anchor.localName === "p" && anchor.parentElement
       && popupElementRole(anchor.parentElement) === "content") {
@@ -1413,8 +1433,39 @@ export class EditingSelection {
     return this.#getAdjacentElement("next")
   }
 
-  /** Returns a clone of the selected content, leaving the document
-   * unchanged. */
+  /** Expands a whole-item selection whose endpoints sit at item edges. */
+  static get listItemRange(): Range | null {
+    const selection = document.getSelection()
+    if(!selection?.rangeCount || selection.isCollapsed || this.isMultiElementSelection) return null
+    const range = selection.getRangeAt(0)
+    const list = range.commonAncestorContainer
+    if(!isElement(list) || list.hasAttribute("is") || !list.matches("ul, ol, dl, menu")
+      || atomicEditingContainer(range.startContainer) || atomicEditingContainer(range.endContainer)
+      || this.excludedFlowElements.length) return null
+    const boundary = (node: Node, offset: number): number | null => {
+      if(node === list) return offset
+      while(node.parentNode && node.parentNode !== list) {
+        const length = node.nodeType === Node.TEXT_NODE ? (node as Text).length : node.childNodes.length
+        if(offset !== 0 && offset !== length) return null
+        const index = Array.prototype.indexOf.call(node.parentNode.childNodes, node) as number
+        offset = index + (offset === 0 ? 0 : 1)
+        node = node.parentNode
+      }
+      if(node.parentNode !== list || !isElement(node) || !node.matches("li, dt, dd")) return null
+      if(offset !== 0 && offset !== node.childNodes.length) return null
+      const index = Array.prototype.indexOf.call(list.childNodes, node) as number
+      return index + (offset === 0 ? 0 : 1)
+    }
+    const start = boundary(range.startContainer, range.startOffset), end = boundary(range.endContainer, range.endOffset)
+    if(start === null || end === null || start >= end) return null
+    const nodes = Array.from(list.childNodes).slice(start, end)
+    if(!nodes.some(node => isElement(node) && node.matches("li, dt, dd"))) return null
+    const result = document.createRange()
+    result.setStart(list, start); result.setEnd(list, end)
+    return result
+  }
+
+  /** Returns a clone of the selected content, leaving the document unchanged. */
   static copy() {
     if(this.isMultiElementSelection) {
       const fragment = getInertDocument(this.range.startContainer).createDocumentFragment()
@@ -1423,10 +1474,10 @@ export class EditingSelection {
     }
     const root = getDocumentRoot()
     const copyingRoot = this.selectedElement === root || this.selectedElement === document.body
-    const range = copyingRoot ? document.createRange() : this.range
+    const range = copyingRoot ? document.createRange() : this.listItemRange ?? this.range
     if(copyingRoot) range.selectNodeContents(root)
     let fragment = this.cloneClipboardContents(range)
-    const commonAncestor = this.range.commonAncestorContainer
+    const commonAncestor = range.commonAncestorContainer
     let sharedMark = isElement(commonAncestor)? commonAncestor: commonAncestor.parentElement
     while(sharedMark && isMarkElement(sharedMark) && popupElementRole(sharedMark) !== "content") {
       const wrapper = cloneInert(sharedMark)
@@ -1555,6 +1606,17 @@ export class EditingSelection {
     if(!isElement(node) || !node.matches("details:not([is])") || atomicEditingContainer(node)) return null
     const summary = node.querySelector(":scope > summary")
     return summary && offset <= Array.from(node.childNodes).indexOf(summary) ? summary : null
+  }
+
+  /** Resolve a structural boundary adjacent to an empty paragraph into it. */
+  static emptyParagraphAtBoundary(node: Node, offset: number) {
+    if(!isElement(node) || !getDocumentRoot().contains(node)) return null
+    const atomic = atomicEditingContainer(node)
+    if(atomic && !atomic.classList.contains("◆widget-editable")) return null
+    const after = adjacentElement(node.childNodes, offset, "after")
+    const before = adjacentElement(node.childNodes, offset, "before")
+    return isEmptyParagraph(after) && !isOutOfFlow(after) ? after
+      : isEmptyParagraph(before) && !isOutOfFlow(before) ? before : null
   }
 
   /** Moves the caret by the given granularity (character, word, line) and direction (forward, backward). */

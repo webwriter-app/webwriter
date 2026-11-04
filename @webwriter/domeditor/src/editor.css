@@ -171,12 +171,12 @@ body > :last-child:not(:where(.◆gap-after-selected)) {
   user-select: none;
 }
 
-:is(picture, audio, video) {
+:is(picture:where(:not(html.◆canvas-active *)), audio, video) {
   display: block;
   width: 100%;
 }
 
-:is(picture, video) {
+:is(picture:where(:not(html.◆canvas-active *)), video) {
   height: auto;
 }
 
@@ -936,6 +936,11 @@ picture:not(:has(img[src]:not([src=""]))),
 video:not([src]):not(:has(track[src])) {
   background: lightgray;
   position: relative;
+}
+
+/* Leave the positioning of pinned floats to the document theme. */
+body :is(picture, video, iframe).ww-float-sticky:is(.ww-float-left, .ww-float-right) {
+  position: revert-layer;
 }
 
 :is(picture, iframe)::after {
@@ -1915,6 +1920,17 @@ body::part(transform-overlay) {
 body::part(transform-overlay-hidden) {
   display: none !important;
 }
+body::part(transform-overlay-float-anchor) {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  stroke: var(--sl-color-primary-400);
+  stroke-width: 1px;
+  stroke-dasharray: 5px 4px;
+}
 body::part(transform-overlay-content-selected) {
   --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
   --ww-transform-hover-color: var(--sl-color-gray-300, #cbd5e1);
@@ -1927,23 +1943,22 @@ body::part(transform-overlay-freeform) {
 body::part(transform-overlay-capture-selected) {
   outline-style: solid;
 }
-/* The starting view already has its own dotted border. Select that border
- * directly, with the ordinary handles centered on its inner edge. */
-body::part(transform-overlay-starting-view) {
-  outline: none;
-  --ww-transform-handle-offset: -3px;
-}
-body.ww-canvas:has(> .ww-canvas-starting-view.◆element-selected)::part(canvas-starting-view) {
-  border-color: var(--sl-color-primary-400);
-}
-body.ww-canvas:has(> .ww-canvas-starting-view.◆element-selected)::part(canvas-starting-view-label) {
-  display: block;
-}
-body::part(transform-overlay-board) {
+body::part(transform-overlay-board),
+body::part(transform-overlay-group-context) {
   --ww-transform-color: var(--sl-color-gray-400, #94a3b8);
   --ww-transform-hover-color: var(--sl-color-gray-300, #cbd5e1);
   outline: 2px dotted var(--ww-transform-color);
   outline-offset: 2px;
+}
+body::part(transform-overlay-group-context) {
+  z-index: 2147483646;
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+body::part(transform-overlay-group-context):is(:hover, :focus-visible) {
+  outline-color: var(--sl-color-primary-400);
 }
 body::part(transform-overlay-board-hovered),
 body::part(transform-overlay-board-selected) {
@@ -2039,6 +2054,8 @@ body::part(transform-overlay-edge-down) {
 body::part(transform-overlay-edge-left) { left: calc(var(--selection-flow-left, 0px) + var(--selection-flow-handle-left, var(--ww-transform-handle-offset, -7px))); }
 body::part(transform-overlay-edge-right) { right: calc(100% - var(--selection-flow-right, 100%) + var(--selection-flow-handle-right, var(--ww-transform-handle-offset, -7px))); }
 body::part(transform-overlay-edge-move) { cursor: grab; }
+body::part(transform-overlay-group-context-edge) { cursor: pointer; }
+body::part(transform-overlay-group-context-edge-disabled) { pointer-events: none; }
 /* Cover the capture outline's inner half with the native document drag handles. */
 body:not(.ww-canvas, .ww-slides)::part(transform-overlay-edge-up),
 body:not(.ww-canvas, .ww-slides)::part(transform-overlay-edge-down) { height: 11px; }
@@ -2157,6 +2174,7 @@ body::part(transform-overlay-rotator)::before {
 }
 body::part(transform-overlay-rotator)::after,
 body::part(transform-overlay-delete-freeform)::after,
+body::part(transform-overlay-group-freeform)::after,
 body::part(transform-overlay-attribution-freeform)::after {
     content: "";
     display: block;
@@ -2171,6 +2189,7 @@ body::part(transform-overlay-attribution-freeform)::after {
 }
 body::part(transform-overlay-rotator):hover::after,
 body::part(transform-overlay-delete-freeform):hover::after,
+body::part(transform-overlay-group-freeform):hover::after,
 body::part(transform-overlay-attribution-freeform):hover::after {
     background: var(--ww-transform-hover-color);
 }
@@ -2507,6 +2526,7 @@ body::part(transform-overlay-delete) {
   --icon: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1 -14M10 10v6M14 10v6"/></svg>');
 }
 body::part(transform-overlay-delete-freeform),
+body::part(transform-overlay-group-freeform),
 body::part(transform-overlay-attribution-freeform) {
   top: var(--transform-rotate-top, -42px);
   bottom: auto;
@@ -2520,10 +2540,19 @@ body::part(transform-overlay-attribution-freeform) {
 body::part(transform-overlay-delete-freeform) {
   right: calc(100% - var(--selection-flow-top-right, 100%) + var(--selection-flow-handle-top-right, var(--ww-transform-handle-offset, -7px)) - 4px);
 }
-body::part(transform-overlay-attribution-freeform) {
+body::part(transform-overlay-attribution-freeform),
+body::part(transform-overlay-group-freeform) {
   left: calc(var(--selection-flow-top-left, 0px) + var(--selection-flow-handle-top-left, -7px) - 4px);
 }
+body::part(transform-overlay-group-freeform) {
+  --icon: var(--ww-spatial-group-icon);
+}
+body::part(transform-overlay-group-freeform)::before {
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
 body::part(transform-overlay-delete-freeform)::before,
+body::part(transform-overlay-group-freeform)::before,
 body::part(transform-overlay-attribution-freeform)::before {
   width: 16px;
   height: 16px;
@@ -2545,6 +2574,7 @@ body::part(transform-overlay-scale-hidden),
 body::part(transform-overlay-mover-hidden),
 body::part(transform-overlay-caption-hidden),
 body::part(transform-overlay-delete-hidden),
+body::part(transform-overlay-group-hidden),
 body::part(transform-overlay-orderer-hidden),
 body::part(transform-overlay-anchor-sticky-hidden),
 body::part(transform-overlay-arranger-menu-hidden),
@@ -2560,13 +2590,6 @@ body::part(transform-overlay-freeform transform-overlay-at-top) {
   --transform-rotate-top: 14px;
   --transform-rotate-stem-top: -17px;
   --transform-rotate-stem-height: 17px;
-}
-body::part(transform-overlay-starting-view) {
-  --transform-rotate-stem-height: 29px;
-}
-body::part(transform-overlay-starting-view transform-overlay-at-top) {
-  --transform-rotate-stem-top: -13px;
-  --transform-rotate-stem-height: 13px;
 }
 /* AI edits are staged in a private Yjs branch and remain a visually distinct,
  * read-only proposal until the user accepts or rejects them. All marker

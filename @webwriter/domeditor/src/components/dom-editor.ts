@@ -46,7 +46,7 @@ import {bindEditingUI, type EditingUIProperties, type EditingUIListeners} from "
 import {editorInteractionStyles} from "./editing-controls.styles"
 import type {AppRibbon, AIEditReviewHandler} from "./ribbon"
 import type {LiveLearnerRibbonItem} from "./ribbon"
-import type { DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
+import type { BreadcrumbSelection, DomEditorBreadcrumb, DocumentTreeItem } from "./breadcrumb"
 import type {DomEditorToolbox} from "./toolbox"
 import type {LayoutSelectionState} from "../layouts"
 import type { EditingAction } from "../domeditor"
@@ -6563,11 +6563,11 @@ export class DomEditor extends LitElement {
   }
 
   private handleLayoutAction = (event: Event) => {
-    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky" | "setFullWidth", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"}>).detail
-    if(!action || !["setFloat", "setFloatSticky", "setFullWidth", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping"].includes(action.type)) return
+    const action = (event as CustomEvent<{type: "setFloat", side: FloatSide, alignment?: "left" | "center" | "right"} | {type: "setFloatSticky" | "setFullWidth", enabled: boolean} | {type: "moveFloat", direction: "up" | "down"} | {type: "movePlacement", direction: "front" | "up" | "down" | "back"} | {type: "setCaption", position: "none" | "above" | "below"} | {type: "openAttribution"} | {type: "setBoardGrouping", mode: "none" | "new" | "left" | "right"} | {type: "setSpatialGrouping", mode: "group" | "ungroup"}>).detail
+    if(!action || !["setFloat", "setFloatSticky", "setFullWidth", "moveFloat", "movePlacement", "setCaption", "openAttribution", "setBoardGrouping", "setSpatialGrouping"].includes(action.type)) return
     this.layoutError = ""
     const toolbox = this.renderRoot.querySelector<DomEditorToolbox>("dom-editor-toolbox")
-    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping"
+    const topLevel = toolbox?.activeTool === "Edit" && event.composedPath().includes(toolbox) && action.type !== "setCaption" && action.type !== "openAttribution" && action.type !== "setBoardGrouping" && action.type !== "setSpatialGrouping"
     void this.execute(topLevel ? {...action, topLevel: true} : action).then(changed => {
       if(changed === false && action.type === "setFloat") this.layoutError = "The selection changed or floating is unavailable. Select the element again."
     }).catch(error => { this.layoutError = error instanceof Error ? error.message : String(error) })
@@ -7262,18 +7262,21 @@ export class DomEditor extends LitElement {
     const detail = (event as CustomEvent<{name?: unknown, value?: unknown}>).detail
     const allowed = new Set([
       "x", "y", "width", "height", "rotation", "fill", "stroke",
-      "stroke-width", "opacity", "corner-radius", "routing", "start-arrow", "end-arrow",
+      "stroke-width", "opacity", "corner-radius", "routing", "start-arrow", "end-arrow", "convert-to-connector",
+      "start-arrow-size", "end-arrow-size",
+      "start-ending", "end-ending", "start-ending-size", "end-ending-size",
       "label", "text-color", "font-size", "inset", "inner-radius", "head-size", "tail-width",
     ])
     if(typeof detail?.name !== "string" || (!allowed.has(detail.name) && !/^adjust-[a-z][a-z -]*$/.test(detail.name)) || typeof detail.value !== "string") {
       this.focusEditor()
       return
     }
+    const keepInputFocus = this.ribbonInputSession && /^(start|end)-ending(-size)?$/.test(detail.name)
     void this.execute({
       type: "setGraphicParameter",
       name: detail.name,
       value: detail.value,
-    }).finally(() => this.focusEditor())
+    }).finally(() => { if(!keepInputFocus) this.focusEditor() })
   }
 
   private handleGraphicAlternativeTextChange = (event: Event) => {
@@ -7335,23 +7338,17 @@ export class DomEditor extends LitElement {
     }
   }
 
-  private handleBreadcrumbItemSelect = (event: Event) => {
-    const item = (event as CustomEvent<SelectionPathItem>).detail
-    if(!item || !Array.isArray(item.path)) return
-    const path = [...item.path]
-
-    void this.execute({
-      type: "selectNode",
-      path,
+  private selectBreadcrumbTarget(event: Event, type: "selectNode" | "selectSection") {
+    const target = (event as CustomEvent<BreadcrumbSelection<SelectionPathItem | SelectionPathSection>>).detail
+    if(!target || !Array.isArray(target.path)) return
+    void this.execute({type, path: [...target.path]}).then(() => {
+      if(target.openToolbox) this.openEditToolbox(true)
     }).finally(() => this.focusEditor())
   }
 
-  private handleBreadcrumbSectionSelect = (event: Event) => {
-    const section = (event as CustomEvent<SelectionPathSection>).detail
-    if(!section || !Array.isArray(section.path)) return
+  private handleBreadcrumbItemSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectNode")
 
-    void this.execute({type: "selectSection", path: [...section.path]}).finally(() => this.focusEditor())
-  }
+  private handleBreadcrumbSectionSelect = (event: Event) => this.selectBreadcrumbTarget(event, "selectSection")
 
   private handleBreadcrumbItemHover = (event: Event) => {
     const item = (event as CustomEvent<SelectionPathItem | null>).detail
@@ -7524,6 +7521,9 @@ export class DomEditor extends LitElement {
             && typeof grouping.canUngroup === "boolean" && typeof grouping.canJoinLeft === "boolean" && typeof grouping.canJoinRight === "boolean"
             ? {grouping: {grouped: grouping.grouped, canCreate: grouping.canCreate, canUngroup: grouping.canUngroup,
               canJoinLeft: grouping.canJoinLeft, canJoinRight: grouping.canJoinRight}} : {}),
+          ...(isRecord(value.target.spatialGrouping) && typeof value.target.spatialGrouping.canGroup === "boolean"
+            && typeof value.target.spatialGrouping.canUngroup === "boolean"
+            ? {spatialGrouping: {canGroup: value.target.spatialGrouping.canGroup, canUngroup: value.target.spatialGrouping.canUngroup}} : {}),
           ...(value.target.documentRoot === true ? {documentRoot: true as const} : {})}
         : undefined
     if(target === undefined

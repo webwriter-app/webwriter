@@ -9,6 +9,7 @@ import {documentationPlugin} from './scripts/documentation-plugin.mjs'
 import {siteHeaderPlugin} from './scripts/site-header.mjs'
 import {appEntryUrlsPlugin} from './scripts/app-entry-urls.mjs'
 import {appVersionPlugin} from './scripts/app-version.mjs'
+import {canvasSnapshotPlugin} from './scripts/canvas-snapshot-plugin.mjs'
 
 const localPackageWorkerSource = fileURLToPath(new URL('./src/local-package-service-worker.ts', import.meta.url))
 
@@ -50,7 +51,7 @@ export default defineConfig(({mode}) => {
   const privatePaths = [...new Set(privateDirectories)].map(path => `${normalizePath(path).replace(/[?*\[\]{}()!+@]/g, "\\$&")}/**`)
   return {
     plugins: [appVersionPlugin(), appEntryUrlsPlugin(), siteHeaderPlugin(), documentationPlugin(), localPackageServiceWorkerPlugin(), componentLicensesPlugin(fileURLToPath(new URL('./package.json', import.meta.url))),
-      referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))), distributionReaderPlugin()],
+      referenceFormatterPlugin(fileURLToPath(new URL('./src/reference-format.ts', import.meta.url))), distributionReaderPlugin(), canvasSnapshotPlugin()],
     appType: "mpa",
     server: {
       // Preserve Vite's default secret-file exclusions and protect the backend

@@ -187,8 +187,10 @@
 
     .ww-float-sticky:is(.ww-float-left, .ww-float-right) {
       position: sticky;
-      top: var(--ww-page-gutter, 1rem);
-      z-index: 2147483647;
+      /* The horizontal gutter can grow past the Base theme's opening margin. */
+      top: min(var(--ww-page-gutter, 1rem), 1.25rem);
+      /* Keep pinned floats in front of document content, below editor controls. */
+      z-index: 2147483638;
     }
 
     :is(.ww-float-left, .ww-float-right, [style*="float: left"], [style*="float:left"], [style*="float: right"], [style*="float:right"]) {

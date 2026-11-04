@@ -2054,6 +2054,37 @@ describe("media editing", () => {
     expect(editor.features.media.getState()?.hasSource).toBe(true)
   })
 
+  it("draws and resizes round hotspots on an image stretched horizontally", () => {
+    document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"></map>'
+    const image = document.querySelector("img")!
+    mockImageGeometry(image, 200, 50, 200, 100)
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    const {root} = editor.features.media.imageMapOverlay
+    const svg = root.querySelector("svg")!
+    const pointer = (type: string, x: number, y: number, target: Element = svg) =>
+      target.dispatchEvent(new PointerEvent(type, {bubbles:true, button:0, clientX:x, clientY:y}))
+
+    expect(editor.features.media.actions.startImageMapDrawing({type:"startImageMapDrawing", shape:"circle"})).toBe(true)
+    pointer("pointerdown", 80, 20)
+    pointer("pointermove", 95, 20)
+    expect(root.querySelector("circle.preview")).toHaveAttribute("r", "30")
+    pointer("pointerup", 95, 20)
+    const area = document.querySelector("area")!
+    expect(area).toHaveAttribute("coords", "80,40,30")
+
+    editor.features.selection.captureElement(image)
+    editor.features.media["refresh"]()
+    pointer("pointerdown", 80, 20, root.querySelector(".hotspot")!)
+    pointer("pointerup", 80, 20)
+    const handle = root.querySelector(".handle")!
+    expect(handle).toHaveAttribute("cx", "95")
+    pointer("pointerdown", 95, 20, handle)
+    pointer("pointerup", 80, 40)
+    expect(area).toHaveAttribute("coords", "80,40,40")
+    expect(root.querySelector(".handle")).toHaveAttribute("cx", "100")
+  })
+
   it("moves captured hotspots, resizes their vertices, and ignores concurrent replacements", () => {
     document.body.innerHTML = '<img src="plan.png" usemap="#plan"><map name="plan"><area shape="rect" coords="10,10,40,40"></map>'
     const image = document.querySelector<HTMLImageElement>("img")!

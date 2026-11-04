@@ -55,11 +55,11 @@ describe("canvas document layout", () => {
     canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
     const origin = canvas.clientPoint(0, 0), zoom = canvas.zoom
     const widget = document.querySelector("test-widget")!, html = widget.outerHTML
-    const button = editor.appendix.querySelector<HTMLButtonElement>('button[name="starting-view"]')!
+    const button = editor.appendix.querySelector<HTMLButtonElement>('button[name="add-starting-view"]')!
     expect(button).not.toBeNull()
     button.click()
     const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
-    expect($.selectedElement).toBe(frame)
+    expect(editor.features.transformation.target).not.toBe(frame)
     expect(parseFloat(frame.style.left)).toBeCloseTo(origin.x)
     expect(parseFloat(frame.style.top)).toBeCloseTo(origin.y)
     expect(parseFloat(frame.style.width)).toBeCloseTo(window.innerWidth / zoom)
@@ -78,71 +78,78 @@ describe("canvas document layout", () => {
     expect(saved).not.toMatch(/part="canvas-starting-view"|◆/)
   })
 
-  it("selects the appendix frame with the ordinary resize and delete controls, including undo", async () => {
+  it("moves the starting view frame with live panning and saves moves and resizes as separate undoable edits", async () => {
+    editor.options.loadCanvasSnapdom = () => vi.fn(async () => ({})) as unknown as typeof import("@zumer/snapdom").snapdom
     document.body.innerHTML = "<p>Keep</p>"
-    editor.features.canvas.convert("canvas")
+    const canvas = editor.features.canvas
+    canvas.convert("canvas")
+    const toggle = editor.appendix.querySelector<HTMLButtonElement>('[name="minimap-toggle"]')!
+    editor.appendix.querySelector<HTMLButtonElement>('[name="add-starting-view"]')!.click()
+    const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
+    Object.assign(frame.style, {left: "30px", top: "40px", width: "500px", height: "300px"})
+    const slot = editor.appendix.querySelector("slot")!
+    vi.spyOn(slot, "getBoundingClientRect").mockImplementation(() => {
+      const [x, y] = slot.style.transform.match(/[-\d.]+(?=px)/g)!.map(Number)
+      return makeRect(x, y, 1280 * canvas.zoom, 720 * canvas.zoom)
+    })
+    vi.spyOn(frame, "getBoundingClientRect").mockImplementation(() => {
+      const origin = slot.getBoundingClientRect()
+      return makeRect(origin.left + parseFloat(frame.style.left) * canvas.zoom, origin.top + parseFloat(frame.style.top) * canvas.zoom,
+        parseFloat(frame.style.width) * canvas.zoom, parseFloat(frame.style.height) * canvas.zoom)
+    })
     editor.doc.syncFromDOM()
-    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
-    const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
-    mockGeometry(frame, makeRect(30, 40, 500, 300))
-    editor.features.canvas.refresh()
-    const outline = editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!
-    expect(outline.style.left).toBe("")
-    expect(outline.style.width).toBe("")
-    expect(frame.className).toContain("◆anchor-target-")
-    const label = outline.querySelector<HTMLElement>("[part=canvas-starting-view-label]")!
-    expect(label.textContent).toBe("STARTING VIEW")
-    expect(label.classList.contains("inside")).toBe(false)
-    vi.mocked(frame.getBoundingClientRect).mockReturnValue(makeRect(30, 10, 500, 300))
-    editor.features.canvas.refresh()
-    expect(label.classList.contains("inside")).toBe(true)
-    outline.firstElementChild!.dispatchEvent(new PointerEvent("pointerdown", {bubbles: true, composed: true, cancelable: true, button: 0}))
-    expect($.selectedElement).toBe(frame)
-    expect(editor.features.transformation.target).toBe(frame)
-    expect(editor.features.transformation.overlay.getAttribute("part")).toContain("transform-overlay-starting-view")
-    expect(editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-rotator")!.hidden).toBe(true)
-    expect(editor.features.transformation.overlay.querySelector<HTMLElement>("#◆transform-overlay-scale-down-right")!.hidden).toBe(false)
-    editor.features.transformation.overlay.querySelector<HTMLButtonElement>("#◆transform-overlay-delete")!.click()
-    await settle()
-    expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
-    expect(outline.hidden).toBe(true)
+    toggle.click(); toggle.click()
+    const outline = editor.appendix.querySelector<HTMLElement>('[part="canvas-minimap-starting-view"]')!
+    const edge = outline.querySelector<HTMLButtonElement>("button")!
+    await vi.waitFor(() => expect(outline.hidden).toBe(false))
+    expect(editor.appendix.querySelector('[part="canvas-starting-view"]')).toBeNull()
+    expect(getComputedStyle(frame).visibility).toBe("hidden")
+    expect(editor.features.transformation.target).not.toBe(frame)
+    const map = editor.appendix.querySelector<HTMLButtonElement>('[part="canvas-minimap"]')!
+    const [, , width, height] = map.querySelector("svg")!.getAttribute("viewBox")!.split(" ").map(Number)
+    mockGeometry(map, makeRect(0, 0, width / 10, height / 10))
+    vi.spyOn(edge, "setPointerCapture").mockImplementation(() => {})
+    const pointer = (type: string, clientX: number, clientY: number, handle: HTMLElement = edge) => handle.dispatchEvent(
+      new PointerEvent(type, {pointerId: 1, isPrimary: true, clientX, clientY, bubbles: true, composed: true}),
+    )
+    const original = frame.getAttribute("style")
+    const zoom = canvas.zoom
+    const position = outline.style.left, widthBefore = outline.style.width
+    pointer("pointerdown", 20, 20)
+    pointer("pointermove", 22, 23)
+    expect(canvas.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({x: expect.closeTo(300), y: expect.closeTo(220)})
+    expect(canvas.zoom).toBe(zoom)
+    expect(outline.style.left).not.toBe(position)
+    expect(outline.style.width).toBe(widthBefore)
+    expect(frame.getAttribute("style")).toBe(original)
+    pointer("pointerup", 22, 23)
+    expect([frame.style.left, frame.style.top, frame.style.width, frame.style.height]).toEqual(["50px", "70px", "500px", "300px"])
     editor.doc.undo()
-    await settle()
-    expect(document.querySelector(".ww-canvas-starting-view")).not.toBeNull()
-    expect(outline.hidden).toBe(false)
-    editor.doc.redo()
-    await settle()
-    expect(outline.hidden).toBe(true)
-  })
+    expect(frame.getAttribute("style")).toBe(original)
 
-  it("updates the outline for external changes and cleans it up without touching authored bounds", async () => {
-    editor.features.canvas.convert("canvas")
-    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
-    const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
-    frame.replaceWith(frame.cloneNode(true))
-    const replacement = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
-    mockGeometry(replacement, makeRect(-120, 80, 400, 220))
-    await settle()
-    const outline = editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!
-    expect(outline.style.left).toBe("")
-    expect(replacement.className).toContain("◆anchor-target-")
-    const html = replacement.outerHTML.replace(/ ◆anchor-target-\d+/g, "")
-    editor.features.canvas.disable()
+    pointer("pointerdown", 20, 20)
+    pointer("pointermove", 22, 23)
+    pointer("pointercancel", 22, 23)
+    expect(frame.getAttribute("style")).toBe(original)
+
+    const corner = outline.querySelector<HTMLElement>('[data-corner="nw"]')!
+    vi.spyOn(corner, "setPointerCapture").mockImplementation(() => {})
+    map.click()
+    expect(edge.getAttribute("aria-pressed")).toBe("false")
+    edge.click()
+    expect(edge.getAttribute("aria-pressed")).toBe("true")
+    const cameraBeforeResize = slot.style.transform
+    pointer("pointerdown", 20, 20, corner)
+    pointer("pointermove", 27, 24, corner)
+    expect(outline.style.width).not.toBe(widthBefore)
+    expect(frame.getAttribute("style")).toBe(original)
+    expect(slot.style.transform).toBe(cameraBeforeResize)
+    pointer("pointerup", 27, 24, corner)
+    expect([frame.style.left, frame.style.top, frame.style.width, frame.style.height]).toEqual(["100px", "80px", "430px", "260px"])
+    editor.doc.undo()
+    expect(frame.getAttribute("style")).toBe(original)
+    canvas.disable()
     expect(outline.isConnected).toBe(false)
-    expect(replacement.outerHTML).toBe(html)
-  })
-
-  it("uses measured starting-view geometry while the canvas camera transforms the frame", () => {
-    editor.features.canvas.convert("canvas")
-    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
-    const frame = document.querySelector<HTMLElement>(".ww-canvas-starting-view")!
-    mockGeometry(frame, makeRect(-120, 80, 400, 220))
-    vi.spyOn(editor.features.transformation, "boxTransformed").mockReturnValue(true)
-    editor.features.canvas.refresh()
-    const outline = editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!
-    expect([outline.style.left, outline.style.top, outline.style.width, outline.style.height])
-      .toEqual(["-120px", "80px", "400px", "220px"])
-    expect(frame.className).not.toContain("◆anchor-target-")
   })
 
   it("rejects saving the starting view outside Canvas or while editing is locked", () => {
@@ -154,43 +161,41 @@ describe("canvas document layout", () => {
     expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
   })
 
-  it("groups starting-view navigation and trash, preserves existing bounds, and supports deletion and undo", async () => {
+  it("groups starting-view navigation with add or delete, preserves bounds, and supports undo", async () => {
     document.body.innerHTML = "<p>Keep</p>"
     const canvas = editor.features.canvas
     canvas.convert("canvas")
     const controls = () => editor.appendix.querySelector<HTMLElement>('.◆canvas-starting-view-controls')!
     expect(controls().getAttribute("role")).toBe("group")
-    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.hidden).toBe(true)
-    controls().querySelector<HTMLButtonElement>('[name="starting-view"]')!.click()
+    const show = controls().querySelector<HTMLButtonElement>('[name="starting-view"]')!
+    expect(show.disabled).toBe(true)
+    const add = controls().querySelector<HTMLButtonElement>('[name="add-starting-view"]')!
+    expect(add).toBe(controls().firstElementChild)
+    expect(add.getAttribute("aria-label")).toBe("Add starting view")
+    expect(add.querySelector("svg")).not.toBeNull()
+    add.click()
     const frame = document.querySelector<HTMLDivElement>(".ww-canvas-starting-view")!
-    expect($.selectedElement).toBe(frame)
+    expect(show.disabled).toBe(false)
+    expect(editor.features.transformation.target).not.toBe(frame)
     Object.assign(frame.style, {left: "-300px", top: "80px", width: "500px", height: "400px"})
     const bounds = frame.getAttribute("style")
     $.move(document.body.firstElementChild!)
     canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-out"})
-    controls().querySelector<HTMLButtonElement>('[name="starting-view"]')!.click()
-    expect($.selectedElement).toBe(frame)
+    show.click()
+    expect(editor.features.transformation.target).not.toBe(frame)
     expect(frame.getAttribute("style")).toBe(bounds)
     const remove = controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!
     expect(remove.hidden).toBe(false)
     expect(remove.getAttribute("aria-label")).toBe("Delete starting view")
     remove.querySelector("path")!.dispatchEvent(new MouseEvent("click", {bubbles: true, composed: true}))
     expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
-    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.hidden).toBe(true)
+    expect(controls().querySelector('[name="add-starting-view"]')).toBe(add)
+    expect(show.disabled).toBe(true)
     editor.doc.undo()
     await settle()
     expect(document.querySelector(".ww-canvas-starting-view")).not.toBeNull()
-    expect(controls().querySelector<HTMLButtonElement>('[name="delete-starting-view"]')!.hidden).toBe(false)
-  })
-
-  it("omits the selected starting view from the breadcrumb", () => {
-    document.body.innerHTML = "<p>Keep</p>"
-    editor.features.canvas.convert("canvas")
-    editor.features.canvas.actions.saveCanvasStartingView({type: "saveCanvasStartingView"})
-    const postMessage = vi.spyOn(window, "postMessage").mockImplementation(() => {})
-    editor.postSelectionPath()
-    expect(postMessage.mock.calls.at(-1)![0].detail.path).toEqual([{path: [], name: "Canvas", icon: "Canvas"}])
-    expect($.selectedElement).toBe(document.querySelector(".ww-canvas-starting-view"))
+    expect(controls().querySelector('[name="delete-starting-view"]')).toBe(add)
+    expect(show.disabled).toBe(false)
   })
 
   it("undoes saving bounds and follows remote starting-view changes without moving the local camera", async () => {
@@ -220,7 +225,7 @@ describe("canvas document layout", () => {
       Y.applyUpdate(editor.doc.doc, Y.encodeStateAsUpdate(remote), "remote-client")
       await settle()
       expect(document.querySelector(".ww-canvas-starting-view")).toBeNull()
-      expect(editor.appendix.querySelector<HTMLElement>('[part~="canvas-starting-view"]')!.hidden).toBe(true)
+      expect(editor.appendix.querySelector<HTMLElement>('[part="canvas-minimap-starting-view"]')!.hidden).toBe(true)
       expect(slot.style.transform).toBe(camera)
     }
     finally { remote.destroy() }
@@ -715,16 +720,27 @@ describe("canvas document layout", () => {
     for(const control of [controls, ...controls.querySelectorAll("button, output")]) {
       expect(getComputedStyle(control).userSelect).toBe("none")
     }
+    const minimap = controls.querySelector("[part=canvas-minimap]")!
+    const reset = () => controls.querySelector<HTMLButtonElement>('[name="actual-size"]')!
+    expect(reset().disabled).toBe(true)
+    const observer = new MutationObserver(() => {})
+    observer.observe(controls, {childList: true, subtree: true})
     canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "zoom-in"})
+    canvas.refresh()
+    const removedNodes = observer.takeRecords().flatMap(record => Array.from(record.removedNodes))
+    observer.disconnect()
+    expect(removedNodes.some(node => node.contains(minimap))).toBe(false)
     expect(canvas.getState().zoom).toBe(120)
     const dots = editor.appendix.querySelector<HTMLElement>('[part="canvas-background"]')!
     expect(dots.style.backgroundSize).toBe("24px 24px")
-    canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    expect(reset().disabled).toBe(false)
+    reset().click()
     expect(canvas.getState().zoom).toBe(100)
+    expect(reset().disabled).toBe(true)
     expect(dots.style.backgroundSize).toBe("20px 20px")
 
     expect(controls.querySelector('button[name="text"]')).toBeNull()
-    for(const [name, label] of [["hand", "Toggle hand tool (middle-drag also pans)"], ["fit-content", "Fit content"]]) {
+    for(const [name, label] of [["hand", "Toggle hand tool (middle-drag also pans)"], ["actual-size", "Reset zoom to 100%"], ["fit-content", "Fit to view"]]) {
       const button = controls.querySelector<HTMLButtonElement>(`button[name="${name}"]`)!
       expect(button.getAttribute("aria-label")).toBe(label)
       expect(button.querySelector("svg")).not.toBeNull()
@@ -829,6 +845,64 @@ describe("canvas document layout", () => {
     document.dispatchEvent(new PointerEvent("pointermove", {bubbles: true, pointerId: 17, clientX: 400, clientY: 300}))
     expect(slot.style.transform).toBe(cancelled)
     expect(dots.style.backgroundPosition).toBe(`${x + 150}px ${y + 80}px`)
+    expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
+  })
+
+  it("pans over inactive media and widget controls without scrolling the page or the widget", async () => {
+    document.body.innerHTML = '<figure><video controls></video></figure><pan-widget></pan-widget>'
+    const widget = document.querySelector("pan-widget")!
+    const surface = document.createElement("div")
+    widget.attachShadow({mode: "open"}).append(surface)
+    const widgetWheel = vi.fn()
+    surface.addEventListener("wheel", widgetWheel)
+    const scrollBy = vi.spyOn(window, "scrollBy")
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    await settle()
+    const slot = editor.appendix.querySelector("slot")!
+    const media = editor.appendix.querySelector('[part="media-interaction-shield"]')!
+    expect(media).not.toBeNull()
+    const wheel = (target: EventTarget) => {
+      const event = new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: 40, deltaY: -20})
+      target.dispatchEvent(event)
+      return event
+    }
+    for(const target of [media, surface]) {
+      const before = slot.style.transform
+      expect(wheel(target).defaultPrevented).toBe(true)
+      expect(slot.style.transform).not.toBe(before)
+    }
+    expect(widgetWheel).not.toHaveBeenCalled()
+    expect(scrollBy).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("blur"))
+    editor.features.selection.captureElement(widget)
+    const before = slot.style.transform
+    expect(wheel(surface).defaultPrevented).toBe(false)
+    expect(widgetWheel).toHaveBeenCalledOnce()
+    expect(slot.style.transform).toBe(before)
+  })
+
+  it("grabs the canvas with Space and gives input back when Space is released", () => {
+    document.body.innerHTML = '<input aria-label="Answer">'
+    const input = document.querySelector("input")!
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    const surface = editor.appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+    const slot = editor.appendix.querySelector("slot")!
+    $.selectElement(input)
+    const space = (type: "keydown" | "keyup") => document.body.dispatchEvent(new KeyboardEvent(type, {key: " ", code: "Space", bubbles: true, cancelable: true}))
+    space("keydown")
+    expect(surface.hidden).toBe(false)
+    const before = slot.style.transform
+    const down = new PointerEvent("pointerdown", {pointerId: 21, button: 0, bubbles: true, composed: true, cancelable: true, clientX: 20})
+    surface.dispatchEvent(down)
+    expect(down.defaultPrevented).toBe(true)
+    surface.dispatchEvent(new PointerEvent("pointermove", {pointerId: 21, buttons: 1, bubbles: true, composed: true, clientX: 60}))
+    expect(slot.style.transform).not.toBe(before)
+
+    slot.dispatchEvent(new MouseEvent("dblclick", {button: 0, bubbles: true, composed: true, cancelable: true, clientX: 400, clientY: 400}))
+    expect(document.body.children).toHaveLength(1)
+    space("keyup")
+    expect(surface.hidden).toBe(true)
     expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
   })
 

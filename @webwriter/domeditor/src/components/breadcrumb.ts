@@ -12,6 +12,10 @@ export type DocumentTreeItem = SelectionPathItem & {
   children: DocumentTreeItem[]
 }
 
+export type BreadcrumbSelection<T extends SelectionPathItem | SelectionPathSection> = T & {
+  openToolbox?: boolean
+}
+
 type BreadcrumbEntry = {
   key: string
   kind: "item" | "separator"
@@ -183,6 +187,10 @@ export class DomEditorBreadcrumb extends LitElement {
       display: block;
       width: 10px;
       height: 10px;
+    }
+
+    .position-balloon-pinned svg {
+      transform: scale(1.2);
     }
 
     .position-float,
@@ -749,13 +757,18 @@ export class DomEditorBreadcrumb extends LitElement {
       ?? this.path.flatMap(candidate => candidate.sections ?? []).find(section => this.pathsEqual(section.path, item.path))
       ?? item
     const {position, positionAnchor, float} = current
+    const pinnedFloat = position === "sticky" && Boolean(float)
+    const anchor = positionAnchor && !pinnedFloat
     const balloon = position === "relative" ? "BalloonFilled"
-      : position === "absolute" || position === "fixed" ? "Balloon" : null
-    if(!positionAnchor && !balloon && !float) return ""
+      : position === "absolute" || position === "fixed" || pinnedFloat ? "Balloon" : null
+    if(!anchor && !balloon && !float) return ""
+    const balloonLabel = pinnedFloat ? "Pinned float" : `${position} positioning`
+    const balloonIcon = balloon ? html`<span class=${`position-icon position-balloon${pinnedFloat ? " position-balloon-pinned" : ""}`} role="img" aria-label=${balloonLabel} title=${balloonLabel}>${ribbonIcon(balloon)}</span>` : ""
+    const floatLabel = float === "far-left" ? "Left float" : "Right float"
+    const floatIcon = float ? html`<span class="position-icon position-float" role="img" aria-label=${floatLabel} title=${floatLabel}>${ribbonIcon(float === "far-left" ? "Float left" : "Float right")}</span>` : ""
     return html`<sup class="position-icons">
-      ${positionAnchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
-      ${balloon ? html`<span class="position-icon position-balloon" role="img" aria-label=${`${position} positioning`} title=${`${position} positioning`}>${ribbonIcon(balloon)}</span>` : ""}
-      ${float ? html`<span class="position-icon position-float" role="img" aria-label=${float === "far-left" ? "Left float" : "Right float"} title=${float === "far-left" ? "Left float" : "Right float"}>${ribbonIcon(float === "far-left" ? "Float left" : "Float right")}</span>` : ""}
+      ${anchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
+      ${pinnedFloat ? [floatIcon, balloonIcon] : [balloonIcon, floatIcon]}
       ${(float === "far-left" && current.floatForcedRight) || (float === "far-right" && current.floatRightInFlow)
         ? html`<float-info placement="right" .side=${float === "far-right" ? "right" : "left"}></float-info>` : ""}
     </sup>`
@@ -773,9 +786,9 @@ export class DomEditorBreadcrumb extends LitElement {
     }))
   }
 
-  private selectSection(section: SelectionPathSection) {
-    this.dispatchEvent(new CustomEvent<SelectionPathSection>("breadcrumb-section-select", {
-      detail: {...section, path: [...section.path]},
+  private selectSection(section: SelectionPathSection, openToolbox = false) {
+    this.dispatchEvent(new CustomEvent<BreadcrumbSelection<SelectionPathSection>>("breadcrumb-section-select", {
+      detail: {...section, path: [...section.path], ...(openToolbox ? {openToolbox} : {})},
       bubbles: true,
       composed: true,
     }))
@@ -795,20 +808,21 @@ export class DomEditorBreadcrumb extends LitElement {
             aria-pressed=${this.isSectionSelected(section)}
             @mouseenter=${() => this.dispatchSectionHover(section)}
             @mouseleave=${() => this.dispatchSectionHover(null)}
-            @click=${() => this.selectSection(section)}
+            @click=${(event: MouseEvent) => this.selectSection(section, event.detail === 2)}
           >${section.name}${this.renderPositionIcons(section)}</button>
         `)}
       </span>
     `
   }
 
-  private select(item: SelectionPathItem) {
-    this.dispatchEvent(new CustomEvent<SelectionPathItem>("breadcrumb-item-select", {
+  private select(item: SelectionPathItem, openToolbox = false) {
+    this.dispatchEvent(new CustomEvent<BreadcrumbSelection<SelectionPathItem>>("breadcrumb-item-select", {
       detail: {
         path: [...item.path],
         name: item.name,
         ...(item.icon ? {icon: item.icon} : {}),
         ...(item.iconUrl ? {iconUrl: item.iconUrl} : {}),
+        ...(openToolbox ? {openToolbox} : {}),
       },
       bubbles: true,
       composed: true,
@@ -845,7 +859,7 @@ export class DomEditorBreadcrumb extends LitElement {
           aria-label=${`Select ${entry.item.name}`}
           @mouseenter=${() => this.hover(entry.item)}
           @mouseleave=${() => this.clearHover(entry.item)}
-          @click=${() => this.select(entry.item)}
+          @click=${(event: MouseEvent) => this.select(entry.item, event.detail === 2)}
         >
           ${this.renderItemIcon(entry.item)}
           <span class="item-label">${entry.item.name}</span>

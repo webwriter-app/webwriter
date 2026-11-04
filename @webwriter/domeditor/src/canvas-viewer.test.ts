@@ -17,6 +17,7 @@ afterEach(() => {
   reader?.destroy(); reader = null
   editor?.destroy(); editor = undefined
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   document.body.replaceChildren()
   document.body.removeAttribute("class")
   document.body.shadowRoot?.replaceChildren(document.createElement("slot"))
@@ -27,6 +28,131 @@ const control = (name: string) => document.body.shadowRoot!.querySelector<HTMLBu
 const settle = async () => { await new Promise<void>(resolve => setTimeout(resolve, 0)) }
 
 describe("standalone canvas reader", () => {
+  it("uses block sizing for captioned pictures in both canvas modes", () => {
+    document.body.innerHTML = '<figure><picture style="width: 320px"><img alt="Map"></picture><figcaption>Map</figcaption></figure>'
+    const picture = document.querySelector("picture")!
+    editor = new DOMEditor()
+    expect(getComputedStyle(picture).display).toBe("block")
+    editor.destroy(); editor = undefined
+
+    reader = mountCanvasReader()
+    expect(reader).not.toBeNull()
+    expect(getComputedStyle(picture).display).toBe("block")
+    expect(getComputedStyle(picture).width).toBe("320px")
+  })
+
+  it("fits the minimap to the viewport ratio and refreshes content and settled resizes only while open", async () => {
+    const resize = (width: number, height: number) => {
+      vi.stubGlobal("innerWidth", width)
+      vi.stubGlobal("innerHeight", height)
+      window.dispatchEvent(new Event("resize"))
+    }
+    resize(1000, 500)
+    document.body.innerHTML = '<p>Near</p><p>Far</p><div class="ww-canvas-starting-view"></div>'
+    const appendix = document.body.shadowRoot ?? document.body.attachShadow({mode: "open"})
+    const slot = document.createElement("slot")
+    appendix.replaceChildren(slot)
+    const rect = (left: number, top: number, width: number, height: number) => ({
+      left, top, width, height, right: left + width, bottom: top + height,
+    } as DOMRect)
+    const camera = () => slot.style.transform.match(/[-\d.]+(?=px|\))/g)?.map(Number) ?? [0, 0, 1]
+    vi.spyOn(slot, "getBoundingClientRect").mockImplementation(() => {
+      const [x, y, zoom] = camera()
+      return rect(x, y, 1280 * zoom, 720 * zoom)
+    })
+    for(const [index, item] of [...document.body.children].entries()) {
+      vi.spyOn(item, "getBoundingClientRect").mockImplementation(() => {
+        const [x, y, zoom] = camera()
+        const position = Math.min(index, 1)
+        return rect(x + (position * 500 - 200) * zoom, y + (position * 200 - 50) * zoom, 100 * zoom, 60 * zoom)
+      })
+    }
+    const snapshot = vi.fn(async () => ({
+      meta: {clip: {x: -288, y: -114}, contentX: 2, contentY: 2, vbW: 780, vbH: 392},
+      toRaw: () => "data:image/svg+xml,preview",
+    }))
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const toggle = control("minimap-toggle"), map = control("minimap"), svg = map.querySelector("svg")!
+    const viewport = svg.querySelector(".◆canvas-minimap-camera")!
+    const viewBoxSize = () => svg.getAttribute("viewBox")!.split(" ").slice(2).map(Number)
+    expect(toggle.getAttribute("aria-expanded")).toBe("true")
+    expect(map.hidden).toBe(false)
+    await settle()
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(viewBoxSize()).toEqual([expect.closeTo(776), expect.closeTo(388)])
+    reader.viewer.zoomAt(1)
+    const initialWidth = Number(viewport.getAttribute("width"))
+    control("zoom-in").click()
+    expect(Number(viewport.getAttribute("width"))).toBeCloseTo(initialWidth / 1.2)
+    vi.spyOn(svg, "getBoundingClientRect").mockReturnValue(rect(500, 0, 188, 94))
+    const before = viewport.getAttribute("x")
+    map.dispatchEvent(new MouseEvent("click", {detail: 1, clientX: 641, clientY: 47}))
+    expect(viewport.getAttribute("x")).not.toBe(before)
+    expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
+      x: expect.closeTo(294), y: expect.closeTo(80),
+    })
+    const pointer = (type: string, x: number, y: number, pointerId = 7) => map.dispatchEvent(
+      new PointerEvent(type, {pointerId, isPrimary: true, clientX: x, clientY: y}),
+    )
+    const capture = vi.spyOn(map, "setPointerCapture").mockImplementation(() => {})
+    pointer("pointerdown", 641, 47)
+    expect(capture).toHaveBeenCalledWith(7)
+    pointer("pointermove", 594, 47)
+    expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
+      x: expect.closeTo(100), y: expect.closeTo(80),
+    })
+    pointer("pointermove", 710, -10)
+    expect(reader.viewer.clientPoint(window.innerWidth / 2, window.innerHeight / 2)).toEqual({
+      x: expect.closeTo(488), y: expect.closeTo(-114),
+    })
+    const dragged = slot.style.transform
+    pointer("pointermove", 594, 47, 8)
+    pointer("pointercancel", 710, -10)
+    pointer("pointermove", 594, 47)
+    expect(slot.style.transform).toBe(dragged)
+    expect(reader.viewer.zoom).toBeCloseTo(1.2)
+    document.body.firstElementChild!.classList.add("◆element-selected")
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(1)
+
+    document.body.firstElementChild!.textContent = "Changed while open"
+    await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(2))
+    toggle.click()
+    expect(map.hidden).toBe(true)
+    document.body.firstElementChild!.textContent = "Changed while collapsed"
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(2)
+    toggle.click()
+    expect(map.hidden).toBe(false)
+    await settle()
+    expect(snapshot).toHaveBeenCalledTimes(3)
+
+    vi.useFakeTimers()
+    try {
+      resize(800, 600)
+      await vi.advanceTimersByTimeAsync(80)
+      resize(500, 1000)
+      expect(map.parentElement!.style.getPropertyValue("--canvas-minimap-ratio")).toBe("0.5")
+      await vi.advanceTimersByTimeAsync(80)
+      expect(snapshot).toHaveBeenCalledTimes(3)
+      expect(viewBoxSize()).toEqual([expect.closeTo(776), expect.closeTo(388)])
+      await vi.advanceTimersByTimeAsync(80)
+      expect(snapshot).toHaveBeenCalledTimes(4)
+      expect(viewBoxSize()).toEqual([expect.closeTo(728), expect.closeTo(1456)])
+      toggle.click()
+      resize(1000, 500)
+      await vi.advanceTimersByTimeAsync(160)
+      expect(snapshot).toHaveBeenCalledTimes(4)
+      toggle.click()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(snapshot).toHaveBeenCalledTimes(5)
+      expect(viewBoxSize()).toEqual([expect.closeTo(776), expect.closeTo(388)])
+    }
+    finally { vi.useRealTimers() }
+    reader.destroy()
+    expect(appendix.querySelector("[part=canvas-minimap]")).toBeNull()
+  })
+
   it("uses only a direct uncustomized starting-view div", () => {
     document.body.innerHTML = '<div class="ww-canvas-starting-view" id="nested"><div></div></div>'
     expect(canvasStartingView()).toBe(document.getElementById("nested"))
@@ -107,9 +233,15 @@ describe("standalone canvas reader", () => {
     const sheets = [...document.adoptedStyleSheets]
     reader = mountCanvasReader()!
     expect(reader).not.toBeNull()
+    const reset = control("actual-size")
+    expect(reset.disabled).toBe(true)
     control("zoom-in").click()
     expect(reader.viewer.zoom).toBe(1.2)
     expect(slot.style.transform).toContain("scale(1.2)")
+    expect(reset.disabled).toBe(false)
+    reset.click()
+    expect(reader.viewer.zoom).toBe(1)
+    expect(reset.disabled).toBe(true)
     expect(document.body.innerHTML).toBe(html)
     expect([...document.body.childNodes]).toEqual(content)
     expect(appendix.querySelector('button[name="text"]')).toBeNull()
@@ -150,6 +282,40 @@ describe("standalone canvas reader", () => {
     expect(document.body.classList.contains("◆canvas-panning")).toBe(true)
     window.dispatchEvent(new Event("blur"))
     expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
+  })
+
+  it("keeps a background wheel pan when later events target an interactive widget", () => {
+    vi.useFakeTimers()
+    try {
+      reader = mountCanvasReader()!
+      const appendix = document.body.shadowRoot!, slot = appendix.querySelector("slot")!
+      const shield = appendix.querySelector<HTMLElement>('[part="canvas-pan-surface"]')!
+      const map = document.createElement("div")
+      document.querySelector("test-widget")!.attachShadow({mode: "open"}).append(map)
+      const onWheel = vi.fn()
+      map.addEventListener("wheel", onWheel)
+      const wheel = (target: Element) => {
+        const event = new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: 30, deltaY: -15})
+        target.dispatchEvent(event)
+        return event
+      }
+      expect(wheel(map).defaultPrevented).toBe(false)
+      expect(onWheel).toHaveBeenCalledTimes(1)
+      expect(wheel(slot).defaultPrevented).toBe(true)
+      expect(shield.hidden).toBe(false)
+      vi.advanceTimersByTime(100)
+      const camera = slot.style.transform
+      expect(wheel(map).defaultPrevented).toBe(true)
+      expect(slot.style.transform).not.toBe(camera)
+      expect(onWheel).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(100)
+      expect(shield.hidden).toBe(false)
+      vi.advanceTimersByTime(100)
+      expect(shield.hidden).toBe(true)
+      expect(wheel(map).defaultPrevented).toBe(false)
+      expect(onWheel).toHaveBeenCalledTimes(2)
+    }
+    finally { vi.useRealTimers() }
   })
 
   it("fits freshly replaced content, including negative coordinates", () => {
@@ -257,6 +423,7 @@ describe("canvas export assets", () => {
       document.designMode = "off"
       new Function(script.textContent!.replace(/^export /gm, ""))()
       expect(document.body.shadowRoot!.querySelector("[part=canvas-controls]")).not.toBeNull()
+      expect(control("minimap-toggle").getAttribute("aria-expanded")).toBe("true")
       // A new editor claims and disposes the reader synchronously.
       editor = new DOMEditor()
       expect(document.body.shadowRoot!.querySelectorAll("[part=canvas-controls]")).toHaveLength(1)

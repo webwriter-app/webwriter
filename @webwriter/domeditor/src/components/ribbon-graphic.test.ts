@@ -63,11 +63,11 @@ describe("graphic ribbon", () => {
 
   it("offers the requested text and line presets and omits removed shapes", () => {
     expect(graphicShapeOptions.filter(option => option.category === "Lines").map(option => option.type)).toEqual([
-      "text-box", "image", "line", "connector", "line-start-arrow", "line-end-arrow", "line-both-arrows",
+      "text-box", "image", "line", "connector", "line-start-arrow", "line-end-arrow", "line-both-arrows", "curved-connector",
     ])
     expect(graphicShapeOptions.some(option => ["rectangle", "polygon", "right-triangle", "not-equal", "multidocument", "line-callout-2"].includes(option.type))).toBe(false)
     expect(graphicShapeOptions.some(option => ["parentheses", "braces", "curved-ribbon-up", "curved-ribbon-down"].includes(option.type))).toBe(false)
-    expect(graphicShapeOptions).toHaveLength(134)
+    expect(graphicShapeOptions).toHaveLength(135)
     expect(graphicShapeOptions.find(option => option.type === "square-rectangle")).toMatchObject({label: "Rectangle"})
     expect(graphicShapeOptions.find(option => option.type === "image")).toMatchObject({label: "Image", icon: "Image", category: "Lines"})
     expect(graphicShapeOptions.filter(option => option.category === "Callouts").at(-1)?.type).toBe("line-callout-1")
@@ -107,11 +107,11 @@ describe("graphic ribbon", () => {
     expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).not.toBeNull()
     toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "connector"}
     await toolbox.updateComplete
-    expect(options.querySelector('.graphic-connector-controls')).not.toBeNull()
-    expect(root.querySelector('ribbon-drawer[label="Connector"]')).not.toBeNull()
+    expect(options.querySelector('.graphic-connector-controls')).toBeNull()
+    expect(root.querySelector('ribbon-drawer[label="Connector"] .graphic-connector-controls')).not.toBeNull()
     toolbox.graphic = {active: true, capture: true, selectionCount: 2}
     await toolbox.updateComplete
-    expect(options.querySelector('.graphic-connector-controls')).toBeNull()
+    expect(root.querySelector('.graphic-connector-controls')).toBeNull()
     expect(root.querySelector('ribbon-drawer[layout="shape-paint"]')).toHaveAttribute("label", "Shapes")
   })
 
@@ -165,6 +165,25 @@ describe("graphic ribbon", () => {
     await toolbox.updateComplete
     expect(toolbox.shapePaint.fill).toBe("#12ab34")
     expect(noFill.getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("offers connector conversion in the toolbox for an eligible selected shape", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "bezier", canConvertToConnector: true}
+    const listener = vi.fn()
+    toolbox.addEventListener("graphic-parameter-change", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+    const button = toolbox.shadowRoot!.querySelector<RibbonButton>('ribbon-drawer[layout="shape-paint"] ribbon-button[label="Convert to connector"]')!
+    await button.updateComplete
+    button.shadowRoot!.querySelector<HTMLButtonElement>('button[aria-label="Convert to connector"]')!.click()
+    expect(listener).toHaveBeenCalledWith(expect.objectContaining({detail: {name: "convert-to-connector", value: "true"}}))
+
+    toolbox.graphic = {active: true, capture: true, selectionCount: 1, shape: "connector", parameters: {routing: "curved"}}
+    await toolbox.updateComplete
+    expect(toolbox.shadowRoot!.querySelector('ribbon-button[label="Convert to connector"]')).toBeNull()
+    expect(toolbox.shadowRoot!.querySelector('ribbon-drawer[layout="shape-paint"]')).toHaveAttribute("label", "Curved connector")
   })
 
   it("shows the selected shape icon and name and routes edits to that shape", async () => {
@@ -244,7 +263,7 @@ describe("graphic ribbon", () => {
 
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-geometry-controls\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-text-controls \.graphic-label-parameter\s*\{[\s\S]*?grid-column:\s*1 \/ -1/)
-    expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-connector-controls \.graphic-parameter:first-child\s*\{[\s\S]*?grid-column:\s*1 \/ -1/)
+    expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-connector-controls > \.graphic-parameter:first-child\s*\{[\s\S]*?grid-column:\s*1 \/ -1/)
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-arrange-controls\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/)
     expect(styles).toMatch(/ribbon-drawer\[pane\] \.graphic-layers-inline\s*\{[\s\S]*?border-inline-start:\s*0/)
   })
@@ -292,8 +311,8 @@ describe("graphic ribbon", () => {
     expect(importButton.nextElementSibling).toHaveAttribute("aria-label", "Rectangle")
     expect(importButton.nextElementSibling).toHaveClass("gallery-row-start")
     expect(importButton.querySelector(".icon-tabler-upload")).not.toBeNull()
-    expect([...gallery.querySelectorAll('button[role="menuitem"]')].slice(0, 8).map(button => button.getAttribute("aria-label"))).toEqual([
-      "Text box", "Image", "Line", "Connector", "Narrow left arrow", "Narrow right arrow", "Narrow left-right arrow", "Import graphic",
+    expect([...gallery.querySelectorAll('button[role="menuitem"]')].slice(0, 9).map(button => button.getAttribute("aria-label"))).toEqual([
+      "Text box", "Image", "Line", "Connector", "Narrow left arrow", "Narrow right arrow", "Narrow left-right arrow", "Curved connector", "Import graphic",
     ])
     const shapeButtons = [...gallery.querySelectorAll('button[role="menuitem"]')].filter(button => button !== importButton)
     const ordered = graphicShapeSections.flatMap(section => section.rows.flat())
@@ -315,7 +334,7 @@ describe("graphic ribbon", () => {
       rows.at(-1)!.push(child.getAttribute("aria-label")!)
     }
     expect(sections.map(rows => rows.map(row => row.length))).toEqual([
-      [7, 11, 11, 11], [11, 9, 9, 11], [10, 7, 10], [11, 11, 5],
+      [8, 11, 11, 11], [11, 9, 9, 11], [10, 7, 10], [11, 11, 5],
     ])
     for(const [index, section] of graphicShapeSections.entries()) {
       keyboard.shadowRoot!.querySelector<HTMLButtonElement>(`.tabs [aria-label="${section.label}"]`)!.click()
@@ -565,6 +584,70 @@ describe("graphic ribbon", () => {
 
     expect(listener).toHaveBeenNthCalledWith(1, expect.objectContaining({detail: {name: "routing", value: "straight"}}))
     expect(listener).toHaveBeenNthCalledWith(2, expect.objectContaining({detail: {name: "start-arrow", value: "true"}}))
+  })
+
+  it("edits connector endings in four mirrored toolbox segments", async () => {
+    const toolbox = new DomEditorToolbox()
+    toolbox.activeTool = "Edit"
+    toolbox.graphic = {
+      active: true, capture: true, selectionCount: 1, shape: "connector",
+      parameters: {routing: "curved", "start-ending": "triangle", "end-ending": "triangle", "start-ending-size": "36", "end-ending-size": "19.75"},
+    }
+    const listener = vi.fn()
+    toolbox.addEventListener("graphic-parameter-change", listener)
+    document.body.append(toolbox)
+    await toolbox.updateComplete
+
+    const drawer = toolbox.shadowRoot!.querySelector('ribbon-drawer[label="Curved connector"]')!
+    const endings = drawer.querySelector('[role="group"][aria-label="Endings"]')!
+    expect(endings.textContent).toContain("Endings")
+    expect([...endings.querySelectorAll("select, style-combobox")].map(field => field.getAttribute("aria-label") ?? (field as StyleCombobox).label)).toEqual([
+      "Graphic: Start ending", "Graphic: Start ending size", "Graphic: End ending size", "Graphic: End ending",
+    ])
+    const startEnding = endings.querySelector<HTMLSelectElement>('select[aria-label="Graphic: Start ending"]')!
+    const endEnding = endings.querySelector<HTMLSelectElement>('select[aria-label="Graphic: End ending"]')!
+    expect(startEnding.selectedOptions[0].textContent).toContain("◀")
+    expect(endEnding.selectedOptions[0].textContent).toContain("▶")
+    expect([...startEnding.options].filter(option => !option.hidden).map(option => option.getAttribute("aria-label"))).toEqual([
+      "No ending", "Filled arrow", "Open arrow", "Diamond", "Circle", "Bar",
+    ])
+    const [start, end] = endings.querySelectorAll<StyleCombobox>("style-combobox")
+    expect(start.value).toBe("36")
+    expect(end.value).toBe("19.75")
+    expect(end.unit).toBe("px")
+    expect(end.options.map(({label, value}) => [label, value])).toEqual([
+      ["Tiny", "6"], ["Small", "12"], ["Medium", "18"], ["Large", "27"], ["Huge", "36"],
+    ])
+
+    await start.updateComplete
+    const startInput = start.shadowRoot!.querySelector("input")!
+    startInput.focus()
+    startInput.value = "24"
+    startInput.dispatchEvent(new InputEvent("input", {bubbles: true}))
+    startInput.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true}))
+    expect(start.shadowRoot!.activeElement).toBe(startInput)
+    end.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "18.5"}}))
+    expect(listener).toHaveBeenNthCalledWith(1, expect.objectContaining({detail: {name: "start-ending-size", value: "24"}}))
+    expect(listener).toHaveBeenNthCalledWith(2, expect.objectContaining({detail: {name: "end-ending-size", value: "18.5"}}))
+    endEnding.value = "diamond"
+    endEnding.dispatchEvent(new Event("change", {bubbles: true}))
+    expect(listener).toHaveBeenNthCalledWith(3, expect.objectContaining({detail: {name: "end-ending", value: "diamond"}}))
+
+    toolbox.graphic = {...toolbox.graphic, capture: false}
+    await toolbox.updateComplete
+    expect(startEnding.disabled).toBe(false)
+    expect(endEnding.disabled).toBe(false)
+    expect(start.disabled).toBe(false)
+    expect(end.disabled).toBe(false)
+
+    toolbox.graphic = {...toolbox.graphic, capture: true, parameters: {"start-ending": "none", "end-ending": "current"}}
+    await toolbox.updateComplete
+    expect(startEnding.value).toBe("none")
+    expect(endEnding.value).toBe("current")
+    expect(start.disabled).toBe(false)
+    expect(end.disabled).toBe(true)
+    start.dispatchEvent(new CustomEvent("combobox-change", {detail: {value: "16"}}))
+    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({detail: {name: "start-ending-size", value: "16"}}))
   })
 
   it("reflects canvas options as contextual toggle buttons", async () => {

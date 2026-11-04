@@ -214,7 +214,7 @@ export class DomEditorToolbox extends EditingControls {
     .float-button-group button[aria-pressed="true"], .float-button-group button:focus-visible {position: relative; z-index: 1}
     .float-button-group svg {display: block; width: 1.25rem; height: 1.25rem}
     .float-button-group .float-move svg {width: .875rem; height: .875rem}
-    .float-button-group[aria-label="Placement"] button {min-height: 1.55rem; padding: .15rem .2rem}
+    .float-button-group:is([aria-label="Placement"], .placement-action-group) button {min-height: 1.55rem; padding: .15rem .2rem}
     .float-button-group[aria-label="Placement"] .float-move {padding-inline: .1rem}
     .placement-action-group button:disabled {opacity: .4; cursor: default}
     .float-button-group.placement-action-group button:hover:not(:disabled) {background: #edf3f9}
@@ -1358,7 +1358,6 @@ export class DomEditorToolbox extends EditingControls {
       return html`<div class="specialized-commands">
         <ribbon-button label="Import graphic" action="import-graphic" icon="Upload"></ribbon-button>
         <ribbon-button label="Save graphic" action="save-graphic" icon="Download"></ribbon-button>
-        ${this.graphic.shape === "connector" ? this.renderGraphicConnectorControls(!captured) : nothing}
         ${this.renderGraphicArrangeControls(count, count > 0, captured)}
         ${["grid", "snap", "guides"].map(option => html`<ribbon-button label=${option[0].toUpperCase() + option.slice(1)}
           action=${`toggle-graphic-option:${option}`} toggle .active=${this.graphic?.options?.[option as "grid" | "snap" | "guides"] ?? true}
@@ -1405,7 +1404,8 @@ export class DomEditorToolbox extends EditingControls {
     const selected = count > 0
     const fillUnavailable = selected && (this.graphic.shape === "freehand" || ["polyline", "bezier"].includes(this.graphic.shape ?? "") && this.graphic.parameters?.closed !== "true")
     const disabled = !selected && !this.graphic.capture
-    const option = selected && this.graphic.shape ? graphicShapeOptions.find(option => option.type === this.graphic!.shape) : undefined
+    const type = this.graphic.shape === "connector" && this.graphic.parameters?.routing === "curved" ? "curved-connector" : this.graphic.shape
+    const option = selected && type ? graphicShapeOptions.find(option => option.type === type) : undefined
     const shapeName = this.graphic.shape
       ? this.graphic.shape[0].toUpperCase() + this.graphic.shape.slice(1).replaceAll("-", " ") : "Shape"
     const label = !selected ? "Shape" : count > 1 ? "Shapes" : option?.label ?? shapeName
@@ -1438,7 +1438,16 @@ export class DomEditorToolbox extends EditingControls {
         <label><span>Opacity</span>${this.renderOptionSelect("Shape key opacity", paint.opacity,
           [...new Set(["1", "0.75", "0.5", "0.25", paint.opacity])].map(opacity => ({value: opacity, label: `${Number(opacity) * 100}%`})),
           disabled, value => this.setShapePaint("opacity", value))}</label>
+        ${count === 1 && this.graphic.capture && this.graphic.canConvertToConnector ? html`
+          <ribbon-button label="Convert to connector" icon="Connector" @ribbon-button-click=${(event: Event) => {
+            event.stopPropagation()
+            this.dispatchGraphicParameterValue("convert-to-connector", "true")
+          }}></ribbon-button>
+        ` : nothing}
       </div>
+      ${count === 1 && this.graphic.shape === "connector"
+        ? this.renderGraphicConnectorControls(false, {endings: true})
+        : nothing}
     </ribbon-drawer>`
   }
 
@@ -1595,6 +1604,18 @@ export class DomEditorToolbox extends EditingControls {
               @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
               @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
                 detail: {type: "movePlacement", direction}, bubbles: true, composed: true,
+              }))}>${ribbonIcon(icon)}</button>`)}
+          </div>
+          <span class="float-placement-label">Grouping</span>
+          <div class="float-button-group placement-action-group" role="group" aria-label="Grouping">
+            ${([
+              {mode: "group", label: "Group", icon: "Group", enabled: target?.spatialGrouping?.canGroup},
+              {mode: "ungroup", label: "Ungroup", icon: "NoGroup", enabled: target?.spatialGrouping?.canUngroup},
+            ] as const).map(({mode, label, icon, enabled}) => html`<button type="button" aria-label=${label} title=${label}
+              ?disabled=${!enabled || this.historyState.preview !== null || this.htmlPending}
+              @pointerdown=${(event: PointerEvent) => { if(event.button === 0) event.preventDefault() }}
+              @click=${() => this.dispatchEvent(new CustomEvent("layout-action", {
+                detail: {type: "setSpatialGrouping", mode}, bubbles: true, composed: true,
               }))}>${ribbonIcon(icon)}</button>`)}
           </div>
           ` : nothing}

@@ -434,6 +434,7 @@ export type ElementStyleState = {
     canMoveDown?: boolean
     placement?: {canMoveUp: boolean, canMoveDown: boolean}
     grouping?: {grouped: boolean, canCreate: boolean, canUngroup: boolean, canJoinLeft: boolean, canJoinRight: boolean}
+    spatialGrouping?: {canGroup: boolean, canUngroup: boolean}
     localName: string
     namespaceURI: string | null
   } | null
@@ -940,6 +941,7 @@ const isGraphicSelection = (graphic: UnknownRecord) => graphic.active === true
   && isOptional(graphic.mode, value => value === "select" || value === "draw" || value === "lines" || value === "curves")
   && isOptional(graphic.selectionCount, isNonnegativeInteger)
   && isOptional(graphic.shape, isGraphicShapeType)
+  && isOptional(graphic.canConvertToConnector, isBoolean)
   && isOptional(graphic.parameters, isStringRecord)
   && isOptional(graphic.options, value => isRecord(value)
     && isBoolean(value.grid)

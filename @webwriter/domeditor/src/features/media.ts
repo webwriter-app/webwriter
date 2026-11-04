@@ -23,6 +23,7 @@ import {
   createImageMapPopoverController,
   imageMapHotspotBounds,
   imageMapHotspotShape,
+  imageMapScale,
   isMediaType,
   isTimedMediaResourceType,
   isWebsiteType,
@@ -593,6 +594,11 @@ const imageMapOverlayStylesheet = createStylesheet(`
     vector-effect: non-scaling-stroke;
     pointer-events: none;
   }
+  circle:is(.hotspot, .preview) {
+    transform-box: fill-box;
+    transform-origin: center;
+    transform: scale(var(--circle-scale-x), var(--circle-scale-y));
+  }
   .vertex {
     fill: #f59e0b;
     stroke: white;
@@ -651,6 +657,7 @@ type ImageMapGeometry = {
   height: number
   coordinateWidth: number
   coordinateHeight: number
+  scale: ReturnType<typeof imageMapScale>
 }
 
 type ImageMapDrawingSession = {
@@ -673,12 +680,16 @@ const imageMapGeometry = (image: HTMLImageElement): ImageMapGeometry | null => {
   const coordinateHeight = image.naturalHeight || (authoredHeight > 0 ? authoredHeight : rect.height)
   if(!Number.isFinite(coordinateWidth) || !Number.isFinite(coordinateHeight)
     || coordinateWidth <= 0 || coordinateHeight <= 0) return null
-  return {left: rect.left, top: rect.top, width: rect.width, height: rect.height, coordinateWidth, coordinateHeight}
+  return {left: rect.left, top: rect.top, width: rect.width, height: rect.height, coordinateWidth, coordinateHeight,
+    scale: imageMapScale(rect.width, rect.height, coordinateWidth, coordinateHeight)}
 }
 
 const equalImageMapGeometry = (left: ImageMapGeometry | null, right: ImageMapGeometry) => !!left
   && (["left", "top", "width", "height", "coordinateWidth", "coordinateHeight"] as const)
     .every(name => Math.abs(left[name] - right[name]) < 0.5)
+
+const imageMapCircleRadius = ({scale}: ImageMapGeometry, dx: number, dy: number) =>
+  Math.round(Math.hypot(dx * scale.x, dy * scale.y) / scale.circle)
 
 class ImageMapOverlay {
   readonly element = document.createElement("div")
@@ -776,6 +787,8 @@ class ImageMapOverlay {
     const svg = this.root.querySelector<SVGSVGElement>("svg")!
     svg.setAttribute("preserveAspectRatio", "none")
     svg.setAttribute("viewBox", `0 0 ${geometry.coordinateWidth} ${geometry.coordinateHeight}`)
+    svg.style.setProperty("--circle-scale-x", String(geometry.scale.circle / geometry.scale.x))
+    svg.style.setProperty("--circle-scale-y", String(geometry.scale.circle / geometry.scale.y))
     this.element.setAttribute("data-open", "")
     this.element.removeAttribute("aria-hidden")
     this.renderAreas(geometry)
@@ -814,14 +827,14 @@ class ImageMapOverlay {
     return true
   }
 
-  private pointForEvent(event: PointerEvent): [number, number] | null {
+  private pointForEvent(event: PointerEvent, round = true): [number, number] | null {
     const geometry = this.session?.geometry ?? this.drag?.geometry
     if(!geometry) return null
     const x = Math.max(0, Math.min(geometry.coordinateWidth,
-      (event.clientX - geometry.left) * geometry.coordinateWidth / geometry.width))
+      (event.clientX - geometry.left) / geometry.scale.x))
     const y = Math.max(0, Math.min(geometry.coordinateHeight,
-      (event.clientY - geometry.top) * geometry.coordinateHeight / geometry.height))
-    return [Math.round(x), Math.round(y)]
+      (event.clientY - geometry.top) / geometry.scale.y))
+    return round ? [Math.round(x), Math.round(y)] : [x, y]
   }
 
   private handlePointerDown = (event: PointerEvent) => {
@@ -845,7 +858,7 @@ class ImageMapOverlay {
       return
     }
     if(!this.session || this.session.shape === "poly") return
-    const point = this.pointForEvent(event)
+    const point = this.pointForEvent(event, this.session.shape !== "circle")
     if(!point) return
     event.preventDefault()
     this.startPoint = point
@@ -856,14 +869,14 @@ class ImageMapOverlay {
 
   private handlePointerMove = (event: PointerEvent) => {
     if(this.drag) {
-      const point = this.pointForEvent(event)
-      if(!point) return
       const {coords, start, vertex, area} = this.drag
+      const circle = area.getAttribute("shape")?.toLowerCase() === "circle"
+      const point = this.pointForEvent(event, vertex === null || !circle)
+      if(!point) return
       const dx = point[0] - start[0], dy = point[1] - start[1]
       const next = [...coords]
-      const circle = area.getAttribute("shape")?.toLowerCase() === "circle"
       if(vertex !== null) {
-        if(circle) next[2] = Math.max(1, Math.round(Math.hypot(point[0] - coords[0], point[1] - coords[1])))
+        if(circle) next[2] = Math.max(1, imageMapCircleRadius(this.drag.geometry, point[0] - coords[0], point[1] - coords[1]))
         else if(area.getAttribute("shape")?.toLowerCase() === "rect" || !area.hasAttribute("shape")) {
           next[vertex === 0 || vertex === 6 ? 0 : 2] = point[0]
           next[vertex === 0 || vertex === 4 ? 1 : 3] = point[1]
@@ -878,7 +891,7 @@ class ImageMapOverlay {
       return
     }
     if(!this.session || this.session.shape === "poly" || !this.startPoint) return
-    const point = this.pointForEvent(event)
+    const point = this.pointForEvent(event, this.session.shape !== "circle")
     if(!point) return
     this.currentPoint = point
     this.renderPreview()
@@ -904,7 +917,7 @@ class ImageMapOverlay {
       return
     }
     if(!this.session || this.session.shape === "poly" || !this.startPoint) return
-    const point = this.pointForEvent(event)
+    const point = this.pointForEvent(event, this.session.shape !== "circle")
     if(point) this.currentPoint = point
     const coords = this.currentShapeCoordinates()
     if(coords) this.commit(coords)
@@ -937,8 +950,8 @@ class ImageMapOverlay {
       const bottom = Math.max(startY, endY)
       return right > left && bottom > top ? [left, top, right, bottom].join(",") : null
     }
-    const radius = Math.round(Math.hypot(endX - startX, endY - startY))
-    return radius > 0 ? [startX, startY, radius].join(",") : null
+    const radius = imageMapCircleRadius(this.session.geometry, endX - startX, endY - startY)
+    return radius > 0 ? [Math.round(startX), Math.round(startY), radius].join(",") : null
   }
 
   private commit(coords: string) {
@@ -979,7 +992,7 @@ class ImageMapOverlay {
       this.shapeAreas.set(element, area)
       const handles: SVGElement[] = []
       if(area === this.selectedArea && this.element.hasAttribute("data-editing") && isImageMapHotspotShape(shape)) {
-        const points = shape === "circle" ? [[coords[0] + coords[2], coords[1], 2]]
+        const points = shape === "circle" ? [[coords[0] + Math.max(0, coords[2]) * geometry.scale.circle / geometry.scale.x, coords[1], 2]]
           : shape === "rect" ? [[coords[0], coords[1], 0], [coords[2], coords[3], 2], [coords[2], coords[1], 4], [coords[0], coords[3], 6]]
           : Array.from({length: coords.length / 2}, (_, index) => [coords[index * 2], coords[index * 2 + 1], index * 2])
         for(const [x, y, vertex] of points) {

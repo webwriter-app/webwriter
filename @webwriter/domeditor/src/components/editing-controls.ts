@@ -32,6 +32,8 @@ import {insertMathStructureButtons} from "./ribbon-menu-config"
 import {elementStyleCategories, type ElementStyleCategory} from "../element-styles"
 import {getElementPresentation} from "../element-names"
 import {
+  defaultGraphicEndingSize,
+  graphicConnectorEndings,
   graphicShapeOptions,
   type GraphicLayerOperation,
   type GraphicSelectionState,
@@ -1977,7 +1979,7 @@ export abstract class EditingControls extends LitElement {
   }
 
   protected dispatchGraphicParameter(name: string, event: Event) {
-    const input = event.currentTarget as HTMLInputElement
+    const input = event.currentTarget as HTMLInputElement | HTMLSelectElement
     this.dispatchGraphicParameterValue(name, input.value)
   }
 
@@ -2083,44 +2085,91 @@ export abstract class EditingControls extends LitElement {
     `
   }
 
-  protected renderGraphicConnectorControls(disabled: boolean) {
+  private renderGraphicEndings(disabled: boolean) {
+    const parameters = this.graphic?.parameters ?? {}
+    const presets = [
+      {value: "6", label: "Tiny"}, {value: "12", label: "Small"}, {value: String(defaultGraphicEndingSize), label: "Medium"},
+      {value: "27", label: "Large"}, {value: "36", label: "Huge"},
+    ].map(preset => ({...preset, description: `${preset.value}px`}))
+    const ending = (endpoint: "start" | "end") => {
+      const name = `${endpoint}-ending`
+      const sizeName = `${name}-size`
+      const label = endpoint === "start" ? "Start" : "End"
+      const value = parameters[name] ?? "none", size = parameters[sizeName]
+      return {
+        select: html`
+          <select aria-label=${`Graphic: ${label} ending`} data-ribbon-input-persistent .value=${value} ?disabled=${disabled}
+            @change=${(event: Event) => this.dispatchGraphicParameter(name, event)}>
+            <option value="none" aria-label="No ending" ?selected=${value === "none"}>—</option>
+            ${Object.entries(graphicConnectorEndings).map(([type, ending]) => html`
+              <option value=${type} aria-label=${ending.label} ?selected=${value === type}>${ending.icons[endpoint === "start" ? 0 : 1]}</option>
+            `)}
+            <option value="current" aria-label="Current ending" ?selected=${value === "current"} ?hidden=${value !== "current"} disabled>⋯</option>
+          </select>
+        `,
+        size: html`
+          <style-combobox compact .showValue=${true} .label=${`Graphic: ${label} ending size`} .unit=${"px"}
+            .value=${size ?? ""} .options=${presets} .disabled=${disabled || value === "current"}
+            @combobox-change=${(event: CustomEvent<{value: string}>) => {
+              const value = event.detail.value.trim()
+              if(!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(value) || Number(value) <= 0 || !Number.isFinite(Number(value))) {
+                const field = event.currentTarget as StyleCombobox
+                field.value = size ?? ""
+                field.close(true)
+                return
+              }
+              this.dispatchGraphicParameterValue(sizeName, value)
+            }}></style-combobox>
+        `,
+      }
+    }
+    const start = ending("start"), end = ending("end")
+    return html`
+      <div class="graphic-parameter graphic-endings" role="group" aria-label="Endings">
+        <span aria-hidden="true">Endings</span>
+        <div class="graphic-ending-input">
+          <div class="graphic-ending-side">${start.select}${start.size}</div>
+          <div class="graphic-ending-side">${end.size}${end.select}</div>
+        </div>
+      </div>
+    `
+  }
+
+  protected renderGraphicConnectorControls(disabled: boolean, {endings = false} = {}) {
     const parameters = this.graphic?.parameters ?? {}
     return html`
       <div class="graphic-inline-controls graphic-connector-controls" role="group" aria-label="Connector settings">
         <label class="mark-attribute graphic-parameter">
           <span>Routing</span>
           ${this.renderOptionSelect("Graphic: Connector routing", parameters.routing ?? "orthogonal",
-            [{value: "straight", label: "Straight"}, {value: "orthogonal", label: "Orthogonal"}],
+            [
+              {value: "straight", label: "Straight"},
+              {value: "orthogonal", label: "Orthogonal"},
+              {value: "curved", label: "Curved"},
+              ...(parameters.routing === "segmented" ? [{value: "segmented", label: "Segmented"}] : []),
+            ],
             disabled, value => this.dispatchGraphicParameterValue("routing", value))}
         </label>
-        <label class="mark-attribute graphic-parameter graphic-boolean-parameter">
-          <span>Start arrow</span>
-          <input
-            data-ribbon-input-persistent
-            type="checkbox"
-            aria-label="Graphic: Start arrow"
-            .checked=${parameters["start-arrow"] === "true"}
-            ?disabled=${disabled}
-            @change=${(event: Event) => this.dispatchGraphicParameterValue(
-              "start-arrow",
-              String((event.currentTarget as HTMLInputElement).checked),
-            )}
-          />
-        </label>
-        <label class="mark-attribute graphic-parameter graphic-boolean-parameter">
-          <span>End arrow</span>
-          <input
-            data-ribbon-input-persistent
-            type="checkbox"
-            aria-label="Graphic: End arrow"
-            .checked=${parameters["end-arrow"] === "true"}
-            ?disabled=${disabled}
-            @change=${(event: Event) => this.dispatchGraphicParameterValue(
-              "end-arrow",
-              String((event.currentTarget as HTMLInputElement).checked),
-            )}
-          />
-        </label>
+        ${endings ? this.renderGraphicEndings(disabled) : (["start", "end"] as const).map(endpoint => {
+          const arrow = `${endpoint}-arrow`
+          const label = endpoint === "start" ? "Start arrow" : "End arrow"
+          return html`
+            <label class="mark-attribute graphic-parameter graphic-boolean-parameter">
+              <span>${label}</span>
+              <input
+                data-ribbon-input-persistent
+                type="checkbox"
+                aria-label=${`Graphic: ${label}`}
+                .checked=${parameters[arrow] === "true"}
+                ?disabled=${disabled}
+                @change=${(event: Event) => this.dispatchGraphicParameterValue(
+                  arrow,
+                  String((event.currentTarget as HTMLInputElement).checked),
+                )}
+              />
+            </label>
+          `
+        })}
       </div>
     `
   }
@@ -2310,7 +2359,7 @@ export abstract class EditingControls extends LitElement {
     return html`
       <ribbon-drawer label=${toolbox ? "Graphic style" : "Style"} icon="Theme" layout="graphic-geometry" show-pane-icon>
         ${this.renderGraphicGeometryControls(toolbox, !labelableShapeSelected)}
-        ${connectorSelected ? this.renderGraphicConnectorControls(false) : nothing}
+        ${connectorSelected && !toolbox ? this.renderGraphicConnectorControls(false) : nothing}
         ${toolbox ? fileControls : nothing}
         ${this.renderGraphicAlternativeTextField()}
       </ribbon-drawer>
