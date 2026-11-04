@@ -468,7 +468,7 @@ describe("media editing", () => {
     '<img src=" ">', '<figure><picture><source srcset=" "><img></picture><figcaption>Caption</figcaption></figure>',
   ])("only crops media with a source: %s", html => {
     document.body.innerHTML = html
-    const container = document.body.firstElementChild!, target = document.querySelector("img, video")!
+    const container = document.body.firstElementChild!, target = document.querySelector<HTMLImageElement | HTMLVideoElement>("img, video")!
     target.style.cssText = "width:320px;height:180px"
     vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 320, 180))
     if(container !== target) vi.spyOn(container, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 320, 204))
