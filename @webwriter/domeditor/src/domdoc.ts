@@ -732,6 +732,17 @@ export class SharedDOMDoc {
     }
   }
 
+  /** Checks whether a local transaction only changed inline styles owned by a gesture. */
+  isLocalStyleOnlySync(transaction: Y.Transaction, owner: Element | ((element: Element) => boolean)) {
+    if(transaction.origin !== this.#domOrigin) return false
+    for(const [shared, keys] of transaction.changed) {
+      if(!(shared instanceof Y.XmlElement) || keys.size !== 1 || !keys.has("style")) return false
+      const element = this.#nodes.get(shared)
+      if(!isElement(element) || (typeof owner === "function" ? !owner(element) : element !== owner)) return false
+    }
+    return true
+  }
+
   /** Reconciles the current DOM immediately; MutationObserver normally calls this. */
   syncFromDOM(origin: unknown = this.#domOrigin, mutations?: MutationRecord[], derivePermalinks = true) {
     if(this.#isWritingToDOM || this.#domSyncPauseDepth > 0 || this.#awaitingInitialSync) return
@@ -745,8 +756,10 @@ export class SharedDOMDoc {
     const discover = !mutations && !records?.length
     this.widgetData.sync(discover ? undefined : records)
     if(discover && records) records = this.#observer.takeRecords()
-    if(this.#documentPermalinks && derivePermalinks && (!records || records.some(record =>
-      record.type !== "characterData" || record.target.parentElement?.closest("h1, h2, h3, h4, h5, h6, caption, figcaption")))) {
+    if(this.#documentPermalinks && derivePermalinks && (!records || records.some(record => {
+      if(record.type === "attributes") return record.attributeName !== "style" || Boolean(record.attributeNamespace)
+      return record.type !== "characterData" || record.target.parentElement?.closest("h1, h2, h3, h4, h5, h6, caption, figcaption")
+    }))) {
       updateDocumentPermalinks(this.root)
       // Generated attributes and ownership metadata join the content batch.
       if(records) records = [...records, ...this.#observer.takeRecords()]
@@ -886,6 +899,21 @@ export class SharedDOMDoc {
 
   #reconcileMutations(records: MutationRecord[]) {
     const relevant = records.filter(record => this.#isRelevantMutation(record))
+    // Width and transform edits can touch hundreds of mapped elements. Only
+    // their style attribute needs to be mirrored when the batch has no other edits.
+    if(relevant.every(record => record.type === "attributes" && record.attributeName === "style"
+      && !record.attributeNamespace && this.#xmlNodes.get(record.target) instanceof Y.XmlElement)) {
+      for(const element of new Set(relevant.map(record => record.target as Element))) {
+        const shared = this.#xmlNodes.get(element) as Y.XmlElement
+        if(!this.#isSelectionNode(shared)) continue
+        const style = element.getAttribute("style")
+        if(style === null) {
+          if(shared.getAttribute("style") !== undefined) shared.removeAttribute("style")
+        }
+        else if(style !== shared.getAttribute("style")) shared.setAttribute("style", style)
+      }
+      return
+    }
     const containers = new Set(relevant.filter(record => record.type === "childList").map(record => record.target))
     const mappedContainers = [...containers].filter(node => {
       const shared = this.#xmlNodes.get(node)
