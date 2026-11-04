@@ -1569,7 +1569,7 @@ export class ListFeature extends EditorFeature {
       const endAfterList = range.endContainer === parent && range.endOffset > index
         && children.slice(index + 1, range.endOffset).every(separator)
       const next = children.slice(index + 1).find(node => !separator(node))
-      const endInEmptyParagraph = this.isPlainEmptyParagraph(next) && next.contains(range.endContainer)
+      const endInEmptyParagraph = next !== undefined && this.isPlainEmptyParagraph(next) && next.contains(range.endContainer)
       if((!startInside && !startAtList) || (!endInside && !endAfterList && !endInEmptyParagraph)) return false
     }
     const selected = selectsList ? this.directItems(list) : this.selectedItems().filter(item => item.parentElement === list)
