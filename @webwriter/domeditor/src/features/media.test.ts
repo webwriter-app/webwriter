@@ -463,25 +463,38 @@ describe("media editing", () => {
     },
   )
 
-  it.each(['<video></video>', '<video src=" "></video>', '<video><source src=" "></video>'])("does not crop an empty video: %s", html => {
+  it.each([
+    '<video></video>', '<video src=" "></video>', '<video><source src=" "></video>',
+    '<img src=" ">', '<figure><picture><source srcset=" "><img></picture><figcaption>Caption</figcaption></figure>',
+  ])("only crops media with a source: %s", html => {
     document.body.innerHTML = html
-    const video = document.querySelector("video")!
-    video.style.cssText = "width:320px;height:180px"
-    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 320, 180))
-    editor.features.selection.captureElement(video)
+    const container = document.body.firstElementChild!, target = document.querySelector("img, video")!
+    target.style.cssText = "width:320px;height:180px"
+    vi.spyOn(target, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 320, 180))
+    if(container !== target) vi.spyOn(container, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 320, 204))
+    editor.features.selection.captureElement(container)
     const authored = editor.toHTML(true)
-    expect(editor.features.media.cropTargetFor(video)).toBeNull()
-    expect(editor.features.media.canCrop(video)).toBe(false)
+    expect(editor.features.media.cropTargetFor(container)).toBeNull()
+    expect(editor.features.media.canCrop(target)).toBe(false)
     expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(true)
+    expect(editor.features.media.getState()?.hasSource).toBe(false)
     expect(editor.features.media.actions.setMediaCrop({type: "setMediaCrop", crop: "inset(10%)"})).toBe(false)
     expect(editor.toHTML(true)).toBe(authored)
-    video.innerHTML = '<source src="movie.mp4">'
+
+    const picture = target.closest("picture"), source = document.createElement("source")
+    if(picture) { source.srcset = "photo.webp"; picture.prepend(source) }
+    else if(target.localName === "video") { source.src = "movie.mp4"; target.prepend(source) }
+    else target.setAttribute("srcset", "photo.png")
     editor.features.selection.processSelection()
-    expect(editor.features.media.canCrop(video)).toBe(true)
+    expect(editor.features.media.cropTargetFor(container)).toBe(target)
+    expect(editor.features.media.canCrop(target)).toBe(true)
+    expect(editor.features.media.getState()?.hasSource).toBe(true)
     expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(false)
-    video.querySelector("source")!.remove()
+
+    source.remove()
+    target.removeAttribute("srcset")
     editor.features.selection.processSelection()
-    expect(editor.features.media.canCrop(video)).toBe(false)
+    expect(editor.features.media.canCrop(target)).toBe(false)
     expect(editor.features.transformation.overlay.querySelector<HTMLElement>(".◆transform-overlay-crop-frame")!.hidden).toBe(true)
   })
 
@@ -513,7 +526,7 @@ describe("media editing", () => {
   })
 
   it("sizes the source and figure together and restores the full viewport on clear", () => {
-    document.body.innerHTML = '<figure style="width: 360px"><picture style="width: 360px; height: 200px"><img style="width: 360px; height: 200px"></picture><figcaption>Caption</figcaption></figure>'
+    document.body.innerHTML = '<figure style="width: 360px"><picture style="width: 360px; height: 200px"><img src="photo.png" style="width: 360px; height: 200px"></picture><figcaption>Caption</figcaption></figure>'
     editor.doc.syncFromDOM()
     editor.doc.stopCapturing()
     const figure = document.querySelector("figure")!

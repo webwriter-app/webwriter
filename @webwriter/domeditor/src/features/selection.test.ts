@@ -2570,6 +2570,7 @@ describe("processSelection()", () => {
 
   it("positions the native media selection overlay on cropped visible bounds", () => {
     const image = el("img") as HTMLImageElement
+    image.src = "photo.png"
     image.style.setProperty("object-view-box", "inset(10% 20% 30% 40%)")
     vi.spyOn(image, "getBoundingClientRect").mockReturnValue(new DOMRect(90, 30, 80, 60))
     $.selectElement(image)

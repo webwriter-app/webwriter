@@ -3323,6 +3323,89 @@ await check("canvas and slide text exposes eight functional resize handles", asy
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("canvas image resizing keeps caption text at its original size", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const imageURL = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="180" height="100"><rect width="180" height="100" fill="#25677d"/></svg>')}`
+    const image = `<img src="${imageURL}" alt="Teal illustration" style="display:block;width:180px;height:100px">`
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = `<!doctype html><body class="ww-canvas"><p style="left:60px;top:380px">Nearby paragraph</p>
+      <figure style="left:60px;top:50px;width:180px">${image}<figcaption><em>Direct image</em></figcaption></figure>
+      <figure style="left:420px;top:50px;width:180px"><figcaption><em>Picture</em></figcaption><picture>${image}</picture></figure>
+      <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    await loaded
+    const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "caption resize fixture did not initialize")
+    const editor = view.editor!, feature = editor.features.transformation
+    editor.features.head.ensureCaptionEnumeration()
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    for(const figure of doc.querySelectorAll("figure")) {
+      const image = figure.querySelector("img")!, caption = figure.querySelector("figcaption")!
+      const text = doc.createRange()
+      const firstLetter = caption.querySelector("em")!.firstChild!
+      text.setStart(firstLetter, 0)
+      text.setEnd(firstLetter, 1)
+      const textBefore = text.getBoundingClientRect(), imageBefore = image.getBoundingClientRect()
+      const prefixBefore = view.getComputedStyle(caption, "::before").fontSize
+      editor.features.selection.captureElement(figure)
+      const handle = feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!
+      const {right, bottom} = figure.getBoundingClientRect()
+      const factor = image.parentElement?.localName === "picture" ? 0.5 : 1.5
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: right, clientY: bottom}))
+      feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: right + 180 * (factor - 1), clientY: bottom + 100 * (factor - 1), shiftKey: true, altKey: true}))
+      feature.handleScaleEnd()
+      await layoutFrame()
+      const textAfter = text.getBoundingClientRect(), imageAfter = image.getBoundingClientRect()
+      assert(Math.abs(textAfter.width - textBefore.width) < 1 && Math.abs(textAfter.height - textBefore.height) < 1,
+        `${caption.textContent}: caption glyphs changed size (${textBefore.width} × ${textBefore.height} to ${textAfter.width} × ${textAfter.height}, ${figure.style.cssText}, ${image.style.cssText}, zoom ${editor.features.canvas.zoom})`)
+      assert(view.getComputedStyle(caption, "::before").fontSize === prefixBefore, "caption numbering changed font size")
+      assert(Math.abs(imageAfter.width - imageBefore.width * factor) < 1 && Math.abs(imageAfter.height - imageBefore.height * factor) < 1, "Shift resize did not preserve image proportions")
+      assert(caption === figure.firstElementChild ? textAfter.bottom <= imageAfter.top : textAfter.top >= imageAfter.bottom, "caption overlaps the image")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
+await check("canvas image resizing keeps crop handles hidden on empty media", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:900px;height:600px"
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const loaded = new Promise<void>(resolve => frame.addEventListener("load", () => resolve(), {once: true}))
+    frame.srcdoc = `<!doctype html><body class="ww-canvas">
+      <figure style="left:40px;top:50px;width:160px"><picture><img></picture><figcaption></figcaption></figure>
+      <figure style="left:440px;top:50px;width:160px"><video controls></video><figcaption>Video</figcaption></figure>
+      <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>`
+    await loaded
+    const view = frame.contentWindow! as Window & typeof globalThis, doc = frame.contentDocument!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "empty media fixture did not initialize")
+    const editor = view.editor!, feature = editor.features.transformation
+    editor.features.canvas.actions.navigateCanvas({type: "navigateCanvas", operation: "actual-size"})
+    const crop = feature.overlay.querySelector<HTMLElement>('[part="transform-overlay-crop-frame"]')!
+    for(const figure of doc.querySelectorAll("figure")) {
+      editor.features.selection.captureElement(figure)
+      await layoutFrame()
+      const handle = feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!
+      const {right, bottom, width} = figure.getBoundingClientRect()
+      assert(crop.hidden && crop.getClientRects().length === 0, "empty media exposes crop controls before resizing")
+      handle.addEventListener("mousedown", event => feature.handleScaleStart(event), {once: true})
+      handle.dispatchEvent(new view.MouseEvent("mousedown", {button: 0, clientX: right, clientY: bottom}))
+      feature.handleScaleDrag(new view.MouseEvent("mousemove", {clientX: right + 80, clientY: bottom + 45, altKey: true}))
+      assert(crop.hidden && crop.getClientRects().length === 0, "empty media exposes crop controls during resizing")
+      feature.handleScaleEnd()
+      await layoutFrame()
+      assert(figure.getBoundingClientRect().width > width, "empty media could not be resized")
+      assert(crop.hidden && crop.getClientRects().length === 0, "empty media exposes crop controls after resizing")
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("block formulas expose block controls and resize horizontally", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:900px;height:700px"

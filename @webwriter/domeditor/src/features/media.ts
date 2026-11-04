@@ -2152,6 +2152,7 @@ export class MediaFeature extends EditorFeature {
         : `${provenance.kind === "capture" ? "Capture" : "Recording"} ${peers.indexOf(element) + 1}`
     }
     if(element.matches("video")) {
+      state.hasSource = !isEmptyMedia(element)
       state.videoPlaybackWarning = this.videoPlaybackWarning(element as HTMLVideoElement)
       const poster = element.getAttribute("poster") ?? ""
       const cover = this.sourceLabels.get(element)?.get(poster)
@@ -2210,8 +2211,8 @@ export class MediaFeature extends EditorFeature {
     return isElement(container) ? mediaContainerForNode(container) : null
   }
 
-  /** Resolve the currently rendered native media without creating content. */
-  cropTargetFor(element: Element): HTMLImageElement | HTMLVideoElement | null {
+  /** Resolve native media for transforms, including resizable placeholders. */
+  transformMediaFor(element: Element): HTMLImageElement | HTMLVideoElement | null {
     if(element.localName === "figure") {
       const media = Array.from(element.children).filter(child => child.matches("picture, img, video"))
       if(media.length !== 1) return null
@@ -2221,8 +2222,12 @@ export class MediaFeature extends EditorFeature {
     element = mediaContainerForNode(element) ?? element
     if(sourceEditingBlocked(element, this.editor.schema)) return null
     const target = mediaSourceTarget(element, false)
-    if(target.localName === "video" && isEmptyMedia(target)) return null
     return target.matches("img, video") && !target.hasAttribute("is") && target.namespaceURI === htmlNamespace ? target as HTMLImageElement | HTMLVideoElement : null
+  }
+
+  cropTargetFor(element: Element): HTMLImageElement | HTMLVideoElement | null {
+    const target = this.transformMediaFor(element)
+    return target && !isEmptyMedia(mediaContainerForNode(target) ?? target) ? target : null
   }
 
   cropViewport(target: HTMLImageElement | HTMLVideoElement) {
@@ -2292,7 +2297,7 @@ export class MediaFeature extends EditorFeature {
   }
 
   canCrop(target: HTMLImageElement | HTMLVideoElement) {
-    if(target.localName === "video" && isEmptyMedia(target)) return false
+    if(isEmptyMedia(mediaContainerForNode(target) ?? target)) return false
     return (typeof CSS.supports !== "function" || CSS.supports("object-view-box", "inset(0%)")) && this.cropViewport(target) !== null
   }
 

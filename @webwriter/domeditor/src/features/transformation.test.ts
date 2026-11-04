@@ -1205,7 +1205,7 @@ describe("selection-owned transformation", () => {
   it("restores the figure frame, source dimensions and margins when a crop drag is cancelled", () => {
     const figure = targetElement("figure")
     figure.style.width = "360px"
-    figure.innerHTML = '<picture style="width: 360px; height: 200px;"><img style="width: 360px; height: 200px; object-view-box: inset(5%);"></picture><figcaption>Caption</figcaption>'
+    figure.innerHTML = '<picture style="width: 360px; height: 200px;"><img src="photo.png" style="width: 360px; height: 200px; object-view-box: inset(5%);"></picture><figcaption>Caption</figcaption>'
     const image = figure.querySelector("img")!
     mockRect(figure, {width: 360, height: 224})
     mockRect(figure.querySelector("picture")!, {width: 360, height: 200})
@@ -1343,7 +1343,7 @@ describe("selection-owned transformation", () => {
 
   it("does not overwrite a container resized concurrently during a crop", () => {
     const picture = targetElement("picture")
-    picture.innerHTML = '<img style="width:200px;height:100px">'
+    picture.innerHTML = '<img src="photo.png" style="width:200px;height:100px">'
     const image = picture.querySelector("img")!
     mockRect(picture, {width: 200, height: 100})
     mockRect(image, {width: 200, height: 100})
@@ -1359,10 +1359,11 @@ describe("selection-owned transformation", () => {
     expect(document.body.className).not.toContain("◆transform-cropping-")
   })
 
-  it.each(["Escape", "pointercancel", "disable", "replace", "concurrent"])("cleans up a media crop gesture after %s", outcome => {
+  it.each(["Escape", "pointercancel", "disable", "replace", "concurrent", "source removal"])("cleans up a media crop gesture after %s", outcome => {
     const picture = targetElement("picture")
     picture.textContent = ""
     const image = document.createElement("img")
+    image.src = "photo.png"
     image.style.setProperty("object-view-box", "inset(5%)", "important")
     picture.append(image)
     mockRect(picture, {width: 200, height: 100})
@@ -1380,6 +1381,7 @@ describe("selection-owned transformation", () => {
     else {
       if(outcome === "concurrent") image.style.setProperty("object-view-box", "inset(20%)")
       if(outcome === "replace") image.replaceWith(document.createElement("img"))
+      if(outcome === "source removal") image.removeAttribute("src")
       document.dispatchEvent(pointer(outcome === "pointercancel" ? "pointercancel" : "pointermove", {pointerId: 42, clientX: 130, clientY: 120}))
     }
     expect(image.style.getPropertyValue("object-view-box")).toBe(outcome === "concurrent" ? "inset(20%)" : "inset(5%)")
@@ -2852,6 +2854,30 @@ describe("transform controls and geometry", () => {
     expect(target.style.left).toBe("0px")
     expect(target.style.top).toBe("0px")
     expect(target).toHaveClass("◆transform-target")
+  })
+
+  it("cancels a captioned canvas picture resize when its image is replaced", () => {
+    document.body.innerHTML = '<figure style="width:200px"><picture style="width:200px;height:100px"><img style="width:200px;height:100px"></picture><!--keep--><figcaption>Keep caption</figcaption></figure>'
+    expect(editor.setDocumentLayout("canvas", "document")).toBe(true)
+    const figure = document.querySelector("figure")!, picture = figure.querySelector("picture")!, image = picture.querySelector("img")!
+    mockRect(figure, {width: 200, height: 124})
+    const original = [figure, picture, image].map(element => element.style.cssText)
+    captureNode(figure)
+    const handle = feature.overlay.querySelector<HTMLElement>('[data-resize-direction="down-right"]')!
+    handle.dispatchEvent(pointer("pointerdown", {pointerId: 3, clientX: 300, clientY: 224}))
+    document.dispatchEvent(pointer("pointermove", {pointerId: 3, buttons: 1, clientX: 400, clientY: 274, shiftKey: true, altKey: true}))
+    expect(image.style.width).toBe("300px")
+    expect(figure.style.getPropertyValue("scale")).toBe("")
+
+    const replacement = document.createElement("img")
+    replacement.style.width = "175px"
+    image.replaceWith(replacement)
+    document.dispatchEvent(pointer("pointerup", {pointerId: 3}))
+    expect([figure, picture, image].map(element => element.style.cssText)).toEqual(original)
+    expect(picture.firstElementChild).toBe(replacement)
+    expect(replacement.style.width).toBe("175px")
+    expect(figure.querySelector("figcaption")?.textContent).toBe("Keep caption")
+    expect(document.body).not.toHaveClass("◆transform-scaling-nwse")
   })
 
   it.each([30, -20])("resizes an iframe vertically by %s pixels, preserving its DOM and undo/redo", async dy => {

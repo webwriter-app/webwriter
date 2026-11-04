@@ -907,7 +907,7 @@ const isMediaSelection = (media: UnknownRecord) => {
     && value.areas.every(area => isRecord(area) && isPath(area.path) && isStringRecord(area.attributes))
   return isMediaType(media.type)
     && isStringRecord(media.attributes)
-    && isOptional(media.hasSource, value => (media.type === "picture" || media.type === "img") && isBoolean(value))
+    && isOptional(media.hasSource, value => (media.type === "picture" || media.type === "img" || media.type === "video") && isBoolean(value))
     && isOptional(media.sources, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.tracks, value => Array.isArray(value) && value.every(isMediaResource))
     && isOptional(media.fallbackHTML, isString)
