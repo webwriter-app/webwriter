@@ -22,7 +22,7 @@ export class CanvasViewer {
   movePan(event: PointerEvent): void
   endPan(event: PointerEvent): void
   stopPan(): void
-  wheel(event: WheelEvent): void
+  wheel(event: WheelEvent, respectScrollContainers?: boolean): boolean
   navigate(operation: CanvasNavigation): void
   destroy(): void
 }

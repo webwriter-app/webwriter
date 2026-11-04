@@ -7,6 +7,7 @@ import trashIcon from "@tabler/icons/outline/trash.svg?raw"
 
 type Item = HTMLElement | SVGSVGElement
 type Point = {x: number, y: number}
+const wheelPanIdleMs = 150
 
 /** The DOM owns item placement. This feature owns only a disposable camera
  * and appendix controls; remote changes are never normalized into a schema. */
@@ -17,6 +18,8 @@ export class CanvasFeature extends EditorFeature {
   private slot: HTMLSlotElement | null = null
   private controls: HTMLElement | null = null
   private background: HTMLElement | null = null
+  private wheelPanShield: HTMLElement | null = null
+  private wheelPanTimer: number | null = null
   private startingViewOutline: HTMLElement | null = null
   private anchors = createAnchorPositioner()
   private stylesheet: CSSStyleSheet | null = null
@@ -36,7 +39,7 @@ export class CanvasFeature extends EditorFeature {
       this.refresh()
     })
   }
-  private readonly release = () => { this.spaceHand = false; this.stopPan(); this.schedule() }
+  private readonly release = () => { this.spaceHand = false; this.stopPan(); this.stopWheelPan(); this.schedule() }
 
   get active() { return documentLayoutMode() === "canvas" }
   get zoom() { return this.active ? this.viewer?.zoom ?? 1 : 1 }
@@ -121,6 +124,7 @@ export class CanvasFeature extends EditorFeature {
     startCanvas: ({}: {type: "startCanvas"}) => Boolean(this.emptyParagraph()) && this.convert("canvas"),
     navigateCanvas: ({operation}: {type: "navigateCanvas", operation: "zoom-in" | "zoom-out" | "actual-size" | "fit-content"}) => {
       if(!this.active) return
+      this.stopWheelPan()
       this.viewer?.navigate(operation)
     },
     saveCanvasStartingView: ({}: {type: "saveCanvasStartingView"}) => this.saveStartingView(),
@@ -401,6 +405,29 @@ export class CanvasFeature extends EditorFeature {
 
   private stopPan() { this.viewer?.stopPan() }
 
+  private readonly stopWheelPan = () => {
+    if(this.wheelPanTimer !== null) window.clearTimeout(this.wheelPanTimer)
+    this.wheelPanTimer = null
+    if(this.wheelPanShield) this.wheelPanShield.hidden = true
+  }
+
+  handleWheel(event: WheelEvent, overInactiveWidget = false) {
+    if(!this.isEnabled || !this.active || !this.viewer?.active) return false
+    const path = event.composedPath()
+    const overMediaShield = path.some(target => target instanceof Element && target.parentNode === this.slot?.parentNode
+      && target.matches('[part~="media-interaction-shield"]'))
+    if(!overInactiveWidget && !overMediaShield && path[0] !== this.wheelPanShield && !this.ownEvent(event)) return false
+    if(!this.viewer.wheel(event, !overInactiveWidget)) return false
+    if(this.wheelPanShield && !event.ctrlKey && !event.metaKey) {
+      // Embedded browsing contexts do not bubble wheel events to us.
+      // Keep subsequent events in this gesture above authored content.
+      this.wheelPanShield.hidden = false
+      if(this.wheelPanTimer !== null) window.clearTimeout(this.wheelPanTimer)
+      this.wheelPanTimer = window.setTimeout(this.stopWheelPan, wheelPanIdleMs)
+    }
+    return true
+  }
+
   private ownEvent(event: Event) {
     return (!isAppendixInteraction(event) || event.composedPath()[0] === this.slot)
       && !isFormControlInteraction(event) && !isWidgetShadowInteraction(event, this.editor.schema)
@@ -458,12 +485,10 @@ export class CanvasFeature extends EditorFeature {
     pointerup: event => this.viewer?.endPan(event),
     pointercancel: () => this.stopPan(),
     lostpointercapture: () => this.stopPan(),
-    wheel: event => {
-      if(this.active && this.ownEvent(event)) this.viewer?.wheel(event)
-    },
+    wheel: event => { this.handleWheel(event) },
     keydown: event => {
       if(!this.active || !this.ownEvent(event)) return
-      if(event.key === "Escape") { this.hand = this.spaceHand = false; this.stopPan(); this.schedule() }
+      if(event.key === "Escape") { this.hand = this.spaceHand = false; this.stopPan(); this.stopWheelPan(); this.schedule() }
       // Space stays ordinary text input inside an active text selection.
       if(event.code === "Space" && ($.isElementSelection || getSelection()?.anchorNode === document.body)) {
         event.preventDefault(); event.stopImmediatePropagation()
@@ -565,6 +590,7 @@ export class CanvasFeature extends EditorFeature {
   private restoreSlot() {
     this.focusedParagraph = null
     this.stopPan()
+    this.stopWheelPan()
     this.hand = this.spaceHand = false
     removeEditorMarker(document.body, "◆canvas-hand")
     this.viewer?.destroy()
@@ -583,6 +609,11 @@ export class CanvasFeature extends EditorFeature {
     this.background.setAttribute("aria-hidden", "true")
     Object.assign(this.background.style, {position: "fixed", inset: "0", zIndex: "-1", pointerEvents: "none"})
     this.editor.addAppendix(this.background)
+    this.wheelPanShield = document.createElement("div")
+    this.wheelPanShield.setAttribute("part", "canvas-wheel-pan-shield")
+    this.wheelPanShield.setAttribute("aria-hidden", "true")
+    this.wheelPanShield.hidden = true
+    this.editor.addAppendix(this.wheelPanShield)
     this.controls = document.createElement("div")
     this.controls.className = "◆canvas-controls"
     this.controls.setAttribute("part", "canvas-controls")
@@ -604,6 +635,7 @@ export class CanvasFeature extends EditorFeature {
     this.startingViewOutline.append(label)
     this.editor.addAppendix(this.startingViewOutline)
     this.stylesheet = createStylesheet(canvasControlsStyles + `
+      :host(.ww-canvas) [part=canvas-wheel-pan-shield]:not([hidden]) { position: fixed; inset: 0; z-index: 999; pointer-events: auto; }
       .◆canvas-starting-view-controls { display: inline-flex; }
       .◆canvas-starting-view-controls button:first-child { border-radius: 6px 0 0 6px; }
       .◆canvas-starting-view-controls button:last-child { display: grid; place-items: center; border-left: 1px solid #cbd5e1; border-radius: 0 6px 6px 0; padding: 5px 8px; }
@@ -643,6 +675,7 @@ export class CanvasFeature extends EditorFeature {
     window.removeEventListener("resize", this.schedule)
     this.restoreSlot()
     this.background?.remove(); this.background = null
+    this.wheelPanShield?.remove(); this.wheelPanShield = null
     this.controls?.remove(); this.controls = null
     this.startingViewOutline?.remove(); this.startingViewOutline = null
     this.anchors.destroy()

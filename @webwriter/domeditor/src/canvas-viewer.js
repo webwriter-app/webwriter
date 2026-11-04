@@ -80,14 +80,14 @@ export class CanvasViewer {
     this.stopPan()
   }
 
-  wheel(event) {
+  wheel(event, respectScrollContainers = true) {
     // Leave ordinary scrolling to authored scroll containers.
-    if(!event.ctrlKey && !event.metaKey) {
+    if(respectScrollContainers && !event.ctrlKey && !event.metaKey) {
       let element = event.target instanceof Element ? event.target : null
       while(element && element !== document.body) {
         const style = getComputedStyle(element)
         if(/auto|scroll/.test(style.overflowY) && element.scrollHeight > element.clientHeight
-          || /auto|scroll/.test(style.overflowX) && element.scrollWidth > element.clientWidth) return
+          || /auto|scroll/.test(style.overflowX) && element.scrollWidth > element.clientWidth) return false
         element = element.parentElement
       }
     }
@@ -96,6 +96,7 @@ export class CanvasViewer {
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1
     if(event.ctrlKey || event.metaKey) this.zoomAt(this.zoom * Math.exp(-event.deltaY * unit * .002), {x: event.clientX, y: event.clientY})
     else { this.camera.x -= event.deltaX * unit; this.camera.y -= event.deltaY * unit; this.applyCamera() }
+    return true
   }
 
   navigate(operation) {

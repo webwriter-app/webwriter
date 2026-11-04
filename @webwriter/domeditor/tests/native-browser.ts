@@ -6836,6 +6836,46 @@ await check("freeform box selections transform as a group", async () => {
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("canvas wheel panning crosses interactive embeds and restores their hit targets", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "width:760px;height:500px;max-width:none"
+  frame.srcdoc = `<!doctype html><style>${canvasStyles}</style><body class="ww-canvas">
+    <iframe sandbox srcdoc="<button>Embedded control</button>" style="position:absolute;left:180px;top:120px;width:320px;height:180px"></iframe>
+    <script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts?proofreading-disabled"></script></body>`
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow! as Window & typeof globalThis
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor && !view.editorError, "canvas fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!, appendix = editor.appendix
+    const embed = doc.querySelector("iframe")!, slot = appendix.querySelector("slot")!
+    editor.features.selection.captureElement(embed)
+    await layoutFrame()
+    const rect = embed.getBoundingClientRect()
+    const x = rect.left + rect.width / 2, y = rect.top + rect.height / 2
+    assert(doc.elementFromPoint(x, y) === embed, "the captured frame is not initially interactive")
+    const wheelAt = (x: number, y: number) => {
+      const target = appendix.elementFromPoint(x, y) ?? doc.elementFromPoint(x, y)!
+      const event = new view.WheelEvent("wheel", {clientX: x, clientY: y, deltaX: 24, deltaY: 12, bubbles: true, composed: true, cancelable: true})
+      target.dispatchEvent(event)
+      return event.defaultPrevented
+    }
+    const before = slot.style.transform, authored = editor.toHTML()
+    assert(wheelAt(40, 400) && slot.style.transform !== before, "background wheel did not pan")
+    const shield = appendix.querySelector<HTMLElement>('[part="canvas-wheel-pan-shield"]')!
+    assert(appendix.elementFromPoint(x, y) === shield, "the embedded page would receive wheel input during the Canvas gesture")
+    const hand = appendix.querySelector('button[name="hand"]')!, controlRect = hand.getBoundingClientRect()
+    assert(hand.contains(appendix.elementFromPoint(controlRect.x + controlRect.width / 2, controlRect.y + controlRect.height / 2)),
+      "the wheel gesture blocked the Canvas toolbar")
+    const panned = slot.style.transform
+    assert(wheelAt(x, y) && slot.style.transform !== panned, "the camera stopped at the embedded page")
+    for(let attempt = 0; !shield.hidden && attempt < 20; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(shield.hidden && doc.elementFromPoint(x, y) === embed, "the frame did not regain input after the gesture")
+    assert(editor.toHTML() === authored, "panning changed the authored document")
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("canvas slot preserves hit testing and document coordinates at different zoom levels", async () => {
   const paragraph = document.createElement("p")
   paragraph.textContent = "Canvas text"

@@ -832,6 +832,40 @@ describe("canvas document layout", () => {
     expect(document.body.classList.contains("◆canvas-panning")).toBe(false)
   })
 
+  it("pans over inactive media and widget controls without scrolling the page or the widget", async () => {
+    document.body.innerHTML = '<figure><video controls></video></figure><pan-widget></pan-widget>'
+    const widget = document.querySelector("pan-widget")!
+    const surface = document.createElement("div")
+    widget.attachShadow({mode: "open"}).append(surface)
+    const widgetWheel = vi.fn()
+    surface.addEventListener("wheel", widgetWheel)
+    const scrollBy = vi.spyOn(window, "scrollBy")
+    expect(editor.features.canvas.convert("canvas")).toBe(true)
+    await settle()
+    const slot = editor.appendix.querySelector("slot")!
+    const media = editor.appendix.querySelector('[part="media-interaction-shield"]')!
+    expect(media).not.toBeNull()
+    const wheel = (target: EventTarget) => {
+      const event = new WheelEvent("wheel", {bubbles: true, composed: true, cancelable: true, deltaX: 40, deltaY: -20})
+      target.dispatchEvent(event)
+      return event
+    }
+    for(const target of [media, surface]) {
+      const before = slot.style.transform
+      expect(wheel(target).defaultPrevented).toBe(true)
+      expect(slot.style.transform).not.toBe(before)
+    }
+    expect(widgetWheel).not.toHaveBeenCalled()
+    expect(scrollBy).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("blur"))
+    editor.features.selection.captureElement(widget)
+    const before = slot.style.transform
+    expect(wheel(surface).defaultPrevented).toBe(false)
+    expect(widgetWheel).toHaveBeenCalledOnce()
+    expect(slot.style.transform).toBe(before)
+  })
+
   it("updates camera overlays once per pan frame without reposting the selection path", async () => {
     editor.features.canvas.actions.startCanvas({type: "startCanvas"})
     await settle()

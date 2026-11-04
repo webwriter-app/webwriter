@@ -1640,12 +1640,13 @@ export class SelectionFeature extends EditorFeature {
     return true
   }
 
-  /** Routes wheel input over an inactive widget to the editor document instead
+  /** Routes wheel input over an inactive widget to the document or canvas instead
    * of letting the widget consume it (for example, to zoom a map).
    * Contentful and capture-selected widgets retain their native wheel behavior. */
   readonly #handleWidgetWheel = (event: WheelEvent) => {
     const widget = widgetHostForShadowInteraction(event, this.editor.schema)
     if(!widget || isContentfulWidget(widget, this.editor.schema) || widget === this.captureSelectedWidget) return
+    if(this.editor.features.canvas.handleWheel(event, true)) return
     event.stopPropagation()
     // Preserve browser page zoom while still keeping the event out of the
     // widget. Regular wheel scrolling has to be redirected explicitly because
