@@ -30,9 +30,12 @@ import {collectReferences, parseReference} from "../document-viewer.js"
 import {isLinkEdit, normalizeLinkHref, type LinkEdit, type LinkSelectionState} from "../links"
 import {fontStylesheetFamily, fontFamilies, fontWithFallback, syncFontResources} from "../fonts"
 import {mergeEmbeddedFonts} from "../local-fonts"
+import ianaTLDList from "../iana-tlds.txt?raw"
 
+// Refresh this offline snapshot from https://data.iana.org/TLD/tlds-alpha-by-domain.txt.
+const ianaTLDs = new Set(ianaTLDList.trimEnd().split(/\r?\n/).slice(1))
 // Bounded domain labels, with separate email matching to avoid linking just its domain.
-const automaticLinkDomain = String.raw`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})(?![a-z0-9_@-])`
+const automaticLinkDomain = String.raw`(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,63}|xn--[a-z0-9-]{2,59})(?![\p{L}\p{M}\p{N}_@-]|\.+[\p{L}\p{M}\p{N}_-])`
 const automaticLinkEmailLocal = "[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*"
 const automaticLinkPattern = new RegExp(
   String.raw`(?<![\p{L}\p{N}_@./:-])(?:https?:\/\/[^\s<>"'\x60]+|(?<email>(?<![a-z0-9!#$%&'*+/=?^_\x60{|}~.-])(?=[^@\s]{1,64}@)${automaticLinkEmailLocal}@${automaticLinkDomain})|${automaticLinkDomain}(?::\d{1,5})?(?!\d|:\d)(?:[/?#][^\s<>"'\x60]*)?)`, "giu")
@@ -535,6 +538,10 @@ export class MarkFeature extends EditorFeature {
           ? `mailto:${encodeURIComponent(value).replace(/%40/g, "@").replace(/%2B/g, "+")}` : value
         const href = normalizeLinkHref(address)
         if(!href) continue
+        const hostname = match.groups?.email ? value.slice(value.lastIndexOf("@") + 1) : new URL(href).hostname
+        const domain = hostname.replace(/\.$/, "")
+        const tldSeparator = domain.lastIndexOf(".")
+        if(tldSeparator <= 0 || !ianaTLDs.has(domain.slice(tldSeparator + 1).toUpperCase())) continue
         while(partIndex < parts.length && parts[partIndex].start + parts[partIndex].node.length <= start) partIndex++
         for(let index = partIndex; index < parts.length && parts[index].start < end; index++) {
           const part = parts[index]

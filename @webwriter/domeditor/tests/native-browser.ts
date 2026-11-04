@@ -4826,7 +4826,7 @@ await check("audio insertion retains element selection at the document start", a
 
 await check("automatic links wait for Space or Enter during typing and link pasted URLs immediately", async () => {
   const frame = document.createElement("iframe")
-  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p id="space"></p><ul><li id="list"></li></ul><p id="enter"></p><p id="paste"></p></body>'
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p id="space"></p><ul><li id="list"></li></ul><p id="enter"></p><p id="unknown"></p><p id="paste"></p></body>'
   nativeRootEditor.addAppendix(frame)
   const view = frame.contentWindow as Window & typeof globalThis & {editor?: DOMEditor}
   try {
@@ -4874,12 +4874,23 @@ await check("automatic links wait for Space or Enter during typing and link past
       checkLink(block, "example.co")
     }
 
-    const paste = await type("paste", "replace")
-    selection.selectAllChildren(paste)
-    const clipboardData = new view.DataTransfer()
-    clipboardData.setData("text/plain", url)
-    paste.dispatchEvent(new view.ClipboardEvent("paste", {clipboardData, bubbles: true, cancelable: true}))
+    const unknown = await type("unknown", "example.com.test")
+    assert(doc.execCommand("insertText", false, " "), "native Space failed after an unknown domain")
     await settle()
+    assert(!unknown.querySelector("a"), `linked part of a domain with an unknown TLD: ${unknown.innerHTML}`)
+
+    const paste = await type("paste", "replace")
+    const pasteText = async (value: string) => {
+      selection.selectAllChildren(paste)
+      const clipboardData = new view.DataTransfer()
+      clipboardData.setData("text/plain", value)
+      paste.dispatchEvent(new view.ClipboardEvent("paste", {clipboardData, bubbles: true, cancelable: true}))
+      await settle()
+    }
+    const invalidURL = "https://example.test/path"
+    await pasteText(invalidURL)
+    assert(paste.textContent === invalidURL && !paste.querySelector("a"), "paste linked a URL with an unknown TLD")
+    await pasteText(url)
     checkLink(paste, url)
   }
   finally { view.editor?.destroy(); frame.remove() }
@@ -4971,15 +4982,15 @@ await check("link keyboard preserves iframe selections and applies document, web
     assert(JSON.parse(anchor.dataset.reference!).title === "Reference source", "reference metadata was not applied")
     assert(anchor.textContent === "Link text" && !doc.body.innerHTML.includes("link-keyboard"), "keyboard changed authored text or leaked UI")
     const automaticBlock = doc.createElement("p"), untouchedBlock = doc.createElement("p")
-    automaticBlock.textContent = "Visit auto.example.test/path and email reader+tag@example.test."
-    untouchedBlock.textContent = "https://untouched.example.test"
+    automaticBlock.textContent = "Visit auto.example.com/path and email reader+tag@example.com."
+    untouchedBlock.textContent = "https://untouched.example.com"
     doc.body.append(automaticBlock, untouchedBlock)
     const automaticText = automaticBlock.firstChild as Text
     selection.setBaseAndExtent(automaticText, automaticText.length, automaticText, automaticText.length)
     automaticBlock.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText"}))
     await layoutFrame()
-    assert(automaticBlock.querySelector("a")?.getAttribute("href") === "https://auto.example.test/path", "typed URL was not automatically linked")
-    assert(automaticBlock.querySelectorAll("a")[1]?.getAttribute("href") === "mailto:reader+tag@example.test", "typed email address was not automatically linked with mailto")
+    assert(automaticBlock.querySelector("a")?.getAttribute("href") === "https://auto.example.com/path", "typed URL was not automatically linked")
+    assert(automaticBlock.querySelectorAll("a")[1]?.getAttribute("href") === "mailto:reader+tag@example.com", "typed email address was not automatically linked with mailto")
     assert(!untouchedBlock.querySelector("a"), "automatic linking scanned an unrelated text block")
     assert(selection.anchorNode?.textContent === "." && selection.anchorOffset === 1 && selection.isCollapsed,
       "automatic linking moved the native caret")
