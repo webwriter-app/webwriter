@@ -78,7 +78,7 @@ describe("distribution export", () => {
     resources.members[0].editingConfig = {content: "p*", inline: false}
     appendSerializedAssets(root, [resources])
     const script = root.querySelector("#webwriter-distribution-reader")!.textContent!
-    expect(script).toContain('"widgets":[{"tagName":"x-authored","editingConfig":{"content":"p*","inline":false}}]')
+    expect(script).toContain('widgets: [{"tagName":"x-authored","editingConfig":{"content":"p*","inline":false}}]')
   })
 
   it("uses one shared canvas viewer when reader editing is enabled", () => {
