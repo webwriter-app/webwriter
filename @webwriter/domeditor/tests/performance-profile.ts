@@ -2,6 +2,7 @@ import {SharedDOMDoc, sharedDOMBody} from '../src/domdoc'
 import {DomEditor} from '../src/components/dom-editor'
 import type {DOMEditor} from '../src/domeditor'
 import * as Y from 'yjs'
+import {gestureProfiles} from './performance-gestures'
 
 // Separate unprofiled timings from instrumented diagnostic runs. No timing
 // assertions: these are measurements of the current machine, not CI deadlines.
@@ -433,10 +434,16 @@ try {
   if(!only || only === 'tables') for(const size of profiling ? [500] : [100, 500]) await liveEditor(size, true)
   if(only === 'layouts') for(const size of profiling ? [600] : [240, 600])
     for(const mode of ['document', 'canvas', 'slides', 'board'] as const) await layoutProfile(mode, size)
+  if(only === 'gestures') await gestureProfiles(stage, layoutFixture, (html, bodyClass) => {
+    const {shared} = fixture(html, true, bodyClass)
+    try { return shared.snapshot() }
+    finally { shared.destroy() }
+  }, statistics, profiling)
   await fetch('/__native-result', {method: 'POST', body: JSON.stringify({
     metadata: {userAgent: navigator.userAgent, hardwareConcurrency: navigator.hardwareConcurrency, profiling,
-      viewport: [innerWidth, innerHeight], warmups: 3, timestamp: new Date().toISOString(),
-      notes: 'Synthetic authored DOM; live native execCommand insertText, actual frame bridge and isolated real host snapshot handler; no external widgets, proofreading, network latency, or host UI rendering. Next-frame checkpoint uses rAF followed by a timer; not an INP measurement.'}, checks,
+      viewport: [innerWidth, innerHeight], ...(only === 'gestures' ? {} : {warmups: 3}), timestamp: new Date().toISOString(),
+      notes: only === 'gestures' ? 'Synthetic authored DOM in the mounted editor shell. Trusted CDP mouse input with a frame checkpoint after each move. Collaboration and proofreading are disabled.'
+        : 'Synthetic authored DOM; live native execCommand insertText, actual frame bridge and isolated real host snapshot handler; no external widgets, proofreading, network latency, or host UI rendering. Next-frame checkpoint uses rAF followed by a timer; not an INP measurement.'}, checks,
   })})
 }
 catch(error) {

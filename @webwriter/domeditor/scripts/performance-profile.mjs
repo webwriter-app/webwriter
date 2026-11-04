@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process'
+import {randomUUID} from 'node:crypto'
 import {mkdtemp, mkdir, rm, writeFile} from 'node:fs/promises'
 import {createServer as createNetServer} from 'node:net'
 import {tmpdir, cpus, platform, release} from 'node:os'
@@ -11,7 +12,9 @@ import WebSocket from 'ws'
 const production = process.argv.includes('--production')
 const profiling = process.argv.includes('--profile')
 const only = process.argv.find(arg => arg.startsWith('--only='))?.slice(7)
-if(only && !['live', 'reconciliation', 'tables', 'layouts'].includes(only)) throw new Error('--only must be live, reconciliation, tables or layouts')
+if(only && !['live', 'reconciliation', 'tables', 'layouts', 'gestures'].includes(only)) throw new Error('--only must be live, reconciliation, tables, layouts or gestures')
+const gestureFilters = process.argv.filter(arg => arg.startsWith('--gesture=')).map(arg => arg.slice(10))
+const gestureToken = only === 'gestures' ? randomUUID() : null
 const output = resolve(process.argv.find(arg => arg.startsWith('--output='))?.slice(9) ?? '.cache/performance/profile')
 await mkdir(output, {recursive: true})
 const temporary = await mkdtemp(join(tmpdir(), 'domeditor-profiler-'))
@@ -23,10 +26,10 @@ const on = (name, callback) => {
   return () => callbacks.delete(callback)
 }
 const once = name => new Promise(resolve => { const off = on(name, event => { off(); resolve(event) }) })
-function call(method, params = {}, target = sessionId) {
+function call(method, params = {}, target = sessionId, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const requestId = ++id
-    const timeout = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timeout: ${method}`)) }, 120000)
+    const timeout = setTimeout(() => { pending.delete(requestId); reject(new Error(`CDP timeout: ${method}`)) }, timeoutMs)
     pending.set(requestId, {resolve: value => { clearTimeout(timeout); resolve(value) }, reject: error => { clearTimeout(timeout); reject(error) }})
     socket.send(JSON.stringify({id: requestId, method, params, ...(target ? {sessionId: target} : {})}))
   })
@@ -60,6 +63,89 @@ async function counters() {
   return {metrics: Object.fromEntries(performance.metrics.map(({name, value}) => [name, value])), dom}
 }
 const profiles = []
+let frameTarget, frameSession, dragData, dragEntered
+on('Input.dragIntercepted', ({data}) => { dragData = data })
+async function gestureMouse(mouse, nativeDrag) {
+  const session = nativeDrag ? sessionId : frameSession
+  // Let Chrome initiate the drag, then use its captured transfer to route
+  // trusted drag events into the out-of-process editing frame.
+  if(nativeDrag && mouse.type === 'mousePressed') {
+    dragData = undefined
+    dragEntered = false
+    await call('Input.setInterceptDrags', {enabled: true}, session)
+  }
+  if(!nativeDrag || !dragData) {
+    try { await call('Input.dispatchMouseEvent', mouse, session, 20000) }
+    finally {
+      if(nativeDrag && mouse.type === 'mouseReleased') await call('Input.setInterceptDrags', {enabled: false}, session)
+    }
+    return
+  }
+  const {x, y} = mouse
+  const dispatch = type => call('Input.dispatchDragEvent', {type, x, y, data: dragData}, session, 20000)
+  if(!dragEntered) { await dispatch('dragEnter'); dragEntered = true }
+  if(mouse.type === 'mouseReleased') {
+    try { await dispatch('drop') }
+    finally {
+      dragData = undefined
+      await call('Input.setInterceptDrags', {enabled: false}, session)
+    }
+  }
+  else await dispatch('dragOver')
+}
+
+async function evaluateFrame(expression, revision) {
+  if(Number.isInteger(revision)) {
+    const {targetInfos} = await call('Target.getTargets', {}, null)
+    const target = targetInfos.find(info => {
+      if(info.type !== 'iframe') return false
+      const url = new URL(info.url || 'about:blank')
+      return url.pathname.endsWith('/frame-shell.html') && url.searchParams.get('revision') === String(revision)
+    })
+    if(!target) return {unavailable: true}
+    if(frameTarget !== target.targetId) {
+      frameSession = (await call('Target.attachToTarget', {targetId: target.targetId, flatten: true}, null)).sessionId
+      frameTarget = target.targetId
+    }
+  }
+  const {result, exceptionDetails} = await call('Runtime.evaluate', {expression, awaitPromise: true, returnByValue: true}, frameSession, 20000)
+  if(exceptionDetails) throw new Error(exceptionDetails.exception?.description ?? exceptionDetails.text)
+  return result.value
+}
+
+function gestureTimeline(trace) {
+  const {traceEvents} = JSON.parse(trace)
+  const mainThreads = new Set(traceEvents.filter(event => event.name === 'thread_name' && event.args?.name === 'CrRendererMain')
+    .map(event => `${event.pid}:${event.tid}`))
+  const work = traceEvents.filter(event => event.ph === 'X' && mainThreads.has(`${event.pid}:${event.tid}`)
+    && ['Layout', 'UpdateLayoutTree', 'Paint', 'EventDispatch', 'FireAnimationFrame', 'FunctionCall'].includes(event.name))
+  const input = work.filter(event => event.name === 'EventDispatch' && /^(pointer|mouse|drag|drop)/.test(event.args?.data?.type ?? ''))
+  const intervals = new Map(), phases = {}
+  for(const mark of traceEvents.filter(event => event.cat?.includes('blink.user_timing') && event.name.startsWith('gesture:')).sort((a, b) => a.ts - b.ts)) {
+    const [, phase, boundary] = mark.name.split(':')
+    if(boundary === 'start') { intervals.set(phase, mark.ts); continue }
+    const start = intervals.get(phase)
+    if(start === undefined) continue
+    intervals.delete(phase)
+    const totals = phases[phase] ??= {samples: 0, elapsedMs: 0, events: {}}
+    totals.samples++
+    totals.elapsedMs += (mark.ts - start) / 1000
+    for(const event of work) {
+      if(event.ts < start || event.ts >= mark.ts) continue
+      const name = event.name === 'EventDispatch' ? event.args?.data?.type ?? event.name : event.name
+      const entry = totals.events[name] ??= {count: 0, ms: 0, withinInput: {count: 0, ms: 0}}
+      entry.count++
+      entry.ms += event.dur / 1000
+      if(['Layout', 'UpdateLayoutTree'].includes(name) && input.some(parent => parent.pid === event.pid && parent.tid === event.tid
+        && parent.ts <= event.ts && parent.ts + parent.dur >= event.ts + event.dur)) {
+        entry.withinInput.count++
+        entry.withinInput.ms += event.dur / 1000
+      }
+    }
+  }
+  return phases
+}
+
 async function startProfile(details) {
   if(active) throw new Error('Profiling stages overlap')
   const {name} = details
@@ -69,12 +155,19 @@ async function startProfile(details) {
     const {data} = await call('Page.captureScreenshot', {captureBeyondViewport: false})
     await writeFile(join(output, stem + '.png'), Buffer.from(data, 'base64'))
   }
+  if(only === 'gestures') {
+    active.frameSession = frameSession
+    await call('Profiler.enable', {}, frameSession)
+    await call('Profiler.setSamplingInterval', {interval: 1000}, frameSession)
+    await call('Profiler.start', {}, frameSession)
+  }
   await call('Profiler.start')
   await call('Tracing.start', {categories: 'devtools.timeline,blink.user_timing,v8,disabled-by-default-v8.gc,disabled-by-default-devtools.timeline', transferMode: 'ReturnAsStream'}, null)
 }
 async function stopProfile() {
   if(!active) throw new Error('No profiling stage is active')
-  const [{profile}, after] = await Promise.all([call('Profiler.stop'), counters()])
+  const [{profile}, after, frame] = await Promise.all([call('Profiler.stop'), counters(),
+    active.frameSession ? call('Profiler.stop', {}, active.frameSession) : null])
   const complete = once('Tracing.tracingComplete')
   await call('Tracing.end', {}, null)
   const {stream} = await complete
@@ -87,24 +180,34 @@ async function stopProfile() {
   await call('IO.close', {handle: stream}, null)
   await writeFile(join(output, active.stem + '.cpuprofile'), JSON.stringify(profile))
   await writeFile(join(output, active.stem + '.trace.json'), trace)
-  profiles.push({...active, after, ...summarize(profile)})
+  if(frame) await writeFile(join(output, active.stem + '.frame.cpuprofile'), JSON.stringify(frame.profile))
+  profiles.push({...active, after, ...summarize(profile), ...(frame ? {frameCPU: summarize(frame.profile), timeline: gestureTimeline(trace)} : {})})
   active = undefined
   await writeFile(join(output, 'profile-summary.json'), JSON.stringify(profiles, null, 2))
 }
 
 const handler = async (request, response, next) => {
-  if(request.method !== 'POST' || !['/__native-result', '/__native-progress', '/__native-profile/start', '/__native-profile/stop'].includes(request.url)) return next()
+  const gesture = only === 'gestures' && request.url === '/__native-gesture'
+  if(request.method !== 'POST' || !gesture && !['/__native-result', '/__native-progress', '/__native-profile/start', '/__native-profile/stop'].includes(request.url)) return next()
+  if(gesture && request.headers['x-gesture-token'] !== gestureToken) { response.writeHead(403).end(); return }
   try {
     const chunks = []
     for await(const chunk of request) chunks.push(chunk)
     const body = Buffer.concat(chunks).toString()
+    if(gesture) {
+      const {expression, revision, mouse, nativeDrag} = JSON.parse(body)
+      if(typeof expression === 'string') response.end(JSON.stringify(await evaluateFrame(expression, revision) ?? null))
+      else if(mouse) { await gestureMouse(mouse, nativeDrag); response.end('null') }
+      else throw new Error('Missing gesture command')
+      return
+    }
     if(request.url === '/__native-progress') process.stdout.write(body + '\n')
     else if(request.url === '/__native-result') resolveResult(JSON.parse(body))
     else if(request.url.endsWith('/start')) await startProfile(JSON.parse(body))
     else await stopProfile()
     response.end('ok')
   }
-  catch(error) { response.statusCode = 500; response.end(String(error)); resolveResult({error: String(error)}) }
+  catch(error) { response.statusCode = 500; response.end(String(error)); if(!gesture) resolveResult({error: String(error)}) }
 }
 const plugin = {name: 'performance-profile-results', configureServer(vite) { vite.middlewares.use(handler) }, configurePreviewServer(vite) { vite.middlewares.use(handler) }}
 
@@ -169,7 +272,8 @@ try {
   const parameters = new URLSearchParams()
   if(profiling) parameters.set('profile', '')
   if(only) parameters.set('only', only)
-  await call('Page.navigate', {url: `http://127.0.0.1:${port}/tests/performance-profile.html?${parameters}`})
+  for(const filter of gestureFilters) parameters.append('gesture', filter)
+  await call('Page.navigate', {url: `http://127.0.0.1:${port}/tests/performance-profile.html?${parameters}${gestureToken ? '#' + gestureToken : ''}`})
   const result = await Promise.race([resultPromise, deadline])
   clearTimeout(timer)
   await call('HeapProfiler.collectGarbage')
@@ -181,7 +285,7 @@ try {
   if(result.error || exceptions.length) throw new Error(result.error ?? `${exceptions.length} unhandled browser exceptions`)
   const expected = (!only || only === 'reconciliation' ? profiling ? 16 : 62 : 0)
     + (!only || only === 'live' ? profiling ? 7 : 21 : 0) + (!only || only === 'tables' ? profiling ? 7 : 14 : 0)
-    + (only === 'layouts' ? profiling ? 18 : 36 : 0)
+    + (only === 'layouts' ? profiling ? 18 : 36 : 0) + (only === 'gestures' ? new Set(gestureFilters).size || 19 : 0)
   if(result.checks?.length !== expected) throw new Error(`Expected ${expected} measurements, received ${result.checks?.length}`)
   process.stdout.write(`Saved ${result.checks.length} measurements and ${profiles.length} CPU/timeline profiles to ${output}\n`)
 }
