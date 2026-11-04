@@ -2,6 +2,7 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest"
 import * as Y from "yjs"
 import {DOMEditor} from "../domeditor"
+import editorStyleString from "../editor.css?raw"
 import {createProofreader, type ProofreadingIssue} from "../proofreading"
 import {createAccessibilityReviewer, type AccessibilityFinding} from "../accessibility"
 import {proofreadingRuns} from "./proofreading"
@@ -104,6 +105,11 @@ describe("proofreading prose extraction", () => {
 })
 
 describe("proofreading feature", () => {
+  it.each(["spelling", "grammar", "style"])("keeps %s underlines continuous through descenders", kind => {
+    const rule = editorStyleString.match(new RegExp(`::highlight\\(webwriter-${kind}\\)\\s*\\{([^}]*)\\}`))?.[1]
+    expect(rule).toMatch(/text-decoration-skip-ink:\s*none;/)
+  })
+
   it("reports text selections that touch an issue, including a caret and selections across inline elements", async () => {
     content('<p>te<em>h</em> example.</p>')
     const [issue] = await start()
