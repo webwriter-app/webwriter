@@ -445,19 +445,19 @@ describe("development server", () => {
     await writeFile(join(dataDirectory, "providers.json"), JSON.stringify({apiKey: "dummy-static-secret"}), {mode: 0o600})
     await developmentServer.close()
     developmentServer = undefined
-    // Vite owns process-level worker and shutdown hooks. Exercise the CLI in
-    // its own process, just like the private-testing startup regression.
+    // Exercise both entry points in child processes. The standalone Vite
+    // harness closes through IPC so its CLI signal hook cannot force exit.
     const args = entry === "backend" ? [fileURLToPath(new URL("./server.mjs", import.meta.url))] : ["--input-type=module", "-e", `
       import {createServer} from "vite"
       const vite = await createServer({server:{host:"127.0.0.1",port:0,strictPort:true,hmr:false,watch:null}})
       await vite.listen()
       console.log("development server: http://127.0.0.1:" + vite.httpServer.address().port)
-      process.once("SIGTERM", async () => {await vite.close(); process.exit(0)})
+      process.once("message", async () => {await vite.close(); process.disconnect()})
     `]
     const child = spawn(process.execPath, args, {
       env: {...process.env, WEBWRITER_DEV_HOST: "127.0.0.1", WEBWRITER_DEV_PORT: "0", WEBWRITER_DEV_DATA_DIR: dataDirectory,
-        VITE_APP_ORIGIN: "", VITE_EDITOR_ORIGIN: "", OPENAI_API_KEY: ""},
-      stdio: ["ignore", "pipe", "pipe"],
+        VITE_APP_ORIGIN: "", VITE_EDITOR_ORIGIN: "", OPENAI_API_KEY: "", WEBWRITER_TEST_STATIC_ROUTES: "1"},
+      stdio: entry === "backend" ? ["ignore", "pipe", "pipe"] : ["ignore", "pipe", "pipe", "ipc"],
     })
     const stopped = new Promise(resolve => child.once("exit", (code, signal) => resolve({code, signal})))
     try {
@@ -483,12 +483,13 @@ describe("development server", () => {
         expect(response.status).toBe(403)
         expect(await response.text()).not.toContain("dummy-static-secret")
       }
-      child.kill("SIGTERM")
+      const socket = entry === "backend" ? await openWebSocket(`${baseUrl.replace(/^http/, "ws")}/provider-route-shutdown`) : null
+      const disconnected = socket && new Promise(resolve => socket.once("close", resolve))
+      if(entry === "backend") child.kill("SIGTERM")
+      else child.send("close")
       const exit = await stopped
-      expect(exit.signal).toBeNull()
-      // Standalone Vite's SIGTERM hook may set the conventional 128 + 15
-      // exit code before the inline wrapper's close hook completes.
-      expect(entry === "frontend" ? [0, 143] : [0]).toContain(exit.code)
+      expect(exit).toEqual({code: 0, signal: null})
+      await disconnected
     }
     finally {
       if(child.exitCode === null && child.signalCode === null) { child.kill("SIGKILL"); await stopped }

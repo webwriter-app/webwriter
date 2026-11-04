@@ -1373,8 +1373,10 @@ if(isDirectRun) {
     stopping = true
     try {
       await developmentServer.close()
-      // In-memory Yjs rooms can retain awareness timers after sockets close.
-      process.exit(0)
+      // Only the CLI owns the process-wide room cache. Destroy its documents
+      // to release awareness timers, then let native Vite workers finish.
+      for(const document of docs.values()) document.destroy()
+      docs.clear()
     }
     catch(error) { console.error(error); process.exit(1) }
   }
