@@ -171,6 +171,7 @@ const expectedChecks = [
   "blank space around a formula paragraph selects gaps for every click count",
   "leaving an empty inline formula removes it without moving the text caret",
   "bottom layout cards retain native editing focus after rendering",
+  "preview blocks native typing in the editor and restores the caret",
   "toolbox Canvas to Document conversion retains the document selection",
   "recent documents fit one layout card when space is limited",
   "narrow ribbons show only the AI sparkles button",

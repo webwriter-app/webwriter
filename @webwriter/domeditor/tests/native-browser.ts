@@ -67,6 +67,7 @@ import {checkRemoteWebsite} from "./iframe-policy"
 import {checkLegacyWidgetOptions} from "./legacy-widget-options"
 import {checkShapeRibbonGalleries} from "./shape-gallery"
 import {checkFileActions} from "./file-actions"
+import {checkPreviewEditing} from "./preview-editing"
 import {checkGraphicDragPreviewRotation} from "./graphic-drag-preview-rotation"
 import {checkRibbonSnippetDrop} from "./ribbon-snippet-drop"
 import {checkResizeAlignment} from "./resize-alignment"
@@ -10759,6 +10760,8 @@ await check("recent documents fit one layout card when space is limited", async 
   }
   finally { frame.remove() }
 })
+
+await check("preview blocks native typing in the editor and restores the caret", () => checkPreviewEditing(assert))
 
 await check("toolbox Canvas to Document conversion retains the document selection", async () => {
   const frame = document.createElement("iframe")

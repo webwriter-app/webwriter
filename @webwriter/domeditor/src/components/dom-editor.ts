@@ -706,6 +706,7 @@ export class DomEditor extends LitElement {
   private previewSelection: SelectionBookmark | "remote" | null = null
   private previewGeneration = 0
   private previewTransition = false
+  private previewEditingLocked = false
   private liveSessionStarting = false
   private liveSessionActive = false
   private liveSessionRole: "host" | "learner" | "" = ""
@@ -2274,6 +2275,7 @@ export class DomEditor extends LitElement {
           ? frameImportMap(importMap, window.location.origin, editorFrameOrigin())! : importMap} : {}),
       }
       this.postToEditor(initializeMessage)
+      if(this.previewEditingLocked && this.editorOpaque) this.postFrameControl("preview-editing", {locked: true})
       const packageLoadRequestId = `packages-${++this.packageLoadSequence}`
       const packageLoad = new Promise<unknown>((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -2681,7 +2683,7 @@ export class DomEditor extends LitElement {
   }
 
   private handleEditorFrameBlur = () => {
-    this.saveEditorSelection()
+    if(!this.previewTransition && !this.previewActive) this.saveEditorSelection()
   }
 
   private restoreFrameHitTesting?: () => void
@@ -2789,6 +2791,7 @@ export class DomEditor extends LitElement {
   }
 
   private focusEditor(restoreSelection = false) {
+    if(this.previewActive || this.previewTransition) return
     if(this.editorOpaque) {
       // The frame must save its range before activating designMode. Focusing
       // here can collapse it before an asynchronous save-selection arrives.
@@ -2995,28 +2998,51 @@ export class DomEditor extends LitElement {
       message: "Delivery stopped. Send the replay again to recover any unconfirmed statements."}
   }
 
+  private setPreviewEditingLocked(locked: boolean) {
+    if(this.previewEditingLocked === locked) return
+    this.previewEditingLocked = locked
+    if(this.editorOpaque) {
+      if(locked) return this.requestFrameControl("preview-editing", {locked})
+      this.postFrameControl("preview-editing", {locked})
+    }
+    else {
+      const editor = (this.editorWindow as Window & {editor?: DOMEditor} | null)?.editor
+      if(locked) editor?.lockEditing(this)
+      else editor?.unlockEditing(this)
+    }
+  }
+
   private async enterPreview() {
     if(this.previewActive || this.previewTransition) return
-    if(!this.settings.pinDeveloperConsole && this.localPackageDraft && !await this.resolvePendingPackageChanges()) return
+    if(!this.settings.pinDeveloperConsole && this.localPackageDraft) {
+      if(!await this.resolvePendingPackageChanges() || !this.isConnected || this.previewActive || this.previewTransition) return
+    }
     this.previewTransition = true
+    const generation = ++this.previewGeneration
+    const frameRevision = this.frameRevision
     this.savedEditorSelection = null
     this.saveEditorSelection()
     this.previewSelection = this.savedEditorSelection
     this.savedEditorSelection = null
+    const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+    ribbon?.shadowRoot?.querySelector<HTMLButtonElement>(".preview-button")?.focus({preventScroll: true})
 
     try {
+      if(!this.editorWindow) await this.waitForEditorWindow()
+      if(generation !== this.previewGeneration) return
+      const lock = this.setPreviewEditingLocked(true)
+      if(lock) await lock
       // Preview hides the editor iframe, so close any appendix capture UI and
       // release its device streams before the authored document is previewed.
       void this.execute({type: "cancelMediaCapture"}).catch(() => {
         // Cancellation is best effort while the editor frame is initializing.
       })
-      if(!this.editorDocument) await this.waitForEditorWindow()
       if(import.meta.env.MODE !== "test" && this.backendState === "probing") await this.loginToBackend()
       const previewHTML = this.editorOpaque
         ? await this.currentPreviewHTMLFromFrame()
         : this.currentPreviewHTML()
-      const generation = ++this.previewGeneration
-      const ribbon = this.renderRoot.querySelector<AppRibbon>("app-ribbon")
+      if(generation !== this.previewGeneration) return
+      if(frameRevision !== this.frameRevision) throw new Error("The editor document changed while opening preview")
       this.previewFramePending = Boolean(ribbon && (!ribbon.expanded || ribbon.getAnimations?.().length))
       this.previewDocumentHTML = previewHTML
       this.previewFrameRevision++
@@ -3025,12 +3051,18 @@ export class DomEditor extends LitElement {
       if(this.previewFramePending) void this.showPreviewAfterRibbonExpansion(generation)
     }
     catch(error) {
+      if(generation !== this.previewGeneration) return
+      this.setPreviewEditingLocked(false)
+      this.savedEditorSelection = this.previewSelection
       this.previewSelection = null
       this.disposeLiveSession()
       this.reportFileError(error)
     }
     finally {
-      this.previewTransition = false
+      if(generation === this.previewGeneration) {
+        this.previewTransition = false
+        if(!this.previewActive) this.focusEditor(true)
+      }
     }
   }
 
@@ -3058,6 +3090,7 @@ export class DomEditor extends LitElement {
     this.disposeLiveSession()
     this.previewFramePending = false
     this.previewDocumentHTML = null
+    this.setPreviewEditingLocked(false)
     this.previewActive = false
     await this.updateComplete
     this.savedEditorSelection = selection
@@ -4060,6 +4093,7 @@ export class DomEditor extends LitElement {
         this.fileDirty = false
         this.linkSharingEnabled = true
         this.collaborationLink = location.href
+        this.setPreviewEditingLocked(false)
         this.previewActive = false
         return
       }
@@ -8403,6 +8437,8 @@ export class DomEditor extends LitElement {
     this.frameStartTimer = undefined
     this.clearMotionStylesheet()
     this.disposeLiveSession()
+    this.previewGeneration++
+    this.setPreviewEditingLocked(false)
     for(const pending of this.frameRequests.values()) {
       clearTimeout(pending.timer)
       pending.reject(new Error("The DOM editor component was disconnected"))
