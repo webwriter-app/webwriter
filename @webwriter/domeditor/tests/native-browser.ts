@@ -9083,6 +9083,57 @@ await check("pinned floats keep their selection frame aligned while scrolling", 
   finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
 })
 
+await check("pinned empty media stays in place and keeps its controls clickable", async () => {
+  const frame = document.createElement("iframe")
+  frame.style.cssText = "position:fixed;inset:0;width:1200px;height:600px;border:0;max-width:none"
+  frame.srcdoc = '<!doctype html><body><p style="height:1500px">Reading column</p><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></body>'
+  nativeRootEditor.addAppendix(frame)
+  try {
+    const view = frame.contentWindow!
+    for(let attempt = 0; !view.editor && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25))
+    assert(view.editor, "empty media fixture did not initialize")
+    const editor = view.editor!, doc = frame.contentDocument!
+    const {layout, media, selection, transformation} = editor.features
+    for(const markup of ["<picture><img></picture>", "<video controls></video>", "<iframe title='Empty website'></iframe>"]) {
+      doc.querySelector("p")!.insertAdjacentHTML("beforebegin", markup)
+      const target = doc.body.firstElementChild!
+      const label = target.localName
+      assert(editor.features.manipulation.setFloat(target, "far-left"), `${label}: could not float media`)
+      selection.captureElement(target)
+      await layoutFrame()
+      const initial = target.getBoundingClientRect()
+      assert(layout.actions.setFloatSticky({type: "setFloatSticky", enabled: true}), `${label}: could not pin media`)
+      await layoutFrame()
+      const pinned = target.getBoundingClientRect()
+      assert(Math.abs(initial.top - pinned.top) < 1, `${label}: pinning moved media from ${initial.top} to ${pinned.top}`)
+      assert(view.getComputedStyle(target).position === "sticky", `${label}: empty media styles overrode sticky positioning`)
+      let stickyTop: number | undefined
+      for(const scroll of [0, 200, 400]) {
+        view.scrollTo(0, scroll)
+        await layoutFrame()
+        const box = target.getBoundingClientRect()
+        if(scroll) {
+          stickyTop ??= box.top
+          assert(box.top >= 0 && box.top < 40 && Math.abs(box.top - stickyTop) < 1,
+            `${label}: media did not stick while scrolling`)
+        }
+        const input = media.placeholder.root.querySelector<HTMLInputElement>(".url")!
+        const url = input.getBoundingClientRect()
+        const x = url.left + url.width / 2, y = url.top + url.height / 2
+        assert(doc.elementFromPoint(x, y) === doc.body && media.placeholder.root.elementFromPoint(x, y) === input,
+          `${label}: URL input is blocked at scroll ${scroll}`)
+        const edge = transformation.overlay.querySelector('[part~="transform-overlay-edge-right"]')!
+        const edgeX = box.right - 2, edgeY = box.top + box.height / 3
+        assert(doc.elementFromPoint(edgeX, edgeY) === doc.body && editor.appendix.elementFromPoint(edgeX, edgeY) === edge,
+          `${label}: selection edge is blocked at scroll ${scroll}`)
+      }
+      target.remove()
+      view.scrollTo(0, 0)
+    }
+  }
+  finally { frame.contentWindow?.editor?.destroy(); frame.remove() }
+})
+
 await check("wide widgets follow adaptive float lanes", async () => {
   const frame = document.createElement("iframe")
   frame.style.cssText = "position:fixed;inset:0;width:1400px;height:900px;border:0;max-width:none"

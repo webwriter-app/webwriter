@@ -938,6 +938,11 @@ video:not([src]):not(:has(track[src])) {
   position: relative;
 }
 
+/* Leave the positioning of pinned floats to the document theme. */
+body :is(picture, video, iframe).ww-float-sticky:is(.ww-float-left, .ww-float-right) {
+  position: revert-layer;
+}
+
 :is(picture, iframe)::after {
   position: absolute;
   top: 0;

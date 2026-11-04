@@ -128,6 +128,7 @@ const expectedChecks = [
   "float previews match projected media bounds",
   "lane media fills available width and resizes with native handles",
   "pinned floats keep their selection frame aligned while scrolling",
+  "pinned empty media stays in place and keeps its controls clickable",
   "wide widgets follow adaptive float lanes",
   "two-column side width follows its widest element",
   "far floats adapt to column margins and survive standalone export",
