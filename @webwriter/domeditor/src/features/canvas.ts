@@ -392,6 +392,8 @@ export class CanvasFeature extends EditorFeature {
     return this.isEnabled && this.active ? this.viewer?.panAtEdge(point) ?? false : false
   }
 
+  setMinimapRefreshPaused(paused: boolean) { this.viewer?.setMinimapRefreshPaused(paused) }
+
   private cameraChanged = () => {
     const zoom = this.viewer?.zoom ?? 1
     const zoomChanged = zoom !== this.cameraZoom

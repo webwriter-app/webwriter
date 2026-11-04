@@ -69,6 +69,7 @@ class CanvasMinimap {
     this.running = null
     this.timer = null
     this.queued = false
+    this.refreshPaused = false
     this.dragPointer = null
     this.startingViewDrag = null
     this.selectedStartingView = null
@@ -317,11 +318,30 @@ class CanvasMinimap {
       document.removeEventListener("load", this.resourceLoaded, true)
       clearTimeout(this.timer)
       this.timer = null
+      this.queued = false
     }
+  }
+
+  setRefreshPaused(paused) {
+    if(this.refreshPaused === paused) return
+    this.refreshPaused = paused
+    if(paused) {
+      if(this.timer !== null) {
+        clearTimeout(this.timer)
+        this.timer = null
+        this.queued = true
+      }
+      if(this.running?.generation === this.generation) {
+        this.running.stale = true
+        this.queued = true
+      }
+    }
+    else if(this.queued) this.schedule()
   }
 
   schedule() {
     if(this.map.hidden) return
+    if(this.refreshPaused) { this.queued = true; return }
     clearTimeout(this.timer)
     this.timer = setTimeout(() => {
       this.timer = null
@@ -360,11 +380,11 @@ class CanvasMinimap {
   async refresh() {
     if(this.map.hidden || !this.viewer.active) return
     const generation = this.generation
-    if(this.running === generation) { this.queued = true; return }
-    this.running = generation
+    if(this.refreshPaused || this.running?.generation === generation) { this.queued = true; return }
+    const running = this.running = {generation, stale: false}
     this.queued = false
     const {innerWidth, innerHeight} = window
-    const current = () => this.generation === generation && this.viewer.active
+    const current = () => !running.stale && this.generation === generation && this.viewer.active
     let bounds = null, snapshot = null
     try {
       bounds = this.usedBounds(viewportAspectRatio())
@@ -406,7 +426,7 @@ class CanvasMinimap {
       // A failed snapshot should not prevent canvas navigation.
     }
     finally {
-      if(this.running === generation) {
+      if(this.running === running) {
         this.running = null
         if(this.queued) this.schedule()
       }
@@ -618,6 +638,8 @@ export class CanvasViewer {
   }
 
   updateStartingView() { this.minimap?.updateStartingView() }
+
+  setMinimapRefreshPaused(paused) { this.minimap?.setRefreshPaused(paused) }
 
   centerOn(point) {
     const center = this.clientPoint(window.innerWidth / 2, window.innerHeight / 2)

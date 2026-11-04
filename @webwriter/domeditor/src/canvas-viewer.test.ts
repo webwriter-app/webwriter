@@ -153,6 +153,40 @@ describe("standalone canvas reader", () => {
     expect(appendix.querySelector("[part=canvas-minimap]")).toBeNull()
   })
 
+  it("defers minimap snapshots and discards an in-flight image across a pause", async () => {
+    const paragraph = document.querySelector("p")!
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(new DOMRect(12, 18, 100, 60))
+    const result = (name: string) => ({
+      meta: {clip: {x: 0, y: 0}, contentX: 0, contentY: 0, vbW: 100, vbH: 60},
+      toRaw: () => `data:image/svg+xml,${name}`,
+    })
+    let resolveInitial!: (value: ReturnType<typeof result>) => void
+    const initial = new Promise<ReturnType<typeof result>>(resolve => { resolveInitial = resolve })
+    const snapshot = vi.fn(async () => result("current")).mockImplementationOnce(() => initial)
+    reader = mountCanvasReader(() => snapshot as unknown as typeof import("@zumer/snapdom").snapdom)!
+    const image = control("minimap").querySelector("image")!
+    await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(1))
+
+    reader.viewer.setMinimapRefreshPaused(true)
+    paragraph.style.width = "200px"
+    resolveInitial(result("stale"))
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(1)
+    expect(image.hasAttribute("href")).toBe(false)
+
+    reader.viewer.setMinimapRefreshPaused(false)
+    await vi.waitFor(() => expect(image.getAttribute("href")).toBe("data:image/svg+xml,current"))
+    expect(snapshot).toHaveBeenCalledTimes(2)
+
+    paragraph.style.width = "220px"
+    await settle()
+    reader.viewer.setMinimapRefreshPaused(true)
+    await new Promise(resolve => setTimeout(resolve, 160))
+    expect(snapshot).toHaveBeenCalledTimes(2)
+    reader.viewer.setMinimapRefreshPaused(false)
+    await vi.waitFor(() => expect(snapshot).toHaveBeenCalledTimes(3))
+  })
+
   it("uses only a direct uncustomized starting-view div", () => {
     document.body.innerHTML = '<div class="ww-canvas-starting-view" id="nested"><div></div></div>'
     expect(canvasStartingView()).toBe(document.getElementById("nested"))
