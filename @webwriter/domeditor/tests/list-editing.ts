@@ -16,6 +16,24 @@ export async function checkListEditing() {
     assert(view.editor, `list editing fixture did not initialize: ${view.editorError ?? "timed out"}`)
     const editor = view.editor!, doc = frame.contentDocument!, selection = doc.getSelection()!
     const waitForEdit = async () => new Promise<void>(resolve => view.requestAnimationFrame(() => resolve()))
+    for(const mode of ["container", "text", "backward", "after-list", "empty-paragraph"] as const) {
+      doc.body.innerHTML = '<ul><li>One</li><li>Two</li><li>Three</li></ul>'
+      const list = doc.querySelector("ul")!, items = list.querySelectorAll("li")
+      if(mode === "container") selection.setBaseAndExtent(list, 0, list, 3)
+      else if(mode === "text") selection.setBaseAndExtent(items[0].firstChild!, 0, items[2].firstChild!, 5)
+      else if(mode === "backward") selection.setBaseAndExtent(items[2].firstChild!, 5, items[0].firstChild!, 0)
+      else if(mode === "after-list") selection.setBaseAndExtent(items[0].firstChild!, 0, doc.body, 1)
+      else {
+        const paragraph = doc.createElement("p")
+        doc.body.append(paragraph)
+        selection.setBaseAndExtent(items[0].firstChild!, 0, paragraph, 0)
+      }
+      editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "p"})
+      await waitForEdit()
+      const expected = '<p>One</p><p>Two</p><p>Three</p>' + (mode === "empty-paragraph" ? '<p></p>' : '')
+      assert(editor.toHTML(true) === expected && !doc.querySelector("ul, ol"),
+        `${mode} list selection did not convert all items: ${editor.toHTML(true)}`)
+    }
     for(const mode of ["text", "caret", "trailing paragraph", "backward through paragraph"] as const) {
       const includesParagraph = mode === "trailing paragraph" || mode === "backward through paragraph"
       doc.body.innerHTML = '<ul style="list-style-type: circle"><li>One</li><li>Two</li><li>Three</li></ul>'

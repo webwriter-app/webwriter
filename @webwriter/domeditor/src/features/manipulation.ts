@@ -1591,6 +1591,43 @@ export class ManipulationFeature extends EditorFeature {
       if(container === root || container === document.body || !container.parentElement) return false
       range.selectNode(container)
     }
+    else if(tag === "ul" || tag === "ol") {
+      // List insertion formats the text blocks touched by the selection. A
+      // text range ending inside a block must not leave a split paragraph on
+      // either side of the list. Restrict expansion to sibling text blocks;
+      // other structures retain the general conversion behavior below.
+      const blockAt = (node: Node) => getContainer(node).closest("p, h1, h2, h3, h4, h5, h6")
+      const first = blockAt(range.startContainer), last = blockAt(range.endContainer)
+      const parent = first?.parentNode ?? last?.parentNode
+      const validBlock = (block: Element | null) => !block || block.parentNode === parent
+        && this.isTextBlock(block) && !atomicEditingContainer(block, this.editor.schema)
+      if(parent && validBlock(first) && validBlock(last)
+        && (first || range.startContainer === parent) && (last || range.endContainer === parent)) {
+        const atEdge = (node: Node, offset: number, block: Element, end: boolean) => {
+          while(node !== block) {
+            const length = node instanceof Text ? node.length : node.childNodes.length
+            if(offset !== (end ? length : 0)) return false
+            const parent = node.parentNode
+            if(!parent) return false
+            const index = Array.from(parent.childNodes).indexOf(node as ChildNode)
+            node = parent
+            offset = index + (end ? 1 : 0)
+          }
+          return offset === (end ? block.childNodes.length : 0)
+        }
+        const startsAfterFirst = first && first !== last && atEdge(range.startContainer, range.startOffset, first, true)
+        const endsBeforeLast = last && first !== last && atEdge(range.endContainer, range.endOffset, last, false)
+        if(first) {
+          if(startsAfterFirst) range.setStartAfter(first)
+          else range.setStartBefore(first)
+        }
+        if(last) {
+          if(endsBeforeLast) range.setEndBefore(last)
+          else range.setEndAfter(last)
+        }
+        if(range.collapsed) return true
+      }
+    }
     // Never split a widget host through a text range. Whole hosts can be
     // wrapped in disclosures without touching their internals.
     for(const element of root.querySelectorAll("*")) {

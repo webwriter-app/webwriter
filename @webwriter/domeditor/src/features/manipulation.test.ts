@@ -8230,7 +8230,7 @@ describe("element insertion conversions", () => {
     expect(document.body.lastElementChild?.textContent).toBe("other")
   })
 
-  it.each(["h2", "ul", "table", "details"])("wraps a partial formatted range in %s and splits the paragraph", tag => {
+  it.each(["h2", "table", "details"])("wraps a partial formatted range in %s and splits the paragraph", tag => {
     document.body.innerHTML = "<p>before <b>selected</b> after</p>"
     const text = document.querySelector("b")!.firstChild!
     $.selectRange(text, 0, text, 8)
@@ -8240,6 +8240,60 @@ describe("element insertion conversions", () => {
     expect(document.body.children[1].textContent).toBe("selected")
     expect(document.body.children[2].textContent).toBe(" after")
     expect(document.body.children[1].querySelector("b")?.textContent).toBe("selected")
+  })
+
+  it.each(["ul", "ol"])("converts the whole paragraph containing a partial selection to %s", tag => {
+    document.body.innerHTML = '<p id="intro">before <b>selected</b> after</p><p>other</p>'
+    const text = document.querySelector("b")!.firstChild!
+    $.selectRange(text, 1, text, 5)
+    convert(tag)
+    expect(editor.toHTML(true)).toBe(`<${tag}><li id="intro">before <b>selected</b> after</li></${tag}><p>other</p>`)
+  })
+
+  it.each(["ul", "ol"])("converts selected paragraph text to %s without leaving boundary paragraphs", async tag => {
+    document.body.innerHTML = '<p id="first">First <b>bold</b><!--inside--><my-widget></my-widget></p><!--between--><p lang="de">Second</p><p>After</p>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const first = document.querySelector("p")!, second = document.querySelectorAll("p")[1]
+    const bold = first.querySelector("b")!, widget = first.querySelector("my-widget")!
+    $.selectRange(first.firstChild!, 2, second.firstChild!, 3)
+    convert(tag)
+    const converted = `<${tag}><li id="first">First <b>bold</b><!--inside--><my-widget></my-widget></li><!--between--><li lang="de">Second</li></${tag}><p>After</p>`
+    expect(editor.toHTML(true)).toBe(converted)
+    expect(document.querySelector("b")).toBe(bold)
+    expect(document.querySelector("my-widget")).toBe(widget)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(converted)
+  })
+
+  it("does not convert paragraphs touched only at their selection boundaries", () => {
+    document.body.innerHTML = '<p>Before</p><p>Middle</p><p>After</p>'
+    const paragraphs = document.querySelectorAll("p")
+    $.selectRange(paragraphs[0].firstChild!, 6, paragraphs[2].firstChild!, 0)
+    convert("ul")
+    expect(editor.toHTML(true)).toBe('<p>Before</p><ul><li>Middle</li></ul><p>After</p>')
+  })
+
+  it.each([false, true])("converts fully selected paragraph text with backward selection %s", backward => {
+    document.body.innerHTML = '<p>First</p><p>Second</p>'
+    const [first, second] = Array.from(document.querySelectorAll("p"), paragraph => paragraph.firstChild!)
+    const selection = document.getSelection()!
+    selection.setBaseAndExtent(backward ? second : first, backward ? 6 : 0, backward ? first : second, backward ? 0 : 6)
+    convert("ul")
+    expect(editor.toHTML(true)).toBe('<ul><li>First</li><li>Second</li></ul>')
+  })
+
+  it.each(["start", "end"])("converts paragraphs when the %s endpoint is a parent boundary", endpoint => {
+    document.body.innerHTML = '<p>First</p><p>Second</p><p>After</p>'
+    const [first, second] = Array.from(document.querySelectorAll("p"), paragraph => paragraph.firstChild!)
+    if(endpoint === "start") $.selectRange(document.body, 0, second, 3)
+    else $.selectRange(first, 2, document.body, 2)
+    convert("ul")
+    expect(editor.toHTML(true)).toBe('<ul><li>First</li><li>Second</li></ul><p>After</p>')
   })
 
   it.each(["ul", "table"])("converts %s back to paragraphs", source => {
@@ -8289,6 +8343,86 @@ describe("element insertion conversions", () => {
     expect(editor.toHTML(true)).toBe('<ul><li>First</li></ul><p>Second</p><p>Third</p><ul><li>Fourth</li></ul>')
     expect($.anchor).toBe(second)
     expect($.focus).toBe(third)
+  })
+
+  it.each(["container", "text", "backward", "container-to-text", "text-to-container"] as const)("converts all list items selected by %s to paragraphs", async mode => {
+    document.body.innerHTML = '<ul><!--lead--><li id="first">First <b>bold</b></li><li lang="de">Second <my-widget></my-widget></li><li>Third</li><!--tail--></ul><p>After</p>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const list = document.querySelector("ul")!, items = list.querySelectorAll("li")
+    const first = items[0].firstChild!, last = items[2].firstChild!
+    const bold = list.querySelector("b")!, widget = list.querySelector("my-widget")!
+    if(mode === "container") $.selectRange(list, 1, list, 4)
+    else if(mode === "text") $.selectRange(first, 0, last, last.textContent!.length)
+    else if(mode === "backward") $.selectRange(last, last.textContent!.length, first, 0)
+    else if(mode === "container-to-text") $.selectRange(list, 1, last, last.textContent!.length)
+    else $.selectRange(first, 0, list, 4)
+    convert("p")
+    const result = '<ul><!--lead--></ul><p id="first">First <b>bold</b></p><p lang="de">Second <my-widget></my-widget></p><p>Third</p><ul><!--tail--></ul><p>After</p>'
+    expect(editor.toHTML(true)).toBe(result)
+    expect(document.querySelector("b")).toBe(bold)
+    expect(document.querySelector("my-widget")).toBe(widget)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    expect(editor.doc.body.toString()).not.toContain("◆")
+    editor.doc.undo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(result)
+  })
+
+  it("converts a newly created list back to the original paragraphs", () => {
+    document.body.innerHTML = '<p>First</p><p>Second</p><p>Third</p>'
+    $.selectRange(document.body, 0, document.body, 3)
+    editor.features.list.toggleList("ul")
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p>First</p><p>Second</p><p>Third</p>')
+  })
+
+  it("converts only the selected list-container item range", () => {
+    document.body.innerHTML = '<ol start="4"><li>First</li><li>Second</li><li>Third</li></ol>'
+    const list = document.querySelector("ol")!
+    $.selectRange(list, 1, list, 3)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<ol start="4"><li>First</li></ol><p>Second</p><p>Third</p>')
+  })
+
+  it.each(["after-list", "backward", "before-list", "empty-paragraph"] as const)("converts three items when selection extends to %s", async mode => {
+    document.body.innerHTML = '<p>Before</p><ul><li>First</li><li>Second <b>bold</b></li><li>Third</li></ul><!--keep--><p></p><p>After</p>'
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    const original = editor.toHTML(true)
+    const list = document.querySelector("ul")!, items = list.querySelectorAll("li")
+    const first = items[0].firstChild!, last = items[2].firstChild!, bold = list.querySelector("b")!
+    if(mode === "after-list") $.selectRange(first, 0, document.body, 2)
+    else if(mode === "backward") $.selectRange(document.body, 2, first, 0)
+    else if(mode === "before-list") $.selectRange(document.body, 1, last, last.textContent!.length)
+    else $.selectRange(first, 0, document.querySelectorAll("p")[1], 0)
+    convert("p")
+    const result = '<p>Before</p><p>First</p><p>Second <b>bold</b></p><p>Third</p><!--keep--><p></p><p>After</p>'
+    expect(editor.toHTML(true)).toBe(result)
+    expect(document.querySelector("ul")).toBeNull()
+    expect(document.querySelector("b")).toBe(bold)
+    editor.doc.syncFromDOM(); editor.doc.stopCapturing()
+    editor.doc.undo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(original)
+    editor.doc.redo(); await Promise.resolve()
+    expect(editor.toHTML(true)).toBe(result)
+    expect(editor.toHTML(true)).not.toContain("◆")
+  })
+
+  it("preserves separators before a list when the selection starts at a parent boundary", () => {
+    document.body.innerHTML = '<p>Before</p><!--keep-->\n<ul><li>First</li><li>Second</li><li>Third</li></ul><p>After</p>'
+    const last = document.querySelectorAll("li")[2].firstChild!
+    $.selectRange(document.body, 1, last, last.textContent!.length)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<p>Before</p><!--keep-->\n<p>First</p><p>Second</p><p>Third</p><p>After</p>')
+  })
+
+  it("leaves list content untouched when the range covers no items", () => {
+    document.body.innerHTML = '<ul><!--keep--><li>First</li></ul>'
+    const list = document.querySelector("ul")!
+    $.selectRange(list, 0, list, 1)
+    convert("p")
+    expect(editor.toHTML(true)).toBe('<ul><!--keep--><li>First</li></ul>')
   })
 
   it("keeps the remaining ordered list's identity and numbering when its first item is unwrapped", () => {
@@ -8412,13 +8546,13 @@ describe("element insertion conversions", () => {
 })
 
 describe("conversion boundaries", () => {
-  it("splits both endpoints across different text blocks", () => {
+  it("converts both partially selected text blocks to list items", () => {
     document.body.innerHTML = "<p>before first</p><!--keep--><h2>second after</h2><p>other</p>"
     editor.doc.syncFromDOM()
     const first = document.querySelector("p")!.firstChild!, second = document.querySelector("h2")!.firstChild!
     $.selectRange(first, 7, second, 6)
     editor.features.manipulation.actions.insertElement({type: "insertElement", tag: "ul"})
-    expect(editor.toHTML(true)).toBe('<p>before </p><ul><li>first</li><!--keep--><li><p id="second-after">second</p></li></ul><h2 id="after"> after</h2><p>other</p>')
+    expect(editor.toHTML(true)).toBe('<ul><li>before first</li><!--keep--><li><p id="second-after">second after</p></li></ul><p>other</p>')
   })
 
   it("leaves an invalid heading conversion untouched", () => {

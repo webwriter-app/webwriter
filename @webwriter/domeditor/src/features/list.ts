@@ -1508,14 +1508,34 @@ export class ListFeature extends EditorFeature {
     if(!selection?.rangeCount) return false
     const range = selection.getRangeAt(0)
     const selectedElement = this.editor.features.selection.captureSelectedElement ?? $.selectedElement
+    const common = isElement(range.commonAncestorContainer) ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement
+    const startElement = getContainer(range.startContainer)
+    const separator = (node: Node) => node.nodeType === Node.COMMENT_NODE || isText(node) && !node.data.trim()
+    const startChild = Array.from(range.startContainer.childNodes).slice(range.startOffset).find(node => !separator(node))
     const list = selectedElement?.matches(listSelector) ? selectedElement as HTMLElement
-      : this.activeItem()?.parentElement as HTMLElement | null
+      : (this.activeItem()?.parentElement ?? startElement.closest(listSelector) ?? common?.closest(listSelector)
+        ?? (isElement(startChild) && startChild.matches(listSelector) ? startChild : null)) as HTMLElement | null
     if(!list?.isConnected || !list.matches(listSelector) || atomicEditingContainer(list, this.editor.schema)) return false
     const selectsList = selectedElement === list
-    if(!selectsList && (!list.contains(range.startContainer) || !list.contains(range.endContainer))) return false
+    if(!selectsList) {
+      const parent = list.parentNode!
+      const children = Array.from(parent.childNodes), index = children.indexOf(list)
+      const startInside = list.contains(range.startContainer)
+      const startAtList = range.startContainer === parent && range.startOffset <= index
+        && children.slice(range.startOffset, index).every(separator)
+      const endInside = list.contains(range.endContainer)
+      const endAfterList = range.endContainer === parent && range.endOffset > index
+        && children.slice(index + 1, range.endOffset).every(separator)
+      const next = children.slice(index + 1).find(node => !separator(node))
+      const endInEmptyParagraph = this.isPlainEmptyParagraph(next) && next.contains(range.endContainer)
+      if((!startInside && !startAtList) || (!endInside && !endAfterList && !endInEmptyParagraph)) return false
+    }
     const selected = selectsList ? this.directItems(list) : this.selectedItems().filter(item => item.parentElement === list)
     if(!selected.length) {
-      if(this.directItems(list).length || list.childNodes.length) return false
+      // A range in the list that does not cover an item must not fall back to
+      // generic insertion, which would replace its selected content.
+      if(this.directItems(list).length || list.childNodes.length) return true
       const paragraph = document.createElement("p")
       for(const attribute of Array.from((cloneWithoutEditorMarkers(list, false) as Element).attributes)) {
         paragraph.setAttributeNS(attribute.namespaceURI, attribute.name, attribute.value)
