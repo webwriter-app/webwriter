@@ -185,6 +185,10 @@ export class DomEditorBreadcrumb extends LitElement {
       height: 10px;
     }
 
+    .position-balloon-pinned svg {
+      transform: scale(1.2);
+    }
+
     .position-float,
     .position-float svg {
       width: 16px;
@@ -753,12 +757,14 @@ export class DomEditorBreadcrumb extends LitElement {
     const anchor = positionAnchor && !pinnedFloat
     const balloon = position === "relative" ? "BalloonFilled"
       : position === "absolute" || position === "fixed" || pinnedFloat ? "Balloon" : null
-    const balloonLabel = pinnedFloat ? "Pinned float" : `${position} positioning`
     if(!anchor && !balloon && !float) return ""
+    const balloonLabel = pinnedFloat ? "Pinned float" : `${position} positioning`
+    const balloonIcon = balloon ? html`<span class=${`position-icon position-balloon${pinnedFloat ? " position-balloon-pinned" : ""}`} role="img" aria-label=${balloonLabel} title=${balloonLabel}>${ribbonIcon(balloon)}</span>` : ""
+    const floatLabel = float === "far-left" ? "Left float" : "Right float"
+    const floatIcon = float ? html`<span class="position-icon position-float" role="img" aria-label=${floatLabel} title=${floatLabel}>${ribbonIcon(float === "far-left" ? "Float left" : "Float right")}</span>` : ""
     return html`<sup class="position-icons">
       ${anchor ? html`<span class="position-icon position-anchor" role="img" aria-label="Positioning anchor" title="Positioning anchor">${ribbonIcon("Anchor")}</span>` : ""}
-      ${balloon ? html`<span class="position-icon position-balloon" role="img" aria-label=${balloonLabel} title=${balloonLabel}>${ribbonIcon(balloon)}</span>` : ""}
-      ${float ? html`<span class="position-icon position-float" role="img" aria-label=${float === "far-left" ? "Left float" : "Right float"} title=${float === "far-left" ? "Left float" : "Right float"}>${ribbonIcon(float === "far-left" ? "Float left" : "Float right")}</span>` : ""}
+      ${pinnedFloat ? [floatIcon, balloonIcon] : [balloonIcon, floatIcon]}
       ${(float === "far-left" && current.floatForcedRight) || (float === "far-right" && current.floatRightInFlow)
         ? html`<float-info placement="right" .side=${float === "far-right" ? "right" : "left"}></float-info>` : ""}
     </sup>`
