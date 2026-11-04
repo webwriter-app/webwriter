@@ -1275,6 +1275,35 @@ describe("inline references", () => {
 describe("link keyboard edits", () => {
   const currentIdentity = () => feature.getLinkState()!.identity
 
+  it("opens for a selection within one link, including the entire link", () => {
+    const paragraph = setContent('<p>Before <a href="#intro">one <em>two</em><!--keep--></a> after</p>')
+    const anchor = paragraph.querySelector("a")!
+    const first = anchor.firstChild!, last = anchor.querySelector("em")!.firstChild!
+    $.selectRange(first, 1, last, 2)
+    expect(feature.getLinkState()?.text).toBe("ne tw")
+    $.selectRange(last, 3, first, 0)
+    expect(feature.getLinkState()?.text).toBe("one two")
+    $.selectElement(anchor, false)
+    expect(feature.getLinkState()?.href).toBe("#intro")
+  })
+
+  it("keeps the keyboard closed when a selection extends outside a link", () => {
+    const paragraph = setContent('<p>Before <a href="#intro">Link</a><br> after</p>')
+    const text = paragraph.querySelector("a")!.firstChild!
+    $.selectRange(paragraph.firstChild!, 1, text, 2)
+    expect(feature.getLinkState()).toBeNull()
+    $.selectRange(paragraph.lastChild!, 2, text, 1)
+    expect(feature.getLinkState()).toBeNull()
+    $.selectRange(paragraph, 1, paragraph, 3)
+    expect(feature.getLinkState()).toBeNull()
+  })
+
+  it("keeps the keyboard closed across separate links to the same address", () => {
+    const paragraph = setContent('<p><a href="#intro">one</a><a href="#intro">two</a></p>')
+    $.selectRange(paragraph.firstChild!.firstChild!, 0, paragraph.lastChild!.firstChild!, 3)
+    expect(feature.getLinkState()).toBeNull()
+  })
+
   it("lists current authored targets and references without entering widgets", () => {
     const paragraph = setContent('<p><a href="#intro">Text</a></p><h2 id="intro">Introduction</h2><h2 id="odd id">Odd title</h2><custom-box><h2 id="private">Private</h2></custom-box>')
     const source = document.createElement("a")

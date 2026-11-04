@@ -825,6 +825,18 @@ export class MarkFeature extends EditorFeature {
     if(!context) return null
     const {range} = context
     if(!range.startContainer.isConnected || !range.endContainer.isConnected) return null
+    const anchors = svg ? svg.text.map(({node}) => this.svgValues(node).link).filter(anchor => anchor !== null)
+      : range.collapsed ? [this.markElementAt(range.startContainer, context.block, "a")].filter(anchor => anchor !== null)
+      : this.markElementsForSelection(context as MarkSelection, "a")
+    if(!range.collapsed) {
+      const anchor = anchors[0]
+      if(!anchor || anchors.some(other => other !== anchor)) return null
+      const linkRange = range.cloneRange()
+      // Include selections that select the anchor itself from its parent.
+      linkRange.selectNode(anchor)
+      if(range.compareBoundaryPoints(Range.START_TO_START, linkRange) < 0
+        || range.compareBoundaryPoints(Range.END_TO_END, linkRange) > 0) return null
+    }
     const nodeID = (node: Node) => {
       let id = this.linkNodeIDs.get(node)
       if(!id) { id = crypto.randomUUID(); this.linkNodeIDs.set(node, id) }
@@ -833,12 +845,9 @@ export class MarkFeature extends EditorFeature {
     const attributes = {...(this.getAttributeState().a ?? {})}
     const href = attributes.href ?? ""
     const text = range.toString()
-    const anchors = svg ? svg.text.map(({node}) => this.svgValues(node).link).filter(Boolean)
-      : range.collapsed ? [this.markElementAt(range.startContainer, context.block, "a")].filter(Boolean)
-      : this.markElementsForSelection(context as MarkSelection, "a")
     const identity = JSON.stringify([nodeID(range.startContainer), range.startOffset,
       nodeID(range.endContainer), range.endOffset, text, attributes,
-      anchors.map(anchor => [nodeID(anchor!), Array.from(anchor!.attributes).flatMap(attribute => {
+      anchors.map(anchor => [nodeID(anchor), Array.from(anchor.attributes).flatMap(attribute => {
         const value = attribute.name === "class" ? authoredClassValue(attribute.value) : attribute.value
         return attribute.name === "class" && !value ? [] : [[attribute.name, value]]
       })])])

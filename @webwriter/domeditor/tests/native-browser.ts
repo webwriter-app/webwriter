@@ -4841,7 +4841,7 @@ await check("link keyboard preserves iframe selections and applies document, web
   localStorage.removeItem(linkHistoryKey)
   const frame = document.createElement("iframe")
   frame.style.cssText = "width:800px;height:200px"
-  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p><a>Link text</a></p><h2 id="intro">Introduction</h2></body>'
+  frame.srcdoc = '<!doctype html><head><script class="◆editor-only" type="module" src="/tests/native-browser-frame.ts"></script></head><body><p>Before <a>Link text</a> after</p><h2 id="intro">Introduction</h2></body>'
   const keyboard = new LinkKeyboard()
   nativeRootEditor.addAppendix(frame)
   nativeRootEditor.addAppendix(keyboard)
@@ -4853,6 +4853,16 @@ await check("link keyboard preserves iframe selections and applies document, web
     const local = view.editor!, doc = frame.contentDocument!, anchor = doc.querySelector("a")!
     const text = anchor.firstChild!, selection = doc.getSelection()!
     await layoutFrame()
+    doc.body.focus()
+    const paragraph = anchor.parentElement!
+    selection.setBaseAndExtent(paragraph, 1, paragraph, 2)
+    keyboard.state = local.features.mark.getLinkState()
+    await keyboard.updateComplete
+    assert(keyboard.shadowRoot!.querySelector('[aria-label="Web address"]'), "selecting the whole link did not open the keyboard")
+    selection.setBaseAndExtent(paragraph.firstChild!, 0, text, 2)
+    keyboard.state = local.features.mark.getLinkState()
+    await keyboard.updateComplete
+    assert(!keyboard.shadowRoot!.querySelector('[aria-label="Web address"]'), "selecting outside the link left the keyboard open")
     doc.body.focus(); selection.setBaseAndExtent(text, 2, text, 2)
     keyboard.state = local.features.mark.getLinkState()
     await keyboard.updateComplete
