@@ -526,6 +526,7 @@ describe("selectCoords()", () => {
     setBody(`<p>before</p>\n<details${open ? " open" : ""}><summary>Heading</summary><p>Body</p></details>\n<p>after</p>`)
     const details = document.querySelector("details")!
     details.getBoundingClientRect = () => new DOMRect(20, 100, 200, 80)
+    setBlockRect(details.nextElementSibling!, 200, 230)
     const summary = details.querySelector("summary")!.firstChild as Text
     const body = details.querySelector("p")!.firstChild as Text
     for(const node of [summary, body, details, document.body]) {
@@ -588,7 +589,7 @@ describe("selectCoords()", () => {
     inner.getBoundingClientRect = () => new DOMRect(30, 150, 180, 40)
     mockHitTest(inner.querySelector("summary")!.firstChild as Text, 5)
     expect($.pointFromCoords(50, 200)).toEqual({node: outer, offset: 2})
-    expect($.pointFromCoords(50, 260)).toEqual({node: document.body, offset: 1})
+    expect($.pointFromCoords(50, 260)).toEqual({node: document.body, offset: 1, overrideNative: true})
   })
 
   it("keeps bare text content inside details while exposing the bottom padding as an outer gap", () => {
@@ -678,7 +679,7 @@ describe("selectCoords()", () => {
     setBody('<details><summary>Heading</summary></details>')
     document.querySelector("details")!.getBoundingClientRect = () => new DOMRect(20, 100, 200, 50)
     Object.defineProperty(document, "caretPositionFromPoint", {configurable: true, value: () => null})
-    expect($.pointFromCoords(50, 160)).toEqual({node: document.body, offset: 1})
+    expect($.pointFromCoords(50, 160)).toEqual({node: document.body, offset: 1, overrideNative: true})
   })
 })
 
