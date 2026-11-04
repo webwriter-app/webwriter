@@ -5647,7 +5647,7 @@ describe("divider selection", () => {
     ] as const) {
       $.selectGap(divider, placement)
       expect(press(into).defaultPrevented).toBe(true)
-      expect($.selectedElement).toBe(divider)
+      expect($.selectedElement, `${into} from the gap ${placement} the divider landed at ${$.anchor?.nodeName}:${$.anchorOffset}`).toBe(divider)
       expect(press(out).defaultPrevented).toBe(true)
       expect($.isGapSelection).toBe(true)
       expect($.anchor).toBe(parent)
